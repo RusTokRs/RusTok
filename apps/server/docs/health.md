@@ -101,10 +101,17 @@ background workers with actual handles in the server runtime shared store.
 Checks are published in `checks` with `kind = "worker"`:
 
 - `worker:outbox_relay` — critical worker if the active delivery profile uses
-  the transactional outbox and runtime
-  built relay config;
-- `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
-- `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.
+  the transactional outbox and runtime built relay config;
+- `worker:outbox_retention` — critical worker when the resolved `EventRuntime`
+  includes an Outbox retention configuration;
+- `worker:remote_executor_reaper` — critical worker if
+  `rustok.registry.remote_executor.enabled = true`;
+- `worker:event_forwarder` — critical once the server-owned `EventBus` and its
+  in-process Outbox forwarder have been composed; it is optional before that bus exists;
+- `worker:seo_bulk`, `worker:seo_sitemap`, and `worker:seo_index_repair` —
+  critical when their corresponding settings are enabled and the build contains
+  `mod-seo`. They observe the same supervised SEO worker handle under distinct
+  configuration gates.
 - `worker:auth_retention` — critical if auth retention is enabled;
 - `worker:module_event_dispatcher` — critical when composition registered at least one listener.
   Before composition has evaluated the listener set it is treated as required;
@@ -118,6 +125,13 @@ Checks are published in `checks` with `kind = "worker"`:
   `worker:paid_order_create_label` (`mod-commerce`),
   `worker:marketplace_financial_recovery` (`commerce-marketplace-financial`), and
   `worker:product_media_release` (`mod-product`) — critical when compiled in;
+- `worker:product_index_refresh` (`mod-product`), `worker:social_graph_index`
+  (`mod-social_graph`), `worker:forum_search_inbox` and
+  `worker:forum_search_contract_consumer` (`mod-forum`),
+  `worker:comments_tcp_listener` and `worker:comments_schedule_audit_handoff`
+  (`mod-comments`), and the notification intake/fanout/candidate workers
+  (`mod-notifications`) — critical once their corresponding handles are
+  registered; optional before those module runtimes start them;
 - `worker:workflow_cron` — critical if `mod-workflow` is compiled in and cron is enabled.
 
 If a worker is disabled by settings, check remains `ok` and `non_critical` with reason

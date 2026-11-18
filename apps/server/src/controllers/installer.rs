@@ -7,7 +7,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use rustok_installer::{
-    InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    build_install_lock_owner, is_valid_install_lock_ttl_secs, InstallApplyOptions,
+    InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
@@ -39,6 +41,7 @@ pub struct InstallPreflightResponse {
 #[derive(Debug, Deserialize)]
 pub struct InstallApplyRequest {
     pub plan: InstallPlan,
+    /// Optional diagnostic label; the host appends unique job/attempt IDs before using it as a lease owner.
     pub lock_owner: Option<String>,
     pub lock_ttl_secs: Option<i64>,
     pub pg_admin_url: Option<String>,
@@ -187,6 +190,20 @@ impl Drop for InstallerJobRuntimeGuard {
     }
 }
 
+fn validate_http_lock_ttl_secs(requested: Option<i64>) -> Result<i64> {
+    let ttl_secs = requested.unwrap_or(DEFAULT_INSTALL_LOCK_TTL_SECS);
+    if !is_valid_install_lock_ttl_secs(ttl_secs) {
+        return Err(http_error(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_lock_ttl",
+            format!(
+                "lock_ttl_secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+            ),
+        )));
+    }
+    Ok(ttl_secs)
+}
+
 async fn apply(
     headers: HeaderMap,
     State(ctx): State<ServerRuntimeContext>,
@@ -195,6 +212,7 @@ async fn apply(
     tracing::debug!(environment = ?request.plan.environment, "Handling installer apply request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
+    let lock_ttl_secs = validate_http_lock_ttl_secs(request.lock_ttl_secs)?;
 
     if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
         tracing::warn!(active_job_id = %active.id(), "Installer job rejected: job already in progress");
@@ -220,13 +238,20 @@ async fn apply(
     }
 
     let submitted_at = Utc::now();
+    let attempt_id = Uuid::new_v4();
+    let lock_owner = build_install_lock_owner(
+        request
+            .lock_owner
+            .as_deref()
+            .filter(|label| !label.trim().is_empty())
+            .or(Some("http")),
+        Some(job_id),
+        attempt_id,
+    );
     let apply_options = InstallApplyOptions {
         session_id: Some(job_id),
-        lock_owner: request
-            .lock_owner
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "http".to_string()),
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
+        lock_owner,
+        lock_ttl_secs,
         pg_admin_url: request.pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
@@ -679,6 +704,56 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn installer_lock_owner_is_unique_per_attempt_and_bounded() {
+        let job_id = Uuid::from_u128(1);
+        let first_attempt = Uuid::from_u128(2);
+        let second_attempt = Uuid::from_u128(3);
+
+        let first = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(job_id),
+            first_attempt,
+        );
+        let second = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(job_id),
+            second_attempt,
+        );
+
+        assert_ne!(first, second, "each execution attempt needs a unique lease owner");
+        assert!(first.starts_with("operatorworker1:"));
+        assert!(!first.contains('/'));
+        assert!(!first.contains(' '));
+        assert!(first.len() <= 128, "owner must fit install_sessions.lock_owner");
+        assert_eq!(
+            build_install_lock_owner(Some("///"), Some(job_id), first_attempt)
+                .split(':')
+                .next(),
+            Some("installer")
+        );
+    }
+
+    #[test]
+    fn installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values() {
+        assert_eq!(
+            validate_http_lock_ttl_secs(None).expect("default TTL is valid"),
+            DEFAULT_INSTALL_LOCK_TTL_SECS
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(1)).expect("minimum TTL is valid"),
+            1
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS))
+                .expect("maximum TTL is valid"),
+            MAX_INSTALL_LOCK_TTL_SECS
+        );
+        assert!(validate_http_lock_ttl_secs(Some(0)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(-1)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS + 1)).is_err());
+    }
 
     #[test]
     fn installer_storage_errors_do_not_leak_backend_secrets_in_http_responses() {

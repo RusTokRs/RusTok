@@ -150,31 +150,23 @@ where
             .await
             .map_err(internal_oauth_guard_error)?,
         DbBackend::Sqlite => {
-            let app = query().one(db).await.map_err(internal_oauth_guard_error)?;
-            if let Some(app) = app.as_ref() {
-                let result = oauth_apps::Entity::update_many()
-                    .col_expr(
-                        oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt),
-                    )
-                    .filter(oauth_apps::Column::Id.eq(app.id))
-                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(internal_oauth_guard_error)?;
-                if result.rows_affected != 1 {
-                    return Err(AuthAdminMutationError::Internal(
-                        "OAuth app mutation lock fence could not be acquired".to_string(),
-                    ));
-                }
-
-                return query()
-                    .one(db)
-                    .await
-                    .map_err(internal_oauth_guard_error)?
-                    .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()));
+            // app_id and tenant_id are known. Reserve SQLite's writer before
+            // reading the app so a concurrent token issue/revoke cannot race a
+            // deferred read-to-write lock upgrade.
+            let result = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(internal_oauth_guard_error)?;
+            if result.rows_affected != 1 {
+                return Err(AuthAdminMutationError::NotFound("oauth app".to_string()));
             }
-            None
+            query().one(db).await.map_err(internal_oauth_guard_error)?
         }
         _ => {
             return Err(AuthAdminMutationError::Internal(

@@ -461,7 +461,7 @@ impl OAuthAppService {
         })
     }
 
-    /// Revoke an app — deactivate and revoke all its tokens.
+    /// Revoke an app — deactivate it and revoke tokens, consents, and pending codes.
     ///
     /// Tenancy is part of the lookup, not something the caller is trusted to
     /// have checked first: a revoke keyed on a bare `app_id` would let any
@@ -491,8 +491,8 @@ impl OAuthAppService {
         // Deactivate the app (column-scoped; see update_app)
         oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
             .exec(&tx)
             .await
@@ -505,35 +505,7 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
-        // Revoke all active tokens for this app. `app` was loaded under the
-        // tenant filter above, so `app_id` is already tenant-owned; the extra
-        // tenant predicate keeps this statement correct even if a future caller
-        // reaches it without that lookup.
-        use sea_orm::sea_query::Expr;
-        oauth_tokens::Entity::update_many()
-            .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-            .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-            .filter(
-                sea_orm::Condition::all()
-                    .add(oauth_tokens::Column::AppId.eq(app_id))
-                    .add(oauth_tokens::Column::TenantId.eq(tenant_id))
-                    .add(oauth_tokens::Column::RevokedAt.is_null()),
-            )
-            .exec(&tx)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
-
-        crate::models::oauth_authorization_codes::Entity::update_many()
-            .col_expr(
-                crate::models::oauth_authorization_codes::Column::UsedAt,
-                Expr::value(now),
-            )
-            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
-            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
-            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
-            .exec(&tx)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+        revoke_oauth_app_credentials(&tx, app_id, tenant_id, now).await?;
 
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
@@ -948,7 +920,27 @@ pub async fn sync_app_connections(
     tenant_id: Uuid,
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
-    let existing = OAuthApps::find_by_tenant(db, tenant_id)
+    // Serialize the entire manifest reconciliation for this tenant. Every app
+    // upsert, translation write, orphan deactivation, token/consent revocation,
+    // and authorization-code invalidation must commit or roll back together.
+    let tx = db.begin().await.map_err(|error| {
+        tracing::error!(%error, %tenant_id, "Failed to start OAuth manifest reconciliation");
+        Error::InternalServerError
+    })?;
+    lock_tenant_for_manifest_sync(&tx, tenant_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, "Failed to lock tenant for OAuth manifest reconciliation");
+            Error::InternalServerError
+        })?
+        .ok_or_else(|| {
+            tracing::error!(%tenant_id, "Tenant disappeared during OAuth manifest reconciliation");
+            Error::InternalServerError
+        })?;
+
+    let existing = OAuthApps::find()
+        .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        .all(&tx)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -963,11 +955,11 @@ pub async fn sync_app_connections(
 
     // 1. Embedded apps
     if manifest.build.server.embed_admin {
-        upsert_embedded_app(db, tenant_id, "leptos-admin", &["*:*"]).await?;
+        upsert_embedded_app(&tx, tenant_id, "leptos-admin", &["*:*"]).await?;
         active_slugs.insert("leptos-admin".to_string());
     }
     if manifest.build.server.embed_storefront {
-        upsert_embedded_app(db, tenant_id, "leptos-storefront", &["*:*"]).await?;
+        upsert_embedded_app(&tx, tenant_id, "leptos-storefront", &["*:*"]).await?;
         active_slugs.insert("leptos-storefront".to_string());
     }
 
@@ -975,7 +967,7 @@ pub async fn sync_app_connections(
     for sf in &manifest.build.storefront {
         if !manifest.build.server.embed_storefront || sf.stack == "next" {
             upsert_first_party_app(
-                db,
+                &tx,
                 tenant_id,
                 &sf.id,
                 &format!("{} storefront", sf.id),
@@ -994,7 +986,7 @@ pub async fn sync_app_connections(
     if !manifest.build.server.embed_admin && !manifest.build.admin.stack.is_empty() {
         let slug = format!("{}-admin", manifest.build.admin.stack);
         upsert_first_party_app(
-            db,
+            &tx,
             tenant_id,
             &slug,
             &format!("{} Admin", manifest.build.admin.stack),
@@ -1008,82 +1000,90 @@ pub async fn sync_app_connections(
         active_slugs.insert(slug);
     }
 
-    // 4. Deactivate orphaned apps owned by this manifest entry set and revoke
-    // their outstanding OAuth tokens in one database transaction. A failed write must
-    // never produce a successful sync response while orphaned clients remain
-    // active, and a token revocation failure must roll back deactivation.
+    // 4. Deactivate orphaned apps and revoke their credentials in this same
+    // tenant transaction. A failed upsert or cleanup must not leave a partial
+    // manifest projection behind.
     let orphaned = existing
         .iter()
         .filter(|app| {
             app.auto_created
                 && app.manifest_ref.as_deref() == Some(app.slug.as_str())
-                && app.is_active()
                 && !active_slugs.contains(&app.slug)
         })
         .collect::<Vec<_>>();
-    if !orphaned.is_empty() {
-        let tx = db.begin().await.map_err(|error| {
-            tracing::error!(%error, %tenant_id, "Failed to start orphan OAuth app deactivation");
-            Error::InternalServerError
-        })?;
-        let now = Utc::now();
-        for app in orphaned {
+    let now = Utc::now();
+    for app in orphaned {
+        let current_app = lock_oauth_app_for_mutation(&tx, app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    %tenant_id,
+                    app_id = %app.id,
+                    "Failed to lock orphan OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                tracing::error!(
+                    %tenant_id,
+                    app_id = %app.id,
+                    "Orphan OAuth app disappeared during manifest sync"
+                );
+                Error::Conflict("orphan OAuth app disappeared during manifest sync".to_string())
+            })?;
+        if !current_app.auto_created
+            || current_app.manifest_ref.as_deref() != Some(current_app.slug.as_str())
+        {
+            return Err(Error::Conflict(format!(
+                "OAuth app `{}` changed manifest ownership during sync",
+                current_app.slug
+            )));
+        }
+
+        // Also repair legacy inactive rows whose dependent credentials were
+        // not revoked by earlier manifest-sync implementations.
+        if current_app.is_active || current_app.revoked_at.is_none() {
             let result = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
-                .filter(oauth_apps::Column::Id.eq(app.id))
+                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
+                .filter(oauth_apps::Column::Id.eq(current_app.id))
                 .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                .filter(oauth_apps::Column::Slug.eq(app.slug.clone()))
-                .filter(oauth_apps::Column::AppType.eq(app.app_type.clone()))
+                .filter(oauth_apps::Column::Slug.eq(current_app.slug.clone()))
+                .filter(oauth_apps::Column::AppType.eq(current_app.app_type.clone()))
                 .filter(oauth_apps::Column::AutoCreated.eq(true))
-                .filter(oauth_apps::Column::ManifestRef.eq(Some(app.slug.clone())))
-                .filter(oauth_apps::Column::IsActive.eq(true))
+                .filter(oauth_apps::Column::ManifestRef.eq(Some(current_app.slug.clone())))
                 .exec(&tx)
                 .await
                 .map_err(|error| {
-                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to deactivate orphan OAuth app");
+                    tracing::error!(
+                        %error,
+                        %tenant_id,
+                        app_id = %current_app.id,
+                        "Failed to deactivate orphan OAuth app"
+                    );
                     Error::InternalServerError
                 })?;
             if result.rows_affected != 1 {
-                tracing::error!(%tenant_id, app_id = %app.id, "Orphan OAuth app state changed during manifest sync");
-                return Err(Error::InternalServerError);
+                tracing::error!(
+                    %tenant_id,
+                    app_id = %current_app.id,
+                    "Orphan OAuth app state changed during manifest sync"
+                );
+                return Err(Error::Conflict(
+                    "orphan OAuth app changed during manifest sync".to_string(),
+                ));
             }
-
-            oauth_tokens::Entity::update_many()
-                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-                .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-                .filter(oauth_tokens::Column::AppId.eq(app.id))
-                .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
-                .filter(oauth_tokens::Column::RevokedAt.is_null())
-                .exec(&tx)
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
-                    Error::InternalServerError
-                })?;
-
-            crate::models::oauth_authorization_codes::Entity::update_many()
-                .col_expr(
-                    crate::models::oauth_authorization_codes::Column::UsedAt,
-                    Expr::value(now),
-                )
-                .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app.id))
-                .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
-                .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
-                .exec(&tx)
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to invalidate orphan OAuth app authorization codes");
-                    Error::InternalServerError
-                })?;
         }
-        tx.commit().await.map_err(|error| {
-            tracing::error!(%error, %tenant_id, "Failed to commit orphan OAuth app deactivation");
-            Error::InternalServerError
-        })?;
+
+        revoke_oauth_app_credentials(&tx, current_app.id, tenant_id, now.clone()).await?;
     }
 
+    tx.commit().await.map_err(|error| {
+        tracing::error!(%error, %tenant_id, "Failed to commit OAuth manifest reconciliation");
+        Error::InternalServerError
+    })?;
     Ok(())
 }
 
@@ -1115,6 +1115,98 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
     Ok(())
 }
 
+async fn lock_tenant_for_manifest_sync<C>(
+    db: &C,
+    tenant_id: Uuid,
+) -> std::result::Result<Option<tenants::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || tenants::Entity::find_by_id(tenant_id);
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            // Acquire a SQLite write fence before reading. This avoids the
+            // read-first deferred-transaction upgrade race between replicas.
+            let locked = tenants::Entity::update_many()
+                .col_expr(
+                    tenants::Column::UpdatedAt,
+                    Expr::col(tenants::Column::UpdatedAt),
+                )
+                .filter(tenants::Column::Id.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth manifest synchronization".to_string(),
+        )),
+    }
+}
+
+async fn revoke_oauth_app_credentials<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
+    OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(Some(now.clone())))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now.clone()))
+        .filter(oauth_tokens::Column::AppId.eq(app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, %app_id, "Failed to revoke OAuth app tokens");
+            Error::InternalServerError
+        })?;
+
+    OAuthConsents::update_many()
+        .col_expr(
+            crate::models::oauth_consents::Column::RevokedAt,
+            Expr::value(Some(now.clone())),
+        )
+        .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
+        .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+        .filter(crate::models::oauth_consents::Column::RevokedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, %app_id, "Failed to revoke OAuth app consents");
+            Error::InternalServerError
+        })?;
+
+    crate::models::oauth_authorization_codes::Entity::update_many()
+        .col_expr(
+            crate::models::oauth_authorization_codes::Column::UsedAt,
+            Expr::value(now),
+        )
+        .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+        .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+        .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                %tenant_id,
+                %app_id,
+                "Failed to invalidate OAuth app authorization codes"
+            );
+            Error::InternalServerError
+        })?;
+
+    Ok(())
+}
+
 fn ensure_manifest_app_ownership(
     app: &oauth_apps::Model,
     slug: &str,
@@ -1132,12 +1224,15 @@ fn ensure_manifest_app_ownership(
 }
 
 /// Upsert an embedded app (no credentials needed)
-async fn upsert_embedded_app(
-    db: &DatabaseConnection,
+async fn upsert_embedded_app<C>(
+    db: &C,
     tenant_id: Uuid,
     slug: &str,
     scopes: &[&str],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     let existing = OAuthApps::find()
         .filter(
             sea_orm::Condition::all()
@@ -1156,12 +1251,29 @@ async fn upsert_embedded_app(
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock embedded OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "embedded OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
         ensure_manifest_app_ownership(&app, slug, "embedded")?;
         // Reactivate with a column-scoped write so a stale read cannot overwrite
         // unrelated runtime-owned fields such as last_used_at.
-        if !app.is_active {
+        if !app.is_active() {
             let now = Utc::now();
+            revoke_oauth_app_credentials(db, app.id, tenant_id, now.clone()).await?;
             let updated = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(true))
                 .col_expr(
@@ -1174,7 +1286,6 @@ async fn upsert_embedded_app(
                 .filter(oauth_apps::Column::AppType.eq("embedded"))
                 .filter(oauth_apps::Column::AutoCreated.eq(true))
                 .filter(oauth_apps::Column::ManifestRef.eq(Some(slug.to_string())))
-                .filter(oauth_apps::Column::IsActive.eq(false))
                 .exec(db)
                 .await
                 .map_err(|error| {
@@ -1235,8 +1346,8 @@ async fn upsert_embedded_app(
 
 /// Upsert a first-party app (creates credentials on first creation)
 #[allow(clippy::too_many_arguments)]
-async fn upsert_first_party_app(
-    db: &DatabaseConnection,
+async fn upsert_first_party_app<C>(
+    db: &C,
     tenant_id: Uuid,
     slug: &str,
     name: &str,
@@ -1245,7 +1356,10 @@ async fn upsert_first_party_app(
     scopes: &[&str],
     grant_types: &[&str],
     granted_permissions: &[String],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
@@ -1277,7 +1391,26 @@ async fn upsert_first_party_app(
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock first-party OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "first-party OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
+        if !app.is_active() {
+            revoke_oauth_app_credentials(db, app.id, tenant_id, Utc::now()).await?;
+        }
         update_first_party_app_from_manifest(
             db,
             &app,
@@ -1345,8 +1478,8 @@ async fn upsert_first_party_app(
     Ok(())
 }
 
-async fn update_first_party_app_from_manifest(
-    db: &DatabaseConnection,
+async fn update_first_party_app_from_manifest<C>(
+    db: &C,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     slug: &str,
@@ -1356,7 +1489,10 @@ async fn update_first_party_app_from_manifest(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     ensure_manifest_app_ownership(app, slug, "first_party")?;
     let scopes_json = serde_json::to_value(scopes).map_err(|_| Error::InternalServerError)?;
     let grant_types_json =
@@ -3377,6 +3513,133 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn manifest_sync_reactivates_embedded_app_with_revocation_timestamp() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let now = Utc::now();
+        let app = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("leptos-admin".to_string()),
+            slug: Set("leptos-admin".to_string()),
+            description: Set(Some("Auto-created embedded app".to_string())),
+            app_type: Set("embedded".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(None),
+            redirect_uris: Set(serde_json::json!([])),
+            scopes: Set(serde_json::json!(["*:*"])),
+            grant_types: Set(serde_json::json!([])),
+            granted_permissions: Set(serde_json::json!([])),
+            manifest_ref: Set(Some("leptos-admin".to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(Some(now.clone())),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(now.clone().into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert embedded app with stale revocation timestamp");
+
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = true;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront.clear();
+
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("sync manifest and reactivate embedded app");
+
+        let reactivated = OAuthAppsEntity::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("load embedded app after sync")
+            .expect("embedded app remains present");
+        assert!(reactivated.is_active());
+        assert!(
+            reactivated.revoked_at.is_none(),
+            "embedded app reactivation must clear a stale revocation timestamp"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn app_revocation_revokes_active_user_consents() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "app-revoke-consent@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert consent subject");
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Consent revocation app".to_string(),
+                slug: format!("consent-revocation-{}", Uuid::new_v4()),
+                description: None,
+                app_type: "third_party".to_string(),
+                icon_url: None,
+                redirect_uris: vec!["https://client.example.com/callback".to_string()],
+                scopes: vec!["catalog:read".to_string()],
+                grant_types: vec![
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                ],
+                granted_permissions: vec![],
+            },
+        )
+        .await
+        .expect("create OAuth app");
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant consent before app revocation");
+        let active_consent = OAuthConsents::find_active_consent(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+        )
+        .await
+        .expect("load active consent")
+        .expect("consent exists before app revocation");
+
+        OAuthAppService::revoke_app(&db, tenant.id, created.app.id)
+            .await
+            .expect("revoke OAuth app");
+
+        let stored_consent = oauth_consents::Entity::find_by_id(active_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app revocation")
+            .expect("consent history remains present");
+        assert!(
+            stored_consent.revoked_at.is_some(),
+            "revoking an OAuth app must revoke all active user consents"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, created.app.id, user.id, tenant.id)
+                .await
+                .expect("check active consent after app revocation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
         let (db, tenant) = test_db_with_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
@@ -3384,7 +3647,7 @@ mod tests {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("Operator-owned app".to_string()),
-            slug: Set("next-admin".to_string()),
+            slug: Set("shop".to_string()),
             description: Set(Some("Created manually".to_string())),
             app_type: Set("service".to_string()),
             icon_url: Set(None),
@@ -3408,13 +3671,18 @@ mod tests {
         .expect("insert manually managed app");
 
         let mut manifest = crate::modules::ModulesManifest::default();
-        manifest.build.server.embed_admin = false;
+        manifest.build.server.embed_admin = true;
         manifest.build.server.embed_storefront = false;
-        manifest.build.admin.stack = "next".to_string();
-        manifest.build.admin.public_url = "https://admin.example.com".to_string();
-        manifest.build.admin.redirect_uris =
-            vec!["https://admin.example.com/auth/callback".to_string()];
-        manifest.build.storefront.clear();
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront = serde_json::from_value(serde_json::json!([
+            {
+                "id": "shop",
+                "stack": "next",
+                "public_url": "https://shop.example.com",
+                "redirect_uris": ["https://shop.example.com/auth/callback"]
+            }
+        ]))
+        .expect("deserialize storefront build config");
 
         assert!(
             matches!(
@@ -3422,6 +3690,17 @@ mod tests {
                 Err(Error::Conflict(_))
             ),
             "sync must report a conflict instead of claiming a manually created app by slug"
+        );
+
+        let leaked_embedded_app = OAuthAppsEntity::find()
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .filter(oauth_apps::Column::Slug.eq("leptos-admin"))
+            .one(&db)
+            .await
+            .expect("query embedded app after failed sync");
+        assert!(
+            leaked_embedded_app.is_none(),
+            "an earlier embedded-app upsert must roll back when a later manifest entry conflicts"
         );
 
         let persisted = OAuthAppsEntity::find_by_id(manual.id)
@@ -3488,6 +3767,18 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert orphan authorization-code user");
+        let orphan_consent = oauth_consents::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(orphan_app.id),
+            user_id: Set(orphan_user.id),
+            tenant_id: Set(tenant.id),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            granted_at: Set(Utc::now().into()),
+            revoked_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert active consent for orphan app");
         let orphan_code_id =
             insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
 
@@ -3523,14 +3814,14 @@ mod tests {
         let old_token = oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(orphan_app.id),
-            user_id: Set(None),
+            user_id: Set(Some(orphan_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
             family_id: Set(None),
-            authorization_code_id: Set(None),
-            grant_type: Set("client_credentials".to_string()),
+            authorization_code_id: Set(Some(orphan_code_id)),
+            grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
-            consent_granted_at: Set(None),
+            consent_granted_at: Set(Some(Utc::now().into())),
             scopes: Set(serde_json::json!(["storefront:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
             revoked_at: Set(None),
@@ -3644,6 +3935,21 @@ mod tests {
             orphan_code.used_at.is_some(),
             "removing a managed app must invalidate its pending authorization codes"
         );
+        let revoked_orphan_consent = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after orphan cleanup")
+            .expect("orphan consent remains as revocation evidence");
+        assert!(
+            revoked_orphan_consent.revoked_at.is_some(),
+            "removing a managed app must revoke its previously granted user consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after orphan cleanup")
+                .is_none()
+        );
 
         OAuthAppService::touch_last_used(&db, next_admin.id)
             .await
@@ -3678,6 +3984,75 @@ mod tests {
             resynced.last_used_at, last_used_before_resync,
             "manifest sync must not overwrite runtime-owned usage timestamps"
         );
+
+        // Simulate an inactive managed app left by an older server version:
+        // the app is disabled, but a dependent token, consent, and code remain live.
+        let mut legacy_consent: oauth_consents::ActiveModel =
+            revoked_orphan_consent.clone().into();
+        legacy_consent.revoked_at = Set(None);
+        legacy_consent
+            .update(&db)
+            .await
+            .expect("restore legacy active consent fixture");
+        let mut legacy_token: oauth_tokens::ActiveModel = token.clone().into();
+        legacy_token.revoked_at = Set(None);
+        legacy_token
+            .update(&db)
+            .await
+            .expect("restore legacy active token fixture");
+        let mut legacy_code: oauth_authorization_codes::ActiveModel = orphan_code.clone().into();
+        legacy_code.used_at = Set(None);
+        legacy_code
+            .update(&db)
+            .await
+            .expect("restore legacy pending code fixture");
+
+        manifest.build.storefront.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "old-storefront",
+                "stack": "next",
+                "public_url": "https://old.example.com",
+                "redirect_uris": ["https://old.example.com/callback"]
+            }))
+            .expect("deserialize re-added storefront config"),
+        );
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("re-add previously orphaned manifest app");
+        let reactivated_orphan = OAuthAppsEntity::find_by_id(orphan_app.id)
+            .one(&db)
+            .await
+            .expect("load reactivated orphan")
+            .expect("previously orphaned app remains present");
+        assert!(reactivated_orphan.is_active);
+        assert!(reactivated_orphan.revoked_at.is_none());
+        let consent_after_reactivation = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app reactivation")
+            .expect("consent history remains present");
+        assert!(
+            consent_after_reactivation.revoked_at.is_some(),
+            "re-adding a manifest app must not restore previously revoked consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after app reactivation")
+                .is_none()
+        );
+        let token_after_reactivation = oauth_tokens::Entity::find_by_id(old_token.id)
+            .one(&db)
+            .await
+            .expect("load token after app reactivation")
+            .expect("token history remains present");
+        assert!(token_after_reactivation.revoked_at.is_some());
+        let code_after_reactivation = oauth_authorization_codes::Entity::find_by_id(orphan_code_id)
+            .one(&db)
+            .await
+            .expect("load code after app reactivation")
+            .expect("authorization-code history remains present");
+        assert!(code_after_reactivation.used_at.is_some());
     }
 
     #[tokio::test]

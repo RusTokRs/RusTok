@@ -296,31 +296,23 @@ where
             .await
             .map_err(super::internal_admin_error)?,
         DbBackend::Sqlite => {
-            let user = query().one(db).await.map_err(super::internal_admin_error)?;
-            if let Some(user) = user.as_ref() {
-                let result = users::Entity::update_many()
-                    .col_expr(
-                        users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
-                    )
-                    .filter(users::Column::Id.eq(user.id))
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(super::internal_admin_error)?;
-                if result.rows_affected != 1 {
-                    return Err(AuthAdminMutationError::Internal(
-                        "user mutation lock fence could not be acquired".to_string(),
-                    ));
-                }
-
-                return query()
-                    .one(db)
-                    .await
-                    .map_err(super::internal_admin_error)?
-                    .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()));
+            // The user id is known. Reserve SQLite's writer before reading so
+            // a concurrent status/role/password mutation cannot race a
+            // deferred read-to-write lock upgrade.
+            let result = users::Entity::update_many()
+                .col_expr(
+                    users::Column::UpdatedAt,
+                    Expr::col(users::Column::UpdatedAt),
+                )
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(super::internal_admin_error)?;
+            if result.rows_affected != 1 {
+                return Err(AuthAdminMutationError::NotFound("user".to_string()));
             }
-            None
+            query().one(db).await.map_err(super::internal_admin_error)?
         }
         _ => {
             return Err(AuthAdminMutationError::Internal(

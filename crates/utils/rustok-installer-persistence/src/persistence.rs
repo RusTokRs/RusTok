@@ -1,6 +1,7 @@
 use chrono::Utc;
 use rustok_installer::{
-    InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan,
+    InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, is_valid_install_lock_ttl_secs,
+    redact_install_plan, MAX_INSTALL_LOCK_TTL_SECS,
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
@@ -213,11 +214,17 @@ impl InstallerPersistenceService {
                 "installer lock owner must not be empty".to_string(),
             ));
         }
-        let ttl = ttl.max(chrono::Duration::seconds(1));
+        let ttl_secs = ttl.num_seconds();
+        if !is_valid_install_lock_ttl_secs(ttl_secs) {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "installer lock TTL must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+            )));
+        }
+        let ttl = chrono::Duration::seconds(ttl_secs);
         let session_id = session.id;
 
         let txn = match self.db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => {
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
                 self.db
                     .begin_with_config(
                         Some(IsolationLevel::Serializable),
@@ -364,25 +371,72 @@ async fn acquire_lock_in_transaction(
     ttl: chrono::Duration,
 ) -> Result<Option<install_session::Model>, sea_orm::DbErr> {
     let now = Utc::now();
+    let lock_expires_at = now.checked_add_signed(ttl).ok_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "installer lock TTL exceeds the supported timestamp range".to_string(),
+        )
+    })?;
+
+    // Claim this session exactly once. A retry must use a new session ID and
+    // attempt identity; it must not overwrite an existing owner on the same row.
+    let claim = install_session::Entity::update_many()
+        .col_expr(
+            install_session::Column::LockOwner,
+            sea_orm::sea_query::Expr::value(Some(owner.to_string())),
+        )
+        .col_expr(
+            install_session::Column::LockExpiresAt,
+            sea_orm::sea_query::Expr::value(Some(lock_expires_at)),
+        )
+        .col_expr(
+            install_session::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(install_session::Column::Id.eq(session.id))
+        .filter(install_session::Column::LockOwner.is_null())
+        .filter(install_session::Column::Status.eq(install_state_value(InstallState::Draft)))
+        .exec(txn)
+        .await?;
+    if claim.rows_affected != 1 {
+        if install_session::Entity::find_by_id(session.id)
+            .one(txn)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        return Err(sea_orm::DbErr::Custom(format!(
+            "installer session {} already has an execution attempt or is finalized",
+            session.id
+        )));
+    }
+
+    // An expired lease is not proof that its worker stopped. Keep unfinished
+    // sessions as a fail-closed global fence until their effects are reconciled.
     if let Some(existing) = install_session::Entity::find()
         .filter(install_session::Column::Id.ne(session.id))
-        .filter(install_session::Column::LockExpiresAt.gt(now))
-        .filter(install_session::Column::Status.is_not_in(final_state_values()))
+        .filter(
+            sea_orm::Condition::any()
+                .add(install_session::Column::LockOwner.is_not_null())
+                .add(
+                    install_session::Column::Status
+                        .eq(install_state_value(InstallState::RecoveryRequired)),
+                ),
+        )
+        .filter(install_session::Column::Status.is_not_in(admission_released_state_values()))
         .order_by_desc(install_session::Column::LockExpiresAt)
         .one(txn)
         .await?
     {
         return Err(sea_orm::DbErr::Custom(format!(
-            "installer lock is already held by session {}",
+            "installer session {} has an unfinished execution; reconcile it before starting another apply",
             existing.id
         )));
     }
 
-    let mut active: install_session::ActiveModel = session.into();
-    active.lock_owner = Set(Some(owner.to_string()));
-    active.lock_expires_at = Set(Some(now + ttl));
-    active.updated_at = Set(now);
-    active.update(txn).await.map(Some)
+    install_session::Entity::find_by_id(session.id)
+        .one(txn)
+        .await
 }
 
 fn parse_session_uuid(value: &str) -> Result<Uuid, sea_orm::DbErr> {
@@ -408,12 +462,13 @@ fn install_state_value(state: InstallState) -> &'static str {
     }
 }
 
-fn final_state_values() -> Vec<&'static str> {
+fn admission_released_state_values() -> Vec<&'static str> {
+    // RecoveryRequired is terminal for the executor, but not safe for global
+    // admission: an operator must reconcile its ambiguous external effects.
     vec![
         install_state_value(InstallState::Completed),
         install_state_value(InstallState::Failed),
         install_state_value(InstallState::FreshInstallCleaned),
-        install_state_value(InstallState::RecoveryRequired),
     ]
 }
 

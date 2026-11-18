@@ -3,10 +3,12 @@ use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
     InstallProfile, InstallReceipt, InstallState, InstallStep, InstallTopology,
     InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue, TenantBootstrap,
+    MAX_INSTALL_LOCK_TTL_SECS,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Set};
 use uuid::Uuid;
 
+use crate::entities::install_session;
 use crate::{InstallStepReceiptItem, InstallerPersistenceService};
 
 async fn setup_contract_test_db() -> DatabaseConnection {
@@ -94,7 +96,7 @@ fn sample_plan() -> InstallPlan {
 #[tokio::test]
 async fn session_persistence_lifecycle_and_state_transitions() {
     let db = setup_contract_test_db().await;
-    let service = InstallerPersistenceService::new(db);
+    let service = InstallerPersistenceService::new(db.clone());
     let plan = sample_plan();
 
     // 1. Create session
@@ -127,7 +129,18 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert_eq!(locked.lock_owner.as_deref(), Some("worker-node-1"));
     assert!(locked.lock_expires_at.is_some());
 
-    // 4. Competing lock attempt from another session while active lock is unexpired must fail
+    // 4. A second attempt cannot overwrite the owner on the same session.
+    let same_session_err = service
+        .acquire_lock(
+            locked.clone(),
+            "worker-node-retry",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("a session can only be claimed once");
+    assert!(same_session_err.to_string().contains("already has an execution attempt"));
+
+    // 5. Another session is blocked while the first execution is unfinished.
     let session2 = service
         .create_session(&plan, None, None)
         .await
@@ -140,16 +153,35 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         )
         .await
         .expect_err("competing lock must be rejected");
-    assert!(err.to_string().contains("already held"));
+    assert!(err.to_string().contains("unfinished execution"));
 
-    // 5. State transitions
+    // 6. Lease expiry alone must not allow a second installer to overlap a
+    // possibly still-running first worker.
+    let mut expired_session: install_session::ActiveModel = locked.clone().into();
+    expired_session.lock_expires_at =
+        Set(Some(Utc::now() - chrono::Duration::seconds(1)));
+    expired_session
+        .update(&db)
+        .await
+        .expect("expire the first session lease");
+    let expired_lock_err = service
+        .acquire_lock(
+            session2.clone(),
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("expired lease must still block an unfinished session");
+    assert!(expired_lock_err.to_string().contains("unfinished execution"));
+
+    // 7. State transitions
     let updated = service
         .set_state(session.id, InstallState::PreflightPassed)
         .await
         .expect("set state");
     assert_eq!(updated.status, "preflight_passed");
 
-    // 6. Set tenant ID
+    // 8. Set tenant ID
     let tenant_id = Uuid::new_v4();
     let updated_tenant = service
         .set_tenant_id(session.id, tenant_id)
@@ -157,7 +189,30 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set tenant id");
     assert_eq!(updated_tenant.tenant_id, Some(tenant_id));
 
-    // 7. Verify has_completed_session before and after completion
+    // 9. RecoveryRequired must block admission even if an operator has
+    // cleared the expired owner while preparing manual reconciliation.
+    let mut ownerless_recovery_session: install_session::ActiveModel = locked.clone().into();
+    ownerless_recovery_session.lock_owner = Set(None);
+    ownerless_recovery_session
+        .update(&db)
+        .await
+        .expect("clear expired owner before reconciliation");
+    let recovery_required = service
+        .set_state(session.id, InstallState::RecoveryRequired)
+        .await
+        .expect("mark recovery required");
+    assert_eq!(recovery_required.status, "recovery_required");
+    let recovery_gate_err = service
+        .acquire_lock(
+            session2.clone(),
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("recovery-required session must keep the admission gate closed");
+    assert!(recovery_gate_err.to_string().contains("unfinished execution"));
+
+    // 10. Verify has_completed_session before and after completion
     assert!(!service.has_completed_session().await.expect("query"));
     let completed = service
         .set_state(session.id, InstallState::Completed)
@@ -166,6 +221,56 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert_eq!(completed.status, "completed");
     assert!(completed.completed_at.is_some());
     assert!(service.has_completed_session().await.expect("query"));
+
+    let second_lock = service
+        .acquire_lock(
+            session2,
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("a finalized session no longer blocks a new apply");
+    assert_eq!(second_lock.lock_owner.as_deref(), Some("worker-node-2"));
+}
+
+#[tokio::test]
+async fn acquire_lock_rejects_out_of_range_ttl_before_claiming_session() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+
+    let zero = service
+        .acquire_lock(
+            session.clone(),
+            "worker",
+            chrono::Duration::seconds(0),
+        )
+        .await
+        .expect_err("zero TTL must be rejected");
+    assert!(zero.to_string().contains("between 1 and"));
+
+    let too_large = service
+        .acquire_lock(
+            session.clone(),
+            "worker",
+            chrono::Duration::seconds(MAX_INSTALL_LOCK_TTL_SECS + 1),
+        )
+        .await
+        .expect_err("over-limit TTL must be rejected");
+    assert!(too_large.to_string().contains("between 1 and"));
+
+    let accepted = service
+        .acquire_lock(
+            session,
+            "worker",
+            chrono::Duration::seconds(MAX_INSTALL_LOCK_TTL_SECS),
+        )
+        .await
+        .expect("maximum supported TTL is accepted");
+    assert!(accepted.lock_expires_at.is_some());
 }
 
 #[tokio::test]

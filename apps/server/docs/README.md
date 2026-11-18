@@ -78,7 +78,11 @@ cannot be retroactively revoked, and replayed revocations do not publish another
 OAuth consent grants and revocations lock the app row and then the subject row,
 matching token issuance's lock order before reading or changing consent. This
 prevents an exchange from committing a token against consent that was revoked
-first, and prevents grants after an app or user becomes inactive. Manual OAuth
+first, and prevents grants after an app or user becomes inactive. Token
+exchange and refresh also re-read the active consent, scope coverage, and grant
+epoch inside the issuance transaction after acquiring those locks, so a
+concurrent consent re-grant or scope change cannot persist credentials from a
+stale preflight snapshot. Manual OAuth
 app edits mark lifecycle, credential, identity, and runtime-owned columns
 `NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
 `last_used_at` value.
@@ -210,15 +214,33 @@ timestamps fail closed rather than panicking.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid. A cookie containing the
+success while a refresh token could remain valid. Session-id logout now locks
+the active row before building its revocation update (PostgreSQL/MySQL row lock;
+SQLite write fence before read), so a concurrent refresh cannot be overwritten
+by a stale ActiveModel snapshot. A cookie containing the
 immediately previous refresh token (for example, when a rotation response
 was lost) also revokes its still-live successor session under the same row
-lock. Older generations are not represented in the in-place session row and
-remain an open incident-detection gap. Multiple cookies with the
+lock. Refresh-reuse detection also resolves the immediately previous
+digest under that same backend-specific row lock before revoking the session,
+so a stale ActiveModel snapshot cannot overwrite a concurrent rotation. A replay
+inside the 30-second race window is rejected without revoking the live session,
+but this is not an idempotent response replay: a lost successful response still
+cannot be recovered from the old cookie. Older generations are not represented
+in the in-place session row and remain an open incident-detection gap. Multiple
+cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
 rather than selecting an order-dependent token. First-party session validity,
 new issuance and refresh rotation enforce the original 90-day absolute expiry
-(including legacy rows without an explicit deadline). Failed dummy Argon2 hash
+(including legacy rows without an explicit deadline). Auth lifecycle mutation
+lookups reserve SQLite's write lock with a predicate-matched no-op update before
+reading the user/session row; PostgreSQL/MySQL use row-level FOR UPDATE.
+Login, profile changes, password changes, refresh rotation, reuse revocation,
+and both logout paths therefore do not rely on SQLite's unsupported row-lock
+syntax or a deferred read-to-write upgrade. OAuth token issuance also reserves
+the SQLite writer by known client/subject IDs before reloading current state;
+OAuth admin mutations and admin user mutations use the same write-first fence
+by tenant/app or tenant/user ID.
+Failed dummy Argon2 hash
 initialization propagates as an internal auth error rather than substituting
 an empty hash.
 
@@ -232,7 +254,10 @@ The `refresh_token` grant is valid only when the app also declares
 credentials. Reuse detection revokes the scoped OAuth token family; on a
 persistence error it returns `server_error` rather than swallowing the failed
 security effect. Automatic durable retry after the client stops retrying is
-not established.
+not established. The 30-second reuse grace suppresses family revocation
+for a likely concurrent duplicate, but the request still receives `invalid_grant`;
+the replacement token is not replayed, so a lost successful response cannot
+be recovered from the old refresh token.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
@@ -410,6 +435,14 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
+- Manifest synchronization for managed OAuth apps acquires an exclusive tenant-row lock and reconciles
+  app upserts, translations, orphan deactivation, token revocation, consent revocation, and pending-code
+  invalidation in one transaction per tenant. Existing app rows are also locked through the same mutation
+  fence used by token issuance and consent before their security-sensitive configuration changes.
+  Reactivation also revokes dependent credentials left live by older versions. The all-tenants bootstrap
+  sweep is sequential and does not provide one global cross-tenant transaction.
+- Explicit OAuth app revocation deactivates the app and revokes its active access/refresh tokens, user
+  consents, and pending authorization codes in the same transaction.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
