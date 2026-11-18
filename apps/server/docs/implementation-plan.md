@@ -1285,3 +1285,35 @@ node scripts/verify/verify-migration-backfill-contracts.mjs
 
 PostgreSQL migration and concurrent retention/acknowledgement behavior remain
 maintainer/CI gates.
+
+
+## P19 — Release backpressure reservations on dispatcher lag (2026-11-18)
+
+The module dispatcher handled `broadcast::RecvError::Lagged` by advancing the
+receiver and continuing, but did not release the backpressure reservations for
+the skipped envelopes. Under a slow handler, the broadcast ring can overwrite
+events; those accepted-but-lost messages therefore remained counted forever and
+could eventually make the backpressure controller reject healthy publishers.
+
+### Implemented
+
+- Release one EventBus backpressure reservation for every skipped envelope when
+  the module dispatcher observes broadcast lag.
+- Clamp dispatcher semaphore capacities in the legacy `start()` path so
+  externally supplied oversized `DispatcherConfig` values cannot panic inside
+  the spawned task.
+- Use saturating retry-attempt arithmetic so `retry_count = usize::MAX` cannot
+  overflow before handler execution.
+- Added a regression test proving lagged reservations return the controller to
+  zero after the retained event completes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::handler
+```
+

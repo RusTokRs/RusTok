@@ -791,6 +791,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatcher_start_clamps_oversized_semaphore_config() {
+        let bus = EventBus::new();
+        let dispatcher = EventDispatcher::with_config(
+            bus,
+            DispatcherConfig {
+                max_concurrent: Semaphore::MAX_PERMITS.saturating_add(1),
+                max_queue_depth: Semaphore::MAX_PERMITS.saturating_add(1),
+                ..DispatcherConfig::default()
+            },
+        );
+        let running = dispatcher.start();
+
+        tokio::task::yield_now().await;
+        assert!(
+            !running.is_finished(),
+            "oversized legacy dispatcher configuration must not panic its worker"
+        );
+
+        running
+            .stop()
+            .await
+            .expect("clamped dispatcher should stop cleanly");
+    }
+
+    #[tokio::test]
     async fn running_dispatcher_lifecycle_abort_and_is_finished() {
         let bus = EventBus::new();
         let dispatcher = EventDispatcher::new(bus);
