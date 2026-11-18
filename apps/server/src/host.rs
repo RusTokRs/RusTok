@@ -385,7 +385,7 @@ fn validate_database_connection_settings(config: &DatabaseConfig) -> Result<()> 
     };
     if config.min_connections > effective_max_connections {
         return Err(Error::BadRequest(format!(
-            "Database min_connections ({}) cannot exceed effective max_connections ({effective_max_connections})",
+            "Database min_connections ({}) cannot exceed max_connections ({effective_max_connections})",
             config.min_connections
         )));
     }
@@ -957,7 +957,7 @@ mod tests {
         config.min_connections = super::DEFAULT_DATABASE_MAX_CONNECTIONS + 1;
         let error = super::validate_database_connection_settings(&config)
             .expect_err("minimum above the implicit default maximum must fail");
-        assert!(error.to_string().contains("effective max_connections"));
+        assert!(error.to_string().contains("cannot exceed max_connections"));
 
         config.min_connections = super::DEFAULT_DATABASE_MAX_CONNECTIONS;
         super::validate_database_connection_settings(&config)
