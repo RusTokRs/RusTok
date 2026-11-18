@@ -1448,8 +1448,9 @@ cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivatio
 
 The HTTP adapter used the shared literal owner `http`, while the CLI used the
 shared literal `rustok-cli install apply`. Those labels were not unique to an
-execution attempt and could let a stale executor pass an owner-equality check
-if a target session were reclaimed or retried.
+execution attempt. The persistence layer records the owner at acquisition but
+does not yet compare it on every state/receipt write, so unique values alone
+are diagnostic/preparatory rather than a complete stale-worker fence.
 
 ### Implemented
 
@@ -1465,11 +1466,13 @@ if a target session were reclaimed or retried.
 
 ### Remaining boundary
 
-This is a unique owner token, not a monotonic attempt-generation protocol.
-The HTTP executor still runs in-process, is not resumable after process loss,
-and does not reconcile ambiguous external effects. Stale `running` jobs must
-not be reset based only on lease expiry. The durable recovery ADR remains
-in progress.
+This is a unique owner token, not a monotonic attempt-generation protocol,
+and persistence writes do not yet verify owner equality. The fail-closed
+session-admission gate added in P25 prevents automatic overlap after lease
+expiry, but the HTTP executor still runs in-process, is not resumable after
+process loss, and does not reconcile ambiguous external effects. Stale
+`running` jobs must not be reset based only on lease expiry. The durable
+recovery ADR remains in progress.
 
 ### Verification status
 
