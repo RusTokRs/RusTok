@@ -410,6 +410,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
+- Manifest synchronization for managed OAuth apps acquires an exclusive tenant-row lock and reconciles
+  app upserts, translations, orphan deactivation, token revocation, and pending-code invalidation in one
+  transaction per tenant. The all-tenants bootstrap sweep is sequential and does not provide one global
+  cross-tenant transaction.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
