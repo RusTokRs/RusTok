@@ -359,7 +359,7 @@ where
                     ports,
                     &database.runtime,
                     &session,
-                    InstallState::FreshInstallCleaned,
+                    InstallState::RecoveryRequired,
                     error,
                 )
                 .await,
@@ -372,14 +372,14 @@ where
                 ports,
                 &database.runtime,
                 &session,
-                InstallState::FreshInstallCleaned,
+                InstallState::RecoveryRequired,
                 error,
             )
             .await,
         );
     }
 
-    let preflight = record_success(
+    let preflight = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -393,10 +393,14 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::PreflightPassed)
-        .await?;
-    let config = record_success(
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::PreflightPassed,
+    )
+    .await?;
+    let config = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -410,10 +414,14 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::ConfigPrepared)
-        .await?;
-    let database_receipt = record_success(
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::ConfigPrepared,
+    )
+    .await?;
+    let database_receipt = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -428,10 +436,14 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::DatabaseReady)
-        .await?;
-    let migrate = record_success(
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::DatabaseReady,
+    )
+    .await?;
+    let migrate = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -444,9 +456,13 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::SchemaApplied)
-        .await?;
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::SchemaApplied,
+    )
+    .await?;
 
     // --- Post-Schema Durable Boundary: Failures require recovery rather than fresh-install cleanup ---
     let seed_outcome = match ports.apply_seed(&database.runtime, &plan).await {
@@ -464,10 +480,25 @@ where
             );
         }
     };
-    session = ports
+    session = match ports
         .set_tenant_id(&database.runtime, &session, seed_outcome.tenant_id)
-        .await?;
-    let seed = record_success(
+        .await
+    {
+        Ok(updated) => updated,
+        Err(error) => {
+            return Err(
+                persist_failure_state(
+                    ports,
+                    &database.runtime,
+                    &session,
+                    InstallState::RecoveryRequired,
+                    error,
+                )
+                .await,
+            );
+        }
+    };
+    let seed = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -484,9 +515,13 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::SeedApplied)
-        .await?;
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::SeedApplied,
+    )
+    .await?;
     let password = match crate::resolve_local_secret_value(&plan.admin.password, "admin password") {
         Ok(pw) => pw,
         Err(error) => {
@@ -520,7 +555,7 @@ where
             );
         }
     };
-    let admin = record_success(
+    let admin = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -535,13 +570,13 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(
-            &database.runtime,
-            &session,
-            InstallState::AdminProvisioned,
-        )
-        .await?;
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::AdminProvisioned,
+    )
+    .await?;
     let output = match crate::execute_distribution_deployment(
         ports,
         &database.runtime,
@@ -585,7 +620,7 @@ where
             );
         }
     };
-    let verify = record_success(
+    let verify = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -599,10 +634,14 @@ where
         }),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::Verified)
-        .await?;
-    let finalize = match record_success(
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::Verified,
+    )
+    .await?;
+    let finalize = record_success_or_recovery(
         ports,
         &database.runtime,
         &session,
@@ -614,25 +653,14 @@ where
             "tenant_slug": verify_outcome.tenant_slug
         }),
     )
-    .await
-    {
-        Ok(fin) => fin,
-        Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
-        }
-    };
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::Completed)
-        .await?;
+    .await?;
+    session = advance_state_or_recovery(
+        ports,
+        &database.runtime,
+        &session,
+        InstallState::Completed,
+    )
+    .await?;
 
     Ok(InstallApplyOutput {
         status: "completed".to_string(),
@@ -659,6 +687,58 @@ where
         deployment_receipt,
         next: None,
     })
+}
+
+#[cfg(feature = "host-runtime")]
+async fn advance_state_or_recovery<P>(
+    ports: &P,
+    runtime: &P::Runtime,
+    session: &InstallSessionRecord,
+    target: InstallState,
+) -> Result<InstallSessionRecord, InstallExecutionError>
+where
+    P: InstallDatabasePort + InstallPersistencePort<P::Runtime>,
+{
+    match ports.set_state(runtime, session, target).await {
+        Ok(updated) => Ok(updated),
+        Err(error) => Err(
+            persist_failure_state(
+                ports,
+                runtime,
+                session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await,
+        ),
+    }
+}
+
+#[cfg(feature = "host-runtime")]
+async fn record_success_or_recovery<P>(
+    ports: &P,
+    runtime: &P::Runtime,
+    session: &InstallSessionRecord,
+    step: InstallStep,
+    snapshot: &serde_json::Value,
+    diagnostics: serde_json::Value,
+) -> Result<InstallReceiptRecord, InstallExecutionError>
+where
+    P: InstallDatabasePort + InstallPersistencePort<P::Runtime>,
+{
+    match record_success(ports, runtime, session, step, snapshot, diagnostics).await {
+        Ok(receipt) => Ok(receipt),
+        Err(error) => Err(
+            persist_failure_state(
+                ports,
+                runtime,
+                session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await,
+        ),
+    }
 }
 
 #[cfg(feature = "host-runtime")]
