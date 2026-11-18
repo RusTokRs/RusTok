@@ -232,4 +232,7 @@ lock-owner value per execution attempt (diagnostic label plus stable
 session/job identity and a fresh attempt UUID). This prevents static owner
 collisions but is not the monotonic attempt-generation/reconciliation protocol
 required for complete recovery. Lease TTL input is bounded to 1–86,400 seconds,
-and persistence rejects timestamp overflow rather than panicking.
+and persistence rejects timestamp overflow rather than panicking. The persistence
+adapter also fails closed: an unfinished session with a recorded owner blocks
+new applies even after lease expiry. State and receipt writes do not yet compare
+the owner on every mutation, so full stale-worker fencing remains open.
