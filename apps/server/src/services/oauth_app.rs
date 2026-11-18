@@ -3533,7 +3533,7 @@ mod tests {
             manifest_ref: Set(Some("leptos-admin".to_string())),
             auto_created: Set(true),
             is_active: Set(true),
-            revoked_at: Set(Some(now)),
+            revoked_at: Set(Some(now.clone())),
             last_used_at: Set(None),
             metadata: Set(serde_json::json!({})),
             created_at: Set(now.clone().into()),
