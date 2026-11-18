@@ -523,6 +523,18 @@ impl OAuthAppService {
             .await
             .map_err(|_| Error::InternalServerError)?;
 
+        OAuthConsents::update_many()
+            .col_expr(
+                crate::models::oauth_consents::Column::RevokedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_consents::Column::RevokedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
         crate::models::oauth_authorization_codes::Entity::update_many()
             .col_expr(
                 crate::models::oauth_authorization_codes::Column::UsedAt,
@@ -1074,6 +1086,21 @@ pub async fn sync_app_connections(
             .await
             .map_err(|error| {
                 tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
+                Error::InternalServerError
+            })?;
+
+        OAuthConsents::update_many()
+            .col_expr(
+                crate::models::oauth_consents::Column::RevokedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(crate::models::oauth_consents::Column::AppId.eq(app.id))
+            .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_consents::Column::RevokedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app consents");
                 Error::InternalServerError
             })?;
 
@@ -3463,6 +3490,79 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn app_revocation_revokes_active_user_consents() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "app-revoke-consent@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert consent subject");
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Consent revocation app".to_string(),
+                slug: format!("consent-revocation-{}", Uuid::new_v4()),
+                description: None,
+                app_type: "third_party".to_string(),
+                icon_url: None,
+                redirect_uris: vec!["https://client.example.com/callback".to_string()],
+                scopes: vec!["catalog:read".to_string()],
+                grant_types: vec![
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                ],
+                granted_permissions: vec![],
+            },
+        )
+        .await
+        .expect("create OAuth app");
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant consent before app revocation");
+        let active_consent = OAuthConsents::find_active_consent(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+        )
+        .await
+        .expect("load active consent")
+        .expect("consent exists before app revocation");
+
+        OAuthAppService::revoke_app(&db, tenant.id, created.app.id)
+            .await
+            .expect("revoke OAuth app");
+
+        let stored_consent = oauth_consents::Entity::find_by_id(active_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app revocation")
+            .expect("consent history remains present");
+        assert!(
+            stored_consent.revoked_at.is_some(),
+            "revoking an OAuth app must revoke all active user consents"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, created.app.id, user.id, tenant.id)
+                .await
+                .expect("check active consent after app revocation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
         let (db, tenant) = test_db_with_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
@@ -3590,6 +3690,18 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert orphan authorization-code user");
+        let orphan_consent = oauth_consents::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(orphan_app.id),
+            user_id: Set(orphan_user.id),
+            tenant_id: Set(tenant.id),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            granted_at: Set(Utc::now().into()),
+            revoked_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert active consent for orphan app");
         let orphan_code_id =
             insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
 
@@ -3625,14 +3737,14 @@ mod tests {
         let old_token = oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(orphan_app.id),
-            user_id: Set(None),
+            user_id: Set(Some(orphan_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
             family_id: Set(None),
-            authorization_code_id: Set(None),
-            grant_type: Set("client_credentials".to_string()),
+            authorization_code_id: Set(Some(orphan_code_id)),
+            grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
-            consent_granted_at: Set(None),
+            consent_granted_at: Set(Some(Utc::now().into())),
             scopes: Set(serde_json::json!(["storefront:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
             revoked_at: Set(None),
@@ -3746,6 +3858,21 @@ mod tests {
             orphan_code.used_at.is_some(),
             "removing a managed app must invalidate its pending authorization codes"
         );
+        let revoked_orphan_consent = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after orphan cleanup")
+            .expect("orphan consent remains as revocation evidence");
+        assert!(
+            revoked_orphan_consent.revoked_at.is_some(),
+            "removing a managed app must revoke its previously granted user consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after orphan cleanup")
+                .is_none()
+        );
 
         OAuthAppService::touch_last_used(&db, next_admin.id)
             .await
@@ -3779,6 +3906,40 @@ mod tests {
         assert_eq!(
             resynced.last_used_at, last_used_before_resync,
             "manifest sync must not overwrite runtime-owned usage timestamps"
+        );
+
+        manifest.build.storefront.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "old-storefront",
+                "stack": "next",
+                "public_url": "https://old.example.com",
+                "redirect_uris": ["https://old.example.com/callback"]
+            }))
+            .expect("deserialize re-added storefront config"),
+        );
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("re-add previously orphaned manifest app");
+        let reactivated_orphan = OAuthAppsEntity::find_by_id(orphan_app.id)
+            .one(&db)
+            .await
+            .expect("load reactivated orphan")
+            .expect("previously orphaned app remains present");
+        assert!(reactivated_orphan.is_active);
+        let consent_after_reactivation = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app reactivation")
+            .expect("consent history remains present");
+        assert!(
+            consent_after_reactivation.revoked_at.is_some(),
+            "re-adding a manifest app must not restore previously revoked consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after app reactivation")
+                .is_none()
         );
     }
 
