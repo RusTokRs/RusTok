@@ -11,7 +11,7 @@
  * 5. CC-06.05: MCP Tool Schema Validation (schemars JSON Schema derivation & strong typing)
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
