@@ -53,7 +53,13 @@ so even malformed cross-user family IDs cannot revoke another user's tokens
 inside one app/tenant.
 First-party logout also accepts the immediately preceding rotated cookie
 under the session row lock, revoking its live successor after a lost refresh
-response.
+response. Refresh-reuse detection now takes that same database-specific row
+lock before evaluating the grace window or revoking the session, preventing a
+stale ActiveModel snapshot from overwriting a concurrent token rotation.
+Focused regression tests cover the in-grace race, post-grace revocation, and
+persistence-failure rollback. The 30-second grace window is not an idempotent
+retry protocol: the old token is rejected without revoking the current session,
+but a lost successful response still cannot be recovered.
 
 Remaining auth contract gaps requiring owner-level design and verification:
 the in-place first-party refresh session stores only the immediately previous
@@ -1546,4 +1552,41 @@ cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_
 cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
 cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
 cargo check -p rustok-installer-cli
+```
+
+## P26 — Serialize first-party refresh-token reuse revocation (2026-11-18)
+
+Refresh-token reuse detection previously read the immediately preceding token
+hash without locking its session row, then converted the read snapshot into an
+ActiveModel update. A concurrent successful refresh could rotate the row
+between those operations; the stale update could then overwrite the newer
+token hash or expiry while revoking the session.
+
+### Implemented
+
+- Reused the database-specific previous-session lookup used by logout, which
+  acquires `FOR UPDATE` on PostgreSQL/MySQL and a conditional SQLite write
+  fence before returning the row.
+- Refresh reuse detection now holds that row lock while evaluating the grace
+  window and applying the revocation update.
+- Added regression tests for an in-grace duplicate (reject without revoking),
+  post-grace replay (revoke the live lineage), and failed revocation persistence
+  (propagate the storage error and preserve the active session).
+- Corrected the grace-window contract: it suppresses revocation for a likely
+  concurrent duplicate but is not an idempotent retry. If the successful
+  refresh response is lost, the old token cannot recover the replacement
+  cookie. Full rotation history and idempotent response recovery remain open
+  owner-level design gaps.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_inside_grace_is_rejected_without_revoking_live_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_revocation_failure_is_propagated_without_false_success
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_find_previous_rotated_token_without_crossing_tenant
 ```
