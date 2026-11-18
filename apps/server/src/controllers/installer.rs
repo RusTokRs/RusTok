@@ -263,7 +263,7 @@ async fn apply(
     }
 
     let job_ctx = ctx.clone();
-    tokio::spawn(async move {
+    let _job_task = tokio::spawn(async move {
         let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
         let execution = AssertUnwindSafe(async { executor.apply(plan, apply_options).await })
             .catch_unwind()
