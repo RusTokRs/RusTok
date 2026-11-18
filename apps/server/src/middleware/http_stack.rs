@@ -727,6 +727,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
     }
+
     #[test]
     fn http_timeout_settings_are_bounded_before_becoming_tokio_deadlines() {
         assert_eq!(
@@ -783,5 +784,4 @@ mod tests {
             DEFAULT_HTTP_CONCURRENCY_LIMIT
         );
     }
-
 }

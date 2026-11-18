@@ -221,6 +221,23 @@ async fn supervise_event_forwarder(
         // before this supervisor was first polled. Do not return before the
         // initial receiver has persisted its already-accepted queue.
         if *stop_rx.borrow() {
+            if outcome.is_err() {
+                tracing::error!(
+                    "Event forwarder panicked during shutdown; draining the remaining queued events"
+                );
+                let receiver =
+                    EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+                let drain_outcome = AssertUnwindSafe(run_event_forwarder(
+                    receiver,
+                    Arc::clone(&transport),
+                    stop_rx.clone(),
+                ))
+                .catch_unwind()
+                .await;
+                if drain_outcome.is_err() {
+                    tracing::error!("Event forwarder panicked again while draining during shutdown");
+                }
+            }
             return;
         }
 
