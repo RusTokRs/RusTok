@@ -189,6 +189,7 @@ impl IndexSourceLoadRequest {
         let schema = first.schema.clone();
         let mut unique = BTreeSet::new();
         for (position, key) in keys.iter().enumerate() {
+            // INVARIANT: batch load request validation enforces homogeneous tenant and schema scope before query execution.
             if key.tenant_id != tenant_id || key.schema != schema {
                 return Err(IndexSourceError::MixedLoadScope { position });
             }
