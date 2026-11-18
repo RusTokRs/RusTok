@@ -217,7 +217,7 @@ impl InstallerPersistenceService {
         let session_id = session.id;
 
         let txn = match self.db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => {
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
                 self.db
                     .begin_with_config(
                         Some(IsolationLevel::Serializable),
@@ -364,30 +364,58 @@ async fn acquire_lock_in_transaction(
     ttl: chrono::Duration,
 ) -> Result<Option<install_session::Model>, sea_orm::DbErr> {
     let now = Utc::now();
+    let lock_expires_at = now.checked_add_signed(ttl).ok_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "installer lock TTL exceeds the supported timestamp range".to_string(),
+        )
+    })?;
+
+    // Claim this session exactly once. A retry must use a new session ID and
+    // attempt identity; it must not overwrite an existing owner on the same row.
+    let claim = install_session::Entity::update_many()
+        .col_expr(
+            install_session::Column::LockOwner,
+            sea_orm::sea_query::Expr::value(Some(owner.to_string())),
+        )
+        .col_expr(
+            install_session::Column::LockExpiresAt,
+            sea_orm::sea_query::Expr::value(Some(lock_expires_at)),
+        )
+        .col_expr(
+            install_session::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(install_session::Column::Id.eq(session.id))
+        .filter(install_session::Column::LockOwner.is_null())
+        .filter(install_session::Column::Status.is_not_in(final_state_values()))
+        .exec(txn)
+        .await?;
+    if claim.rows_affected != 1 {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "installer session {} already has an execution attempt or is finalized",
+            session.id
+        )));
+    }
+
+    // An expired lease is not proof that its worker stopped. Keep unfinished
+    // sessions as a fail-closed global fence until their effects are reconciled.
     if let Some(existing) = install_session::Entity::find()
         .filter(install_session::Column::Id.ne(session.id))
-        .filter(install_session::Column::LockExpiresAt.gt(now))
+        .filter(install_session::Column::LockOwner.is_not_null())
         .filter(install_session::Column::Status.is_not_in(final_state_values()))
         .order_by_desc(install_session::Column::LockExpiresAt)
         .one(txn)
         .await?
     {
         return Err(sea_orm::DbErr::Custom(format!(
-            "installer lock is already held by session {}",
+            "installer session {} has an unfinished execution; reconcile it before starting another apply",
             existing.id
         )));
     }
 
-    let lock_expires_at = now.checked_add_signed(ttl).ok_or_else(|| {
-        sea_orm::DbErr::Custom(
-            "installer lock TTL exceeds the supported timestamp range".to_string(),
-        )
-    })?;
-    let mut active: install_session::ActiveModel = session.into();
-    active.lock_owner = Set(Some(owner.to_string()));
-    active.lock_expires_at = Set(Some(lock_expires_at));
-    active.updated_at = Set(now);
-    active.update(txn).await.map(Some)
+    install_session::Entity::find_by_id(session.id)
+        .one(txn)
+        .await
 }
 
 fn parse_session_uuid(value: &str) -> Result<Uuid, sea_orm::DbErr> {
