@@ -408,6 +408,13 @@
       "reason": "Assigns each existing tenant starter its own row UUID as the initial CAS token; later updates and recreated rows receive fresh tokens",
       "setup_sql": "INSERT INTO page_starters (id, tenant_id, starter_key, category, name, content) VALUES ('77000000-0000-0000-0000-0000000000d1'::uuid, '77000000-0000-0000-0000-0000000000d2'::uuid, 'revision-fixture', 'test', 'Fixture', '{\"pages\":[]}'::jsonb)",
       "assertion_sql": "SELECT EXISTS (SELECT 1 FROM page_starters WHERE id = '77000000-0000-0000-0000-0000000000d1'::uuid AND revision = id) AS passed"
+    },
+    {
+      "id": "outbox-durable-consumer-retention-ledger",
+      "migration": "m20261118_000001_add_sys_event_consumer_retention",
+      "mode": "none",
+      "owner": "rustok-outbox",
+      "reason": "Creates generic consumer registration and acknowledgement tables with a cascading event receipt foreign key; no historical consumer registrations existed before this contract, so no row data is transformed or backfilled by the schema migration"
     }
   ]
 }

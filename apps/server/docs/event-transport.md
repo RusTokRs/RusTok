@@ -77,8 +77,10 @@ Windows must use an external Iggy deployment. See the
 1. A module writes its business state and outbox event in one transaction.
 2. `rustok-outbox` claims and retries pending records.
 3. The selected relay target receives the event.
-4. Local module listeners receive an idempotent local fan-out after the primary
-   target accepts the event.
+4. Local module listeners acknowledge completion of every matching handler
+   before the relay marks the outbox row dispatched. If local projection fails
+   after Iggy accepts the event, the relay retries the same envelope; remote
+   consumers must therefore be idempotent.
 
 Settings and runtime locations:
 
@@ -91,9 +93,72 @@ Settings and runtime locations:
 - transport assembly: `apps/server/src/services/event_transport_factory.rs`
 - GraphQL control plane: `apps/server/src/graphql/settings/`
 
+## Retention boundary
+
+The generic outbox retention worker prunes delivered `sys_events` rows older
+than its retention window (30 days by default). The optional notification outbox
+intake independently scans supported `sys_events` rows until it records an
+intake receipt or permanent rejection; generic outbox retention does not consult
+those notification-owned receipts.
+
+Consequently, when notification intake is enabled, it must keep up within the
+outbox retention window. A prolonged intake outage or backlog can allow a
+previously dispatched event to be pruned before notification intake sees it.
+The current retention contract protects relay delivery, not every downstream
+consumer that reads the outbox table directly. Do not assume notification
+intake has an unbounded replay window.
+
+A stronger guarantee requires a cross-owner retention contract, such as a
+consumer watermark or retention hold owned by the outbox/notification modules.
+The server must not query notification-owned tables directly to emulate that
+contract. Until then, keep intake healthy and configure the retention window
+above the maximum expected intake outage.
+
 ## Module-owned listeners
 
 Modules publish their event handlers through
 `RusToKModule::register_event_listeners(...)`. The host collects and registers
 them into one shared dispatcher. Cron jobs and other long-running maintenance
 workers are separate runtime paths.
+
+Worker hosts keep the dispatcher and its listener registry active even when the
+composed module set has no handlers. An explicit empty registry lets remote-only
+sealed event families reach the configured broker while required local families
+still fail closed. It also lets the single-node outbox target distinguish an
+intentionally empty registry from an uninitialized dispatcher, so root events
+without a matching local handler can be acknowledged without a broadcast receiver.
+
+
+## Event forwarder reliability
+
+The in-process event forwarder is a bridge into the durable outbox. It retries
+the exact same envelope with bounded exponential delay until the transport
+accepts it, rather than consuming and discarding the event on a transient
+database error. Root OutboxTransport publication is idempotent by envelope ID:
+a retry is accepted only when the stored canonical envelope exactly matches
+the retry payload.
+
+A hard admission bound is always installed at the broadcast channel capacity,
+even when `events.backpressure.enabled = false`. Disabling that option only
+disables the configurable early warning/critical thresholds; it never permits
+Tokio's broadcast ring to overwrite an event that the publisher was told it
+accepted. When enabled, the configured queue depth is capped at the ring
+capacity. Permits are released after persistence, for explicitly reported
+lagged messages, and when queued messages are discarded during task teardown.
+
+The receiver is subscribed before `event_bus_from_context` returns the bus to
+publishers, avoiding a first-publish startup race. Graceful shutdown is
+two-phase: the global stop signal first quiesces and joins producers; only
+after the other registered worker drains complete does the server signal the
+forwarder to drain its remaining accepted events. The server allows up to
+30 seconds for this final drain before a forced abort.
+
+This bridge is still process-local until the first outbox insert. A process
+crash or forced abort before persistence can lose an in-memory publication;
+business mutations that require atomic state/event durability must publish
+through `TransactionalEventBus`, not this compatibility bridge.
+
+
+The event forwarder is included in worker readiness once it has been started.
+A terminated supervisor therefore cannot leave the host reporting ready while
+the in-memory-to-outbox bridge is absent.

@@ -33,7 +33,7 @@ abstract final class RusTokSpacing {
 abstract final class RusTokColors {
   RusTokColors._();
 
-  // Light Palette
+  // Light Theme
   static const Color lightBg = Color(0xFFFFFFFF);
   static const Color lightFg = Color(0xFF0F172A);
   static const Color lightMuted = Color(0xFFF1F5F9);
@@ -46,7 +46,7 @@ abstract final class RusTokColors {
   static const Color lightDanger = Color(0xFFEF4444);
   static const Color lightDangerFg = Color(0xFFF8FAFC);
 
-  // Dark Palette
+  // Dark Theme
   static const Color darkBg = Color(0xFF0F172A);
   static const Color darkFg = Color(0xFFF8FAFC);
   static const Color darkMuted = Color(0xFF1E293B);

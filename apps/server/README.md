@@ -108,9 +108,12 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   actual effects, not automatic expiry.
 - OAuth manifest synchronization is not one atomic, serialized tenant-wide
   reconciliation; built-in auth email delivery remains best effort.
-- Module-settings change notification uses a non-transactional event forwarder;
-  notification delivery can be lost. Search lag and worker readiness do not
-  cover all failure modes. See the server implementation plan for these gates.
+- Static module-settings changes use the canonical transactional outbox. The
+  legacy in-process EventBus-to-Outbox bridge is still not crash-durable before
+  its first outbox insert: a process crash or forced abort in that window can
+  lose a non-transactional event. Business mutations requiring atomic publication
+  must use `TransactionalEventBus`. Search lag and worker readiness do not cover
+  all failure modes; see the server implementation plan.
 - First-party in-place refresh rotation retains only the immediately previous
   token digest. Older revoked generations are rejected as unknown but cannot
   trigger full-lineage theft revocation. The durable rotation-history and
@@ -125,10 +128,12 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 The reservation-fact continuation source-wires acknowledged sealed module startup on the actual
 listener bus. `outbox` awaits explicit local handlers; `outbox_iggy` accepts the original frame
 at the configured primary, then awaits required local delivery. Failure retains the same Outbox
-identity for retry, potentially resending remotely. Root best-effort fanout is unchanged. The
-host composes owner handlers and durable artifact intake; it never publishes Inventory facts.
-Five new transport-double definitions are uncompiled/unrun, not real Iggy/cursor/ACK or
-relay/restart/concurrency evidence. Canonical digests, SQL/Search, generic Index and Product
+identity for retry, potentially resending remotely. Root `DomainEvent` delivery through the
+Outbox target now awaits matching registered module handlers; the generic in-process broadcast
+API remains best-effort. The host composes owner handlers and durable artifact intake; it never
+publishes Inventory facts. See the [root-delivery decision](../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+The new transport-double and regression definitions are uncompiled/unrun, not real Iggy/cursor/ACK
+or relay/restart/concurrency evidence. Canonical digests, SQL/Search, generic Index and Product
 step 8 remain open. See the [runtime contract](docs/README.md#acknowledged-sealed-delivery-2026-11-01-source-only)
 and [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
 
