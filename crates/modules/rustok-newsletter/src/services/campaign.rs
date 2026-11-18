@@ -63,7 +63,8 @@ impl CampaignService {
             subject: Set(input.subject),
             preheader: Set(input.preheader),
             status: Set("draft".to_string()),
-            content_sources: Set(serde_json::to_value(&content_sources).unwrap_or_default()),
+            content_sources: Set(serde_json::to_value(&content_sources)
+                .map_err(|e| NewsletterError::validation(format!("failed to serialize content sources: {e}")))?),
             segment_id: Set(input.segment_id),
             scheduled_at: Set(None),
             sent_at: Set(None),
@@ -137,7 +138,8 @@ impl CampaignService {
                     "Cannot have more than 50 content sources",
                 ));
             }
-            active_model.content_sources = Set(serde_json::to_value(&sources).unwrap_or_default());
+            active_model.content_sources = Set(serde_json::to_value(&sources)
+                .map_err(|e| NewsletterError::validation(format!("failed to serialize content sources: {e}")))?);
         }
         if let Some(segment_id) = input.segment_id {
             if segment_id.is_nil() {
@@ -327,8 +329,16 @@ impl CampaignService {
     }
 
     fn to_response(&self, model: campaign::Model) -> NewsletterResult<CampaignResponse> {
-        let content_sources: Vec<String> =
-            serde_json::from_value(model.content_sources.clone()).unwrap_or_default();
+        let content_sources: Vec<String> = if model.content_sources.is_null() {
+            Vec::new()
+        } else {
+            serde_json::from_value(model.content_sources.clone()).map_err(|err| {
+                NewsletterError::validation(format!(
+                    "invalid content_sources JSON for campaign {}: {err}",
+                    model.id
+                ))
+            })?
+        };
 
         Ok(CampaignResponse {
             id: model.id,

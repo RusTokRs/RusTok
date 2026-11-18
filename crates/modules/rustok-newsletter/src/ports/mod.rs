@@ -345,8 +345,15 @@ impl NewsletterCampaignPort for CampaignPortImpl {
         let slugs: Vec<ContentSourceSlug> = campaign
             .content_sources
             .iter()
-            .filter_map(|s| ContentSourceSlug::new(s).ok())
-            .collect();
+            .map(|s| {
+                ContentSourceSlug::new(s).map_err(|err| PortError {
+                    kind: rustok_api::PortErrorKind::Validation,
+                    code: "newsletter.invalid_content_source_slug".to_string(),
+                    message: format!("invalid content source slug `{s}`: {err}"),
+                    retryable: false,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         registry
             .fetch_for_sources(tenant_id, &slugs, None, None, 10)
