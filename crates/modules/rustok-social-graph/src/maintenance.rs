@@ -75,7 +75,14 @@ impl SocialGraphReceiptMaintenancePort for SocialGraphReceiptMaintenanceService 
         }
         let completed_before =
             DateTime::<Utc>::from_timestamp(command.completed_before_unix_seconds, 0)
-                .expect("command.validate() ensures valid timestamp");
+                .ok_or_else(|| {
+                    let error = PortError::validation(
+                        "social_graph.invalid_timestamp",
+                        "completed_before_unix_seconds is out of valid range",
+                    );
+                    log_cleanup_failure(tenant_id, command, started, &error);
+                    error
+                })?;
 
         let result = receipts::cleanup_completed(
             &self.db,

@@ -111,6 +111,7 @@ impl SocialGraphRelationPostgresIndexSource {
         request: &IndexSourceScanRequest,
         cursor: Option<&RelationCursor>,
     ) -> Result<Vec<relation::Model>, IndexSourceFailure> {
+        // INVARIANT: Index source page limit (usize) is physically guaranteed to fit within u64 on 64-bit systems.
         let fetch_limit = u64::try_from(request.limit() + 1)
             .expect("Index source page limit is bounded below u64::MAX");
         let mut query = relation::Entity::find()
@@ -261,15 +262,13 @@ fn relation_schema_ref() -> Result<SchemaRef, DomainError> {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect(
-        "static retryable source failure code must be valid: invariant validated at startup",
-    )
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect(
-        "static permanent source failure code must be valid: invariant validated at startup",
-    )
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }
 
 #[cfg(test)]
