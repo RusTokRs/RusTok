@@ -18,6 +18,7 @@ pub struct InstallApplyOptions {
     pub session_id: Option<Uuid>,
     /// Host-issued, unique owner identity for this execution attempt.
     pub lock_owner: String,
+    /// Lease duration in seconds; accepted range is 1 through 86,400.
     pub lock_ttl_secs: i64,
     pub pg_admin_url: Option<String>,
     /// Host-selected Ed25519 authority for a signed fresh-target distribution
@@ -26,6 +27,17 @@ pub struct InstallApplyOptions {
     /// while a local CLI may bind its explicitly selected key.
     #[serde(skip)]
     pub bootstrap_public_key_base64: Option<String>,
+}
+
+pub const DEFAULT_INSTALL_LOCK_TTL_SECS: i64 = 900;
+pub const MAX_INSTALL_LOCK_TTL_SECS: i64 = 86_400;
+
+/// Returns whether a requested installer lease duration is within the
+/// supported range. Keeping this bounded prevents timestamp overflow and
+/// prevents operators from creating effectively permanent stale leases.
+#[must_use]
+pub const fn is_valid_install_lock_ttl_secs(ttl_secs: i64) -> bool {
+    ttl_secs >= 1 && ttl_secs <= MAX_INSTALL_LOCK_TTL_SECS
 }
 
 /// Build a bounded owner token for one installer execution attempt.
@@ -64,7 +76,7 @@ impl Default for InstallApplyOptions {
         Self {
             session_id: None,
             lock_owner: build_install_lock_owner(Some("installer"), None, Uuid::new_v4()),
-            lock_ttl_secs: 900,
+            lock_ttl_secs: DEFAULT_INSTALL_LOCK_TTL_SECS,
             pg_admin_url: None,
             bootstrap_public_key_base64: None,
         }
@@ -281,6 +293,12 @@ where
         + InstallVerificationPort<P::Runtime>
         + crate::InstallDeploymentPort<P::Runtime>,
 {
+    if !is_valid_install_lock_ttl_secs(options.lock_ttl_secs) {
+        return Err(InstallExecutionError::new(format!(
+            "installer lock TTL must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+        )));
+    }
+
     let report = crate::evaluate_preflight_with_deployment(
         &plan,
         crate::InstallDeploymentPort::supports_distribution_deployment(ports),
