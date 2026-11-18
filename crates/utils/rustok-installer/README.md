@@ -18,7 +18,9 @@ bootstrap logic.
 
 - Model install plans, profiles, database policy, seed profiles (including
   canonical parsing and the profile module set), and tenant enablement inputs.
-- Track install state transitions and resumable step receipts.
+- Track install state transitions and durable per-step receipts used for
+  audit and recovery; automatic resume after process loss remains an explicit
+  executor/reconciliation capability, not a receipt-side effect.
 - Redact secrets and distinguish secret references from plaintext setup input.
 - Resolve local `env`, file, mounted-file and dotenv secret references through
   one reusable installer contract; external secret managers remain explicit

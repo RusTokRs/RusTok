@@ -56,13 +56,13 @@ impl MigrationTrait for Migration {
     }
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum InstallSessions {
     Table,
     AttemptGeneration,
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum InstallStepReceipts {
     Table,
     AttemptGeneration,

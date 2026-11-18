@@ -94,16 +94,32 @@ impl InstallState {
                 | (AdminProvisioned, Deploying)
                 | (Deploying, Verified)
                 | (Verified, Completed)
-                | (_, Failed)
+                | (
+                    Draft
+                        | PreflightPassed
+                        | ConfigPrepared
+                        | DatabaseReady
+                        | SchemaApplied
+                        | SeedApplied
+                        | AdminProvisioned
+                        | Deploying
+                        | Verified
+                        | RecoveryRequired,
+                    Failed,
+                )
                 | (Draft, FreshInstallCleaned)
-                | (PreflightPassed, FreshInstallCleaned)
-                | (ConfigPrepared, FreshInstallCleaned)
-                | (DatabaseReady, FreshInstallCleaned)
-                | (SchemaApplied, RecoveryRequired)
-                | (SeedApplied, RecoveryRequired)
-                | (AdminProvisioned, RecoveryRequired)
-                | (Deploying, RecoveryRequired)
-                | (Verified, RecoveryRequired)
+                | (
+                    Draft
+                        | PreflightPassed
+                        | ConfigPrepared
+                        | DatabaseReady
+                        | SchemaApplied
+                        | SeedApplied
+                        | AdminProvisioned
+                        | Deploying
+                        | Verified,
+                    RecoveryRequired,
+                )
         )
     }
 
@@ -119,6 +135,29 @@ impl InstallState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persisted_state_names_round_trip_without_accepting_unknown_values() {
+        let states = [
+            InstallState::Draft,
+            InstallState::PreflightPassed,
+            InstallState::ConfigPrepared,
+            InstallState::DatabaseReady,
+            InstallState::SchemaApplied,
+            InstallState::SeedApplied,
+            InstallState::AdminProvisioned,
+            InstallState::Deploying,
+            InstallState::Verified,
+            InstallState::Completed,
+            InstallState::Failed,
+            InstallState::FreshInstallCleaned,
+            InstallState::RecoveryRequired,
+        ];
+        for state in states {
+            assert_eq!(InstallState::from_str(state.as_str()), Some(state));
+        }
+        assert_eq!(InstallState::from_str("unknown_state"), None);
+    }
 
     #[test]
     fn happy_path_transitions_are_allowed() {
@@ -151,6 +190,50 @@ mod tests {
 
         assert_eq!(error.from, InstallState::DatabaseReady);
         assert_eq!(error.to, InstallState::SeedApplied);
+    }
+
+    #[test]
+    fn every_durable_stage_can_fail_closed_to_recovery_required() {
+        let durable_stages = [
+            InstallState::Draft,
+            InstallState::PreflightPassed,
+            InstallState::ConfigPrepared,
+            InstallState::DatabaseReady,
+            InstallState::SchemaApplied,
+            InstallState::SeedApplied,
+            InstallState::AdminProvisioned,
+            InstallState::Deploying,
+            InstallState::Verified,
+        ];
+        for state in durable_stages {
+            assert!(
+                state.can_transition_to(InstallState::RecoveryRequired),
+                "{state:?} must be able to fail closed into recovery"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_is_not_a_valid_transition_after_preflight() {
+        for state in [
+            InstallState::PreflightPassed,
+            InstallState::ConfigPrepared,
+            InstallState::DatabaseReady,
+            InstallState::SchemaApplied,
+        ] {
+            assert!(
+                !state.can_transition_to(InstallState::FreshInstallCleaned),
+                "{state:?} cannot claim cleanup without a cleanup effect"
+            );
+        }
+        assert!(InstallState::Draft.can_transition_to(InstallState::FreshInstallCleaned));
+    }
+
+    #[test]
+    fn completed_and_cleaned_states_are_terminal() {
+        assert!(!InstallState::Completed.can_transition_to(InstallState::Failed));
+        assert!(!InstallState::FreshInstallCleaned.can_transition_to(InstallState::Failed));
+        assert!(!InstallState::Completed.can_transition_to(InstallState::RecoveryRequired));
     }
 
     #[test]

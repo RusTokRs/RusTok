@@ -168,8 +168,8 @@ mod composition {
                 Box::new(m20250101_000001_create_tenants::Migration),
                 publish_tables,
                 Box::new(m20260426_000001_create_install_sessions::Migration),
-                Box::new(m20261118_000002_add_installer_attempt_fencing::Migration),
                 static_owner,
+                Box::new(m20261118_000002_add_installer_attempt_fencing::Migration),
             ]
         }
     }

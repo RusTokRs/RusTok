@@ -30,6 +30,7 @@ without evidence of a failure is recorded separately below.
 | `P-FIXTURE-OWNERSHIP` | A migration verifier could attempt cleanup after creation failed because a fixture name already existed. Change `8b407a1bb3` tracks successful acquisition before cleanup. | [Verifier](../../crates/utils/rustok-migrations/src/bin/verify_migrations.rs), [bootstrap](../../crates/utils/rustok-migrations/src/verification/bootstrap.rs) |
 | `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
 | `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
+| `P-ATTEMPT-FENCE` | Installer session claims previously recorded a unique owner but state, tenant, and receipt writes did not compare it. The persistence owner now advances a monotonic generation during claim and checks owner+generation under a transaction-scoped row lock for every mutation; old-attempt writes are rejected. | [Installer persistence](../../crates/utils/rustok-installer-persistence/src/persistence.rs), [attempt migration](../../crates/utils/rustok-migrations/src/m20261118_000002_add_installer_attempt_fencing.rs), [contract tests](../../crates/utils/rustok-installer-persistence/src/contract_tests.rs) |
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
 
 For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
@@ -130,6 +131,33 @@ flowchart TD
   [owner migration](../../crates/modules/rustok-forum/src/migrations/m20261109_000043_enforce_archived_locked_invariant.rs).
 
 ---
+
+### Pattern 3a: Fenced Durable Mutations (`P-ATTEMPT-FENCE`)
+* **Category:** Concurrency, stale-worker exclusion, and durable state integrity
+* **Problem:** A unique lease-owner string checked only during acquisition is
+  not a fencing token. A worker can continue after its lease expires or after
+  an operator has reconciled the operation; if state, tenant, or receipt writes
+  do not carry the current attempt identity, the stale worker can overwrite
+  newer state or append misleading evidence.
+* **Pattern Solution:**
+  1. Persist a monotonically increasing attempt generation and increment it in
+     the same compare-and-set that assigns the new owner.
+  2. Require both owner and generation on every owner mutation. Never trust a
+     previously read model as proof that its owner is still current.
+  3. Acquire the owner row lock before checking the current state. PostgreSQL
+     and MySQL use an exclusive row lock; SQLite reserves its writer before
+     reading. Validate the state transition and apply the mutation in the same
+     transaction.
+  4. Store the generation on append-only receipts so operators can distinguish
+     evidence from different attempts.
+  5. Test takeover explicitly: after a later generation is claimed, the old
+     owner must fail state, association, and receipt writes.
+* **Anti-Pattern (Forbidden):**
+  * Treating lease expiry as proof that the old process stopped.
+  * Reading the owner/generation outside the write transaction and then
+    inserting a receipt or updating a session by ID alone.
+  * Allowing a generic status reset to authorize a new attempt without
+    reconciliation evidence.
 
 ### Pattern 3: Lock-Before-Check Concurrency (`P-LOCK-ORDER`)
 * **Category:** Order of Operations & TOCTOU Elimination

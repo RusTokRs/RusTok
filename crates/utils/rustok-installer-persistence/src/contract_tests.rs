@@ -102,7 +102,7 @@ fn session_record(model: &install_session::Model) -> InstallSessionRecord {
         status: model.status.clone(),
         attempt_generation: model.attempt_generation,
         lock_owner: model.lock_owner.clone(),
-        lock_expires_at: model.lock_expires_at,
+        lock_expires_at: model.lock_expires_at.clone(),
     }
 }
 
@@ -191,7 +191,7 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert!(stale_owner_error.to_string().contains("attempt fence"));
 
     let mut wrong_generation = session_record(&locked);
-    wrong_generation.attempt_generation = 0;
+    wrong_generation.attempt_generation = locked.attempt_generation + 1;
     let stale_generation_error = service
         .set_state(&wrong_generation, InstallState::PreflightPassed)
         .await
@@ -218,6 +218,26 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set schema state");
 
     let tenant_id = Uuid::new_v4();
+    let mut stale_tenant_owner = session_record(&schema_applied);
+    stale_tenant_owner.lock_owner = Some("stale-worker".to_string());
+    assert!(
+        service
+            .set_tenant_id(&stale_tenant_owner, tenant_id)
+            .await
+            .expect_err("stale owner cannot change the tenant")
+            .to_string()
+            .contains("attempt fence")
+    );
+    let mut stale_tenant_generation = session_record(&schema_applied);
+    stale_tenant_generation.attempt_generation += 1;
+    assert!(
+        service
+            .set_tenant_id(&stale_tenant_generation, tenant_id)
+            .await
+            .expect_err("stale generation cannot change the tenant")
+            .to_string()
+            .contains("attempt fence")
+    );
     let updated_tenant = service
         .set_tenant_id(&session_record(&schema_applied), tenant_id)
         .await
@@ -252,6 +272,88 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect_err("recovery-required session must keep the admission gate closed");
     assert!(recovery_gate_err.to_string().contains("unfinished execution"));
     assert!(!service.has_completed_session().await.expect("query"));
+}
+
+#[tokio::test]
+async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db.clone());
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+    let first_attempt = service
+        .acquire_lock(
+            session,
+            "worker-attempt-one",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("first attempt claims the session");
+    assert_eq!(first_attempt.attempt_generation, 1);
+
+    // Simulate an explicit operator reconciliation that has proven the first
+    // worker fenced and returned the session to its resumable draft boundary.
+    let mut reconciled: install_session::ActiveModel = first_attempt.clone().into();
+    reconciled.lock_owner = Set(None);
+    reconciled.lock_expires_at = Set(None);
+    reconciled.status = Set("draft".to_string());
+    reconciled
+        .update(&db)
+        .await
+        .expect("reconciliation fixture releases the old claim");
+
+    let current = service
+        .get_session(first_attempt.id)
+        .await
+        .expect("read reconciled session")
+        .expect("session exists");
+    let second_attempt = service
+        .acquire_lock(
+            current,
+            "worker-attempt-two",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("second attempt claims the reconciled session");
+    assert_eq!(second_attempt.attempt_generation, 2);
+    assert_eq!(
+        second_attempt.lock_owner.as_deref(),
+        Some("worker-attempt-two")
+    );
+
+    let stale_state_error = service
+        .set_state(
+            &session_record(&first_attempt),
+            InstallState::PreflightPassed,
+        )
+        .await
+        .expect_err("the first worker cannot mutate after generation advances");
+    assert!(stale_state_error.to_string().contains("attempt fence"));
+
+    let stale_receipt = InstallReceipt {
+        session_id: first_attempt.id.to_string(),
+        step: InstallStep::Preflight,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: "sha256:old-attempt".to_string(),
+        diagnostics: serde_json::json!({ "attempt": 1 }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    let stale_receipt_error = service
+        .record_receipt(&session_record(&first_attempt), &stale_receipt)
+        .await
+        .expect_err("the first worker cannot append a receipt after takeover");
+    assert!(stale_receipt_error.to_string().contains("attempt fence"));
+
+    let accepted = service
+        .set_state(
+            &session_record(&second_attempt),
+            InstallState::PreflightPassed,
+        )
+        .await
+        .expect("the current attempt can advance the state");
+    assert_eq!(accepted.status, "preflight_passed");
 }
 
 #[tokio::test]
@@ -326,6 +428,79 @@ async fn completed_session_releases_admission_gate() {
         .expect("completed session releases the admission gate");
     assert_eq!(next_lock.lock_owner.as_deref(), Some("worker-node-2"));
     assert_eq!(next_lock.attempt_generation, 1);
+}
+
+#[tokio::test]
+async fn acquire_lock_rejects_owner_exceeding_the_storage_bound() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db.clone());
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+
+    let error = service
+        .acquire_lock(
+            session.clone(),
+            "x".repeat(129),
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("oversized owner must be rejected before claim");
+    assert!(error.to_string().contains("128-byte"));
+
+    let unchanged = service
+        .get_session(session.id)
+        .await
+        .expect("read session")
+        .expect("session exists");
+    assert!(unchanged.lock_owner.is_none());
+    assert_eq!(unchanged.attempt_generation, 0);
+}
+
+#[tokio::test]
+async fn acquire_lock_rejects_corrupt_or_exhausted_attempt_generation() {
+    for generation in [-1, i64::MAX] {
+        let db = setup_contract_test_db().await;
+        let service = InstallerPersistenceService::new(db.clone());
+        let session = service
+            .create_session(&sample_plan(), None, None)
+            .await
+            .expect("session created");
+
+        let mut corrupted: install_session::ActiveModel = session.clone().into();
+        corrupted.attempt_generation = Set(generation);
+        corrupted
+            .update(&db)
+            .await
+            .expect("inject invalid generation fixture");
+
+        let current = service
+            .get_session(session.id)
+            .await
+            .expect("read session")
+            .expect("session exists");
+        let error = service
+            .acquire_lock(
+                current,
+                "worker-node-invalid-generation",
+                chrono::Duration::minutes(5),
+            )
+            .await
+            .expect_err("invalid generation must fail before claiming");
+        assert!(
+            error.to_string().contains("generation"),
+            "unexpected error for generation {generation}: {error}"
+        );
+
+        let unchanged = service
+            .get_session(session.id)
+            .await
+            .expect("read unchanged session")
+            .expect("session exists");
+        assert!(unchanged.lock_owner.is_none());
+        assert_eq!(unchanged.attempt_generation, generation);
+    }
 }
 
 #[tokio::test]
@@ -424,7 +599,7 @@ async fn receipt_persistence_and_conversion_is_bound_to_the_current_attempt() {
     );
 
     let mut stale_generation = session_record(&locked);
-    stale_generation.attempt_generation -= 1;
+    stale_generation.attempt_generation += 1;
     assert!(
         service
             .record_receipt(&stale_generation, &receipt)

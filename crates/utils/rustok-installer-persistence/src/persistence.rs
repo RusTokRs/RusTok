@@ -5,7 +5,8 @@ use rustok_installer::{
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
+    ConnectionTrait, DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -197,9 +198,8 @@ impl InstallerPersistenceService {
                 "installer receipt session does not match its attempt fence".to_string(),
             ));
         }
-        let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -218,6 +218,22 @@ impl InstallerPersistenceService {
                 session.id
             )));
         }
+
+        let now = Utc::now();
+        let touch = install_session::Entity::update_many()
+            .col_expr(
+                install_session::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(install_session::Column::Id.eq(session.id))
+            .filter(install_session::Column::LockOwner.eq(owner))
+            .filter(
+                install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+            )
+            .filter(install_session::Column::Status.eq(current.status))
+            .exec(&txn)
+            .await?;
+        ensure_attempt_fence_applied(session, touch.rows_affected)?;
 
         let model = install_step_receipt::ActiveModel {
             id: Set(rustok_core::generate_id()),
@@ -291,7 +307,7 @@ impl InstallerPersistenceService {
         let owner = require_attempt_fence(session)?;
         let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -345,7 +361,7 @@ impl InstallerPersistenceService {
         let owner = require_attempt_fence(session)?;
         let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -496,6 +512,11 @@ async fn acquire_lock_in_transaction(
         )
     })?;
 
+    if session.attempt_generation < 0 {
+        return Err(sea_orm::DbErr::Custom(
+            "installer attempt generation must not be negative".to_string(),
+        ));
+    }
     let next_generation = session.attempt_generation.checked_add(1).ok_or_else(|| {
         sea_orm::DbErr::Custom("installer attempt generation is exhausted".to_string())
     })?;
@@ -612,32 +633,53 @@ fn ensure_attempt_fence_applied(
 async fn lock_session_for_attempt(
     txn: &DatabaseTransaction,
     session: &InstallSessionRecord,
-    now: chrono::DateTime<Utc>,
 ) -> Result<install_session::Model, sea_orm::DbErr> {
     let owner = require_attempt_fence(session)?;
-    let fence = install_session::Entity::update_many()
-        .col_expr(
-            install_session::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now),
-        )
-        .filter(install_session::Column::Id.eq(session.id))
-        .filter(install_session::Column::LockOwner.eq(owner))
-        .filter(
-            install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-        )
-        .exec(txn)
-        .await?;
-    ensure_attempt_fence_applied(session, fence.rows_affected)?;
+    let current = match txn.get_database_backend() {
+        sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
+            install_session::Entity::find_by_id(session.id)
+                .filter(install_session::Column::LockOwner.eq(owner))
+                .filter(
+                    install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+                )
+                .lock_exclusive()
+                .one(txn)
+                .await?
+        }
+        sea_orm::DbBackend::Sqlite => {
+            // Reserve SQLite's writer before reading the session. This avoids
+            // a deferred read-to-write upgrade race while preserving the same
+            // owner+generation predicate used by the server databases.
+            let fence = install_session::Entity::update_many()
+                .col_expr(
+                    install_session::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::col(install_session::Column::UpdatedAt),
+                )
+                .filter(install_session::Column::Id.eq(session.id))
+                .filter(install_session::Column::LockOwner.eq(owner))
+                .filter(
+                    install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+                )
+                .exec(txn)
+                .await?;
+            ensure_attempt_fence_applied(session, fence.rows_affected)?;
+            install_session::Entity::find_by_id(session.id)
+                .one(txn)
+                .await?
+        }
+        backend => {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "installer attempt fencing is unsupported for database backend {backend:?}"
+            )));
+        }
+    };
 
-    install_session::Entity::find_by_id(session.id)
-        .one(txn)
-        .await?
-        .ok_or_else(|| {
-            sea_orm::DbErr::RecordNotFound(format!(
-                "install session {} not found",
-                session.id
-            ))
-        })
+    current.ok_or_else(|| {
+        sea_orm::DbErr::Custom(format!(
+            "installer attempt fence rejected mutation for session {} at generation {}",
+            session.id, session.attempt_generation
+        ))
+    })
 }
 
 fn admission_released_state_values() -> Vec<&'static str> {

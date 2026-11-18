@@ -193,8 +193,14 @@ performed afterwards.
    executor and retains the predecessor tools.
    The typed executor, HTTP adapter, CLI adapter, minimal owner migrator, and
    transactionally idempotent signed-receipt import are implemented. The
-   remaining work in this item is pre-staging/recovery evidence, the durable
-   desired/observed deployment hand-off, and crash-injection verification.
+   persistence adapter now assigns a monotonic attempt generation in the
+   session-claim compare-and-set and requires the exact owner plus generation
+   for every state, tenant, and receipt mutation. Those mutations lock the
+   target session row inside the same transaction; receipt rows retain their
+   attempt generation. This is stale-worker fencing, not a resumable executor.
+   The remaining work in this item is pre-staging/recovery evidence, the durable
+   desired/observed deployment hand-off, resumable step execution, effect-owner
+   reconciliation, and crash-injection verification.
    **Done when:** a resumed apply is idempotent, verifies the observed bundle,
    uses bounded cleanup only before durable state, and otherwise reports the
    common recovery-required outcome with its restore action.

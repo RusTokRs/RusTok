@@ -104,14 +104,16 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result. HTTP and CLI now use unique host-generated
-  lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
-  Persistence blocks new applies while any unreconciled session has a
-  recorded owner, even after lease expiry; `recovery_required` remains blocking
-  until manual reconciliation. However, state/receipt writes do not yet
-  compare the owner on every mutation, and resumable execution plus effect
-  reconciliation remain unimplemented; do not reset stale jobs based only on
-  lease expiry.
+  persist the terminal result. HTTP and CLI use unique host-generated lock
+  owners and a monotonic attempt generation per claim, with a 1–86,400 second
+  lease TTL. Every state, tenant, and receipt mutation now checks the persisted
+  owner plus generation under a target-session row lock; receipts retain their
+  generation. Persistence still blocks new applies while any unreconciled
+  session has a recorded owner, even after lease expiry, and
+  `recovery_required` remains blocking until manual reconciliation. The
+  executor still runs in-process and is not resumable after process loss;
+  lease renewal, effect-owner idempotency/reconciliation, and operator recovery
+  remain unimplemented. Do not reset stale jobs based only on lease expiry.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
   all-tenants bootstrap pass commits one tenant at a time, not as a single
   cross-tenant transaction. Built-in auth email delivery remains best effort.
