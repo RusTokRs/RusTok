@@ -127,6 +127,16 @@ impl CheckoutOrderCreationExecutor {
     /// it consumes operational Cart-line provenance from the frozen input and owner response.
     /// These persisted lineage labels are not a separate business model or disposable history.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(
+        skip(self, lease_owner, input),
+        fields(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            customer_id = ?input.customer_id,
+        ),
+        err
+    )]
     pub async fn create_pending_and_adopt(
         &self,
         tenant_id: Uuid,

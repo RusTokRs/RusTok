@@ -86,6 +86,15 @@ impl ReturnDecisionOwnerOrchestrationService {
         self
     }
 
+    #[tracing::instrument(
+        skip(self, base_context, input),
+        fields(
+            tenant_id = %tenant_id,
+            order_id = %order_id,
+            action = %input.decision.action,
+        ),
+        err
+    )]
     pub async fn create_return_decision(
         &self,
         base_context: PortContext,

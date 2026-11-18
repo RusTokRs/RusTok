@@ -118,7 +118,7 @@ impl PostgresIndexSourceFactory for SalesChannelPostgresIndexSourceFactory {
             extensions,
             "channel",
             SALES_CHANNEL_INDEX_SOURCE,
-            [sales_channel_schema_ref().map_err(|error| error.to_string())?],
+            [sales_channel_schema_ref()?],
             SalesChannelPostgresIndexSource { db },
         )?;
         Ok(())
