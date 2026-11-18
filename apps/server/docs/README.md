@@ -210,7 +210,10 @@ timestamps fail closed rather than panicking.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid. A cookie containing the
+success while a refresh token could remain valid. Session-id logout now locks
+the active row before building its revocation update (PostgreSQL/MySQL row lock;
+SQLite write fence before read), so a concurrent refresh cannot be overwritten
+by a stale ActiveModel snapshot. A cookie containing the
 immediately previous refresh token (for example, when a rotation response
 was lost) also revokes its still-live successor session under the same row
 lock. Refresh-reuse detection also resolves the immediately previous
