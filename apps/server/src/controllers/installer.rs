@@ -224,7 +224,11 @@ async fn apply(
     let submitted_at = Utc::now();
     let attempt_id = Uuid::new_v4();
     let lock_owner = build_install_lock_owner(
-        request.lock_owner.as_deref().or(Some("http")),
+        request
+            .lock_owner
+            .as_deref()
+            .filter(|label| !label.trim().is_empty())
+            .or(Some("http")),
         Some(job_id),
         attempt_id,
     );
