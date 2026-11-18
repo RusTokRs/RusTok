@@ -78,7 +78,11 @@ cannot be retroactively revoked, and replayed revocations do not publish another
 OAuth consent grants and revocations lock the app row and then the subject row,
 matching token issuance's lock order before reading or changing consent. This
 prevents an exchange from committing a token against consent that was revoked
-first, and prevents grants after an app or user becomes inactive. Manual OAuth
+first, and prevents grants after an app or user becomes inactive. Token
+exchange and refresh also re-read the active consent, scope coverage, and grant
+epoch inside the issuance transaction after acquiring those locks, so a
+concurrent consent re-grant or scope change cannot persist credentials from a
+stale preflight snapshot. Manual OAuth
 app edits mark lifecycle, credential, identity, and runtime-owned columns
 `NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
 `last_used_at` value.
