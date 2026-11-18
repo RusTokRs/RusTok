@@ -189,7 +189,24 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set tenant id");
     assert_eq!(updated_tenant.tenant_id, Some(tenant_id));
 
-    // 9. Verify has_completed_session before and after completion
+    // 9. RecoveryRequired is terminal for the executor but must continue
+    // blocking global admission until an operator reconciles the session.
+    let recovery_required = service
+        .set_state(session.id, InstallState::RecoveryRequired)
+        .await
+        .expect("mark recovery required");
+    assert_eq!(recovery_required.status, "recovery_required");
+    let recovery_gate_err = service
+        .acquire_lock(
+            session2.clone(),
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("recovery-required session must keep the admission gate closed");
+    assert!(recovery_gate_err.to_string().contains("unfinished execution"));
+
+    // 10. Verify has_completed_session before and after completion
     assert!(!service.has_completed_session().await.expect("query"));
     let completed = service
         .set_state(session.id, InstallState::Completed)
