@@ -584,8 +584,9 @@ async fn acquire_lock_in_transaction(
         )));
     }
 
-    // An expired lease is not proof that its worker stopped. Keep unfinished
-    // sessions as a fail-closed global fence until their effects are reconciled.
+    // An expired or manually cleared lease is not proof that its worker stopped.
+    // Any non-draft session remains a global fence until its effects are reconciled;
+    // a draft with no owner is the only state eligible for a fresh claim.
     if let Some(existing) = install_session::Entity::find()
         .filter(install_session::Column::Id.ne(session.id))
         .filter(
@@ -593,7 +594,7 @@ async fn acquire_lock_in_transaction(
                 .add(install_session::Column::LockOwner.is_not_null())
                 .add(
                     install_session::Column::Status
-                        .eq(install_state_value(InstallState::RecoveryRequired)),
+                        .ne(install_state_value(InstallState::Draft)),
                 ),
         )
         .filter(install_session::Column::Status.is_not_in(admission_released_state_values()))
