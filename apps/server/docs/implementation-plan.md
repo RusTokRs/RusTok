@@ -1602,13 +1602,13 @@ cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_fi
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
 ```
 
-## P27 — Use write-first SQLite fences in auth lifecycle mutations (2026-11-18)
+## P27 — Use write-first SQLite fences in auth and OAuth mutations (2026-11-18)
 
-Several auth mutation paths used SELECT followed by a no-op UPDATE to
-acquire SQLite's writer lock, or applied FOR UPDATE without a SQLite-specific
-fence. In a deferred transaction this can race another writer during lock
-promotion; the direct profile path also converted a row read under unsupported
-SQLite row-lock syntax into a full ActiveModel update.
+Several auth and OAuth mutation paths used SELECT followed by a no-op
+UPDATE to acquire SQLite's writer lock. In a deferred transaction this can
+race another writer during lock promotion; the direct profile path also
+converted a row read under unsupported SQLite row-lock syntax into a full
+ActiveModel update.
 
 ### Implemented
 
@@ -1620,6 +1620,9 @@ SQLite row-lock syntax into a full ActiveModel update.
   by the presented digest, then reload the matching row while the transaction
   owns the write fence.
 - Session-id logout already uses a write-first fence by tenant/session ID.
+- OAuth token issuance now reserves SQLite's writer by known app/subject IDs
+  before reloading the current client and subject state; it no longer performs
+  a read-first lock upgrade on those rows.
 - Unsupported database backends now fail closed in these auth lock helpers
   instead of silently running an unlocked read.
 - Existing SQLite tests exercise login, profile update, password change,
@@ -1637,4 +1640,5 @@ cargo test -p rustok-server --lib services::auth_lifecycle::tests::update_profil
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::change_password_rejects_expired_current_session
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
 ```
