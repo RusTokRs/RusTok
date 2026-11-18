@@ -57,9 +57,12 @@ response. Refresh-reuse detection now takes that same database-specific row
 lock before evaluating the grace window or revoking the session, preventing a
 stale ActiveModel snapshot from overwriting a concurrent token rotation.
 Focused regression tests cover the in-grace race, post-grace revocation, and
-persistence-failure rollback. The 30-second grace window is not an idempotent
-retry protocol: the old token is rejected without revoking the current session,
-but a lost successful response still cannot be recovered.
+persistence-failure rollback. Session-id logout also acquires the session row
+lock (or SQLite write fence) before converting the row into an ActiveModel
+update; its regression test exercises the actual logout service and repeated
+idempotent logout. The 30-second grace window is not an idempotent retry
+protocol: the old token is rejected without revoking the current session, but
+a lost successful response still cannot be recovered.
 
 Remaining auth contract gaps requiring owner-level design and verification:
 the in-place first-party refresh session stores only the immediately previous
@@ -1569,6 +1572,10 @@ token hash or expiry while revoking the session.
   fence before returning the row.
 - Refresh reuse detection now holds that row lock while evaluating the grace
   window and applying the revocation update.
+- Session-id logout no longer reads an active session and then updates its stale
+  snapshot without a lock. It locks the row on PostgreSQL/MySQL and reserves a
+  SQLite write before reading, then publishes the logout event in the same
+  transaction as the revocation.
 - Added regression tests for an in-grace duplicate (reject without revoking),
   post-grace replay (revoke the live lineage), and failed revocation persistence
   (propagate the storage error and preserve the active session).
@@ -1589,4 +1596,5 @@ cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_revocation_failure_is_propagated_without_false_success
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_find_previous_rotated_token_without_crossing_tenant
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
 ```
