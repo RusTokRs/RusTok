@@ -1,4 +1,3 @@
-use anyhow::Context;
 use axum::{
     Json,
     body::Body,
@@ -43,10 +42,10 @@ impl MediaHttpRuntime {
 }
 
 impl MediaHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, MediaError> {
         let storage = runtime
             .shared_get::<StorageRuntime>()
-            .context("media HTTP routes require StorageRuntime in HostRuntimeContext")?;
+            .ok_or(MediaError::MissingStorageRuntime)?;
         Ok(Self {
             db: runtime.db_clone(),
             storage,
@@ -149,6 +148,9 @@ fn media_error(error: MediaError) -> HttpError {
             HttpError::bad_request("media_image_processing_failed", error.to_string())
         }
         MediaError::Json(error) => HttpError::internal(error.to_string()),
+        MediaError::MissingStorageRuntime => {
+            HttpError::internal("media HTTP routes require StorageRuntime in HostRuntimeContext")
+        }
     }
 }
 
@@ -397,7 +399,7 @@ pub async fn upsert_translation(
     Ok(Json(translation))
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, MediaError> {
     use axum::routing::{get, put};
 
     let state = MediaHttpRuntime::from_host(runtime)?;

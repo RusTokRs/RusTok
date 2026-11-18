@@ -232,10 +232,18 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let next_cursor = has_more.then(|| assets.last()).flatten().map(|asset| {
-            OpaqueCursor::new(asset.id.to_string())
-                .expect("media UUID cursor must satisfy the opaque cursor contract")
-        });
+        let next_cursor = has_more
+            .then(|| assets.last())
+            .flatten()
+            .map(|asset| {
+                OpaqueCursor::new(asset.id.to_string()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "media.translation_resource_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()?;
 
         Ok(TranslationResourcePage {
             resources,
@@ -358,8 +366,7 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
             let receipt = TranslationApplicationReceipt {
                 provider_receipt_id: format!("media:{}", lease.operation_id),
                 resource_revision: request.expected_resource_revision.clone(),
-                target_revision: OpaqueRevision::new(applied.revision.to_string())
-                    .expect("positive media revision must be a valid opaque revision"),
+                target_revision: opaque_numeric_revision(applied.revision)?,
                 applied_field_keys: request
                     .fields
                     .iter()
@@ -466,10 +473,17 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(|error| media_error_to_port_error(MediaError::Db(error)))?;
-        let next_cursor = rows.last().map(|change| {
-            OpaqueCursor::new(change.id.to_string())
-                .expect("media change UUID must satisfy the opaque cursor contract")
-        });
+        let next_cursor = rows
+            .last()
+            .map(|change| {
+                OpaqueCursor::new(change.id.to_string()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "media.translation_change_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()?;
         let changes = rows
             .into_iter()
             .map(change_from_model)

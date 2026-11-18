@@ -773,6 +773,9 @@ pub(crate) fn media_error_to_port_error(error: MediaError) -> PortError {
             PortError::unavailable("media.storage_key", source.to_string())
         }
         MediaError::Db(source) => PortError::unavailable("media.database", source.to_string()),
+        MediaError::MissingStorageRuntime => {
+            PortError::unavailable("media.storage_runtime", "media storage runtime is missing")
+        }
     }
 }
 

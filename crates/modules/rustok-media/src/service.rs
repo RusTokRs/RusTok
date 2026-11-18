@@ -1783,7 +1783,9 @@ impl MediaService {
             .one(&transaction)
             .await?
             .ok_or(MediaError::NotFound(media_id))?;
-        let input = input.normalize().map_err(MediaError::InvalidLocale)?;
+        let input = input
+            .normalize()
+            .map_err(|err| MediaError::InvalidLocale(err.to_string()))?;
         let locale = input.locale.into_inner();
 
         let existing = TransEntity::find()

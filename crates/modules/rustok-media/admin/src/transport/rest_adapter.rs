@@ -1,9 +1,13 @@
+use std::sync::LazyLock;
+
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use serde::Deserialize;
 
 use super::ApiError;
 use crate::model::MediaListItem;
+
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 #[derive(Debug, Deserialize)]
 struct RestMediaItem {
@@ -90,8 +94,7 @@ pub(super) async fn upload_media_rest(
         .mime_str(&content_type)
         .map_err(|err| ApiError::Rest(format!("invalid content type: {err}")))?;
     let form = reqwest::multipart::Form::new().part("file", part);
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = HTTP_CLIENT
         .post(format!("{}/api/media", api_base_url()))
         .multipart(form);
     if let Some(token) = token.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
