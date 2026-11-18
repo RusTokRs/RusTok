@@ -384,6 +384,8 @@ pub(crate) fn additional_runtime_worker_snapshots(
     };
     use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
     use crate::services::event_bus::EventForwarderHandle;
+    #[cfg(feature = "commerce-marketplace-financial")]
+    use crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle;
     #[cfg(feature = "mod-commerce")]
     use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
     #[cfg(feature = "mod-payment")]
@@ -431,6 +433,26 @@ pub(crate) fn additional_runtime_worker_snapshots(
                     .auth_retention_enabled,
             finished: ctx
                 .shared_map::<AuthRetentionWorkerHandle, _>(AuthRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "outbox_relay",
+            required: local && ctx.shared_contains::<OutboxRelayWorkerHandle>(),
+            finished: ctx
+                .shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "outbox_retention",
+            required: local && ctx.shared_contains::<OutboxRetentionWorkerHandle>(),
+            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
+                OutboxRetentionWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "remote_executor_reaper",
+            required: local && ctx.shared_contains::<RemoteExecutorReaperHandle>(),
+            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(
+                RemoteExecutorReaperHandle::is_finished,
+            ),
         },
         RuntimeWorkerSnapshot {
             name: "event_forwarder",
@@ -562,6 +584,13 @@ pub(crate) fn additional_runtime_worker_snapshots(
             ),
         },
         #[cfg(feature = "mod-workflow")]
+        #[cfg(feature = "mod-seo")]
+        RuntimeWorkerSnapshot {
+            name: "seo_bulk_worker",
+            required: local && ctx.shared_contains::<SeoBulkWorkerHandle>(),
+            finished: ctx
+                .shared_map::<SeoBulkWorkerHandle, _>(SeoBulkWorkerHandle::is_finished),
+        },
         RuntimeWorkerSnapshot {
             name: "workflow_cron",
             required: local
@@ -2059,6 +2088,16 @@ mod tests {
             first_retention_instance_id, second_retention_instance_id,
             "the retention worker must not be started twice"
         );
+
+        let snapshots = additional_runtime_worker_snapshots(&runtime_ctx);
+        for name in ["outbox_relay", "outbox_retention"] {
+            let snapshot = snapshots
+                .iter()
+                .find(|snapshot| snapshot.name == name)
+                .expect("started Outbox worker must be visible to readiness");
+            assert!(snapshot.required, "{name} must be required after startup");
+            assert_eq!(snapshot.finished, Some(false), "{name} should be live");
+        }
 
         // Gracefully shut down and drain background workers to avoid hanging tests
         super::shutdown_runtime_workers(&runtime_ctx).await;
