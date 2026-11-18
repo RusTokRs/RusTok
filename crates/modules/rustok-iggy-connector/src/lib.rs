@@ -49,8 +49,8 @@ pub use module::IggyConnectorModule;
 pub mod migrations;
 
 pub use control::{
-    IggyConnectorConfigurationSnapshot, IggyConnectorControl, IggyConnectorSettingsInput,
-    IggyConnectorUpdateOutcome, SharedIggyConnectorControl,
+    IggyConnectorConfigurationSnapshot, IggyConnectorControl, IggyConnectorControlError,
+    IggyConnectorSettingsInput, IggyConnectorUpdateOutcome, SharedIggyConnectorControl,
 };
 
 /// Whether this build can supervise the bundled Iggy artifact.
@@ -1344,7 +1344,9 @@ impl BundledConnector {
         };
 
         let pid = child.id();
-        let _ = child.start_kill();
+        if let Err(error) = child.start_kill() {
+            tracing::warn!(?pid, %error, "Failed to send kill signal to bundled Iggy child process");
+        }
         match timeout(Duration::from_millis(shutdown_timeout_ms), child.wait()).await {
             Ok(Ok(status)) => {
                 tracing::info!(
@@ -1364,7 +1366,9 @@ impl BundledConnector {
                         "bundled Iggy process did not stop and could not be terminated: {error}"
                     ))
                 })?;
-                let _ = child.wait().await;
+                if let Err(error) = child.wait().await {
+                    tracing::warn!(?pid, %error, "Failed waiting for bundled Iggy child process after kill");
+                }
                 Err(ConnectorError::Timeout(
                     "bundled Iggy process did not stop within the configured timeout".to_string(),
                 ))
@@ -1455,7 +1459,12 @@ impl IggyConnector for BundledConnector {
             *self.config.write().await = Some(config.bundled.clone());
 
             if let Err(error) = self.wait_until_ready(config, &address).await {
-                let _ = self.stop_child(config.bundled.shutdown_timeout_ms).await;
+                if let Err(stop_error) = self.stop_child(config.bundled.shutdown_timeout_ms).await {
+                    tracing::warn!(
+                        %stop_error,
+                        "Failed to stop bundled Iggy child process after readiness failure"
+                    );
+                }
                 *self.config.write().await = None;
                 return Err(error);
             }

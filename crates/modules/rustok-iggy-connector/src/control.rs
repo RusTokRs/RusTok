@@ -39,16 +39,39 @@ pub struct IggyConnectorUpdateOutcome {
     pub restart_required: bool,
 }
 
+/// Typed error for Iggy connector control operations.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct IggyConnectorControlError(pub String);
+
+impl From<String> for IggyConnectorControlError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for IggyConnectorControlError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<IggyConnectorControlError> for String {
+    fn from(err: IggyConnectorControlError) -> Self {
+        err.0
+    }
+}
+
 #[async_trait]
 pub trait IggyConnectorControl: Send + Sync {
-    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, String>;
+    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError>;
 
     async fn update_configuration(
         &self,
         input: IggyConnectorSettingsInput,
         actor_id: Uuid,
         actor_tenant_id: Uuid,
-    ) -> Result<IggyConnectorUpdateOutcome, String>;
+    ) -> Result<IggyConnectorUpdateOutcome, IggyConnectorControlError>;
 }
 
 #[derive(Clone)]
