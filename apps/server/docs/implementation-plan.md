@@ -1573,6 +1573,8 @@ cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_
 cargo test -p rustok-installer --lib --features host-runtime every_durable_stage_can_fail_closed_to_recovery_required
 cargo test -p rustok-installer --lib --features host-runtime cleanup_is_not_a_valid_transition_after_preflight
 cargo test -p rustok-installer --lib --features host-runtime completed_and_cleaned_states_are_terminal
+cargo test -p rustok-installer-persistence --lib fresh_install_cleaned_requires_successful_rollback_receipt
+cargo test -p rustok-installer-persistence --lib failed_state_requires_recovery_and_successful_rollback_receipt
 cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
 cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
 cargo check -p rustok-installer-cli
