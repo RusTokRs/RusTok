@@ -1276,7 +1276,8 @@ pub(crate) async fn generate_product_attributes(
         },
     )
     .await?;
-    validate_product_attributes_payload(&generated).map_err(AiError::Validation)?;
+    validate_product_attributes_payload(&generated)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
@@ -1355,7 +1356,8 @@ async fn generate_product_copy(
         },
     )
     .await?;
-    validate_product_copy_payload(&generated).map_err(AiError::Validation)?;
+    validate_product_copy_payload(&generated)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
