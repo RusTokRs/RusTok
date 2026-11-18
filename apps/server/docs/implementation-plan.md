@@ -1413,6 +1413,8 @@ the same read/upsert/orphan sequence without a tenant-level serialization fence.
   left by older versions, and clears credentials again before reactivating a
   previously disabled app. Embedded-app reactivation also checks the combined
   active/revoked state instead of the raw is_active column alone.
+- Explicit manual app revocation uses the same credential cleanup path and
+  revokes active user consents alongside tokens and pending authorization codes.
 - Added a regression case where an embedded app is upserted before a later
   manual-app slug conflict; the earlier embedded-app write must not leak.
 - The all-tenants bootstrap remains a sequence of per-tenant transactions,
@@ -1429,7 +1431,6 @@ cargo fmt --all -- --check
 cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
 cargo test -p rustok-server --lib services::oauth_app::tests::app_revocation_revokes_active_user_consents
 cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_reactivates_embedded_app_with_revocation_timestamp
-cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
 cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
 cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
 ```
