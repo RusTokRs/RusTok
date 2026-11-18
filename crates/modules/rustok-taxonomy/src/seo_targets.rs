@@ -23,6 +23,7 @@ pub struct TaxonomyCategorySeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: Static builtin category SEO target slug constant is well-formed.
         SeoTargetSlug::new(builtin_slug::CATEGORY)
             .expect("builtin category SEO target slug must stay valid")
     }
