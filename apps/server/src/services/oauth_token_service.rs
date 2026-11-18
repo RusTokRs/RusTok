@@ -31,9 +31,11 @@ const USER_REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 /// first-party session cap: rotation slides the per-token expiry but
 /// never past 90 days from the family's first token.
 const USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS: i64 = 90;
-/// Replaying a rotated-away OAuth refresh token inside this window is
-/// treated as a client retry race; after it, as theft (whole family
-/// revoked). Mirrors the first-party session grace window.
+/// A replay of a rotated-away OAuth refresh token inside this window is
+/// rejected without revoking the family because it may be a concurrent
+/// duplicate. This is not idempotent response replay: the replacement token
+/// is not cached, so a lost successful response cannot be recovered. After
+/// the window, reuse is treated as theft and the whole family is revoked.
 const OAUTH_REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
