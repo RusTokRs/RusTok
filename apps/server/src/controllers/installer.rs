@@ -7,8 +7,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use rustok_installer::{
-    build_install_lock_owner, InstallApplyOptions, InstallApplyOutput, InstallComposition,
-    InstallDistributionBinding,
+    build_install_lock_owner, is_valid_install_lock_ttl_secs, InstallApplyOptions,
+    InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
@@ -189,6 +190,20 @@ impl Drop for InstallerJobRuntimeGuard {
     }
 }
 
+fn validate_http_lock_ttl_secs(requested: Option<i64>) -> Result<i64> {
+    let ttl_secs = requested.unwrap_or(DEFAULT_INSTALL_LOCK_TTL_SECS);
+    if !is_valid_install_lock_ttl_secs(ttl_secs) {
+        return Err(http_error(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_lock_ttl",
+            format!(
+                "lock_ttl_secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+            ),
+        )));
+    }
+    Ok(ttl_secs)
+}
+
 async fn apply(
     headers: HeaderMap,
     State(ctx): State<ServerRuntimeContext>,
@@ -197,6 +212,7 @@ async fn apply(
     tracing::debug!(environment = ?request.plan.environment, "Handling installer apply request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
+    let lock_ttl_secs = validate_http_lock_ttl_secs(request.lock_ttl_secs)?;
 
     if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
         tracing::warn!(active_job_id = %active.id(), "Installer job rejected: job already in progress");
@@ -235,7 +251,7 @@ async fn apply(
     let apply_options = InstallApplyOptions {
         session_id: Some(job_id),
         lock_owner,
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
+        lock_ttl_secs,
         pg_admin_url: request.pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
@@ -717,6 +733,26 @@ mod tests {
                 .next(),
             Some("installer")
         );
+    }
+
+    #[test]
+    fn installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values() {
+        assert_eq!(
+            validate_http_lock_ttl_secs(None).expect("default TTL is valid"),
+            DEFAULT_INSTALL_LOCK_TTL_SECS
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(1)).expect("minimum TTL is valid"),
+            1
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS))
+                .expect("maximum TTL is valid"),
+            MAX_INSTALL_LOCK_TTL_SECS
+        );
+        assert!(validate_http_lock_ttl_secs(Some(0)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(-1)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS + 1)).is_err());
     }
 
     #[test]
