@@ -512,6 +512,11 @@ async fn acquire_lock_in_transaction(
         )
     })?;
 
+    if session.attempt_generation < 0 {
+        return Err(sea_orm::DbErr::Custom(
+            "installer attempt generation must not be negative".to_string(),
+        ));
+    }
     let next_generation = session.attempt_generation.checked_add(1).ok_or_else(|| {
         sea_orm::DbErr::Custom("installer attempt generation is exhausted".to_string())
     })?;

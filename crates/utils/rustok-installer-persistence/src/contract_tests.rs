@@ -431,6 +431,51 @@ async fn completed_session_releases_admission_gate() {
 }
 
 #[tokio::test]
+async fn acquire_lock_rejects_corrupt_or_exhausted_attempt_generation() {
+    for generation in [-1, i64::MAX] {
+        let db = setup_contract_test_db().await;
+        let service = InstallerPersistenceService::new(db.clone());
+        let session = service
+            .create_session(&sample_plan(), None, None)
+            .await
+            .expect("session created");
+
+        let mut corrupted: install_session::ActiveModel = session.clone().into();
+        corrupted.attempt_generation = Set(generation);
+        corrupted
+            .update(&db)
+            .await
+            .expect("inject invalid generation fixture");
+
+        let current = service
+            .get_session(session.id)
+            .await
+            .expect("read session")
+            .expect("session exists");
+        let error = service
+            .acquire_lock(
+                current,
+                "worker-node-invalid-generation",
+                chrono::Duration::minutes(5),
+            )
+            .await
+            .expect_err("invalid generation must fail before claiming");
+        assert!(
+            error.to_string().contains("generation"),
+            "unexpected error for generation {generation}: {error}"
+        );
+
+        let unchanged = service
+            .get_session(session.id)
+            .await
+            .expect("read unchanged session")
+            .expect("session exists");
+        assert!(unchanged.lock_owner.is_none());
+        assert_eq!(unchanged.attempt_generation, generation);
+    }
+}
+
+#[tokio::test]
 async fn acquire_lock_rejects_out_of_range_ttl_before_claiming_session() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);
