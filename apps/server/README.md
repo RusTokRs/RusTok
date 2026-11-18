@@ -108,8 +108,9 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   owners and a monotonic attempt generation per claim, with a 1–86,400 second
   lease TTL. Every state, tenant, and receipt mutation now checks the persisted
   owner plus generation under a target-session row lock; receipts retain their
-  generation. Persistence still blocks new applies while any unreconciled
-  session has a recorded owner, even after lease expiry, and
+  generation. Persistence blocks new applies while any unfinished non-draft
+  session remains, even if its lease owner was cleared; only an ownerless
+  `draft` session can be reclaimed after explicit reconciliation.
   `recovery_required` remains blocking until manual reconciliation. New
   `failed` and `fresh_install_cleaned` terminal states require a successful
   rollback receipt from the current attempt generation. The executor still
