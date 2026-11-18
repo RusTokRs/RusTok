@@ -83,7 +83,10 @@ remove its retention obligation; this preserves the ability to resume after an
 outage. A consumer must not retire its registration until all events for its
 required event types have reached a terminal receipt and been acknowledged.
 Retirement is an explicit owner/operator action, not an automatic side effect
-of process shutdown or an environment flag.
+of process shutdown or an environment flag. `OutboxConsumer::retire_if_drained`
+refuses to remove a registration while any existing event of its registered
+types is unacknowledged; the caller must first stop the consumer and quiesce
+those event producers.
 
 New event types are registered before the intake worker starts. Existing
 terminal Notifications receipts are backfilled to Outbox acknowledgements

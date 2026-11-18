@@ -95,7 +95,8 @@ impl OutboxConsumer {
     }
 
     /// Retires a consumer only after every existing event for its registered
-    /// event types has a terminal acknowledgement. Stop the worker before calling.
+    /// event types has a terminal acknowledgement. Stop the worker and quiesce
+    /// producers of those event types before calling.
     pub async fn retire_if_drained(&self, consumer_key: &str) -> Result<()> {
         validate_consumer_key(consumer_key)?;
         let txn = self.db.begin().await?;

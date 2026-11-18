@@ -54,7 +54,9 @@ When both records share a database, the neutral owner port writes the Outbox
 acknowledgement in the same transaction. Retryable failures do not acknowledge.
 Registration persists across worker shutdown and feature-flag disablement so an
 outage cannot silently release retained events. A consumer must be drained before
-its registration is explicitly retired.
+its registration is explicitly retired. `OutboxConsumer::retire_if_drained` refuses
+retirement while any existing event remains unacknowledged; callers must stop the
+worker and quiesce producers of the registered event types first.
 
 ## Tenant and authorization boundary
 
