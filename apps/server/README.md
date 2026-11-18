@@ -131,8 +131,11 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
-  falsely reporting only an invalid grant. Durable incident/retry evidence and
-  two-replica failure-injection verification remain pending.
+  falsely reporting only an invalid grant. Its 30-second grace window suppresses
+  family revocation for a likely concurrent duplicate, but still returns
+  `invalid_grant` and does not replay the replacement token; a lost successful
+  response cannot be recovered from the old token. Durable incident/retry
+  evidence and two-replica failure-injection verification remain pending.
 
 ## Acknowledged sealed delivery (source only)
 
