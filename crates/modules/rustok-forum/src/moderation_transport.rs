@@ -42,6 +42,7 @@ pub(crate) fn moderation_audience_port_context(
     }
 
     if let Some(request) = request {
+        // INVARIANT: fail-closed transport context validation verifies caller tenant matches requested tenant scope before dispatch.
         if request.tenant_id != tenant_id {
             return Err(ForumError::Validation(
                 "Forum moderation request tenant does not match the requested tenant".to_string(),

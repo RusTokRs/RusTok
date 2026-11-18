@@ -59,6 +59,16 @@ impl ArtifactBindingOperation {
 /// Executes an already-resolved binding through the sole admitted runtime path.
 /// `idempotency_key` is transport-normalized rather than read from an HTTP
 /// header, so GraphQL cannot bypass the durable binding receipt contract.
+#[tracing::instrument(
+    skip(ctx, installation, binding, operation),
+    fields(
+        tenant_id = %tenant_id,
+        actor_id = %actor_id,
+        binding_id = %binding.id(),
+        artifact_id = %installation.artifact_id,
+    ),
+    err
+)]
 pub(crate) async fn dispatch_artifact_binding_operation(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,

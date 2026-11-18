@@ -519,6 +519,7 @@ fn validate_media_reference(
     reference: &rustok_media::MediaAssetReference,
     tenant_id: Uuid,
 ) -> ForumResult<()> {
+    // INVARIANT: fail-closed validation of cross-module media asset references ensures caller tenant matches forum tenant.
     if reference.tenant_id != tenant_id {
         return Err(ForumError::CapabilityFailure {
             capability: "media.asset_reference_reconciliation",

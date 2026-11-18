@@ -93,6 +93,7 @@ fn validate_context(
     user_id: Uuid,
 ) -> Result<(), PortError> {
     context.require_policy(PortCallPolicy::read())?;
+    // INVARIANT: fail-closed port context verification ensures transport caller tenant matches target tenant.
     if context.tenant_id != tenant_id.to_string() {
         return Err(PortError::validation(
             TENANT_MISMATCH_CODE,
