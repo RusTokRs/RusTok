@@ -1534,17 +1534,18 @@ previous attempt is reconciled and a new monotonic generation is issued.
 
 - A session row can be claimed only once (`lock_owner IS NULL` and
   `status = draft`); a second attempt cannot overwrite its existing owner.
-- Any other unreconciled session with a recorded owner blocks a new apply
-  even when its lease timestamp has expired. Expiry alone is no longer treated
-  as proof that the previous process stopped. `recovery_required` also blocks
-  admission until manual reconciliation, despite being terminal for execution.
+- Any unfinished non-draft session blocks a new apply even when its lease
+  owner was cleared. Expiry or clearing the owner is not proof that the previous
+  process stopped; only an ownerless `draft` session can be reclaimed after
+  explicit reconciliation.
 - PostgreSQL and MySQL lock acquisition now uses a serializable transaction;
   SQLite obtains its write fence through the conditional session-claim update.
-- `completed`, safely `failed`, and `fresh_install_cleaned` sessions release
-  the global admission gate. `recovery_required` and stale unfinished sessions
-  require explicit reconciliation before another apply can start.
+- `completed` sessions release admission after the final receipt; `failed` and
+  `fresh_install_cleaned` require a successful rollback receipt for the current
+  attempt generation. `recovery_required` remains blocking until reconciliation.
 - Regression coverage verifies same-session re-claim rejection, expired-lease
-  blocking, and release after finalization.
+  blocking, ownerless-progressed-session blocking, and release only after
+  successful finalize/rollback receipts.
 - Session claims now advance a durable generation with compare-and-set.
 - State, tenant, and receipt writes verify the exact owner+generation under a
   transaction-scoped session row lock. Old workers cannot append receipts or
