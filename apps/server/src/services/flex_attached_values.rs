@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 #[cfg(feature = "mod-product")]
 use flex::PRODUCT_ENTITY_TYPE;
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "Imports conditionally consumed depending on activated module feature flags")]
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE,
     TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE, delete_attached_localized_values,
@@ -101,6 +101,7 @@ impl FlexAttachedValuesService {
     /// current shared/exact values inside that transaction, persisted only on semantic
     /// change, and then advances the donor aggregate revision in the same commit. This is
     /// the mutation law shared with attached Translation CAS.
+    #[tracing::instrument(skip(db, payload), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id, locale = %locale))]
     pub async fn update_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -386,6 +387,7 @@ impl FlexAttachedValuesService {
         }
     }
 
+    #[tracing::instrument(skip(db), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id))]
     pub async fn delete_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -520,6 +522,7 @@ impl FlexAttachedValuesService {
         persist_localized_values(db, tenant_id, entity_type, entity_id, locale, values).await
     }
 
+    #[tracing::instrument(skip(db), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id))]
     pub async fn delete_localized_values<C>(
         db: &C,
         tenant_id: Uuid,
