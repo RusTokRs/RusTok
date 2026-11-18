@@ -1377,6 +1377,8 @@ produce repeated worker metrics.
   the canonical SEO readiness checks are independently gated by `mod-seo`.
 - Added a regression test asserting readiness check names are unique and that
   Outbox, remote-executor, and SEO worker checks each have one canonical entry.
+- Updated the host-mode snapshot test to treat EventBus forwarding and optional
+  Comments workers as optional until their runtime handles are registered.
 - Updated the readiness runbook to document Outbox retention, EventBus
   forwarder, and the three independently configured SEO worker checks.
 
