@@ -106,7 +106,7 @@ impl WorkflowCronScheduler {
             let engine = self.engine.clone();
             let ctx = json!({ "trigger": { "type": "cron", "expression": expr } });
 
-            tokio::spawn(async move {
+            let _cron_task = tokio::spawn(async move {
                 if let Err(e) = engine
                     .execute(workflow_id, tenant_id, None, steps, ctx)
                     .await
