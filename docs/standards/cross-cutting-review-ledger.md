@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-08: Database Transactions, Concurrency & Data Integrity
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07 (7/17 completed — 41.2%)
+- **Active Phase:** CC-09: Background Workers, Schedulers & Async Runtime Safety
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08 (8/17 completed — 47.1%)
 - **Active Branch:** `main`
 
 ---
@@ -302,11 +302,31 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `migration/`, `crates/modules/*/migration/`, SeaORM entities.
 - **CodeGraph Target:** `DatabaseConnection::begin TransactionTrait find_by_id insert update`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-08.01 — Atomic Multi-Table Mutations**
-- [ ] **CC-08.02 — TOCTOU Race Condition Guards**
-- [ ] **CC-08.03 — Soft Delete & Archive Discipline**
-- [ ] **CC-08.04 — Non-Blocking Transaction Scope**
+- [x] **CC-08.01 — Atomic Multi-Table Mutations**
+  - Audited multi-table mutations and transactional outbox event coupling across domain modules:
+    - In `rustok-blog` (`crates/modules/rustok-blog/src/services/post/commands.rs`), `update_post` atomically updates post metadata, route slug claims (`claim_post_route_in_tx`), translations (`upsert_translation_in_tx`), channel visibility (`replace_channel_visibility_in_tx`), taxonomy tags (`sync_post_tags_in_tx`), and outbox event emissions (`self.event_bus.publish_in_tx(&txn, ...)`) within a single transaction committed via `txn.commit().await?`.
+    - In `rustok-comments` (`crates/modules/rustok-comments/src/services.rs`), comment creation, status mutations, and comment deletion atomically couple comment state changes with thread counter adjustments (`update_thread_counters_in_tx`) and outbox events (`publish_comment_created_in_tx`, `publish_comment_status_changed_in_tx`) in the same database transaction.
+    - In `rustok-tenant` (`crates/modules/rustok-tenant/src/services/tenant_service.rs`), `create_tenant` atomically inserts the tenant record, initial tenant locale record, and publishes `DomainEvent::TenantCreated` in a single transaction before committing.
+    - In `rustok-forum` (`crates/modules/rustok-forum/src/services/topic_merge.rs`), `merge_topics` executes all merge reconciliations (subscriptions, tags, votes, read state, audience) in a unified transaction.
+- [x] **CC-08.02 — TOCTOU Race Condition Guards**
+  - Verified optimistic concurrency control (CAS) in `rustok-blog`: updates filter by `.filter(blog_post::Column::Version.eq(version))` and explicitly check `result.rows_affected != 1` to detect concurrent modifications and return `BlogError::conflict`.
+  - Verified row-level locking (`.lock_exclusive()` / `LockType::Update`) in SeaORM queries:
+    - `rustok-comments`: comment updates and thread lookups lock rows via `.lock_exclusive()` to prevent concurrent conflicting writes and race conditions.
+    - `rustok-outbox`: PostgreSQL polling in `crates/modules/rustok-outbox/src/relay.rs` utilizes `.lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)`, preventing lock contention between competing worker processes and eliminating head-of-line blocking.
+    - `flex`: `crates/modules/flex/src/attached_translation_guard.rs` enforces `lock_attached_translation_schema_in_tx` using `SELECT ... FOR UPDATE` (or SQLite UPDATE no-op) on the durable cache generation row before reading definitions, ensuring schema snapshot integrity against concurrent updates or phantom inserts.
+    - `rustok-forum`: `crates/modules/rustok-forum/src/services/reply.rs` uses `.lock_exclusive()` on PostgreSQL.
+- [x] **CC-08.03 — Soft Delete & Archive Discipline**
+  - Verified soft-delete invariant: entities with `deleted_at` (such as `comments`) strictly enforce `.filter(comment::Column::DeletedAt.is_null())` on active lookups.
+  - Verified that soft deletions (`delete_comment_in_tx`) atomically mark `active.deleted_at = Set(Some(...))` and adjust parent thread counters (`update_thread_counters_in_tx(txn, &thread, -1, None)`) in the same transaction.
+  - Reinstated the canonical `forum-moderation-revision-migration-contract.md` handoff in `crates/modules/rustok-forum/docs/` and indexed it in `crates/modules/rustok-forum/docs/README.md`, maintaining trigger parity and backfill fencing contracts.
+- [x] **CC-08.04 — Non-Blocking Transaction Scope**
+  - Verified that expensive CPU operations, password hashing, and external calls are executed strictly outside database transactions:
+    - `rustok-auth`: Argon2id password hashing (`hash_password`) in `bootstrap.rs` and `cli/src/lib.rs` executes prior to opening database transactions, preventing connection pool exhaustion during key derivation.
+    - `rustok-blog`: schedule validation (`validate_schedule_for_update`) and clock sampling (`chrono::Utc::now()`) run prior to acquiring database transactions (`self.db.begin()`).
+  - Added automated gate `scripts/verify/verify-db-transactions-concurrency-guards.mjs` (PASSED). Verified with migration and index storage scripts (PASSED) and scoped check `cargo check -p rustok-blog -p rustok-comments -p rustok-forum` (PASSED, 0 errors, 0 warnings).
 
 ---
 
