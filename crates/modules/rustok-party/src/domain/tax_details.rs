@@ -84,7 +84,13 @@ pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
         )));
     }
 
-    let digits: Vec<u32> = inn.chars().map(|c| c.to_digit(10).unwrap()).collect();
+    let digits: Vec<u32> = inn
+        .chars()
+        .map(|c| {
+            c.to_digit(10)
+                .ok_or_else(|| PartyError::Validation("Non-digit char in INN".into()))
+        })
+        .collect::<Result<_, _>>()?;
     let weights = [2, 4, 10, 3, 5, 9, 4, 6, 8];
 
     let sum: u32 = digits[..9]
