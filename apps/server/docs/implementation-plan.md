@@ -1549,6 +1549,9 @@ previous attempt is reconciled and a new monotonic generation is issued.
 - State, tenant, and receipt writes verify the exact owner+generation under a
   transaction-scoped session row lock. Old workers cannot append receipts or
   change session state/tenant after a later attempt is claimed.
+- State advancement is receipt-gated: every completed stage requires its
+  successful receipt from the same attempt generation; terminal failed/cleaned
+  states require successful rollback evidence.
 
 ### Remaining boundary
 

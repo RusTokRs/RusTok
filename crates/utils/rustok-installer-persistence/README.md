@@ -19,6 +19,9 @@ the schema created by `rustok-migrations`.
   generation. PostgreSQL/MySQL acquire a row lock before checking the fence;
   SQLite reserves its writer before reading. Receipt rows retain their
   generation for audit and stale-attempt diagnosis.
+- Require successful per-step receipts from the current generation before
+  advancing the corresponding durable state; `Verified` requires deploy and
+  verify receipts, and `Completed` requires finalize.
 - Persist and read redacted, append-only step receipts. In
   `recovery_required`, only rollback receipts are accepted; `failed` and
   `fresh_install_cleaned` can release admission only with a successful
