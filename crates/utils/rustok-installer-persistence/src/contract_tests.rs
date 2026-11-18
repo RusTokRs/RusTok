@@ -1,9 +1,9 @@
 use chrono::Utc;
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
-    InstallProfile, InstallReceipt, InstallState, InstallStep, InstallTopology,
-    InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue, TenantBootstrap,
-    MAX_INSTALL_LOCK_TTL_SECS,
+    InstallProfile, InstallReceipt, InstallSessionRecord, InstallState, InstallStep,
+    InstallTopology, InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue,
+    TenantBootstrap, MAX_INSTALL_LOCK_TTL_SECS,
 };
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Set};
 use uuid::Uuid;
@@ -95,23 +95,33 @@ fn sample_plan() -> InstallPlan {
     }
 }
 
+fn session_record(model: &install_session::Model) -> InstallSessionRecord {
+    InstallSessionRecord {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        status: model.status.clone(),
+        attempt_generation: model.attempt_generation,
+        lock_owner: model.lock_owner.clone(),
+        lock_expires_at: model.lock_expires_at,
+    }
+}
+
 #[tokio::test]
 async fn session_persistence_lifecycle_and_state_transitions() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db.clone());
     let plan = sample_plan();
 
-    // 1. Create session
     let session = service
         .create_session(&plan, None, None)
         .await
         .expect("session created");
     assert_eq!(session.status, "draft");
+    assert_eq!(session.attempt_generation, 0);
     assert_eq!(session.environment, "local");
     assert_eq!(session.profile, "monolith");
     assert!(session.lock_owner.is_none());
 
-    // 2. Fetch latest session
     let latest = service
         .latest_session()
         .await
@@ -119,7 +129,6 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("session exists");
     assert_eq!(latest.id, session.id);
 
-    // 3. Acquire lock
     let locked = service
         .acquire_lock(
             session.clone(),
@@ -129,9 +138,9 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .await
         .expect("acquire lock");
     assert_eq!(locked.lock_owner.as_deref(), Some("worker-node-1"));
+    assert_eq!(locked.attempt_generation, 1);
     assert!(locked.lock_expires_at.is_some());
 
-    // 4. A second attempt cannot overwrite the owner on the same session.
     let same_session_err = service
         .acquire_lock(
             locked.clone(),
@@ -142,7 +151,6 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect_err("a session can only be claimed once");
     assert!(same_session_err.to_string().contains("already has an execution attempt"));
 
-    // 5. Another session is blocked while the first execution is unfinished.
     let session2 = service
         .create_session(&plan, None, None)
         .await
@@ -157,8 +165,6 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect_err("competing lock must be rejected");
     assert!(err.to_string().contains("unfinished execution"));
 
-    // 6. Lease expiry alone must not allow a second installer to overlap a
-    // possibly still-running first worker.
     let mut expired_session: install_session::ActiveModel = locked.clone().into();
     expired_session.lock_expires_at =
         Set(Some(Utc::now() - chrono::Duration::seconds(1)));
@@ -176,63 +182,150 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect_err("expired lease must still block an unfinished session");
     assert!(expired_lock_err.to_string().contains("unfinished execution"));
 
-    // 7. State transitions
-    let updated = service
-        .set_state(session.id, InstallState::PreflightPassed)
+    let mut wrong_owner = session_record(&locked);
+    wrong_owner.lock_owner = Some("stale-worker".to_string());
+    let stale_owner_error = service
+        .set_state(&wrong_owner, InstallState::PreflightPassed)
         .await
-        .expect("set state");
-    assert_eq!(updated.status, "preflight_passed");
+        .expect_err("a stale owner must not mutate the session");
+    assert!(stale_owner_error.to_string().contains("attempt fence"));
 
-    // 8. Set tenant ID
+    let mut wrong_generation = session_record(&locked);
+    wrong_generation.attempt_generation = 0;
+    let stale_generation_error = service
+        .set_state(&wrong_generation, InstallState::PreflightPassed)
+        .await
+        .expect_err("a stale generation must not mutate the session");
+    assert!(stale_generation_error.to_string().contains("attempt fence"));
+
+    let preflight = service
+        .set_state(&session_record(&locked), InstallState::PreflightPassed)
+        .await
+        .expect("set preflight state");
+    assert_eq!(preflight.status, "preflight_passed");
+
+    let config = service
+        .set_state(&session_record(&preflight), InstallState::ConfigPrepared)
+        .await
+        .expect("set config state");
+    let database_ready = service
+        .set_state(&session_record(&config), InstallState::DatabaseReady)
+        .await
+        .expect("set database state");
+    let schema_applied = service
+        .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
+        .await
+        .expect("set schema state");
+
     let tenant_id = Uuid::new_v4();
     let updated_tenant = service
-        .set_tenant_id(session.id, tenant_id)
+        .set_tenant_id(&session_record(&schema_applied), tenant_id)
         .await
         .expect("set tenant id");
     assert_eq!(updated_tenant.tenant_id, Some(tenant_id));
 
-    // 9. RecoveryRequired must block admission even if an operator has
-    // cleared the expired owner while preparing manual reconciliation.
-    let mut ownerless_recovery_session: install_session::ActiveModel = locked.clone().into();
+    let recovery_required = service
+        .set_state(
+            &session_record(&updated_tenant),
+            InstallState::RecoveryRequired,
+        )
+        .await
+        .expect("mark recovery required");
+    assert_eq!(recovery_required.status, "recovery_required");
+
+    // Even an operator-cleared owner does not make an unresolved recovery
+    // session safe to bypass: the admission gate also checks durable state.
+    let mut ownerless_recovery_session: install_session::ActiveModel =
+        recovery_required.clone().into();
     ownerless_recovery_session.lock_owner = Set(None);
     ownerless_recovery_session
         .update(&db)
         .await
-        .expect("clear expired owner before reconciliation");
-    let recovery_required = service
-        .set_state(session.id, InstallState::RecoveryRequired)
-        .await
-        .expect("mark recovery required");
-    assert_eq!(recovery_required.status, "recovery_required");
+        .expect("clear owner only as part of the manual-reconciliation fixture");
     let recovery_gate_err = service
-        .acquire_lock(
-            session2.clone(),
-            "worker-node-2",
-            chrono::Duration::minutes(5),
-        )
-        .await
-        .expect_err("recovery-required session must keep the admission gate closed");
-    assert!(recovery_gate_err.to_string().contains("unfinished execution"));
-
-    // 10. Verify has_completed_session before and after completion
-    assert!(!service.has_completed_session().await.expect("query"));
-    let completed = service
-        .set_state(session.id, InstallState::Completed)
-        .await
-        .expect("set completed");
-    assert_eq!(completed.status, "completed");
-    assert!(completed.completed_at.is_some());
-    assert!(service.has_completed_session().await.expect("query"));
-
-    let second_lock = service
         .acquire_lock(
             session2,
             "worker-node-2",
             chrono::Duration::minutes(5),
         )
         .await
-        .expect("a finalized session no longer blocks a new apply");
-    assert_eq!(second_lock.lock_owner.as_deref(), Some("worker-node-2"));
+        .expect_err("recovery-required session must keep the admission gate closed");
+    assert!(recovery_gate_err.to_string().contains("unfinished execution"));
+    assert!(!service.has_completed_session().await.expect("query"));
+}
+
+#[tokio::test]
+async fn completed_session_releases_admission_gate() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let plan = sample_plan();
+    let session = service
+        .create_session(&plan, None, None)
+        .await
+        .expect("session created");
+    let locked = service
+        .acquire_lock(
+            session,
+            "worker-node-1",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("acquire lock");
+
+    let preflight = service
+        .set_state(&session_record(&locked), InstallState::PreflightPassed)
+        .await
+        .expect("preflight");
+    let config = service
+        .set_state(&session_record(&preflight), InstallState::ConfigPrepared)
+        .await
+        .expect("config");
+    let database_ready = service
+        .set_state(&session_record(&config), InstallState::DatabaseReady)
+        .await
+        .expect("database");
+    let schema_applied = service
+        .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
+        .await
+        .expect("schema");
+    let seed_applied = service
+        .set_state(&session_record(&schema_applied), InstallState::SeedApplied)
+        .await
+        .expect("seed");
+    let admin = service
+        .set_state(&session_record(&seed_applied), InstallState::AdminProvisioned)
+        .await
+        .expect("admin");
+    let deploying = service
+        .set_state(&session_record(&admin), InstallState::Deploying)
+        .await
+        .expect("deploying");
+    let verified = service
+        .set_state(&session_record(&deploying), InstallState::Verified)
+        .await
+        .expect("verified");
+    let completed = service
+        .set_state(&session_record(&verified), InstallState::Completed)
+        .await
+        .expect("completed");
+    assert_eq!(completed.status, "completed");
+    assert!(completed.completed_at.is_some());
+    assert!(service.has_completed_session().await.expect("query"));
+
+    let next_session = service
+        .create_session(&plan, None, None)
+        .await
+        .expect("next session created");
+    let next_lock = service
+        .acquire_lock(
+            next_session,
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("completed session releases the admission gate");
+    assert_eq!(next_lock.lock_owner.as_deref(), Some("worker-node-2"));
+    assert_eq!(next_lock.attempt_generation, 1);
 }
 
 #[tokio::test]
@@ -273,6 +366,7 @@ async fn acquire_lock_rejects_out_of_range_ttl_before_claiming_session() {
         .await
         .expect("maximum supported TTL is accepted");
     assert!(accepted.lock_expires_at.is_some());
+    assert_eq!(accepted.attempt_generation, 1);
 }
 
 #[tokio::test]
@@ -288,16 +382,28 @@ async fn reserved_session_id_is_used_by_the_durable_session_row() {
 
     assert_eq!(session.id, expected_id);
     assert_eq!(session.status, "draft");
+    assert_eq!(session.attempt_generation, 0);
 }
 
 #[tokio::test]
-async fn receipt_persistence_and_conversion() {
+async fn receipt_persistence_and_conversion_is_bound_to_the_current_attempt() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);
-    let session_id = Uuid::new_v4();
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+    let locked = service
+        .acquire_lock(
+            session,
+            "receipt-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("acquire lock");
 
     let receipt = InstallReceipt {
-        session_id: session_id.to_string(),
+        session_id: locked.id.to_string(),
         step: InstallStep::Preflight,
         outcome: ReceiptOutcome::Success,
         input_checksum: "sha256:abc123def456".to_string(),
@@ -306,22 +412,46 @@ async fn receipt_persistence_and_conversion() {
         created_at: Utc::now(),
     };
 
+    let mut stale_owner = session_record(&locked);
+    stale_owner.lock_owner = Some("replaced-worker".to_string());
+    assert!(
+        service
+            .record_receipt(&stale_owner, &receipt)
+            .await
+            .expect_err("stale owner cannot append a receipt")
+            .to_string()
+            .contains("attempt fence")
+    );
+
+    let mut stale_generation = session_record(&locked);
+    stale_generation.attempt_generation -= 1;
+    assert!(
+        service
+            .record_receipt(&stale_generation, &receipt)
+            .await
+            .expect_err("stale generation cannot append a receipt")
+            .to_string()
+            .contains("attempt fence")
+    );
+
     let model = service
-        .record_receipt(&receipt)
+        .record_receipt(&session_record(&locked), &receipt)
         .await
         .expect("record receipt");
-    assert_eq!(model.session_id, session_id);
+    assert_eq!(model.session_id, locked.id);
+    assert_eq!(model.attempt_generation, locked.attempt_generation);
     assert_eq!(model.step, "preflight");
     assert_eq!(model.outcome, "success");
     assert_eq!(model.input_checksum, "sha256:abc123def456");
 
     let items = service
-        .list_receipts(session_id)
+        .list_receipts(locked.id)
         .await
         .expect("list receipts");
     assert_eq!(items.len(), 1);
     let item: &InstallStepReceiptItem = &items[0];
-    assert_eq!(item.session_id, session_id);
+    assert_eq!(item.session_id, locked.id);
+    assert_eq!(item.attempt_generation, locked.attempt_generation);
     assert_eq!(item.step, "preflight");
     assert_eq!(item.outcome, "success");
     assert_eq!(item.input_checksum, "sha256:abc123def456");
