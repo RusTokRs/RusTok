@@ -1043,7 +1043,7 @@ pub async fn sync_app_connections(
 
         // Also repair legacy inactive rows whose dependent credentials were
         // not revoked by earlier manifest-sync implementations.
-        if current_app.is_active() || current_app.revoked_at.is_none() {
+        if current_app.is_active || current_app.revoked_at.is_none() {
             let result = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
                 .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
@@ -1077,7 +1077,7 @@ pub async fn sync_app_connections(
             }
         }
 
-        revoke_oauth_app_credentials(&tx, current_app.id, tenant_id, now).await?;
+        revoke_oauth_app_credentials(&tx, current_app.id, tenant_id, now.clone()).await?;
     }
 
     tx.commit().await.map_err(|error| {
@@ -1157,8 +1157,8 @@ where
     C: ConnectionTrait,
 {
     OAuthTokens::update_many()
-        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now.clone()))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now.clone()))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
@@ -1172,7 +1172,7 @@ where
     OAuthConsents::update_many()
         .col_expr(
             crate::models::oauth_consents::Column::RevokedAt,
-            Expr::value(Some(now)),
+            Expr::value(Some(now.clone())),
         )
         .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
         .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
@@ -1273,7 +1273,7 @@ where
         // unrelated runtime-owned fields such as last_used_at.
         if !app.is_active() {
             let now = Utc::now();
-            revoke_oauth_app_credentials(db, app.id, tenant_id, now).await?;
+            revoke_oauth_app_credentials(db, app.id, tenant_id, now.clone()).await?;
             let updated = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(true))
                 .col_expr(
