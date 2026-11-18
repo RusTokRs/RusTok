@@ -14,7 +14,7 @@ const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idemp
 const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
 const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id) }";
 const ADD_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminAddImage($idempotencyKey: String!, $productId: UUID!, $input: AddProductImageInput!) { addProductImage(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id mediaId url altText position } }";
 const UPDATE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminUpdateImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!, $input: UpdateProductImageInput!) { updateProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id, input: $input) { id mediaId url altText position } }";
@@ -46,7 +46,7 @@ struct UpdateVariantResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 struct DeleteVariantResponse {
     #[serde(rename = "deleteProductVariant")]
     delete_product_variant: bool,
@@ -107,7 +107,7 @@ struct UpdateVariantVariables {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 struct DeleteVariantVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
@@ -679,7 +679,7 @@ pub(crate) async fn update_product_variant(
     Ok(response.update_product_variant)
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 pub(crate) async fn delete_product_variant(
     token: Option<String>,
     tenant_slug: Option<String>,

@@ -601,7 +601,7 @@ pub(crate) async fn bind_category_attribute(
     .await
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,

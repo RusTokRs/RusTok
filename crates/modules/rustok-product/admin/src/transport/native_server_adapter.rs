@@ -190,7 +190,7 @@ pub(super) async fn bind_category_attribute(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
 pub(super) async fn save_product_attribute_values(
     tenant_id: String,
     product_id: String,

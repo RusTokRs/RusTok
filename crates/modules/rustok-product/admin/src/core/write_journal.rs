@@ -37,7 +37,7 @@ impl ProductWriteScope {
             && rustok_api::TenantLocale::new(self.locale.as_str()).is_ok()
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     pub fn storage_key<S: JournalState>(&self) -> String {
         format!(
             "{}:{}:{}:{}",
@@ -55,11 +55,11 @@ pub(crate) trait JournalScope:
 {
     fn valid(&self) -> bool;
     fn same_identity(&self, other: &Self) -> bool;
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     fn storage_key<S: JournalState>(&self) -> String;
     fn for_locale(&self, locale: String) -> Self;
     /// Dictionary scopes additionally fence the raw URL identity, without changing envelopes.
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     fn attribute_document_id(&self) -> Option<&str> {
         None
     }
@@ -89,9 +89,9 @@ pub(crate) fn valid_uuid(value: &str) -> bool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryQueryKey {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     Axes,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     VariantCreate,
     AttributeDefinition,
 }
@@ -108,9 +108,9 @@ impl RecoveryQueryKey {
 
 pub(crate) trait JournalState: Clone + PartialEq + Serialize + DeserializeOwned {
     type Scope: JournalScope;
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     const STORAGE_PREFIX: &'static str;
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Used in WASM target session storage journal")]
     const DOCUMENT_QUERY: RecoveryQueryKey;
     fn ready() -> Self;
     fn is_ready(&self) -> bool;
