@@ -1518,8 +1518,8 @@ was unsafe.
 
 ### Implemented
 
-- A session row can be claimed only once (`lock_owner IS NULL` and a non-final
-  status); a second attempt cannot overwrite its existing owner.
+- A session row can be claimed only once (`lock_owner IS NULL` and
+  `status = draft`); a second attempt cannot overwrite its existing owner.
 - Any other unreconciled session with a recorded owner blocks a new apply
   even when its lease timestamp has expired. Expiry alone is no longer treated
   as proof that the previous process stopped. `recovery_required` also blocks
