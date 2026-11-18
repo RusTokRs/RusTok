@@ -1,5 +1,8 @@
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, sea_query::Expr};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr,
+};
 
 use rustok_core::{Error, Result};
 
@@ -106,7 +109,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
-            .filter(Expr::cust("NOT EXISTS (\n    SELECT 1\n    FROM sys_event_consumers AS required_consumer\n    WHERE required_consumer.event_type = sys_events.event_type\n      AND NOT EXISTS (\n          SELECT 1\n          FROM sys_event_consumer_receipts AS consumer_receipt\n          WHERE consumer_receipt.outbox_event_id = sys_events.id\n            AND consumer_receipt.consumer_key = required_consumer.consumer_key\n            AND consumer_receipt.event_type = required_consumer.event_type\n      )\n)"))
+            .filter(required_consumers_acknowledged_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
             .limit(self.config.batch_size)
             .into_tuple::<uuid::Uuid>()
@@ -124,7 +127,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
-            .filter(Expr::cust("NOT EXISTS (\n    SELECT 1\n    FROM sys_event_consumers AS required_consumer\n    WHERE required_consumer.event_type = sys_events.event_type\n      AND NOT EXISTS (\n          SELECT 1\n          FROM sys_event_consumer_receipts AS consumer_receipt\n          WHERE consumer_receipt.outbox_event_id = sys_events.id\n            AND consumer_receipt.consumer_key = required_consumer.consumer_key\n            AND consumer_receipt.event_type = required_consumer.event_type\n      )\n)"))
+            .filter(required_consumers_acknowledged_predicate())
             .exec(&self.db)
             .await?
             .rows_affected;
@@ -145,6 +148,27 @@ impl OutboxRetention {
             batch_exhausted,
         })
     }
+}
+
+/// Returns the correlated predicate shared by the retention candidate scan
+/// and the final delete, so a stale candidate cannot bypass a consumer hold.
+fn required_consumers_acknowledged_predicate() -> Expr {
+    Expr::cust(
+        r#"
+NOT EXISTS (
+    SELECT 1
+    FROM sys_event_consumers AS required_consumer
+    WHERE required_consumer.event_type = sys_events.event_type
+      AND NOT EXISTS (
+          SELECT 1
+          FROM sys_event_consumer_receipts AS consumer_receipt
+          WHERE consumer_receipt.outbox_event_id = sys_events.id
+            AND consumer_receipt.consumer_key = required_consumer.consumer_key
+            AND consumer_receipt.event_type = required_consumer.event_type
+      )
+)
+"#,
+    )
 }
 
 #[cfg(test)]

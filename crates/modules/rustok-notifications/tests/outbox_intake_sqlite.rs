@@ -8,7 +8,8 @@ use rustok_notifications::entities::source_inbox;
 use rustok_notifications::{
     MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, NotificationError,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeWorker, NotificationResult,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort,
+    NotificationOutboxIntakeWorker, NotificationResult,
     NotificationsModule,
 };
 use sea_orm::{
@@ -83,7 +84,9 @@ impl NotificationOutboxIntakeReceiptPort for TestOutboxReceiptPort {
         }
         transaction
             .execute_unprepared(&format!(
-                "INSERT OR IGNORE INTO test_outbox_consumer_receipts (outbox_event_id, consumer_key, event_type) VALUES ('{outbox_event_id}', '{consumer_key}', '{event_type}')"
+                "INSERT OR IGNORE INTO test_outbox_consumer_receipts \
+                 (outbox_event_id, consumer_key, event_type) \
+                 VALUES ('{outbox_event_id}', '{consumer_key}', '{event_type}')"
             ))
             .await?;
         Ok(())

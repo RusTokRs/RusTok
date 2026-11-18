@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::NotificationSourceEventRef;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect,
     QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
@@ -401,7 +402,12 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
-            self.acknowledge_outbox_event_in_transaction(&txn, outbox_event_id, source_event.event_type().as_str()).await?;
+            self.acknowledge_outbox_event_in_transaction(
+                &txn,
+                outbox_event_id,
+                source_event.event_type().as_str(),
+            )
+            .await?;
             txn.commit().await?;
             return Ok(intake_result(existing, true));
         }
@@ -477,7 +483,12 @@ impl NotificationOutboxIntakeWorker {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_receipt_identity(&receipt, outbox_event_id, &source_event)?;
-        self.acknowledge_outbox_event_in_transaction(&txn, outbox_event_id, source_event.event_type().as_str()).await?;
+        self.acknowledge_outbox_event_in_transaction(
+            &txn,
+            outbox_event_id,
+            source_event.event_type().as_str(),
+        )
+        .await?;
         txn.commit().await?;
         Ok(intake_result(receipt, false))
     }
@@ -495,7 +506,8 @@ impl NotificationOutboxIntakeWorker {
                 .decode(&envelope_record(row))
                 .map_err(|_| NotificationError::SourceIdentityConflict)?;
             ensure_receipt_identity(&existing, row.id, &source_event)?;
-            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
+            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str())
+                .await?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
@@ -566,7 +578,12 @@ impl NotificationOutboxIntakeWorker {
             return Ok(());
         }
         let transaction = self.db.begin().await?;
-        self.acknowledge_outbox_event_in_transaction(&transaction, outbox_event_id, event_type).await?;
+        self.acknowledge_outbox_event_in_transaction(
+            &transaction,
+            outbox_event_id,
+            event_type,
+        )
+        .await?;
         transaction.commit().await?;
         Ok(())
     }

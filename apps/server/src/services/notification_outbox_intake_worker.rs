@@ -11,7 +11,8 @@ use rustok_notifications::api::{
 use rustok_notifications::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, NotificationError,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeWorker, NotificationResult,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort,
+    NotificationOutboxIntakeWorker, NotificationResult,
 };
 use tokio::task::JoinHandle;
 use rustok_outbox::OutboxConsumer;
@@ -204,7 +205,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
     outbox_consumer
         .register_required_event_types(NOTIFICATION_OUTBOX_CONSUMER_KEY, &accepted_event_types)
         .await
-        .map_err(|error| Error::Message(format!("notification outbox consumer registration failed: {error}")))?;
+        .map_err(|error| {
+            Error::Message(format!("notification outbox consumer registration failed: {error}"))
+        })?;
 
     let worker = NotificationOutboxIntakeWorker::new(
         ctx.db_clone(),
@@ -216,7 +219,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         NOTIFICATION_OUTBOX_CONSUMER_KEY,
         Arc::new(ServerNotificationOutboxIntakeReceiptPort),
     )
-    .map_err(|error| Error::Message(format!("notification outbox receipt port is invalid: {error}")))?;
+    .map_err(|error| {
+        Error::Message(format!("notification outbox receipt port is invalid: {error}"))
+    })?;
 
     // Reconcile terminal receipts created before the generic Outbox consumer
     // ledger existed. Registration/backfill run before runtime workers (and
@@ -226,7 +231,9 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         let ids = worker
             .terminal_outbox_event_ids_after(cursor, DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE)
             .await
-            .map_err(|error| Error::Message(format!("notification outbox receipt backfill failed: {error}")))?;
+            .map_err(|error| {
+                Error::Message(format!("notification outbox receipt backfill failed: {error}"))
+            })?;
         if ids.is_empty() {
             break;
         }
@@ -234,7 +241,11 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
             outbox_consumer
                 .acknowledge_existing(NOTIFICATION_OUTBOX_CONSUMER_KEY, *outbox_event_id)
                 .await
-                .map_err(|error| Error::Message(format!("notification outbox receipt backfill failed for {outbox_event_id}: {error}")))?;
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "notification outbox receipt backfill failed for {outbox_event_id}: {error}"
+                    ))
+                })?;
         }
         cursor = ids.last().copied();
         if ids.len() < DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE {
