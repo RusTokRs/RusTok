@@ -670,7 +670,7 @@ async fn persist_failure_state<P>(
     cause: InstallExecutionError,
 ) -> InstallExecutionError
 where
-    P: InstallPersistencePort<P::Runtime>,
+    P: InstallDatabasePort + InstallPersistencePort<P::Runtime>,
 {
     match ports.set_state(runtime, session, target).await {
         Ok(_) => cause,

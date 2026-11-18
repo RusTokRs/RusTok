@@ -612,32 +612,54 @@ fn ensure_attempt_fence_applied(
 async fn lock_session_for_attempt(
     txn: &DatabaseTransaction,
     session: &InstallSessionRecord,
-    now: chrono::DateTime<Utc>,
+    _now: chrono::DateTime<Utc>,
 ) -> Result<install_session::Model, sea_orm::DbErr> {
     let owner = require_attempt_fence(session)?;
-    let fence = install_session::Entity::update_many()
-        .col_expr(
-            install_session::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now),
-        )
-        .filter(install_session::Column::Id.eq(session.id))
-        .filter(install_session::Column::LockOwner.eq(owner))
-        .filter(
-            install_session::Column::AttemptGeneration.eq(session.attempt_generation),
-        )
-        .exec(txn)
-        .await?;
-    ensure_attempt_fence_applied(session, fence.rows_affected)?;
+    let current = match txn.get_database_backend() {
+        sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
+            install_session::Entity::find_by_id(session.id)
+                .filter(install_session::Column::LockOwner.eq(owner))
+                .filter(
+                    install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+                )
+                .lock_exclusive()
+                .one(txn)
+                .await?
+        }
+        sea_orm::DbBackend::Sqlite => {
+            // Reserve SQLite's writer before reading the session. This avoids
+            // a deferred read-to-write upgrade race while preserving the same
+            // owner+generation predicate used by the server databases.
+            let fence = install_session::Entity::update_many()
+                .col_expr(
+                    install_session::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::col(install_session::Column::UpdatedAt),
+                )
+                .filter(install_session::Column::Id.eq(session.id))
+                .filter(install_session::Column::LockOwner.eq(owner))
+                .filter(
+                    install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+                )
+                .exec(txn)
+                .await?;
+            ensure_attempt_fence_applied(session, fence.rows_affected)?;
+            install_session::Entity::find_by_id(session.id)
+                .one(txn)
+                .await?
+        }
+        backend => {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "installer attempt fencing is unsupported for database backend {backend:?}"
+            )));
+        }
+    };
 
-    install_session::Entity::find_by_id(session.id)
-        .one(txn)
-        .await?
-        .ok_or_else(|| {
-            sea_orm::DbErr::RecordNotFound(format!(
-                "install session {} not found",
-                session.id
-            ))
-        })
+    current.ok_or_else(|| {
+        sea_orm::DbErr::Custom(format!(
+            "installer attempt fence rejected mutation for session {} at generation {}",
+            session.id, session.attempt_generation
+        ))
+    })
 }
 
 fn admission_released_state_values() -> Vec<&'static str> {
