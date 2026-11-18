@@ -233,6 +233,7 @@ struct PreparedUserTokens {
     access_model: oauth_tokens::ActiveModel,
     refresh_token: Option<String>,
     refresh_model: Option<oauth_tokens::ActiveModel>,
+    consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
     expires_in: u64,
 }
 
@@ -725,6 +726,44 @@ async fn validate_active_subject_and_consent(
     Ok((user, consent_granted_at))
 }
 
+async fn validate_locked_oauth_consent<C>(
+    db: &C,
+    app: &oauth_apps::Model,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    scopes: &[String],
+    expected_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+) -> Result<(), OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    if !app.requires_user_consent() {
+        return Ok(());
+    }
+
+    let consent = OAuthConsents::find_active_consent(db, app.id, user_id, tenant_id)
+        .await
+        .map_err(|_| {
+            OAuthTokenProtocolError::server_error(
+                "Failed to revalidate OAuth consent during token issuance",
+            )
+        })?
+        .ok_or_else(|| {
+            OAuthTokenProtocolError::invalid_grant(
+                "OAuth consent was revoked during token issuance",
+            )
+        })?;
+
+    validate_scope_subset(&consent.scopes_list(), scopes)?;
+    if expected_granted_at.as_ref() != Some(&consent.granted_at) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "OAuth consent changed during token issuance",
+        ));
+    }
+
+    Ok(())
+}
+
 async fn lock_active_oauth_app<C>(
     db: &C,
     app_id: Uuid,
@@ -1026,6 +1065,7 @@ async fn prepare_user_tokens(
         access_model,
         refresh_token,
         refresh_model,
+        consent_granted_at,
         expires_in: USER_ACCESS_TOKEN_TTL_SECS,
     })
 }
@@ -1052,6 +1092,15 @@ async fn commit_authorization_code_exchange(
     }
     validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
     lock_active_oauth_subject(&tx, code.tenant_id, code.user_id, code.created_at.clone()).await?;
+    validate_locked_oauth_consent(
+        &tx,
+        &current_app,
+        code.tenant_id,
+        code.user_id,
+        &code.scopes_list(),
+        prepared.consent_granted_at.clone(),
+    )
+    .await?;
 
     if !consume_authorization_code(&tx, code).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
@@ -1109,6 +1158,15 @@ async fn commit_refresh_rotation(
         OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
     })?;
     lock_active_oauth_subject(&tx, current.tenant_id, user_id, current.created_at.clone()).await?;
+    validate_locked_oauth_consent(
+        &tx,
+        &current_app,
+        current.tenant_id,
+        user_id,
+        &current.scopes_list(),
+        current.consent_granted_at.clone(),
+    )
+    .await?;
 
     let now = Utc::now();
     let consumed = OAuthTokens::update_many()
@@ -1202,7 +1260,8 @@ mod tests {
         require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{
-        oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens, tenants, users,
+        oauth_apps, oauth_authorization_codes as oauth_codes, oauth_consents, oauth_tokens,
+        tenants, users,
     };
     use chrono::Utc;
     use rustok_auth::TokenRequest;
@@ -1237,6 +1296,101 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn locked_consent_revalidation_rejects_stale_grant_epoch_and_scopes() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
+            .await
+            .expect("OAuth apps table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(users::Entity)))
+            .await
+            .expect("users table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_consents::Entity)))
+            .await
+            .expect("OAuth consents table");
+
+        let tenant = tenants::ActiveModel::new("Consent lock tenant", "consent-lock")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let mut client = app(
+            serde_json::json!(["profile", "email"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.tenant_id = tenant.id;
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
+        active_app.insert(&db).await.expect("OAuth app");
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "consent-lock@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("OAuth subject");
+
+        let granted_at: DateTimeWithTimeZone = Utc::now().into();
+        let consent = oauth_consents::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(client.id),
+            user_id: Set(user.id),
+            tenant_id: Set(tenant.id),
+            scopes: Set(serde_json::json!(["profile", "email"])),
+            granted_at: Set(granted_at.clone()),
+            revoked_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("active consent");
+
+        super::validate_locked_oauth_consent(
+            &db,
+            &client,
+            tenant.id,
+            user.id,
+            &["profile".to_string()],
+            Some(granted_at.clone()),
+        )
+        .await
+        .expect("current consent epoch should pass");
+
+        let mut narrowed: oauth_consents::ActiveModel = consent.into();
+        narrowed.scopes = Set(serde_json::json!(["profile"]));
+        narrowed.granted_at = Set((granted_at.clone() + chrono::Duration::seconds(1)).into());
+        let narrowed = narrowed.update(&db).await.expect("narrow consent");
+
+        let stale_epoch = super::validate_locked_oauth_consent(
+            &db,
+            &client,
+            tenant.id,
+            user.id,
+            &["profile".to_string()],
+            Some(granted_at),
+        )
+        .await
+        .expect_err("a changed consent epoch must reject in-flight issuance");
+        assert_eq!(stale_epoch.error, "invalid_grant");
+
+        let widened_token = super::validate_locked_oauth_consent(
+            &db,
+            &client,
+            tenant.id,
+            user.id,
+            &["profile".to_string(), "email".to_string()],
+            Some(narrowed.granted_at),
+        )
+        .await
+        .expect_err("token scopes must still be covered by current consent");
+        assert_eq!(widened_token.error, "invalid_scope");
     }
 
     #[tokio::test]
@@ -1651,6 +1805,8 @@ mod tests {
         );
         client.id = app_id;
         client.tenant_id = tenant_id;
+        // This test exercises refresh CAS, not consent enforcement.
+        client.app_type = "service".to_string();
         let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
         active_app.insert(&db).await.expect("insert OAuth app");
         let mut subject = users::ActiveModel::new(
@@ -1724,6 +1880,7 @@ mod tests {
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
             }),
+            consent_granted_at: None,
             expires_in: 900,
         };
 
