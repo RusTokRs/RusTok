@@ -8,7 +8,8 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_installer::{
-    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
+    build_install_lock_owner, AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions,
+    InstallEnvironment,
     InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
     SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
     TenantBootstrap, bind_instance_placement, execute_install_apply, execute_seed_profile,
@@ -18,6 +19,7 @@ use rustok_installer_persistence::{
     InstallerPersistenceService, SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
+use uuid::Uuid;
 
 pub struct InstallerCommandProvider {
     runtime: RuntimeComposition,
@@ -429,8 +431,13 @@ fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, 
     }
     Ok(InstallApplyOptions {
         session_id: None,
-        lock_owner: option(options, "lock_owner")
-            .unwrap_or_else(|| "rustok-cli install apply".to_string()),
+        lock_owner: build_install_lock_owner(
+            option(options, "lock_owner")
+                .as_deref()
+                .or(Some("rustok-cli install apply")),
+            None,
+            Uuid::new_v4(),
+        ),
         lock_ttl_secs,
         pg_admin_url: option(options, "pg_admin_url"),
         bootstrap_public_key_base64: option(options, "base_distribution_public_key")
