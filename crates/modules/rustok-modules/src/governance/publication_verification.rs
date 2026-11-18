@@ -386,6 +386,7 @@ pub(crate) async fn verify_publish_request_prerequisites(
                     ModulePublicationArtifactOrigin::AlloyAuthored => {
                         ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission
                     }
+                    // INVARIANT: Platform-built releases bypass the external platform admission branch.
                     ModulePublicationArtifactOrigin::PlatformBuilt => unreachable!(
                         "platform-built releases do not use the external admission branch"
                     ),

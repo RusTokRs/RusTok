@@ -507,6 +507,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let plan = module_operation_recovery_plan(&self.db, operation_id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        // INVARIANT: In-memory verification ensuring the recovered plan belongs to the requesting tenant before returning it.
         if plan.tenant_id != tenant_id {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::OperationNotFound,

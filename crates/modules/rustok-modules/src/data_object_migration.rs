@@ -529,6 +529,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                     .map_err(storage_error)?,
             )
             .map_err(storage_error)?;
+            // INVARIANT: In-memory integrity check ensures deserialized payload matches the row's tenant_id and data_owner_id queried by tenant.
             if request.tenant_id != tenant_id || request.data_owner_id != data_owner_id {
                 return Err(ArtifactDataObjectMigrationError::Integrity);
             }

@@ -77,7 +77,7 @@ impl MigrationTrait for Migration {
                     AFTER INSERT ON tenant_modules
                     FOR EACH ROW EXECUTE FUNCTION rustok_log_static_settings_base_projection()"#,
                 r#"CREATE TRIGGER trg_static_settings_base_projection_update
-                    AFTER UPDATE OF settings ON tenant_modules
+                    AFTER UPDATE ON tenant_modules
                     FOR EACH ROW EXECUTE FUNCTION rustok_log_static_settings_base_projection()"#,
                 r#"CREATE FUNCTION rustok_log_static_settings_localized_target() RETURNS trigger
                     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -103,7 +103,7 @@ impl MigrationTrait for Migration {
                     AFTER INSERT ON module_static_localized_settings
                     FOR EACH ROW EXECUTE FUNCTION rustok_log_static_settings_localized_target()"#,
                 r#"CREATE TRIGGER trg_static_settings_localized_target_update
-                    AFTER UPDATE OF value, revision, owner_revision ON module_static_localized_settings
+                    AFTER UPDATE ON module_static_localized_settings
                     FOR EACH ROW EXECUTE FUNCTION rustok_log_static_settings_localized_target()"#,
             ],
             SupportedBackend::Sqlite => &[
@@ -158,7 +158,7 @@ impl MigrationTrait for Migration {
                           AND lifecycle.active_idempotency_key IS NOT NULL;
                     END"#,
                 r#"CREATE TRIGGER trg_static_settings_base_projection_update
-                    AFTER UPDATE OF settings ON tenant_modules
+                    AFTER UPDATE ON tenant_modules
                     FOR EACH ROW
                     BEGIN
                         INSERT OR IGNORE INTO module_static_settings_changes (
@@ -198,7 +198,7 @@ impl MigrationTrait for Migration {
                         );
                     END"#,
                 r#"CREATE TRIGGER trg_static_settings_localized_target_update
-                    AFTER UPDATE OF value, revision, owner_revision ON module_static_localized_settings
+                    AFTER UPDATE ON module_static_localized_settings
                     FOR EACH ROW
                     BEGIN
                         INSERT OR IGNORE INTO module_static_settings_changes (
