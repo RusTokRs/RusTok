@@ -106,6 +106,26 @@ fn session_record(model: &install_session::Model) -> InstallSessionRecord {
     }
 }
 
+async fn record_successful_step(
+    service: &InstallerPersistenceService,
+    session: &InstallSessionRecord,
+    step: InstallStep,
+) {
+    let receipt = InstallReceipt {
+        session_id: session.id.to_string(),
+        step,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: format!("sha256:{}", Uuid::new_v4().simple()),
+        diagnostics: serde_json::json!({ "step": "completed" }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    service
+        .record_receipt(session, &receipt)
+        .await
+        .expect("record successful installer step");
+}
+
 #[tokio::test]
 async fn session_persistence_lifecycle_and_state_transitions() {
     let db = setup_contract_test_db().await;
@@ -198,20 +218,29 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect_err("a stale generation must not mutate the session");
     assert!(stale_generation_error.to_string().contains("attempt fence"));
 
+    let missing_preflight = service
+        .set_state(&session_record(&locked), InstallState::PreflightPassed)
+        .await
+        .expect_err("state cannot advance without a successful step receipt");
+    assert!(missing_preflight.to_string().contains("Preflight receipt"));
+    record_successful_step(&service, &session_record(&locked), InstallStep::Preflight).await;
     let preflight = service
         .set_state(&session_record(&locked), InstallState::PreflightPassed)
         .await
         .expect("set preflight state");
     assert_eq!(preflight.status, "preflight_passed");
 
+    record_successful_step(&service, &session_record(&preflight), InstallStep::Config).await;
     let config = service
         .set_state(&session_record(&preflight), InstallState::ConfigPrepared)
         .await
         .expect("set config state");
+    record_successful_step(&service, &session_record(&config), InstallStep::Database).await;
     let database_ready = service
         .set_state(&session_record(&config), InstallState::DatabaseReady)
         .await
         .expect("set database state");
+    record_successful_step(&service, &session_record(&database_ready), InstallStep::Migrate).await;
     let schema_applied = service
         .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
         .await
@@ -346,6 +375,12 @@ async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt()
         .expect_err("the first worker cannot append a receipt after takeover");
     assert!(stale_receipt_error.to_string().contains("attempt fence"));
 
+    record_successful_step(
+        &service,
+        &session_record(&second_attempt),
+        InstallStep::Preflight,
+    )
+    .await;
     let accepted = service
         .set_state(
             &session_record(&second_attempt),
@@ -535,26 +570,32 @@ async fn completed_session_releases_admission_gate() {
         .await
         .expect("acquire lock");
 
+    record_successful_step(&service, &session_record(&locked), InstallStep::Preflight).await;
     let preflight = service
         .set_state(&session_record(&locked), InstallState::PreflightPassed)
         .await
         .expect("preflight");
+    record_successful_step(&service, &session_record(&preflight), InstallStep::Config).await;
     let config = service
         .set_state(&session_record(&preflight), InstallState::ConfigPrepared)
         .await
         .expect("config");
+    record_successful_step(&service, &session_record(&config), InstallStep::Database).await;
     let database_ready = service
         .set_state(&session_record(&config), InstallState::DatabaseReady)
         .await
         .expect("database");
+    record_successful_step(&service, &session_record(&database_ready), InstallStep::Migrate).await;
     let schema_applied = service
         .set_state(&session_record(&database_ready), InstallState::SchemaApplied)
         .await
         .expect("schema");
+    record_successful_step(&service, &session_record(&schema_applied), InstallStep::Seed).await;
     let seed_applied = service
         .set_state(&session_record(&schema_applied), InstallState::SeedApplied)
         .await
         .expect("seed");
+    record_successful_step(&service, &session_record(&seed_applied), InstallStep::Admin).await;
     let admin = service
         .set_state(&session_record(&seed_applied), InstallState::AdminProvisioned)
         .await
@@ -563,10 +604,23 @@ async fn completed_session_releases_admission_gate() {
         .set_state(&session_record(&admin), InstallState::Deploying)
         .await
         .expect("deploying");
+    record_successful_step(&service, &session_record(&deploying), InstallStep::Verify).await;
+    let missing_deploy = service
+        .set_state(&session_record(&deploying), InstallState::Verified)
+        .await
+        .expect_err("verified state requires deploy and verify receipts");
+    assert!(missing_deploy.to_string().contains("Deploy receipt"));
+    record_successful_step(&service, &session_record(&deploying), InstallStep::Deploy).await;
     let verified = service
         .set_state(&session_record(&deploying), InstallState::Verified)
         .await
         .expect("verified");
+    let missing_finalize = service
+        .set_state(&session_record(&verified), InstallState::Completed)
+        .await
+        .expect_err("completed state requires finalize receipt");
+    assert!(missing_finalize.to_string().contains("Finalize receipt"));
+    record_successful_step(&service, &session_record(&verified), InstallStep::Finalize).await;
     let completed = service
         .set_state(&session_record(&verified), InstallState::Completed)
         .await
