@@ -36,6 +36,7 @@
 pub mod classes;
 pub mod contracts;
 pub mod tokens;
+pub mod tokens_generated;
 pub mod types;
 
 #[cfg(test)]

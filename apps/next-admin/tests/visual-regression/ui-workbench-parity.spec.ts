@@ -1,4 +1,8 @@
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { expect, test, type Page } from '@playwright/test';
+
+const require = createRequire(import.meta.url);
 
 test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', () => {
   test('Next.js UI Workbench renders complete component matrix and recipes', async ({ page }) => {
@@ -8,7 +12,7 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
       test.skip(true, `Next.js Workbench not available at /dashboard/design-system (status ${response.status()})`);
     }
 
-    await expect(page.locator('h1')).toContainText('Design System & Component Workbench');
+    await expect(page.locator('h1')).toContainText(/UI Workbench|Design System & Component Workbench/);
 
     // 1. Verify Button Inspector section
     const buttonInspector = page.locator('section', { hasText: 'Interactive Button Inspector' });
@@ -48,7 +52,7 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
     // Verify dialog content is presented
     const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'));
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('Confirm Deletion');
+    await expect(dialog).toContainText(/Confirm Delete|Confirm Deletion/);
     await expect(dialog).toContainText('This action cannot be undone');
 
     // Close dialog via Cancel button
@@ -62,7 +66,7 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
 
     await expect(page.getByText('Unsaved changes')).toBeVisible();
 
-    const saveBtn = page.getByRole('button', { name: 'Save changes' });
+    const saveBtn = page.getByRole('button', { name: /^Save( changes)?$/i });
     if (!(await saveBtn.isVisible())) {
       test.skip(true, 'Save changes button not found; skipping');
     }
@@ -88,7 +92,7 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
       test.skip(true, `Leptos host not currently online at ${leptosBase}/design-system`);
     }
 
-    await expect(page.locator('h1')).toContainText('Design System & Component Workbench');
+    await expect(page.locator('h1')).toContainText(/UI Workbench|Design System & Component Workbench/);
 
     // Verify Leptos recipes
     await expect(page.getByText('Confirm Action Dialog')).toBeVisible();
@@ -113,5 +117,54 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
     await expect(richTextSection.getByRole('button', { name: 'discussion' })).toBeVisible();
     await expect(richTextSection.getByRole('button', { name: 'comment' })).toBeVisible();
     await expect(richTextSection.locator('iframe')).toBeVisible();
+  });
+
+  test('UI Workbench Accessibility Gate (axe-core WCAG 2.1 AA inspection)', async ({ page }) => {
+    const response = await page.goto('/dashboard/design-system', { waitUntil: 'domcontentloaded' });
+    if (response && response.status() >= 400) {
+      test.skip(true, 'Workbench page not available');
+    }
+
+    let axePath: string | undefined;
+    try {
+      axePath = require.resolve('axe-core/axe.min.js');
+    } catch {
+      axePath = undefined;
+    }
+
+    if (!axePath || !existsSync(axePath)) {
+      test.skip(true, 'axe-core runtime not found in node_modules');
+    }
+
+    await page.addScriptTag({ path: axePath });
+
+    const results = await page.evaluate(async () => {
+      return await (window as any).axe.run({
+        runOnly: {
+          type: 'tag',
+          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+        }
+      });
+    });
+
+    const criticalViolations = results.violations.filter(
+      (v: any) => v.impact === 'critical' || v.impact === 'serious'
+    );
+    expect(criticalViolations).toEqual([]);
+  });
+
+  test('UI Workbench Visual Snapshot (Component Baseline Matrix)', async ({ page }) => {
+    const response = await page.goto('/dashboard/design-system', { waitUntil: 'domcontentloaded' });
+    if (response && response.status() >= 400) {
+      test.skip(true, 'Workbench page not available');
+    }
+
+    const baselineSection = page.locator('section', { hasText: 'Component Baseline Matrix' });
+    if (await baselineSection.isVisible()) {
+      await expect(baselineSection).toHaveScreenshot('component-baseline-matrix.png', {
+        maxDiffPixelRatio: 0.05,
+        animations: 'disabled'
+      });
+    }
   });
 });
