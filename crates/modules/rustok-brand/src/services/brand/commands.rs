@@ -148,6 +148,11 @@ impl BrandService {
         Ok(assemble_brand_dto(brand_model, trans_models, None))
     }
 
+    #[tracing::instrument(
+        skip(self, input),
+        fields(tenant_id = %tenant_id, id = %id),
+        err
+    )]
     pub(super) async fn update_brand(
         &self,
         tenant_id: Uuid,
@@ -283,6 +288,11 @@ impl BrandService {
         Ok(assemble_brand_dto(updated_brand, all_translations, None))
     }
 
+    #[tracing::instrument(
+        skip(self),
+        fields(tenant_id = %tenant_id, id = %id),
+        err
+    )]
     pub(super) async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {
         if tenant_id.is_nil() {
             return Err(BrandError::InvalidInput(
