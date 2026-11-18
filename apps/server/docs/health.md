@@ -125,6 +125,13 @@ Checks are published in `checks` with `kind = "worker"`:
   `worker:paid_order_create_label` (`mod-commerce`),
   `worker:marketplace_financial_recovery` (`commerce-marketplace-financial`), and
   `worker:product_media_release` (`mod-product`) — critical when compiled in;
+- `worker:product_index_refresh` (`mod-product`), `worker:social_graph_index`
+  (`mod-social_graph`), `worker:forum_search_inbox` and
+  `worker:forum_search_contract_consumer` (`mod-forum`),
+  `worker:comments_tcp_listener` and `worker:comments_schedule_audit_handoff`
+  (`mod-comments`), and the notification intake/fanout/candidate workers
+  (`mod-notifications`) — critical once their corresponding handles are
+  registered; optional before those module runtimes start them;
 - `worker:workflow_cron` — critical if `mod-workflow` is compiled in and cron is enabled.
 
 If a worker is disabled by settings, check remains `ok` and `non_critical` with reason
