@@ -29,8 +29,9 @@ pub use deployment::{
 pub use execution::execute_install_apply;
 #[cfg(feature = "host-runtime")]
 pub use execution::{
-    build_install_lock_owner, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallApplyOutput,
+    build_install_lock_owner, is_valid_install_lock_ttl_secs, InstallAdminOutcome,
+    InstallAdminPort, InstallApplyOptions, InstallApplyOutput, DEFAULT_INSTALL_LOCK_TTL_SECS,
+    MAX_INSTALL_LOCK_TTL_SECS,
     InstallBootstrapPort, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
     InstallExecutor, InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort,
     InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome,
