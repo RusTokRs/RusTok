@@ -8,8 +8,9 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_installer::{
-    build_install_lock_owner, AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions,
-    InstallEnvironment,
+    build_install_lock_owner, is_valid_install_lock_ttl_secs, AdminBootstrap,
+    DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
+    DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
     InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
     SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
     TenantBootstrap, bind_instance_placement, execute_install_apply, execute_seed_profile,
@@ -420,14 +421,14 @@ fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, 
         .map(|value| {
             value
                 .parse::<i64>()
-                .map_err(|_| input("--lock-ttl-secs must be a positive integer number of seconds"))
+                .map_err(|_| input("--lock-ttl-secs must be an integer number of seconds"))
         })
         .transpose()?
-        .unwrap_or(InstallApplyOptions::default().lock_ttl_secs);
-    if lock_ttl_secs < 1 {
-        return Err(input(
-            "--lock-ttl-secs must be a positive integer number of seconds",
-        ));
+        .unwrap_or(DEFAULT_INSTALL_LOCK_TTL_SECS);
+    if !is_valid_install_lock_ttl_secs(lock_ttl_secs) {
+        return Err(input(format!(
+            "--lock-ttl-secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+        )));
     }
     Ok(InstallApplyOptions {
         session_id: None,
