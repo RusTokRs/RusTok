@@ -1573,6 +1573,7 @@ cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_corrupt_or
 cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_owner_exceeding_the_storage_bound
 cargo test -p rustok-installer-persistence --lib receipt_persistence_and_conversion_is_bound_to_the_current_attempt
 cargo test -p rustok-installer-persistence --lib completed_session_releases_admission_gate
+cargo test -p rustok-installer-persistence --lib ownerless_progressed_session_still_blocks_global_admission
 cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
 cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
 cargo test -p rustok-installer --lib --features host-runtime every_durable_stage_can_fail_closed_to_recovery_required
