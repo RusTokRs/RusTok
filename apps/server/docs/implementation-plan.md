@@ -1582,11 +1582,12 @@ token hash or expiry while revoking the session.
 - Added regression tests for an in-grace duplicate (reject without revoking),
   post-grace replay (revoke the live lineage), and failed revocation persistence
   (propagate the storage error and preserve the active session).
-- Corrected the grace-window contract: it suppresses revocation for a likely
-  concurrent duplicate but is not an idempotent retry. If the successful
-  refresh response is lost, the old token cannot recover the replacement
-  cookie. Full rotation history and idempotent response recovery remain open
-  owner-level design gaps.
+- Corrected the grace-window contract for both first-party and OAuth
+  refresh: it suppresses revocation for a likely concurrent duplicate but is
+  not an idempotent retry. The old token still receives an invalid-token error;
+  if the successful response is lost, it cannot recover the replacement
+  cookie/token. Full rotation history and idempotent response recovery remain
+  open owner-level design gaps.
 
 ### Verification status
 
