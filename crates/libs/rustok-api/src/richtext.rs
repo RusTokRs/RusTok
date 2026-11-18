@@ -164,6 +164,17 @@ impl RichTextProfileId {
         Ok(Self(value))
     }
 
+    /// Constructs a `RichTextProfileId` from a string without failing.
+    /// If validation fails, safely falls back to `"article"`.
+    pub fn new_or_fallback(value: impl Into<String>) -> Self {
+        let value = value.into();
+        if validate_profile_id(&value).is_ok() {
+            Self(value)
+        } else {
+            Self("article".to_string())
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
