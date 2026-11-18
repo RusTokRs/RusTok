@@ -75,6 +75,12 @@ pub struct DocsRoomHub {
     rooms: RwLock<HashMap<(Uuid, Uuid), broadcast::Sender<ServerMessage>>>,
 }
 
+fn send_to_room(sender: &broadcast::Sender<ServerMessage>, msg: ServerMessage) {
+    if let Err(err) = sender.send(msg) {
+        tracing::trace!(?err, "Room broadcast delivered to 0 active receivers");
+    }
+}
+
 impl DocsRoomHub {
     pub fn new() -> Self {
         Self::default()
@@ -88,12 +94,18 @@ impl DocsRoomHub {
     ) -> broadcast::Sender<ServerMessage> {
         let key = (tenant_id, page_id);
         {
-            let read_guard = self.rooms.read().unwrap();
+            let read_guard = self
+                .rooms
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(sender) = read_guard.get(&key) {
                 return sender.clone();
             }
         }
-        let mut write_guard = self.rooms.write().unwrap();
+        let mut write_guard = self
+            .rooms
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         write_guard
             .entry(key)
             .or_insert_with(|| {
@@ -106,9 +118,12 @@ impl DocsRoomHub {
     /// Broadcasts a server message to all active peers subscribed to the room.
     pub fn broadcast(&self, tenant_id: Uuid, page_id: Uuid, msg: ServerMessage) {
         let key = (tenant_id, page_id);
-        let read_guard = self.rooms.read().unwrap();
+        let read_guard = self
+            .rooms
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(sender) = read_guard.get(&key) {
-            let _ = sender.send(msg);
+            send_to_room(sender, msg);
         }
     }
 }
@@ -192,13 +207,16 @@ async fn handle_socket(
                                         snapshot: sync_dto.snapshot,
                                         updates: sync_dto.updates,
                                     };
-                                    let _ = room_sender_for_recv.send(resp);
+                                    send_to_room(&room_sender_for_recv, resp);
                                 }
                                 Err(err) => {
-                                    let _ = room_sender_for_recv.send(ServerMessage::Error {
-                                        code: "sync_failed".to_string(),
-                                        message: err.to_string(),
-                                    });
+                                    send_to_room(
+                                        &room_sender_for_recv,
+                                        ServerMessage::Error {
+                                            code: "sync_failed".to_string(),
+                                            message: err.to_string(),
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -211,10 +229,13 @@ async fn handle_socket(
                                 &auth_for_recv.permissions,
                                 &[Permission::PAGES_UPDATE],
                             ) {
-                                let _ = room_sender_for_recv.send(ServerMessage::Error {
-                                    code: "forbidden".to_string(),
-                                    message: "pages:update required to push deltas".to_string(),
-                                });
+                                send_to_room(
+                                    &room_sender_for_recv,
+                                    ServerMessage::Error {
+                                        code: "forbidden".to_string(),
+                                        message: "pages:update required to push deltas".to_string(),
+                                    },
+                                );
                                 continue;
                             }
 
@@ -222,18 +243,24 @@ async fn handle_socket(
                                 deltas: deltas.clone(),
                             };
                             if let Err(err) = delta_dto.validate() {
-                                let _ = room_sender_for_recv.send(ServerMessage::Error {
-                                    code: "validation_error".to_string(),
-                                    message: err.to_string(),
-                                });
+                                send_to_room(
+                                    &room_sender_for_recv,
+                                    ServerMessage::Error {
+                                        code: "validation_error".to_string(),
+                                        message: err.to_string(),
+                                    },
+                                );
                                 continue;
                             }
 
                             // 1. Broadcast deltas immediately to connected peers (sub-millisecond latency)
-                            let _ = room_sender_for_recv.send(ServerMessage::Deltas {
-                                sender_peer_id,
-                                deltas: deltas.clone(),
-                            });
+                            send_to_room(
+                                &room_sender_for_recv,
+                                ServerMessage::Deltas {
+                                    sender_peer_id,
+                                    deltas: deltas.clone(),
+                                },
+                            );
 
                             // 2. Persist deltas to PostgreSQL monotonically
                             match DocumentService::append_updates(
@@ -245,15 +272,20 @@ async fn handle_socket(
                             .await
                             {
                                 Ok(latest_seq_id) => {
-                                    let _ = room_sender_for_recv
-                                        .send(ServerMessage::AckDeltas { latest_seq_id });
+                                    send_to_room(
+                                        &room_sender_for_recv,
+                                        ServerMessage::AckDeltas { latest_seq_id },
+                                    );
                                 }
                                 Err(err) => {
                                     error!(error = %err, page_id = %page_id, "Failed to persist document deltas");
-                                    let _ = room_sender_for_recv.send(ServerMessage::Error {
-                                        code: "persist_failed".to_string(),
-                                        message: err.to_string(),
-                                    });
+                                    send_to_room(
+                                        &room_sender_for_recv,
+                                        ServerMessage::Error {
+                                            code: "persist_failed".to_string(),
+                                            message: err.to_string(),
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -261,13 +293,16 @@ async fn handle_socket(
                             sender_peer_id,
                             cursor,
                         }) => {
-                            let _ = room_sender_for_recv.send(ServerMessage::Awareness {
-                                sender_peer_id,
-                                cursor,
-                            });
+                            send_to_room(
+                                &room_sender_for_recv,
+                                ServerMessage::Awareness {
+                                    sender_peer_id,
+                                    cursor,
+                                },
+                            );
                         }
                         Ok(ClientMessage::Ping) => {
-                            let _ = room_sender_for_recv.send(ServerMessage::Pong);
+                            send_to_room(&room_sender_for_recv, ServerMessage::Pong);
                         }
                         Err(err) => {
                             warn!(error = %err, "Malformed WebSocket client frame");

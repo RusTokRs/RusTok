@@ -119,7 +119,7 @@ pub fn router(runtime: DocsHttpRuntime) -> Router {
 }
 
 /// Construct the Axum router directly from the platform host runtime.
-pub fn axum_router(host_runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_router(host_runtime: &HostRuntimeContext) -> Result<Router, crate::error::DocsError> {
     let runtime = DocsHttpRuntime::from_host(host_runtime);
     Ok(router(runtime))
 }
