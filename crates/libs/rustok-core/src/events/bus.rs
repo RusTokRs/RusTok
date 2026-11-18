@@ -78,6 +78,14 @@ impl EventBus {
         );
     }
 
+    pub(super) fn record_root_published(&self, envelope: &EventEnvelope) {
+        self.stats.events_published.fetch_add(1, Ordering::Relaxed);
+        rustok_telemetry::metrics::record_event_published(
+            &envelope.event_type,
+            &envelope.tenant_id.to_string(),
+        );
+    }
+
     pub fn stats(&self) -> Arc<EventBusStats> {
         Arc::clone(&self.stats)
     }

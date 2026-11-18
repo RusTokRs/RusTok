@@ -49,9 +49,11 @@ does not define or re-export `Port*` types.
 
 ## Known Limitations / Pending Implementation
 
-The existing bus/dispatcher/Memory path now has explicit acknowledged sealed-handler opt-in
-without changing root fanout. Lifecycle/capacity/no-handler/failure refusals are source-wired;
-no second queue or domain publisher is introduced. Six new regression definitions remain
+The existing bus/dispatcher/Memory path now acknowledges matching root and sealed module
+handlers on the Outbox relay path without changing event wire formats. The generic root broadcast
+API remains best-effort. Lifecycle/capacity/no-handler/failure refusals are source-wired;
+no second queue or domain publisher is introduced. The new regression definitions remain
 uncompiled/unrun; source format/parser/guards do not prove runtime behavior, shutdown races,
-real Iggy or Outbox recovery. See the [public contract](CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
-and [live plan](docs/implementation-plan.md#acknowledged-sealed-module-delivery-2026-11-01-source-only).
+real Iggy or Outbox recovery. See the [public contract](CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
+[live plan](docs/implementation-plan.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
+and [root-delivery decision](../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).

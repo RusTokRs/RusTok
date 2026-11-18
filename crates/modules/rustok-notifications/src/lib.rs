@@ -227,7 +227,7 @@ pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
     NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeFailure,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeRejection,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeRejection,
     NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
 };
 #[cfg(feature = "server")]

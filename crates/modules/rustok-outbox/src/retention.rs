@@ -1,5 +1,8 @@
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr,
+};
 
 use rustok_core::{Error, Result};
 
@@ -60,7 +63,8 @@ pub struct OutboxPruneReport {
 ///
 /// The outbox is both the delivery queue and the durable record of what was
 /// delivered, so retention only ever deletes rows that reached the transport
-/// (`dispatched` with a non-null `dispatched_at` older than the window).
+/// (`dispatched` with a non-null `dispatched_at` older than the window) and
+/// whose registered durable consumers have all acknowledged the event.
 /// Undelivered (`pending`) and dead-lettered (`failed`) rows are never touched:
 /// the first still owe a delivery, the second are the DLQ an operator works
 /// through. A delivered row that lost its `dispatched_at` is left alone as well,
@@ -91,9 +95,10 @@ impl OutboxRetention {
     /// Deletes up to `batch_size` delivered rows older than the retention
     /// window and reports how much was pruned.
     ///
-    /// The candidate ids are selected first and deleted by id with the same
-    /// status/age predicates, so a row that changed status between the two
-    /// statements (a DLQ replay, for instance) is not deleted.
+    /// Candidate ids are selected first and deleted by id with the same
+    /// status, age, and consumer-acknowledgement predicates. The delete rechecks
+    /// the consumer predicate so a newly registered obligation or changed
+    /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
         let cutoff = Utc::now() - self.config.retention;
@@ -104,6 +109,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
             .limit(self.config.batch_size)
             .into_tuple::<uuid::Uuid>()
@@ -121,6 +127,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
             .exec(&self.db)
             .await?
             .rows_affected;
@@ -141,6 +148,27 @@ impl OutboxRetention {
             batch_exhausted,
         })
     }
+}
+
+/// Returns the correlated predicate shared by the retention candidate scan
+/// and the final delete, so a stale candidate cannot bypass a consumer hold.
+fn required_consumers_acknowledged_predicate() -> Expr {
+    Expr::cust(
+        r#"
+NOT EXISTS (
+    SELECT 1
+    FROM sys_event_consumers AS required_consumer
+    WHERE required_consumer.event_type = sys_events.event_type
+      AND NOT EXISTS (
+          SELECT 1
+          FROM sys_event_consumer_receipts AS consumer_receipt
+          WHERE consumer_receipt.outbox_event_id = sys_events.id
+            AND consumer_receipt.consumer_key = required_consumer.consumer_key
+            AND consumer_receipt.event_type = required_consumer.event_type
+      )
+)
+"#,
+    )
 }
 
 #[cfg(test)]
@@ -223,6 +251,47 @@ mod tests {
                 "row {survivor} must survive retention"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn registered_consumers_hold_old_events_until_every_consumer_acknowledges() {
+        let db = test_db().await;
+        let stale = Utc::now() - chrono::Duration::days(40);
+        let event_id = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+        let event_type = "test.pruned".to_string();
+        let first = crate::OutboxConsumer::new(db.clone());
+        let second = crate::OutboxConsumer::new(db.clone());
+        first
+            .register_required_event_types("consumer.one", std::slice::from_ref(&event_type))
+            .await
+            .expect("register first consumer");
+        second
+            .register_required_event_types("consumer.two", std::slice::from_ref(&event_type))
+            .await
+            .expect("register second consumer");
+
+        let retention = OutboxRetention::new(db.clone());
+        assert_eq!(retention.prune_once().await.expect("held prune").pruned, 0);
+
+        first
+            .acknowledge_existing("consumer.one", event_id)
+            .await
+            .expect("first consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("partially acknowledged prune").pruned, 0);
+
+        second
+            .acknowledge_existing("consumer.two", event_id)
+            .await
+            .expect("second consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("fully acknowledged prune").pruned, 1);
+        assert!(
+            crate::entity::Entity::find_by_id(event_id)
+                .one(&db)
+                .await
+                .expect("query")
+                .is_none(),
+            "the canonical event becomes eligible only after every required consumer acknowledges"
+        );
     }
 
     #[tokio::test]

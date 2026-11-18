@@ -123,10 +123,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 })?;
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
-                    let transport = MemoryTransport::with_capacity(channel_capacity);
-                    let listener_bus = transport.event_bus();
+                    let local = MemoryTransport::with_capacity(channel_capacity);
+                    let listener_bus = local.event_bus();
                     (
-                        Arc::new(transport) as Arc<dyn EventTransport>,
+                        Arc::new(LocalEventDeliveryTransport { local })
+                            as Arc<dyn EventTransport>,
                         listener_bus,
                         None,
                     )
@@ -390,6 +391,67 @@ fn transport_with_local_delivery(
 }
 
 #[derive(Clone)]
+struct LocalEventDeliveryTransport {
+    local: MemoryTransport,
+}
+
+#[async_trait]
+impl EventTransport for LocalEventDeliveryTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+        let event_id = envelope.id;
+        let event_type = envelope.event.event_type();
+        if let Err(error) = self
+            .local
+            .event_bus()
+            .publish_root_envelope_and_wait(envelope)
+            .await
+        {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
+            tracing::error!(
+                event_id = %event_id,
+                event_type,
+                error = %error,
+                "Local root-event delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn publish_contract(
+        &self,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        let event_id = envelope.id();
+        let event_type = envelope.event_type().to_owned();
+        if let Err(error) = self.local.publish_contract(envelope).await {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(
+                &event_type,
+                "local_contract_delivery",
+            );
+            tracing::error!(
+                %event_id,
+                %event_type,
+                error = %error,
+                "Local contract delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::InMemory
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Clone)]
 struct LocalDeliveryFanoutTransport {
     primary: Arc<dyn EventTransport>,
     local: MemoryTransport,
@@ -398,21 +460,27 @@ struct LocalDeliveryFanoutTransport {
 #[async_trait]
 impl EventTransport for LocalDeliveryFanoutTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        // The primary delivery is irreversible. Once it succeeds, returning a local fan-out error
-        // would make the outbox relay publish the same remote event again. Record the local failure
-        // separately and let durable/idempotent consumers recover through their transport path.
+        // Refuse before remote publication if the local listener registry is unavailable.
+        // A projection failure after primary acceptance is still returned so the outbox
+        // retries the same identity; remote consumers must be idempotent.
+        let local_bus = self.local.event_bus();
+        local_bus.ensure_local_listeners_running()?;
         self.primary.publish(envelope.clone()).await?;
         let event_id = envelope.id;
         let event_type = envelope.event.event_type();
-        if let Err(error) = self.local.publish(envelope).await {
+        if let Err(error) = local_bus
+            .publish_root_envelope_and_wait(envelope)
+            .await
+        {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
             rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
             tracing::error!(
                 event_id = %event_id,
                 event_type,
                 error = %error,
-                "Remote event was accepted but local module delivery failed"
+                "Remote event was accepted but acknowledged local module delivery failed"
             );
+            return Err(error);
         }
         Ok(())
     }
@@ -421,8 +489,12 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         let payload = envelope
             .payload()
             .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
-        let deliver_locally = matches!(payload, ContractEventPayload::Root(_))
-            || self.local.event_bus().has_contract_handler(&envelope)?;
+        let local_bus = self.local.event_bus();
+        // Validate the explicit registry before the irreversible primary publish,
+        // including for root envelopes and remote-only sealed families.
+        let has_local_handler = local_bus.has_contract_handler(&envelope)?;
+        let deliver_locally =
+            matches!(payload, ContractEventPayload::Root(_)) || has_local_handler;
         if payload.requires_module_delivery() && !deliver_locally {
             return Err(rustok_core::Error::External(
                 "Required sealed module delivery is unavailable; retain the original outbox identity".to_owned(),
@@ -435,7 +507,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         if deliver_locally {
             let event_id = envelope.id();
             let event_type = envelope.event_type().to_owned();
-            if let Err(error) = self.local.publish_contract(envelope).await {
+            if let Err(error) = local_bus.publish_contract_envelope(envelope).await {
                 EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
                 rustok_telemetry::metrics::record_event_error(
                     &event_type,
@@ -443,7 +515,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
                 );
                 tracing::error!(
                     %event_id, %event_type, code = "events.contract_local_delivery_failed",
-                    "Sealed local delivery failed; retain the same outbox identity for retry"
+                    "Local contract delivery failed; retain the same outbox identity for retry"
                 );
                 return Err(error);
             }
@@ -467,8 +539,52 @@ impl EventTransport for LocalDeliveryFanoutTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use rustok_core::events::{
+        EventDispatcher, EventHandler, HandlerResult, RunningDispatcher,
+    };
     use rustok_events::{DomainEvent, EventEnvelope};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
     use uuid::Uuid;
+
+    struct RootListener {
+        handled: Arc<Mutex<Vec<EventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl EventHandler for RootListener {
+        fn name(&self) -> &'static str {
+            "root_local_delivery_regression"
+        }
+
+        fn handles(&self, event: &DomainEvent) -> bool {
+            matches!(event, DomainEvent::TenantUpdated { .. })
+        }
+
+        async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
+            self.handled.lock().unwrap().push(envelope.clone());
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(rustok_core::Error::External(
+                    "root projection unavailable".to_owned(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    fn listen_root(
+        bus: EventBus,
+        handled: Arc<Mutex<Vec<EventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    ) -> RunningDispatcher {
+        let mut dispatcher = EventDispatcher::new(bus);
+        dispatcher.register(RootListener { handled, fail });
+        dispatcher.start_with_contract_delivery().unwrap()
+    }
 
     #[tokio::test]
     async fn failed_event_runtime_validation_does_not_leave_cache_workers_running() {
@@ -519,11 +635,69 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fanout_transport_delivers_only_after_primary_accepts_event() {
+    async fn single_node_outbox_target_counts_local_root_projection_failures() {
+        let local = MemoryTransport::with_capacity(8);
+        let listener_bus = local.event_bus();
+        let target = LocalEventDeliveryTransport { local };
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(true)),
+        );
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(11),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(11),
+            },
+        );
+        let failures_before = event_local_delivery_metrics_snapshot().failure_total;
+
+        assert!(target.publish(envelope).await.is_err());
+        assert_eq!(handled.lock().unwrap().len(), 1);
+        assert!(
+            event_local_delivery_metrics_snapshot().failure_total > failures_before,
+            "single-node local delivery failures must be observable"
+        );
+        running.stop().await.expect("root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn single_node_outbox_target_waits_for_root_projection_completion() {
+        let local = MemoryTransport::with_capacity(8);
+        let listener_bus = local.event_bus();
+        let target = LocalEventDeliveryTransport { local };
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(10),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(10),
+            },
+        );
+
+        target.publish(envelope.clone()).await.unwrap();
+        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn fanout_transport_waits_for_local_root_handler_after_primary_acceptance() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
         let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
         let envelope = EventEnvelope::new(
             Uuid::from_u128(1),
             None,
@@ -534,14 +708,20 @@ mod tests {
 
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert_eq!(listener.recv().await.unwrap().id, envelope.id);
+        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("root dispatcher stop");
     }
 
     #[tokio::test]
     async fn fanout_transport_does_not_deliver_locally_when_primary_rejects() {
         let primary = MemoryTransport::with_capacity(8);
         let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
         let envelope = EventEnvelope::new(
             Uuid::from_u128(2),
             None,
@@ -551,19 +731,15 @@ mod tests {
         );
 
         assert!(transport.publish(envelope).await.is_err());
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), listener.recv())
-                .await
-                .is_err()
-        );
+        assert!(handled.lock().unwrap().is_empty());
+        running.stop().await.expect("root dispatcher stop");
     }
 
     #[tokio::test]
-    async fn accepted_remote_delivery_is_not_retried_when_local_bus_has_no_receivers() {
+    async fn missing_local_dispatcher_is_rejected_before_remote_publication() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
-        let (transport, _listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let before = event_local_delivery_metrics_snapshot().failure_total;
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
         let envelope = EventEnvelope::new(
             Uuid::from_u128(3),
             None,
@@ -572,9 +748,53 @@ mod tests {
             },
         );
 
+        assert!(
+            transport.publish(envelope.clone()).await.is_err(),
+            "a missing local dispatcher must refuse before irreversible publication"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), primary_receiver.recv())
+                .await
+                .is_err(),
+            "the primary must not receive an event without a bound local registry"
+        );
+
+        let running = EventDispatcher::new(listener_bus)
+            .start_with_contract_delivery()
+            .unwrap();
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert!(event_local_delivery_metrics_snapshot().failure_total > before);
+        running.stop().await.expect("empty root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn local_root_projection_failure_is_returned_to_the_outbox_relay() {
+        let primary = MemoryTransport::with_capacity(8);
+        let mut primary_receiver = primary.subscribe();
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
+        let handled = Arc::new(Mutex::new(vec![]));
+        let fail = Arc::new(AtomicBool::new(true));
+        let running = listen_root(listener_bus, handled.clone(), fail.clone());
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(4),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(4),
+            },
+        );
+
+        assert!(transport.publish(envelope.clone()).await.is_err());
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(handled.lock().unwrap().len(), 1);
+
+        fail.store(false, Ordering::SeqCst);
+        transport.publish(envelope.clone()).await.unwrap();
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(
+            *handled.lock().unwrap(),
+            vec![envelope.clone(), envelope]
+        );
+        running.stop().await.expect("root dispatcher stop");
     }
 }
 
@@ -897,6 +1117,34 @@ mod contract_delivery_tests {
         );
         assert_eq!(*handled.lock().unwrap(), vec![frame.clone(), frame]);
         running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn remote_only_family_uses_primary_with_an_explicitly_empty_listener_registry() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = EventDispatcher::new(bus).start_with_contract_delivery().unwrap();
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+
+        target.publish_contract(envelope.clone()).await.unwrap();
+
+        assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("empty listener dispatcher stop");
     }
 
     #[tokio::test]

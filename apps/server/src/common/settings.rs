@@ -195,6 +195,10 @@ pub struct EventSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EventBackpressureSettings {
+    /// Enables configurable warning/critical thresholds. The server-owned
+    /// EventBus-to-Outbox bridge always enforces a hard admission bound at
+    /// broadcast capacity, even when this option is false, so the durable
+    /// forwarder cannot silently lag.
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_backpressure_max_queue_depth")]

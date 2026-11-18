@@ -73,9 +73,12 @@ This result does not promote unrelated foundation or event-delivery evidence.
 ## Acknowledged sealed module delivery (2026-11-01; source only)
 
 The real Inventory/Search continuation extends existing EventHandler, dispatcher, bus and Memory
-with typed opt-in/awaited errors, bounded concurrency and Weak lifecycle binding. Root APIs and
-best-effort broadcast remain unchanged; retry/DLQ stays Outbox-owned, not a new Core queue.
-Server startup now propagates listener binding failures. Six focused regression definitions are
+with typed opt-in/awaited errors, bounded concurrency and Weak lifecycle binding. The Outbox
+relay now also awaits matching root module handlers through that registry; root wire/API shapes
+remain unchanged and the generic broadcast API remains best-effort. Retry/DLQ stays Outbox-owned,
+not a new Core queue.
+Server startup now propagates listener binding failures. The focused regression definitions are
 **uncompiled/unrun**. Remaining: scoped Rust compilation, lifecycle/capacity/shutdown races and
-configured delivery/restart evidence. See the [API](../CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
-and [decision](../../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).
+configured delivery/restart evidence. See the [API](../CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only),
+[sealed-family decision](../../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01),
+and [root-delivery decision](../../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
