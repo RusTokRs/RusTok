@@ -46,7 +46,7 @@
 - `InstallSessionRecord`: Neutral session snapshot carrying status, owner, and attempt generation to every mutation port.
 - `InstallStepReceiptItem`: Includes the generation under which the receipt was recorded.
 - `entities::install_http_job::Model`: Asynchronous HTTP install job tracking submit, start, completion, and sanitized errors.
-- `InstallStepReceiptItem`: Decoupled serializable DTO for installer receipts.
+
 
 ---
 

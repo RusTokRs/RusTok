@@ -1564,6 +1564,8 @@ Not run in this task, at the user's request. Run before merge:
 ```bash
 cargo fmt --all -- --check
 cargo test -p rustok-installer-persistence --lib session_persistence_lifecycle_and_state_transitions
+cargo test -p rustok-installer-persistence --lib reclaimed_session_advances_generation_and_fences_the_previous_attempt
+cargo test -p rustok-installer-persistence --lib receipt_persistence_and_conversion_is_bound_to_the_current_attempt
 cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
 cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
 cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded

@@ -5,7 +5,8 @@ use rustok_installer::{
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
+    ConnectionTrait, DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -197,9 +198,8 @@ impl InstallerPersistenceService {
                 "installer receipt session does not match its attempt fence".to_string(),
             ));
         }
-        let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -291,7 +291,7 @@ impl InstallerPersistenceService {
         let owner = require_attempt_fence(session)?;
         let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -345,7 +345,7 @@ impl InstallerPersistenceService {
         let owner = require_attempt_fence(session)?;
         let now = Utc::now();
         let txn = self.db.begin().await?;
-        let current = lock_session_for_attempt(&txn, session, now).await?;
+        let current = lock_session_for_attempt(&txn, session).await?;
         let current_state = InstallState::from_str(&current.status).ok_or_else(|| {
             sea_orm::DbErr::Custom(format!(
                 "installer session {} has an unknown persisted state",
@@ -612,7 +612,6 @@ fn ensure_attempt_fence_applied(
 async fn lock_session_for_attempt(
     txn: &DatabaseTransaction,
     session: &InstallSessionRecord,
-    _now: chrono::DateTime<Utc>,
 ) -> Result<install_session::Model, sea_orm::DbErr> {
     let owner = require_attempt_fence(session)?;
     let current = match txn.get_database_backend() {
