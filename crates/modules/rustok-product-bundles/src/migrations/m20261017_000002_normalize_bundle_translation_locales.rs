@@ -80,7 +80,12 @@ ORDER BY bundle_id, locale, id
             DatabaseBackend::Sqlite => {
                 "UPDATE product_bundle_translations SET locale = ?1 WHERE id = ?2"
             }
-            _ => unreachable!("unsupported backend was filtered above"),
+            // INVARIANT: Supported backends are PostgreSQL and SQLite; other backends return a typed error
+            other => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported database backend for bundle translation migration: {other:?}"
+                )));
+            }
         };
         for (id, stored_locale, normalized_locale) in normalized_rows {
             if stored_locale == normalized_locale {
