@@ -1568,6 +1568,9 @@ cargo test -p rustok-installer-persistence --lib reclaimed_session_advances_gene
 cargo test -p rustok-installer-persistence --lib receipt_persistence_and_conversion_is_bound_to_the_current_attempt
 cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
 cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-installer --lib --features host-runtime every_durable_stage_can_fail_closed_to_recovery_required
+cargo test -p rustok-installer --lib --features host-runtime cleanup_is_not_a_valid_transition_after_preflight
+cargo test -p rustok-installer --lib --features host-runtime completed_and_cleaned_states_are_terminal
 cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
 cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
 cargo check -p rustok-installer-cli
