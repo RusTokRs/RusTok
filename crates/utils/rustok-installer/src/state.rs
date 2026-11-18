@@ -94,19 +94,7 @@ impl InstallState {
                 | (AdminProvisioned, Deploying)
                 | (Deploying, Verified)
                 | (Verified, Completed)
-                | (
-                    Draft
-                        | PreflightPassed
-                        | ConfigPrepared
-                        | DatabaseReady
-                        | SchemaApplied
-                        | SeedApplied
-                        | AdminProvisioned
-                        | Deploying
-                        | Verified
-                        | RecoveryRequired,
-                    Failed,
-                )
+                | (RecoveryRequired, Failed)
                 | (Draft, FreshInstallCleaned)
                 | (
                     Draft
@@ -214,6 +202,13 @@ mod tests {
     }
 
     #[test]
+    fn failed_state_requires_a_recovery_required_source() {
+        assert!(!InstallState::Draft.can_transition_to(InstallState::Failed));
+        assert!(!InstallState::SchemaApplied.can_transition_to(InstallState::Failed));
+        assert!(InstallState::RecoveryRequired.can_transition_to(InstallState::Failed));
+    }
+
+    #[test]
     fn cleanup_is_not_a_valid_transition_after_preflight() {
         for state in [
             InstallState::PreflightPassed,
@@ -233,6 +228,7 @@ mod tests {
     fn completed_and_cleaned_states_are_terminal() {
         assert!(!InstallState::Completed.can_transition_to(InstallState::Failed));
         assert!(!InstallState::FreshInstallCleaned.can_transition_to(InstallState::Failed));
+        assert!(!InstallState::Failed.can_transition_to(InstallState::RecoveryRequired));
         assert!(!InstallState::Completed.can_transition_to(InstallState::RecoveryRequired));
     }
 
