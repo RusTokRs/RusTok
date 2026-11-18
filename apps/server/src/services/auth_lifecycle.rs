@@ -677,30 +677,25 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Reserve SQLite's write lock by the unique tenant/email key
+                // before loading the account. This avoids a deferred
+                // read-then-write upgrade racing a concurrent login or
+                // credential mutation.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND email = ?2",
+                    [tenant_id.into(), normalized_email.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                        [tenant_id.into(), existing.id.into()],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
