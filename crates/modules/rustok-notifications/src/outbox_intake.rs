@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::NotificationSourceEventRef;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
@@ -106,6 +106,25 @@ pub trait NotificationOutboxEnvelopeDecoder: Send + Sync {
     }
 }
 
+/// Owner port for atomically acknowledging a terminal notification intake
+/// receipt in the canonical Outbox retention ledger.
+#[async_trait::async_trait]
+pub trait NotificationOutboxIntakeReceiptPort: Send + Sync {
+    async fn acknowledge_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        consumer_key: &str,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> NotificationResult<()>;
+}
+
+#[derive(Clone)]
+struct ReceiptPortBinding {
+    consumer_key: String,
+    port: Arc<dyn NotificationOutboxIntakeReceiptPort>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationOutboxIntakeResult {
     pub outbox_event_id: Uuid,
@@ -161,6 +180,7 @@ pub struct NotificationOutboxIntakeWorker {
     db: DatabaseConnection,
     decoder: Arc<dyn NotificationOutboxEnvelopeDecoder>,
     batch_size: usize,
+    receipt_port: Option<ReceiptPortBinding>,
 }
 
 impl std::fmt::Debug for NotificationOutboxIntakeWorker {
@@ -168,6 +188,7 @@ impl std::fmt::Debug for NotificationOutboxIntakeWorker {
         formatter
             .debug_struct("NotificationOutboxIntakeWorker")
             .field("batch_size", &self.batch_size)
+            .field("receipt_acknowledgements_enabled", &self.receipt_port.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -187,12 +208,31 @@ impl NotificationOutboxIntakeWorker {
             db,
             decoder,
             batch_size,
+            receipt_port: None,
         })
     }
 
     pub fn batch_size(&self) -> usize {
         self.batch_size
     }
+\n    pub fn with_receipt_port(
+        mut self,
+        consumer_key: impl Into<String>,
+        port: Arc<dyn NotificationOutboxIntakeReceiptPort>,
+    ) -> NotificationResult<Self> {
+        let consumer_key = consumer_key.into();
+        if consumer_key.trim().is_empty()
+            || consumer_key.trim() != consumer_key
+            || consumer_key.len() > 128
+        {
+            return Err(NotificationError::Validation(
+                "outbox consumer key must contain 1 to 128 unpadded bytes".to_string(),
+            ));
+        }
+        self.receipt_port = Some(ReceiptPortBinding { consumer_key, port });
+        Ok(self)
+    }
+
 
     /// Selects one stable bounded page of committed supported outbox envelopes
     /// that have neither an accepted receipt nor a permanent rejection record.
@@ -221,6 +261,49 @@ impl NotificationOutboxIntakeWorker {
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
+    /// Returns a stable keyset page of already-terminal owner receipts. The
+    /// server uses this during cutover to backfill generic Outbox acknowledgements
+    /// before the retention worker starts.
+    pub async fn terminal_outbox_event_ids_after(
+        &self,
+        after: Option<Uuid>,
+        limit: usize,
+    ) -> NotificationResult<Vec<Uuid>> {
+        if !(1..=MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE).contains(&limit) {
+            return Err(NotificationError::Validation(format!(
+                "terminal receipt page size must contain between 1 and {MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE} items"
+            )));
+        }
+        let mut accepted = intake_receipt::Entity::find()
+            .select_only()
+            .column(intake_receipt::Column::OutboxEventId);
+        let mut rejected = intake_rejection::Entity::find()
+            .select_only()
+            .column(intake_rejection::Column::OutboxEventId);
+        if let Some(cursor) = after {
+            accepted = accepted.filter(intake_receipt::Column::OutboxEventId.gt(cursor));
+            rejected = rejected.filter(intake_rejection::Column::OutboxEventId.gt(cursor));
+        }
+        let mut ids = accepted
+            .order_by_asc(intake_receipt::Column::OutboxEventId)
+            .limit(limit as u64)
+            .into_tuple::<Uuid>()
+            .all(&self.db)
+            .await?;
+        ids.extend(
+            rejected
+                .order_by_asc(intake_rejection::Column::OutboxEventId)
+                .limit(limit as u64)
+                .into_tuple::<Uuid>()
+                .all(&self.db)
+                .await?,
+        );
+        ids.sort_unstable();
+        ids.dedup();
+        ids.truncate(limit);
+        Ok(ids)
+    }
+
     pub async fn process_outbox_event(
         &self,
         outbox_event_id: Uuid,
@@ -245,6 +328,7 @@ impl NotificationOutboxIntakeWorker {
                 .decode(&envelope)
                 .map_err(|_| NotificationError::SourceIdentityConflict)?;
             ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
+            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str()).await?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
             )));
@@ -254,6 +338,7 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_rejection_matches_outbox(&existing, &row)?;
+            self.acknowledge_existing_outbox_event(outbox_event_id, row.event_type.as_str()).await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
                 existing, true,
             )));
@@ -316,6 +401,7 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
+            self.acknowledge_outbox_event_in_transaction(&txn, outbox_event_id, source_event.event_type().as_str()).await?;
             txn.commit().await?;
             return Ok(intake_result(existing, true));
         }
@@ -391,6 +477,7 @@ impl NotificationOutboxIntakeWorker {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_receipt_identity(&receipt, outbox_event_id, &source_event)?;
+        self.acknowledge_outbox_event_in_transaction(&txn, outbox_event_id, source_event.event_type().as_str()).await?;
         txn.commit().await?;
         Ok(intake_result(receipt, false))
     }
@@ -408,6 +495,7 @@ impl NotificationOutboxIntakeWorker {
                 .decode(&envelope_record(row))
                 .map_err(|_| NotificationError::SourceIdentityConflict)?;
             ensure_receipt_identity(&existing, row.id, &source_event)?;
+            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
@@ -418,6 +506,7 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_rejection_matches_outbox(&existing, row)?;
+            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
                 existing, true,
@@ -444,10 +533,42 @@ impl NotificationOutboxIntakeWorker {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_rejection_matches_outbox(&rejection, row)?;
+        self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
         txn.commit().await?;
         Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
             rejection, false,
         )))
+    }
+
+    async fn acknowledge_outbox_event_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> NotificationResult<()> {
+        if let Some(binding) = &self.receipt_port {
+            binding.port.acknowledge_in_transaction(
+                transaction,
+                &binding.consumer_key,
+                outbox_event_id,
+                event_type,
+            ).await?;
+        }
+        Ok(())
+    }
+
+    async fn acknowledge_existing_outbox_event(
+        &self,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> NotificationResult<()> {
+        if self.receipt_port.is_none() {
+            return Ok(());
+        }
+        let transaction = self.db.begin().await?;
+        self.acknowledge_outbox_event_in_transaction(&transaction, outbox_event_id, event_type).await?;
+        transaction.commit().await?;
+        Ok(())
     }
 }
 
