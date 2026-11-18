@@ -106,8 +106,9 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
   persist the terminal result. HTTP and CLI now use unique host-generated
   lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
-  Persistence blocks new applies while any non-final session has a recorded
-  owner, even after lease expiry. However, state/receipt writes do not yet
+  Persistence blocks new applies while any unreconciled session has a
+  recorded owner, even after lease expiry; `recovery_required` remains blocking
+  until manual reconciliation. However, state/receipt writes do not yet
   compare the owner on every mutation, and resumable execution plus effect
   reconciliation remain unimplemented; do not reset stale jobs based only on
   lease expiry.
