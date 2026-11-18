@@ -461,7 +461,7 @@ impl OAuthAppService {
         })
     }
 
-    /// Revoke an app — deactivate and revoke all its tokens.
+    /// Revoke an app — deactivate it and revoke tokens, consents, and pending codes.
     ///
     /// Tenancy is part of the lookup, not something the caller is trusted to
     /// have checked first: a revoke keyed on a bare `app_id` would let any
@@ -961,8 +961,8 @@ pub async fn sync_app_connections(
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
     // Serialize the entire manifest reconciliation for this tenant. Every app
-    // upsert, translation write, orphan deactivation, token revocation and
-    // authorization-code invalidation must commit or roll back together.
+    // upsert, translation write, orphan deactivation, token/consent revocation,
+    // and authorization-code invalidation must commit or roll back together.
     let tx = db.begin().await.map_err(|error| {
         tracing::error!(%error, %tenant_id, "Failed to start OAuth manifest reconciliation");
         Error::InternalServerError
