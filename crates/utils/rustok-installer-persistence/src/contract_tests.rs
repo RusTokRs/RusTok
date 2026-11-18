@@ -431,6 +431,34 @@ async fn completed_session_releases_admission_gate() {
 }
 
 #[tokio::test]
+async fn acquire_lock_rejects_owner_exceeding_the_storage_bound() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db.clone());
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+
+    let error = service
+        .acquire_lock(
+            session.clone(),
+            "x".repeat(129),
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("oversized owner must be rejected before claim");
+    assert!(error.to_string().contains("128-byte"));
+
+    let unchanged = service
+        .get_session(session.id)
+        .await
+        .expect("read session")
+        .expect("session exists");
+    assert!(unchanged.lock_owner.is_none());
+    assert_eq!(unchanged.attempt_generation, 0);
+}
+
+#[tokio::test]
 async fn acquire_lock_rejects_corrupt_or_exhausted_attempt_generation() {
     for generation in [-1, i64::MAX] {
         let db = setup_contract_test_db().await;
