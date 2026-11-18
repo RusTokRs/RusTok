@@ -9,10 +9,12 @@ impl MigrationTrait for SysEventsMigration {
         create_sys_events_schema(manager).await?;
         create_sys_events_claim_index(manager).await?;
         create_sys_events_retention_index(manager).await?;
-        create_owner_operation_receipts_table(manager).await
+        create_owner_operation_receipts_table(manager).await?;
+        create_sys_event_consumer_tables(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_sys_event_consumer_tables(manager).await?;
         drop_owner_operation_receipts_table(manager).await?;
         drop_sys_events_schema(manager).await
     }
@@ -230,6 +232,45 @@ pub async fn drop_sys_events_superseded_indexes(manager: &SchemaManager<'_>) -> 
     Ok(())
 }
 
+/// Creates the generic durable-consumer registration and acknowledgement schema.
+pub async fn create_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.create_table(
+        Table::create()
+            .table(SysEventConsumers::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(SysEventConsumers::EventType).string_len(255).not_null())
+            .col(ColumnDef::new(SysEventConsumers::ConsumerKey).string_len(128).not_null())
+            .col(ColumnDef::new(SysEventConsumers::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .primary_key(Index::create().col(SysEventConsumers::EventType).col(SysEventConsumers::ConsumerKey))
+            .to_owned(),
+    ).await?;
+
+    manager.create_table(
+        Table::create()
+            .table(SysEventConsumerReceipts::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(SysEventConsumerReceipts::OutboxEventId).uuid().not_null())
+            .col(ColumnDef::new(SysEventConsumerReceipts::ConsumerKey).string_len(128).not_null())
+            .col(ColumnDef::new(SysEventConsumerReceipts::EventType).string_len(255).not_null())
+            .col(ColumnDef::new(SysEventConsumerReceipts::AcknowledgedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .primary_key(Index::create().col(SysEventConsumerReceipts::OutboxEventId).col(SysEventConsumerReceipts::ConsumerKey))
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_sys_event_consumer_receipts_event")
+                    .from(SysEventConsumerReceipts::Table, SysEventConsumerReceipts::OutboxEventId)
+                    .to(SysEvents::Table, SysEvents::Id)
+                    .on_delete(ForeignKeyAction::Cascade),
+            )
+            .to_owned(),
+    ).await?;
+    Ok(())
+}
+
+pub async fn drop_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager.drop_table(Table::drop().table(SysEventConsumerReceipts::Table).if_exists().to_owned()).await?;
+    manager.drop_table(Table::drop().table(SysEventConsumers::Table).if_exists().to_owned()).await
+}
+
 /// Creates the schema owned by the generic durable owner-operation receipt
 /// primitive. The platform migrator invokes this helper as an append-only
 /// migration, while standalone owner/test schemas obtain the same invariant
@@ -344,6 +385,12 @@ enum SysEvents {
     CreatedAt,
     DispatchedAt,
 }
+
+#[derive(DeriveIden)]
+enum SysEventConsumers { Table, EventType, ConsumerKey, CreatedAt }
+
+#[derive(DeriveIden)]
+enum SysEventConsumerReceipts { Table, OutboxEventId, ConsumerKey, EventType, AcknowledgedAt }
 
 #[derive(DeriveIden)]
 enum OwnerOperationReceipts {
