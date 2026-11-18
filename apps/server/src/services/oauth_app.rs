@@ -3170,7 +3170,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+        OAuthAppService::grant_consent_strict(
             &db,
             created.app.id,
             token_user.id,
@@ -3221,7 +3221,7 @@ mod tests {
             .await
             .expect("deactivate consent subject");
         let strict_grant_for_inactive_user =
-            crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+            OAuthAppService::grant_consent_strict(
                 &db,
                 created.app.id,
                 token_user.id,
