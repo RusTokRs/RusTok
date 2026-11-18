@@ -754,6 +754,7 @@ fn validate_order_plan(
             "tenant_id, operation_id, and order.id must not be nil UUID".to_string(),
         ));
     }
+    // INVARIANT: cross-module order contract validation ensures foreign order response matches checkout tenant.
     if order.tenant_id != tenant_id
         || plan.tenant_id != tenant_id
         || plan.checkout_operation_id != operation_id
@@ -794,6 +795,7 @@ fn validate_collection(
     tenant_id: Uuid,
     identity: &CheckoutPaymentIdentity,
 ) -> CheckoutPaymentStageResult<()> {
+    // INVARIANT: cross-module payment contract validation ensures foreign payment collection matches checkout tenant.
     if collection.tenant_id != tenant_id
         || collection.cart_id != Some(identity.cart_id)
         || collection.order_id != Some(identity.order_id)

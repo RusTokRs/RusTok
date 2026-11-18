@@ -103,6 +103,7 @@ impl ReturnDecisionOwnerOrchestrationService {
                 PostOrderOrchestrationError::Validation("order_id must not be nil".to_string()),
             ));
         }
+        // INVARIANT: fail-closed port context verification ensures caller tenant matches target tenant.
         if base_context.tenant_id != tenant_id.to_string() {
             return Err(ReturnDecisionOwnerOrchestrationError::OrderCommand(
                 PortError::validation(

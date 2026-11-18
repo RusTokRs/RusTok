@@ -154,6 +154,7 @@ impl CheckoutMarketplaceEconomicsCheckpointJournal {
                         insert_error,
                     ));
                 };
+                // INVARIANT: idempotency checkpoint re-read confirms owner tenant matches caller tenant on conflict.
                 if existing.tenant_id != tenant_id {
                     return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(
                         format!(
@@ -326,6 +327,7 @@ pub fn validate_marketplace_economics_checkpoint(
     let expected_count = count_to_i32(expected_marketplace_line_count, "marketplace_line_count")?;
     let plan_hash = normalize_hash(plan_hash, "plan_hash")?;
     let currency_code = normalize_currency_code(currency_code)?;
+    // INVARIANT: database query filtered by tenant_id precedes in-memory checkpoint validation.
     if checkpoint.tenant_id != tenant_id
         || checkpoint.checkout_operation_id != checkout_operation_id
         || checkpoint.order_id != order_id

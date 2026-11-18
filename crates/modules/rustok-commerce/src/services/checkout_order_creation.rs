@@ -330,6 +330,7 @@ impl CheckoutOrderCreationExecutor {
             snapshot_hash,
             request_hash.as_str(),
         )?;
+        // INVARIANT: cross-module order contract validation ensures foreign order response matches checkout tenant.
         if order.tenant_id != tenant_id {
             return Err(CheckoutOrderCreationError::Conflict(format!(
                 "order {} belongs to another tenant",
@@ -449,6 +450,7 @@ fn validate_identity(
     snapshot_hash: &str,
     request_hash: &str,
 ) -> CheckoutOrderCreationResult<()> {
+    // INVARIANT: database query filtered by tenant_id precedes in-memory order identity validation.
     if identity.tenant_id != tenant_id
         || identity.checkout_operation_id != operation_id
         || identity.source_cart_id.is_some() && identity.source_cart_id != Some(cart_id)

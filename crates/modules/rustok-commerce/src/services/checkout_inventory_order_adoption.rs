@@ -534,6 +534,7 @@ fn validate_order_provenance(
     operation_id: Uuid,
     order: &rustok_order::OrderResponse,
 ) -> CheckoutInventoryOrderAdoptionResult<()> {
+    // INVARIANT: cross-module order contract validation ensures foreign order response matches checkout tenant.
     if order.tenant_id != tenant_id {
         return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
             "order {} belongs to another tenant",
@@ -610,6 +611,7 @@ fn validate_mapping(
     operation_id: Uuid,
     binding: &OrderLineBinding,
 ) -> CheckoutInventoryOrderAdoptionResult<()> {
+    // INVARIANT: database query filtered by tenant_id precedes in-memory reservation mapping validation.
     if mapping.tenant_id != tenant_id
         || mapping.checkout_operation_id != operation_id
         || mapping.cart_line_item_id != binding.cart_line_item_id
