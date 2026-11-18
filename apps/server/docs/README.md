@@ -232,7 +232,9 @@ lookups reserve SQLite's write lock with a predicate-matched no-op update before
 reading the user/session row; PostgreSQL/MySQL use row-level FOR UPDATE.
 Login, profile changes, password changes, refresh rotation, reuse revocation,
 and both logout paths therefore do not rely on SQLite's unsupported row-lock
-syntax or a deferred read-to-write upgrade. Failed dummy Argon2 hash
+syntax or a deferred read-to-write upgrade. OAuth token issuance also reserves
+the SQLite writer by known client/subject IDs before reloading current state.
+Failed dummy Argon2 hash
 initialization propagates as an internal auth error rather than substituting
 an empty hash.
 
