@@ -712,10 +712,10 @@ mod tests {
         assert!(!first.contains(' '));
         assert!(first.len() <= 128, "owner must fit install_sessions.lock_owner");
         assert_eq!(
-            build_installer_lock_owner(Some("///"), job_id, first_attempt)
+            build_install_lock_owner(Some("///"), Some(job_id), first_attempt)
                 .split(':')
                 .next(),
-            Some("http")
+            Some("installer")
         );
     }
 
