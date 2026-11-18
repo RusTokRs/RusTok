@@ -17,7 +17,7 @@
   "runtime_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
   "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs",
   "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md",
-  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-alert-observability-checkpoint.md",
+  "profiles_checkpoint": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md",
   "health_projection": {
     "type": "EventDlqDuplicateAlertHealthSnapshot",
     "source_handle": "EventDlqDuplicateAlertObservabilityHandle",

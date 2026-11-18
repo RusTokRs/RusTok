@@ -12,6 +12,7 @@ Sovereign domain capability and client surfaces for Calendar & Appointment Sched
 - Backend crate: `rustok-calendar`
 - Admin UI crate: `rustok-calendar-admin`
 - Storefront UI crate: `rustok-calendar-storefront`
+- FFA transport profile: in-progress transport parity gap tracked while UI transport facade and adapters are completed in Phase 4.
 
 ## Local work phases
 - [x] Phase 1: Canonical FBA scaffolding and contract registration

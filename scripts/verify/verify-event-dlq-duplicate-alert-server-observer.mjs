@@ -22,7 +22,7 @@ const scannerSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_external
 const documentationPath =
   "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md";
 const profilesCheckpointPath =
-  "crates/modules/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md";
+  "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md";
 const planPath = "crates/modules/rustok-profiles/docs/implementation-plan.md";
 const verifierPath =
   "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs";

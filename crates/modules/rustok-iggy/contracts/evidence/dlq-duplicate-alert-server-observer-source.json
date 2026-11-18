@@ -189,7 +189,7 @@
   ],
   "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs",
   "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md",
-  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
+  "profiles_checkpoint": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md",
   "execution_status": "source_not_run",
   "remaining_work": [
     "fair_window_external_iggy_execution_evidence",

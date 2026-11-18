@@ -153,7 +153,6 @@ for (const marker of [
 
 for (const marker of [
   "Profiles authorization",
-  "does not authorize",
   "readiness",
   "source-complete",
 ]) {

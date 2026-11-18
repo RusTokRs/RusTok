@@ -12,6 +12,7 @@ Sovereign domain capability and client surfaces for WebRTC Calls & Conferencing.
 - Backend crate: `rustok-calls`
 - Admin UI crate: `rustok-calls-admin`
 - Storefront UI crate: `rustok-calls-storefront`
+- FFA transport profile: in-progress transport parity gap tracked while UI transport facade and adapters are completed in Phase 4.
 
 ## Local work phases
 - [x] Phase 1: Canonical FBA scaffolding and contract registration

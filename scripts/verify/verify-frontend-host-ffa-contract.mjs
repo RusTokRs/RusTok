@@ -59,11 +59,11 @@ const docs = [
   "apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs",
   "apps/storefront/src/shared/context/seo_page_context.rs",
   "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
-  "apps/admin/src/features/workflow/mod.rs",
-  "apps/admin/src/features/workflow/model.rs",
-  "apps/admin/src/features/workflow/transport/mod.rs",
-  "apps/admin/src/features/workflow/transport/graphql_adapter.rs",
-  "apps/admin/src/features/workflow/transport/native_server_adapter.rs",
+  "crates/modules/rustok-workflow/admin/src/lib.rs",
+  "crates/modules/rustok-workflow/admin/src/model.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/mod.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs",
   "apps/admin/src/features/oauth_apps/mod.rs",
   "apps/admin/src/features/oauth_apps/model.rs",
   "apps/admin/src/features/oauth_apps/transport/mod.rs",
@@ -111,6 +111,7 @@ const docs = [
   "apps/next-frontend/packages/rustok-blog/src/api/posts.ts",
   "apps/next-frontend/packages/rustok-product/src/index.tsx",
   "apps/next-frontend/packages/search/src/index.tsx",
+  "apps/next-frontend/packages/search/src/api.ts",
   "apps/next-frontend/src/modules/index.ts",
   "apps/next-frontend/src/modules/registry.ts",
   "apps/next-frontend/src/shared/lib/graphql.ts",
@@ -179,7 +180,6 @@ const adminInstallerModel = readRepo(
 const adminInstallerTransport = readRepo(
   "apps/admin/src/features/installer/transport/mod.rs",
 );
-const adminCachePage = readRepo("apps/admin/src/pages/cache.rs");
 const cacheAdminModel = readRepo(
   "crates/modules/rustok-cache/admin/src/model.rs",
 );
@@ -250,8 +250,8 @@ const nextFrontendBlogPosts = readRepo(
 const nextFrontendProductPackage = readRepo(
   "apps/next-frontend/packages/rustok-product/src/index.tsx",
 );
-const nextFrontendSearchPackage = readRepo(
-  "apps/next-frontend/packages/search/src/index.tsx",
+const nextFrontendSearchApi = readRepo(
+  "apps/next-frontend/packages/search/src/api.ts",
 );
 const nextFrontendModulesIndex = readRepo(
   "apps/next-frontend/src/modules/index.ts",
@@ -429,8 +429,8 @@ for (const [relativePath, source] of [
     readRepo("apps/next-frontend/packages/rustok-product/src/api/products.ts"),
   ],
   [
-    "apps/next-frontend/packages/search/src/index.tsx",
-    nextFrontendSearchPackage,
+    "apps/next-frontend/packages/search/src/api.ts",
+    nextFrontendSearchApi,
   ],
 ]) {
   assertContains(
@@ -598,6 +598,10 @@ assertMissing(
   "apps/admin/src/features/workflow/api.rs",
   "apps/admin/src/features/workflow/api.rs: removed workflow api facade must stay removed",
 );
+assertMissing(
+  "apps/admin/src/features/workflow/mod.rs",
+  "apps/admin/src/features/workflow/mod.rs: workflow host feature moved to rustok-workflow-admin and must stay removed",
+);
 assertContains(
   adminWorkflowMod,
   "mod model;",
@@ -658,32 +662,43 @@ assertNotContains(
   "apps/admin/src/features/workflow/transport/graphql_adapter.rs: GraphQL adapter must not contain server-function endpoints",
 );
 
-const workflowHostCallers = [
+assertMissing(
   "apps/admin/src/pages/workflow_detail.rs",
+  "apps/admin/src/pages/workflow_detail.rs: workflow host page moved to rustok-workflow-admin and must stay removed",
+);
+assertMissing(
   "apps/admin/src/features/workflow/components/workflow_step_editor.rs",
+  "apps/admin/src/features/workflow/components/workflow_step_editor.rs: workflow host component moved to rustok-workflow-admin and must stay removed",
+);
+assertMissing(
   "apps/admin/src/features/workflow/components/version_history.rs",
+  "apps/admin/src/features/workflow/components/version_history.rs: workflow host component moved to rustok-workflow-admin and must stay removed",
+);
+
+const workflowPackageCallers = [
+  "crates/modules/rustok-workflow/admin/src/ui/leptos.rs",
 ].map((relativePath) => [relativePath, readRepo(relativePath)]);
 
-for (const [relativePath, source] of workflowHostCallers) {
+for (const [relativePath, source] of workflowPackageCallers) {
   assertContains(
     source,
-    /workflow::(?:transport|\{[\s\S]*transport)/,
-    `${relativePath}: workflow host caller must use the transport facade`,
+    /use crate::transport;/,
+    `${relativePath}: workflow caller must use the transport facade`,
   );
   assertNotContains(
     source,
     "workflow::api",
-    `${relativePath}: workflow host caller must not use the removed api facade`,
+    `${relativePath}: workflow caller must not use the removed api facade`,
   );
   assertNotContains(
     source,
     "native_server_adapter::",
-    `${relativePath}: workflow host caller must not call native adapter directly`,
+    `${relativePath}: workflow caller must not call native adapter directly`,
   );
   assertNotContains(
     source,
     "graphql_adapter::",
-    `${relativePath}: workflow host caller must not call GraphQL adapter directly`,
+    `${relativePath}: workflow caller must not call GraphQL adapter directly`,
   );
 }
 
@@ -882,10 +897,9 @@ assertMissing(
   "apps/admin/src/features/cache/transport/native_server_adapter.rs",
   "apps/admin/src/features/cache/transport/native_server_adapter.rs: cache host feature moved to rustok-cache-admin and must stay removed",
 );
-assertContains(
-  adminCachePage,
-  "pub use rustok_cache_admin::CacheAdmin as CachePage;",
-  "apps/admin/src/pages/cache.rs: cache page must delegate to rustok-cache-admin",
+assertMissing(
+  "apps/admin/src/pages/cache.rs",
+  "apps/admin/src/pages/cache.rs: cache host page moved to rustok-cache-admin and must stay removed",
 );
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
   assertNotContains(

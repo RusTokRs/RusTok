@@ -78,7 +78,7 @@ for (const marker of [
 // Matching is layout-tolerant (see lib/source-text.mjs) because the call and the arguments were
 // reformatted when the input gained validation.
 for (const marker of [
-  'let slug = input.slug.trim().to_string();',
+  'validate_slug(&input.slug)',
   'match self.create_tenant(CreateTenantInput {',
   'self.get_tenant_by_slug(&slug).await',
   'Ok(existing) => Ok((existing, false))',

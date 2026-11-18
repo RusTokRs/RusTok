@@ -12,6 +12,7 @@ Sovereign domain capability and client surfaces for Counterparty & Legal Entitie
 - Backend crate: `rustok-party`
 - Admin UI crate: `rustok-party-admin`
 - Storefront UI crate: `rustok-party-storefront`
+- FFA transport profile: in-progress transport parity gap tracked while UI transport facade and adapters are completed in Phase 4.
 
 ## Local work phases
 - [x] Phase 1: Canonical FBA scaffolding and contract registration
