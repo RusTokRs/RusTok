@@ -321,26 +321,24 @@ impl InstallerPersistenceService {
             )));
         }
 
-        if matches!(state, InstallState::Failed | InstallState::FreshInstallCleaned) {
-            let rollback_receipt = install_step_receipt::Entity::find()
+        for step in required_receipt_steps_for_state(state) {
+            let receipt = install_step_receipt::Entity::find()
                 .filter(install_step_receipt::Column::SessionId.eq(session.id))
                 .filter(
                     install_step_receipt::Column::AttemptGeneration
                         .eq(session.attempt_generation),
                 )
-                .filter(
-                    install_step_receipt::Column::Step.eq(serde_name(InstallStep::Rollback)),
-                )
+                .filter(install_step_receipt::Column::Step.eq(serde_name(*step)))
                 .filter(
                     install_step_receipt::Column::Outcome.eq(serde_name(ReceiptOutcome::Success)),
                 )
                 .one(&txn)
                 .await?;
-            if rollback_receipt.is_none() {
-                return Err(sea_orm::DbErr::Custom(
-                    "terminal installer state requires a successful rollback receipt for the current attempt"
-                        .to_string(),
-                ));
+            if receipt.is_none() {
+                return Err(sea_orm::DbErr::Custom(format!(
+                    "installer state {state:?} requires a successful {step:?} receipt for attempt generation {}",
+                    session.attempt_generation
+                )));
             }
         }
 
@@ -617,6 +615,21 @@ async fn acquire_lock_in_transaction(
 fn parse_session_uuid(value: &str) -> Result<Uuid, sea_orm::DbErr> {
     Uuid::parse_str(value)
         .map_err(|error| sea_orm::DbErr::Custom(format!("invalid install session id: {error}")))
+}
+
+fn required_receipt_steps_for_state(state: InstallState) -> &'static [InstallStep] {
+    match state {
+        InstallState::PreflightPassed => &[InstallStep::Preflight],
+        InstallState::ConfigPrepared => &[InstallStep::Config],
+        InstallState::DatabaseReady => &[InstallStep::Database],
+        InstallState::SchemaApplied => &[InstallStep::Migrate],
+        InstallState::SeedApplied => &[InstallStep::Seed],
+        InstallState::AdminProvisioned => &[InstallStep::Admin],
+        InstallState::Verified => &[InstallStep::Deploy, InstallStep::Verify],
+        InstallState::Completed => &[InstallStep::Finalize],
+        InstallState::Failed | InstallState::FreshInstallCleaned => &[InstallStep::Rollback],
+        InstallState::Draft | InstallState::Deploying | InstallState::RecoveryRequired => &[],
+    }
 }
 
 fn install_state_value(state: InstallState) -> &'static str {
