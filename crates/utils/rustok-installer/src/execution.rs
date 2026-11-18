@@ -127,6 +127,9 @@ pub trait InstallExecutor: Send + Sync {
 pub struct InstallSessionRecord {
     pub id: Uuid,
     pub tenant_id: Option<Uuid>,
+    pub status: String,
+    /// Monotonically increasing fencing generation assigned by the durable owner.
+    pub attempt_generation: i64,
     pub lock_owner: Option<String>,
     pub lock_expires_at: Option<DateTime<Utc>>,
 }
@@ -229,18 +232,19 @@ pub trait InstallPersistencePort<R>: Send + Sync {
     async fn record_receipt(
         &self,
         runtime: &R,
+        session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<InstallReceiptRecord, InstallExecutionError>;
     async fn set_state(
         &self,
         runtime: &R,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         state: InstallState,
     ) -> Result<InstallSessionRecord, InstallExecutionError>;
     async fn set_tenant_id(
         &self,
         runtime: &R,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         tenant_id: Uuid,
     ) -> Result<InstallSessionRecord, InstallExecutionError>;
 }
@@ -353,7 +357,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::FreshInstallCleaned,
                 )
                 .await;
@@ -364,7 +368,7 @@ where
         let _ = ports
             .set_state(
                 &database.runtime,
-                session.id,
+                &session,
                 InstallState::FreshInstallCleaned,
             )
             .await;
@@ -386,7 +390,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::PreflightPassed)
+        .set_state(&database.runtime, &session, InstallState::PreflightPassed)
         .await?;
     let config = record_success(
         ports,
@@ -403,7 +407,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::ConfigPrepared)
+        .set_state(&database.runtime, &session, InstallState::ConfigPrepared)
         .await?;
     let database_receipt = record_success(
         ports,
@@ -421,7 +425,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::DatabaseReady)
+        .set_state(&database.runtime, &session, InstallState::DatabaseReady)
         .await?;
     let migrate = record_success(
         ports,
@@ -437,7 +441,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::SchemaApplied)
+        .set_state(&database.runtime, &session, InstallState::SchemaApplied)
         .await?;
 
     // --- Post-Schema Durable Boundary: Failures require recovery rather than fresh-install cleanup ---
@@ -447,7 +451,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -455,7 +459,7 @@ where
         }
     };
     session = ports
-        .set_tenant_id(&database.runtime, session.id, seed_outcome.tenant_id)
+        .set_tenant_id(&database.runtime, &session, seed_outcome.tenant_id)
         .await?;
     let seed = record_success(
         ports,
@@ -475,7 +479,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::SeedApplied)
+        .set_state(&database.runtime, &session, InstallState::SeedApplied)
         .await?;
     let password = match crate::resolve_local_secret_value(&plan.admin.password, "admin password") {
         Ok(pw) => pw,
@@ -483,7 +487,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -499,7 +503,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -533,7 +537,7 @@ where
         ports,
         &database.runtime,
         &plan,
-        session,
+        session.clone(),
         seed_outcome.tenant_id,
     )
     .await
@@ -543,7 +547,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session_id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -561,7 +565,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -583,7 +587,7 @@ where
     )
     .await?;
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::Verified)
+        .set_state(&database.runtime, &session, InstallState::Verified)
         .await?;
     let finalize = match record_success(
         ports,
@@ -604,7 +608,7 @@ where
             let _ = ports
                 .set_state(
                     &database.runtime,
-                    session.id,
+                    &session,
                     InstallState::RecoveryRequired,
                 )
                 .await;
@@ -612,7 +616,7 @@ where
         }
     };
     session = ports
-        .set_state(&database.runtime, session.id, InstallState::Completed)
+        .set_state(&database.runtime, &session, InstallState::Completed)
         .await?;
 
     Ok(InstallApplyOutput {
@@ -656,7 +660,7 @@ where
 {
     let receipt = InstallReceipt::success(session.id.to_string(), step, snapshot, diagnostics)
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
-    ports.record_receipt(runtime, &receipt).await
+    ports.record_receipt(runtime, session, &receipt).await
 }
 
 #[derive(Debug, Error)]
