@@ -115,6 +115,8 @@
 
 1. **State Machine Durability & Non-Rollback Integrity:**
    - `FreshInstallCleaned` is only valid after an explicit cleanup effect has completed; progressing a session to a state that merely releases admission is not proof of cleanup.
+   - Both `FreshInstallCleaned` and terminal `Failed` require a successful `Rollback` receipt for the current attempt generation. `Failed` can only follow `RecoveryRequired`.
+   - `RecoveryRequired` accepts only rollback receipts, so ordinary executor evidence cannot be appended after recovery has been requested.
    - Once the durable session has been claimed, every executor failure—including bootstrap import, remaining-schema, receipt, tenant-assignment, and state-transition failures—must attempt to persist `RecoveryRequired` rather than pretending rollback succeeded.
    - `RecoveryRequired` is reachable from every durable execution stage and remains admission-blocking until an explicit reconciliation workflow is implemented.
 2. **Secret Redaction Invariant:**
