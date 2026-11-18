@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-09: Background Workers, Schedulers & Async Runtime Safety
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08 (8/17 completed — 47.1%)
+- **Active Phase:** CC-10: Observability, Distributed Tracing & Telemetry
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09 (9/17 completed — 52.9%)
 - **Active Branch:** `main`
 
 ---
@@ -336,11 +336,30 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `crates/workers/*`, `rustok-workflow`, `rustok-sandbox`, `apps/server/src/services/app_runtime.rs`.
 - **CodeGraph Target:** `spawn_worker StopHandle AppRuntime shutdown_runtime_workers tokio::fs`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-09.01 — Non-Blocking Async Invariant**
-- [ ] **CC-09.02 — Graceful Worker Drain**
-- [ ] **CC-09.03 — Concurrency Limiting**
-- [ ] **CC-09.04 — Sandbox Isolation**
+- [x] **CC-09.01 — Non-Blocking Async Invariant**
+  - Audited standard library blocking I/O across async worker loops and request flows: confirmed zero naked blocking filesystem calls (`std::fs`) in async execution paths.
+  - Verified uniform usage of `tokio::fs` for all asynchronous filesystem operations across services and workers (`apps/server/src/host.rs`, `crates/modules/rustok-modules/src/source_object.rs`, `crates/workers/rustok-module-build-worker/src/runner.rs`, `crates/utils/rustok-storage/src/runtime.rs`).
+  - Verified `tokio::time::sleep` is used exclusively for asynchronous timer intervals and backoffs; enforced by the platform linter in `crates/utils/rustok-doctor/src/hygiene/mod.rs`.
+- [x] **CC-09.02 — Graceful Worker Drain**
+  - Audited server lifecycle coordination in `apps/server/src/services/app_lifecycle.rs`: `shutdown_runtime_workers` coordinates a 5-second graceful drain using `StopHandle` and explicitly awaits individual worker handle shutdowns (`OutboxRelayWorkerHandle`, `OutboxRetentionWorkerHandle`, `AuthRetentionWorkerHandle`, `RemoteExecutorReaperHandle`, `SeoBulkWorkerHandle`, `ModuleWorkSchedulerHandle`, `WorkflowCronSchedulerHandle`, `ModuleTransitionWatchdogHandle`, `ModuleEventDispatcherHandle`, `ModuleArtifactMaintenanceHandle`).
+  - Audited standalone gRPC worker daemons in `crates/workers/*` (`rustok-artifact-node-agent`, `rustok-artifact-node-controller`, `rustok-artifact-node-reconciler`, `rustok-module-build-worker`, `rustok-verification-worker`): all workers bind `.serve_with_shutdown(listener.address, shutdown_signal())` powered by `rustok-worker-transport::shutdown_signal()`, allowing in-flight requests to complete before process exit.
+- [x] **CC-09.03 — Concurrency Limiting**
+  - Audited background queues, async dispatchers, and external calls:
+    - `rustok-core/src/events/handler.rs`: event dispatcher bounds listener concurrency and queue depth using `Arc<Semaphore>`.
+    - `rustok-core/src/resilience/bulkhead.rs`: Bulkhead pattern bounds concurrent execution via `Arc<Semaphore>` based on `max_concurrent_calls`.
+    - `rustok-worker-transport/src/lib.rs`: Worker admission controller enforces `concurrency_limit` via `Semaphore` permits (`WorkerPermit`).
+    - `rustok-cache/src/refresh.rs`: cache stampede protection bounds concurrent background refreshes via `Semaphore`.
+    - `rustok-media/src/image.rs`: image resizing and transcoding bounds concurrency via `Semaphore(max_concurrency)`.
+    - `apps/server/src/services/comments_provider_runtime_base.rs`: TCP connection pool bounded via `Semaphore(config.max_connections)`.
+- [x] **CC-09.04 — Sandbox Isolation**
+  - Audited Rhai guest execution in `crates/workers/rustok-sandbox/`:
+    - `SandboxLimits`: strictly bounds execution with defaults `wall_clock_ms: 100`, `instruction_budget: 50_000`, `max_memory_bytes: 64MB`, `max_output_bytes: 1MB`, `max_concurrency: 1`.
+    - Rhai engine in `crates/workers/rustok-sandbox/src/rhai.rs`: explicitly sets `set_max_operations`, `set_max_call_levels(16)`, `set_max_string_size`, `set_max_array_size`, `set_max_map_size`, and on-progress wall-clock elapsed check.
+    - Zero host filesystem or network capability grants by default; all guest operations execute on memory JSON/Dynamic records with typed error mapping (`EvalAltResult::ErrorTooManyOperations` -> `SandboxError::LimitExceeded`).
+  - Added automated gate `scripts/verify/verify-workers-schedulers-runtime-safety.mjs` (PASSED). Verified with scoped compilation `cargo check -p rustok-sandbox -p rustok-worker-transport -p rustok-module-build-worker` (PASSED, 0 errors, 0 warnings).
 
 ---
 
