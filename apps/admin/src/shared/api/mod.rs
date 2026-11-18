@@ -6,9 +6,7 @@ use gloo_storage::Storage as GlooStorage;
 use leptos::prelude::ServerFnError;
 pub use rustok_graphql::GraphqlHttpError;
 #[cfg(any(feature = "ssr", all(target_arch = "wasm32", not(feature = "hydrate"))))]
-use rustok_graphql::{
-    GraphqlRequest, execute as execute_graphql, persisted_query_extension,
-};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql, persisted_query_extension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

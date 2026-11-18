@@ -118,7 +118,7 @@ pub struct UpdateFlexEntryCommand {
 pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result<(), FlexError> {
     validate_identifier(&input.slug, "schema slug", MAX_SCHEMA_SLUG_LEN)?;
     validate_schema_name(&input.name)?;
-    validate_schema_description(input.description.as_ref())?;
+    validate_schema_description(input.description.as_deref())?;
 
     validate_json_object(input.settings.as_ref(), "schema settings")?;
     validate_definition_keys(&input.fields_config)
@@ -153,7 +153,7 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
     }
 
     validate_entry_payload(&input.data)?;
-    validate_status(input.status.as_ref())?;
+    validate_status(input.status.as_deref())?;
 
     Ok(())
 }
@@ -163,7 +163,7 @@ pub fn validate_update_schema_command(input: &UpdateFlexSchemaCommand) -> Result
     if let Some(name) = &input.name {
         validate_schema_name(name)?;
     }
-    validate_schema_description(input.description.as_ref())?;
+    validate_schema_description(input.description.as_deref())?;
 
     if let Some(fields_config) = &input.fields_config {
         validate_definition_keys(fields_config)?;
@@ -179,7 +179,7 @@ pub fn validate_update_entry_command(input: &UpdateFlexEntryCommand) -> Result<(
     if let Some(data) = &input.data {
         validate_entry_payload(data)?;
     }
-    validate_status(input.status.as_ref())?;
+    validate_status(input.status.as_deref())?;
 
     Ok(())
 }
@@ -818,7 +818,7 @@ fn validate_entry_payload(data: &JsonValue) -> Result<(), FlexError> {
     Ok(())
 }
 
-fn validate_status(status: Option<&String>) -> Result<(), FlexError> {
+fn validate_status(status: Option<&str>) -> Result<(), FlexError> {
     if let Some(status) = status {
         if status.trim().is_empty() {
             return Err(FlexError::InvalidFieldKey(
@@ -848,7 +848,7 @@ fn validate_status(status: Option<&String>) -> Result<(), FlexError> {
     Ok(())
 }
 
-fn validate_schema_description(description: Option<&String>) -> Result<(), FlexError> {
+fn validate_schema_description(description: Option<&str>) -> Result<(), FlexError> {
     let Some(description) = description else {
         return Ok(());
     };

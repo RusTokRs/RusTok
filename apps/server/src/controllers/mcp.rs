@@ -308,8 +308,7 @@ async fn execute_remote_tool_call(
 /// The durable audit row confirms the operation and its binding without becoming
 /// a persistence path for script source, tests, diagnostics, or retention reasons.
 fn remote_tool_audit_metadata(tool_name: &str, metadata: serde_json::Value) -> serde_json::Value {
-    if is_remote_alloy_authoring_tool(tool_name)
-        || tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE
+    if is_remote_alloy_authoring_tool(tool_name) || tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE
     {
         serde_json::json!({
             "redacted": true,
@@ -1216,10 +1215,7 @@ mod tests {
         let import_metadata =
             remote_tool_audit_metadata(TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, metadata);
         assert_eq!(import_metadata["redacted"], true);
-        assert_eq!(
-            import_metadata["reason"],
-            "source_bearing_alloy_authoring"
-        );
+        assert_eq!(import_metadata["reason"], "source_bearing_alloy_authoring");
         assert!(!import_metadata.to_string().contains("credential"));
     }
 

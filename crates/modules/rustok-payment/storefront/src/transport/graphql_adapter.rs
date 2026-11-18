@@ -200,10 +200,12 @@ fn parse_uuid(value: &str, field: &str) -> Result<Uuid, PaymentTransportError> {
 fn summarize_refunds(items: &[GraphqlRefundItem], total: u64) -> RefundSummary {
     use std::str::FromStr;
 
-    let refunded_amount = items
-        .iter()
-        .filter_map(|item| rust_decimal::Decimal::from_str(item.amount.trim()).ok())
-        .fold(rust_decimal::Decimal::ZERO, |acc, value| acc + value);
+    let mut refunded_amount = rust_decimal::Decimal::ZERO;
+    for item in items {
+        if let Ok(amount) = rust_decimal::Decimal::from_str(item.amount.trim()) {
+            refunded_amount += amount;
+        }
+    }
     RefundSummary {
         total,
         refunded_amount: (total > 0).then(|| refunded_amount.normalize().to_string()),

@@ -58,11 +58,6 @@ impl ForumHttpRuntime {
         crate::CategoryService::new(self.db_clone()).with_taxonomy_port(self.taxonomy_port.clone())
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn category_route_service(&self) -> crate::ForumCategoryRouteService {
-        crate::ForumCategoryRouteService::new(self.db_clone()).with_port(self.taxonomy_port.clone())
-    }
-
     fn read_model_service(&self) -> crate::ForumReadModelService {
         crate::ForumReadModelService::new(self.db_clone())
             .with_settings_providers(self.settings_providers.clone())
@@ -139,7 +134,8 @@ impl ForumHttpRuntime {
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 crate::error::ForumError::Validation(
-                    "forum HTTP routes require TransactionalEventBus in HostRuntimeContext".to_string(),
+                    "forum HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                        .to_string(),
                 )
             })?;
         let settings_providers = match (
@@ -468,10 +464,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> Result<Router, crate::error:
 mod tests {
     use super::ForumHttpRuntime;
     use super::ensure_forum_module_enabled;
-    use std::sync::Arc;
     use crate::ports::taxonomy::NoopForumTaxonomyPort;
     use axum::http::StatusCode;
     use sea_orm::{ConnectionTrait, Database};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     async fn runtime_with_module_table() -> ForumHttpRuntime {

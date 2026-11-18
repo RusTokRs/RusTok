@@ -115,6 +115,7 @@ impl FulfillmentService {
     /// The caller supplies the durable operation identity that is written to the
     /// translation-change journal. This lets admin idempotency receipts and the
     /// localized-copy change evidence commit atomically with the resource itself.
+    #[instrument(skip(self, txn, input), fields(tenant_id = %tenant_id, operation_id = %operation_id))]
     pub(crate) async fn create_shipping_option_in_txn(
         &self,
         txn: &DatabaseTransaction,
@@ -260,6 +261,7 @@ impl FulfillmentService {
         Ok(response)
     }
 
+    #[instrument(skip(self, txn, input), fields(tenant_id = %tenant_id, shipping_option_id = %shipping_option_id, operation_id = %operation_id))]
     pub(crate) async fn update_shipping_option_in_txn(
         &self,
         txn: &DatabaseTransaction,
@@ -631,6 +633,7 @@ impl FulfillmentService {
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
 
+    #[instrument(skip(self, txn, input), fields(tenant_id = %tenant_id, fulfillment_id = %fulfillment_id))]
     pub(crate) async fn create_fulfillment_in_txn(
         &self,
         txn: &DatabaseTransaction,
@@ -788,8 +791,7 @@ impl FulfillmentService {
         identity: &CheckoutFulfillmentIdentity,
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
-        let _ =
-            entities::checkout_identity::Entity::insert(entities::checkout_identity::ActiveModel {
+        entities::checkout_identity::Entity::insert(entities::checkout_identity::ActiveModel {
                 tenant_id: Set(tenant_id),
                 checkout_operation_id: Set(identity.operation_id),
                 order_id: Set(order_id),
@@ -2399,6 +2401,7 @@ impl FulfillmentService {
         Ok(response)
     }
 
+    #[instrument(skip(self, txn), fields(tenant_id = %tenant_id, shipping_option_id = %shipping_option_id, active, operation_id = %operation_id))]
     pub(crate) async fn set_shipping_option_active_in_txn(
         &self,
         txn: &DatabaseTransaction,
@@ -2745,7 +2748,12 @@ fn prepare_provider_lifecycle_metadata(
     let merged = merge_fulfillment_metadata(input_metadata, provider_metadata)?;
     let mut object = match merged {
         Value::Object(object) => object,
-        _ => unreachable!("fulfillment metadata merge returns an object"),
+        // INVARIANT: merge_fulfillment_metadata returns a JSON Object when Ok.
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata merge must return a JSON object".to_string(),
+            ));
+        }
     };
     object.insert(
         "provider_operation".to_string(),

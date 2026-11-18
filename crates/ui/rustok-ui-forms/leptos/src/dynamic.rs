@@ -30,9 +30,8 @@ fn DynamicFieldItem(
 ) -> impl IntoView {
     let name = field.name.clone();
     let name_for_val = name.clone();
-    let value_sig = Signal::derive(move || {
-        values.with(|m| m.get(&name_for_val).cloned().unwrap_or_default())
-    });
+    let value_sig =
+        Signal::derive(move || values.with(|m| m.get(&name_for_val).cloned().unwrap_or_default()));
 
     let name_for_input = name.clone();
     let on_input_cb = Callback::new(move |val: String| {

@@ -163,13 +163,13 @@ impl MenuBindingService {
             return Err(NavigationError::validation("Channel ID must not be nil"));
         }
         let channel = match ChannelService::new(self.db.clone())
-            .get_channel(channel_id)
+            .get_channel_for_tenant(tenant_id, channel_id)
             .await
         {
             Ok(channel) => channel,
             Err(ChannelError::NotFound(_)) => {
                 return Err(NavigationError::validation(format!(
-                    "Channel `{channel_id}` does not exist for active menu binding"
+                    "Channel `{channel_id}` does not exist for active menu binding in tenant `{tenant_id}`"
                 )));
             }
             Err(ChannelError::Database(error)) => return Err(NavigationError::Database(error)),
@@ -179,6 +179,7 @@ impl MenuBindingService {
                 )));
             }
         };
+        // INVARIANT: Channel belongs to tenant_id via database-level filtering in get_channel_for_tenant.
         if channel.tenant_id != tenant_id {
             return Err(NavigationError::validation(format!(
                 "Channel `{channel_id}` does not belong to tenant `{tenant_id}`"

@@ -108,7 +108,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             $$ LANGUAGE plpgsql;
 
             CREATE TRIGGER cancelled_order_pending_label_cleanup
-            AFTER UPDATE OF status ON orders
+            AFTER UPDATE ON orders
             FOR EACH ROW
             EXECUTE FUNCTION cleanup_cancelled_order_pending_labels();
             "#,
@@ -155,7 +155,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
               );
 
             CREATE TRIGGER cancelled_order_pending_label_cleanup
-            AFTER UPDATE OF status ON orders
+            AFTER UPDATE ON orders
             FOR EACH ROW
             WHEN OLD.status <> NEW.status AND NEW.status = 'cancelled'
             BEGIN

@@ -491,7 +491,7 @@ mod tests {
     #[tokio::test]
     async fn dlq_legacy_tenant_fallback_requires_missing_canonical_key() {
         use super::sys_event_tenant_condition;
-        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+        use sea_orm::{PaginatorTrait, QueryFilter};
 
         let db = Database::connect("sqlite::memory:")
             .await

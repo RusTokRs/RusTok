@@ -390,13 +390,19 @@ pub async fn moderate_comment(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[expect(dead_code, reason = "part of admin contract error inspection API surface")]
+#[expect(
+    dead_code,
+    reason = "part of admin contract error inspection API surface"
+)]
 pub enum BlogAdminContractUnavailable {
     Posts,
     Moderation,
 }
 
-#[expect(dead_code, reason = "part of admin contract error inspection API surface")]
+#[expect(
+    dead_code,
+    reason = "part of admin contract error inspection API surface"
+)]
 pub fn blog_admin_contract_unavailable(error: &ApiError) -> Option<BlogAdminContractUnavailable> {
     if is_posts_contract_unavailable(error) {
         Some(BlogAdminContractUnavailable::Posts)

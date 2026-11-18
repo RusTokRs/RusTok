@@ -88,13 +88,14 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);
 
     let resolved = move || configuration.get().and_then(Result::ok);
-    let field = move |read: fn(&ConnectorEdits) -> Option<String>,
-                      extract: fn(&crate::model::IggyConnectorConfiguration) -> String| {
-        let edited = edits.get();
-        read(&edited)
-            .or_else(|| resolved().map(|current| extract(&current)))
-            .unwrap_or_default()
-    };
+    let field =
+        move |read: fn(&ConnectorEdits) -> Option<String>,
+              extract: fn(&crate::model::IggyConnectorConfiguration) -> String| {
+            let edited = edits.get();
+            read(&edited)
+                .or_else(|| resolved().map(|current| extract(&current)))
+                .unwrap_or_default()
+        };
 
     let mode = Signal::derive(move || {
         let edited = edits.get();

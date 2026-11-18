@@ -31,6 +31,7 @@ pub fn catalog_base_scope() -> Condition {
 pub struct BootstrapService;
 
 impl BootstrapService {
+    #[tracing::instrument(skip(conn, prices), fields(count = prices.len()))]
     pub async fn create_initial_prices_in_tx<C>(
         conn: &C,
         prices: Vec<InitialPrice>,
@@ -186,6 +187,7 @@ impl BootstrapService {
         Self::create_initial_prices_in_tx(conn, prices).await
     }
 
+    #[tracing::instrument(skip(conn, variant_ids), fields(count = variant_ids.len()))]
     pub async fn delete_prices_for_variants_in_tx<C>(
         conn: &C,
         variant_ids: &[Uuid],

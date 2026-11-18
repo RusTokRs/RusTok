@@ -22,12 +22,71 @@ use reqwest::{
     header::{ACCEPT, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue},
     redirect::Policy as RedirectPolicy,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
-use crate::oci::OciRegistryTransportPolicy;
 use crate::trust::is_sha256_digest;
+
+const OCI_REGISTRY_MAX_CONCURRENT_REQUESTS: usize = 1;
+
+/// Proxy handling mode for the registry egress boundary. The client always
+/// ignores process and system proxy settings; an approved deployment boundary
+/// may still provide transparent egress routing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OciRegistryProxyMode {
+    Disabled,
+    DeploymentBoundaryOnly,
+}
+
+/// Explicit registry transport and egress policy. The registry transport
+/// validates this complete policy before it creates any HTTP client.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciRegistryTransportPolicy {
+    pub allow_redirects: bool,
+    pub allow_cross_host_auth: bool,
+    pub verify_tls: bool,
+    pub proxy_mode: OciRegistryProxyMode,
+    pub request_timeout_ms: u64,
+    pub max_retries: u8,
+    pub max_transfer_bytes: u64,
+    pub max_decompressed_bytes: u64,
+    pub max_concurrent_requests: usize,
+}
+
+impl OciRegistryTransportPolicy {
+    pub const fn strict() -> Self {
+        Self {
+            allow_redirects: false,
+            allow_cross_host_auth: false,
+            verify_tls: true,
+            proxy_mode: OciRegistryProxyMode::DeploymentBoundaryOnly,
+            request_timeout_ms: 300_000,
+            max_retries: 2,
+            max_transfer_bytes: 64 * 1024 * 1024,
+            max_decompressed_bytes: 64 * 1024 * 1024,
+            max_concurrent_requests: OCI_REGISTRY_MAX_CONCURRENT_REQUESTS,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), OciTransportError> {
+        if self.allow_redirects
+            || self.allow_cross_host_auth
+            || !self.verify_tls
+            || self.request_timeout_ms == 0
+            || self.request_timeout_ms > 900_000
+            || self.max_retries > 3
+            || self.max_transfer_bytes == 0
+            || self.max_decompressed_bytes == 0
+            || self.max_decompressed_bytes > self.max_transfer_bytes
+            || self.max_concurrent_requests == 0
+            || self.max_concurrent_requests > 4
+        {
+            return Err(OciTransportError::InvalidPolicy);
+        }
+        Ok(())
+    }
+}
 
 const OCI_MANIFEST_ACCEPT: &str = "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json";
 const OCI_BLOB_MEDIA_TYPE: &str = "application/octet-stream";
@@ -1106,7 +1165,7 @@ fn parse_challenge_value(value: &str) -> Result<(String, &str), OciTransportErro
 #[cfg(test)]
 mod tests {
     use super::{OciRegistryTransport, RegistryReference, parse_bearer_challenge};
-    use crate::oci::OciRegistryTransportPolicy;
+    use super::OciRegistryTransportPolicy;
 
     #[test]
     fn strict_transport_constructs_with_a_complete_policy() {

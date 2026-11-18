@@ -6,7 +6,6 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
-use std::panic::AssertUnwindSafe;
 use rustok_installer::{
     InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
@@ -17,6 +16,7 @@ use rustok_installer_persistence::{
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use std::panic::AssertUnwindSafe;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -263,13 +263,11 @@ async fn apply(
     }
 
     let job_ctx = ctx.clone();
-    tokio::spawn(async move {
+    let _job_task = tokio::spawn(async move {
         let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
-        let execution = AssertUnwindSafe(async {
-            executor.apply(plan, apply_options).await
-        })
-        .catch_unwind()
-        .await;
+        let execution = AssertUnwindSafe(async { executor.apply(plan, apply_options).await })
+            .catch_unwind()
+            .await;
 
         match execution {
             Ok(Ok(output)) => {

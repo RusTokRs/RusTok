@@ -1,4 +1,3 @@
-use std::fmt;
 #[cfg(feature = "mod-product")]
 use std::time::Duration;
 
@@ -7,66 +6,8 @@ use crate::error::Error;
 use crate::error::Result;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-const DEPLOYMENT_ENV: &str = "RUSTOK_PRODUCT_DEPLOYMENT";
-const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER";
-const COMMAND_PROVIDER_ENV: &str = "RUSTOK_PRODUCT_COMMAND_PROVIDER";
-const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
-const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
-const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
-    "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
-const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
-    "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
-const LOCALE_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
-const VARIANT_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
-const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
-const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
-const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
-const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
-const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum ProductCatalogDeployment {
-    Embedded,
-    Grpc(ProductCatalogGrpcDeployment),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct ProductDeploymentConfig {
-    read: ProductCatalogDeployment,
-    command: ProductCatalogDeployment,
-    attached_values_read_token: Option<ProductCatalogBearerSecret>,
-    attached_values_write_token: Option<ProductCatalogBearerSecret>,
-    variant_replay_token: Option<ProductCatalogBearerSecret>,
-    locale_replay_token: Option<ProductCatalogBearerSecret>,
-}
-
-#[derive(Clone, Eq, PartialEq)]
-struct ProductCatalogBearerSecret(String);
-
-impl ProductCatalogBearerSecret {
-    fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    fn expose(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl fmt::Debug for ProductCatalogBearerSecret {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("[REDACTED]")
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct ProductCatalogGrpcDeployment {
-    endpoint: String,
-    bearer_token: ProductCatalogBearerSecret,
-    tls_domain: Option<String>,
-    connect_timeout_ms: u64,
-    allow_insecure_loopback: bool,
-}
+#[cfg(any(test, feature = "mod-product"))]
+use product_config::*;
 
 /// Selects and connects the deployment-owned Product catalog provider before host composition.
 ///
@@ -205,43 +146,108 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
     }
 }
 
-fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig, String> {
-    parse_product_deployment_config(
-        optional_env(DEPLOYMENT_ENV).as_deref(),
-        optional_env(PROVIDER_ENV).as_deref(),
-        optional_env(COMMAND_PROVIDER_ENV).as_deref(),
-        ProductGrpcEnvironment {
-            endpoint: optional_env(GRPC_ENDPOINT_ENV).as_deref(),
-            bearer_token: optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
-            attached_values_read_token: optional_secret_env(ATTACHED_VALUES_READ_TOKEN_ENV)
-                .as_deref(),
-            attached_values_write_token: optional_secret_env(ATTACHED_VALUES_WRITE_TOKEN_ENV)
-                .as_deref(),
-            variant_replay_token: std::env::var(VARIANT_REPLAY_TOKEN_ENV).ok().as_deref(),
-            locale_replay_token: std::env::var(LOCALE_REPLAY_TOKEN_ENV).ok().as_deref(),
-            command_bearer_token: optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
-            tls_domain: optional_env(TLS_DOMAIN_ENV).as_deref(),
-            connect_timeout_ms: optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
-            allow_insecure_loopback: optional_env(ALLOW_INSECURE_LOOPBACK_ENV).as_deref(),
-        },
-    )
-}
+#[cfg(any(test, feature = "mod-product"))]
+mod product_config {
+    use std::fmt;
 
-#[derive(Default)]
-struct ProductGrpcEnvironment<'a> {
-    endpoint: Option<&'a str>,
-    bearer_token: Option<&'a str>,
-    attached_values_read_token: Option<&'a str>,
-    attached_values_write_token: Option<&'a str>,
-    variant_replay_token: Option<&'a str>,
-    locale_replay_token: Option<&'a str>,
-    command_bearer_token: Option<&'a str>,
-    tls_domain: Option<&'a str>,
-    connect_timeout_ms: Option<&'a str>,
-    allow_insecure_loopback: Option<&'a str>,
-}
+    pub(super) const DEPLOYMENT_ENV: &str = "RUSTOK_PRODUCT_DEPLOYMENT";
+    pub(super) const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER";
+    pub(super) const COMMAND_PROVIDER_ENV: &str = "RUSTOK_PRODUCT_COMMAND_PROVIDER";
+    pub(super) const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
+    pub(super) const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
+    pub(super) const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
+        "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
+    pub(super) const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
+        "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
+    pub(super) const LOCALE_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
+    pub(super) const VARIANT_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
+    pub(super) const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
+    pub(super) const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
+    pub(super) const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
+    pub(super) const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
+    pub(super) const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
-fn parse_product_deployment_config(
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub(super) enum ProductCatalogDeployment {
+        Embedded,
+        Grpc(ProductCatalogGrpcDeployment),
+    }
+
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub(super) struct ProductDeploymentConfig {
+        pub(super) read: ProductCatalogDeployment,
+        pub(super) command: ProductCatalogDeployment,
+        pub(super) attached_values_read_token: Option<ProductCatalogBearerSecret>,
+        pub(super) attached_values_write_token: Option<ProductCatalogBearerSecret>,
+        pub(super) variant_replay_token: Option<ProductCatalogBearerSecret>,
+        pub(super) locale_replay_token: Option<ProductCatalogBearerSecret>,
+    }
+
+    #[derive(Clone, Eq, PartialEq)]
+    pub(super) struct ProductCatalogBearerSecret(String);
+
+    impl ProductCatalogBearerSecret {
+        pub(super) fn new(value: impl Into<String>) -> Self {
+            Self(value.into())
+        }
+
+        pub(super) fn expose(&self) -> &str {
+            self.0.as_str()
+        }
+    }
+
+    impl fmt::Debug for ProductCatalogBearerSecret {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("[REDACTED]")
+        }
+    }
+
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub(super) struct ProductCatalogGrpcDeployment {
+        pub(super) endpoint: String,
+        pub(super) bearer_token: ProductCatalogBearerSecret,
+        pub(super) tls_domain: Option<String>,
+        pub(super) connect_timeout_ms: u64,
+        pub(super) allow_insecure_loopback: bool,
+    }
+
+    pub(super) fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig, String> {
+        parse_product_deployment_config(
+            optional_env(DEPLOYMENT_ENV).as_deref(),
+            optional_env(PROVIDER_ENV).as_deref(),
+            optional_env(COMMAND_PROVIDER_ENV).as_deref(),
+            ProductGrpcEnvironment {
+                endpoint: optional_env(GRPC_ENDPOINT_ENV).as_deref(),
+                bearer_token: optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
+                attached_values_read_token: optional_secret_env(ATTACHED_VALUES_READ_TOKEN_ENV)
+                    .as_deref(),
+                attached_values_write_token: optional_secret_env(ATTACHED_VALUES_WRITE_TOKEN_ENV)
+                    .as_deref(),
+                variant_replay_token: std::env::var(VARIANT_REPLAY_TOKEN_ENV).ok().as_deref(),
+                locale_replay_token: std::env::var(LOCALE_REPLAY_TOKEN_ENV).ok().as_deref(),
+                command_bearer_token: optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
+                tls_domain: optional_env(TLS_DOMAIN_ENV).as_deref(),
+                connect_timeout_ms: optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
+                allow_insecure_loopback: optional_env(ALLOW_INSECURE_LOOPBACK_ENV).as_deref(),
+            },
+        )
+    }
+
+    #[derive(Default)]
+    pub(super) struct ProductGrpcEnvironment<'a> {
+        pub(super) endpoint: Option<&'a str>,
+        pub(super) bearer_token: Option<&'a str>,
+        pub(super) attached_values_read_token: Option<&'a str>,
+        pub(super) attached_values_write_token: Option<&'a str>,
+        pub(super) variant_replay_token: Option<&'a str>,
+        pub(super) locale_replay_token: Option<&'a str>,
+        pub(super) command_bearer_token: Option<&'a str>,
+        pub(super) tls_domain: Option<&'a str>,
+        pub(super) connect_timeout_ms: Option<&'a str>,
+        pub(super) allow_insecure_loopback: Option<&'a str>,
+    }
+
+    pub(super) fn parse_product_deployment_config(
     deployment: Option<&str>,
     read_provider: Option<&str>,
     command_provider: Option<&str>,
@@ -456,6 +462,7 @@ fn optional_env(name: &str) -> Option<String> {
 
 fn optional_secret_env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
+}
 }
 
 #[cfg(test)]

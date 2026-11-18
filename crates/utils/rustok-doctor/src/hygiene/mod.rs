@@ -91,7 +91,9 @@ impl Scan<'_> {
         for prev in self.lines[..index].iter().rev().take(8) {
             let code_trim = prev.syntax.trim();
             let comment_trim = prev.comment.trim();
-            if comment_trim.contains("INVARIANT:") || comment_trim.contains("physically guaranteed:") {
+            if comment_trim.contains("INVARIANT:")
+                || comment_trim.contains("physically guaranteed:")
+            {
                 return true;
             }
             if in_method_chain {
@@ -431,7 +433,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         || matches!(name.as_str(), "test.rs" | "tests.rs" | "test_support.rs");
     let cli_file = name == "main.rs"
         || name == "cli.rs"
-        || parts.iter().any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
+        || parts
+            .iter()
+            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
     let mut scan = Scan {
         file,
         lines: source::lines(content),

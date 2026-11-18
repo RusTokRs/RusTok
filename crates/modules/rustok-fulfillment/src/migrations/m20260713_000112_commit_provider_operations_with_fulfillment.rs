@@ -129,7 +129,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
 
             CREATE TRIGGER fulfillments_commit_provider_operation
-            AFTER UPDATE OF metadata ON fulfillments
+            AFTER UPDATE ON fulfillments
             FOR EACH ROW
             WHEN json_extract(NEW.metadata, '$.provider_operation.id') IS NOT NULL
              AND json_extract(NEW.metadata, '$.provider_operation.id')

@@ -1,20 +1,24 @@
-use async_graphql::{Context, FieldError, Result, Subscription};
+use async_graphql::{Context, Result, Subscription};
 use futures_util::stream;
-use std::fmt::Display;
 
 use rustok_api::HostAuthorityContext;
 
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
-use rustok_api::graphql::GraphQLError;
 use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;
 
-fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldError {
+#[cfg(test)]
+fn graphql_internal_error(
+    message: &'static str,
+    error: impl std::fmt::Display,
+) -> async_graphql::FieldError {
+    use rustok_api::graphql::GraphQLError;
+
     tracing::error!(%error, message, "GraphQL build subscription failed");
-    <FieldError as GraphQLError>::internal_error(message)
+    <async_graphql::FieldError as GraphQLError>::internal_error(message)
 }
 
 async fn ensure_platform_build_read_permission(ctx: &Context<'_>) -> Result<()> {

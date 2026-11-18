@@ -52,6 +52,7 @@ impl MarketplaceCommissionService {
         &self.db
     }
 
+    #[tracing::instrument(skip(self, idempotency_key, input), fields(tenant_id = %tenant_id, actor_id = %actor_id))]
     pub async fn create_rule_version_with_receipt(
         &self,
         tenant_id: Uuid,
@@ -588,6 +589,7 @@ fn validate_allocation_batch(
 ) -> MarketplaceCommissionResult<()> {
     let mut ids = HashSet::with_capacity(allocations.len());
     for allocation in allocations {
+        // INVARIANT: In-memory input validation ensuring port-provided allocation batch matches tenant and order scope.
         if allocation.tenant_id != tenant_id || allocation.order_id != order_id {
             return Err(MarketplaceCommissionError::Validation(
                 "allocation batch does not match tenant or order scope".to_string(),

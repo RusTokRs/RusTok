@@ -202,6 +202,7 @@ fn validate_assessment_batch(
     let mut credit_total = 0_i64;
 
     for assessment in &assessments {
+        // INVARIANT: In-memory input validation that the external assessment response matches command tenant and order scope.
         if assessment.tenant_id != tenant_id || assessment.order_id != order_id {
             return Err(MarketplaceLedgerError::Validation(
                 "commission assessment batch does not match tenant or order scope".to_string(),

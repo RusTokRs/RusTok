@@ -435,12 +435,15 @@ mod tests {
         use axum::{body::Body, http::Request};
 
         let mut request = Request::new(Body::empty());
-        request.headers_mut().append("x-rustok-runner-token", "runner-secret".parse().unwrap());
-        request.headers_mut().append("x-rustok-runner-token", "second-secret".parse().unwrap());
+        request
+            .headers_mut()
+            .append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        request
+            .headers_mut()
+            .append("x-rustok-runner-token", "second-secret".parse().unwrap());
 
         super::strip_runner_token_header(&mut request);
 
         assert!(!request.headers().contains_key("x-rustok-runner-token"));
     }
-
 }

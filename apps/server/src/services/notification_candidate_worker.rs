@@ -16,7 +16,7 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::stop_handle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 

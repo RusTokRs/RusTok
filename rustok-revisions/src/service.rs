@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::backend::RevisionBackend;
 use crate::{
-    ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionError, RevisionEvent,
-    RevisionMetadata, RevisionTracker, Revisionable, compute_diff,
+    compute_diff, ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionError,
+    RevisionEvent, RevisionMetadata, RevisionTracker, Revisionable,
 };
 
 /// Main service for managing content revisions.
@@ -22,6 +22,7 @@ impl RevisionService {
     }
 
     /// Create a revision for content update.
+    #[tracing::instrument(skip(self, _old_content, new_content, tracker), fields(tenant_id = %tenant_id, content_id = %content_id, locale = %locale, user_id = %user_id))]
     pub async fn create_revision_with_tracker<T: Revisionable>(
         &self,
         tenant_id: Uuid,
@@ -98,6 +99,7 @@ impl RevisionService {
     }
 
     /// Create a revision for content creation.
+    #[tracing::instrument(skip(self, content), fields(tenant_id = %tenant_id, content_id = %content_id, locale = %locale, user_id = %user_id))]
     pub async fn create_revision_for_create<T: Revisionable>(
         &self,
         tenant_id: Uuid,
@@ -253,6 +255,7 @@ impl RevisionService {
     }
 
     /// Create a named version (snapshot).
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, content_id = %content_id, locale = %locale, revision_id = %revision_id, version_name = %version_name))]
     pub async fn create_named_version(
         &self,
         tenant_id: Uuid,
@@ -270,7 +273,7 @@ impl RevisionService {
                 RevisionError::NotFound(format!("Revision {} not found", revision_id))
             })?;
 
-        // Verify it belongs to the specified content
+        // INVARIANT: In-memory verification ensuring the backend revision belongs to the specified tenant, content, and locale.
         if revision.tenant_id != tenant_id
             || revision.content_id != content_id
             || revision.locale != locale
@@ -326,6 +329,7 @@ impl RevisionService {
     }
 
     /// Delete a revision.
+    #[tracing::instrument(skip(self), fields(id = %id))]
     pub async fn delete_revision(&self, id: Uuid) -> Result<(), RevisionError> {
         self.backend.delete_revision(id).await
     }

@@ -36,10 +36,32 @@ pub struct NotificationsGraphqlRuntimeData {
     storefront: Option<Arc<dyn NotificationInboxStorefrontPort>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct NotificationsGraphqlRuntimeError(pub String);
+
+impl From<&str> for NotificationsGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for NotificationsGraphqlRuntimeError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<NotificationsGraphqlRuntimeError> for String {
+    fn from(e: NotificationsGraphqlRuntimeError) -> Self {
+        e.0
+    }
+}
+
 #[cfg(feature = "server")]
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> std::result::Result<NotificationsGraphqlRuntimeData, String> {
+) -> std::result::Result<NotificationsGraphqlRuntimeData, NotificationsGraphqlRuntimeError> {
     use crate::NotificationSourceRegistry;
 
     use crate::NotificationRecipientPolicyRuntime;

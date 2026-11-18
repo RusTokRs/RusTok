@@ -447,12 +447,12 @@ fn field_key_for_leaf(leaf: &FlexSchemaTranslationLeaf) -> Result<FieldKey, Port
     })
 }
 
-fn dynamic_field_key(kind: &str, components: &[&String]) -> String {
+fn dynamic_field_key(kind: &str, components: &[impl AsRef<str>]) -> String {
     let mut hasher = Sha256::new();
     hash_component(&mut hasher, FIELD_KEY_NAMESPACE);
     hash_component(&mut hasher, kind);
     for component in components {
-        hash_component(&mut hasher, component);
+        hash_component(&mut hasher, component.as_ref());
     }
     format!("flex_leaf_v1:{kind}:{}", hex::encode(hasher.finalize()))
 }

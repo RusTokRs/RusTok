@@ -619,7 +619,8 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
+            let parsed =
+                Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
             if parsed.is_nil() {
                 return Err(FieldError::new("UUID cannot be nil"));
             }
@@ -1127,7 +1128,7 @@ async fn finalize_search_result(
                 0,
             );
             metrics::record_module_error("search", error_type, "error");
-            let _ = record_search_query_log(
+            record_search_query_log(
                 db,
                 surface,
                 search_query,

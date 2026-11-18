@@ -347,7 +347,8 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
+            let parsed =
+                Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
             if parsed.is_nil() {
                 return Err(FieldError::new("UUID cannot be nil"));
             }
@@ -362,7 +363,8 @@ fn parse_requested_engine(value: &str, field_name: &str) -> Result<SearchEngineK
 }
 
 fn parse_required_uuid(value: &str, field_name: &str) -> Result<Uuid> {
-    let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new(format!("Invalid {field_name}")))?;
+    let parsed = Uuid::parse_str(value.trim())
+        .map_err(|_| FieldError::new(format!("Invalid {field_name}")))?;
     if parsed.is_nil() {
         return Err(FieldError::new(format!("{field_name} cannot be nil")));
     }

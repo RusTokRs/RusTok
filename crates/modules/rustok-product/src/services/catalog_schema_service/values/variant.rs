@@ -217,9 +217,11 @@ impl ProductCatalogSchemaService {
         )
         .await?;
         for patch in &patches {
-            let definition = definitions
-                .get(&patch.attribute_id)
-                .ok_or_else(|| CommerceError::Validation("validated Variant attribute definition must exist".into()))?;
+            let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                CommerceError::Validation(
+                    "validated Variant attribute definition must exist".into(),
+                )
+            })?;
             write_variant_value_patch(
                 &txn,
                 tenant_id,
@@ -670,7 +672,9 @@ where
     .one(conn)
     .await?
     .ok_or_else(|| {
-        CommerceError::Database(sea_orm::DbErr::Custom("INSERT RETURNING id must return a row".to_string()))
+        CommerceError::Database(sea_orm::DbErr::Custom(
+            "INSERT RETURNING id must return a row".to_string(),
+        ))
     })?
     .id;
 

@@ -129,7 +129,9 @@ async fn storefront_search_native(
             .await
             .map_err(ServerFnError::new)?;
         if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant context identifier cannot be nil"));
+            return Err(ServerFnError::new(
+                "tenant context identifier cannot be nil",
+            ));
         }
         let request_context = leptos_axum::extract::<RequestContext>()
             .await
@@ -265,7 +267,9 @@ async fn storefront_filter_presets_native() -> Result<Vec<SearchFilterPreset>, S
             .await
             .map_err(ServerFnError::new)?;
         if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant context identifier cannot be nil"));
+            return Err(ServerFnError::new(
+                "tenant context identifier cannot be nil",
+            ));
         }
         let settings = SearchSettingsService::load_effective(&db, Some(tenant.id))
             .await
@@ -304,7 +308,9 @@ async fn storefront_search_suggestions_native(
             .await
             .map_err(ServerFnError::new)?;
         if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant context identifier cannot be nil"));
+            return Err(ServerFnError::new(
+                "tenant context identifier cannot be nil",
+            ));
         }
         let request_context = leptos_axum::extract::<RequestContext>()
             .await
@@ -374,7 +380,9 @@ async fn storefront_track_search_click_native(
             .await
             .map_err(ServerFnError::new)?;
         if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant context identifier cannot be nil"));
+            return Err(ServerFnError::new(
+                "tenant context identifier cannot be nil",
+            ));
         }
         let query_log_id = query_log_id
             .trim()
@@ -500,7 +508,8 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<uuid::Uuid>, Server
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            let parsed = uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid UUID"))?;
+            let parsed = uuid::Uuid::parse_str(value.trim())
+                .map_err(|_| ServerFnError::new("Invalid UUID"))?;
             if parsed.is_nil() {
                 return Err(ServerFnError::new("UUID cannot be nil"));
             }
@@ -557,10 +566,13 @@ fn normalize_uuid_values(
     values
         .into_iter()
         .map(|value| {
-            let parsed = uuid::Uuid::parse_str(value.trim())
-                .map_err(|_| ServerFnError::new(format!("{field_name} contains an invalid UUID")))?;
+            let parsed = uuid::Uuid::parse_str(value.trim()).map_err(|_| {
+                ServerFnError::new(format!("{field_name} contains an invalid UUID"))
+            })?;
             if parsed.is_nil() {
-                return Err(ServerFnError::new(format!("{field_name} contains a nil UUID")));
+                return Err(ServerFnError::new(format!(
+                    "{field_name} contains a nil UUID"
+                )));
             }
             Ok(parsed)
         })

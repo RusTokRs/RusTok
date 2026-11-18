@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Write as _};
+use std::collections::HashMap;
 
 use crate::entities::{price_list, price_list_translation};
 use rustok_api::{PortError, TenantLocale, sha256_digest};
@@ -327,11 +327,16 @@ impl PriceListTranslationService {
             .or_else(|| (!unchanged).then(generate_id));
 
         if !unchanged {
+            let op_id = operation_id.ok_or_else(|| {
+                PriceListTranslationExactLocaleError::Validation(
+                    "changed Pricing translation apply must have operation id".to_string(),
+                )
+            })?;
             record_price_list_translation_change_in_tx(
                 &txn,
                 tenant_id,
                 price_list_id,
-                operation_id.expect("changed Pricing translation apply must have operation id"),
+                op_id,
                 &resource_revision,
                 PriceListTranslationChangeLifecycle::Active,
             )
@@ -422,14 +427,16 @@ fn build_snapshot(
     let resource_revision = resource_revision(&price_list, &translations);
     let source_revision = locale_revision(&source);
     let target_revision = target.as_ref().map(locale_revision);
-    let exact_locales = translations
-        .iter()
-        .filter_map(|translation| {
-            TenantLocale::new(&translation.locale)
-                .ok()
-                .map(TenantLocale::into_inner)
-        })
-        .collect();
+    let mut exact_locales = Vec::with_capacity(translations.len());
+    for translation in &translations {
+        let locale = TenantLocale::new(&translation.locale).map_err(|error| {
+            PriceListTranslationExactLocaleError::Validation(format!(
+                "stored price list translation locale '{}' is invalid: {error}",
+                translation.locale
+            ))
+        })?;
+        exact_locales.push(locale.into_inner());
+    }
 
     Ok(PriceListTranslationExactLocaleSnapshot {
         price_list_id: price_list.id,
@@ -575,8 +582,10 @@ fn digest_revision(payload: &[u8]) -> String {
     let digest = sha256_digest(&[payload]);
     let mut revision = String::with_capacity(71);
     revision.push_str("sha256:");
-    for byte in digest {
-        write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    for &byte in &digest {
+        revision.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        revision.push(HEX_CHARS[(byte & 0x0f) as usize] as char);
     }
     revision
 }

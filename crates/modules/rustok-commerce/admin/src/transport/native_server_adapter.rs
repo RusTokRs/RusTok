@@ -720,8 +720,12 @@ mod tests {
     use rustok_test_utils::mock_transactional_event_bus;
     use serde_json::json;
 
-    #[path = "../../rustok-commerce/tests/support/mod.rs"]
-    mod support;
+    mod support {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/support/mod.rs"
+        ));
+    }
 
     fn test_app_context(db: sea_orm::DatabaseConnection) -> HostRuntimeContext {
         HostRuntimeContext::new(db).with_shared_value(mock_transactional_event_bus())

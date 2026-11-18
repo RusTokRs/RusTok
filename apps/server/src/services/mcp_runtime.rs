@@ -133,9 +133,10 @@ impl DbBackedMcpRuntimeBridge {
             return Err(Error::Unauthorized("MCP client is inactive".into()));
         }
 
-        let policy = mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
-            .await
-            .map_err(map_db_err)?;
+        let policy =
+            mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
+                .await
+                .map_err(map_db_err)?;
         if let Some(policy) = policy.as_ref() {
             McpManagementAuthorityService::validate_runtime_policy(
                 &self.db,
@@ -358,10 +359,15 @@ fn filter_active_module_permissions(
         return granted_permissions.to_vec();
     };
 
-    let permissions = granted_permissions
-        .iter()
-        .filter_map(|value| value.parse::<Permission>().ok())
-        .collect::<Vec<_>>();
+    let mut permissions = Vec::with_capacity(granted_permissions.len());
+    for value in granted_permissions {
+        match value.parse::<Permission>() {
+            Ok(permission) => permissions.push(permission),
+            Err(error) => {
+                tracing::warn!(value = %value, error = %error, "Ignoring unparseable granted permission");
+            }
+        }
+    }
     let mut active = availability.active_permissions(&permissions);
     active.sort_by_cached_key(ToString::to_string);
     active.dedup();

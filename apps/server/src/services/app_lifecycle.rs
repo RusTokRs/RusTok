@@ -4,64 +4,21 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
-#[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[cfg(feature = "mod-seo")]
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
-/// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
-#[derive(Clone)]
-pub struct StopHandle {
-    stop_tx: tokio::sync::watch::Sender<bool>,
-}
-
-impl StopHandle {
-    pub fn new() -> (Self, tokio::sync::watch::Receiver<bool>) {
-        let (tx, rx) = tokio::sync::watch::channel(false);
-        (Self { stop_tx: tx }, rx)
-    }
-
-    /// Subscribes a new watch `Receiver` to the host shutdown signal.
-    ///
-    /// The returned receiver immediately sees the current value and will be
-    /// notified when [`StopHandle::stop`] is called. Clone it once per background worker
-    /// so each worker gets its own independent view of the channel.
-    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
-        self.stop_tx.subscribe()
-    }
-
-    pub async fn stop(&self) {
-        let was_stopping = self.stop_tx.send_replace(true);
-        if !was_stopping {
-            // Yield so spawned tasks have a chance to notice the signal.
-            tokio::task::yield_now().await;
-        }
-    }
-
-    pub fn is_stopping(&self) -> bool {
-        *self.stop_tx.borrow()
-    }
-
-    /// Safely retrieves or initializes the shared `StopHandle` from the context without panic.
-    pub fn ensure(ctx: &ServerRuntimeContext) -> Self {
-        if let Some(existing) = ctx.shared_get::<Self>() {
-            existing
-        } else {
-            let (handle, _rx) = Self::new();
-            let _ = ctx.shared_insert_if_absent(handle.clone());
-            ctx.shared_get::<Self>().unwrap_or(handle)
-        }
-    }
-}
+pub use crate::services::stop_handle::StopHandle;
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -389,13 +346,19 @@ pub(crate) fn additional_runtime_worker_snapshots(
     use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
     #[cfg(feature = "mod-product")]
     use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+    #[cfg(feature = "mod-forum")]
     use crate::services::forum_search_inbox_worker::{
         ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
     };
+    #[cfg(feature = "mod-product")]
     use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
+    #[cfg(feature = "mod-social_graph")]
     use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
     use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
     use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
     use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
 
     let local = ctx.settings().runtime.runs_background_workers();
@@ -445,6 +408,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         // offset uncommitted on poison/receive failures. Once started, their
         // liveness is part of readiness so a dead consumer cannot leave the
         // HTTP host green while its projection queue is stalled.
+        #[cfg(feature = "mod-product")]
         RuntimeWorkerSnapshot {
             name: "product_index_refresh",
             required: local
@@ -453,6 +417,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 !worker.is_ready()
             }),
         },
+        #[cfg(feature = "mod-social_graph")]
         RuntimeWorkerSnapshot {
             name: "social_graph_index",
             required: local && ctx.shared_contains::<SocialGraphIndexWorkerHandle>(),
@@ -460,6 +425,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 SocialGraphIndexWorkerHandle::is_finished,
             ),
         },
+        #[cfg(feature = "mod-forum")]
         RuntimeWorkerSnapshot {
             name: "forum_search_inbox",
             required: local && ctx.shared_contains::<ForumSearchInboxWorkerHandle>(),
@@ -467,6 +433,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 ForumSearchInboxWorkerHandle::is_finished,
             ),
         },
+        #[cfg(feature = "mod-forum")]
         RuntimeWorkerSnapshot {
             name: "forum_search_contract_consumer",
             required: local
@@ -475,6 +442,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 |worker| worker.is_finished(),
             ),
         },
+        #[cfg(feature = "mod-notifications")]
         RuntimeWorkerSnapshot {
             name: "notification_outbox_intake",
             required: local
@@ -483,6 +451,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 NotificationOutboxIntakeWorkerHandle::is_finished,
             ),
         },
+        #[cfg(feature = "mod-notifications")]
         RuntimeWorkerSnapshot {
             name: "notification_fanout",
             required: local && ctx.shared_contains::<NotificationFanoutWorkerHandle>(),
@@ -490,6 +459,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 NotificationFanoutWorkerHandle::is_finished,
             ),
         },
+        #[cfg(feature = "mod-notifications")]
         RuntimeWorkerSnapshot {
             name: "notification_candidate",
             required: local && ctx.shared_contains::<NotificationCandidateWorkerHandle>(),
@@ -1276,6 +1246,7 @@ fn await_runtime_worker_shutdown_tasks(
     await_runtime_worker_shutdown_tasks_with_timeout(worker, tasks, Duration::from_secs(5))
 }
 
+#[cfg(test)]
 fn await_runtime_worker_shutdown_with_timeout(
     worker: &'static str,
     task: Option<JoinHandle<()>>,
@@ -1385,6 +1356,15 @@ fn await_module_worker_shutdown(
     await_module_worker_shutdown_with_timeout(worker, task, Duration::from_secs(5))
 }
 
+#[cfg(any(
+    test,
+    feature = "mod-order",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+    feature = "mod-product",
+    feature = "mod-notifications",
+    feature = "mod-forum"
+))]
 fn await_module_worker_shutdown_with_timeout(
     worker: &'static str,
     task: JoinHandle<()>,

@@ -668,44 +668,52 @@ pub fn DesignSystemPage() -> impl IntoView {
                             <div class="flex flex-wrap items-center gap-3">
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-xs font-medium text-muted-foreground">"Profile:"</span>
-                                    {["article", "discussion", "comment"].into_iter().map(|p| {
-                                        let p_str = p.to_string();
-                                        let is_active = move || rt_profile.get() == p_str;
-                                        view! {
-                                            <Button
-                                                variant=move || if is_active() { ButtonVariant::Default } else { ButtonVariant::Outline }
-                                                size=Size::Sm
-                                                on:click=move |_| set_rt_profile.set(p.to_string())
-                                                class="capitalize h-7 px-2.5 text-xs"
-                                            >
-                                                {p}
-                                            </Button>
-                                        }
-                                    }).collect_view()}
+                                    {move || {
+                                        let current = rt_profile.get();
+                                        ["article", "discussion", "comment"].into_iter().map(|p| {
+                                            let p_str = p.to_string();
+                                            let is_active = current == p;
+                                            let variant = if is_active { ButtonVariant::Default } else { ButtonVariant::Outline };
+                                            view! {
+                                                <Button
+                                                    variant=variant
+                                                    size=Size::Sm
+                                                    on_click=Box::new(move || set_rt_profile.set(p_str.clone()))
+                                                    class="capitalize h-7 px-2.5 text-xs"
+                                                >
+                                                    {p}
+                                                </Button>
+                                            }
+                                        }).collect_view()
+                                    }}
                                 </div>
                                 <Separator orientation=Orientation::Vertical class="h-4" />
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-xs font-medium text-muted-foreground">"Locale:"</span>
-                                    {["en", "ru"].into_iter().map(|loc| {
-                                        let loc_str = loc.to_string();
-                                        let is_active = move || rt_locale.get() == loc_str;
-                                        view! {
-                                            <Button
-                                                variant=move || if is_active() { ButtonVariant::Default } else { ButtonVariant::Outline }
-                                                size=Size::Sm
-                                                on:click=move |_| set_rt_locale.set(loc.to_string())
-                                                class="uppercase h-7 px-2.5 text-xs"
-                                            >
-                                                {loc}
-                                            </Button>
-                                        }
-                                    }).collect_view()}
+                                    {move || {
+                                        let current = rt_locale.get();
+                                        ["en", "ru"].into_iter().map(|loc| {
+                                            let loc_str = loc.to_string();
+                                            let is_active = current == loc;
+                                            let variant = if is_active { ButtonVariant::Default } else { ButtonVariant::Outline };
+                                            view! {
+                                                <Button
+                                                    variant=variant
+                                                    size=Size::Sm
+                                                    on_click=Box::new(move || set_rt_locale.set(loc_str.clone()))
+                                                    class="uppercase h-7 px-2.5 text-xs"
+                                                >
+                                                    {loc}
+                                                </Button>
+                                            }
+                                        }).collect_view()
+                                    }}
                                 </div>
                                 <Separator orientation=Orientation::Vertical class="h-4" />
                                 <label class="flex items-center gap-1.5 text-xs font-medium cursor-pointer text-foreground">
                                     <Switch
                                         checked=rt_disabled
-                                        on_checked_change=move |val| set_rt_disabled.set(val)
+                                        set_checked=set_rt_disabled
                                     />
                                     <span>"Disabled"</span>
                                 </label>

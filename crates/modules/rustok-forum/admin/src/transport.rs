@@ -132,7 +132,10 @@ pub async fn delete_category(
     graphql_adapter::delete_category(token, tenant_slug, id).await
 }
 
-#[expect(dead_code, reason = "reserved for future category topic policy UI binding")]
+#[expect(
+    dead_code,
+    reason = "reserved for future category topic policy UI binding"
+)]
 pub async fn set_category_topic_policy(
     token: Option<String>,
     tenant_slug: Option<String>,

@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -566,9 +566,15 @@ async fn establish_poison_result(
                         .await;
                     }
                     Err(error) if attempt < config.max_attempts => {
-                        let _ = poison_receipts
+                        if let Err(release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %release_err,
+                                "Failed to release poison claim before retry"
+                            );
+                        }
                         let delay = retry_delay(config, attempt);
                         tracing::warn!(
                             error = %error,
@@ -583,9 +589,15 @@ async fn establish_poison_result(
                         attempt += 1;
                     }
                     Err(error) => {
-                        let _ = poison_receipts
+                        if let Err(release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %release_err,
+                                "Failed to release poison claim on final attempt"
+                            );
+                        }
                         tracing::error!(
                             error = %error,
                             error_code = stable_error_code,

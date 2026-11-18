@@ -43,15 +43,7 @@ impl AbortOnDropWatchdogTask {
 
 impl Drop for AbortOnDropWatchdogTask {
     fn drop(&mut self) {
-        if let Some(task) = self
-            .task
-            .get_mut()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            task.abort();
-        }
-        rbac_invalidation_metrics::set_watchdog_running(false);
+        self.abort();
     }
 }
 
@@ -81,6 +73,7 @@ impl RbacInvalidationGenerationWatchdogHandle {
             .is_some_and(|task| !task.is_finished())
     }
 
+    #[cfg(test)]
     pub(crate) fn abort(&self) {
         self.0.abort();
     }
@@ -126,10 +119,17 @@ impl RbacInvalidationGenerationState {
 pub(crate) fn ensure_rbac_invalidation_generation_state(
     ctx: &ServerRuntimeContext,
 ) -> RbacInvalidationGenerationState {
-    let candidate = RbacInvalidationGenerationState::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<RbacInvalidationGenerationState>()
-        .unwrap_or(candidate)
+    if let Some(existing) = ctx.shared_get::<RbacInvalidationGenerationState>() {
+        existing
+    } else {
+        let candidate = RbacInvalidationGenerationState::default();
+        if ctx.shared_insert_if_absent(candidate.clone()) {
+            candidate
+        } else {
+            ctx.shared_get::<RbacInvalidationGenerationState>()
+                .unwrap_or(candidate)
+        }
+    }
 }
 
 pub(crate) async fn reserve_rbac_invalidation_generation(db: &DatabaseTransaction) -> Result<u64> {
@@ -275,7 +275,7 @@ fn spawn_rbac_invalidation_generation_watchdog(
 /// remains dormant while the generation table is absent, then establishes a
 /// fail-safe cache baseline as soon as the migration becomes visible.
 pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeContext) -> Result<()> {
-    let _ = ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogStartLock::default());
+    ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogStartLock::default());
     let start_lock = ctx
         .shared_get::<RbacInvalidationGenerationWatchdogStartLock>()
         .ok_or_else(|| {
