@@ -39,6 +39,7 @@ pub struct InstallPreflightResponse {
 #[derive(Debug, Deserialize)]
 pub struct InstallApplyRequest {
     pub plan: InstallPlan,
+    /// Optional diagnostic label; the host appends unique job/attempt IDs before using it as a lease owner.
     pub lock_owner: Option<String>,
     pub lock_ttl_secs: Option<i64>,
     pub pg_admin_url: Option<String>,
@@ -167,6 +168,30 @@ async fn preflight(
     }))
 }
 
+fn build_installer_lock_owner(
+    requested_label: Option<&str>,
+    job_id: Uuid,
+    attempt_id: Uuid,
+) -> String {
+    // install_sessions.lock_owner is VARCHAR(128). Restrict the caller label
+    // to a short ASCII diagnostic prefix and append host-issued identities so
+    // two replicas can never share an owner token accidentally.
+    let normalized_label = requested_label
+        .unwrap_or("http")
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+        })
+        .take(24)
+        .collect::<String>();
+    let label = if normalized_label.is_empty() {
+        "http"
+    } else {
+        normalized_label.as_str()
+    };
+    format!("{label}:{job_id}:{attempt_id}")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ActiveInstallerJobHandle(Uuid);
 
@@ -220,12 +245,12 @@ async fn apply(
     }
 
     let submitted_at = Utc::now();
+    let attempt_id = Uuid::new_v4();
+    let lock_owner =
+        build_installer_lock_owner(request.lock_owner.as_deref(), job_id, attempt_id);
     let apply_options = InstallApplyOptions {
         session_id: Some(job_id),
-        lock_owner: request
-            .lock_owner
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "http".to_string()),
+        lock_owner,
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
         pg_admin_url: request.pg_admin_url,
         bootstrap_public_key_base64: configured_value(
@@ -679,6 +704,36 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn installer_lock_owner_is_unique_per_attempt_and_bounded() {
+        let job_id = Uuid::from_u128(1);
+        let first_attempt = Uuid::from_u128(2);
+        let second_attempt = Uuid::from_u128(3);
+
+        let first = build_installer_lock_owner(
+            Some("operator/worker 1"),
+            job_id,
+            first_attempt,
+        );
+        let second = build_installer_lock_owner(
+            Some("operator/worker 1"),
+            job_id,
+            second_attempt,
+        );
+
+        assert_ne!(first, second, "each execution attempt needs a unique lease owner");
+        assert!(first.starts_with("operatorworker1:"));
+        assert!(!first.contains('/'));
+        assert!(!first.contains(' '));
+        assert!(first.len() <= 128, "owner must fit install_sessions.lock_owner");
+        assert_eq!(
+            build_installer_lock_owner(Some("///"), job_id, first_attempt)
+                .split(':')
+                .next(),
+            Some("http")
+        );
+    }
 
     #[test]
     fn installer_storage_errors_do_not_leak_backend_secrets_in_http_responses() {
