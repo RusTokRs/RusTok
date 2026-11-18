@@ -381,6 +381,8 @@ fn ensure_same_rollback_request(
     request_hash: &str,
 ) -> PagesResult<()> {
     verify_rollback_operation(operation)?;
+    // INVARIANT: Tenant isolation is enforced at the database level in caller query.
+    // This check validates idempotent replay consistency.
     if operation.tenant_id != tenant_id
         || operation.page_id != page_id
         || operation.idempotency_key != idempotency_key

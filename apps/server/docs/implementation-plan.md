@@ -1072,7 +1072,7 @@ its source envelope before recording a terminal outcome.
 P18 resolves the cross-owner boundary with Outbox-owned durable consumer
 registrations and per-event acknowledgements. The Outbox owner does not query
 notification-owned tables, and Notifications does not mutate relay state.
-See the accepted [consumer-retention decision](../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
+See the accepted [consumer-retention decision](../../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
 
 The guarantee applies to rows that still exist when the consumer registration
 is committed. Already-pruned historical events cannot be reconstructed; old

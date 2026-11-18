@@ -255,6 +255,7 @@ async fn load_page_for_import(
     let Some(existing) = existing else {
         return Ok(None);
     };
+    // INVARIANT: Pre-lock cross-tenant check rejects foreign rows fail-closed before taking exclusive lock.
     if existing.tenant_id != tenant_id {
         return Err(route_history_import_conflict(
             "Historical route import page identifier belongs to another tenant",
@@ -418,6 +419,7 @@ fn verify_receipt(
     source: &str,
     item: &PreparedImportItem,
 ) -> PagesResult<()> {
+    // INVARIANT: Tenant isolation is enforced at the database level when querying provenance receipts.
     if receipt.tenant_id != tenant_id
         || receipt.source != source
         || receipt.source_record_id != item.source_record_id

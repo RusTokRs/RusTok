@@ -754,6 +754,8 @@ fn ensure_same_publish_request(
     review_hash: &str,
 ) -> PagesResult<()> {
     verify_publish_operation(operation)?;
+    // INVARIANT: Tenant isolation is enforced at the database level in
+    // find_publish_operation_in_tx. This check validates idempotent replay consistency.
     if operation.tenant_id != tenant_id
         || operation.page_id != page_id
         || operation.idempotency_key != idempotency_key

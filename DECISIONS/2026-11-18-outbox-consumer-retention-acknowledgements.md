@@ -48,7 +48,7 @@ and permanent rejections atomically acknowledge the corresponding Outbox
 event. Existing terminal intake receipts are backfilled before retention is
 started.
 
-## Ownership and schema
+## Sources of truth and ownership
 
 - `rustok-outbox` owns `sys_event_consumers` and
   `sys_event_consumer_receipts`, their migrations, and the retention predicate.
@@ -76,7 +76,18 @@ started.
 - No registered consumer means the existing age-based retention behavior is
   unchanged.
 
-## Registration lifecycle
+## Non-goals
+
+- This does not add remote broker cursor acknowledgements or prove Iggy
+  consumer completion.
+- This does not change event schemas, payloads, IDs, relay status, or retry/DLQ
+  policy.
+- This does not make a consumer's external side effects transactional; those
+  remain protected by that owner's idempotency and receipt contract.
+- This does not automatically unregister consumers when a feature flag is
+  disabled.
+
+## Data, transaction, and concurrency boundary
 
 Registration is additive and durable. Disabling a worker does not silently
 remove its retention obligation; this preserves the ability to resume after an
@@ -88,13 +99,6 @@ refuses to remove a registration while any existing event of its registered
 types is unacknowledged; the caller must first stop the consumer and quiesce
 those event producers.
 
-New event types are registered before the intake worker starts. Existing
-terminal Notifications receipts are backfilled to Outbox acknowledgements
-before retention starts; already-pruned event IDs are harmless during that
-backfill because the owning terminal receipt is already durable.
-
-## Failure and concurrency semantics
-
 - Registration is idempotent and committed before the retention worker starts.
 - Receipt and acknowledgement are committed in one owner transaction.
 - Duplicate workers may race to acknowledge the same event; the unique key
@@ -104,21 +108,46 @@ backfill because the owning terminal receipt is already durable.
 - If a consumer is unhealthy, retained rows may exceed the nominal retention
   window. This is intentional backpressure on storage, not permission to lose
   an unconsumed event.
-- Deployments must apply the new schema before starting code that registers
-  consumers. During a rolling upgrade, old retention workers that do not
-  understand consumer registrations must be drained before relying on the new
-  guarantee.
 
-## Non-goals
+## Context dimensions
 
-- This does not add remote broker cursor acknowledgements or prove Iggy
-  consumer completion.
-- This does not change event schemas, payloads, IDs, relay status, or retry/DLQ
-  policy.
-- This does not make a consumer's external side effects transactional; those
-  remain protected by that owner's idempotency and receipt contract.
-- This does not automatically unregister consumers when a feature flag is
-  disabled.
+The Outbox consumer retention guarantee operates across all tenants and channels.
+Tenant identity is preserved inside the source event envelope. Consumer registration
+and event acknowledgement keys are system-level and partitioned per database instance,
+ensuring consistent multi-tenant retention guarantees without cross-tenant leakage.
+
+## Events and projections
+
+- Source events in `sys_events` remain the canonical outbox record.
+- `sys_event_consumers` projects the active required consumer registry per event type.
+- `sys_event_consumer_receipts` projects durable acknowledgements per consumer and event ID.
+- Consumer tables (e.g. notifications receipts) remain autonomous projections that
+  commit alongside the generic Outbox acknowledgement port.
+
+## Failure semantics
+
+- A consumer outage or retryable failure leaves the event unacknowledged, preserving it in `sys_events`.
+- Permanent consumer rejections are recorded as terminal outcomes and acknowledged to Outbox.
+- Storage failures during acknowledgement rollback the consumer transaction to prevent desynchronization.
+- Retention queries skip unacknowledged events gracefully, applying backpressure rather than dropping data.
+
+## Migration and cutover
+
+Schema migration `m20261118_000001_add_sys_event_consumer_retention` creates
+`sys_event_consumers` and `sys_event_consumer_receipts`. Deployments must apply
+the schema before starting code that registers consumers. During a rolling upgrade,
+old retention workers that do not understand consumer registrations must be drained
+before relying on the new guarantee. New event types are registered before workers start,
+and existing terminal receipts are backfilled prior to retention startup.
+
+## Alternatives considered
+
+- Make Outbox query consumer tables directly: rejected because it reverses dependency direction
+  and tightly couples generic outbox infrastructure to individual module domains.
+- Increase static retention windows: rejected because static timers merely shift the failure horizon
+  without providing reliable durable delivery guarantees during extended outages.
+- In-memory consumer tracking: rejected because process restarts, rolling upgrades, or crashes
+  would lose unconsumed event records.
 
 ## Verification
 
