@@ -914,6 +914,7 @@ fn normalized_object(value: Option<&Value>) -> Value {
     )
 }
 
+#[cfg(feature = "mod-taxonomy")]
 async fn ensure_registered_owner_exists<C>(
     db: &C,
     tenant_id: Uuid,

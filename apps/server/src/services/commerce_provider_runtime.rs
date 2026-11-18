@@ -604,6 +604,10 @@ pub fn attach_commerce_provider_registries(
 ///
 /// A missing dependency is a deployment defect that must surface as a startup
 /// error instead of aborting the process from a request path.
+#[cfg_attr(
+    not(feature = "mod-commerce"),
+    expect(dead_code, reason = "used when commerce composite features are active")
+)]
 fn require_shared<T: Clone + Send + Sync + 'static>(
     server: &ServerRuntimeContext,
     dependency: &'static str,
@@ -614,6 +618,10 @@ fn require_shared<T: Clone + Send + Sync + 'static>(
         .ok_or_else(|| composition_unavailable(dependency, consumer))
 }
 
+#[cfg_attr(
+    not(feature = "mod-commerce"),
+    expect(dead_code, reason = "used when commerce composite features are active")
+)]
 fn composition_unavailable(
     dependency: &'static str,
     consumer: &'static str,

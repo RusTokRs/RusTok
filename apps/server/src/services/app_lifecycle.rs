@@ -1246,6 +1246,7 @@ fn await_runtime_worker_shutdown_tasks(
     await_runtime_worker_shutdown_tasks_with_timeout(worker, tasks, Duration::from_secs(5))
 }
 
+#[cfg(test)]
 fn await_runtime_worker_shutdown_with_timeout(
     worker: &'static str,
     task: Option<JoinHandle<()>>,
@@ -1355,6 +1356,15 @@ fn await_module_worker_shutdown(
     await_module_worker_shutdown_with_timeout(worker, task, Duration::from_secs(5))
 }
 
+#[cfg(any(
+    test,
+    feature = "mod-order",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+    feature = "mod-product",
+    feature = "mod-notifications",
+    feature = "mod-forum"
+))]
 fn await_module_worker_shutdown_with_timeout(
     worker: &'static str,
     task: JoinHandle<()>,
