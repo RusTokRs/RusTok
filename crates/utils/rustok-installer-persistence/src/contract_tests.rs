@@ -434,19 +434,12 @@ async fn fresh_install_cleaned_requires_successful_rollback_receipt() {
         .expect_err("cleanup state cannot release admission without rollback evidence");
     assert!(missing_receipt.to_string().contains("successful rollback receipt"));
 
-    let rollback = InstallReceipt {
-        session_id: locked.id.to_string(),
-        step: InstallStep::Rollback,
-        outcome: ReceiptOutcome::Success,
-        input_checksum: "sha256:cleanup-complete".to_string(),
-        diagnostics: serde_json::json!({ "cleanup": "completed" }),
-        installer_version: "0.1.0".to_string(),
-        created_at: Utc::now(),
-    };
-    service
-        .record_receipt(&session_record(&locked), &rollback)
-        .await
-        .expect("persist successful rollback evidence");
+    record_successful_step(
+        &service,
+        &session_record(&locked),
+        InstallStep::Rollback,
+    )
+    .await;
 
     let cleaned = service
         .set_state(
@@ -535,19 +528,12 @@ async fn failed_state_requires_recovery_and_successful_rollback_receipt() {
             .contains("successful rollback receipt")
     );
 
-    let rollback_succeeded = InstallReceipt {
-        session_id: recovery.id.to_string(),
-        step: InstallStep::Rollback,
-        outcome: ReceiptOutcome::Success,
-        input_checksum: "sha256:rollback-succeeded".to_string(),
-        diagnostics: serde_json::json!({ "cleanup": "completed" }),
-        installer_version: "0.1.0".to_string(),
-        created_at: Utc::now(),
-    };
-    service
-        .record_receipt(&session_record(&recovery), &rollback_succeeded)
-        .await
-        .expect("successful rollback evidence is retained");
+    record_successful_step(
+        &service,
+        &session_record(&recovery),
+        InstallStep::Rollback,
+    )
+    .await;
 
     let failed = service
         .set_state(&session_record(&recovery), InstallState::Failed)
