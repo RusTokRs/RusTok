@@ -208,6 +208,13 @@ upload timeout budget. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends; disabled limiters remain
 disabled.
 
+Database pool settings are validated before connecting: an omitted
+`max_connections` uses the pool default of 10, explicit values may not exceed
+1,024, and `min_connections` may not exceed the effective maximum. Database
+`connect_timeout` is capped at 300,000 ms and `idle_timeout` at 86,400,000 ms.
+Out-of-range values fail startup instead of creating unbounded pool limits or
+timeouts.
+
 OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
 do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`

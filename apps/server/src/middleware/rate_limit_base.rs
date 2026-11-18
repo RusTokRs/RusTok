@@ -91,7 +91,7 @@ fn normalize_rate_limit_config(mut config: RateLimitConfig) -> RateLimitConfig {
             .clamp(MIN_RATE_LIMIT_WINDOW, MAX_RATE_LIMIT_WINDOW);
         if normalized != config.window {
             tracing::warn!(
-                configured_window_ms = config.window.as_millis(),
+                configured_window_ms = %config.window.as_millis(),
                 normalized_window_secs = normalized.as_secs(),
                 "Active rate-limit window is outside the supported range; normalizing it"
             );

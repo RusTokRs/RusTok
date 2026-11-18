@@ -210,8 +210,15 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         return Ok(());
     }
 
+    let parsed_issuer = url::Url::parse(&config.issuer).ok();
+    let issuer_is_valid_https_url = parsed_issuer.as_ref().is_some_and(|issuer| {
+        issuer.scheme() == "https"
+            && issuer.host_str().is_some_and(|host| !host.is_empty())
+            && issuer.username().is_empty()
+            && issuer.password().is_none()
+    });
     if config.issuer == DEFAULT_JWT_ISSUER
-        || !config.issuer.starts_with("https://")
+        || !issuer_is_valid_https_url
         || config.issuer.trim().len() <= 8
         || config.issuer.chars().any(char::is_whitespace)
     {
@@ -356,16 +363,54 @@ fn resolve_database_uri(database_url: Option<&str>, configured_uri: &str) -> Str
     database_url.unwrap_or(configured_uri).to_string()
 }
 
+const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 10;
+const MAX_DATABASE_CONNECTIONS: u32 = 1_024;
+const MAX_DATABASE_CONNECT_TIMEOUT_MS: u64 = 300_000;
+const MAX_DATABASE_IDLE_TIMEOUT_MS: u64 = 86_400_000;
+
+fn validate_database_connection_settings(config: &DatabaseConfig) -> Result<()> {
+    if config.max_connections > MAX_DATABASE_CONNECTIONS {
+        return Err(Error::BadRequest(format!(
+            "Database max_connections ({}) cannot exceed {MAX_DATABASE_CONNECTIONS}",
+            config.max_connections
+        )));
+    }
+
+    // SeaORM/SQLx uses a default maximum of ten connections when no explicit
+    // max_connections value is supplied.
+    let effective_max_connections = if config.max_connections == 0 {
+        DEFAULT_DATABASE_MAX_CONNECTIONS
+    } else {
+        config.max_connections
+    };
+    if config.min_connections > effective_max_connections {
+        return Err(Error::BadRequest(format!(
+            "Database min_connections ({}) cannot exceed effective max_connections ({effective_max_connections})",
+            config.min_connections
+        )));
+    }
+
+    if config.connect_timeout > MAX_DATABASE_CONNECT_TIMEOUT_MS {
+        return Err(Error::BadRequest(format!(
+            "Database connect_timeout ({}) cannot exceed {MAX_DATABASE_CONNECT_TIMEOUT_MS} milliseconds",
+            config.connect_timeout
+        )));
+    }
+    if config.idle_timeout > MAX_DATABASE_IDLE_TIMEOUT_MS {
+        return Err(Error::BadRequest(format!(
+            "Database idle_timeout ({}) cannot exceed {MAX_DATABASE_IDLE_TIMEOUT_MS} milliseconds",
+            config.idle_timeout
+        )));
+    }
+
+    Ok(())
+}
+
 async fn connect_database(
     config: &DatabaseConfig,
     uri: &str,
 ) -> Result<sea_orm::DatabaseConnection> {
-    if config.max_connections > 0 && config.min_connections > config.max_connections {
-        return Err(Error::BadRequest(format!(
-            "Database min_connections ({}) cannot exceed max_connections ({})",
-            config.min_connections, config.max_connections
-        )));
-    }
+    validate_database_connection_settings(config)?;
 
     let mut options = ConnectOptions::new(uri.to_string());
     options.sqlx_logging(config.enable_logging);
@@ -882,6 +927,72 @@ mod tests {
         let error_pwd = validate_auth_deployment(&config, true)
             .expect_err("min_password_length < 8 must fail in production");
         assert!(error_pwd.to_string().contains("min_password_length"));
+    }
+
+    fn database_config_for_validation() -> super::DatabaseConfig {
+        super::DatabaseConfig {
+            uri: "postgres://user:password@localhost:5432/rustok".to_string(),
+            auto_migrate: false,
+            enable_logging: false,
+            connect_timeout: 0,
+            idle_timeout: 0,
+            min_connections: 0,
+            max_connections: 0,
+        }
+    }
+
+    #[test]
+    fn validate_auth_deployment_rejects_https_issuer_without_a_host() {
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+            .with_issuer("https://?")
+            .with_audience("rustok-production-admin");
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("an HTTPS issuer without a host must fail");
+        assert!(error.to_string().contains("issuer"));
+    }
+
+    #[test]
+    fn database_minimum_is_checked_against_the_effective_default_maximum() {
+        let mut config = database_config_for_validation();
+        config.min_connections = super::DEFAULT_DATABASE_MAX_CONNECTIONS + 1;
+        let error = super::validate_database_connection_settings(&config)
+            .expect_err("minimum above the implicit default maximum must fail");
+        assert!(error.to_string().contains("effective max_connections"));
+
+        config.min_connections = super::DEFAULT_DATABASE_MAX_CONNECTIONS;
+        super::validate_database_connection_settings(&config)
+            .expect("minimum equal to the implicit default maximum is valid");
+    }
+
+    #[test]
+    fn database_pool_sizes_and_timeouts_have_safe_upper_bounds() {
+        let mut config = database_config_for_validation();
+        config.max_connections = super::MAX_DATABASE_CONNECTIONS + 1;
+        assert!(
+            super::validate_database_connection_settings(&config)
+                .expect_err("excessive max_connections must fail")
+                .to_string()
+                .contains("max_connections")
+        );
+
+        config.max_connections = 30;
+        config.min_connections = 5;
+        config.connect_timeout = super::MAX_DATABASE_CONNECT_TIMEOUT_MS + 1;
+        assert!(
+            super::validate_database_connection_settings(&config)
+                .expect_err("excessive connect timeout must fail")
+                .to_string()
+                .contains("connect_timeout")
+        );
+
+        config.connect_timeout = 0;
+        config.idle_timeout = super::MAX_DATABASE_IDLE_TIMEOUT_MS + 1;
+        assert!(
+            super::validate_database_connection_settings(&config)
+                .expect_err("excessive idle timeout must fail")
+                .to_string()
+                .contains("idle_timeout")
+        );
     }
 
     #[test]
