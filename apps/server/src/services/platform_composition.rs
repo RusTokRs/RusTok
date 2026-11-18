@@ -314,6 +314,11 @@ impl PlatformCompositionBuildService {
         Self::run_admitted_build(db, event_publisher, registry, &owner, lease, command).await
     }
 
+    #[tracing::instrument(
+        skip(db, event_publisher, registry, command),
+        fields(expected_revision = %command.expected_revision, reason = %command.reason),
+        err
+    )]
     pub async fn update_manifest_and_request_build(
         db: &DatabaseConnection,
         event_publisher: std::sync::Arc<dyn BuildEventPublisher>,

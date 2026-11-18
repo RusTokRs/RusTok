@@ -64,8 +64,8 @@ impl ArtifactBindingOperation {
     fields(
         tenant_id = %tenant_id,
         actor_id = %actor_id,
-        binding_id = %binding.id(),
-        artifact_id = %installation.artifact_id,
+        binding_id = %binding.id,
+        installation_id = %installation.installation_id,
     ),
     err
 )]
