@@ -1601,3 +1601,40 @@ cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_find_previous_rotated_token_without_crossing_tenant
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
 ```
+
+## P27 — Use write-first SQLite fences in auth lifecycle mutations (2026-11-18)
+
+Several auth mutation paths used SELECT followed by a no-op UPDATE to
+acquire SQLite's writer lock, or applied FOR UPDATE without a SQLite-specific
+fence. In a deferred transaction this can race another writer during lock
+promotion; the direct profile path also converted a row read under unsupported
+SQLite row-lock syntax into a full ActiveModel update.
+
+### Implemented
+
+- Profile updates now use the shared database-specific user-row lock helper.
+- Login user lookup reserves SQLite's writer by the tenant/email key before
+  reading the account; user-by-id and current-session mutation helpers also
+  reserve the write lock before their first read.
+- Refresh and previous-refresh lookups now reserve the SQLite writer directly
+  by the presented digest, then reload the matching row while the transaction
+  owns the write fence.
+- Session-id logout already uses a write-first fence by tenant/session ID.
+- Unsupported database backends now fail closed in these auth lock helpers
+  instead of silently running an unlocked read.
+- Existing SQLite tests exercise login, profile update, password change,
+  refresh/reuse, and logout paths through the new lock helpers.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::failed_attempts_lock_atomically_and_ignore_obsolete_credentials
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::update_profile_trims_name_and_allows_clearing_with_blank_value
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::change_password_rejects_expired_current_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+```
