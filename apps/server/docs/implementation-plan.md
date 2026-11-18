@@ -1400,7 +1400,9 @@ the same read/upsert/orphan sequence without a tenant-level serialization fence.
 
 - The sync_app_connections flow now acquires an exclusive tenant-row lock before
   reading the current managed-app set. PostgreSQL/MySQL use FOR UPDATE;
-  SQLite takes its write fence before the first read.
+  SQLite takes its write fence before the first read. Existing managed-app
+  rows are then locked with the same app-mutation fence used by token issuance
+  and consent before security-sensitive configuration is updated.
 - App creation/reactivation, first-party manifest updates, translation writes,
   orphan deactivation, token revocation, and authorization-code invalidation
   now share one transaction per tenant.
