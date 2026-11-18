@@ -556,6 +556,66 @@ async fn failed_state_requires_recovery_and_successful_rollback_receipt() {
 }
 
 #[tokio::test]
+async fn ownerless_progressed_session_still_blocks_global_admission() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db.clone());
+    let first = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("first session created");
+    let locked = service
+        .acquire_lock(
+            first,
+            "worker-with-lost-lease",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("first attempt claimed");
+    record_successful_step(
+        &service,
+        &session_record(&locked),
+        InstallStep::Preflight,
+    )
+    .await;
+    let progressed = service
+        .set_state(&session_record(&locked), InstallState::PreflightPassed)
+        .await
+        .expect("preflight state persisted");
+
+    // Clearing a lease without reconciling the durable state must not release
+    // the global gate. Only an explicit return to a clean draft can be reclaimed.
+    let mut ownerless: install_session::ActiveModel = progressed.into();
+    ownerless.lock_owner = Set(None);
+    ownerless.lock_expires_at = Set(None);
+    ownerless
+        .update(&db)
+        .await
+        .expect("simulate an ownerless but unreconciled session");
+
+    let second = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("second session created");
+    let error = service
+        .acquire_lock(
+            second.clone(),
+            "second-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("ownerless progressed session must continue blocking");
+    assert!(error.to_string().contains("unfinished execution"));
+
+    let unchanged = service
+        .get_session(second.id)
+        .await
+        .expect("read second session")
+        .expect("second session exists");
+    assert!(unchanged.lock_owner.is_none());
+    assert_eq!(unchanged.attempt_generation, 0);
+}
+
+#[tokio::test]
 async fn completed_session_releases_admission_gate() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);
