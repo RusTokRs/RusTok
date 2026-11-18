@@ -197,6 +197,17 @@ REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
 
+HTTP edge settings are bounded before reaching Tokio and Tower:
+`RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
+600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
+at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
+16,384. Zero or malformed values use the defaults, while oversized values are
+clamped with a warning. Only exact `multipart/form-data` requests to
+`/api/media` and PUT requests to the registry artifact route receive the
+upload timeout budget. Active rate-limit windows are normalized to 1 second
+through 365 days for both memory and Redis backends; disabled limiters remain
+disabled.
+
 OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
 do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`

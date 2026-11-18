@@ -231,15 +231,33 @@ async fn supervise_event_forwarder(
         }
         rustok_telemetry::metrics::record_event_error("server_event_forwarder", "worker_restart");
 
-        tokio::select! {
-            _ = tokio::time::sleep(EVENT_FORWARDER_RESTART_DELAY) => {}
-            changed = stop_rx.changed() => {
-                if changed.is_err() || *stop_rx.borrow() {
-                    return;
-                }
-            }
-        }
+        next_receiver = Some(
+            subscribe_for_forwarder_restart(
+                &bus,
+                &mut stop_rx,
+                EVENT_FORWARDER_RESTART_DELAY,
+            )
+            .await,
+        );
     }
+}
+
+/// Keep a bounded receiver subscribed throughout restart backoff. Publishers
+/// can fill the broadcast ring up to its hard capacity instead of losing every
+/// event to a temporary "no receivers" error. If shutdown arrives during the
+/// delay, the next supervisor iteration drains this receiver before exiting.
+async fn subscribe_for_forwarder_restart(
+    bus: &Arc<EventBus>,
+    stop_rx: &mut watch::Receiver<bool>,
+    delay: Duration,
+) -> EventForwarderReceiver {
+    let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+    tokio::select! {
+        biased;
+        _ = stop_rx.changed() => {}
+        _ = tokio::time::sleep(delay) => {}
+    }
+    receiver
 }
 
 struct EventForwarderReceiver {
@@ -821,6 +839,83 @@ mod tests {
             0
         );
         drop(stop_tx);
+    }
+
+    #[tokio::test]
+    async fn restart_backoff_keeps_a_receiver_and_drains_when_shutdown_arrives() {
+        use async_trait::async_trait;
+        use rustok_events::{DomainEvent, EventEnvelope};
+        use uuid::Uuid;
+
+        struct RecordingTransport {
+            accepted: Mutex<Vec<EventEnvelope>>,
+        }
+
+        #[async_trait]
+        impl EventTransport for RecordingTransport {
+            async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+                self.accepted.lock().unwrap().push(envelope);
+                Ok(())
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::InMemory
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let bus = Arc::new(EventBus::with_backpressure(
+            8,
+            BackpressureController::new(BackpressureConfig::new(8, 0.7, 1.0)),
+        ));
+        let (stop_tx, mut stop_rx) = watch::channel(false);
+        let mut restart = Box::pin(super::subscribe_for_forwarder_restart(
+            &bus,
+            &mut stop_rx,
+            Duration::from_secs(5),
+        ));
+
+        // Poll once so the helper installs its receiver before the producer
+        // publishes into the otherwise-empty broadcast bus.
+        tokio::select! {
+            biased;
+            _ = &mut restart => panic!("restart backoff should still be pending"),
+            _ = tokio::task::yield_now() => {}
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        bus.publish_envelope(envelope.clone())
+            .expect("restart backoff must retain a bounded receiver");
+        stop_tx.send_replace(true);
+
+        let receiver = restart.await;
+        let transport = Arc::new(RecordingTransport {
+            accepted: Mutex::new(vec![]),
+        });
+        let (_drain_stop_tx, drain_stop_rx) = watch::channel(true);
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            super::run_event_forwarder(receiver, transport.clone(), drain_stop_rx),
+        )
+        .await
+        .expect("shutdown iteration should drain the restart receiver");
+
+        assert_eq!(
+            transport.accepted.lock().unwrap().as_slice(),
+            std::slice::from_ref(&envelope)
+        );
+        assert_eq!(
+            bus.backpressure().expect("hard capacity guard").current_depth(),
+            0
+        );
     }
 
     #[tokio::test]

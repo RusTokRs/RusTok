@@ -57,11 +57,11 @@ impl Default for RateLimitConfig {
 
 impl RateLimitConfig {
     pub fn new(max_requests: usize, window_secs: u64) -> Self {
-        Self {
+        normalize_rate_limit_config(Self {
             max_requests,
             window: Duration::from_secs(window_secs),
             enabled: true,
-        }
+        })
     }
 
     pub fn per_minute(requests_per_minute: u32, burst: u32) -> Self {
@@ -79,6 +79,26 @@ impl RateLimitConfig {
             enabled: false,
         }
     }
+}
+
+const MIN_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(1);
+const MAX_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(365 * 24 * 60 * 60);
+
+fn normalize_rate_limit_config(mut config: RateLimitConfig) -> RateLimitConfig {
+    if config.enabled {
+        let normalized = config
+            .window
+            .clamp(MIN_RATE_LIMIT_WINDOW, MAX_RATE_LIMIT_WINDOW);
+        if normalized != config.window {
+            tracing::warn!(
+                configured_window_ms = config.window.as_millis(),
+                normalized_window_secs = normalized.as_secs(),
+                "Active rate-limit window is outside the supported range; normalizing it"
+            );
+            config.window = normalized;
+        }
+    }
+    config
 }
 
 #[derive(Clone, Debug)]
@@ -138,6 +158,7 @@ impl RateLimiter {
     }
 
     pub fn new_with_namespace(config: RateLimitConfig, namespace: impl Into<String>) -> Self {
+        let config = normalize_rate_limit_config(config);
         let requests = Cache::builder()
             .max_capacity(MEMORY_BACKEND_MAX_ENTRIES)
             .time_to_idle(config.window)
@@ -159,6 +180,7 @@ impl RateLimiter {
         key_prefix: String,
         namespace: impl Into<String>,
     ) -> Self {
+        let config = normalize_rate_limit_config(config);
         Self {
             backend: RateLimiterBackend::Redis {
                 client,
@@ -887,6 +909,52 @@ mod fixed_window_tests {
             updated.window_start,
             start + window + Duration::from_secs(1)
         );
+    }
+}
+
+
+#[cfg(test)]
+mod window_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn active_rate_limit_windows_are_bounded_and_disabled_windows_stay_disabled() {
+        let zero = normalize_rate_limit_config(RateLimitConfig {
+            max_requests: 1,
+            window: Duration::ZERO,
+            enabled: true,
+        });
+        assert_eq!(zero.window, MIN_RATE_LIMIT_WINDOW);
+
+        let subsecond = normalize_rate_limit_config(RateLimitConfig {
+            max_requests: 1,
+            window: Duration::from_millis(500),
+            enabled: true,
+        });
+        assert_eq!(subsecond.window, MIN_RATE_LIMIT_WINDOW);
+
+        let huge = normalize_rate_limit_config(RateLimitConfig {
+            max_requests: 1,
+            window: Duration::MAX,
+            enabled: true,
+        });
+        assert_eq!(huge.window, MAX_RATE_LIMIT_WINDOW);
+
+        assert_eq!(
+            normalize_rate_limit_config(RateLimitConfig::disabled()).window,
+            Duration::ZERO
+        );
+    }
+
+    #[tokio::test]
+    async fn zero_length_memory_window_cannot_reset_the_counter_on_every_request() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(1, 0));
+        assert_eq!(limiter.window_secs(), 1);
+        assert!(limiter.check_rate_limit("client").await.is_ok());
+        assert!(matches!(
+            limiter.check_rate_limit("client").await,
+            Err(RateLimitCheckError::Exceeded(_))
+        ));
     }
 }
 
