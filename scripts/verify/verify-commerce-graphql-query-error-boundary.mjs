@@ -94,8 +94,9 @@ if ((routing.match(/\bmod query;/g) ?? []).length !== 1) {
   failures.push('expected one query module declaration');
 }
 
+requireText(facade, 'mod query_error_boundary;', 'query boundary module');
+
 for (const [value, label] of [
-  ['mod query_error_boundary;', 'query boundary module'],
   ['pub(crate) enum BoundaryError {', 'local boundary error'],
   ['Graphql(Error)', 'GraphQL pass-through'],
   ['Public {', 'static public envelope'],
@@ -256,6 +257,8 @@ for (const [ownerSource, value, label] of [
   [fulfillmentErrors, 'FulfillmentNotFound(Uuid)', 'owner fulfillment not-found'],
 ]) requireText(ownerSource, value, label);
 
+requireText(routing, 'pub(crate) fn map_product_service_error(', 'existing typed GraphQL preservation');
+
 for (const value of [
   'BoundaryError::Graphql(error) => error',
   'impl From<Error> for BoundaryError',
@@ -264,13 +267,11 @@ for (const value of [
   '::rustok_api::graphql::require_module_enabled(ctx, module_slug)',
   'pub(crate) const MODULE_SLUG: &str = super::MODULE_SLUG;',
   'pub(crate) const PRODUCT_MODULE_SLUG: &str = super::PRODUCT_MODULE_SLUG;',
-  'pub(crate) fn map_product_service_error(',
   'pub(crate) fn product_query_tenant(',
   'pub(crate) fn require_commerce_permission(',
   'pub(crate) async fn require_storefront_channel_enabled(',
   'mod source;',
-  'include!("../query.rs");',
-  'pub use source::CommerceQuery;',
+  'CommerceQuery',
 ]) requireText(facade, value, 'existing typed GraphQL preservation');
 
 for (const value of [
@@ -306,7 +307,7 @@ const dynamicSites = dynamicPatterns.reduce(
 if (dynamicSites < 10) {
   failures.push(`expected unchanged resolver compatibility sites, found ${dynamicSites}`);
 }
-if ((facade.match(/include!\("\.\.\/query\.rs"\)/g) ?? []).length !== 1) {
+if ((facade.match(/(?:include!\("\.\.\/query\.rs"\)|#\[path = "\.\.\/query\.rs"\])/g) ?? []).length !== 1) {
   failures.push('expected one unchanged query source include');
 }
 
