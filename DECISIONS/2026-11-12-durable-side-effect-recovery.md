@@ -235,9 +235,13 @@ State, tenant, and receipt mutations acquire the session row lock and verify
 both the persisted owner and generation before writing; receipt rows retain
 their generation. Lease TTL input is bounded to 1–86,400 seconds, and
 persistence rejects timestamp overflow rather than panicking. The persistence
-adapter also fails closed: an unreconciled session with a recorded owner blocks
-new applies even after lease expiry, and `recovery_required` remains blocking
-until manual reconciliation. This closes the stale-worker mutation-fencing
-gap, but does not make the executor resumable or reconcile external effects.
-The durable worker, step/effect receipts, lease renewal, and operator recovery
+adapter also fails closed: any unfinished non-draft session blocks new applies,
+even if its lease owner was cleared; only an ownerless `draft` session can be
+reclaimed after explicit reconciliation. `recovery_required` remains blocking
+until manual reconciliation. Terminal `failed` and `fresh_install_cleaned`
+states require a successful rollback receipt from the current attempt
+generation, and forward state transitions require their matching successful
+step receipts. This closes the stale-worker mutation-fencing gap, but does not
+make the executor resumable or reconcile external effects. The durable worker,
+idempotent step/effect reconciliation, lease renewal, and operator recovery
 workflow remain open.
