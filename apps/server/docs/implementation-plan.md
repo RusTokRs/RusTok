@@ -1472,3 +1472,32 @@ cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_
 cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
 cargo check -p rustok-installer-cli
 ```
+
+## P24 — Bounded installer lease TTL input (2026-11-18)
+
+The HTTP adapter accepted arbitrary `lock_ttl_secs` values while the CLI only
+checked positivity. The persistence layer added the TTL to the current
+timestamp directly, so an extreme value could overflow the timestamp range.
+
+### Implemented
+
+- Added a shared contract: installer lease TTL must be between 1 and 86,400
+  seconds (default 900). The execution state machine validates it even when
+  called outside the HTTP/CLI adapters.
+- HTTP and CLI adapters reject zero, negative, and over-limit values before
+  creating or starting an installer job.
+- Persistence now uses checked timestamp addition and returns a database error
+  instead of panicking if a direct caller supplies an unrepresentable duration.
+- Added shared contract and HTTP-controller regression coverage for both bounds.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime installer_lock_ttl_is_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+cargo test -p rustok-installer-persistence --lib
+```
