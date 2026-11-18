@@ -1157,7 +1157,7 @@ where
     C: ConnectionTrait,
 {
     OAuthTokens::update_many()
-        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now.clone()))
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(Some(now.clone())))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now.clone()))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
