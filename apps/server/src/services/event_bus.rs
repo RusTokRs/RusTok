@@ -206,11 +206,11 @@ async fn supervise_event_forwarder(
 ) {
     let mut next_receiver = Some(initial_receiver);
     loop {
-        let receiver = next_receiver
+        let mut receiver = next_receiver
             .take()
             .unwrap_or_else(|| EventForwarderReceiver::new(bus.subscribe(), bus.backpressure()));
         let outcome = AssertUnwindSafe(run_event_forwarder(
-            receiver,
+            &mut receiver,
             Arc::clone(&transport),
             stop_rx.clone(),
         ))
@@ -225,10 +225,8 @@ async fn supervise_event_forwarder(
                 tracing::error!(
                     "Event forwarder panicked during shutdown; draining the remaining queued events"
                 );
-                let receiver =
-                    EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
                 let drain_outcome = AssertUnwindSafe(run_event_forwarder(
-                    receiver,
+                    &mut receiver,
                     Arc::clone(&transport),
                     stop_rx.clone(),
                 ))
@@ -248,33 +246,25 @@ async fn supervise_event_forwarder(
         }
         rustok_telemetry::metrics::record_event_error("server_event_forwarder", "worker_restart");
 
-        next_receiver = Some(
-            subscribe_for_forwarder_restart(
-                &bus,
-                &mut stop_rx,
-                EVENT_FORWARDER_RESTART_DELAY,
-            )
-            .await,
-        );
+        // Retain the same receiver through backoff. If the forwarder panicked,
+        // its unread broadcast queue is still available to the next iteration.
+        next_receiver = Some(receiver);
+        wait_for_forwarder_restart(&mut stop_rx, EVENT_FORWARDER_RESTART_DELAY).await;
     }
 }
 
-/// Keep a bounded receiver subscribed throughout restart backoff. Publishers
-/// can fill the broadcast ring up to its hard capacity instead of losing every
-/// event to a temporary "no receivers" error. If shutdown arrives during the
-/// delay, the next supervisor iteration drains this receiver before exiting.
-async fn subscribe_for_forwarder_restart(
-    bus: &Arc<EventBus>,
+/// Wait through restart backoff without dropping the supervisor-owned receiver.
+/// Keeping that exact receiver alive preserves already-queued envelopes and gives
+/// publishers a bounded buffer instead of a temporary "no receivers" failure.
+async fn wait_for_forwarder_restart(
     stop_rx: &mut watch::Receiver<bool>,
     delay: Duration,
-) -> EventForwarderReceiver {
-    let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+) {
     tokio::select! {
         biased;
         _ = stop_rx.changed() => {}
         _ = tokio::time::sleep(delay) => {}
     }
-    receiver
 }
 
 struct EventForwarderReceiver {
@@ -388,7 +378,7 @@ async fn publish_event_with_retry(
 }
 
 async fn run_event_forwarder(
-    mut receiver: EventForwarderReceiver,
+    receiver: &mut EventForwarderReceiver,
     transport: Arc<dyn EventTransport>,
     mut stop_rx: watch::Receiver<bool>,
 ) {
@@ -888,15 +878,16 @@ mod tests {
             8,
             BackpressureController::new(BackpressureConfig::new(8, 0.7, 1.0)),
         ));
+        let mut receiver =
+            super::EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
         let (stop_tx, mut stop_rx) = watch::channel(false);
-        let mut restart = Box::pin(super::subscribe_for_forwarder_restart(
-            &bus,
+        let mut restart = Box::pin(super::wait_for_forwarder_restart(
             &mut stop_rx,
             Duration::from_secs(5),
         ));
 
-        // Poll once so the helper installs its receiver before the producer
-        // publishes into the otherwise-empty broadcast bus.
+        // Poll once so the backoff wait is active while the supervisor-owned
+        // receiver remains subscribed to the broadcast bus.
         tokio::select! {
             biased;
             _ = &mut restart => panic!("restart backoff should still be pending"),
@@ -913,14 +904,14 @@ mod tests {
             .expect("restart backoff must retain a bounded receiver");
         stop_tx.send_replace(true);
 
-        let receiver = restart.await;
+        restart.await;
         let transport = Arc::new(RecordingTransport {
             accepted: Mutex::new(vec![]),
         });
         let (_drain_stop_tx, drain_stop_rx) = watch::channel(true);
         tokio::time::timeout(
             Duration::from_secs(3),
-            super::run_event_forwarder(receiver, transport.clone(), drain_stop_rx),
+            super::run_event_forwarder(&mut receiver, transport.clone(), drain_stop_rx),
         )
         .await
         .expect("shutdown iteration should drain the restart receiver");
