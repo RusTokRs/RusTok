@@ -110,8 +110,10 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   owner plus generation under a target-session row lock; receipts retain their
   generation. Persistence still blocks new applies while any unreconciled
   session has a recorded owner, even after lease expiry, and
-  `recovery_required` remains blocking until manual reconciliation. The
-  executor still runs in-process and is not resumable after process loss;
+  `recovery_required` remains blocking until manual reconciliation. New
+  `failed` and `fresh_install_cleaned` terminal states require a successful
+  rollback receipt from the current attempt generation. The executor still
+  runs in-process and is not resumable after process loss;
   lease renewal, effect-owner idempotency/reconciliation, and operator recovery
   remain unimplemented. Do not reset stale jobs based only on lease expiry.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
