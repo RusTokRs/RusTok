@@ -158,7 +158,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
         let input: AiAlloyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         rustok_ai_alloy::validate_runtime_payload(input.runtime_payload_json.as_deref())
-            .map_err(AiError::Validation)?;
+            .map_err(|err| AiError::Validation(err.to_string()))?;
         let scoped = runtime
             .scoped_alloy_runtime(operator.tenant_id)
             .ok_or_else(|| AiError::Runtime("Alloy runtime is not initialized".to_string()))?;

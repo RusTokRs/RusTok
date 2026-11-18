@@ -264,33 +264,68 @@ pub fn alloy_stage_execution(agent_slug: &str) -> Option<&'static AlloyStageExec
         .find(|descriptor| descriptor.agent_slug == agent_slug)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AlloyStageExecutionError {
+    #[error("unknown Alloy code agent `{0}`")]
+    UnknownAgent(String),
+    #[error("{0} requires a task input operation")]
+    MissingOperation(String),
+    #[error("{agent_slug} requires operation `{required_operation}` rather than `{actual_operation}`")]
+    OperationMismatch {
+        agent_slug: String,
+        required_operation: &'static str,
+        actual_operation: String,
+    },
+}
+
+impl From<AlloyStageExecutionError> for String {
+    fn from(error: AlloyStageExecutionError) -> Self {
+        error.to_string()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RuntimePayloadError {
+    #[error("runtime_payload_json must be valid JSON: {0}")]
+    InvalidJson(String),
+    #[error("runtime_payload_json must be a JSON object")]
+    NotAnObject,
+}
+
+impl From<RuntimePayloadError> for String {
+    fn from(error: RuntimePayloadError) -> Self {
+        error.to_string()
+    }
+}
+
 pub fn validate_stage_execution_input(
     agent_slug: &str,
     payload: &serde_json::Value,
-) -> Result<&'static AlloyStageExecutionDescriptor, String> {
+) -> Result<&'static AlloyStageExecutionDescriptor, AlloyStageExecutionError> {
     let binding = alloy_stage_execution(agent_slug)
-        .ok_or_else(|| format!("unknown Alloy code agent `{agent_slug}`"))?;
+        .ok_or_else(|| AlloyStageExecutionError::UnknownAgent(agent_slug.to_string()))?;
     let operation = payload
         .get("operation")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| format!("{} requires a task input operation", binding.agent_slug))?;
+        .ok_or_else(|| AlloyStageExecutionError::MissingOperation(binding.agent_slug.to_string()))?;
     if operation != binding.required_operation {
-        return Err(format!(
-            "{} requires operation `{}` rather than `{operation}`",
-            binding.agent_slug, binding.required_operation
-        ));
+        return Err(AlloyStageExecutionError::OperationMismatch {
+            agent_slug: binding.agent_slug.to_string(),
+            required_operation: binding.required_operation,
+            actual_operation: operation.to_string(),
+        });
     }
     Ok(binding)
 }
 
-pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), String> {
+pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), RuntimePayloadError> {
     let Some(payload) = payload.filter(|value| !value.trim().is_empty()) else {
         return Ok(());
     };
     let parsed: serde_json::Value = serde_json::from_str(payload)
-        .map_err(|err| format!("runtime_payload_json must be valid JSON: {err}"))?;
+        .map_err(|err| RuntimePayloadError::InvalidJson(err.to_string()))?;
     if !parsed.is_object() {
-        return Err("runtime_payload_json must be a JSON object".to_string());
+        return Err(RuntimePayloadError::NotAnObject);
     }
     Ok(())
 }

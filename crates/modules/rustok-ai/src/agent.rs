@@ -180,7 +180,7 @@ impl AgentCatalog {
         let task_slug = match validator {
             AgentStageValidator::Alloy => {
                 rustok_ai_alloy::validate_stage_execution_input(agent_slug, payload)
-                    .map_err(AiError::Validation)?
+                    .map_err(|err| AiError::Validation(err.to_string()))?
                     .task_slug
             }
             AgentStageValidator::Product => {

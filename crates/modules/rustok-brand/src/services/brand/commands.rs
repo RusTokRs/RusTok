@@ -28,6 +28,11 @@ use super::{
 };
 
 impl BrandService {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(tenant_id = %tenant_id, slug = %input.slug),
+        err
+    )]
     pub(super) async fn create_brand(
         &self,
         tenant_id: Uuid,
