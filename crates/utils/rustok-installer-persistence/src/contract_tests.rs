@@ -275,6 +275,88 @@ async fn session_persistence_lifecycle_and_state_transitions() {
 }
 
 #[tokio::test]
+async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db.clone());
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+    let first_attempt = service
+        .acquire_lock(
+            session,
+            "worker-attempt-one",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("first attempt claims the session");
+    assert_eq!(first_attempt.attempt_generation, 1);
+
+    // Simulate an explicit operator reconciliation that has proven the first
+    // worker fenced and returned the session to its resumable draft boundary.
+    let mut reconciled: install_session::ActiveModel = first_attempt.clone().into();
+    reconciled.lock_owner = Set(None);
+    reconciled.lock_expires_at = Set(None);
+    reconciled.status = Set("draft".to_string());
+    reconciled
+        .update(&db)
+        .await
+        .expect("reconciliation fixture releases the old claim");
+
+    let current = service
+        .get_session(first_attempt.id)
+        .await
+        .expect("read reconciled session")
+        .expect("session exists");
+    let second_attempt = service
+        .acquire_lock(
+            current,
+            "worker-attempt-two",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("second attempt claims the reconciled session");
+    assert_eq!(second_attempt.attempt_generation, 2);
+    assert_eq!(
+        second_attempt.lock_owner.as_deref(),
+        Some("worker-attempt-two")
+    );
+
+    let stale_state_error = service
+        .set_state(
+            &session_record(&first_attempt),
+            InstallState::PreflightPassed,
+        )
+        .await
+        .expect_err("the first worker cannot mutate after generation advances");
+    assert!(stale_state_error.to_string().contains("attempt fence"));
+
+    let stale_receipt = InstallReceipt {
+        session_id: first_attempt.id.to_string(),
+        step: InstallStep::Preflight,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: "sha256:old-attempt".to_string(),
+        diagnostics: serde_json::json!({ "attempt": 1 }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    let stale_receipt_error = service
+        .record_receipt(&session_record(&first_attempt), &stale_receipt)
+        .await
+        .expect_err("the first worker cannot append a receipt after takeover");
+    assert!(stale_receipt_error.to_string().contains("attempt fence"));
+
+    let accepted = service
+        .set_state(
+            &session_record(&second_attempt),
+            InstallState::PreflightPassed,
+        )
+        .await
+        .expect("the current attempt can advance the state");
+    assert_eq!(accepted.status, "preflight_passed");
+}
+
+#[tokio::test]
 async fn completed_session_releases_admission_gate() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);

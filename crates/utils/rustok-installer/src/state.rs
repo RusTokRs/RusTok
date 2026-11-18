@@ -121,6 +121,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn persisted_state_names_round_trip_without_accepting_unknown_values() {
+        let states = [
+            InstallState::Draft,
+            InstallState::PreflightPassed,
+            InstallState::ConfigPrepared,
+            InstallState::DatabaseReady,
+            InstallState::SchemaApplied,
+            InstallState::SeedApplied,
+            InstallState::AdminProvisioned,
+            InstallState::Deploying,
+            InstallState::Verified,
+            InstallState::Completed,
+            InstallState::Failed,
+            InstallState::FreshInstallCleaned,
+            InstallState::RecoveryRequired,
+        ];
+        for state in states {
+            assert_eq!(InstallState::from_str(state.as_str()), Some(state));
+        }
+        assert_eq!(InstallState::from_str("unknown_state"), None);
+    }
+
+    #[test]
     fn happy_path_transitions_are_allowed() {
         let state = InstallState::Draft
             .transition_to(InstallState::PreflightPassed)
