@@ -102,7 +102,7 @@ fn session_record(model: &install_session::Model) -> InstallSessionRecord {
         status: model.status.clone(),
         attempt_generation: model.attempt_generation,
         lock_owner: model.lock_owner.clone(),
-        lock_expires_at: model.lock_expires_at,
+        lock_expires_at: model.lock_expires_at.clone(),
     }
 }
 
@@ -218,6 +218,26 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set schema state");
 
     let tenant_id = Uuid::new_v4();
+    let mut stale_tenant_owner = session_record(&schema_applied);
+    stale_tenant_owner.lock_owner = Some("stale-worker".to_string());
+    assert!(
+        service
+            .set_tenant_id(&stale_tenant_owner, tenant_id)
+            .await
+            .expect_err("stale owner cannot change the tenant")
+            .to_string()
+            .contains("attempt fence")
+    );
+    let mut stale_tenant_generation = session_record(&schema_applied);
+    stale_tenant_generation.attempt_generation -= 1;
+    assert!(
+        service
+            .set_tenant_id(&stale_tenant_generation, tenant_id)
+            .await
+            .expect_err("stale generation cannot change the tenant")
+            .to_string()
+            .contains("attempt fence")
+    );
     let updated_tenant = service
         .set_tenant_id(&session_record(&schema_applied), tenant_id)
         .await
