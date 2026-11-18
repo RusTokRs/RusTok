@@ -65,6 +65,7 @@ mod composition {
     mod m20261025_000005_add_oauth_token_family;
     mod m20261028_000001_enforce_single_running_install_http_job;
     mod m20261101_000001_add_user_password_changed_at;
+    mod m20261118_000001_add_sys_event_consumer_retention;
 
     #[cfg(test)]
     mod contract_tests;
@@ -347,6 +348,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261101_000001_add_user_password_changed_at::Migration,
+        ));
+        all.push(Box::new(
+            m20261118_000001_add_sys_event_consumer_retention::Migration,
         ));
         all
     }
