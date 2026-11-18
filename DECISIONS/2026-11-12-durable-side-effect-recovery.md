@@ -231,4 +231,5 @@ workflow remain open. HTTP and CLI adapters now issue a unique host-generated
 lock-owner value per execution attempt (diagnostic label plus stable
 session/job identity and a fresh attempt UUID). This prevents static owner
 collisions but is not the monotonic attempt-generation/reconciliation protocol
-required for complete recovery.
+required for complete recovery. Lease TTL input is bounded to 1–86,400 seconds,
+and persistence rejects timestamp overflow rather than panicking.
