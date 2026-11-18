@@ -3,6 +3,7 @@ use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
     InstallProfile, InstallReceipt, InstallState, InstallStep, InstallTopology,
     InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue, TenantBootstrap,
+    MAX_INSTALL_LOCK_TTL_SECS,
 };
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Set};
 use uuid::Uuid;
@@ -207,6 +208,46 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .await
         .expect("a finalized session no longer blocks a new apply");
     assert_eq!(second_lock.lock_owner.as_deref(), Some("worker-node-2"));
+}
+
+#[tokio::test]
+async fn acquire_lock_rejects_out_of_range_ttl_before_claiming_session() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+
+    let zero = service
+        .acquire_lock(
+            session.clone(),
+            "worker",
+            chrono::Duration::seconds(0),
+        )
+        .await
+        .expect_err("zero TTL must be rejected");
+    assert!(zero.to_string().contains("between 1 and"));
+
+    let too_large = service
+        .acquire_lock(
+            session.clone(),
+            "worker",
+            chrono::Duration::seconds(MAX_INSTALL_LOCK_TTL_SECS + 1),
+        )
+        .await
+        .expect_err("over-limit TTL must be rejected");
+    assert!(too_large.to_string().contains("between 1 and"));
+
+    let accepted = service
+        .acquire_lock(
+            session,
+            "worker",
+            chrono::Duration::seconds(MAX_INSTALL_LOCK_TTL_SECS),
+        )
+        .await
+        .expect("maximum supported TTL is accepted");
+    assert!(accepted.lock_expires_at.is_some());
 }
 
 #[tokio::test]
