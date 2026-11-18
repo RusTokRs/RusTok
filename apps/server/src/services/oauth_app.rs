@@ -491,8 +491,8 @@ impl OAuthAppService {
         // Deactivate the app (column-scoped; see update_app)
         oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
             .exec(&tx)
             .await
@@ -1046,8 +1046,8 @@ pub async fn sync_app_connections(
         if current_app.is_active || current_app.revoked_at.is_none() {
             let result = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
                 .filter(oauth_apps::Column::Id.eq(current_app.id))
                 .filter(oauth_apps::Column::TenantId.eq(tenant_id))
                 .filter(oauth_apps::Column::Slug.eq(current_app.slug.clone()))
@@ -3536,7 +3536,7 @@ mod tests {
             revoked_at: Set(Some(now)),
             last_used_at: Set(None),
             metadata: Set(serde_json::json!({})),
-            created_at: Set(now.into()),
+            created_at: Set(now.clone().into()),
             updated_at: Set(now.into()),
         }
         .insert(&db)
@@ -4025,6 +4025,7 @@ mod tests {
             .expect("load reactivated orphan")
             .expect("previously orphaned app remains present");
         assert!(reactivated_orphan.is_active);
+        assert!(reactivated_orphan.revoked_at.is_none());
         let consent_after_reactivation = oauth_consents::Entity::find_by_id(orphan_consent.id)
             .one(&db)
             .await
