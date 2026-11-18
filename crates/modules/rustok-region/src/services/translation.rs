@@ -344,11 +344,16 @@ impl RegionTranslationService {
             .or_else(|| (!unchanged).then(generate_id));
 
         if !unchanged {
+            let op_id = operation_id.ok_or_else(|| {
+                RegionTranslationExactLocaleError::Region(RegionError::Validation(
+                    "changed Region translation apply requires operation id".to_string(),
+                ))
+            })?;
             record_region_translation_change_in_tx(
                 &txn,
                 tenant_id,
                 region_id,
-                operation_id.expect("changed Region translation apply must have operation id"),
+                op_id,
                 &resource_revision,
                 RegionTranslationChangeLifecycle::Active,
             )
@@ -548,11 +553,13 @@ fn append_text(payload: &mut Vec<u8>, value: &str) {
 }
 
 fn digest_revision(payload: &[u8]) -> String {
+    const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
     let digest = sha256_digest(&[payload]);
     let mut revision = String::with_capacity(71);
     revision.push_str("sha256:");
     for byte in digest {
-        write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
+        revision.push(HEX_DIGITS[(byte >> 4) as usize] as char);
+        revision.push(HEX_DIGITS[(byte & 0x0f) as usize] as char);
     }
     revision
 }
