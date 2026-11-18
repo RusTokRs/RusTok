@@ -227,4 +227,8 @@ jobs now persist their stable session ID before the worker starts, and the
 executor creates that exact session. This is deliberately fail-closed but not
 a complete recovery system: installer resumability, a versioned remote sandbox
 transport contract, effect-owner receipts, and an operator reconciliation
-workflow remain open.
+workflow remain open. HTTP and CLI adapters now issue a unique host-generated
+lock-owner value per execution attempt (diagnostic label plus stable
+session/job identity and a fresh attempt UUID). This prevents static owner
+collisions but is not the monotonic attempt-generation/reconciliation protocol
+required for complete recovery.
