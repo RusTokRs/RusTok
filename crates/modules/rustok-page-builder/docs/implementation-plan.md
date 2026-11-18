@@ -23,6 +23,8 @@ capability profile.
 
 ## Current state
 
+- FFA transport profile: in-progress transport parity gap tracked for admin (GraphQL-only adapter in progress) and storefront (owner-module UI fragments).
+
 `rustok-page-builder` exposes one Fly-backed capability service for preview, tree, properties and
 publish. `FlyAdapterBackedPageBuilderService` owns capability sequencing; consumer composition roots
 supply `PageBuilderProjectStore` and `PageBuilderPreviewRenderingPort` implementations.

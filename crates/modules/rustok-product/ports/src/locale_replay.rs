@@ -22,6 +22,7 @@ pub struct ProductLocaleReplayKey {
 pub struct ProductLocaleReplayScan {
     pub locale: Option<String>,
     pub after: Option<ProductLocaleReplayKey>,
+    /// Maximum number of entries. The transport can return a shorter page with a continuation.
     pub limit: usize,
 }
 

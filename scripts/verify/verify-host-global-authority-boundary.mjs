@@ -70,6 +70,9 @@ for (const [value, label] of [
   ['(HostAuthority::Manage, HostAuthority::Read)', 'explicit manage-to-read hierarchy'],
   ['(HostAuthority::Manage, HostAuthority::Manage)', 'explicit manage hierarchy'],
   ['HOST_AUTHORITY_REQUIRED', 'static denial'],
+  ['tokio::task_local!', 'request-local typed authority'],
+  ['pub async fn with_host_authority_scope', 'typed authority scope entry'],
+  ['pub fn current_host_authority()', 'typed authority scope read'],
 ]) {
   requireText(authoritySource, value, label);
 }
@@ -95,9 +98,7 @@ for (const [value, label] of [
   ['must not contain duplicate token hashes', 'ambiguous token rejection'],
   ['HostAuthorityContext::for_actor', 'typed operator issuance'],
   ['headers.remove(HOST_AUTHORITY_TOKEN_HEADER)', 'raw credential removal'],
-  ['tokio::task_local!', 'request-local typed authority'],
-  ['pub async fn with_host_authority_scope', 'typed authority scope entry'],
-  ['pub fn current_host_authority()', 'typed authority scope read'],
+  ['pub use rustok_api::{current_host_authority, with_host_authority_scope};', 're-exported typed authority scope'],
   ['header_is_removed_before_typed_authority_is_returned', 'header removal regression'],
   ['invalid_header_is_removed_before_denial', 'denied header removal regression'],
   ['typed_authority_is_request_scoped_and_does_not_leak', 'scope leakage regression'],
@@ -297,7 +298,6 @@ forbidText(
 );
 for (const [start, end, operation] of [
   ['async fn system_health(', 'async fn cache_health(', 'system health'],
-  ['async fn cache_health(', 'async fn events_status(', 'cache health'],
   ['async fn events_status(', 'async fn session_stats(', 'events status'],
 ]) {
   const block = between(systemSource, start, end, operation);
@@ -308,6 +308,21 @@ for (const [start, end, operation] of [
   );
   forbidText(block, 'Permission::LOGS_', `${operation} tenant logs authority`);
 }
+
+const cacheHealthBlock = between(
+  systemSource,
+  'async fn cache_health(',
+  'async fn events_status(',
+  'cache health',
+);
+requireText(
+  cacheHealthBlock,
+  'require_cache_read_authority(ctx)?;',
+  'cache health read authority guard',
+);
+forbidText(cacheHealthBlock, 'require_host_read()', 'cache health must not be restricted to host-only authority');
+requireText(systemSource, 'fn require_cache_read_authority(', 'cache read authority helper');
+requireText(systemSource, 'rustok_api::authorizes_host_or_permission(', 'shared cache authority rule');
 
 for (const [value, label] of [
   ['current_host_authority()', 'Settings GraphQL typed host authority'],

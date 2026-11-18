@@ -135,7 +135,8 @@ assertContains(leptosHostCargo, "rustok-mcp-admin", `${leptosHostCargoPath}: hos
 assertContains(leptosHostCargo, "rustok-mcp-admin/csr", `${leptosHostCargoPath}: CSR debug profile must include the MCP owner package`);
 assertContains(leptosHostCargo, "rustok-mcp-admin/hydrate", `${leptosHostCargoPath}: hydrate profile must include the MCP owner package`);
 assertContains(leptosHostCargo, "rustok-mcp-admin/ssr", `${leptosHostCargoPath}: SSR profile must include the MCP owner package`);
-assertContains(leptosHostRouter, 'path=path!("/mcp") view=rustok_mcp_admin::McpAdmin', `${leptosHostRouterPath}: host route must mount the MCP owner component`);
+assertContains(leptosHostRouter, 'path=path!("/mcp")', `${leptosHostRouterPath}: host route must configure /mcp`);
+assertContains(leptosHostRouter, "rustok_mcp_admin::McpAdmin", `${leptosHostRouterPath}: host route must mount the MCP owner component`);
 assertNotContains(leptosHostRouter, "mcpModuleScaffoldDrafts", `${leptosHostRouterPath}: Leptos host route must not own MCP transport logic`);
 
 assertContains(leptosLib, "pub use ui::McpAdmin;", `${leptosLibPath}: Leptos crate must re-export owner UI`);

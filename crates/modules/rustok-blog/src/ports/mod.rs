@@ -5,12 +5,5 @@
 //! private persistence entities.
 
 pub use crate::services::orchestration::*;
-
-pub mod taxonomy;
-pub use taxonomy::{
-    AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyCategoryLocaleCopy,
-    BlogTaxonomyCategorySnapshot, BlogTaxonomyConnection, BlogTaxonomyCreateTagInput,
-    BlogTaxonomyCreatedTag, BlogTaxonomyPlacement, BlogTaxonomyPort, BlogTaxonomySyncCategoryInput,
-    BlogTaxonomyTagSnapshot, BlogTaxonomyUpdateTagInput, NoopBlogCategoryDeleteCleanupPort,
-    NoopBlogTaxonomyPort,
-};
+pub use crate::services::taxonomy;
+pub use crate::services::taxonomy::*;

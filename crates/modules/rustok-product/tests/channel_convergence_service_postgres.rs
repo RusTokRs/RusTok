@@ -42,6 +42,7 @@ mod postgres;
 const TOKEN: &str = "test-channel-identity-token";
 const LOCALE_TOKEN: &str = "test-product-locale-replay-token";
 const INITIAL_PRODUCTS: u128 = 10;
+const REPLAY_DESCRIPTION_BYTES: i32 = 512 * 1024;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::test]
@@ -153,6 +154,7 @@ async fn verify(
         matches!(&page.entries[0].state, ProductLocaleReplayState::Live(fields)
         if fields.title == "Product 1" && fields.sales_channel_ids == [channel_id])
     );
+    verify_large_locale_replay(&replay, tenant).await?;
     let denied = locale_provider(product_bind, "test-product-read-token").await?;
     let error = denied
         .load_locale_replay(replay_context(tenant), vec![first_locale_key()])
@@ -359,6 +361,58 @@ async fn verify_visibility_queue_commit_order(db: &DatabaseConnection, tenant: U
     Ok(())
 }
 
+async fn verify_large_locale_replay(
+    replay: &GrpcProductCatalogReadProvider,
+    tenant: Uuid,
+) -> TestResult {
+    let mut expected: Vec<_> = (1..=INITIAL_PRODUCTS)
+        .map(|id| (Uuid::from_u128(id), "en".to_owned()))
+        .collect();
+    expected.insert(5, (Uuid::from_u128(5), "fr".to_owned()));
+
+    let mut after = None;
+    let mut actual = Vec::new();
+    let mut pages = 0;
+    loop {
+        let page = replay
+            .scan_locale_replay(
+                replay_context(tenant),
+                ProductLocaleReplayScan {
+                    locale: None,
+                    after: after.clone(),
+                    limit: 1_000,
+                },
+            )
+            .await?;
+        pages += 1;
+        assert!(!page.entries.is_empty());
+        assert!(
+            pages <= expected.len(),
+            "the cursor must advance on every page"
+        );
+        for entry in &page.entries {
+            assert_eq!(entry.tenant_id, tenant);
+            assert!(
+                matches!(&entry.state, ProductLocaleReplayState::Live(fields)
+                if fields.description.as_ref().is_some_and(|text| text.len() == REPLAY_DESCRIPTION_BYTES as usize))
+            );
+            actual.push((entry.product_id, entry.locale.clone()));
+        }
+        let Some(next) = page.next else {
+            break;
+        };
+        assert_ne!(after.as_ref(), Some(&next));
+        assert_eq!(
+            page.entries.last().map(|entry| entry.key()),
+            Some(next.clone())
+        );
+        after = Some(next);
+    }
+    assert!(pages > 1, "the requested page exceeds the gRPC byte limit");
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
 async fn seed(
     product: &DatabaseConnection,
     channel: &DatabaseConnection,
@@ -404,12 +458,18 @@ async fn seed(
             .await?;
         product.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "INSERT INTO product_translations (id, tenant_id, product_id, locale, title, handle)
-             VALUES ($1, $2, $3, 'en', $4, $5)",
+            "INSERT INTO product_translations (id, tenant_id, product_id, locale, title, handle, description)
+             VALUES ($1, $2, $3, 'en', $4, $5, repeat('d', $6))",
             [Uuid::new_v4().into(), tenant.into(), Uuid::from_u128(id).into(),
-                format!("Product {id}").into(), format!("product-{id}").into()],
+                format!("Product {id}").into(), format!("product-{id}").into(), REPLAY_DESCRIPTION_BYTES.into()],
         )).await?;
     }
+    product.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO product_translations (id, tenant_id, product_id, locale, title, handle, description)
+         VALUES ($1, $2, $3, 'fr', 'Produit 5', 'produit-5', repeat('d', $4))",
+        [Uuid::new_v4().into(), tenant.into(), Uuid::from_u128(5).into(), REPLAY_DESCRIPTION_BYTES.into()],
+    )).await?;
     Ok(())
 }
 

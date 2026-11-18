@@ -47,6 +47,7 @@ const migrationCompatibilityVerifier =
 const owner = "crates/modules/rustok-rbac/src/artifact_permission_assignment.rs";
 const catalog = "crates/modules/rustok-rbac/src/artifact_permission_catalog.rs";
 const exports = "crates/modules/rustok-rbac/src/lib.rs";
+const moduleSource = "crates/modules/rustok-rbac/src/module.rs";
 const docs = "crates/modules/rustok-rbac/docs/README.md";
 const host = "apps/server/src/controllers/artifact_permissions.rs";
 const userAdmin =
@@ -67,10 +68,12 @@ if (!existsSync(path.join(root, cutoverMigration))) {
 
 requireAll(exports, [
   "mod m20260803_000001_canonicalize_artifact_permissions;",
+  "ArtifactPermissionAssignmentScope",
+]);
+requireAll(moduleSource, [
   "m20260716_000001_artifact_permission_catalog::Migration",
   "m20260717_000001_artifact_role_permissions::Migration",
   "m20260803_000001_canonicalize_artifact_permissions::Migration",
-  "ArtifactPermissionAssignmentScope",
 ]);
 forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integrity"]);
 
@@ -184,11 +187,9 @@ requireAll(catalog, [
   "translation_upsert_sql",
   "rbac.artifact_permission_identity_conflict",
   "ArtifactPermissionScope::Tenant { tenant_id } if tenant_id.is_nil()",
-  "registration_normalizes_locale_and_is_idempotent",
-  "registration_rejects_installation_scope_rebinding",
-  "registration_rejects_nil_tenant_scope",
-  "registration_rejects_duplicate_normalized_locales",
-  "registration_rejects_unassignable_or_duplicate_permission_keys",
+  "admission_and_scoped_projection_are_idempotent",
+  "projection_rejects_installation_scope_rebinding",
+  "projection_rejects_identity_rebinding",
 ]);
 requireAll(owner, [
   "pub enum ArtifactPermissionAssignmentScope",
@@ -223,7 +224,7 @@ requireAll(host, [
 ]);
 
 requireAll(sqliteProof, [
-  "migrations.len(),\n        5",
+  "migrations.len(),\n        6",
   "artifact integrity cutover must append after unchanged historical migrations",
   "database_rejects_cross_tenant_scope_and_orphan_artifact_state",
   "PRAGMA foreign_keys = ON",

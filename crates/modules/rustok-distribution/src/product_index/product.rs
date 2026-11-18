@@ -280,13 +280,12 @@ impl IndexSource for ProductPostgresIndexSource {
             .await
             .map_err(map_port_error)?;
         if let Some(next) = &page.next
-            && (page.entries.len() != request.limit()
-                || page
-                    .entries
-                    .last()
-                    .map(ProductLocaleReplayEntry::key)
-                    .as_ref()
-                    != Some(next))
+            && (page
+                .entries
+                .last()
+                .map(ProductLocaleReplayEntry::key)
+                .as_ref()
+                != Some(next))
         {
             return Err(permanent("product_index_page_invalid"));
         }
