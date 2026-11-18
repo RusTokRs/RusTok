@@ -108,7 +108,9 @@ impl AiRunStreamHub {
                 }
             }
         }
-        let _ = self.sender.send(event);
+        if let Err(send_err) = self.sender.send(event) {
+            tracing::trace!(?send_err, "no active subscribers for ai run stream event");
+        }
         true
     }
 

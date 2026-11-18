@@ -103,7 +103,7 @@ impl EventForwarderHandle {
 
 pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
     tracing::debug!("Resolving EventBus from ServerRuntimeContext");
-    let _ = ctx.shared_insert_if_absent(EventBusStartLock::default());
+    ctx.shared_insert_if_absent(EventBusStartLock::default());
     let start_lock = ctx.shared_get::<EventBusStartLock>().unwrap_or_default();
     let _start_guard = start_lock
         .0
@@ -128,9 +128,12 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     } else {
         let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
             as Arc<dyn EventTransport>;
-        let _ = ctx.shared_insert_if_absent(default_transport.clone());
-        ctx.shared_get::<Arc<dyn EventTransport>>()
-            .unwrap_or(default_transport)
+        if ctx.shared_insert_if_absent(default_transport.clone()) {
+            default_transport
+        } else {
+            ctx.shared_get::<Arc<dyn EventTransport>>()
+                .unwrap_or(default_transport)
+        }
     };
 
     if ctx
@@ -223,7 +226,7 @@ pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> Trans
     } else {
         let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
             as Arc<dyn EventTransport>;
-        let _ = ctx.shared_insert_if_absent(default_transport.clone());
+        ctx.shared_insert_if_absent(default_transport.clone());
         default_transport
     };
     TransactionalEventBus::new(transport)

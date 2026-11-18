@@ -580,7 +580,7 @@ pub async fn start_rbac_cache_invalidation_listener(
     cache: CacheService,
 ) -> Result<()> {
     tracing::debug!("Starting RBAC cache invalidation listener");
-    let _ = ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
+    ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;

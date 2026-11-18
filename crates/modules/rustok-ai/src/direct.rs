@@ -272,14 +272,17 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                     )
                     .await
                     .map_err(|err| AiError::Runtime(err.to_string()))?;
-                let _ = scoped
+                if let Err(log_err) = scoped
                     .execution_log
                     .record_with_context(
                         &result,
                         Some(operator.user_id.to_string()),
                         Some(operator.tenant_id),
                     )
-                    .await;
+                    .await
+                {
+                    tracing::warn!(?log_err, "failed to record alloy execution log");
+                }
                 let duration_ms = result.duration_ms();
                 let execution_id = result.execution_id;
 

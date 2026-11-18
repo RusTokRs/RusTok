@@ -111,7 +111,8 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
             receipt.record(*scope, generation.value());
         }
         receipt.validate_for(&request)?;
-        let _ = self.successful_invalidations.observe(request.event_id);
+        // INVARIANT: event dedupe observation after successful cache invalidation.
+        self.successful_invalidations.observe(request.event_id);
         Ok(receipt)
     }
 }

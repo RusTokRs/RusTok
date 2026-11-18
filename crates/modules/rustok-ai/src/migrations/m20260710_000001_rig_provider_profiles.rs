@@ -16,11 +16,11 @@ impl MigrationTrait for Migration {
             ))
             .await?;
         if !rows.is_empty() {
-            let profiles = rows
-                .iter()
-                .filter_map(|row| String::try_get(row, "", "slug").ok())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let mut profiles = Vec::with_capacity(rows.len());
+            for row in &rows {
+                profiles.push(String::try_get(row, "", "slug")?);
+            }
+            let profiles = profiles.join(", ");
             return Err(DbErr::Migration(format!(
                 "AI provider migration blocked by plaintext api_key_secret values in profiles: {profiles}. Move credentials to external secrets or deactivate and clear each profile before retrying"
             )));

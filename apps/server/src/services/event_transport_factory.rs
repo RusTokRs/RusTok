@@ -204,7 +204,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             task.abort();
         }
         for task in tasks {
-            let _ = task.await;
+            if let Err(join_err) = task.await {
+                if !join_err.is_cancelled() {
+                    tracing::warn!(error = %join_err, "Aborted tenant cache generation task failed unexpectedly");
+                }
+            }
         }
         return Err(error);
     }

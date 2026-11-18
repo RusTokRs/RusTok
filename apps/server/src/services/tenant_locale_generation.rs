@@ -408,7 +408,7 @@ pub async fn start_tenant_locale_generation_listener(
     cache: CacheService,
 ) {
     let candidate = TenantLocaleGenerationStartLock::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<TenantLocaleGenerationStartLock>()
         .unwrap_or(candidate);

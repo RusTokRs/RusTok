@@ -91,8 +91,8 @@ pub fn map_task_profile(model: ai_task_profiles::Model) -> AiResult<AiTaskProfil
         description: model.description,
         target_capability: capability_from_slug(&model.target_capability)?,
         system_prompt: model.system_prompt,
-        allowed_provider_profile_ids: uuid_list(&model.allowed_provider_profile_ids),
-        preferred_provider_profile_ids: uuid_list(&model.preferred_provider_profile_ids),
+        allowed_provider_profile_ids: uuid_list(&model.allowed_provider_profile_ids)?,
+        preferred_provider_profile_ids: uuid_list(&model.preferred_provider_profile_ids)?,
         fallback_strategy: model.fallback_strategy,
         tool_profile_id: model.tool_profile_id,
         approval_policy: model.approval_policy,
@@ -172,7 +172,7 @@ pub fn map_run_record(model: ai_chat_runs::Model) -> AiResult<AiChatRunRecord> {
         max_tokens: model.max_tokens,
         error_message: model.error_message,
         pending_approval_id: model.pending_approval_id,
-        decision_trace: serde_json::from_value(model.decision_trace).unwrap_or_default(),
+        decision_trace: serde_json::from_value(model.decision_trace).map_err(json_err)?,
         metadata: model.metadata,
         created_at: to_utc(model.created_at),
         started_at: to_utc(model.started_at),
@@ -204,7 +204,7 @@ pub fn map_recent_run_record(
         .num_milliseconds()
         .max(0);
     let decision_trace: AiRunDecisionTrace =
-        serde_json::from_value(model.decision_trace).unwrap_or_default();
+        serde_json::from_value(model.decision_trace).map_err(json_err)?;
 
     let provider_slug = match provider {
         Some(value) => provider_slug_from_str(&value.provider_slug)?,

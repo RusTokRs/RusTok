@@ -25,5 +25,5 @@ pub enum AiError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    Catalog(#[from] crate::engine::catalog::ProviderCatalogError),
+    Catalog(#[from] crate::ProviderCatalogError),
 }

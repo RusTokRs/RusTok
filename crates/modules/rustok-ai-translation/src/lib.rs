@@ -208,7 +208,9 @@ pub fn machine_translation_port_from_context(
                 error.code
             )
         })?;
-    let Some(ai) = rustok_ai::structured_task_port_from_context(context, catalog)? else {
+    let Some(ai) = rustok_ai::structured_task_port_from_context(context, catalog)
+        .map_err(|error| error.to_string())?
+    else {
         return Ok(None);
     };
     Ok(Some(Arc::new(AiMachineTranslationAdapter::new(ai))))
