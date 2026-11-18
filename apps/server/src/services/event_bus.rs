@@ -209,7 +209,7 @@ async fn supervise_event_forwarder(
         let mut receiver = next_receiver
             .take()
             .unwrap_or_else(|| EventForwarderReceiver::new(bus.subscribe(), bus.backpressure()));
-        let outcome = AssertUnwindSafe(run_event_forwarder(
+        let outcome = AssertUnwindSafe(run_event_forwarder_with_receiver(
             &mut receiver,
             Arc::clone(&transport),
             stop_rx.clone(),
@@ -225,7 +225,7 @@ async fn supervise_event_forwarder(
                 tracing::error!(
                     "Event forwarder panicked during shutdown; draining the remaining queued events"
                 );
-                let drain_outcome = AssertUnwindSafe(run_event_forwarder(
+                let drain_outcome = AssertUnwindSafe(run_event_forwarder_with_receiver(
                     &mut receiver,
                     Arc::clone(&transport),
                     stop_rx.clone(),
@@ -249,7 +249,7 @@ async fn supervise_event_forwarder(
         // Keep the same receiver alive through backoff. If shutdown arrives,
         // make one final pass with that receiver so its unread queue is drained.
         if !wait_for_forwarder_restart(&mut stop_rx, EVENT_FORWARDER_RESTART_DELAY).await {
-            let drain_outcome = AssertUnwindSafe(run_event_forwarder(
+            let drain_outcome = AssertUnwindSafe(run_event_forwarder_with_receiver(
                 &mut receiver,
                 Arc::clone(&transport),
                 stop_rx.clone(),
@@ -389,6 +389,14 @@ async fn publish_event_with_retry(
 }
 
 async fn run_event_forwarder(
+    mut receiver: EventForwarderReceiver,
+    transport: Arc<dyn EventTransport>,
+    stop_rx: watch::Receiver<bool>,
+) {
+    run_event_forwarder_with_receiver(&mut receiver, transport, stop_rx).await;
+}
+
+async fn run_event_forwarder_with_receiver(
     receiver: &mut EventForwarderReceiver,
     transport: Arc<dyn EventTransport>,
     mut stop_rx: watch::Receiver<bool>,
@@ -921,7 +929,7 @@ mod tests {
         });
         tokio::time::timeout(
             Duration::from_secs(3),
-            super::run_event_forwarder(&mut receiver, transport.clone(), stop_rx.clone()),
+            super::run_event_forwarder_with_receiver(&mut receiver, transport.clone(), stop_rx.clone()),
         )
         .await
         .expect("shutdown iteration should drain the restart receiver");
