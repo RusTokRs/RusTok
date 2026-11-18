@@ -111,15 +111,17 @@ async fn record_successful_step(
     session: &InstallSessionRecord,
     step: InstallStep,
 ) {
-    let receipt = InstallReceipt {
-        session_id: session.id.to_string(),
+    let input = serde_json::json!({
+        "step": format!("{step:?}"),
+        "attempt_generation": session.attempt_generation,
+    });
+    let receipt = InstallReceipt::success(
+        session.id.to_string(),
         step,
-        outcome: ReceiptOutcome::Success,
-        input_checksum: format!("sha256:{}", Uuid::new_v4().simple()),
-        diagnostics: serde_json::json!({ "step": "completed" }),
-        installer_version: "0.1.0".to_string(),
-        created_at: Utc::now(),
-    };
+        &input,
+        serde_json::json!({ "step": "completed" }),
+    )
+    .expect("build successful step receipt");
     service
         .record_receipt(session, &receipt)
         .await
