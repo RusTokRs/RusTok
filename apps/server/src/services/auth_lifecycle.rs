@@ -183,9 +183,11 @@ const MAX_FAILED_LOGIN_ATTEMPTS: i32 = 10;
 /// A successful password reset or password change clears the lock early.
 const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 
-/// Replay of a rotated-away refresh token inside this window is treated
-/// as a lost-response retry; after it, reuse means the token was copied
-/// and the whole session lineage is revoked.
+/// A replay of the immediately previous refresh token inside this window
+/// is rejected without revoking the current session, because it may be a
+/// concurrent request racing the successful rotation. This is not an
+/// idempotent retry: the caller still needs the successful response to receive
+/// the replacement cookie. After the window, replay revokes the session lineage.
 const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 impl AuthLifecycleService {
@@ -718,7 +720,7 @@ impl AuthLifecycleService {
     /// rotation when the response carrying the new cookie was lost.
     /// Resolve that digest as well, while holding the same row lock used by
     /// refresh, so a successful logout revokes the active lineage.
-    async fn find_previous_refresh_session_for_logout_in_tx(
+    async fn find_previous_refresh_session_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         token_hash: &str,
@@ -905,23 +907,23 @@ impl AuthLifecycleService {
         ))
     }
 
-    /// OAuth BCP refresh-token reuse detection for the in-place rotation
-    /// model: the session row remembers the hash rotated away at the
-    /// previous refresh. Presenting that hash after the grace window can
-    /// only happen if the token was copied, so the lineage is revoked.
+    /// Detect reuse of the immediately preceding refresh token. Resolve it
+    /// under the same database-specific session-row lock as refresh/logout:
+    /// without that lock, a concurrent rotation could replace the row after
+    /// this read and an ActiveModel update built from the stale snapshot could
+    /// overwrite the newer token hash or expiry while revoking the session.
     /// Older generations are not remembered and read as unknown tokens.
     async fn detect_refresh_reuse_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         token_hash: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let previous = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::PreviousTokenHash.eq(token_hash.to_string()))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .one(txn)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        let previous = Self::find_previous_refresh_session_for_update_in_tx(
+            txn,
+            tenant_id,
+            token_hash,
+        )
+        .await?;
 
         if let Some(previous) = previous {
             let within_grace = previous
@@ -1173,7 +1175,7 @@ impl AuthLifecycleService {
         {
             Some(session) => Some(session),
             None => {
-                Self::find_previous_refresh_session_for_logout_in_tx(&txn, tenant_id, &token_hash)
+                Self::find_previous_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
                     .await?
             }
         }
@@ -1509,7 +1511,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
-        TransactionTrait,
+        ConnectionTrait, TransactionTrait,
     };
     use serial_test::serial;
     use std::sync::atomic::Ordering;
@@ -2385,7 +2387,7 @@ mod tests {
                 .is_none()
         );
         assert!(
-            AuthLifecycleService::find_previous_refresh_session_for_logout_in_tx(
+            AuthLifecycleService::find_previous_refresh_session_for_update_in_tx(
                 &tx,
                 Uuid::new_v4(),
                 &old_hash,
@@ -2394,7 +2396,7 @@ mod tests {
             .expect("other-tenant query")
             .is_none()
         );
-        let selected = AuthLifecycleService::find_previous_refresh_session_for_logout_in_tx(
+        let selected = AuthLifecycleService::find_previous_refresh_session_for_update_in_tx(
             &tx, tenant.id, &old_hash,
         )
         .await
@@ -2458,6 +2460,184 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_inside_grace_is_rejected_without_revoking_live_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Refresh grace tenant", "refresh-grace")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "refresh-grace@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let previous_token = "refresh-token-inside-grace";
+        let current_token = "current-refresh-token-inside-grace";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(5)).into()));
+        let session = session.insert(&db).await.expect("session");
+        let config = test_auth_config("refresh-grace-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session remains present");
+        assert!(stored.is_active());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+        assert_eq!(
+            stored.previous_token_hash,
+            Some(hash_refresh_token(previous_token))
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_after_grace_revokes_live_session_lineage() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Refresh reuse tenant", "refresh-reuse")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "refresh-reuse@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let previous_token = "refresh-token-after-grace";
+        let current_token = "current-refresh-token-after-grace";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(60)).into()));
+        let session = session.insert(&db).await.expect("session");
+        let config = test_auth_config("refresh-reuse-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session remains as revocation evidence");
+        assert!(!stored.is_active());
+        assert!(stored.revoked_at.is_some());
+        assert!(stored.previous_token_hash.is_none());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_revocation_failure_is_propagated_without_false_success() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "Refresh reuse failure tenant",
+            "refresh-reuse-failure",
+        )
+        .insert(&db)
+        .await
+        .expect("tenant");
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "refresh-reuse-failure@example.com",
+            "hash",
+        )
+        .insert(&db)
+        .await
+        .expect("user");
+        let previous_token = "refresh-token-revocation-failure";
+        let current_token = "current-refresh-token-revocation-failure";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(60)).into()));
+        let session = session.insert(&db).await.expect("session");
+
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_refresh_reuse_revocation
+             BEFORE UPDATE ON sessions
+             WHEN NEW.revoked_at IS NOT NULL
+             BEGIN
+                 SELECT RAISE(ABORT, 'simulated refresh-reuse revocation failure');
+             END;",
+        )
+        .await
+        .expect("install revocation failure trigger");
+        let config = test_auth_config("refresh-reuse-failure-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::Internal(_))
+        ));
+        db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
+            .await
+            .expect("remove revocation failure trigger");
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session after failed revocation")
+            .expect("session remains present");
+        assert!(stored.is_active());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+        assert_eq!(
+            stored.previous_token_hash,
+            Some(hash_refresh_token(previous_token))
+        );
     }
 
     #[tokio::test]
