@@ -203,7 +203,11 @@ async fn find_previous_publish_target_in_tx(
     let operations = match txn.get_database_backend() {
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     };
     for operation in operations {
         verify_publish_operation_for_rollback(&operation)?;
@@ -247,12 +251,20 @@ async fn find_current_publish_cursor_in_tx(
     let latest_publish = match txn.get_database_backend() {
         DbBackend::Sqlite => publish_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     };
     let latest_rollback = match txn.get_database_backend() {
         DbBackend::Sqlite => rollback_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => rollback_query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     };
 
     let cursor = match (latest_publish, latest_rollback) {
@@ -307,7 +319,11 @@ async fn find_publish_operation_by_id_in_tx(
     match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     }
     .ok_or_else(|| {
         PagesError::rollback_target_unavailable(format!(
@@ -331,7 +347,11 @@ async fn find_rollback_operation_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     })
 }
 

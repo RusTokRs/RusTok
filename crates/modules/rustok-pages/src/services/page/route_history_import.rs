@@ -265,7 +265,11 @@ async fn load_page_for_import(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     })
 }
 

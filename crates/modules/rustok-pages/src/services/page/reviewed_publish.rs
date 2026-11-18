@@ -104,6 +104,7 @@ impl PageService {
     /// documents and the promoted baseline are the ones it was computed from; otherwise it gates
     /// and compiles under the locks. The attempt changes how long the locks are held, not what
     /// is published or which error is reported.
+    #[tracing::instrument(skip(self, security, input), fields(%tenant_id, %page_id))]
     pub async fn publish_reviewed(
         &self,
         tenant_id: Uuid,
@@ -472,7 +473,11 @@ async fn load_scenario_baseline_in_tx(
     let model = match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     };
     Ok(model.map(StoredScenarioBaseline::from))
 }
@@ -709,7 +714,11 @@ async fn find_publish_operation_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     })
 }
 
