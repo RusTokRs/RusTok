@@ -432,7 +432,7 @@ async fn fresh_install_cleaned_requires_successful_rollback_receipt() {
         )
         .await
         .expect_err("cleanup state cannot release admission without rollback evidence");
-    assert!(missing_receipt.to_string().contains("successful rollback receipt"));
+    assert!(missing_receipt.to_string().contains("successful Rollback receipt"));
 
     record_successful_step(
         &service,
@@ -525,7 +525,7 @@ async fn failed_state_requires_recovery_and_successful_rollback_receipt() {
             .await
             .expect_err("failed rollback cannot release admission")
             .to_string()
-            .contains("successful rollback receipt")
+            .contains("successful Rollback receipt")
     );
 
     record_successful_step(
