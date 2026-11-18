@@ -313,6 +313,7 @@ impl ChannelCacheInvalidationListener {
     }
 }
 
+#[tracing::instrument(skip(ctx), fields(%tenant_id))]
 pub async fn publish_channel_resolution_invalidation(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     let generation = match rustok_channel::read_resolution_invalidation_generation(ctx.db()).await {
         Ok(generation) => generation,

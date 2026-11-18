@@ -303,6 +303,7 @@ impl RbacCacheInvalidationListener {
     }
 }
 
+#[tracing::instrument(fields(%tenant_id, %user_id, generation))]
 pub async fn publish_user_rbac_invalidation(
     tenant_id: &Uuid,
     user_id: &Uuid,

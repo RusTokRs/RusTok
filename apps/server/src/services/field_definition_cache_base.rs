@@ -151,6 +151,7 @@ impl FieldDefinitionCache {
         (entry.generation == self.generation(tenant_id, entity_type)).then_some(entry.rows)
     }
 
+    #[tracing::instrument(skip(self, rows), fields(%tenant_id, %entity_type))]
     pub async fn set(&self, tenant_id: Uuid, entity_type: &str, rows: Vec<FieldDefinitionView>) {
         let generation = self.generation(tenant_id, entity_type);
         self.set_at_generation(tenant_id, entity_type, rows, generation)
@@ -227,6 +228,7 @@ impl FieldDefinitionCache {
         ((generations.cache_epoch as u64) << 32) | u64::from(key_generation)
     }
 
+    #[tracing::instrument(skip(self, rows), fields(%tenant_id, %entity_type, generation))]
     pub async fn set_if_generation(
         &self,
         tenant_id: Uuid,
