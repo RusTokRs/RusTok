@@ -104,8 +104,10 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result; recovery requires fencing and reconciliation of
-  actual effects, not automatic expiry.
+  persist the terminal result. HTTP and CLI now use unique host-generated
+  lock-owner values per attempt, but resumable execution, monotonic attempt
+  fencing, and effect reconciliation remain unimplemented; do not reset stale
+  jobs based only on lease expiry.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
   all-tenants bootstrap pass commits one tenant at a time, not as a single
   cross-tenant transaction. Built-in auth email delivery remains best effort.
