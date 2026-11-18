@@ -335,7 +335,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             }
         };
         let recipient = user.email;
-        let _ = spawn_password_reset_email(&self.runtime_ctx, email_service, recipient, reset_url);
+        let _task = spawn_password_reset_email(&self.runtime_ctx, email_service, recipient, reset_url);
 
         Ok(())
     }

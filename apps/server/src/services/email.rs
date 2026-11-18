@@ -384,7 +384,7 @@ pub fn spawn_email_verification(
         }
     };
     let recipient = email.to_string();
-    let _ = spawn_email_verification_send(ctx, email_service, recipient, token);
+    let _task = spawn_email_verification_send(ctx, email_service, recipient, token);
 }
 
 /// Build a localized built-in auth email sender from server runtime context.
