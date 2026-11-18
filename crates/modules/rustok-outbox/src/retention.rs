@@ -228,6 +228,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn registered_consumers_hold_old_events_until_every_consumer_acknowledges() {
+        let db = test_db().await;
+        let stale = Utc::now() - chrono::Duration::days(40);
+        let event_id = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+        let event_type = "test.pruned".to_string();
+        let first = crate::OutboxConsumer::new(db.clone());
+        let second = crate::OutboxConsumer::new(db.clone());
+        first
+            .register_required_event_types("consumer.one", std::slice::from_ref(&event_type))
+            .await
+            .expect("register first consumer");
+        second
+            .register_required_event_types("consumer.two", std::slice::from_ref(&event_type))
+            .await
+            .expect("register second consumer");
+
+        let retention = OutboxRetention::new(db.clone());
+        assert_eq!(retention.prune_once().await.expect("held prune").pruned, 0);
+
+        first
+            .acknowledge_existing("consumer.one", event_id)
+            .await
+            .expect("first consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("partially acknowledged prune").pruned, 0);
+
+        second
+            .acknowledge_existing("consumer.two", event_id)
+            .await
+            .expect("second consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("fully acknowledged prune").pruned, 1);
+        assert!(
+            crate::entity::Entity::find_by_id(event_id)
+                .one(&db)
+                .await
+                .expect("query")
+                .is_none(),
+            "the canonical event becomes eligible only after every required consumer acknowledges"
+        );
+    }
+
+    #[tokio::test]
     async fn prune_bounds_each_run_and_reports_the_remaining_batch() {
         let db = test_db().await;
         let stale = Utc::now() - chrono::Duration::days(40);
