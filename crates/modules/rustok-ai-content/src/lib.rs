@@ -129,7 +129,21 @@ pub struct GeneratedBlogDraft {
     pub seo_description: Option<String>,
 }
 
-pub fn validate_blog_draft_payload(payload: &GeneratedBlogDraft) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BlogDraftPayloadError {
+    #[error("blog_draft {0} must not be blank when provided")]
+    BlankField(&'static str),
+}
+
+impl From<BlogDraftPayloadError> for String {
+    fn from(error: BlogDraftPayloadError) -> Self {
+        error.to_string()
+    }
+}
+
+pub fn validate_blog_draft_payload(
+    payload: &GeneratedBlogDraft,
+) -> Result<(), BlogDraftPayloadError> {
     let text_fields = [
         ("title", payload.title.as_deref()),
         ("slug", payload.slug.as_deref()),
@@ -144,9 +158,7 @@ pub fn validate_blog_draft_payload(payload: &GeneratedBlogDraft) -> Result<(), S
         .filter_map(|(field, value)| value.map(|value| (field, value)))
     {
         if value.trim().is_empty() {
-            return Err(format!(
-                "blog_draft {field} must not be blank when provided"
-            ));
+            return Err(BlogDraftPayloadError::BlankField(field));
         }
     }
     Ok(())
@@ -163,28 +175,46 @@ pub struct GeneratedModerationDecision {
     pub recommended_action: Option<String>,
 }
 
-pub fn normalize_moderation_decision(decision: &str) -> Result<String, String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ModerationDecisionError {
+    #[error("content_moderation decision must be one of: allow, review, block")]
+    InvalidDecision,
+    #[error("content_moderation severity must be between 0 and 100")]
+    InvalidSeverity,
+    #[error("content_moderation explanation must not be empty")]
+    EmptyExplanation,
+}
+
+impl From<ModerationDecisionError> for String {
+    fn from(error: ModerationDecisionError) -> Self {
+        error.to_string()
+    }
+}
+
+pub fn normalize_moderation_decision(
+    decision: &str,
+) -> Result<String, ModerationDecisionError> {
     let decision_slug = decision.trim().to_ascii_lowercase();
     if !matches!(decision_slug.as_str(), "allow" | "review" | "block") {
-        return Err("content_moderation decision must be one of: allow, review, block".to_string());
+        return Err(ModerationDecisionError::InvalidDecision);
     }
     Ok(decision_slug)
 }
 
-pub fn validate_moderation_severity(severity: u8) -> Result<(), String> {
+pub fn validate_moderation_severity(severity: u8) -> Result<(), ModerationDecisionError> {
     if severity > 100 {
-        return Err("content_moderation severity must be between 0 and 100".to_string());
+        return Err(ModerationDecisionError::InvalidSeverity);
     }
     Ok(())
 }
 
 pub fn validate_moderation_decision(
     payload: &GeneratedModerationDecision,
-) -> Result<GeneratedModerationDecision, String> {
+) -> Result<GeneratedModerationDecision, ModerationDecisionError> {
     let decision = normalize_moderation_decision(&payload.decision)?;
     validate_moderation_severity(payload.severity)?;
     if payload.explanation.trim().is_empty() {
-        return Err("content_moderation explanation must not be empty".to_string());
+        return Err(ModerationDecisionError::EmptyExplanation);
     }
     Ok(GeneratedModerationDecision {
         decision,
