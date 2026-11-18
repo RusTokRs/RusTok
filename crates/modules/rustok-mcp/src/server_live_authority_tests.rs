@@ -20,7 +20,7 @@ impl McpAccessResolver for CountingResolver {
     async fn resolve_runtime_binding(
         &self,
         _session: &McpSessionContext,
-    ) -> anyhow::Result<McpRuntimeBinding> {
+    ) -> crate::runtime::McpRuntimeResult<McpRuntimeBinding> {
         self.0.fetch_add(1, Ordering::Relaxed);
         Ok(McpRuntimeBinding {
             access_context: McpAccessContext {
