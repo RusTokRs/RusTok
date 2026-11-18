@@ -412,12 +412,8 @@ impl AuthLifecycleService {
         name: Option<String>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .lock_exclusive()
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?
+        let user = Self::find_user_for_update_in_tx(&tx, tenant_id, user_id)
+            .await?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
         let next_name = match name {
@@ -627,7 +623,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(), AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user =
-            Self::find_user_for_password_change_in_tx(&tx, tenant_id, observed_user.id).await?;
+            Self::find_user_for_update_in_tx(&tx, tenant_id, observed_user.id).await?;
         if let Some(user) = user
             .filter(|u| u.password_hash == observed_user.password_hash && !Self::is_login_locked(u))
         {
@@ -794,41 +790,29 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from)?,
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Match by digest in the write fence itself. This reserves the
+                // SQLite writer before reading the row and avoids promoting a
+                // stale deferred read transaction after another rotation.
+                let sql = if previous_hash {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND previous_token_hash = ?2 AND revoked_at IS NULL"
+                } else {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND token_hash = ?2"
+                };
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    sql,
+                    [tenant_id.into(), token_hash.to_string().into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let sql = if previous_hash {
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND previous_token_hash = ?3 AND revoked_at IS NULL"
-                    } else {
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL"
-                    };
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        sql,
-                        [
-                            tenant_id.into(),
-                            existing.id.into(),
-                            token_hash.to_string().into(),
-                        ],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        // Another rotation/revocation may have won. Never
-                        // accept a row whose candidate hash changed.
-                        return query.one(txn).await.map_err(AuthLifecycleError::from);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                None
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         };
 
         Ok(session)
@@ -1006,7 +990,7 @@ impl AuthLifecycleService {
         .await
     }
 
-    async fn find_user_for_password_change_in_tx(
+    async fn find_user_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
@@ -1020,30 +1004,24 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // The key is known, so reserve SQLite's write lock before the
+                // first read. A deferred read-then-write upgrade can otherwise
+                // race another credential/profile mutation.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), user_id.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                        [tenant_id.into(), existing.id.into()],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
@@ -1053,12 +1031,13 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        let now = Utc::now();
         let query = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(Utc::now()));
+            .filter(sessions::Column::ExpiresAt.gt(now.clone()));
 
         match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query
@@ -1067,35 +1046,23 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Reserve the write lock using the complete active-session
+                // predicate before loading the row that will be mutated.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
+                    [tenant_id.into(), user_id.into(), session_id.into(), now.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
-                        [
-                            tenant_id.into(),
-                            user_id.into(),
-                            existing.id.into(),
-                            Utc::now().into(),
-                        ],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
@@ -1133,7 +1100,7 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id)
+        let user = Self::find_user_for_update_in_tx(&txn, tenant_id, user_id)
             .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
