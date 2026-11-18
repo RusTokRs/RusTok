@@ -404,6 +404,19 @@ async fn fresh_install_cleaned_requires_successful_rollback_receipt() {
         .await
         .expect("successful cleanup receipt allows release");
     assert_eq!(cleaned.status, "fresh_install_cleaned");
+
+    let next_session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("new session created after verified cleanup");
+    service
+        .acquire_lock(
+            next_session,
+            "next-clean-install-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("verified cleanup releases global admission");
 }
 
 #[tokio::test]
@@ -489,6 +502,19 @@ async fn failed_state_requires_recovery_and_successful_rollback_receipt() {
         .await
         .expect("successful rollback permits terminal failure");
     assert_eq!(failed.status, "failed");
+
+    let next_session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("new session created after verified rollback");
+    service
+        .acquire_lock(
+            next_session,
+            "next-recovery-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("verified rollback releases global admission");
 }
 
 #[tokio::test]
