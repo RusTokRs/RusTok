@@ -94,6 +94,41 @@ impl OutboxConsumer {
         Ok(())
     }
 
+    /// Retires a consumer only after every existing event for its registered
+    /// event types has a terminal acknowledgement. Stop the worker before calling.
+    pub async fn retire_if_drained(&self, consumer_key: &str) -> Result<()> {
+        validate_consumer_key(consumer_key)?;
+        let txn = self.db.begin().await?;
+        let subscriptions = subscription::Entity::find()
+            .filter(subscription::Column::ConsumerKey.eq(consumer_key))
+            .all(&txn)
+            .await?;
+        for subscription in subscriptions {
+            let acknowledgements = receipt::Entity::find()
+                .select_only()
+                .column(receipt::Column::OutboxEventId)
+                .filter(receipt::Column::ConsumerKey.eq(consumer_key))
+                .into_query();
+            let pending = sys_event::Entity::find()
+                .filter(sys_event::Column::EventType.eq(subscription.event_type))
+                .filter(sys_event::Column::Id.not_in_subquery(acknowledgements))
+                .one(&txn)
+                .await?;
+            if let Some(event) = pending {
+                return Err(Error::Validation(format!(
+                    "cannot retire Outbox consumer {consumer_key}: event {} is not acknowledged",
+                    event.id
+                )));
+            }
+        }
+        subscription::Entity::delete_many()
+            .filter(subscription::Column::ConsumerKey.eq(consumer_key))
+            .exec(&txn)
+            .await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
     /// Persists the acknowledgement in the caller's transaction so the owner's
     /// terminal receipt and its Outbox acknowledgement commit together.
     pub async fn acknowledge_in_transaction(txn: &DatabaseTransaction, consumer_key: &str, outbox_event_id: Uuid, event_type: &str) -> std::result::Result<(), sea_orm::DbErr> {
@@ -182,6 +217,20 @@ mod tests {
         let txn = db.begin().await.expect("begin ack");
         assert!(OutboxConsumer::acknowledge_in_transaction(&txn, "unregistered.consumer", envelope.id, envelope.event_type.as_str()).await.is_err());
         txn.rollback().await.expect("rollback");
+    }
+
+    #[tokio::test]
+    async fn consumer_retirement_requires_a_complete_drain() {
+        let db = test_db().await;
+        let consumer = OutboxConsumer::new(db.clone());
+        let event_type = "tenant.updated".to_string();
+        consumer.register_required_event_types("consumer.retiring", std::slice::from_ref(&event_type)).await.expect("register consumer");
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id });
+        OutboxTransport::new(db.clone()).publish(envelope.clone()).await.expect("persist event");
+        assert!(consumer.retire_if_drained("consumer.retiring").await.is_err());
+        consumer.acknowledge_existing("consumer.retiring", envelope.id).await.expect("acknowledge event");
+        consumer.retire_if_drained("consumer.retiring").await.expect("retire drained consumer");
     }
 
     #[tokio::test]

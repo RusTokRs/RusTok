@@ -73,6 +73,7 @@ requireText(
 const consumerStorage = readRepo("crates/libs/rustok-outbox-storage/src/consumers.rs");
 requireText(consumerStorage, "register_required_event_types", "consumer event-type registration API");
 requireText(consumerStorage, "acknowledge_in_transaction", "transaction-bound consumer acknowledgement API");
+requireText(consumerStorage, "retire_if_drained", "consumer retirement must require a complete drain");
 requireText(consumerStorage, "on_conflict", "consumer acknowledgement must be idempotent");
 
 const outboxLib = readRepo("crates/modules/rustok-outbox/src/lib.rs");

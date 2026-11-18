@@ -263,6 +263,22 @@ pub async fn create_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Re
             )
             .to_owned(),
     ).await?;
+
+    manager.create_index(
+        Index::create()
+            .name("idx_sys_event_consumers_consumer_key")
+            .table(SysEventConsumers::Table)
+            .col(SysEventConsumers::ConsumerKey)
+            .to_owned(),
+    ).await?;
+    manager.create_index(
+        Index::create()
+            .name("idx_sys_event_consumer_receipts_consumer_key")
+            .table(SysEventConsumerReceipts::Table)
+            .col(SysEventConsumerReceipts::ConsumerKey)
+            .col(SysEventConsumerReceipts::OutboxEventId)
+            .to_owned(),
+    ).await?;
     Ok(())
 }
 
