@@ -1501,3 +1501,47 @@ cargo test -p rustok-server --lib controllers::installer::tests::installer_http_
 cargo check -p rustok-installer-cli
 cargo test -p rustok-installer-persistence --lib
 ```
+
+## P25 — Fail-closed installer session admission (2026-11-18)
+
+Lock arbitration previously treated `lock_expires_at` as proof that a worker
+had stopped. A new apply could therefore start while a stale executor was
+still running. The current persistence adapter does not yet compare owner
+identity on every state/receipt mutation, so automatic lease-based takeover
+was unsafe.
+
+### Implemented
+
+- A session row can be claimed only once (`lock_owner IS NULL` and a non-final
+  status); a second attempt cannot overwrite its existing owner.
+- Any other non-final session with a recorded owner blocks a new apply even
+  when its lease timestamp has expired. Expiry alone is no longer treated as
+  proof that the previous process stopped.
+- PostgreSQL and MySQL lock acquisition now uses a serializable transaction;
+  SQLite obtains its write fence through the conditional session-claim update.
+- A finalized session releases the global admission gate. An unfinished stale
+  session requires explicit reconciliation before another apply can start.
+- Regression coverage verifies same-session re-claim rejection, expired-lease
+  blocking, and release after finalization.
+
+### Remaining boundary
+
+State, tenant, and receipt mutations do not yet compare the persisted owner on
+every write. There is no monotonic attempt generation, periodic lease renewal,
+resumable executor, or automatic external-effect reconciliation. The fail-closed
+gate prevents automatic overlap but intentionally leaves stale sessions blocked
+until an operator reconciles them. The durable recovery ADR remains in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer-persistence --lib session_persistence_lifecycle_and_state_transitions
+cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+```
