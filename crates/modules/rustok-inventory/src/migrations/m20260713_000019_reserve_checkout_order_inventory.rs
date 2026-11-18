@@ -232,7 +232,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             $$ LANGUAGE plpgsql;
 
             CREATE TRIGGER checkout_order_inventory_dispose
-            AFTER UPDATE OF status ON orders
+            AFTER UPDATE ON orders
             FOR EACH ROW
             WHEN (NEW.status IN ('paid', 'cancelled') AND NEW.status IS DISTINCT FROM OLD.status)
             EXECUTE FUNCTION dispose_checkout_order_inventory();
@@ -354,7 +354,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
 
             CREATE TRIGGER checkout_order_inventory_commit
-            AFTER UPDATE OF status ON orders
+            AFTER UPDATE ON orders
             FOR EACH ROW
             WHEN NEW.status = 'paid' AND OLD.status <> 'paid'
             BEGIN
@@ -404,7 +404,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
 
             CREATE TRIGGER checkout_order_inventory_release
-            AFTER UPDATE OF status ON orders
+            AFTER UPDATE ON orders
             FOR EACH ROW
             WHEN NEW.status = 'cancelled' AND OLD.status <> 'cancelled'
             BEGIN
