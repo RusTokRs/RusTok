@@ -80,8 +80,7 @@
   },
   "tests": [
     "crates/modules/rustok-notifications/tests/outbox_intake_sqlite.rs",
-    "apps/server/src/services/notification_outbox_intake_worker.rs",
-    "terminal_intake_receipt_and_outbox_ack_commit_atomically"
+    "apps/server/src/services/notification_outbox_intake_worker.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
