@@ -411,7 +411,8 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
 - Manifest synchronization for managed OAuth apps acquires an exclusive tenant-row lock and reconciles
-  app upserts, translations, orphan deactivation, token revocation, and pending-code invalidation in one
+  app upserts, translations, orphan deactivation, token revocation, consent revocation, and pending-code
+  invalidation in one
   transaction per tenant. Existing app rows are also locked through the same mutation fence used by token
   issuance and consent before their security-sensitive configuration changes. The all-tenants bootstrap
   sweep is sequential and does not provide one global cross-tenant transaction.
