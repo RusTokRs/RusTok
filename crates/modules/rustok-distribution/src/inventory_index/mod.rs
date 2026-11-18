@@ -11,8 +11,8 @@ use rustok_core::{
     ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleRuntimeExtensions,
 };
 use rustok_index::{
-    PostgresIndexSourceFactory, register_index_mutation_event, register_index_schema_source,
-    register_index_source, register_postgres_index_source_factory,
+    IndexSourceRegistrationError, PostgresIndexSourceFactory, register_index_mutation_event,
+    register_index_schema_source, register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::DatabaseConnection;
 
@@ -53,7 +53,7 @@ impl PostgresIndexSourceFactory for InventoryStockSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let source = source::InventoryStockSource::new(
             db,
             extensions
@@ -66,8 +66,8 @@ impl PostgresIndexSourceFactory for InventoryStockSourceFactory {
             INVENTORY_STOCK_INDEX_SOURCE,
             [schema::schema_ref().map_err(|error| error.to_string())?],
             source,
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 
     fn register_event_listeners(

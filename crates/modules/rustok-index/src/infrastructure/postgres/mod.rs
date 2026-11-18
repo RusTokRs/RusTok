@@ -147,9 +147,10 @@ pub use secondary_index::{
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
 pub use source_factory::{
-    PostgresIndexSourceFactory, PostgresIndexSourceFactoryCatalog,
-    PostgresIndexSourceFactoryDescriptor, PostgresIndexSourceFactoryError,
-    materialize_postgres_index_sources, register_postgres_index_source_factory,
+    IndexSourceRegistrationError, PostgresIndexSourceFactory,
+    PostgresIndexSourceFactoryCatalog, PostgresIndexSourceFactoryDescriptor,
+    PostgresIndexSourceFactoryError, materialize_postgres_index_sources,
+    register_postgres_index_source_factory,
 };
 pub use source_reconciliation_dead_letter_inspector::{
     IndexReconciliationDeadLetterInspection, IndexReconciliationDeadLetterInspectionError,

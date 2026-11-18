@@ -3,8 +3,8 @@ use rustok_core::ModuleRuntimeExtensions;
 use rustok_events::SocialGraphRelationEvent;
 use rustok_index::{
     IndexMutation, IndexMutationEventError, IndexSource, IndexSourceCursor, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    PostgresIndexSourceFactory, PostgresIndexSourceFactoryError, SchemaRef,
+    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceRegistrationError,
+    IndexSourceScanRequest, PostgresIndexSourceFactory, PostgresIndexSourceFactoryError, SchemaRef,
     derive_index_source_event_id, register_index_mutation_event, register_index_source,
     register_postgres_index_source_factory,
 };
@@ -73,7 +73,7 @@ impl PostgresIndexSourceFactory for SocialGraphRelationPostgresIndexSourceFactor
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let schema = relation_schema_ref().map_err(|error| error.to_string())?;
         register_index_source(
             extensions,
@@ -81,8 +81,8 @@ impl PostgresIndexSourceFactory for SocialGraphRelationPostgresIndexSourceFactor
             SOCIAL_GRAPH_RELATION_INDEX_SOURCE,
             [schema],
             SocialGraphRelationPostgresIndexSource { db },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 

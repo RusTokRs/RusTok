@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
     EntityKey, EntityName, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
-    IndexSourceFailure, ModuleName, PostgresIndexSourceFactory, SchemaRef, SchemaVersion,
-    register_index_source_absence_provider, register_postgres_index_source_factory,
+    IndexSourceFailure, IndexSourceRegistrationError, ModuleName, PostgresIndexSourceFactory,
+    SchemaRef, SchemaVersion, register_index_source_absence_provider,
+    register_postgres_index_source_factory,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value as JsonValue;
@@ -45,15 +46,15 @@ impl PostgresIndexSourceFactory for ProductLocaleAbsencePostgresFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         register_index_source_absence_provider(
             extensions,
             "product",
             PRODUCT_ABSENCE_PROVIDER,
             [product_schema_ref()?],
             ProductLocaleAbsenceProvider { db },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 

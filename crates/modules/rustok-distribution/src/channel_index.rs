@@ -7,7 +7,8 @@ use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation,
     IndexRecord, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexValue, IndexValueType, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef,
+    IndexSourceRegistrationError, IndexValue, IndexValueType, LocaleMode, ModuleName,
+    PostgresIndexSourceFactory, SchemaRef,
     SchemaVersion, derive_index_source_event_id, register_index_schema_source,
     register_index_source, register_postgres_index_source_factory,
 };
@@ -112,15 +113,15 @@ impl PostgresIndexSourceFactory for SalesChannelPostgresIndexSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         register_index_source(
             extensions,
             "channel",
             SALES_CHANNEL_INDEX_SOURCE,
             [sales_channel_schema_ref().map_err(|error| error.to_string())?],
             SalesChannelPostgresIndexSource { db },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 

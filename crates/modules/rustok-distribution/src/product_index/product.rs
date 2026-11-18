@@ -8,8 +8,8 @@ use rustok_index::{
     IndexLinkValue, IndexMutation, IndexRecord, IndexSchema, IndexSource, IndexSourceCursor,
     IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
     IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName, LinkedEntityKey,
-    LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef, SchemaVersion,
-    derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
+    LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, IndexSourceRegistrationError,
+    SchemaRef, SchemaVersion, derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
     register_postgres_index_source_factory,
 };
 use sea_orm::DatabaseConnection;
@@ -191,7 +191,7 @@ impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let port = extensions
             .get::<Arc<dyn ProductLocaleReplayPort>>()
             .cloned()
@@ -207,8 +207,8 @@ impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
             PRODUCT_INDEX_SOURCE,
             [product_schema_ref().map_err(|error| error.to_string())?],
             ProductPostgresIndexSource { port },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 

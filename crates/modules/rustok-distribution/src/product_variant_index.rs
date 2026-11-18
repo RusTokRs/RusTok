@@ -6,7 +6,8 @@ use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation,
     IndexRecord, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexValue, IndexValueType, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef,
+    IndexSourceRegistrationError, IndexValue, IndexValueType, LocaleMode, ModuleName,
+    PostgresIndexSourceFactory, SchemaRef,
     SchemaVersion, derive_index_source_event_id, register_index_schema_source,
     register_index_source, register_postgres_index_source_factory,
 };
@@ -163,7 +164,7 @@ impl PostgresIndexSourceFactory for ProductVariantIndexSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let port = extensions
             .get::<Arc<dyn ProductVariantReplayPort>>()
             .cloned()
@@ -174,8 +175,8 @@ impl PostgresIndexSourceFactory for ProductVariantIndexSourceFactory {
             PRODUCT_VARIANT_INDEX_SOURCE,
             [product_variant_schema_ref().map_err(|error| error.to_string())?],
             ProductVariantIndexSource { port },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 
