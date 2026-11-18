@@ -123,8 +123,12 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   all failure modes; see the server implementation plan.
 - First-party in-place refresh rotation retains only the immediately previous
   token digest. Older revoked generations are rejected as unknown but cannot
-  trigger full-lineage theft revocation. The durable rotation-history and
-  incident-reconciliation contract remains open; see the implementation plan.
+  trigger full-lineage theft revocation. A replay inside the 30-second race
+  window is rejected without revoking the live session, but the server does
+  not replay the successful refresh response; if that response was lost, the
+  client cannot recover its replacement cookie from the old token. Durable
+  rotation history, idempotent response recovery, and incident reconciliation
+  remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Durable incident/retry evidence and
