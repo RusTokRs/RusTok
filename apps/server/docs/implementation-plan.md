@@ -1373,8 +1373,9 @@ produce repeated worker metrics.
   check, and classified it as optional until its handle is registered.
 - Removed a duplicate feature-gated import that would fail compilation when
   `commerce-marketplace-financial` is enabled.
-- Removed the accidental `mod-workflow` gate from the SEO-only snapshot path;
-  the canonical SEO readiness checks are independently gated by `mod-seo`.
+- Removed the redundant SEO snapshot (which had been gated by both
+  `mod-workflow` and `mod-seo`); the canonical SEO readiness checks remain
+  independently gated by `mod-seo`.
 - Added a regression test asserting readiness check names are unique and that
   Outbox, remote-executor, and SEO worker checks each have one canonical entry.
 - Updated the host-mode snapshot test to treat EventBus forwarding and optional
