@@ -33,6 +33,7 @@ async fn setup_contract_test_db() -> DatabaseConnection {
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NULL,
             status TEXT NOT NULL,
+            attempt_generation BIGINT NOT NULL DEFAULT 0,
             profile TEXT NOT NULL,
             environment TEXT NOT NULL,
             database_engine TEXT NOT NULL,
@@ -49,6 +50,7 @@ async fn setup_contract_test_db() -> DatabaseConnection {
         CREATE TABLE install_step_receipts (
             id TEXT PRIMARY KEY NOT NULL,
             session_id TEXT NOT NULL,
+            attempt_generation BIGINT NOT NULL DEFAULT 0,
             step TEXT NOT NULL,
             outcome TEXT NOT NULL,
             input_checksum TEXT NOT NULL,
