@@ -954,6 +954,7 @@ impl MediaService {
     }
 
     /// Build or return the immutable rendition identified by source blob and recipe digest.
+    #[tracing::instrument(skip(self, input), fields(tenant_id = %input.tenant_id, asset_id = %input.asset_id))]
     pub async fn create_rendition(
         &self,
         input: CreateRenditionInput,
@@ -1549,6 +1550,7 @@ impl MediaService {
             .one(&transaction)
             .await?
         {
+            // INVARIANT: In-memory verification ensures existing reference is not held across tenant, media, or module boundaries before returning existing hold.
             if existing.tenant_id != tenant_id
                 || existing.media_id != media_id
                 || existing.owner_module != owner_module
@@ -1623,6 +1625,7 @@ impl MediaService {
                     "media asset reference insert did not produce a durable hold".to_string(),
                 ))
             })?;
+        // INVARIANT: In-memory verification ensures newly acquired or conflict-held reference belongs to this tenant, media, and owner module.
         if existing.tenant_id != tenant_id
             || existing.media_id != media_id
             || existing.owner_module != owner_module
@@ -1664,6 +1667,7 @@ impl MediaService {
             transaction.commit().await?;
             return Ok(());
         };
+        // INVARIANT: In-memory verification ensures caller cannot release a reference held by another tenant, media, or module.
         if existing.tenant_id != tenant_id
             || existing.media_id != media_id
             || existing.owner_module != owner_module
@@ -1677,6 +1681,7 @@ impl MediaService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, id = %id))]
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         if tenant_id.is_nil() {
             return Err(MediaError::NilTenantId);
@@ -2060,6 +2065,7 @@ impl MediaService {
             .collect())
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, limit = limit))]
     pub async fn reconcile_storage(
         &self,
         tenant_id: Uuid,
@@ -2082,6 +2088,7 @@ impl MediaService {
         Ok(report)
     }
 
+    #[tracing::instrument(skip(self), fields(limit = limit))]
     pub async fn reconcile_storage_all_tenants(
         &self,
         limit: u64,
