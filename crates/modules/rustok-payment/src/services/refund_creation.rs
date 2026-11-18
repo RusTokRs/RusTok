@@ -30,6 +30,7 @@ impl PaymentRefundCreationService {
         Self { db }
     }
 
+    #[tracing::instrument(skip(self, creation_key, input), fields(tenant_id = %tenant_id, collection_id = %collection_id))]
     pub async fn create_or_replay(
         &self,
         tenant_id: Uuid,

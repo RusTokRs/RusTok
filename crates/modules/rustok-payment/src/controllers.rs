@@ -108,7 +108,7 @@ pub struct DeadLetterQuery {
     pub limit: Option<u64>,
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> crate::error::PaymentResult<Router> {
     let state = PaymentHttpRuntime::from_host(runtime);
     Ok(Router::new()
         .route(
@@ -126,7 +126,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .with_state(state))
 }
 
-pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> crate::error::PaymentResult<Router> {
     let state = PaymentHttpRuntime::from_host(runtime);
     Ok(Router::new()
         .route(
