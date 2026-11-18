@@ -41,7 +41,7 @@ impl StopHandle {
             existing
         } else {
             let (handle, _rx) = Self::new();
-            let _ = ctx.shared_insert_if_absent(handle.clone());
+            ctx.shared_insert_if_absent(handle.clone());
             ctx.shared_get::<Self>().unwrap_or(handle)
         }
     }
