@@ -1624,6 +1624,8 @@ ActiveModel update.
 - OAuth token issuance now reserves SQLite's writer by known app/subject IDs
   before reloading the current client and subject state; it no longer performs
   a read-first lock upgrade on those rows.
+- OAuth admin app mutations use the same write-first fence by tenant/app ID;
+  admin user mutations fence by tenant/user ID before loading their snapshots.
 - Admin user mutations also reserve SQLite's writer by tenant/user ID before
   reading the row used for status, role, password, or profile changes.
 - Unsupported database backends now fail closed in these auth lock helpers
