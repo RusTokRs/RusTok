@@ -43,7 +43,7 @@ pub fn build_install_lock_owner(
         .unwrap_or("installer")
         .chars()
         .filter(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+            character.is_ascii_alphanumeric() || matches!(*character, '-' | '_')
         })
         .take(24)
         .collect::<String>();
