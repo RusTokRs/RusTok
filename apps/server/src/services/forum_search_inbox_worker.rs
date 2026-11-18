@@ -19,8 +19,8 @@ use rustok_search::{
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::StopHandle;
 
 const FORUM_SEARCH_INBOX_POLL_INTERVAL: Duration = Duration::from_secs(5);
 static FORUM_SEARCH_INBOX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);

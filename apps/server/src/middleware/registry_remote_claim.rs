@@ -54,7 +54,7 @@ pub async fn claim_atomic(
             "Remote executor is disabled",
         );
     }
-    let Some(expected) = executor.shared_token.as_deref() else {
+    if executor.shared_token.as_deref().is_none() {
         return response(
             StatusCode::SERVICE_UNAVAILABLE,
             "configuration_error",

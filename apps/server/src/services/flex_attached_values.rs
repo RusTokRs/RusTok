@@ -2,7 +2,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[cfg(feature = "mod-product")]
@@ -478,7 +478,7 @@ impl FlexAttachedValuesService {
                         .map_err(map_flex_host_error)?;
                 let changed = !normalized_object(Some(&before_shared))
                     .as_object()
-                    .is_some_and(Map::is_empty)
+                    .is_some_and(|map| map.is_empty())
                     || !before_localized.is_empty();
 
                 // Always clean capability rows, including any legacy-invalid locale rows

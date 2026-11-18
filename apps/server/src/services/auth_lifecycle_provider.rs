@@ -14,7 +14,7 @@ use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    PASSWORD_RESET_TOKEN_TTL_SECS, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
     spawn_email_verification, spawn_password_reset_email,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
