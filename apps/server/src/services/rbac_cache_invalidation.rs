@@ -323,6 +323,7 @@ pub async fn publish_user_rbac_invalidation(
     .await
 }
 
+#[tracing::instrument(fields(generation))]
 pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
     tracing::debug!(
         generation,
