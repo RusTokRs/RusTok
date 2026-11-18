@@ -7,7 +7,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use rustok_installer::{
-    InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    build_install_lock_owner, InstallApplyOptions, InstallApplyOutput, InstallComposition,
+    InstallDistributionBinding,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
@@ -168,30 +169,6 @@ async fn preflight(
     }))
 }
 
-fn build_installer_lock_owner(
-    requested_label: Option<&str>,
-    job_id: Uuid,
-    attempt_id: Uuid,
-) -> String {
-    // install_sessions.lock_owner is VARCHAR(128). Restrict the caller label
-    // to a short ASCII diagnostic prefix and append host-issued identities so
-    // two replicas can never share an owner token accidentally.
-    let normalized_label = requested_label
-        .unwrap_or("http")
-        .chars()
-        .filter(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
-        })
-        .take(24)
-        .collect::<String>();
-    let label = if normalized_label.is_empty() {
-        "http"
-    } else {
-        normalized_label.as_str()
-    };
-    format!("{label}:{job_id}:{attempt_id}")
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ActiveInstallerJobHandle(Uuid);
 
@@ -246,8 +223,11 @@ async fn apply(
 
     let submitted_at = Utc::now();
     let attempt_id = Uuid::new_v4();
-    let lock_owner =
-        build_installer_lock_owner(request.lock_owner.as_deref(), job_id, attempt_id);
+    let lock_owner = build_install_lock_owner(
+        request.lock_owner.as_deref().or(Some("http")),
+        Some(job_id),
+        attempt_id,
+    );
     let apply_options = InstallApplyOptions {
         session_id: Some(job_id),
         lock_owner,
@@ -711,14 +691,14 @@ mod tests {
         let first_attempt = Uuid::from_u128(2);
         let second_attempt = Uuid::from_u128(3);
 
-        let first = build_installer_lock_owner(
+        let first = build_install_lock_owner(
             Some("operator/worker 1"),
-            job_id,
+            Some(job_id),
             first_attempt,
         );
-        let second = build_installer_lock_owner(
+        let second = build_install_lock_owner(
             Some("operator/worker 1"),
-            job_id,
+            Some(job_id),
             second_attempt,
         );
 
