@@ -181,7 +181,7 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set state");
     assert_eq!(updated.status, "preflight_passed");
 
-    // 6. Set tenant ID
+    // 8. Set tenant ID
     let tenant_id = Uuid::new_v4();
     let updated_tenant = service
         .set_tenant_id(session.id, tenant_id)
@@ -189,7 +189,7 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set tenant id");
     assert_eq!(updated_tenant.tenant_id, Some(tenant_id));
 
-    // 7. Verify has_completed_session before and after completion
+    // 9. Verify has_completed_session before and after completion
     assert!(!service.has_completed_session().await.expect("query"));
     let completed = service
         .set_state(session.id, InstallState::Completed)
