@@ -245,10 +245,14 @@ pub fn string_list(value: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-pub fn uuid_list(value: &serde_json::Value) -> Vec<Uuid> {
+pub fn uuid_list(value: &serde_json::Value) -> AiResult<Vec<Uuid>> {
     string_list(value)
         .into_iter()
-        .filter_map(|value| Uuid::parse_str(&value).ok())
+        .map(|value| {
+            Uuid::parse_str(&value).map_err(|error| {
+                AiError::Validation(format!("invalid UUID `{value}` in list: {error}"))
+            })
+        })
         .collect()
 }
 

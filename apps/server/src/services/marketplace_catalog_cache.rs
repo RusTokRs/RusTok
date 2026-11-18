@@ -45,6 +45,7 @@ struct RegistryModuleExpiry {
 }
 
 impl Expiry<String, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
+    // INVARIANT: Key parameter type (&String) is mandated by moka::Expiry<String, ...> trait definition.
     fn expire_after_create(
         &self,
         _key: &String,
@@ -58,6 +59,7 @@ impl Expiry<String, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
         })
     }
 
+    // INVARIANT: Key parameter type (&String) is mandated by moka::Expiry<String, ...> trait definition.
     fn expire_after_update(
         &self,
         _key: &String,

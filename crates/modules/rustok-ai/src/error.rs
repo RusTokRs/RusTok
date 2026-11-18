@@ -24,4 +24,6 @@ pub enum AiError {
     Transport(#[from] reqwest::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Catalog(#[from] crate::engine::catalog::ProviderCatalogError),
 }

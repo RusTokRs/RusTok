@@ -547,7 +547,7 @@ pub async fn start_channel_cache_invalidation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
 ) -> Result<()> {
-    let _ = ctx.shared_insert_if_absent(ChannelCacheInvalidationListenerStartLock::default());
+    ctx.shared_insert_if_absent(ChannelCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<ChannelCacheInvalidationListenerStartLock>()
         .ok_or_else(|| {

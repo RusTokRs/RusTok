@@ -123,7 +123,7 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
             origins.extend(
                 DEFAULT_DEV_ORIGINS
                     .iter()
-                    .filter_map(|origin| HeaderValue::from_str(origin).ok()),
+                    .map(|&origin| HeaderValue::from_static(origin)),
             );
         }
     }
