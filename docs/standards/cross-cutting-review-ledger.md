@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-07: Multi-Tenancy & Effective Context Isolation
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06 (6/17 completed — 35.3%)
+- **Active Phase:** CC-08: Database Transactions, Concurrency & Data Integrity
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07 (7/17 completed — 41.2%)
 - **Active Branch:** `main`
 
 ---
@@ -271,11 +271,28 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `rustok-tenant`, `rustok-channel`, `apps/server/src/middleware/tenant.rs`.
 - **CodeGraph Target:** `TenantContext resolve_tenant Column::TenantId ensure_tenant_access`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-07.01 — Universal Query Filter Invariant**
-- [ ] **CC-07.02 — Request Host Smuggling & Boundary Defense**
-- [ ] **CC-07.03 — Cross-Tenant Relation Verification**
-- [ ] **CC-07.04 — Context Propagation**
+- [x] **CC-07.01 — Universal Query Filter Invariant**
+  - Audited SeaORM entity queries and repositories across all domain modules (`rustok-tenant`, `rustok-channel`, `rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-commerce`, `rustok-product`, `rustok-content`, `rustok-profiles`, `rustok-rbac`, `alloy`, `flex`).
+  - Confirmed that all tenant-scoped database lookups, updates, and deletes enforce `.filter(Column::TenantId.eq(tenant_id))` or scoped repository methods (`scoped_by_id`, `ensure_script_scope`, `find_scoped`), preventing cross-tenant data access.
+- [x] **CC-07.02 — Request Host Smuggling & Boundary Defense**
+  - Audited `apps/server/src/middleware/tenant_resolution.rs`: verified rejection of duplicate `Host` headers (`ConflictingHeaderValues`) to eliminate HTTP smuggling and cache poisoning vectors.
+  - Verified effective host extraction using peer IP and trusted reverse-proxy settings (`extract_effective_host`), rejecting spoofed `X-Forwarded-Host` from untrusted clients.
+  - Verified host validation with port stripping via `TenantIdentifierValidator::validate_host`.
+  - Verified subdomain resolution against configured `base_domains`: rejects naked base domain (`BaseDomainRequiresTenantSlug`), rejects nested subdomains (`NestedSubdomain`), and rejects unmatched hosts (`NoBaseDomainMatch`).
+  - Verified dual-header correlation: `validate_resolved_slug` strictly rejects mismatched assertions (`ConflictingTenantAssertions`).
+- [x] **CC-07.03 — Cross-Tenant Relation Verification**
+  - Audited cross-entity relation creation in `rustok-channel`, `rustok-comments`, `rustok-product`, `rustok-rbac`.
+  - Confirmed `RequestFacts` in `rustok-channel/src/resolution.rs` rejects nil tenant ID and validates `detail.channel.tenant_id == facts.tenant_id` for header lookups.
+  - Confirmed parent comment lookups in `rustok-comments/src/services.rs` verify `find_comment_in_tx(txn, tenant_id, parent_id)` and enforce `parent.thread_id == thread.id`.
+- [x] **CC-07.04 — Context Propagation**
+  - Audited end-to-end tenant context flow: `apps/server/src/middleware/tenant.rs` loads validated context and injects `TenantContextExtension(context)` into Axum request extensions.
+  - Verified `CurrentTenant` extractor in `apps/server/src/extractors/tenant.rs` extracting context fail-closed (404 on missing).
+  - Verified GraphQL propagation: `graphql_handler` injects `tenant_ctx` into `schema.execute` data; WebSocket init validates slug via `resolve_tenant_context_by_slug` and checks channel tenant (`ensure_ws_channel_tenant`).
+  - Verified outbox events: all event envelopes enforce non-nil `tenant_id` via `EventValidationError::NilUuid("tenant_id")`.
+  - Verified with 10 tenant verification scripts including newly added `verify-tenant-context-isolation.mjs` (PASSED). Scoped compilation `cargo check -p rustok-tenant -p rustok-channel` clean (0 errors, 0 warnings).
 
 ---
 
