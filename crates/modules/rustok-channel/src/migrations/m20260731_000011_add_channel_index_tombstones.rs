@@ -175,8 +175,9 @@ END;
 $$;
 
 CREATE TRIGGER trg_channels_move_index_tombstone
-AFTER UPDATE OF id, tenant_id ON channels
+AFTER UPDATE ON channels
 FOR EACH ROW
+WHEN (OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id)
 EXECUTE FUNCTION rustok_channel_move_index_tombstone();
 "#,
                     )
