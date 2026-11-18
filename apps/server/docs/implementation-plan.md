@@ -1404,8 +1404,8 @@ the same read/upsert/orphan sequence without a tenant-level serialization fence.
   rows are then locked with the same app-mutation fence used by token issuance
   and consent before security-sensitive configuration is updated.
 - App creation/reactivation, first-party manifest updates, translation writes,
-  orphan deactivation, token revocation, and authorization-code invalidation
-  now share one transaction per tenant.
+  orphan deactivation, token revocation, consent revocation, and authorization-code
+  invalidation now share one transaction per tenant.
 - A failure in any manifest entry or orphan cleanup rolls back all earlier
   writes from that tenant's reconciliation.
 - Added a regression case where an embedded app is upserted before a later
@@ -1422,6 +1422,8 @@ Not run in this task, at the user's request. Run before merge:
 ```bash
 cargo fmt --all -- --check
 cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
+cargo test -p rustok-server --lib services::oauth_app::tests::app_revocation_revokes_active_user_consents
+cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
 cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
 cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
 ```
