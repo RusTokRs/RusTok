@@ -30,7 +30,7 @@ pub fn map_provider_profile(
         display_name: model.display_name,
         provider_slug: provider_slug_from_str(&model.provider_slug)?,
         provider_target_id: ProviderTargetId::new(model.provider_target_id)
-            .map_err(AiError::Runtime)?,
+            .map_err(AiError::from)?,
         model: model.model,
         credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
         temperature: model.temperature,
