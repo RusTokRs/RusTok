@@ -378,9 +378,14 @@ async fn acquire_lock_in_transaction(
         )));
     }
 
+    let lock_expires_at = now.checked_add_signed(ttl).ok_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "installer lock TTL exceeds the supported timestamp range".to_string(),
+        )
+    })?;
     let mut active: install_session::ActiveModel = session.into();
     active.lock_owner = Set(Some(owner.to_string()));
-    active.lock_expires_at = Set(Some(now + ttl));
+    active.lock_expires_at = Set(Some(lock_expires_at));
     active.updated_at = Set(now);
     active.update(txn).await.map(Some)
 }
