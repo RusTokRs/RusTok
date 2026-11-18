@@ -126,7 +126,7 @@ pub fn social_graph_relation_index_mutation(
     })
 }
 
-fn relation_schema_ref() -> Result<SchemaRef, DomainError> {
+pub(crate) fn relation_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
         module: ModuleName::new(SOCIAL_GRAPH_RELATION_INDEX_MODULE)?,
         entity: EntityName::new(SOCIAL_GRAPH_RELATION_INDEX_ENTITY)?,

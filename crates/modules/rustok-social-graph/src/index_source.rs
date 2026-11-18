@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_events::SocialGraphRelationEvent;
 use rustok_index::{
-    IndexMutation, IndexMutationEventError, IndexSource, IndexSourceCursor, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceRegistrationError,
-    IndexSourceScanRequest, PostgresIndexSourceFactory, PostgresIndexSourceFactoryError, SchemaRef,
-    derive_index_source_event_id, register_index_mutation_event, register_index_source,
-    register_postgres_index_source_factory,
+    DomainError, IndexMutation, IndexMutationEventError, IndexSource, IndexSourceCursor,
+    IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
+    IndexSourceRegistrationError, IndexSourceScanRequest, PostgresIndexSourceFactory,
+    PostgresIndexSourceFactoryError, SchemaRef, derive_index_source_event_id,
+    register_index_mutation_event, register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -45,7 +45,9 @@ pub enum SocialGraphIndexSourceRegistrationError {
 pub fn register_social_graph_index_source_contracts(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> Result<(), SocialGraphIndexSourceRegistrationError> {
-    let schema = relation_schema_ref().map_err(SocialGraphIndexSourceRegistrationError::Schema)?;
+    let schema = relation_schema_ref()
+        .map_err(SocialGraphIndexError::from)
+        .map_err(SocialGraphIndexSourceRegistrationError::Schema)?;
 
     register_postgres_index_source_factory(
         extensions,
@@ -74,7 +76,7 @@ impl PostgresIndexSourceFactory for SocialGraphRelationPostgresIndexSourceFactor
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
     ) -> Result<(), IndexSourceRegistrationError> {
-        let schema = relation_schema_ref().map_err(|error| error.to_string())?;
+        let schema = relation_schema_ref()?;
         register_index_source(
             extensions,
             SOCIAL_GRAPH_INDEX_OWNER,
@@ -254,8 +256,8 @@ fn model_into_mutation(
         .map_err(|_| permanent("social_graph_index_record_invalid"))
 }
 
-fn relation_schema_ref() -> Result<SchemaRef, SocialGraphIndexError> {
-    social_graph_relation_index_schema().map(|schema| schema.reference)
+fn relation_schema_ref() -> Result<SchemaRef, DomainError> {
+    crate::index::relation_schema_ref()
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {

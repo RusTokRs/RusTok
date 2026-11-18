@@ -38,6 +38,12 @@ enum ProductIndexBridgeError {
     InvalidRow,
 }
 
+impl From<DomainError> for ProductIndexBridgeError {
+    fn from(error: DomainError) -> Self {
+        Self::InvalidContract(error)
+    }
+}
+
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
         return Ok(());
@@ -119,11 +125,10 @@ fn validated_schema(schema: IndexSchema) -> Result<IndexSchema, ProductIndexBrid
     Ok(schema)
 }
 
-fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
+fn product_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product")
-            .map_err(ProductIndexBridgeError::InvalidContract)?,
-        entity: EntityName::new("product").map_err(ProductIndexBridgeError::InvalidContract)?,
+        module: ModuleName::new("rustok-product")?,
+        entity: EntityName::new("product")?,
         version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
@@ -205,7 +210,7 @@ impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
             extensions,
             "product",
             PRODUCT_INDEX_SOURCE,
-            [product_schema_ref().map_err(|error| error.to_string())?],
+            [product_schema_ref()?],
             ProductPostgresIndexSource { port },
         )?;
         Ok(())

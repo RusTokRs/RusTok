@@ -64,7 +64,7 @@ impl PostgresIndexSourceFactory for InventoryStockSourceFactory {
             extensions,
             "inventory",
             INVENTORY_STOCK_INDEX_SOURCE,
-            [schema::schema_ref().map_err(|error| error.to_string())?],
+            [schema::schema_ref()?],
             source,
         )?;
         Ok(())
