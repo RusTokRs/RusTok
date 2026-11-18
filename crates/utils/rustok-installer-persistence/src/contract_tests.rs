@@ -322,6 +322,12 @@ async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt()
         .await
         .expect("first attempt claims the session");
     assert_eq!(first_attempt.attempt_generation, 1);
+    record_successful_step(
+        &service,
+        &session_record(&first_attempt),
+        InstallStep::Preflight,
+    )
+    .await;
 
     // Simulate an explicit operator reconciliation that has proven the first
     // worker fenced and returned the session to a clean draft boundary.
@@ -352,6 +358,15 @@ async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt()
         second_attempt.lock_owner.as_deref(),
         Some("worker-attempt-two")
     );
+
+    let old_receipt_error = service
+        .set_state(
+            &session_record(&second_attempt),
+            InstallState::PreflightPassed,
+        )
+        .await
+        .expect_err("a previous generation's receipt cannot advance the new attempt");
+    assert!(old_receipt_error.to_string().contains("Preflight receipt"));
 
     let stale_state_error = service
         .set_state(
