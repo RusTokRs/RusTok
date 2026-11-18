@@ -1317,3 +1317,31 @@ cargo check -p rustok-core --lib
 cargo test -p rustok-core --lib events::handler
 ```
 
+
+
+## P20 — Surface core runtime worker failures in readiness (2026-11-18)
+
+The runtime readiness snapshot covered the event forwarder and several module
+workers, but omitted the Outbox relay, Outbox retention, remote-executor reaper,
+and SEO bulk worker. A terminated required worker could therefore leave the HTTP
+host reporting ready while durable delivery, retention, recovery, or SEO work had
+stopped.
+
+### Implemented
+
+- Added readiness snapshots for Outbox relay and Outbox retention.
+- Added snapshots for the remote-executor reaper and feature-gated SEO bulk
+  worker once those workers are started.
+- Extended the existing Outbox worker lifecycle test to require both core
+  Outbox workers to appear as live readiness entries.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::app_lifecycle::tests::connect_runtime_workers_is_idempotent_for_outbox_relay_handle
+```
+

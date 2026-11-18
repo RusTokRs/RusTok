@@ -1478,6 +1478,21 @@ and assert one row; reuse its ID with different payload and assert a conflict.
 For projection delivery, block a handler and verify the relay call remains
 pending, then fail the handler and verify the relay receives an error.
 
+### Required background workers must be visible to readiness
+
+A long-lived worker can fail independently of the HTTP host. If startup registers
+the worker but readiness omits its handle, the host can remain green while durable
+delivery, retention, recovery, or another required projection has stopped.
+
+**Invariant:** every worker that is required for the current runtime profile must
+have one readiness snapshot tied to its actual task-handle liveness. Optional
+workers become required once they are successfully started. The snapshot must not
+infer health merely from configuration when the worker was never created.
+
+**Regression check:** start each required worker in the test runtime, assert that
+its readiness snapshot is required and live, terminate its task, and assert that
+the snapshot reports it as finished.
+
 ### Shutdown must drain durable handoffs before aborting
 
 Aborting a worker while it owns an accepted but not-yet-persisted event discards
