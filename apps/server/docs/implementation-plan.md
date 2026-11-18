@@ -1387,3 +1387,39 @@ produce repeated worker metrics.
 Not run in this task, at the user's request. No Rust compilation, formatting,
 or tests are claimed. Run the commands listed under P20 on one revision before
 integration; tests remain with the maintainer.
+
+## P22 — Atomic tenant-scoped OAuth manifest reconciliation (2026-11-18)
+
+The manifest sync previously committed app upserts and translation writes
+individually, then used a separate transaction for orphan cleanup. A conflict
+or storage failure late in the pass could leave a tenant with a partially
+updated OAuth application set. Concurrent server replicas could also perform
+the same read/upsert/orphan sequence without a tenant-level serialization fence.
+
+### Implemented
+
+- The sync_app_connections flow now acquires an exclusive tenant-row lock before
+  reading the current managed-app set. PostgreSQL/MySQL use FOR UPDATE;
+  SQLite takes its write fence before the first read.
+- App creation/reactivation, first-party manifest updates, translation writes,
+  orphan deactivation, token revocation, and authorization-code invalidation
+  now share one transaction per tenant.
+- A failure in any manifest entry or orphan cleanup rolls back all earlier
+  writes from that tenant's reconciliation.
+- Added a regression case where an embedded app is upserted before a later
+  manual-app slug conflict; the earlier embedded-app write must not leak.
+- The all-tenants bootstrap remains a sequence of per-tenant transactions,
+  not a single global transaction across every tenant. A failure can leave
+  earlier tenants committed while later tenants have not yet been processed;
+  rerunning the idempotent sync reconciles those tenants.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
+cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
+cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
+```
