@@ -1820,6 +1820,8 @@ mod tests {
                         | "notification_outbox_intake"
                         | "notification_fanout"
                         | "notification_candidate"
+                        | "comments_tcp_listener"
+                        | "comments_schedule_audit_handoff"
                         | "event_forwarder"
                 );
                 assert_eq!(
