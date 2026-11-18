@@ -322,7 +322,7 @@ async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt()
     assert_eq!(first_attempt.attempt_generation, 1);
 
     // Simulate an explicit operator reconciliation that has proven the first
-    // worker fenced and returned the session to its resumable draft boundary.
+    // worker fenced and returned the session to a clean draft boundary.
     let mut reconciled: install_session::ActiveModel = first_attempt.clone().into();
     reconciled.lock_owner = Set(None);
     reconciled.lock_expires_at = Set(None);
