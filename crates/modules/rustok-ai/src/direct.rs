@@ -1464,7 +1464,7 @@ fn build_image_provider_request(
         prompt,
         negative_prompt: task_input.negative_prompt.clone(),
         size: rustok_ai_media::normalize_image_size(task_input.size.clone())
-            .map_err(AiError::Validation)?,
+            .map_err(|err| AiError::Validation(err.to_string()))?,
         locale: Some(resolved_locale.to_string()),
     })
 }

@@ -437,12 +437,17 @@ fn build_snapshot(
     let target_revision = target.as_ref().map(locale_revision);
     let exact_locales = translations
         .iter()
-        .filter_map(|translation| {
+        .map(|translation| {
             TenantLocale::new(&translation.locale)
-                .ok()
                 .map(TenantLocale::into_inner)
+                .map_err(|error| {
+                    RegionTranslationExactLocaleError::Region(RegionError::Validation(format!(
+                        "invalid region translation locale `{}`: {error}",
+                        translation.locale
+                    )))
+                })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(RegionTranslationExactLocaleSnapshot {
         region_id: region.id,

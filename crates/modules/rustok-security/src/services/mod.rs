@@ -485,7 +485,7 @@ impl SecurityService {
             .await?;
 
         if decision.is_locked {
-            let _ = self
+            if let Err(err) = self
                 .log_event(
                     tenant_id,
                     LogSecurityEventInput {
@@ -501,7 +501,16 @@ impl SecurityService {
                         }),
                     },
                 )
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    %tenant_id,
+                    %identity,
+                    %ip,
+                    error = %err,
+                    "failed to persist account locked security event"
+                );
+            }
         }
 
         Ok(decision)
