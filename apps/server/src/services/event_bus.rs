@@ -246,24 +246,35 @@ async fn supervise_event_forwarder(
         }
         rustok_telemetry::metrics::record_event_error("server_event_forwarder", "worker_restart");
 
-        // Retain the same receiver through backoff. If the forwarder panicked,
-        // its unread broadcast queue is still available to the next iteration.
+        // Keep the same receiver alive through backoff. If shutdown arrives,
+        // make one final pass with that receiver so its unread queue is drained.
+        if !wait_for_forwarder_restart(&mut stop_rx, EVENT_FORWARDER_RESTART_DELAY).await {
+            let drain_outcome = AssertUnwindSafe(run_event_forwarder(
+                &mut receiver,
+                Arc::clone(&transport),
+                stop_rx.clone(),
+            ))
+            .catch_unwind()
+            .await;
+            if drain_outcome.is_err() {
+                tracing::error!("Event forwarder panicked while draining after shutdown");
+            }
+            return;
+        }
         next_receiver = Some(receiver);
-        wait_for_forwarder_restart(&mut stop_rx, EVENT_FORWARDER_RESTART_DELAY).await;
     }
 }
 
 /// Wait through restart backoff without dropping the supervisor-owned receiver.
-/// Keeping that exact receiver alive preserves already-queued envelopes and gives
-/// publishers a bounded buffer instead of a temporary "no receivers" failure.
+/// Returns false when shutdown is signaled or the stop channel is closed.
 async fn wait_for_forwarder_restart(
     stop_rx: &mut watch::Receiver<bool>,
     delay: Duration,
-) {
+) -> bool {
     tokio::select! {
         biased;
-        _ = stop_rx.changed() => {}
-        _ = tokio::time::sleep(delay) => {}
+        changed = stop_rx.changed() => changed.is_ok() && !*stop_rx.borrow(),
+        _ = tokio::time::sleep(delay) => true,
     }
 }
 
@@ -904,14 +915,13 @@ mod tests {
             .expect("restart backoff must retain a bounded receiver");
         stop_tx.send_replace(true);
 
-        restart.await;
+        assert!(!restart.await, "shutdown should interrupt restart backoff");
         let transport = Arc::new(RecordingTransport {
             accepted: Mutex::new(vec![]),
         });
-        let (_drain_stop_tx, drain_stop_rx) = watch::channel(true);
         tokio::time::timeout(
             Duration::from_secs(3),
-            super::run_event_forwarder(&mut receiver, transport.clone(), drain_stop_rx),
+            super::run_event_forwarder(&mut receiver, transport.clone(), stop_rx.clone()),
         )
         .await
         .expect("shutdown iteration should drain the restart receiver");
@@ -923,6 +933,17 @@ mod tests {
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
+        );
+    }
+
+    #[tokio::test]
+    async fn restart_wait_stops_when_stop_sender_is_dropped() {
+        let (stop_tx, mut stop_rx) = watch::channel(false);
+        drop(stop_tx);
+
+        assert!(
+            !super::wait_for_forwarder_restart(&mut stop_rx, Duration::from_secs(5)).await,
+            "a closed stop channel must not trigger a tight restart loop"
         );
     }
 
