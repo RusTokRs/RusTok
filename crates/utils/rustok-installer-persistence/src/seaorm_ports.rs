@@ -198,27 +198,29 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_
     async fn record_receipt(
         &self,
         runtime: &DatabaseConnection,
+        session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<InstallReceiptRecord, InstallExecutionError> {
-        InstallPersistencePort::record_receipt(&SeaOrmInstallerPorts, runtime, receipt).await
+        InstallPersistencePort::record_receipt(&SeaOrmInstallerPorts, runtime, session, receipt)
+            .await
     }
 
     async fn set_state(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         state: InstallState,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::set_state(&SeaOrmInstallerPorts, runtime, session_id, state).await
+        InstallPersistencePort::set_state(&SeaOrmInstallerPorts, runtime, session, state).await
     }
 
     async fn set_tenant_id(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         tenant_id: Uuid,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::set_tenant_id(&SeaOrmInstallerPorts, runtime, session_id, tenant_id)
+        InstallPersistencePort::set_tenant_id(&SeaOrmInstallerPorts, runtime, session, tenant_id)
             .await
     }
 }
@@ -805,10 +807,11 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerPorts {
     async fn record_receipt(
         &self,
         runtime: &DatabaseConnection,
+        session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<InstallReceiptRecord, InstallExecutionError> {
         InstallerPersistenceService::new(runtime.clone())
-            .record_receipt(receipt)
+            .record_receipt(session, receipt)
             .await
             .map(|model| InstallReceiptRecord {
                 id: model.id,
@@ -819,11 +822,11 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerPorts {
     async fn set_state(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         state: InstallState,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         InstallerPersistenceService::new(runtime.clone())
-            .set_state(session_id, state)
+            .set_state(session, state)
             .await
             .map(session_record)
             .map_err(database_error)
@@ -831,11 +834,11 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerPorts {
     async fn set_tenant_id(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         tenant_id: Uuid,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         InstallerPersistenceService::new(runtime.clone())
-            .set_tenant_id(session_id, tenant_id)
+            .set_tenant_id(session, tenant_id)
             .await
             .map(session_record)
             .map_err(database_error)
@@ -846,6 +849,8 @@ fn session_record(model: install_session::Model) -> InstallSessionRecord {
     InstallSessionRecord {
         id: model.id,
         tenant_id: model.tenant_id,
+        status: model.status,
+        attempt_generation: model.attempt_generation,
         lock_owner: model.lock_owner,
         lock_expires_at: model.lock_expires_at,
     }
