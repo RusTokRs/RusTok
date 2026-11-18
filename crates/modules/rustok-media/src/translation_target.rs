@@ -691,10 +691,21 @@ fn summary_from_models(
     translations: &[TranslationModel],
     source_locale: &TenantLocale,
 ) -> Result<TranslationResourceSummary, PortError> {
-    let exact_locales = translations
-        .iter()
-        .filter_map(|translation| TenantLocale::new(&translation.locale).ok())
-        .collect::<Vec<_>>();
+    let mut exact_locales = Vec::with_capacity(translations.len());
+    for translation in translations {
+        match TenantLocale::new(&translation.locale) {
+            Ok(locale) => exact_locales.push(locale),
+            Err(error) => {
+                return Err(PortError::invariant_violation(
+                    "media.invalid_locale",
+                    format!(
+                        "stored media translation locale '{}' is invalid: {error}",
+                        translation.locale
+                    ),
+                ));
+            }
+        }
+    }
     let display_label = translations
         .iter()
         .find(|translation| translation.locale == source_locale.as_str())
