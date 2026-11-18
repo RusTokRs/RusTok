@@ -262,6 +262,7 @@ impl SearchProjectionDriver {
         tenant_id: Uuid,
         document: &SearchProjectionDocument,
     ) -> Result<()> {
+        // INVARIANT: In-memory verification ensuring the projection document belongs to the active tenant.
         if document.tenant_id != tenant_id
             || document.source_module != self.source_module()
             || !document.is_public

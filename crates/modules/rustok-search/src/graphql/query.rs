@@ -1128,7 +1128,7 @@ async fn finalize_search_result(
                 0,
             );
             metrics::record_module_error("search", error_type, "error");
-            let _ = record_search_query_log(
+            record_search_query_log(
                 db,
                 surface,
                 search_query,
