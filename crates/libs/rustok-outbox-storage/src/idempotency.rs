@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
     QueryFilter, QuerySelect, Set,
 };
 use serde::Serialize;
@@ -198,6 +198,36 @@ pub async fn admit<T: Serialize>(
         }
         Err(error) => Err(database_error(error)),
     }
+}
+
+/// Locks and verifies a processing receipt inside an owner transaction.
+///
+/// This must precede the owner's aggregate lock whenever receipt reclamation
+/// and aggregate ownership are coordinated. The row lock remains held until
+/// transaction end; a reclaimed or terminal receipt cannot acquire it. This
+/// does not itself extend the receipt lease or fence external side effects.
+pub async fn lock_current(transaction: &DatabaseTransaction, lease: Lease) -> Result<(), PortError> {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
+    let update = entity::Entity::update_many()
+        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
+        .filter(entity::Column::Id.eq(lease.operation_id))
+        .filter(entity::Column::LeaseToken.eq(lease.token))
+        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .exec(transaction)
+        .await
+        .map_err(database_error)?;
+    if update.rows_affected != 1 {
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_lease_lost",
+            "receipt is no longer owned by this worker",
+        ));
+    }
+    Ok(())
 }
 
 /// Stores a successful response inside the caller's owner transaction.

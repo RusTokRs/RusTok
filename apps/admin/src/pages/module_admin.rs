@@ -5,7 +5,9 @@ use leptos_router::params::Params;
 
 use crate::app::modules::{AdminPageLookup, lookup_page_for_route_segment};
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
-use crate::app::providers::enabled_modules::use_enabled_modules_resource;
+use crate::app::providers::enabled_modules::{
+    ModulePolicyReadError, use_enabled_modules_resource,
+};
 use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::use_admin_locale;
 
@@ -55,15 +57,16 @@ pub fn ModuleAdminPage() -> impl IntoView {
             }>
             {move || {
                 let Some(enabled) = enabled_modules.modules() else {
-                    let message = enabled_modules
-                        .error()
-                        .unwrap_or_else(|| "Module availability was not resolved".to_string());
-                    return view! {
-                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">
-                            {message}
-                        </div>
-                    }
-                    .into_any();
+                    return if enabled_modules.error().is_some() {
+                        view! { <ModulePolicyReadError /> }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-4" aria-busy="true">
+                                <div class="h-10 w-64 animate-pulse rounded-xl bg-muted"></div>
+                                <div class="h-64 animate-pulse rounded-xl bg-muted"></div>
+                            </div>
+                        }.into_any()
+                    };
                 };
 
                 let seg = route_segment.get();

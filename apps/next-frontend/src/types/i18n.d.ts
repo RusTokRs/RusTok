@@ -584,6 +584,12 @@ export type AppMessageKey =
   | 'Forum.unread'
   | 'Forum-write'
   | 'Forum.write'
+  | 'ModulePolicy-description'
+  | 'ModulePolicy.description'
+  | 'ModulePolicy-retry'
+  | 'ModulePolicy.retry'
+  | 'ModulePolicy-title'
+  | 'ModulePolicy.title'
   | 'Order-backToCatalog'
   | 'Order.backToCatalog'
   | 'Order-browseCatalog'
@@ -1438,6 +1444,12 @@ export interface AppMessageArgs {
   'Forum.unread'?: Record<string, never>;
   'Forum-write'?: Record<string, never>;
   'Forum.write'?: Record<string, never>;
+  'ModulePolicy-description'?: Record<string, never>;
+  'ModulePolicy.description'?: Record<string, never>;
+  'ModulePolicy-retry'?: Record<string, never>;
+  'ModulePolicy.retry'?: Record<string, never>;
+  'ModulePolicy-title'?: Record<string, never>;
+  'ModulePolicy.title'?: Record<string, never>;
   'Order-backToCatalog'?: Record<string, never>;
   'Order.backToCatalog'?: Record<string, never>;
   'Order-browseCatalog'?: Record<string, never>;
@@ -2293,6 +2305,12 @@ export interface AppMessages {
   'Forum.unread': Record<string, never>;
   'Forum-write': Record<string, never>;
   'Forum.write': Record<string, never>;
+  'ModulePolicy-description': Record<string, never>;
+  'ModulePolicy.description': Record<string, never>;
+  'ModulePolicy-retry': Record<string, never>;
+  'ModulePolicy.retry': Record<string, never>;
+  'ModulePolicy-title': Record<string, never>;
+  'ModulePolicy.title': Record<string, never>;
   'Order-backToCatalog': Record<string, never>;
   'Order.backToCatalog': Record<string, never>;
   'Order-browseCatalog': Record<string, never>;

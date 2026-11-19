@@ -239,7 +239,18 @@ export const REGISTRY_YANK_REASON_CODES = [
 
 const ENABLED_MODULES_QUERY = `
 query EnabledModules {
-  enabledModules
+  enabledModules(limit: 100)
+}
+`;
+
+// Unlike enabledModules, this existing complete operator projection requires
+// modules:read/list/manage. It is never used as a public storefront endpoint.
+const COMPLETE_MODULE_POLICY_QUERY = `
+query CompleteModulePolicy {
+  moduleEffectivePolicy {
+    policyRevision
+    decisions { moduleSlug enabled policyRevision }
+  }
 }
 `;
 
@@ -658,7 +669,14 @@ interface ModuleRegistryResponse {
 }
 
 interface EnabledModulesResponse {
-  enabledModules: string[];
+  enabledModules: unknown;
+}
+
+interface CompleteModulePolicyResponse {
+  moduleEffectivePolicy: {
+    policyRevision: unknown;
+    decisions: unknown;
+  } | null;
 }
 
 interface InstalledModulesResponse {
@@ -772,17 +790,93 @@ export async function listModules(
   return { modules: data.moduleRegistry };
 }
 
+function isModuleSlug(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 48 &&
+    !/[^a-z0-9_]/.test(value) &&
+    !value.startsWith('_') &&
+    !value.endsWith('_')
+  );
+}
+
+function enabledModulesFromCompletePolicy(
+  response: CompleteModulePolicyResponse
+): string[] {
+  const policy = response?.moduleEffectivePolicy;
+  if (
+    !policy ||
+    typeof policy.policyRevision !== 'string' ||
+    policy.policyRevision.length !== 71 ||
+    !/^sha256:[0-9a-f]{64}$/.test(policy.policyRevision) ||
+    !Array.isArray(policy.decisions)
+  ) {
+    throw new Error('Invalid complete module policy response');
+  }
+  const seen = new Set<string>();
+  const enabled: string[] = [];
+  for (const value of policy.decisions) {
+    if (!value || typeof value !== 'object') {
+      throw new Error('Invalid complete module policy response');
+    }
+    const decision = value as Record<string, unknown>;
+    if (
+      !isModuleSlug(decision.moduleSlug) ||
+      typeof decision.enabled !== 'boolean' ||
+      decision.policyRevision !== policy.policyRevision ||
+      seen.has(decision.moduleSlug)
+    ) {
+      throw new Error('Invalid complete module policy response');
+    }
+    seen.add(decision.moduleSlug);
+    if (decision.enabled) enabled.push(decision.moduleSlug);
+  }
+  return enabled;
+}
+
 export async function fetchEnabledModules(
   opts: GqlOpts = {}
 ): Promise<string[]> {
-  const data = await graphqlRequest<undefined, EnabledModulesResponse>(
+  const request = opts.graphql ?? graphqlRequest;
+  const options = {
+    locale: opts.locale,
+    tenantId: opts.tenantId,
+    graphqlUrl: opts.graphqlUrl
+  };
+  const data = await request<undefined, EnabledModulesResponse>(
     ENABLED_MODULES_QUERY,
     undefined,
     opts.token,
-    opts.tenantSlug
+    opts.tenantSlug,
+    options
   );
 
-  return data.enabledModules;
+  if (
+    !Array.isArray(data?.enabledModules) ||
+    data.enabledModules.some((slug) => !isModuleSlug(slug)) ||
+    new Set(data.enabledModules).size !== data.enabledModules.length ||
+    data.enabledModules.length > 100
+  ) {
+    throw new Error('Invalid enabled-module policy response');
+  }
+  if (data.enabledModules.length < 100) return data.enabledModules;
+
+  // The capped list cannot prove completeness. Never merge it with a later
+  // read: availability can change even when durable policyRevision does not.
+  // Instead, use one complete owner decision, if this actor is authorized.
+  try {
+    const complete = await request<undefined, CompleteModulePolicyResponse>(
+      COMPLETE_MODULE_POLICY_QUERY,
+      undefined,
+      opts.token,
+      opts.tenantSlug,
+      options
+    );
+    return enabledModulesFromCompletePolicy(complete);
+  } catch {
+    throw new Error('Enabled-module policy may be incomplete or unavailable');
+  }
 }
 
 export async function listInstalledModules(
@@ -966,7 +1060,7 @@ export async function updateModuleSettings(
   idempotencyKey: string,
   opts: GqlOpts = {}
 ): Promise<TenantModule> {
-  const data = await graphqlRequest<
+  const data = await (opts.graphql ?? graphqlRequest)<
     {
       moduleSlug: string;
       settings: string;
@@ -978,10 +1072,28 @@ export async function updateModuleSettings(
     UPDATE_MODULE_SETTINGS_MUTATION,
     { moduleSlug: slug, settings, expectedRevision, idempotencyKey },
     opts.token,
-    opts.tenantSlug
+    opts.tenantSlug,
+    {
+      locale: opts.locale,
+      tenantId: opts.tenantId,
+      graphqlUrl: opts.graphqlUrl
+    }
   );
 
-  return data.updateModuleSettings;
+  const result = data.updateModuleSettings;
+  if (
+    !result ||
+    result.moduleSlug !== slug ||
+    typeof result.settings !== 'string' ||
+    typeof result.enabled !== 'boolean' ||
+    !Number.isSafeInteger(result.revision) ||
+    result.revision < expectedRevision
+  ) {
+    throw new Error(
+      'Module settings response is invalid or does not match the request'
+    );
+  }
+  return result;
 }
 
 export async function installModule(

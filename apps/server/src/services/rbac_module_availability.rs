@@ -69,7 +69,7 @@ pub async fn permission_availability_for(
         return Ok(None);
     };
     let ownership = permission_ownership(ctx, &registry)?;
-    let snapshot = EffectiveModulePolicyService::resolve_snapshot_cached(
+    let policy = EffectiveModulePolicyService::resolve_cached(
         ctx.db(),
         &registry,
         tenant_id,
@@ -77,7 +77,7 @@ pub async fn permission_availability_for(
     )
     .await
     .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
-    let enabled: BTreeSet<String> = snapshot.policy.into_enabled_modules().into_iter().collect();
+    let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
     Ok(Some(PermissionAvailability::new(
         (*ownership).clone(),
         enabled,

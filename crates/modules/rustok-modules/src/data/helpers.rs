@@ -429,7 +429,7 @@ pub(crate) fn retry_available_at_expression(
 ) -> String {
     match backend {
         SupportedBackend::Postgres => format!(
-            "NOW() + (LEAST({}, {} * (1 << LEAST(GREATEST(attempt - 1, 0), 16))) * INTERVAL '1 second')",
+            "clock_timestamp() + (LEAST({}, {} * (1 << LEAST(GREATEST(attempt - 1, 0), 16))) * INTERVAL '1 second')",
             backend.placeholder(max_parameter),
             backend.placeholder(base_parameter),
         ),

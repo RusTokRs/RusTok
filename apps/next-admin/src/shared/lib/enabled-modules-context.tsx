@@ -4,23 +4,10 @@ import React from 'react';
 
 type EnabledModulesContextValue = {
   enabledModules: string[];
-  setModuleEnabled: (slug: string, enabled: boolean) => void;
-  replaceEnabledModules: (modules: string[]) => void;
 };
 
 const EnabledModulesContext =
   React.createContext<EnabledModulesContextValue | null>(null);
-
-function normalizeModules(modules: string[]): string[] {
-  return Array.from(new Set(modules)).sort();
-}
-
-function modulesEqual(left: string[], right: string[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((module, index) => module === right[index])
-  );
-}
 
 export function EnabledModulesClientProvider({
   initialModules,
@@ -29,41 +16,11 @@ export function EnabledModulesClientProvider({
   initialModules: string[];
   children: React.ReactNode;
 }) {
-  const normalizedInitialModules = React.useMemo(
-    () => normalizeModules(initialModules),
-    [initialModules]
-  );
-  const [enabledModules, setEnabledModules] = React.useState(
-    normalizedInitialModules
-  );
-
-  React.useEffect(() => {
-    setEnabledModules((prev) =>
-      modulesEqual(prev, normalizedInitialModules)
-        ? prev
-        : normalizedInitialModules
-    );
-  }, [normalizedInitialModules]);
-
+  // Only the owner-issued policy projection may determine availability.
+  // A lifecycle mutation result is not an effective-policy decision.
   const value = React.useMemo<EnabledModulesContextValue>(
-    () => ({
-      enabledModules,
-      setModuleEnabled: (slug, enabled) => {
-        setEnabledModules((prev) => {
-          const next = new Set(prev);
-          if (enabled) {
-            next.add(slug);
-          } else {
-            next.delete(slug);
-          }
-          return normalizeModules(Array.from(next));
-        });
-      },
-      replaceEnabledModules: (modules) => {
-        setEnabledModules(normalizeModules(modules));
-      }
-    }),
-    [enabledModules]
+    () => ({ enabledModules: Array.from(new Set(initialModules)).sort() }),
+    [initialModules]
   );
 
   return (
@@ -81,6 +38,5 @@ export function useEnabledModulesContext() {
       'useEnabledModulesContext must be used within an EnabledModulesClientProvider.'
     );
   }
-
   return context;
 }

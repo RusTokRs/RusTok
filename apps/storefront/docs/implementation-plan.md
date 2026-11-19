@@ -10,7 +10,7 @@
 
 - [x] Native `storefront/list-enabled-modules` no longer accepts a client-provided tenant slug.
 - [x] The SSR adapter extracts the middleware-resolved `rustok_api::TenantContext` and reads module state only for `tenant.id`.
-- [x] The configured tenant slug remains limited to the GraphQL transport request where it is a host-routing hint, not native write/read authority.
+- [x] The configured tenant slug is a host-routing hint for GraphQL and standalone CSR auth/Cart binding, not native read/write authority. CSR embeds one public tenant hint at build time; native SSR still extracts its trusted request context.
 - [x] `verify-tenant-fba.mjs` rejects `tenant_slug`, `get_tenant_by_slug`, or a slug argument in the native adapter and requires the trusted context extraction.
 - [ ] Same-SHA storefront compilation and native/GraphQL parity execution remain required before the storefront wave can be completed.
 

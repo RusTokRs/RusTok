@@ -37,6 +37,18 @@ fn message(locale: &str, key: &str) -> String {
     MESSAGES.t(Some(locale), key, key)
 }
 
+pub fn module_policy_loading(locale: &str) -> String {
+    message(locale, "module.policy.loading")
+}
+
+pub fn module_policy_strings(locale: &str) -> (String, String, String) {
+    (
+        message(locale, "module.policy.title"),
+        message(locale, "module.policy.description"),
+        message(locale, "module.policy.retry"),
+    )
+}
+
 pub fn locale_strings(locale: &str) -> LocaleStrings {
     LocaleStrings {
         hero_title: message(locale, "hero.title"),
@@ -152,7 +164,7 @@ pub fn featured_products(locale: &str) -> Vec<crate::entities::product::ProductC
 
 #[cfg(test)]
 mod tests {
-    use super::{MESSAGES, featured_products, locale_strings};
+    use super::{MESSAGES, featured_products, locale_strings, module_policy_loading, module_policy_strings};
 
     #[test]
     fn host_catalogs_are_valid_and_locale_specific() {
@@ -160,5 +172,8 @@ mod tests {
         assert_eq!(locale_strings("en").nav_home, "Home");
         assert_eq!(locale_strings("ru").nav_home, "Главная");
         assert_eq!(featured_products("ru")[0].title, "Смарт-аксессуары");
+        assert_eq!(module_policy_strings("en").2, "Try again");
+        assert_eq!(module_policy_strings("ru").2, "Повторить");
+        assert!(module_policy_loading("ru").starts_with("Проверяем"));
     }
 }

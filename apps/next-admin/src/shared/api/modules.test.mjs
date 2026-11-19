@@ -16,9 +16,11 @@ const js =
     )
     .replace(/export async function /g, 'async function ')
     .replace(/export const /g, 'const ') +
-  '\nmodule.exports = { fetchRegistryPublishRequestStatus, holdRegistryPublishRequest, rollbackModuleTransition, yankRegistryRelease, unyankRegistryRelease };';
+  '\nmodule.exports = { fetchEnabledModules, fetchRegistryPublishRequestStatus, holdRegistryPublishRequest, rollbackModuleTransition, updateModuleSettings, yankRegistryRelease, unyankRegistryRelease };';
 
-function client() {
+function client(
+  graphqlResult = { rollbackModuleTransition: { operationId: 'operation' } }
+) {
   const requests = [];
   const graphqlCalls = [];
   const mockModule = { exports: {} };
@@ -28,7 +30,7 @@ function client() {
   };
   const graphqlRequest = async (...args) => {
     graphqlCalls.push(args);
-    return { rollbackModuleTransition: { operationId: 'operation' } };
+    return graphqlResult;
   };
   const readHttpError = async () => 'http-error';
   const require = (name) => {
@@ -50,6 +52,215 @@ function client() {
   });
   return { api: mockModule.exports, requests, graphqlCalls };
 }
+
+test('availability rejects malformed policy responses rather than treating them as empty', async () => {
+  for (const enabledModules of [
+    null,
+    undefined,
+    'forum',
+    [1],
+    [''],
+    ['forum\n'],
+    ['forum', 'forum']
+  ]) {
+    const { api } = client({ enabledModules });
+    await assert.rejects(
+      api.fetchEnabledModules({ token: 'token', tenantSlug: 'tenant' })
+    );
+  }
+  const { api } = client({ enabledModules: ['forum'] });
+  assert.deepEqual(
+    await api.fetchEnabledModules({ token: 'token', tenantSlug: 'tenant' }),
+    ['forum']
+  );
+  const empty = client({ enabledModules: [] });
+  assert.deepEqual(
+    await empty.api.fetchEnabledModules({
+      token: 'token',
+      tenantSlug: 'tenant'
+    }),
+    []
+  );
+});
+
+test('capped availability uses one complete authorized policy snapshot, not a merged list', async () => {
+  const server = await readFile(
+    new URL('../../../../server/src/graphql/queries.rs', import.meta.url),
+    'utf8'
+  );
+  assert.match(server, /limit\.unwrap_or\(100\)\.clamp\(1, 100\)/);
+  assert.match(
+    server,
+    /async fn module_effective_policy[\s\S]*?ensure_modules_read_permission\(ctx\)/
+  );
+  assert.match(source, /enabledModules\(limit: 100\)/);
+  const { api } = client();
+  const modules = Array.from({ length: 101 }, (_, index) => `module_${index}`);
+  const belowLimit = client({ enabledModules: modules.slice(0, 99) });
+  assert.deepEqual(
+    await belowLimit.api.fetchEnabledModules(),
+    modules.slice(0, 99)
+  );
+  await assert.rejects(
+    client({ enabledModules: modules }).api.fetchEnabledModules(),
+    /Invalid/
+  );
+
+  const revision = `sha256:${'a'.repeat(64)}`;
+  const decisions = Array.from({ length: 130 }, (_, index) => ({
+    moduleSlug: `new_${index}`,
+    enabled: index < 125,
+    policyRevision: revision
+  }));
+  const calls = [];
+  const opts = {
+    token: 'token',
+    tenantSlug: 'tenant',
+    tenantId: 'tenant-id',
+    locale: 'ru',
+    graphqlUrl: '/graphql',
+    graphql: async (...args) => {
+      calls.push(args);
+      return args[0].includes('CompleteModulePolicy')
+        ? { moduleEffectivePolicy: { policyRevision: revision, decisions } }
+        : { enabledModules: modules.slice(0, 100) };
+    }
+  };
+  const enabled = await api.fetchEnabledModules(opts);
+  assert.deepEqual(
+    enabled,
+    decisions.slice(0, 125).map((decision) => decision.moduleSlug)
+  );
+  assert.equal(calls.length, 2);
+  for (const args of calls) {
+    assert.equal(args[2], 'token');
+    assert.equal(args[3], 'tenant');
+    assert.deepEqual(args[4], {
+      tenantId: 'tenant-id',
+      locale: 'ru',
+      graphqlUrl: '/graphql'
+    });
+  }
+  opts.graphql = async (query) =>
+    query.includes('CompleteModulePolicy')
+      ? {
+          moduleEffectivePolicy: {
+            policyRevision: revision,
+            decisions: decisions.slice(0, 100)
+          }
+        }
+      : { enabledModules: modules.slice(0, 100) };
+  assert.equal((await api.fetchEnabledModules(opts)).length, 100);
+
+  // A changed owner snapshot is authoritative on its own, even if empty.
+  opts.graphql = async (query) =>
+    query.includes('CompleteModulePolicy')
+      ? { moduleEffectivePolicy: { policyRevision: revision, decisions: [] } }
+      : { enabledModules: modules.slice(0, 100) };
+  assert.deepEqual(await api.fetchEnabledModules(opts), []);
+});
+
+test('capped availability fails closed on denied, partial or malformed full policy', async () => {
+  const { api } = client();
+  const modules = Array.from({ length: 100 }, (_, index) => `module_${index}`);
+  const revision = `sha256:${'b'.repeat(64)}`;
+  const decision = {
+    moduleSlug: 'forum',
+    enabled: true,
+    policyRevision: revision
+  };
+  const invalid = [
+    null,
+    {},
+    { policyRevision: '', decisions: [] },
+    { policyRevision: revision, decisions: null },
+    { policyRevision: revision, decisions: [decision, decision] },
+    {
+      policyRevision: revision,
+      decisions: [{ ...decision, policyRevision: 'other' }]
+    },
+    {
+      policyRevision: revision,
+      decisions: [{ ...decision, moduleSlug: 'forum\n' }]
+    },
+    { policyRevision: revision, decisions: [{ ...decision, enabled: 'true' }] }
+  ];
+  for (const policy of invalid) {
+    await assert.rejects(
+      api.fetchEnabledModules({
+        graphql: async (query) =>
+          query.includes('CompleteModulePolicy')
+            ? { moduleEffectivePolicy: policy }
+            : { enabledModules: modules }
+      }),
+      /may be incomplete/
+    );
+  }
+  await assert.rejects(
+    api.fetchEnabledModules({
+      graphql: async (query) => {
+        if (query.includes('CompleteModulePolicy'))
+          throw new Error('permission denied');
+        return { enabledModules: modules };
+      }
+    }),
+    /may be incomplete/
+  );
+});
+
+test('settings write forwards its frozen request and transport scope and validates the response', async () => {
+  const { api } = client();
+  const calls = [];
+  const response = {
+    moduleSlug: 'forum',
+    settings: '{"n":1}',
+    enabled: true,
+    revision: 9
+  };
+  const opts = {
+    token: 'token',
+    tenantSlug: 'tenant',
+    tenantId: 'tenant-id',
+    locale: 'ru',
+    graphqlUrl: '/api/graphql',
+    graphql: async (...args) => {
+      calls.push(args);
+      return { updateModuleSettings: response };
+    }
+  };
+  assert.equal(
+    await api.updateModuleSettings('forum', '{"n":1}', 8, 'key', opts),
+    response
+  );
+  assert.deepEqual(calls[0][1], {
+    moduleSlug: 'forum',
+    settings: '{"n":1}',
+    expectedRevision: 8,
+    idempotencyKey: 'key'
+  });
+  assert.equal(calls[0][2], 'token');
+  assert.equal(calls[0][3], 'tenant');
+  assert.deepEqual(calls[0][4], {
+    tenantId: 'tenant-id',
+    locale: 'ru',
+    graphqlUrl: '/api/graphql'
+  });
+  for (const invalid of [
+    null,
+    { ...response, moduleSlug: 'other' },
+    { ...response, revision: 7 },
+    { ...response, revision: NaN },
+    { ...response, settings: null },
+    { ...response, enabled: null }
+  ]) {
+    await assert.rejects(
+      api.updateModuleSettings('forum', '{}', 8, 'key', {
+        graphql: async () => ({ updateModuleSettings: invalid })
+      }),
+      /response is invalid/
+    );
+  }
+});
 
 test('registry status and decisions preserve the request identity and replay key', async () => {
   const { api, requests } = client();

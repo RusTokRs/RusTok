@@ -292,6 +292,8 @@ pub enum ModuleEffectivePolicyError {
     InvalidMaintenanceInput(String),
     #[error("effective module policy cache lock is poisoned")]
     CacheLockPoisoned,
+    #[error("effective module policy cache generation is exhausted")]
+    CacheGenerationExhausted,
 }
 
 /// One owner transition delivered to a revision-aware outbox consumer. Hashes
@@ -1268,15 +1270,11 @@ impl ModuleEffectivePolicy {
     /// dispatch, or returns `None` when this policy does not admit the
     /// exact release/target for the tenant.
     ///
-    /// When the decision carries artifact-installation facts (the
-    /// artifact-aware catalog path), the token is minted only for the
-    /// installation and release digest those facts selected. When the
-    /// decision came from a static-only catalog (no artifact facts), the
-    /// token binds the requested release/target to the enabled slug
-    /// decision; the production executor still resolves the exact or
-    /// current installation and re-checks the *current* policy before
-    /// executing, so this token never substitutes for installation
-    /// admission or a fresh policy decision.
+    /// Requires an artifact definition for the exact release and an
+    /// owner-resolved installation fact matching the target and tenant scope.
+    /// An enabled static definition with the same slug is not artifact
+    /// authorization. The executor must repeat this check on the current
+    /// policy after resolving the immutable installation.
     pub fn admit_artifact_execution(
         &self,
         tenant_id: uuid::Uuid,
@@ -1290,7 +1288,18 @@ impl ModuleEffectivePolicy {
         if !decision.enabled || !decision.denial_reasons.is_empty() {
             return None;
         }
-        let mut saw_installation_fact = false;
+        let exact_artifact_definition = decision.facts.iter().any(|fact| {
+            matches!(
+                fact,
+                ModuleEffectivePolicyFact::Definition {
+                    source: ModuleDefinitionSource::Artifact { release: selected },
+                    ..
+                } if selected == release
+            )
+        });
+        if !exact_artifact_definition {
+            return None;
+        }
         let mut installation_fact_matches = false;
         for fact in &decision.facts {
             if let ModuleEffectivePolicyFact::ArtifactInstallation {
@@ -1300,7 +1309,6 @@ impl ModuleEffectivePolicy {
                 ..
             } = fact
             {
-                saw_installation_fact = true;
                 let scope_matches = match scope {
                     ModuleInstallationScope::Platform => true,
                     ModuleInstallationScope::Tenant {
@@ -1313,12 +1321,16 @@ impl ModuleEffectivePolicy {
                         installation_id: requested_id,
                     } => requested_id == *installation_id,
                 };
-                if scope_matches && target_matches && release_digest == &release.digest {
+                if !installation_id.is_nil()
+                    && scope_matches
+                    && target_matches
+                    && release_digest == &release.digest
+                {
                     installation_fact_matches = true;
                 }
             }
         }
-        if saw_installation_fact && !installation_fact_matches {
+        if !installation_fact_matches {
             return None;
         }
         Some(ArtifactExecutionAdmission::effective_policy(
@@ -1680,8 +1692,9 @@ mod tests {
         validate_module_toggle,
     };
     use crate::{
-        ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus,
-        ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleDefinition,
+        ArtifactInstallationTarget, ArtifactPayloadKind, ArtifactReleaseRef,
+        ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecuritySnapshot,
+        ModuleArtifactSecurityStatus, ModuleDefinition,
         ModuleDefinitionCatalog, ModuleDefinitionKind, ModuleDefinitionSource,
         ModuleDependencyConstraint, ModuleInstallationScope, ModulesModule,
     };
@@ -2224,6 +2237,119 @@ mod tests {
                 capability_grant_revision: 7
             }
         )));
+    }
+
+    #[test]
+    fn static_slug_cannot_authorize_a_different_artifact() {
+        let catalog = ModuleDefinitionCatalog::from_static_registry(
+            &ModuleRegistry::new().register(ModulesModule),
+        )
+        .expect("catalog");
+        let mut policy = ModuleEffectivePolicyQuery::new(&catalog, [], [], [])
+            .execute()
+            .expect("static policy");
+        assert!(policy.contains("modules"));
+        let release = ArtifactReleaseRef {
+            slug: "modules".to_string(),
+            version: "1.0.0".to_string(),
+            digest: digest('a'),
+        };
+        assert!(policy
+            .admit_artifact_execution(
+                Uuid::new_v4(),
+                &release,
+                ArtifactInstallationTarget::CurrentRelease,
+            )
+            .is_none());
+        // Even a matching installation fact cannot turn a static definition
+        // into an artifact definition.
+        policy.decisions.get_mut("modules").unwrap().facts.push(
+            ModuleEffectivePolicyFact::ArtifactInstallation {
+                installation_id: Uuid::from_u128(1),
+                scope: ModuleInstallationScope::Platform,
+                release_digest: digest('a'),
+                dependency_graph_revision: 1,
+                dependency_graph_digest: digest('b'),
+                capability_grant_revision: 1,
+            },
+        );
+        assert!(policy
+            .admit_artifact_execution(
+                Uuid::new_v4(),
+                &release,
+                ArtifactInstallationTarget::CurrentRelease,
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn artifact_admission_requires_exact_definition_installation_and_scope() {
+        let catalog = artifact_catalog();
+        let tenant = Uuid::new_v4();
+        let mut runtime = artifact_runtime(
+            ModuleArtifactSecurityStatus::Clear,
+            ModuleArtifactRegistryReleaseStatus::Unlisted,
+        );
+        runtime.installation.as_mut().unwrap().scope = ModuleInstallationScope::Tenant {
+            tenant_id: tenant,
+        };
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            ["artifact".to_string()],
+            [],
+            [runtime],
+        )
+        .execute()
+        .expect("artifact policy");
+        let release = ArtifactReleaseRef {
+            slug: "artifact".to_string(),
+            version: "1.2.3".to_string(),
+            digest: digest('a'),
+        };
+        let selected = ArtifactInstallationTarget::ExactInstallation {
+            installation_id: Uuid::from_u128(1),
+        };
+        assert!(policy
+            .admit_artifact_execution(tenant, &release, selected)
+            .is_some());
+        assert!(policy
+            .admit_artifact_execution(
+                tenant,
+                &release,
+                ArtifactInstallationTarget::CurrentRelease,
+            )
+            .is_some());
+        assert!(policy
+            .admit_artifact_execution(Uuid::new_v4(), &release, selected)
+            .is_none());
+        assert!(policy
+            .admit_artifact_execution(Uuid::nil(), &release, selected)
+            .is_none());
+        assert!(policy
+            .admit_artifact_execution(
+                tenant,
+                &release,
+                ArtifactInstallationTarget::ExactInstallation {
+                    installation_id: Uuid::new_v4(),
+                },
+            )
+            .is_none());
+        let mut wrong_release = release.clone();
+        wrong_release.version = "9.0.0".to_string();
+        assert!(policy
+            .admit_artifact_execution(tenant, &wrong_release, selected)
+            .is_none());
+        wrong_release = release.clone();
+        wrong_release.digest = digest('b');
+        assert!(policy
+            .admit_artifact_execution(tenant, &wrong_release, selected)
+            .is_none());
+        let unavailable = ModuleEffectivePolicyQuery::new(&catalog, ["artifact".to_string()], [], [])
+            .execute()
+            .expect("unavailable policy");
+        assert!(unavailable
+            .admit_artifact_execution(tenant, &release, selected)
+            .is_none());
     }
 
     #[test]

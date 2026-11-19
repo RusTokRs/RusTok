@@ -102,8 +102,9 @@ around the owner contracts.
 - Resolve effective availability as one serializable owner decision set with a
   deterministic policy revision, typed contributing facts, and stable denial
   reasons. Artifact decisions require an exact active installation, matching
-  durable capability-policy revision, an available isolated executor, and an
-  available dependency closure. A channel owner may supply a tenant-safe
+  durable capability-policy revision, a supplied executor-availability input,
+  and an available dependency closure. The current lifecycle adapter derives
+  that input from executor kind support, not worker health. A channel owner may supply a tenant-safe
   channel snapshot; channel bindings and the channel revision are evaluated in
   the same decision. Operational maintenance can likewise block globally or
   by module through a revisioned snapshot without rewriting tenant intent;
@@ -114,6 +115,15 @@ around the owner contracts.
   duplicates, and reject stale delivery. `SeaOrmModulePolicyRevisionConsumer`
   persists that cursor per tenant and consumer key inside a row-locked
   transaction.
+
+Artifact installation selection resolves tenant/platform precedence per slug
+before comparing release identity and rejects an ambiguous winning scope. The
+batched read does not provide a repeatable-read snapshot across chunks.
+Artifact binding admission and runtime revalidation require an owner policy with
+matching artifact release and installation facts. The current server resolver
+constructs a static-only policy, so it fails closed for these bindings until
+artifact-aware policy composition is wired. A same-slug static module is not
+a substitute. This does not apply to the separate lifecycle-hook admission path.
 
 ## Entry points
 
@@ -173,9 +183,24 @@ production readiness. The documented implementation and operational gaps include
   uncompiled/unrun; actual backend exact/wildcard delivery, worker/restart and transport recovery
   remain open. See the [intake API](CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).
 
+- The new delivery and settings claim fences require a coordinated stop of old
+  workers and static lifecycle/settings writers before migrations `000092` and
+  `000093`. Legacy active static claims must be reconciled first. Mixed-version
+  operation and automatic downgrade are unsafe. Aggregate claim ownership is
+  now explicitly separated between journal and settings; this change and its
+  tests remain uncompiled and unverified. Lifecycle aggregate heartbeat and
+  advance now lock before evaluating PostgreSQL lease expiry; real lock-wait
+  verification is still required. Rust tests and PostgreSQL/RLS, crash and
+  concurrent-reclaim verification are still required.
 - Scoped OCI admission and executor-readiness identity changes require
   PostgreSQL migration, RLS, and concurrent-admission verification before
   production use.
+- Static settings numeric bounds are represented by `f64`; comparisons against
+  integer documents do not round the integer. Integer schemas reject bounds with
+  absolute value at least 2^53 because those inputs may already have been rounded.
+  This conservatively rejects even exactly representable large boundaries; an exact
+  schema-boundary representation remains a contract change. Rust tests for the
+  current comparison and schema guard need execution.
 - Static settings writes conservatively reject detected unresolved transitions
   with a predecessor, but exact release schemas and an atomic fence covering
   static rollouts are missing. Installer seed enables fail closed because they

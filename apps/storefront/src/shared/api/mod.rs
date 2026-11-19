@@ -73,21 +73,48 @@ where
     .map_err(ApiError::from)
 }
 
+// A routing hint, not authorization. Once a nonempty value is chosen, reject
+// malformed input rather than silently falling back to a different tenant.
+fn select_tenant_slug<'a>(values: impl IntoIterator<Item = Option<&'a str>>) -> Option<String> {
+    let value = values.into_iter().flatten().map(str::trim).find(|value| !value.is_empty())?;
+    if value.len() > 255 || value.chars().any(char::is_control) {
+        return None;
+    }
+    Some(value.to_string())
+}
+
 pub fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Browser WASM has no process environment. These are public build-time
+        // routing hints and intentionally bind a standalone build to one tenant.
+        select_tenant_slug([
+            option_env!("RUSTOK_TENANT_SLUG"),
+            option_env!("NEXT_PUBLIC_TENANT_SLUG"),
+            option_env!("NEXT_PUBLIC_DEFAULT_TENANT_SLUG"),
+        ])
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let values = [
+            std::env::var("RUSTOK_TENANT_SLUG").ok(),
+            std::env::var("NEXT_PUBLIC_TENANT_SLUG").ok(),
+            std::env::var("NEXT_PUBLIC_DEFAULT_TENANT_SLUG").ok(),
+        ];
+        select_tenant_slug(values.iter().map(|value| value.as_deref()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_tenant_slug;
+
+    #[test]
+    fn tenant_hint_is_bounded_and_never_falls_back_after_invalid_selection() {
+        assert_eq!(select_tenant_slug([None, Some("  "), Some(" shop-a ")]), Some("shop-a".to_string()));
+        assert_eq!(select_tenant_slug([None, Some("")]), None);
+        assert_eq!(select_tenant_slug([Some("shop\nother"), Some("shop-b")]), None);
+        let too_long = "a".repeat(256);
+        assert_eq!(select_tenant_slug([Some(too_long.as_str()), Some("shop-b")]), None);
+    }
 }

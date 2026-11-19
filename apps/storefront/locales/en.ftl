@@ -39,3 +39,7 @@ product-city-title = City essentials
 product-city-description = Minimal silhouettes for every season.
 product-city-price = from $129
 product-city-badge = New
+module-policy-title = Module availability could not be verified
+module-policy-description = The store is temporarily unavailable. Please try again.
+module-policy-retry = Try again
+module-policy-loading = Checking module availability…

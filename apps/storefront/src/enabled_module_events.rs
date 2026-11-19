@@ -27,22 +27,35 @@ pub(crate) fn cart_available(content: &str) -> bool {
 pub(crate) fn publish(modules: &HashSet<String>) {
     #[cfg(target_arch = "wasm32")]
     {
-        use leptos::wasm_bindgen::JsValue;
+        use leptos::wasm_bindgen::{JsCast, JsValue};
         let Some(window) = web_sys::window() else {
             return;
         };
         let mut modules = modules.iter().map(String::as_str).collect::<Vec<_>>();
         modules.sort_unstable();
         let value = modules.join(",");
-        let stored = window
-            .document()
-            .and_then(|document| {
-                document
-                    .query_selector("meta[name='rustok-enabled-modules']")
-                    .ok()
-                    .flatten()
-            })
-            .is_some_and(|meta| meta.set_attribute("content", &value).is_ok());
+        let stored = (|| {
+            let document = window.document()?;
+            let nodes = document
+                .query_selector_all("meta[name='rustok-enabled-modules']")
+                .ok()?;
+            let meta = match nodes.length() {
+                0 => {
+                    let meta = document.create_element("meta").ok()?;
+                    meta.set_attribute("name", "rustok-enabled-modules").ok()?;
+                    meta.set_attribute("content", &value).ok()?;
+                    let head = document.query_selector("head").ok()??;
+                    head.append_child(&meta).ok()?;
+                    return Some(());
+                }
+                1 => nodes.item(0)?.dyn_into::<web_sys::Element>().ok()?,
+                // Ambiguous DOM projections must never grant a capability.
+                _ => return None,
+            };
+            meta.set_attribute("content", &value).ok()?;
+            Some(())
+        })()
+        .is_some();
         let init = web_sys::CustomEventInit::new();
         init.set_detail(&JsValue::from_str(if stored { &value } else { "" }));
         if let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict(MODULES_CHANGED, &init) {

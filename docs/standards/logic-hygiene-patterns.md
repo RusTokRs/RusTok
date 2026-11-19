@@ -1381,3 +1381,36 @@ tracing::info!(%user_id, %tenant_id, "User authenticated successfully");
 Detection: `cargo xtask doctor hygiene --crate <crate>` or
 `rg -n '\b(println|eprintln|dbg)!\s*\(' crates/ apps/`.
 Doctor flags raw print macros in non-test, non-CLI production crates.
+
+## P-LOSSY-JSON-NUMBER — Preserve numeric identity at validation and UI boundaries
+
+- **Category:** Numeric precision and transport integrity.
+- **Logic dimensions:** Preconditions and bounds; calculation correctness.
+- **Observed behavior:** Static module settings converted JSON integers to `f64`
+  before checking bounds, and Next Admin parsed and reserialized the same
+  documents with JavaScript `Number`. A valid integer above 2^53 can round to a
+  different integer, bypass a limit, or be silently changed by an unrelated edit.
+- **Remediation:** Preserve the owner's numeric domain throughout the write path.
+  Compare integer values without casting them to floating point; if a bound is
+  represented as a finite float, compare against its mathematical ceiling or
+  floor in a wide integer domain. This does not make the float bound itself an
+  exact representation of every integer. For browser JSON editing, use a
+  lossless parser/serializer, including every structured-field editor that
+  rewrites the document. Use an exact bound type when the contract requires it.
+
+```rust
+// An integer upper bound check against an already represented finite f64.
+let exceeds = integer_value > max_bound.floor() as i128;
+```
+
+```ts
+const updated = formatSettingsJson(originalDocument, true);
+const edited = mergeSettingsJson(updated, changes);
+```
+
+The helpers above refer to the module settings editor's lossless JSON boundary;
+other owners must use the corresponding parser and object validation for their
+own document contract.
+
+Detection: `rg -n 'as_f64\(\)|JSON\.parse\(|JSON\.stringify\(' crates/modules/rustok-modules/src/settings.rs apps/next-admin/src/features/modules/components`;
+inspect numeric values and whether the parsed document is ever written back.

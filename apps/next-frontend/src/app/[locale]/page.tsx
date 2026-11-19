@@ -16,6 +16,7 @@ import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { getRequestCspNonce } from "@/shared/security/nonce";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import { Button } from "@/shared/ui/base/button";
+import { ModulePolicyError } from "@/app/providers/module-policy-error";
 
 const HOME_ROUTE = "/";
 
@@ -56,10 +57,21 @@ export default async function StorefrontHome({
   const features = (t as any).raw("features") as string[];
   const chips = (t as any).raw("chips") as string[];
   const tenantSlug = getStorefrontTenantSlug();
-  const enabledModules = await fetchEnabledModules(tenantSlug);
+  let enabledModules: string[];
+  try {
+    enabledModules = await fetchEnabledModules(tenantSlug);
+  } catch {
+    return <ModulePolicyError />;
+  }
   const afterHeroSections = getModulesForSlot("home:afterHero", enabledModules);
-  const afterCatalogSections = getModulesForSlot("home:afterCatalog", enabledModules);
-  const beforeFooterSections = getModulesForSlot("home:beforeFooter", enabledModules);
+  const afterCatalogSections = getModulesForSlot(
+    "home:afterCatalog",
+    enabledModules,
+  );
+  const beforeFooterSections = getModulesForSlot(
+    "home:beforeFooter",
+    enabledModules,
+  );
   const seoResolution = await resolveHomeSeoContext(locale);
   const structuredDataScripts = buildSeoStructuredDataScripts(
     seoResolution.context,

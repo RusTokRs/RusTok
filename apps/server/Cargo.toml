@@ -306,6 +306,8 @@ rustok-migrations = { path = "../../crates/utils/rustok-migrations" }
 sea-orm-migration.workspace = true
 
 [dev-dependencies]
+# Raw owner-store fixture methods are available only to tests.
+rustok-modules = { workspace = true, features = ["test-support"] }
 jsonwebtoken.workspace = true
 tower = { workspace = true, features = ["util"] }
 serial_test = "4.0"

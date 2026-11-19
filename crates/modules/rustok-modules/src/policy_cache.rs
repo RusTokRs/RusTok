@@ -1,14 +1,14 @@
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyError};
 
-/// Default upper bound on how long a cached policy may be served without
-/// re-resolution. Event-driven invalidation is the primary freshness
-/// mechanism; the TTL is the fail-safe that bounds the damage of any missed
-/// invalidation (e.g. a security-state change on another node).
+/// Default maximum age of a cache entry, measured using a monotonic clock.
+/// A TTL limits reuse, but is not proof of current authorization: missed or
+/// delayed invalidations can leave a stale entry available until it expires.
 pub const DEFAULT_POLICY_CACHE_MAX_AGE_SECONDS: i64 = 60;
 
 /// Default upper bound on cached tenant policies per process.
@@ -19,31 +19,42 @@ struct PolicyCacheEntry {
     policy: ModuleEffectivePolicy,
     identity: EffectivePolicyCacheIdentity,
     cached_at: DateTime<Utc>,
+    cached_at_monotonic: Instant,
 }
 
 impl PolicyCacheEntry {
-    fn is_fresh(&self, now: DateTime<Utc>, max_age: Duration) -> bool {
-        now.signed_duration_since(self.cached_at) < max_age
+    fn is_fresh(&self, max_age: Duration) -> bool {
+        max_age > Duration::zero()
+            && max_age
+                .to_std()
+                .is_ok_and(|age| self.cached_at_monotonic.elapsed() < age)
     }
 }
 
-/// Thread-safe, revision-dependent in-memory cache for resolved effective policies.
+/// Thread-safe in-memory cache for resolved effective policies.
 ///
-/// Neither tenant identity, TTL, nor a process generation alone can authorize a
-/// cache hit. Lookups with an expected revision verify that the cached policy's
-/// content-addressed `EffectivePolicyCacheIdentity` matches the expected revision
-/// exactly. If it does not match, the lookup fails closed and returns `None`.
-///
-/// Every entry also carries a hard TTL (`max_age`): an entry older than the TTL
-/// is a miss on every read path, including `get_latest`. Invalidation events
-/// remain the primary freshness mechanism, but no missed invalidation can make
-/// this cache serve a policy for longer than the TTL. The cache is bounded to
-/// `max_entries` tenants; inserting beyond capacity evicts the oldest entry.
+/// `get` checks a caller-supplied revision; `get_latest` does not obtain or
+/// check the current owner revision. Even a revision match does not identify
+/// volatile executor inputs. The monotonic TTL limits entry reuse, not the age
+/// of the underlying database snapshot. Observed invalidations fence stamped
+/// in-flight reads locally, but do not provide distributed or transactional
+/// authorization freshness. Capacity is bounded by `max_entries`.
 #[derive(Clone)]
 pub struct ModuleEffectivePolicyCache {
     entries: Arc<RwLock<HashMap<Uuid, PolicyCacheEntry>>>,
+    // One bounded process-local generation fences in-flight loaders across all
+    // tenants. Lock ordering is always generation before entries.
+    generation: Arc<RwLock<u64>>,
     max_age: Duration,
     max_entries: usize,
+}
+
+/// Non-forgeable process-local read stamp for one particular cache instance.
+/// It is not a policy revision or a distributed ordering token.
+#[derive(Clone)]
+pub struct PolicyCacheReadStamp {
+    generation: Arc<RwLock<u64>>,
+    value: u64,
 }
 
 impl Default for ModuleEffectivePolicyCache {
@@ -66,6 +77,7 @@ impl ModuleEffectivePolicyCache {
     pub fn with_limits(max_age: Duration, max_entries: usize) -> Self {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
+            generation: Arc::new(RwLock::new(0)),
             max_age,
             max_entries,
         }
@@ -78,8 +90,92 @@ impl ModuleEffectivePolicyCache {
     ) -> Option<PolicyCacheEntry> {
         let entry = entries.get(&tenant_id)?;
         entry
-            .is_fresh(Utc::now(), self.max_age)
+            .is_fresh(self.max_age)
             .then(|| entry.clone())
+    }
+
+    /// Capture before starting an owner read. Every observed invalidation,
+    /// including one for a missing entry, invalidates outstanding stamps.
+    pub fn begin_read(&self) -> Result<PolicyCacheReadStamp, ModuleEffectivePolicyError> {
+        let value = *self
+            .generation
+            .read()
+            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        if value == u64::MAX {
+            return Err(ModuleEffectivePolicyError::CacheGenerationExhausted);
+        }
+        Ok(PolicyCacheReadStamp {
+            generation: Arc::clone(&self.generation),
+            value,
+        })
+    }
+
+    /// Revalidate an earlier hit after awaiting other owner reads. Check the
+    /// exact cached value and TTL as well as the generation, since the entry
+    /// may expire or be replaced while the caller is suspended.
+    pub fn is_current_hit(
+        &self,
+        stamp: &PolicyCacheReadStamp,
+        tenant_id: Uuid,
+        policy: &ModuleEffectivePolicy,
+    ) -> Result<bool, ModuleEffectivePolicyError> {
+        if !Arc::ptr_eq(&stamp.generation, &self.generation) {
+            return Ok(false);
+        }
+        let generation = self
+            .generation
+            .read()
+            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        if *generation == u64::MAX {
+            return Err(ModuleEffectivePolicyError::CacheGenerationExhausted);
+        }
+        if *generation != stamp.value {
+            return Ok(false);
+        }
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        Ok(self
+            .fresh_entry(&entries, tenant_id)
+            .is_some_and(|entry| &entry.policy == policy))
+    }
+
+    /// Publish a read only while its stamp is current. A concurrent fresh
+    /// insertion wins: the caller must re-read it rather than overwrite it
+    /// with an older completion. `false` means discard and retry the owner read.
+    pub fn insert_if_current(
+        &self,
+        stamp: &PolicyCacheReadStamp,
+        tenant_id: Uuid,
+        policy: ModuleEffectivePolicy,
+    ) -> Result<bool, ModuleEffectivePolicyError> {
+        let identity = policy.cache_identity(tenant_id)?;
+        if !Arc::ptr_eq(&stamp.generation, &self.generation) {
+            return Ok(false);
+        }
+        let generation = self
+            .generation
+            .read()
+            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        if *generation == u64::MAX {
+            return Err(ModuleEffectivePolicyError::CacheGenerationExhausted);
+        }
+        if *generation != stamp.value {
+            return Ok(false);
+        }
+        if self.max_entries == 0 || self.max_age <= Duration::zero() {
+            return Ok(true);
+        }
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        if self.fresh_entry(&entries, tenant_id).is_some() {
+            return Ok(false);
+        }
+        self.insert_entry(&mut entries, tenant_id, policy, identity);
+        Ok(true)
     }
 
     /// Retrieves the cached policy for `tenant_id` if its content identity
@@ -123,12 +219,10 @@ impl ModuleEffectivePolicyCache {
         Some((entry.policy, entry.identity, entry.cached_at))
     }
 
-    /// Inserts a newly resolved effective policy into the cache, bound to its
-    /// deterministic `EffectivePolicyCacheIdentity`.
-    ///
-    /// Fails with `CacheLockPoisoned` when the cache lock is poisoned instead
-    /// of silently dropping the write: callers must learn that the next read
-    /// will re-resolve from the durable source.
+    /// Inserts a supplied policy without fencing an asynchronous owner read.
+    /// Callers loading policy across an await must instead use `begin_read` and
+    /// `insert_if_current` or an invalidation can be overwritten by stale data.
+    /// Fails with `CacheLockPoisoned` if the cache lock is poisoned.
     pub fn insert(
         &self,
         tenant_id: Uuid,
@@ -138,32 +232,48 @@ impl ModuleEffectivePolicyCache {
         if self.max_entries == 0 || self.max_age <= Duration::zero() {
             return Ok(identity);
         }
-        let entry = PolicyCacheEntry {
-            policy,
-            identity: identity.clone(),
-            cached_at: Utc::now(),
-        };
         let mut entries = self
             .entries
             .write()
             .map_err(|_| ModuleEffectivePolicyError::CacheLockPoisoned)?;
+        self.insert_entry(&mut entries, tenant_id, policy, identity.clone());
+        Ok(identity)
+    }
+
+    fn insert_entry(
+        &self,
+        entries: &mut HashMap<Uuid, PolicyCacheEntry>,
+        tenant_id: Uuid,
+        policy: ModuleEffectivePolicy,
+        identity: EffectivePolicyCacheIdentity,
+    ) {
+        let entry = PolicyCacheEntry {
+            policy,
+            identity,
+            cached_at: Utc::now(),
+            cached_at_monotonic: Instant::now(),
+        };
         if !entries.contains_key(&tenant_id) && entries.len() >= self.max_entries {
             // Evict the oldest entry to keep the cache bounded. Capacity is
             // reached rarely (tenant churn), so the linear scan is acceptable.
             if let Some(oldest_tenant) = entries
                 .iter()
-                .min_by_key(|(_, candidate)| candidate.cached_at)
+                .min_by_key(|(_, candidate)| candidate.cached_at_monotonic)
                 .map(|(tenant_id, _)| *tenant_id)
             {
                 entries.remove(&oldest_tenant);
             }
         }
         entries.insert(tenant_id, entry);
-        Ok(identity)
     }
 
     /// Invalidates the cached policy for `tenant_id`.
     pub fn invalidate_tenant(&self, tenant_id: Uuid) -> bool {
+        let Ok(mut generation) = self.generation.write() else {
+            return false;
+        };
+        // Never wrap: saturation permanently disables stamped operations.
+        *generation = generation.saturating_add(1);
         if let Ok(mut entries) = self.entries.write() {
             entries.remove(&tenant_id).is_some()
         } else {
@@ -173,6 +283,10 @@ impl ModuleEffectivePolicyCache {
 
     /// Invalidates the cached entry only if its current revision matches `stale_revision`.
     pub fn invalidate_if_stale(&self, tenant_id: Uuid, stale_revision: &str) -> bool {
+        let Ok(mut generation) = self.generation.write() else {
+            return false;
+        };
+        *generation = generation.saturating_add(1);
         let Ok(mut entries) = self.entries.write() else {
             return false;
         };
@@ -186,15 +300,19 @@ impl ModuleEffectivePolicyCache {
         false
     }
 
-    /// Applies an outbox transition event: if the cached policy was at `previous_revision`,
-    /// or if it has not yet reached `next_revision`, it is evicted so that the node cannot
-    /// serve obsolete decisions.
+    /// Applies an observed transition event, fencing in-flight reads and evicting
+    /// entries matching `previous_revision` or differing from `next_revision`.
+    /// Revision equality alone does not prove the cached decisions are current.
     pub fn apply_transition_event(
         &self,
         tenant_id: Uuid,
         previous_revision: Option<&str>,
         next_revision: &str,
     ) -> bool {
+        let Ok(mut generation) = self.generation.write() else {
+            return false;
+        };
+        *generation = generation.saturating_add(1);
         let Ok(mut entries) = self.entries.write() else {
             return false;
         };
@@ -211,6 +329,10 @@ impl ModuleEffectivePolicyCache {
 
     /// Purges all entries from the cache.
     pub fn clear(&self) {
+        let Ok(mut generation) = self.generation.write() else {
+            return;
+        };
+        *generation = generation.saturating_add(1);
         if let Ok(mut entries) = self.entries.write() {
             entries.clear();
         }
@@ -257,6 +379,122 @@ mod tests {
         let (expired_cache, expired_tenant) = cache_with_policy(Duration::seconds(-1));
         assert!(expired_cache.get_latest(expired_tenant).is_none());
         assert!(expired_cache.get_with_metadata(expired_tenant).is_none());
+    }
+
+    #[test]
+    fn invalidation_fences_a_loader_that_finishes_after_the_event() {
+        use std::sync::Barrier;
+        use std::thread;
+
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant_id = Uuid::new_v4();
+        let started = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        let loader_cache = cache.clone();
+        let loader_started = Arc::clone(&started);
+        let loader_resume = Arc::clone(&resume);
+        let loader = thread::spawn(move || {
+            let stamp = loader_cache.begin_read().unwrap();
+            loader_started.wait();
+            loader_resume.wait();
+            loader_cache
+                .insert_if_current(&stamp, tenant_id, empty_policy())
+                .unwrap()
+        });
+        started.wait();
+        // No entry existed, but the invalidation must still fence the read.
+        assert!(!cache.invalidate_tenant(tenant_id));
+        resume.wait();
+        assert!(!loader.join().unwrap());
+        assert!(cache.get_latest(tenant_id).is_none());
+        let stamp = cache.begin_read().unwrap();
+        assert!(cache
+            .insert_if_current(&stamp, tenant_id, empty_policy())
+            .unwrap());
+        assert!(cache.get_latest(tenant_id).is_some());
+    }
+
+    #[test]
+    fn clear_and_conditional_events_fence_even_without_an_entry() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = Uuid::new_v4();
+        let stamp = cache.begin_read().unwrap();
+        cache.clear();
+        assert!(!cache
+            .insert_if_current(&stamp, tenant, empty_policy())
+            .unwrap());
+        let stamp = cache.begin_read().unwrap();
+        assert!(!cache.invalidate_if_stale(tenant, "old"));
+        assert!(!cache
+            .insert_if_current(&stamp, tenant, empty_policy())
+            .unwrap());
+        let stamp = cache.begin_read().unwrap();
+        assert!(!cache.apply_transition_event(tenant, Some("old"), "next"));
+        assert!(!cache
+            .insert_if_current(&stamp, tenant, empty_policy())
+            .unwrap());
+    }
+
+    #[test]
+    fn competing_fills_do_not_overwrite_a_fresh_winner_and_stamps_are_cache_local() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let other = ModuleEffectivePolicyCache::new();
+        let tenant = Uuid::new_v4();
+        let first = cache.begin_read().unwrap();
+        let second = cache.begin_read().unwrap();
+        assert!(cache
+            .insert_if_current(&second, tenant, empty_policy())
+            .unwrap());
+        assert!(!cache
+            .insert_if_current(&first, tenant, empty_policy())
+            .unwrap());
+        assert!(!other
+            .insert_if_current(&first, tenant, empty_policy())
+            .unwrap());
+        assert!(cache.is_current_hit(&first, tenant, &empty_policy()).unwrap());
+        cache.clear();
+        assert!(!cache.is_current_hit(&first, tenant, &empty_policy()).unwrap());
+    }
+
+    #[test]
+    fn matching_transition_still_fences_a_suspended_hit() {
+        let (cache, tenant) = cache_with_policy(Duration::seconds(60));
+        let stamp = cache.begin_read().unwrap();
+        let (policy, identity) = cache.get_latest(tenant).unwrap();
+        assert!(!cache.apply_transition_event(tenant, None, identity.policy_revision()));
+        assert!(cache.get_latest(tenant).is_some());
+        assert!(!cache.is_current_hit(&stamp, tenant, &policy).unwrap());
+    }
+
+    #[test]
+    fn ttl_uses_monotonic_time_not_wall_clock_metadata() {
+        let (cache, tenant) = cache_with_policy(Duration::seconds(60));
+        let stamp = cache.begin_read().unwrap();
+        {
+            let mut entries = cache.entries.write().unwrap();
+            let entry = entries.get_mut(&tenant).unwrap();
+            entry.cached_at = Utc::now() + Duration::days(1);
+            entry.cached_at_monotonic = Instant::now() - std::time::Duration::from_secs(61);
+        }
+        assert!(cache.get_latest(tenant).is_none());
+        assert!(!cache.is_current_hit(&stamp, tenant, &empty_policy()).unwrap());
+    }
+
+    #[test]
+    fn generation_exhaustion_fails_closed_instead_of_wrapping() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = Uuid::new_v4();
+        let stamp = cache.begin_read().unwrap();
+        *cache.generation.write().unwrap() = u64::MAX - 1;
+        cache.invalidate_tenant(tenant);
+        assert!(matches!(
+            cache.begin_read(),
+            Err(ModuleEffectivePolicyError::CacheGenerationExhausted)
+        ));
+        assert!(matches!(
+            cache.insert_if_current(&stamp, tenant, empty_policy()),
+            Err(ModuleEffectivePolicyError::CacheGenerationExhausted)
+        ));
     }
 
     #[test]

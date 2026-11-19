@@ -2132,9 +2132,7 @@ impl SeaOrmArtifactInstallationStore {
             &request.context,
             &request.reason,
         )?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -2283,7 +2281,7 @@ impl SeaOrmArtifactInstallationStore {
                 "candidate installation descriptor is invalid".into(),
             )
         })?;
-        acquire_artifact_activation_lock(&transaction, &request.scope, &slug).await?;
+        acquire_artifact_serving_locks(&transaction, &request.scope, &slug).await?;
         assert_artifact_ui_contributions_available(
             &transaction,
             &request.scope,
@@ -2471,6 +2469,14 @@ impl SeaOrmArtifactInstallationStore {
                         "governed activation requires a non-nil operation and a positive observation window".into(),
                     ));
                 }
+                assert_no_other_unresolved_governed_checkpoint(
+                    &transaction,
+                    &request.scope,
+                    &slug,
+                    "governed activation",
+                    Some(governed.operation_id),
+                )
+                .await?;
                 let checkpoint =
                     TransitionCheckpointStore::load_checkpoint(&transaction, governed.operation_id)
                         .await
@@ -2747,9 +2753,7 @@ impl SeaOrmArtifactInstallationStore {
             &request.context,
             &request.reason,
         )?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -2844,6 +2848,7 @@ impl SeaOrmArtifactInstallationStore {
         let target_slug: String = row
             .try_get("", "slug")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        acquire_artifact_serving_locks(&transaction, &request.scope, &target_slug).await?;
         assert_no_unresolved_governed_checkpoint(
             &transaction,
             &request.scope,
@@ -3107,9 +3112,7 @@ impl SeaOrmArtifactInstallationStore {
             &request.context,
             &request.reason,
         )?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &scope).await?;
@@ -3180,38 +3183,18 @@ impl SeaOrmArtifactInstallationStore {
             ));
         }
 
-        // Revalidate that no conflicting active release transition is
-        // currently executing for this module and tenant. Both activation
-        // locks (platform first, then tenant — the canonical order) are
-        // held across the fence and the write below, so a transition
-        // created by a concurrent activation cannot slip between the
-        // check and the mutation. Platform-scope transitions fence tenant
-        // lifecycle too: they change what this tenant resolves.
-        acquire_artifact_activation_lock(
+        // Platform before tenant: a platform checkpoint can affect this
+        // tenant's effective selection even for a tenant-scoped change.
+        acquire_artifact_serving_locks(&transaction, &scope, &descriptor.slug).await?;
+        // InterventionRequired stops automatic progression but is still
+        // unresolved and may be recovered by an operator. Use the same
+        // unresolved-scope guard as the other serving mutations.
+        assert_no_unresolved_governed_checkpoint(
             &transaction,
-            &ModuleInstallationScope::Platform,
+            &ModuleInstallationScope::Tenant { tenant_id: request.tenant_id },
             &descriptor.slug,
-        )
-        .await?;
-        acquire_artifact_activation_lock(&transaction, &scope, &descriptor.slug).await?;
-        let active_checkpoints =
-            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
-                &transaction,
-                &descriptor.slug,
-                request.tenant_id,
-            )
-            .await
-            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        if let Some(active_cp) = active_checkpoints
-            .into_iter()
-            .find(|cp| !cp.state.is_terminal())
-        {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
-                "artifact tenant lifecycle locked: active release transition is in progress for '{}' (state: {})",
-                descriptor.slug,
-                active_cp.state.name(),
-            )));
-        }
+            "tenant lifecycle",
+        ).await?;
         let placeholder = if backend == SupportedBackend::Postgres {
             "$1"
         } else {
@@ -3406,9 +3389,7 @@ impl SeaOrmArtifactInstallationStore {
             &request.context,
             &request.reason,
         )?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -3511,6 +3492,7 @@ impl SeaOrmArtifactInstallationStore {
         let target_slug: String = row
             .try_get("", "slug")
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        acquire_artifact_serving_locks(&transaction, &request.scope, &target_slug).await?;
         assert_no_unresolved_governed_checkpoint(
             &transaction,
             &request.scope,
@@ -3647,9 +3629,7 @@ impl SeaOrmArtifactInstallationStore {
                     "capability grant revision exceeds database range".into(),
                 )
             })?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -3789,7 +3769,7 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback source must be active at the expected revision".into(),
             ));
         }
-        acquire_artifact_activation_lock(&transaction, &request.scope, &source_slug).await?;
+        acquire_artifact_serving_locks(&transaction, &request.scope, &source_slug).await?;
         let target_installation_id =
             optional_uuid_from_row(&row, "previous_installation_id", backend)?.ok_or_else(
                 || {
@@ -3916,6 +3896,14 @@ impl SeaOrmArtifactInstallationStore {
             })?;
         let transition_operation_id =
             required_uuid_from_row(&transition_row, "operation_id", backend)?;
+        assert_no_other_unresolved_governed_checkpoint(
+            &transaction,
+            &request.scope,
+            &source_slug,
+            "rollback",
+            Some(transition_operation_id),
+        )
+        .await?;
         let recorded_predecessor =
             optional_uuid_from_row(&transition_row, "predecessor_installation_id", backend)?;
         if recorded_predecessor != Some(target_installation_id) {
@@ -4378,9 +4366,7 @@ impl SeaOrmArtifactInstallationStore {
                 "resulting revision exceeds database integer range".into(),
             )
         })?;
-        let transaction = self
-            .db
-            .begin()
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
@@ -4404,6 +4390,8 @@ impl SeaOrmArtifactInstallationStore {
                 resulting_revision,
             );
         }
+        acquire_artifact_serving_locks(&transaction, &request.scope, &target.descriptor.slug)
+            .await?;
         ensure_no_active_transition_for_reverification(
             &transaction,
             &request.scope,
@@ -4669,17 +4657,13 @@ impl SeaOrmArtifactInstallationStore {
 }
 
 impl SeaOrmArtifactInstallationStore {
-    /// Batched form of the active-installation resolver for one tenant:
-    /// one transaction and RLS scope for the whole release set, chunked
-    /// `OR` predicates (100 releases per query) instead of one
-    /// transaction per artifact. Selection and validation are identical
-    /// to the single-release resolver — tenant scope shadows platform,
-    /// an explicit tenant disable suppresses the platform candidate,
-    /// and the chosen row goes through the same
-    /// [`decode_installed_artifact_row`] checks. Storage failures fail
-    /// the whole batch; per-release results preserve the caller's order
-    /// so absence (`Unavailable`) stays a policy fact for that release
-    /// only while a corrupt selected row stays an invariant error.
+    /// Selects the effective installation by slug and tenant scope *before*
+    /// comparing the requested release. Tenant installations shadow platform
+    /// installations even when their versions differ. Disabled installations
+    /// do not participate. Duplicate candidates at the winning scope fail closed.
+    /// All slugs are deduplicated and queried in chunks under one RLS-scoped
+    /// transaction; results retain the requested release order. The transaction
+    /// does not promise a repeatable-read snapshot across chunks.
     pub(crate) async fn resolve_active_many(
         &self,
         releases: &[ArtifactReleaseRef],
@@ -4688,6 +4672,11 @@ impl SeaOrmArtifactInstallationStore {
         Vec<Result<InstalledModuleArtifact, ArtifactInstallationResolveError>>,
         ArtifactInstallationResolveError,
     > {
+        if tenant_id.is_nil() {
+            return Err(ArtifactInstallationResolveError::InvalidRequest(
+                "artifact installation resolution requires a non-nil tenant".to_string(),
+            ));
+        }
         if releases.is_empty() {
             return Ok(Vec::new());
         }
@@ -4699,104 +4688,11 @@ impl SeaOrmArtifactInstallationStore {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        let platform_enabled = match backend {
-            SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
-            SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
-        };
-        let mut rows = Vec::new();
-        for chunk in releases.chunks(100) {
-            let mut values = vec![backend.uuid_value(tenant_id)];
-            let mut conditions = Vec::with_capacity(chunk.len());
-            for (index, release) in chunk.iter().enumerate() {
-                let first = 2 + index * 3;
-                conditions.push(format!(
-                    "(installation.slug = {} AND installation.version = {} \
-                      AND installation.payload_digest = {})",
-                    backend.placeholder(first),
-                    backend.placeholder(first + 1),
-                    backend.placeholder(first + 2),
-                ));
-                values.push(release.slug.clone().into());
-                values.push(release.version.clone().into());
-                values.push(release.digest.clone().into());
-            }
-            let release_conditions = conditions.join(" OR ");
-            let chunk_rows = transaction
-                .query_all_raw(Statement::from_sql_and_values(
-                    backend.db_backend(),
-                    format!(
-                        "SELECT installation.installation_id, installation.data_owner_id, \
-                         installation.namespace_instance_id, installation.secret_instance_id, \
-                         installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
-                         installation.registry, installation.repository, installation.manifest_digest, \
-                         installation.slug, installation.version, installation.payload_digest, \
-                         admission.media_type AS payload_media_type, \
-                         CAST(installation.descriptor AS TEXT) AS descriptor, \
-                         installation.dependency_graph_revision, installation.dependency_graph_digest, \
-                         CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
-                         installation.capability_grant_revision, installation.installed_at \
-                         FROM module_artifact_installations installation \
-                         JOIN module_artifact_admissions admission \
-                           ON admission.installation_id = installation.installation_id \
-                         LEFT JOIN module_artifact_tenant_lifecycle tenant_lifecycle \
-                           ON tenant_lifecycle.installation_id = installation.installation_id \
-                          AND tenant_lifecycle.tenant_id = {tenant} \
-                         WHERE ({release_conditions}) \
-                           AND admission.status = 'active' \
-                           AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
-                                           WHERE uninstall.installation_id = installation.installation_id) \
-                           AND {platform_enabled} \
-                           AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {tenant}) \
-                                OR (installation.scope_kind = 'platform' \
-                                    AND installation.tenant_id IS NULL)) \
-                         ORDER BY installation.slug, installation.version, installation.payload_digest, \
-                                  CASE WHEN installation.scope_kind = 'tenant' THEN 0 ELSE 1 END, \
-                                  installation.installation_id",
-                        tenant = backend.placeholder(1),
-                    ),
-                    values,
-                ))
-                .await
-                .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-            rows.extend(chunk_rows);
-        }
+        let results = resolve_active_many_in_transaction(&transaction, releases, tenant_id).await?;
         transaction
             .commit()
             .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-
-        let row_keys = rows
-            .iter()
-            .map(|row| {
-                Ok((
-                    row.try_get::<String>("", "slug").map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?,
-                    row.try_get::<String>("", "version").map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?,
-                    row.try_get::<String>("", "payload_digest")
-                        .map_err(|error| {
-                            ArtifactInstallationResolveError::Invariant(error.to_string())
-                        })?,
-                ))
-            })
-            .collect::<Result<Vec<_>, ArtifactInstallationResolveError>>()?;
-        let mut results = Vec::with_capacity(releases.len());
-        for release in releases {
-            // Rows are ordered tenant-scope before platform-scope per
-            // release, so the first key match is the selected candidate.
-            let selected = rows.iter().zip(&row_keys).find_map(|(row, key)| {
-                (key.0 == release.slug && key.1 == release.version && key.2 == release.digest)
-                    .then_some(row)
-            });
-            results.push(match selected {
-                Some(row) => decode_installed_artifact_row(row, backend, release),
-                None => Err(ArtifactInstallationResolveError::Unavailable),
-            });
-        }
         Ok(results)
     }
 
@@ -5046,91 +4942,153 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         release: &ArtifactReleaseRef,
         tenant_id: Uuid,
     ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
-        let transaction = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
-            .await
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        let placeholders = match backend {
-            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
-            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
-        };
-        let platform_enabled = match backend {
-            SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
-            SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
-        };
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
+        self.resolve_active_many(std::slice::from_ref(release), tenant_id)
+            .await?
+            .pop()
+            .ok_or_else(|| {
+                ArtifactInstallationResolveError::Invariant(
+                    "single artifact resolution returned no result".to_string(),
+                )
+            })?
+    }
+}
+
+/// Resolves effective selections on the caller's tenant-scoped transaction.
+/// The caller must configure tenant RLS before calling and retain any locks it
+/// needs until its transaction commits. It intentionally performs no commit.
+pub(crate) async fn resolve_active_many_in_transaction(
+    transaction: &DatabaseTransaction,
+    releases: &[ArtifactReleaseRef],
+    tenant_id: Uuid,
+) -> Result<
+    Vec<Result<InstalledModuleArtifact, ArtifactInstallationResolveError>>,
+    ArtifactInstallationResolveError,
+> {
+    if tenant_id.is_nil() {
+        return Err(ArtifactInstallationResolveError::InvalidRequest(
+            "artifact installation resolution requires a non-nil tenant".to_string(),
+        ));
+    }
+    if releases.is_empty() {
+        return Ok(Vec::new());
+    }
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+    let enabled = match backend {
+        SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
+        SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
+    };
+    let slugs = releases
+        .iter()
+        .map(|release| release.slug.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for chunk in slugs.chunks(100) {
+        let mut values = vec![backend.uuid_value(tenant_id)];
+        let mut placeholders = Vec::with_capacity(chunk.len());
+        for (index, slug) in chunk.iter().enumerate() {
+            placeholders.push(backend.placeholder(index + 2));
+            values.push((*slug).to_string().into());
+        }
+        let slug_placeholders = placeholders.join(", ");
+        // At most two rows per slug and scope are needed to detect an
+        // ambiguous winner, even if durable state contains many duplicates.
+        let chunk_rows = transaction
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
-                    "SELECT installation.installation_id, installation.data_owner_id, \
+                    "SELECT * FROM (\
+                     SELECT installation.installation_id, installation.data_owner_id, \
                      installation.namespace_instance_id, installation.secret_instance_id, \
                      installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
                      installation.registry, installation.repository, installation.manifest_digest, \
                      installation.slug, installation.version, installation.payload_digest, \
                      admission.media_type AS payload_media_type, \
+                     admission.payload_digest AS admission_payload_digest, \
                      CAST(installation.descriptor AS TEXT) AS descriptor, \
                      installation.dependency_graph_revision, installation.dependency_graph_digest, \
                      CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
-                     installation.capability_grant_revision, installation.installed_at \
+                     installation.capability_grant_revision, installation.installed_at, \
+                     ROW_NUMBER() OVER (PARTITION BY installation.slug, installation.scope_kind \
+                                        ORDER BY installation.installation_id) AS selection_rank \
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission \
                        ON admission.installation_id = installation.installation_id \
                      LEFT JOIN module_artifact_tenant_lifecycle tenant_lifecycle \
                        ON tenant_lifecycle.installation_id = installation.installation_id \
-                      AND tenant_lifecycle.tenant_id = {} \
-                     WHERE installation.slug = {} \
-                       AND installation.version = {} \
-                       AND installation.payload_digest = {} \
+                      AND tenant_lifecycle.tenant_id = {tenant} \
+                     WHERE installation.slug IN ({slug_placeholders}) \
                        AND admission.status = 'active' \
                        AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                                        WHERE uninstall.installation_id = installation.installation_id) \
-                       AND {platform_enabled} \
-                       AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
+                       AND {enabled} \
+                       AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {tenant}) \
                             OR (installation.scope_kind = 'platform' \
                                 AND installation.tenant_id IS NULL)) \
-                     ORDER BY CASE WHEN installation.scope_kind = 'tenant' THEN 0 ELSE 1 END \
-                     LIMIT 1",
-                    placeholders.3,
-                    placeholders.0,
-                    placeholders.1,
-                    placeholders.2,
-                    placeholders.3,
+                     ) candidates WHERE selection_rank <= 2 \
+                     ORDER BY slug, CASE WHEN scope_kind = 'tenant' THEN 0 ELSE 1 END, installation_id",
+                    tenant = backend.placeholder(1),
                 ),
-                vec![
-                    release.slug.clone().into(),
-                    release.version.clone().into(),
-                    release.digest.clone().into(),
-                    backend.uuid_value(tenant_id),
-                ],
+                values,
             ))
             .await
             .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        let Some(row) = row else {
-            transaction
-                .commit()
-                .await
-                .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-            return Err(ArtifactInstallationResolveError::Unavailable);
-        };
-        transaction
-            .commit()
-            .await
-            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
-        decode_installed_artifact_row(&row, backend, release)
+        rows.extend(chunk_rows);
     }
+    // Select before comparing release identity or decoding the descriptor.
+    // Both projections use the same precedence/ambiguity algorithm.
+    let mut selection = crate::installation_selection::EffectiveInstallationSelection::new();
+    for (index, row) in rows.iter().enumerate() {
+        let field = |name: &str| {
+            row.try_get::<String>("", name)
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))
+        };
+        let tenant_scoped = match field("scope_kind")?.as_str() {
+            "tenant" => true,
+            "platform" => false,
+            _ => return Err(ArtifactInstallationResolveError::Invariant(
+                "active artifact has an invalid scope".to_string(),
+            )),
+        };
+        selection.observe(
+            field("slug")?,
+            tenant_scoped,
+            (index, field("version")?, field("payload_digest")?),
+        );
+    }
+    let candidates = selection.finish();
+    let mut results = Vec::with_capacity(releases.len());
+    for release in releases {
+        let result = match candidates.get(&release.slug) {
+            None => Err(ArtifactInstallationResolveError::Unavailable),
+            Some(None) => Err(ArtifactInstallationResolveError::Invariant(
+                "multiple active artifact installations in the selected scope".to_string(),
+            )),
+            Some(Some((_, version, digest)))
+                if version != &release.version || digest != &release.digest =>
+            {
+                Err(ArtifactInstallationResolveError::NotActiveSelection)
+            }
+            Some(Some((index, _, _))) => {
+                let admission_digest: String = rows[*index].try_get("", "admission_payload_digest")
+                    .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+                if admission_digest != release.digest {
+                    Err(ArtifactInstallationResolveError::Invariant(
+                        "selected artifact admission payload does not match the installation".to_string(),
+                    ))
+                } else {
+                    decode_installed_artifact_row(&rows[*index], backend, release)
+                }
+            }
+        };
+        results.push(result);
+    }
+    Ok(results)
 }
 
-/// Decodes and fully validates one selected installation row. Shared by
-/// the single-release resolver and the batched multi-release resolver so
-/// both paths apply identical descriptor, media-type, dependency-lock,
-/// and persisted-identity checks; the batched path only changes how rows
-/// are fetched, never what a valid row is.
+/// Decodes and validates descriptor, media type, dependency lock and persisted identity.
 fn decode_installed_artifact_row(
     row: &sea_orm::QueryResult,
     backend: SupportedBackend,
@@ -7035,16 +6993,28 @@ fn installation_values(
 }
 
 /// Refuses a plain serving-selection mutation while an unresolved
-/// governed transition owns the same slug. Tenant-scope mutations are
-/// also fenced by platform-scope transitions for the slug, because a
-/// platform selection change alters what every tenant resolves. The
-/// governed activation itself does not use this guard: it loads and
-/// revalidates its exact checkpoint instead.
+/// governed transition owns an overlapping scope for the slug. Platform
+/// mutations check all tenant checkpoints; tenant mutations check their own
+/// tenant and platform. Callers must hold the shared platform/tenant locks in
+/// their transaction. This guard is still not a fence against direct store or
+/// SQL writes that bypass those locks. Governed activation instead revalidates
+/// its exact checkpoint.
 async fn assert_no_unresolved_governed_checkpoint<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
     module_slug: &str,
     action: &str,
+) -> Result<(), ModuleInstallationError> {
+    assert_no_other_unresolved_governed_checkpoint(connection, scope, module_slug, action, None)
+        .await
+}
+
+async fn assert_no_other_unresolved_governed_checkpoint<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ModuleInstallationScope,
+    module_slug: &str,
+    action: &str,
+    allowed_operation: Option<Uuid>,
 ) -> Result<(), ModuleInstallationError> {
     let fences = match scope {
         ModuleInstallationScope::Tenant { tenant_id } => {
@@ -7056,27 +7026,20 @@ async fn assert_no_unresolved_governed_checkpoint<C: ConnectionTrait>(
             .await
         }
         ModuleInstallationScope::Platform => {
-            TransitionCheckpointStore::list_active_checkpoints_for_tenant(connection, None)
-                .await
-                .map(|checkpoints| {
-                    checkpoints
-                        .into_iter()
-                        .filter(|checkpoint| checkpoint.module_slug == module_slug)
-                        .collect::<Vec<_>>()
-                })
+            TransitionCheckpointStore::list_active_checkpoints_for_slug(connection, module_slug).await
         }
     }
     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-    if let Some(checkpoint) = fences.first() {
+    if let Some(checkpoint) = fences.iter().find(|checkpoint| Some(checkpoint.operation_id) != allowed_operation) {
         return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
-            "plain artifact {action} is fenced by unresolved governed transition `{}`",
+            "artifact {action} is fenced by unresolved governed transition `{}`",
             checkpoint.operation_id
         )));
     }
     Ok(())
 }
 
-async fn active_predecessor_installation<C: ConnectionTrait>(
+pub(crate) async fn active_predecessor_installation<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
     slug: &str,
@@ -7140,6 +7103,32 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
                 .into(),
         )),
     }
+}
+
+/// The platform lock must precede the tenant lock: platform transitions
+/// influence tenant selections. Requiring a transaction ensures both locks
+/// survive the subsequent checkpoint check and serving write. A journal claim
+/// is admitted under the same platform lock, so an overlapping live or stale
+/// claim blocks serving mutations until the lifecycle owner clears it.
+/// This does not fence hooks whose claim has already been reclaimed or cleared.
+pub(crate) async fn acquire_artifact_serving_locks(
+    transaction: &DatabaseTransaction,
+    scope: &ModuleInstallationScope,
+    slug: &str,
+) -> Result<(), ModuleInstallationError> {
+    acquire_artifact_activation_lock(transaction, &ModuleInstallationScope::Platform, slug).await?;
+    if matches!(scope, ModuleInstallationScope::Tenant { .. }) {
+        acquire_artifact_activation_lock(transaction, scope, slug).await?;
+    }
+    if crate::lifecycle_transition_fence::has_journal_claim(transaction, scope, slug)
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+    {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
+            "artifact serving mutation for `{slug}` is fenced by an overlapping lifecycle journal claim"
+        )));
+    }
+    Ok(())
 }
 
 /// Serializes activation for one `(scope, slug)` via an upserted lock row:
@@ -8047,17 +8036,23 @@ async fn ensure_no_active_transition_for_reverification<C: ConnectionTrait>(
     scope: &ModuleInstallationScope,
     slug: &str,
 ) -> Result<(), ModuleInstallationError> {
-    let tenant_id = match scope {
-        ModuleInstallationScope::Platform => None,
-        ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
-    };
-    let active_checkpoints =
-        TransitionCheckpointStore::list_active_checkpoints_for_tenant(connection, tenant_id)
-            .await
-            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    let active_checkpoints = match scope {
+        ModuleInstallationScope::Platform => {
+            TransitionCheckpointStore::list_active_checkpoints_for_slug(connection, slug).await
+        }
+        ModuleInstallationScope::Tenant { tenant_id } => {
+            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+                connection, slug, *tenant_id,
+            ).await
+        }
+    }
+    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    // The store already returns only unresolved checkpoints. In particular,
+    // InterventionRequired is terminal for automatic actors but must still
+    // fence reverification until an operator resolves it.
     if let Some(active_checkpoint) = active_checkpoints
         .into_iter()
-        .find(|checkpoint| checkpoint.module_slug == slug && !checkpoint.state.is_terminal())
+        .find(|checkpoint| checkpoint.module_slug == slug)
     {
         return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
             "admission reverification locked: active release transition is in progress for '{slug}' (state: {})",
@@ -8330,6 +8325,96 @@ mod tests {
             Err(ModuleInstallationError::Store(message))
                 if message == "test revision is not positive"
         ));
+    }
+
+    #[tokio::test]
+    async fn serving_lock_rejects_overlapping_journal_claims() {
+        use sea_orm::TransactionTrait;
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY(scope_kind, scope_tenant_key, slug)); \
+             CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, active_idempotency_key BLOB, active_claimed_at TEXT, claim_owner TEXT NOT NULL)",
+        ).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_static_tenant_lifecycle VALUES (?1, 'sample_module', ?2, '2000-01-01T00:00:00Z', 'journal')",
+            vec![tenant.into(), Uuid::new_v4().into()],
+        )).await.unwrap();
+        for scope in [
+            ModuleInstallationScope::Platform,
+            ModuleInstallationScope::Tenant { tenant_id: tenant },
+        ] {
+            let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+            assert!(matches!(acquire_artifact_serving_locks(&tx, &scope, "sample_module").await,
+                Err(ModuleInstallationError::AdmissionRevisionConflict(message)) if message.contains("lifecycle journal claim")));
+            tx.rollback().await.unwrap();
+        }
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(acquire_artifact_serving_locks(&tx, &ModuleInstallationScope::Tenant { tenant_id: other }, "sample_module").await.is_ok());
+        assert!(acquire_artifact_serving_locks(&tx, &ModuleInstallationScope::Platform, "another_module").await.is_ok());
+        tx.rollback().await.unwrap();
+        db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_idempotency_key = NULL").await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(acquire_artifact_serving_locks(&tx, &ModuleInstallationScope::Platform, "sample_module").await.is_ok());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn intervention_required_remains_a_lifecycle_and_reverification_fence() {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&SchemaManager::new(&database)).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let scope = ModuleInstallationScope::Tenant { tenant_id: tenant };
+        let other_scope = ModuleInstallationScope::Tenant { tenant_id: other_tenant };
+        let now = Utc::now();
+        let mut checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: Uuid::new_v4(), revision: 1, module_slug: "sample_module".into(),
+            tenant_id: Some(tenant), predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired { failure_reason: "operator needed".into() },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
+            created_at: now, updated_at: now,
+        };
+        TransitionCheckpointStore::save_checkpoint(&database, &checkpoint).await.unwrap();
+        assert!(matches!(ensure_no_active_transition_for_reverification(&database, &scope, "sample_module").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(matches!(assert_no_unresolved_governed_checkpoint(&database, &scope, "sample_module", "tenant lifecycle").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(matches!(assert_no_unresolved_governed_checkpoint(&database, &ModuleInstallationScope::Platform, "sample_module", "activation").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(matches!(ensure_no_active_transition_for_reverification(&database, &ModuleInstallationScope::Platform, "sample_module").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(assert_no_other_unresolved_governed_checkpoint(&database, &scope, "sample_module", "rollback", Some(checkpoint.operation_id)).await.is_ok());
+        assert!(matches!(assert_no_other_unresolved_governed_checkpoint(&database, &scope, "sample_module", "rollback", Some(Uuid::new_v4())).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(ensure_no_active_transition_for_reverification(&database, &scope, "other").await.is_ok());
+        assert!(ensure_no_active_transition_for_reverification(&database, &other_scope, "sample_module").await.is_ok());
+        assert!(assert_no_unresolved_governed_checkpoint(&database, &other_scope, "sample_module", "tenant lifecycle").await.is_ok());
+        checkpoint.revision = 2;
+        checkpoint.state = crate::ModuleTransitionState::RecoveredToPredecessor {
+            failure_reason: "recovered".into(), recovered_at: Utc::now(),
+        };
+        checkpoint.updated_at = Utc::now();
+        TransitionCheckpointStore::save_checkpoint(&database, &checkpoint).await.unwrap();
+        assert!(ensure_no_active_transition_for_reverification(&database, &scope, "sample_module").await.is_ok());
+        assert!(assert_no_unresolved_governed_checkpoint(&database, &scope, "sample_module", "tenant lifecycle").await.is_ok());
+        checkpoint.operation_id = Uuid::new_v4();
+        checkpoint.revision = 1;
+        checkpoint.tenant_id = None;
+        checkpoint.state = crate::ModuleTransitionState::InterventionRequired { failure_reason: "platform operator needed".into() };
+        TransitionCheckpointStore::save_checkpoint(&database, &checkpoint).await.unwrap();
+        assert!(matches!(ensure_no_active_transition_for_reverification(&database, &ModuleInstallationScope::Platform, "sample_module").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(matches!(ensure_no_active_transition_for_reverification(&database, &other_scope, "sample_module").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
+        assert!(matches!(assert_no_unresolved_governed_checkpoint(&database, &other_scope, "sample_module", "tenant lifecycle").await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))));
     }
 
     #[tokio::test]
@@ -10511,6 +10596,67 @@ mod tests {
                 .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
+        let now = Utc::now();
+        let mut checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: Uuid::new_v4(),
+            revision: 1,
+            module_slug: installed.descriptor.slug.clone(),
+            tenant_id: None,
+            predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "operator recovery required".into(),
+            },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        TransitionCheckpointStore::save_checkpoint(&database, &checkpoint).await.unwrap();
+        assert!(matches!(
+            store.disable_artifact_for_tenant(tenant_disable.clone()).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let unchanged = store.artifact_tenant_lifecycle_snapshot(installed.installation_id, tenant_id).await.unwrap();
+        assert!(unchanged.enabled);
+        assert_eq!(unchanged.revision, 0);
+        let failed_write = database.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+            "SELECT (SELECT COUNT(*) FROM module_artifact_tenant_lifecycle_operations) AS operations, \
+             (SELECT COUNT(*) FROM sys_events WHERE event_type = 'module.artifact.tenant_disabled') AS events")).await.unwrap().unwrap();
+        assert_eq!(failed_write.try_get::<i64>("", "operations").unwrap(), 0);
+        assert_eq!(failed_write.try_get::<i64>("", "events").unwrap(), 0);
+        // This fixture records an explicitly resolved state; an operator's
+        // actual recovery path is responsible for justifying that state.
+        checkpoint.revision = 2;
+        checkpoint.state = crate::ModuleTransitionState::RecoveredToPredecessor {
+            failure_reason: "recovered".into(), recovered_at: Utc::now(),
+        };
+        checkpoint.updated_at = Utc::now();
+        TransitionCheckpointStore::save_checkpoint(&database, &checkpoint).await.unwrap();
+        // A previously admitted journal claim also fences this mutation, even
+        // if its lease is stale. A rejected command must leave no receipt or
+        // event, so the exact command can be retried after claim cleanup.
+        database.execute_unprepared("CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY NOT NULL)").await.unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite, "INSERT OR IGNORE INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.to_string().into()],
+        )).await.unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_static_tenant_lifecycle \
+             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at, claim_owner) \
+             VALUES (?1, ?2, 0, ?3, '2000-01-01T00:00:00Z', 'journal')",
+            vec![tenant_id.to_string().into(), installed.descriptor.slug.clone().into(), Uuid::new_v4().to_string().into()],
+        )).await.unwrap();
+        assert!(matches!(store.disable_artifact_for_tenant(tenant_disable.clone()).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(message)) if message.contains("lifecycle journal claim")));
+        let blocked = database.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+            "SELECT (SELECT COUNT(*) FROM module_artifact_tenant_lifecycle_operations) AS operations, \
+             (SELECT COUNT(*) FROM sys_events WHERE event_type = 'module.artifact.tenant_disabled') AS events")).await.unwrap().unwrap();
+        assert_eq!(blocked.try_get::<i64>("", "operations").unwrap(), 0);
+        assert_eq!(blocked.try_get::<i64>("", "events").unwrap(), 0);
+        database.execute_unprepared("DELETE FROM module_static_tenant_lifecycle").await.unwrap();
         assert_eq!(
             store
                 .disable_artifact_for_tenant(tenant_disable.clone())
@@ -10519,6 +10665,13 @@ mod tests {
                 .revision,
             1
         );
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_static_tenant_lifecycle \
+             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at, claim_owner) \
+             VALUES (?1, ?2, 0, ?3, '2000-01-01T00:00:00Z', 'journal')",
+            vec![tenant_id.to_string().into(), installed.descriptor.slug.clone().into(), Uuid::new_v4().to_string().into()],
+        )).await.unwrap();
         let changed_reason_tenant_disable = ArtifactTenantDisableRequest {
             reason: "a different disable reason".to_string(),
             ..tenant_disable.clone()
@@ -10539,6 +10692,7 @@ mod tests {
                 .revision,
             1
         );
+        database.execute_unprepared("DELETE FROM module_static_tenant_lifecycle").await.unwrap();
         let disabled_tenant_intent = store
             .artifact_tenant_lifecycle_snapshot(installed.installation_id, tenant_id)
             .await
@@ -11600,6 +11754,225 @@ mod tests {
             rollback_result.target_installation_id,
             predecessor.installation_id
         );
+    }
+
+    #[tokio::test]
+    async fn active_resolution_selects_scope_before_release_and_rejects_ambiguity() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database.execute_unprepared("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await.expect("tenant identity fixture");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        for migration in crate::ModulesModule.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("migration");
+        }
+        let store = SeaOrmArtifactInstallationStore::new(database.clone());
+        let tenant_id = Uuid::new_v4();
+        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)", vec![tenant_id.to_string().into()]))
+            .await.expect("tenant fixture");
+        let platform_package = package(ArtifactPayloadKind::Rhai);
+        let mut tenant_package = platform_package.clone();
+        tenant_package.reference.digest = format!("sha256:{}", "7".repeat(64));
+        tenant_package.descriptor.version = "2.0.0".to_string();
+        let mut duplicate_package = platform_package.clone();
+        duplicate_package.reference.digest = format!("sha256:{}", "8".repeat(64));
+        duplicate_package.descriptor.version = "3.0.0".to_string();
+        let platform_release = platform_package.descriptor.release_ref();
+        let tenant_release = tenant_package.descriptor.release_ref();
+        let duplicate_release = duplicate_package.descriptor.release_ref();
+        let mut installations = Vec::new();
+        for (package, scope) in [
+            (platform_package, ModuleInstallationScope::Platform),
+            (tenant_package, ModuleInstallationScope::Tenant { tenant_id }),
+            (duplicate_package, ModuleInstallationScope::Platform),
+        ] {
+            let reference = package.reference.clone();
+            let installation = ModuleInstaller::new(
+                FixtureRegistry(package),
+                store.clone(),
+                InMemoryArtifactBlobStore::default(),
+                trust_verifier(),
+                trust_policy(),
+                AllowArtifactPermissionRegistrar,
+            )
+            .admit(admission_command(reference, scope))
+            .await
+            .expect("admit fixture");
+            installations.push(installation);
+        }
+        let update_status = |installation_id: Uuid, status: &str| {
+            Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = ?1 WHERE installation_id = ?2",
+                vec![status.to_string().into(), installation_id.to_string().into()],
+            )
+        };
+        for installation in &installations[..2] {
+            database
+                .execute_raw(update_status(installation.installation_id, "active"))
+                .await
+                .expect("activate fixture");
+        }
+        assert!(matches!(
+            crate::ArtifactInstallationResolver::resolve(&store, &platform_release, tenant_id).await,
+            Err(ArtifactInstallationResolveError::NotActiveSelection)
+        ));
+        assert!(matches!(
+            crate::ArtifactInstallationResolver::resolve_exact(
+                &store,
+                installations[0].installation_id,
+                &platform_release,
+                tenant_id,
+            )
+            .await,
+            Err(ArtifactInstallationResolveError::NotActiveSelection)
+        ));
+        let selected =
+            crate::ArtifactInstallationResolver::resolve(&store, &tenant_release, tenant_id)
+            .await
+            .expect("tenant release selected");
+        assert_eq!(selected.installation_id, installations[1].installation_id);
+
+        // A catalog built before a tenant override must not acquire a
+        // lifecycle claim for the now-shadowed platform release.
+        let definition = crate::ModuleDefinition::from_artifact_descriptor(&selected.descriptor);
+        let mut stale = definition.clone();
+        stale.version = platform_release.version.clone();
+        stale.source = crate::ModuleDefinitionSource::Artifact { release: platform_release.clone() };
+        let key = Uuid::new_v4();
+        assert!(matches!(crate::lifecycle_transition_fence::claim(
+            &database, tenant_id, &tenant_release.slug, &stale, 0, key,
+        ).await, Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::StaleDefinition)));
+        assert!(crate::StaticTenantLifecycleStore::snapshot(&database, tenant_id, &tenant_release.slug)
+            .await.unwrap().active_idempotency_key.is_none());
+        // Matching release tuple is insufficient if metadata was substituted.
+        let mut substituted = definition.clone();
+        substituted.capabilities.push("substituted".to_string());
+        assert!(matches!(crate::lifecycle_transition_fence::claim(
+            &database, tenant_id, &tenant_release.slug, &substituted, 0, key,
+        ).await, Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::StaleDefinition)));
+        assert!(crate::StaticTenantLifecycleStore::snapshot(&database, tenant_id, &tenant_release.slug)
+            .await.unwrap().active_idempotency_key.is_none());
+        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET payload_digest = ?1 WHERE installation_id = ?2",
+            vec![format!("sha256:{}", "f".repeat(64)).into(), installations[1].installation_id.to_string().into()],
+        )).await.expect("corrupt admission payload fixture");
+        assert!(matches!(crate::ArtifactInstallationResolver::resolve(&store, &tenant_release, tenant_id).await,
+            Err(ArtifactInstallationResolveError::Invariant(_))));
+        assert!(matches!(crate::lifecycle_transition_fence::claim(
+            &database, tenant_id, &tenant_release.slug, &definition, 0, key,
+        ).await, Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::Database(_))));
+        assert!(crate::StaticTenantLifecycleStore::snapshot(&database, tenant_id, &tenant_release.slug)
+            .await.unwrap().active_idempotency_key.is_none());
+        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET payload_digest = ?1 WHERE installation_id = ?2",
+            vec![tenant_release.digest.clone().into(), installations[1].installation_id.to_string().into()],
+        )).await.expect("restore admission payload fixture");
+        crate::lifecycle_transition_fence::claim(&database, tenant_id, &tenant_release.slug, &definition, 0, key)
+            .await.expect("current definition admitted");
+        assert_eq!(crate::StaticTenantLifecycleStore::snapshot(&database, tenant_id, &tenant_release.slug)
+            .await.unwrap().active_idempotency_key, Some(key));
+        crate::StaticTenantLifecycleStore::release(&database, tenant_id, &tenant_release.slug, key)
+            .await.expect("release claim");
+
+        let batch = store
+            .resolve_active_many(
+                &[platform_release.clone(), tenant_release.clone(), platform_release.clone()],
+                tenant_id,
+            )
+            .await
+            .expect("batch query");
+        assert!(matches!(
+            &batch[0],
+            Err(ArtifactInstallationResolveError::NotActiveSelection)
+        ));
+        assert_eq!(
+            batch[1].as_ref().unwrap().installation_id,
+            installations[1].installation_id
+        );
+        assert!(matches!(
+            &batch[2],
+            Err(ArtifactInstallationResolveError::NotActiveSelection)
+        ));
+        let other = crate::ArtifactInstallationResolver::resolve(
+            &store,
+            &platform_release,
+            Uuid::new_v4(),
+        )
+            .await
+            .expect("other tenant uses platform selection");
+        assert_eq!(other.installation_id, installations[0].installation_id);
+
+        database
+            .execute_raw(update_status(installations[2].installation_id, "active"))
+            .await
+            .expect("introduce conflicting platform selection");
+        let still_tenant = crate::ArtifactInstallationResolver::resolve(&store, &tenant_release, tenant_id)
+            .await
+            .expect("tenant selection shadows both platform candidates");
+        assert_eq!(still_tenant.installation_id, installations[1].installation_id);
+        database
+            .execute_raw(update_status(installations[1].installation_id, "inactive"))
+            .await
+            .expect("remove tenant selection");
+        for release in [&platform_release, &duplicate_release] {
+            assert!(matches!(
+                crate::ArtifactInstallationResolver::resolve(&store, release, tenant_id).await,
+                Err(ArtifactInstallationResolveError::Invariant(_))
+            ));
+        }
+        let batch = store
+            .resolve_active_many(&[platform_release.clone(), duplicate_release], tenant_id)
+            .await
+            .expect("batch query");
+        assert!(batch
+            .iter()
+            .all(|result| matches!(result, Err(ArtifactInstallationResolveError::Invariant(_)))));
+        database
+            .execute_raw(update_status(installations[2].installation_id, "inactive"))
+            .await
+            .expect("remove conflicting selection");
+        let restored = crate::ArtifactInstallationResolver::resolve(&store, &platform_release, tenant_id)
+            .await
+            .expect("platform selection restored");
+        assert_eq!(restored.installation_id, installations[0].installation_id);
+        let mut many = (0..205)
+            .map(|index| ArtifactReleaseRef {
+                slug: format!("fixture_{index:03}"),
+                version: "1.0.0".to_string(),
+                digest: format!("sha256:{}", "a".repeat(64)),
+            })
+            .collect::<Vec<_>>();
+        many.insert(0, platform_release.clone());
+        many.push(platform_release.clone());
+        let many_results = store
+            .resolve_active_many(&many, tenant_id)
+            .await
+            .expect("chunked query");
+        assert_eq!(many_results.len(), many.len());
+        assert_eq!(
+            many_results[0].as_ref().unwrap().installation_id,
+            installations[0].installation_id
+        );
+        assert!(many_results[1..many_results.len() - 1]
+            .iter()
+            .all(|result| matches!(result, Err(ArtifactInstallationResolveError::Unavailable))));
+        assert_eq!(
+            many_results.last().unwrap().as_ref().unwrap().installation_id,
+            installations[0].installation_id
+        );
+        assert!(matches!(
+            crate::ArtifactInstallationResolver::resolve(&store, &platform_release, Uuid::nil()).await,
+            Err(ArtifactInstallationResolveError::InvalidRequest(_))
+        ));
     }
 
     #[tokio::test]

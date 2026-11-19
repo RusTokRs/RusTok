@@ -1237,6 +1237,35 @@ try {
     .map(relative);
   const publicationEvidence = readTree(publicationEvidencePath, "utf8");
   const serverLifecycleSource = readTree(serverLifecyclePath, "utf8");
+  if (
+    !lifecycleExecutor.includes("pub(crate) async fn execute_module_toggle(") ||
+    !lifecycleExecutor.includes("pub(crate) struct ModuleLifecycleToggleRequest") ||
+    lifecycleExecutor.includes("pub async fn execute_module_toggle(") ||
+    lifecycleExecutor.includes("pub struct ModuleLifecycleToggleRequest")
+  ) {
+    fail("the raw lifecycle executor and host-composed request must remain owner-private");
+  }
+  const lifecycleJournal = readTree(staticLifecycleJournalPath, "utf8");
+  for (const name of [
+    "record_idempotent", "replay_idempotent", "replay_idempotent_command",
+    "record", "discard_validated", "mark_running",
+    "mark_committed_hook_pending", "mark_committed", "mark_committed_with_result",
+    "mark_committed_hook_failed", "resolve_post_hook_failure", "mark_failed",
+  ]) {
+    if (!lifecycleJournal.includes(`pub(crate) async fn ${name}<`) ||
+        lifecycleJournal.includes(`pub async fn ${name}<`)) {
+      fail(`lifecycle journal mutation ${name} must remain owner-private`);
+    }
+  }
+  for (const name of [
+    "record_idempotent", "record", "mark_running", "mark_committed_hook_pending",
+    "mark_committed", "mark_committed_with_result", "mark_committed_hook_failed",
+    "resolve_post_hook_failure", "mark_failed",
+  ]) {
+    if (!lifecycleJournal.includes(`#[cfg(feature = "test-support")]\n    pub async fn ${name}_for_test<`)) {
+      fail(`lifecycle journal fixture ${name} must be gated by test-support`);
+    }
+  }
   // The transition fence moved into the owner: the lifecycle executor rejects a
   // toggle while an unresolved checkpoint exists, and the lifecycle writer rejects
   // settings writes during an unresolved rollout. The host must not query the
@@ -1249,10 +1278,42 @@ try {
     !lifecycleExecutor.includes(
       "an unresolved module release transition blocks lifecycle changes",
     ) ||
-    !lifecycleWriterSource.includes("reject_unverifiable_rollout_settings_write") ||
-    !lifecycleWriterSource.includes(
-      "settings cannot be changed during an unresolved transition",
+    !lifecycleExecutor.includes("lifecycle_transition_fence::claim(") ||
+    !read("crates/modules/rustok-modules/src/lifecycle_transition_fence.rs").includes(
+      "resolve_active_many_in_transaction(",
     ) ||
+    !read("crates/modules/rustok-modules/src/lifecycle_transition_fence.rs").includes(
+      "ensure_artifact_selection_visibility(&tx)",
+    ) ||
+    !read("crates/modules/rustok-modules/src/recovery.rs").includes(
+      "lifecycle_transition_fence::claim(",
+    ) ||
+    !read("crates/modules/rustok-modules/src/recovery.rs").includes(
+      '"hook_identity_and_quiescence_unverified"',
+    ) ||
+    !read("crates/modules/rustok-modules/src/recovery.rs").includes("let retryable = false;") ||
+    !lifecycleExecutor.includes("if let Some(source_id) = request.recovery_source_id") ||
+    !lifecycleExecutor.includes("if !source.retryable") ||
+    !lifecycleWriterSource.includes("if !plan.retryable") ||
+    !transitionOwner.includes("lifecycle_transition_fence::has_journal_claim(") ||
+    !readTree(lifecycleOwnerPath).includes("lifecycle_transition_fence::has_journal_claim(") ||
+    !lifecycleWriterSource.includes("reject_unverifiable_rollout_settings_write") ||
+    !read("crates/modules/rustok-modules/src/settings_transition_fence.rs").includes(
+      "settings cannot be changed during an unresolved module transition",
+    ) ||
+    !lifecycleWriterSource.includes("settings_transition_fence::lock_and_check(") ||
+    !read("crates/modules/rustok-modules/src/static_settings_localization.rs").includes(
+      "settings_transition_fence::lock_and_check(",
+    ) ||
+    !read("crates/modules/rustok-modules/src/static_settings_source_locale.rs").includes(
+      "settings_transition_fence::lock_and_check(",
+    ) ||
+    !transitionStore.includes("pub(crate) async fn save_checkpoint<") ||
+    (transitionStore.match(/ensure_checkpoint_fence_visibility\(db\)\.await\?/g) || []).length !== 2 ||
+    !transitionStore.includes("row_security_active('module_transition_checkpoints'::regclass)") ||
+    !transitionStore.includes("FROM (SELECT count(*) FROM module_transition_checkpoints WHERE FALSE)") ||
+    !readTree(staticLifecycleJournalPath).includes("pub(crate) async fn claim<") ||
+    !readTree(staticLifecycleJournalPath).includes("pub(crate) async fn persist_settings<") ||
     !transitionOwner.includes("pub async fn active_checkpoint_for_module(") ||
     !transitionOwner.includes(
       "pub async fn active_observing_checkpoint_for_module(",

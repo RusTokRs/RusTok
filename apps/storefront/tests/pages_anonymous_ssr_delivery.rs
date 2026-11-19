@@ -7,7 +7,7 @@ fn render_document_source() -> &'static str {
         .find("fn render_document(")
         .expect("render_document source");
     let end = HOST_SOURCE[start..]
-        .find("#[cfg(feature = \"ssr\")]\nasync fn enabled_modules_or_empty")
+        .find("#[cfg(feature = \"ssr\")]\nasync fn read_storefront_modules")
         .map(|offset| start + offset)
         .expect("render_document end");
     &HOST_SOURCE[start..end]
@@ -62,9 +62,9 @@ fn anonymous_pages_host_source_has_no_executable_client_bootstrap() {
 }
 
 #[test]
-fn anonymous_document_call_does_not_receive_a_script_nonce() {
-    assert!(
-        HOST_SOURCE
-            .contains("render_document(locale, \"RusToK Storefront\", \"\", app_html, None)")
-    );
+fn executable_island_bootstraps_require_a_response_nonce() {
+    let document = render_document_source();
+    assert!(document.contains("csp_nonce.map"));
+    assert!(document.contains("nonce=\"{}\""));
+    assert!(document.contains(".unwrap_or_default()"));
 }
