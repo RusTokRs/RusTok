@@ -99,15 +99,15 @@ impl PostService {
         let can_read_non_public = can_read_non_public_posts(&security);
         // An author with Own scope may list their own posts regardless of
         // publication status. Channel visibility still applies to public reads.
-        let can_read_own = security.user_id.is_some()
-            && matches!(
-                security.get_scope(Resource::BlogPosts, Action::Read),
-                PermissionScope::Own
-            );
-        if can_read_own {
-            select = select.filter(
-                blog_post::Column::AuthorId.eq(security.user_id.expect("user_id checked above")),
-            );
+        let own_author_id = (matches!(
+            security.get_scope(Resource::BlogPosts, Action::Read),
+            PermissionScope::Own
+        ))
+        .then_some(security.user_id)
+        .flatten();
+        let can_read_own = own_author_id.is_some();
+        if let Some(author_id) = own_author_id {
+            select = select.filter(blog_post::Column::AuthorId.eq(author_id));
         }
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));

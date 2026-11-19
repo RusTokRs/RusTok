@@ -25,6 +25,9 @@ service = ["dep:rustok-telemetry", "dep:tokio-stream", "dep:tonic", "rustok-prod
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 rustok-channel-ports.workspace = true
 rustok-product-ports.workspace = true

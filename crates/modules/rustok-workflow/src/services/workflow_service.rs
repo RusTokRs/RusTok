@@ -20,6 +20,7 @@ use crate::entities::{
     workflow_step_execution, workflow_version,
 };
 use crate::error::{WorkflowError, WorkflowResult};
+use tracing::instrument;
 
 pub struct WorkflowService {
     db: DatabaseConnection,
@@ -32,6 +33,7 @@ impl WorkflowService {
 
     // ── Workflows ──────────────────────────────────────────────────────────────
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, name = %input.name))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -132,6 +134,7 @@ impl WorkflowService {
             .collect())
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, id = %id))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -190,6 +193,7 @@ impl WorkflowService {
         Ok(())
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, id = %id))]
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<()> {
         if tenant_id.is_nil() || id.is_nil() {
             return Err(WorkflowError::NotFound(id));
@@ -205,6 +209,7 @@ impl WorkflowService {
 
     // ── Steps ──────────────────────────────────────────────────────────────────
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, workflow_id = %workflow_id))]
     pub async fn add_step(
         &self,
         tenant_id: Uuid,
@@ -235,6 +240,7 @@ impl WorkflowService {
         Ok(step_id)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, workflow_id = %workflow_id, step_id = %step_id))]
     pub async fn update_step(
         &self,
         tenant_id: Uuid,
@@ -276,6 +282,7 @@ impl WorkflowService {
         Ok(())
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, workflow_id = %workflow_id, step_id = %step_id))]
     pub async fn delete_step(
         &self,
         tenant_id: Uuid,
@@ -759,6 +766,7 @@ impl WorkflowService {
     // ── Template-based creation ────────────────────────────────────────────────
 
     /// Create a workflow from a built-in marketplace template.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, template_id = %template_id))]
     pub async fn create_from_template(
         &self,
         tenant_id: Uuid,

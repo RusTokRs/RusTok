@@ -11,6 +11,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

@@ -305,12 +305,13 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
 #[test]
 fn invalidation_recovery_is_two_phase_and_monotonic() {
     let invalidation = source("crates/modules/rustok-cache/src/invalidation.rs");
+    let bounded = source("crates/modules/rustok-cache/src/bounded_invalidation.rs");
     assert!(
         invalidation.contains("UnverifiedFirst"),
         "unseeded invalidation consumers must not trust the first observed generation"
     );
     assert!(
-        invalidation.contains("pub fn acknowledge_recovery("),
+        bounded.contains("pub fn acknowledge_recovery("),
         "gap recovery must be acknowledged only after clear/rebuild succeeds"
     );
     assert!(

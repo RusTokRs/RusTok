@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     sync::{
-        OnceLock,
+        LazyLock,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -22,7 +22,10 @@ use crate::{
     TranslationResult,
 };
 
-static METRICS: OnceLock<TranslationObservabilityMetrics> = OnceLock::new();
+static METRICS: LazyLock<TranslationObservabilityMetrics> = LazyLock::new(|| {
+    TranslationObservabilityMetrics::try_new()
+        .expect("static translation metrics definitions are valid")
+});
 static METRICS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static METRICS_REGISTERING: AtomicBool = AtomicBool::new(false);
 
@@ -104,17 +107,15 @@ struct TranslationObservabilityMetrics {
 }
 
 impl TranslationObservabilityMetrics {
-    #[allow(clippy::expect_used)]
-    fn new() -> Self {
-        Self {
+    fn try_new() -> Result<Self, prometheus::Error> {
+        Ok(Self {
             provider_operations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_provider_operations_total",
                     "Translation provider operations by bounded operation and outcome",
                 ),
                 &["operation", "outcome"],
-            )
-            .expect("translation provider operation metric must be valid"),
+            )?,
             provider_operation_duration_seconds: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_provider_operation_duration_seconds",
@@ -122,24 +123,21 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(operation_duration_buckets()),
                 &["operation", "outcome"],
-            )
-            .expect("translation provider duration metric must be valid"),
+            )?,
             provider_failures_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_provider_failures_total",
                     "Translation provider operation failures by bounded category",
                 ),
                 &["operation", "category"],
-            )
-            .expect("translation provider failure metric must be valid"),
+            )?,
             provider_projection_freshness_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_provider_projection_freshness_total",
                     "Observed Translation provider projection freshness states",
                 ),
                 &["freshness"],
-            )
-            .expect("translation provider freshness metric must be valid"),
+            )?,
             provider_checkpoint_age_seconds: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_provider_checkpoint_age_seconds",
@@ -147,16 +145,14 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(checkpoint_age_buckets()),
                 &["freshness"],
-            )
-            .expect("translation provider checkpoint age metric must be valid"),
+            )?,
             workflow_operations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_workflow_operations_total",
                     "Translation workflow operations by bounded operation and outcome",
                 ),
                 &["operation", "outcome"],
-            )
-            .expect("translation workflow operation metric must be valid"),
+            )?,
             workflow_operation_duration_seconds: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_workflow_operation_duration_seconds",
@@ -164,29 +160,25 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(operation_duration_buckets()),
                 &["operation", "outcome"],
-            )
-            .expect("translation workflow duration metric must be valid"),
+            )?,
             workflow_failures_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_workflow_failures_total",
                     "Translation workflow operation failures by bounded category",
                 ),
                 &["operation", "category"],
-            )
-            .expect("translation workflow failure metric must be valid"),
+            )?,
             workflow_progress_snapshots_total: IntCounter::new(
                 "rustok_translation_workflow_progress_snapshots_total",
                 "Content-free Translation job-progress snapshots observed by an authorized caller",
-            )
-            .expect("translation workflow progress snapshot metric must be valid"),
+            )?,
             workflow_apply_attempts_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_workflow_apply_attempts_total",
                     "Translation owner-apply lifecycle observations by bounded outcome",
                 ),
                 &["outcome"],
-            )
-            .expect("translation workflow apply attempt metric must be valid"),
+            )?,
             workflow_owner_apply_duration_seconds: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_workflow_owner_apply_duration_seconds",
@@ -194,48 +186,42 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(operation_duration_buckets()),
                 &["outcome"],
-            )
-            .expect("translation workflow owner apply duration metric must be valid"),
+            )?,
             workflow_owner_errors_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_workflow_owner_errors_total",
                     "Translation owner-apply errors by bounded kind and retryability",
                 ),
                 &["kind", "retryable"],
-            )
-            .expect("translation workflow owner error metric must be valid"),
+            )?,
             memory_lookups_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_memory_lookups_total",
                     "Translation Memory lookups by the strongest returned match kind",
                 ),
                 &["outcome"],
-            )
-            .expect("translation memory lookup metric must be valid"),
+            )?,
             qa_validations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_qa_validations_total",
                     "Translation QA validations by bounded outcome",
                 ),
                 &["outcome"],
-            )
-            .expect("translation QA validation metric must be valid"),
+            )?,
             qa_violations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_qa_violations_total",
                     "Translation QA violations by bounded source family and severity",
                 ),
                 &["family", "severity"],
-            )
-            .expect("translation QA violation metric must be valid"),
+            )?,
             interchange_operations_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_interchange_operations_total",
                     "Translation interchange artifact operations by bounded operation and outcome",
                 ),
                 &["operation", "outcome"],
-            )
-            .expect("translation interchange operation metric must be valid"),
+            )?,
             interchange_operation_duration_seconds: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_interchange_operation_duration_seconds",
@@ -243,16 +229,14 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(operation_duration_buckets()),
                 &["operation", "outcome"],
-            )
-            .expect("translation interchange duration metric must be valid"),
+            )?,
             interchange_rejections_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_interchange_rejections_total",
                     "Translation interchange artifact rejections by bounded category",
                 ),
                 &["operation", "category"],
-            )
-            .expect("translation interchange rejection metric must be valid"),
+            )?,
             interchange_artifact_bytes: HistogramVec::new(
                 HistogramOpts::new(
                     "rustok_translation_interchange_artifact_bytes",
@@ -260,33 +244,29 @@ impl TranslationObservabilityMetrics {
                 )
                 .buckets(artifact_size_buckets()),
                 &["operation"],
-            )
-            .expect("translation interchange size metric must be valid"),
+            )?,
             interchange_import_items_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_interchange_import_items_total",
                     "Translation interchange import items by aggregate outcome",
                 ),
                 &["outcome"],
-            )
-            .expect("translation interchange item outcome metric must be valid"),
+            )?,
             interchange_expiry_cleanup_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_interchange_expiry_cleanup_total",
                     "Translation interchange artifact expiry cleanup by bounded storage outcome",
                 ),
                 &["outcome"],
-            )
-            .expect("translation interchange expiry cleanup metric must be valid"),
+            )?,
             workflow_job_lifecycle_total: IntCounterVec::new(
                 Opts::new(
                     "rustok_translation_workflow_job_lifecycle_total",
                     "Translation job lifecycle transitions by bounded state",
                 ),
                 &["transition"],
-            )
-            .expect("translation job lifecycle metric must be valid"),
-        }
+            )?,
+        })
     }
 
     fn record_provider_operation<T>(
@@ -704,7 +684,7 @@ fn ensure_registered() {
 }
 
 fn metrics() -> &'static TranslationObservabilityMetrics {
-    METRICS.get_or_init(TranslationObservabilityMetrics::new)
+    &METRICS
 }
 
 fn record_result_trace<T>(
@@ -935,7 +915,7 @@ mod tests {
 
     #[test]
     fn collector_renders_only_translation_metric_families() {
-        let metrics = TranslationObservabilityMetrics::new();
+        let metrics = TranslationObservabilityMetrics::try_new().expect("test metrics initialize");
         metrics
             .provider_operations_total
             .with_label_values(&["change_sync", "success"])

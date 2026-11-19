@@ -17,9 +17,11 @@ mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
-pub mod normalization;
 pub mod ports;
 pub mod services;
+
+pub use domain::normalization;
+pub use domain::normalization::normalize_term_route_key;
 
 pub use services::search_projection;
 pub use services::search_projection::{

@@ -136,10 +136,10 @@ pub(crate) fn prepare_runtime_messages(request: &RuntimeRequest) -> AiResult<Vec
             }
             ChatMessageRole::User | ChatMessageRole::Tool => {
                 let source = message.content.as_deref().unwrap_or_default();
-                let label = match message.role {
-                    ChatMessageRole::User => "USER_OR_ARTIFACT_CONTEXT",
-                    ChatMessageRole::Tool => "TOOL_RESULT",
-                    _ => unreachable!("untrusted message role is exhaustive"),
+                let label = if matches!(message.role, ChatMessageRole::Tool) {
+                    "TOOL_RESULT"
+                } else {
+                    "USER_OR_ARTIFACT_CONTEXT"
                 };
                 message.content = Some(bounded_untrusted_context(
                     label,

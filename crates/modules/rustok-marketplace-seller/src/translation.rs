@@ -357,6 +357,7 @@ impl MarketplaceSellerTranslationService {
                 &txn,
                 tenant_id,
                 seller_id,
+                // INVARIANT: (!unchanged).then(...) above guarantees operation_id is Some when !unchanged.
                 operation_id.expect("changed seller Translation apply must have an operation id"),
                 &resource_revision,
                 translation_lifecycle_for_status(&seller.status).map_err(|error| {

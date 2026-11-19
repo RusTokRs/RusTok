@@ -87,25 +87,6 @@ impl GroupsService {
         Ok(result)
     }
 
-    async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
-        if tenant_id.is_nil() {
-            return Err(GroupsError::Validation(
-                "tenant_id cannot be nil UUID".to_string(),
-            ));
-        }
-        if group_id.is_nil() {
-            return Err(GroupsError::Validation(
-                "group_id cannot be nil UUID".to_string(),
-            ));
-        }
-        group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(group_id))
-            .one(&self.db)
-            .await?
-            .ok_or(GroupsError::NotFound)
-    }
-
     async fn membership_model(
         &self,
         tenant_id: Uuid,

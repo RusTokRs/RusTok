@@ -431,6 +431,7 @@ impl DocumentService {
     }
 
     /// Delete a page (soft delete by setting deleted_at, or hard purge).
+    #[instrument(skip(db))]
     pub async fn delete_page(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -508,7 +509,7 @@ impl DocumentService {
         }
 
         // 1. Verify page existence
-        let _ = page::Entity::find()
+        let _page = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
             .filter(page::Column::DeletedAt.is_null())
@@ -744,7 +745,7 @@ impl DocumentService {
         }
 
         // Verify page exists and is not soft-deleted
-        let _ = page::Entity::find()
+        let _page = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
             .filter(page::Column::DeletedAt.is_null())

@@ -7,7 +7,9 @@
 //! persisted state instead of hardcoded values.
 
 use async_trait::async_trait;
-use rustok_cache::{CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin};
+use rustok_cache::{
+    CacheSettingsAdminError, CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin,
+};
 use uuid::Uuid;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -32,10 +34,10 @@ impl ServerCacheSettingsAdmin {
 
 #[async_trait]
 impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
-    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, String> {
+    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
         let snapshot = SettingsService::get_snapshot(&self.ctx, tenant_id, category::CACHE)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| CacheSettingsAdminError(error.to_string()))?;
         Ok(CacheSettingsSnapshot {
             settings: snapshot.settings,
             schema_version: snapshot.schema_version,
@@ -48,7 +50,7 @@ impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
         actor_id: Option<Uuid>,
         settings: serde_json::Value,
         expected_schema_version: i32,
-    ) -> Result<CacheSettingsSnapshot, String> {
+    ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
         let event_bus = crate::services::event_bus::transactional_event_bus_from_context(&self.ctx);
         let validators = ValidatorRegistry::default();
         let snapshot = SettingsService::update_if_current(
@@ -62,7 +64,7 @@ impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
             expected_schema_version,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| CacheSettingsAdminError(error.to_string()))?;
         Ok(CacheSettingsSnapshot {
             settings: snapshot.settings,
             schema_version: snapshot.schema_version,

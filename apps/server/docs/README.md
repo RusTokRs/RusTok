@@ -28,10 +28,22 @@ the matching task-local scope before starting a normal root resolver; nested
 fields of an already admitted root are not rechecked. GraphQL role-grant
 replacements advance the durable generation transactionally; after commit the
 server role writer clears the local cache, invalidates the calling snapshot, and
-attempts all-users fan-out. These checks do not cover every immutable
-`AuthContext` consumer, other tasks or replicas, and do not establish a
-transaction-spanning revocation fence. See the
+attempts all-users fan-out. The compatibility role-membership invalidation path
+joins both role and user rows to the requested tenant before clearing user
+snapshots. These checks do not cover every immutable `AuthContext` consumer,
+other tasks or replicas, and do not establish a transaction-spanning revocation
+fence. See the
 [request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
+
+Tenant-bound channel REST handlers authorize against the authenticated
+`CurrentUser.permissions` snapshot, including the OAuth token ceiling, rather
+than looking up broader persisted user grants without a request scope. DLQ
+list/replay scope is derived from the canonical top-level outbox envelope tenant
+when present, with a nested-event fallback for legacy rows only. Replays repeat
+the tenant predicate in the atomic status transition; the preceding read does
+not grant permission to update a different tenant's event. The module-owned
+Outbox admin counters apply the same canonical-first rule, so a conflicting
+legacy nested tenant cannot reveal another tenant's counts.
 
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
@@ -57,6 +69,23 @@ open completion gates.
 OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
 Its serialized `active` and `archived` values match persisted owner lifecycle
 spelling; server translation queries use SeaQuery's expression trait.
+
+Invite acceptance and user-admin revocation share a transaction-scoped
+`auth_invites` row fence. The first committed transition wins; accepted invites
+cannot be retroactively revoked, and replayed revocations do not publish another
+`UserInviteRevoked` event.
+
+OAuth consent grants and revocations lock the app row and then the subject row,
+matching token issuance's lock order before reading or changing consent. This
+prevents an exchange from committing a token against consent that was revoked
+first, and prevents grants after an app or user becomes inactive. Token
+exchange and refresh also re-read the active consent, scope coverage, and grant
+epoch inside the issuance transaction after acquiring those locks, so a
+concurrent consent re-grant or scope change cannot persist credentials from a
+stale preflight snapshot. Manual OAuth
+app edits mark lifecycle, credential, identity, and runtime-owned columns
+`NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
+`last_used_at` value.
 
 ## Mandatory platform baseline
 
@@ -168,6 +197,24 @@ REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
 
+HTTP edge settings are bounded before reaching Tokio and Tower:
+`RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
+600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
+at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
+16,384. Zero or malformed values use the defaults, while oversized values are
+clamped with a warning. Only exact `multipart/form-data` requests to
+`/api/media` and PUT requests to the registry artifact route receive the
+upload timeout budget. Active rate-limit windows are normalized to 1 second
+through 365 days for both memory and Redis backends; disabled limiters remain
+disabled.
+
+Database pool settings are validated before connecting: an omitted
+`max_connections` uses the pool default of 10, explicit values may not exceed
+1,024, and `min_connections` may not exceed the effective maximum. Database
+`connect_timeout` is capped at 300,000 ms and `idle_timeout` at 86,400,000 ms.
+Out-of-range values fail startup instead of creating unbounded pool limits or
+timeouts.
+
 OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
 do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`
@@ -177,10 +224,64 @@ misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
+Cookie-session login, registration and refresh use the remaining persisted
+refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
+is not extended when a session is rotated, and unrepresentable persisted
+timestamps fail closed rather than panicking.
+
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid.
+success while a refresh token could remain valid. Session-id logout now locks
+the active row before building its revocation update (PostgreSQL/MySQL row lock;
+SQLite write fence before read), so a concurrent refresh cannot be overwritten
+by a stale ActiveModel snapshot. A cookie containing the
+immediately previous refresh token (for example, when a rotation response
+was lost) also revokes its still-live successor session under the same row
+lock. Refresh-reuse detection also resolves the immediately previous
+digest under that same backend-specific row lock before revoking the session,
+so a stale ActiveModel snapshot cannot overwrite a concurrent rotation. A replay
+inside the 30-second race window is rejected without revoking the live session,
+but this is not an idempotent response replay: a lost successful response still
+cannot be recovered from the old cookie. Older generations are not represented
+in the in-place session row and remain an open incident-detection gap. Multiple
+cookies with the
+`rustok-session` name are rejected, including across repeated Cookie headers,
+rather than selecting an order-dependent token. First-party session validity,
+new issuance and refresh rotation enforce the original 90-day absolute expiry
+(including legacy rows without an explicit deadline). Auth lifecycle mutation
+lookups reserve SQLite's write lock with a predicate-matched no-op update before
+reading the user/session row; PostgreSQL/MySQL use row-level FOR UPDATE.
+Login, profile changes, password changes, refresh rotation, reuse revocation,
+and both logout paths therefore do not rely on SQLite's unsupported row-lock
+syntax or a deferred read-to-write upgrade. OAuth token issuance also reserves
+the SQLite writer by known client/subject IDs before reloading current state;
+OAuth admin mutations and admin user mutations use the same write-first fence
+by tenant/app or tenant/user ID.
+Failed dummy Argon2 hash
+initialization propagates as an internal auth error rather than substituting
+an empty hash.
+
+OAuth refresh requests may retain the original scopes by omitting `scope` or
+request a non-empty subset of the currently authorized scopes. Authorization
+and client-credentials requests also preserve scope presence: omission selects
+the configured default, while an explicitly empty or whitespace-only value
+fails with `invalid_scope`. Consent grants must contain at least one scope.
+The `refresh_token` grant is valid only when the app also declares
+`authorization_code`. The server persists narrowed scopes on rotated
+credentials. Reuse detection revokes the scoped OAuth token family; on a
+persistence error it returns `server_error` rather than swallowing the failed
+security effect. Automatic durable retry after the client stops retrying is
+not established. The 30-second reuse grace suppresses family revocation
+for a likely concurrent duplicate, but the request still receives `invalid_grant`;
+the replacement token is not replayed, so a lost successful response cannot
+be recovered from the old refresh token.
+
+GraphQL request-preparation policies classify only the operation selected by
+`operationName` (or the sole operation when no name is required). The selected
+operation is an execution selector, not an authorization grant: field permissions
+remain enforced by server-owned policy. Fragment-spread classification is
+cycle-safe because host preflight runs before GraphQL's normal document validation.
 
 ## Runtime surface
 
@@ -222,11 +323,48 @@ success while a refresh token could remain valid.
 - Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
   application context.
-- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
+- Module event dispatcher startup requires `EventRuntime` before launching any
+  dependent Product Media release, Commerce paid-order label, marketplace financial,
+  or Payment provider recovery workers. A missing event runtime fails bootstrap
+  without leaving detached module-owned recovery tasks running.
+- Event runtime construction completes fallible transport, projector, and relay
+  configuration work before it adds tenant-generation or Redis-status listener
+  tasks. The RBAC invalidation listener may already be started by early server
+  initialization; it remains registered in the shared runtime and is drained if
+  later event-runtime validation fails.
+- The HTTP server bootstrap is serialized per `ServerRuntimeContext` and shares
+  its initialization fence with shutdown. Shutdown signals workers first, then
+  waits for bootstrap to finish registering handles before taking the drain
+  snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+- Once started, the opt-in Product Index, Social Graph Index, and Forum Search
+  contract consumers are required readiness workers. Their durable broker
+  offsets remain uncommitted on terminal delivery failure; the readiness probe
+  therefore turns unhealthy if a consumer exits instead of leaving the HTTP
+  host green while its projection queue is stalled.
+- Forum Search inbox reconciliation and the opt-in Notification outbox-intake,
+  fanout, and candidate workers are also required readiness workers once started.
+  A dead queue/reconciliation task cannot leave the HTTP host green while its
+  durable work remains unprocessed.
+- Notification intake registers its supported event types in the Outbox-owned
+  consumer ledger before runtime retention starts. Accepted receipts and
+  permanent rejections acknowledge the original event in the same transaction;
+  unacknowledged events remain retained through intake outages. Registration is
+  durable, so disabling the worker does not release an existing retention hold.
+- Outbox relay polling, claim leases, retry backoff, and outbox-retention
+  polling are each capped at one day. Relay batches are capped at 10,000 events,
+  in-flight delivery concurrency at 128, and in-memory event channel capacity
+  at 65,536. Invalid relay/retention resource or timing configuration fails
+  validation instead of delaying recovery for unbounded periods, wrapping retry
+  delays, or allowing unbounded allocation.
+- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
+  In-memory fixed-window counters sample time inside the serialized per-key update;
+  a request delayed behind another cannot apply an obsolete window timestamp.
+  Exactly at a window deadline, its counter restarts rather than extending the
+  previous window by one tick.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
-- Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled.
+- Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.
 - Tenant cache invalidation helpers return a typed `Result`; callers must handle generation rotation/publication failures rather than treating a logged warning as successful invalidation.
 - Auth-middleware early rejections use the shared JSON error envelope (with internal details redacted), and server-side request-budget expiry maps to HTTP `504` with the canonical JSON timeout error.
 - Build-time runtime-extension wiring reads the canonical `[crate].entry_type` manifest field and fails when an extension omits it; it does not infer Rust types by scanning source text.
@@ -316,13 +454,33 @@ success while a refresh token could remain valid.
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
-  cannot resurrect older tokens.
+  cannot resurrect older tokens. Code exchange locks the active app and delegated
+  subject in the persistence transaction, then rechecks the client-secret hash,
+  authorization-code grant, current scopes, registered redirect URI, subject status,
+  and password-change epoch before consuming the code. Refresh rotation similarly
+  locks the app and subject and rechecks the client-secret hash, refresh grant,
+  current scopes, subject status, and password-change epoch before consuming the
+  refresh token. Client-credentials issuance locks and rechecks its app before
+  persisting the access row. App, consent, password, and user-status revocation also
+  invalidate outstanding authorization codes, preventing pending credentials from
+  surviving a later reactivation.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
+- Manifest synchronization for managed OAuth apps acquires an exclusive tenant-row lock and reconciles
+  app upserts, translations, orphan deactivation, token revocation, consent revocation, and pending-code
+  invalidation in one transaction per tenant. Existing app rows are also locked through the same mutation
+  fence used by token issuance and consent before their security-sensitive configuration changes.
+  Reactivation also revokes dependent credentials left live by older versions. The all-tenants bootstrap
+  sweep is sequential and does not provide one global cross-tenant transaction.
+- Explicit OAuth app revocation deactivates the app and revokes its active access/refresh tokens, user
+  consents, and pending authorization codes in the same transaction.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
-  model does not expand `refresh_token` implicitly for auto-created applications.
+  model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
+  URIs require HTTPS; mobile clients may use HTTP only on loopback and may use reverse-domain private-use
+  schemes. First-party managed apps may use loopback HTTP only when their configured public URL is itself
+  loopback HTTP, keeping local development separate from production web-client policy.
 - The OAuth token endpoint resolves clients through the security-only OAuth app lookup, so token issuance does
   not depend on tenant locale or `oauth_app_translations` presentation data.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
@@ -334,6 +492,10 @@ success while a refresh token could remain valid.
 - OAuth browser-session and consent flows use the same case-insensitive Bearer authentication scheme
   parsing as the HTTP authentication boundary; the browser-session helper requires exactly one Bearer
   token and does not silently accept Basic or multi-token authorization values.
+  Repeated `Authorization` fields are rejected. When an `Authorization` header is present but
+  malformed, consent does not fall back to a cookie from a different principal. OAuth browser
+  cookies are read across all Cookie fields and duplicate `rustok_oauth_browser_session` names
+  fail closed instead of using an order-dependent token.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
@@ -345,7 +507,7 @@ success while a refresh token could remain valid.
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
   framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
   `rustok-blog` is merged from its `HostRuntimeContext` entrypoint.
-- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`. For host resolution, the propagated `ChannelContext.target_type/target_value` identifies the concrete web-domain target that matched the effective host, while non-host resolution retains the channel's primary/first target representation.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`. For host resolution, the propagated `ChannelContext.target_type/target_value` identifies the concrete web-domain target that matched the effective host, while non-host resolution retains the channel's primary/first target representation. Channel REST mutations invalidate the local cache immediately and publish the durable generation to other replicas; the five-second database reconciliation remains the recovery path if fan-out is unavailable.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/modules/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
 - Product/search title filtering helpers are not server-owned services: product translation
@@ -515,7 +677,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
 - Registry artifacts are never read or written through server-local filesystem paths: persisted state stores only `artifact_storage_key`, owner services call the shared `ObjectStore` directly, and `GET /v2/catalog/publish/{request_id}/artifact/download` uses native signing with stream fallback. Validation is selected by immutable artifact origin: platform-built and external-prebuilt uploads retain the bounded metadata-bundle contract, while `alloy_authored` accepts only the bounded canonical Rhai workspace media type. Final Alloy staging still requires that upload checksum to equal the reviewed source-revision digest.
 - `POST /v2/catalog/publish/{request_id}/author-signature` accepts an authenticated platform-scoped command context plus immutable signature reference, SHA-256, signer, policy revision, and body idempotency key. It never accepts the signed artifact digest: `rustok-modules` locks the publish request, derives its current attached-artifact checksum, persists the signature digest in the immutable evidence fact verified at final publication, and records an exact-replay receipt over the context and signature facts before returning the owner status snapshot.
 - Alloy release staging is host-composed on both transports: `POST /api/alloy/scripts/{id}/releases/stage` and the manifest-owned GraphQL `stageRelease` mutation require the authenticated tenant's current script revision, `scripts:manage` plus `modules:manage`, reviewed source digest, publish request ID, and idempotency key. They delegate all marketplace writes to `rustok-modules`; final promotion remains the registry governance approval operation, and publish-status `nextStep` now points Alloy-authored requests to this staging boundary instead of implying direct approval.
-- Alloy marketplace import is host-composed on authenticated HTTP `POST /api/alloy/releases/import`, GraphQL `importPublishedRelease`, and remote MCP `alloy_import_published_release` on `/api/mcp/runtime/tools/call` and `/api/mcp/runtime/tools/stream`. The server derives tenant and actor identity, requires `scripts.manage` plus `modules.manage`, and injects an owner-backed source provider that accepts only the exact active publication projection and verified digest-pinned CAS workspace. The adapter cannot read catalog DTOs, upload objects, or mutable OCI tags. Generic stdio MCP does not advertise this tool because it lacks the server's durable tenant-bound composition. Imported-draft preview and workspace-test execution resolve the immutable parent reference through the owner to the exact active tenant installation and policy on every run; inactive, disabled, stale, mismatched, or missing parent state fails closed without a default policy fallback.
+- Alloy marketplace import is host-composed on authenticated HTTP `POST /api/alloy/releases/import`, GraphQL `importPublishedRelease`, and remote MCP `alloy_import_published_release` on `/api/mcp/runtime/tools/call` and `/api/mcp/runtime/tools/stream`. The server derives tenant and actor identity, verifies identity-to-binding tenant equality, requires `scripts.manage` plus `modules.manage`, and injects an owner-backed source provider that accepts only the exact active publication projection and verified digest-pinned CAS workspace. The adapter cannot read catalog DTOs, upload objects, or mutable OCI tags. Generic stdio MCP does not advertise this tool because it lacks the server's durable tenant-bound composition. Imported-draft preview and workspace-test execution resolve the immutable parent reference through the owner to the exact active tenant installation and policy on every run; inactive, disabled, stale, mismatched, or missing parent state fails closed without a default policy fallback.
 - Marketplace catalog transport exposes only the current `GET /catalog` and
   `GET /catalog/{slug}` contracts. The server router and outbound registry
   clients do not probe or serve version-suffixed compatibility paths.
@@ -534,7 +696,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   request context, and accept only an exact admitted installation, registered
   permission key, and idempotency key. The routes never write static
   `role_permissions` and do not auto-grant anything at installation time.
-- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, and source-free deleted-evidence retention tools. Script authoring and retention authority resolve the durable binding, require `scripts.manage`, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL. They return source-redacted authoring evidence or source-free retention state, and generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, published-release import, and source-free deleted-evidence retention tools. Script authoring, published-release import, and retention authority resolve the durable binding, require their declared permissions, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL where applicable. Source-bearing authoring and published-release import metadata is redacted before audit persistence; retention remains source-free. Generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
 - The hybrid product installer is introduced through `rustok-installer` and
   `rustok-installer-persistence`. The latter owns the shared SeaORM database,
   durable-state, and bootstrap-writer adapter. `/api/install/*` delegates plan,
@@ -570,7 +732,9 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token
-  is rejected. `/api/install/*` intentionally bypasses the tenant resolution middleware,
+  is rejected. These are mutually exclusive ways to present the setup
+  credential: requests containing both headers are rejected rather than
+  selecting one source and ignoring the other. `/api/install/*` intentionally bypasses the tenant resolution middleware,
   because the first install runs before a tenant context is created. The CLI remains
   the canonical automation path.
 - The tenant middleware resolution contract is fixed by integration tests in
@@ -760,12 +924,16 @@ frame to the configured primary first, then awaits matching local handlers. Unav
 or local failure propagates, retaining Outbox retry/DLQ and original event identity; remote send
 can repeat after partial local success. Families with no matching local handler remain remotely
 consumed, but an unbound registry is never interpreted as proof that no handler is required.
-Root fanout stays best-effort. Artifact intake and cache/generation wrappers forward typed frames
-through the existing chain. No extra bus, raw `sys_events` pipeline or host domain publisher.
+Root `DomainEvent` records delivered by the Outbox relay now await every matching registered
+module handler through the same listener registry; an explicit empty registry is valid when no
+root handler matches. The generic `EventBus.publish_envelope` broadcast API remains best-effort and
+is not the Outbox acknowledgement boundary. Artifact intake and cache/generation wrappers forward
+typed frames through the existing chain. No extra bus, raw `sys_events` pipeline or host domain publisher.
+See the [accepted root-delivery decision](../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
 
-Five transport-double definitions are **uncompiled/unrun**; they do not certify a real Iggy
-connector, persistent receive/cursor ACK, relay/startup/restart/lag/crash windows, artifact worker
-or PostgreSQL Search ordering. See the [Core API](../../../crates/libs/rustok-core/CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
+The transport-double and regression definitions are **uncompiled/unrun**; they do not certify a
+real Iggy connector, persistent receive/cursor ACK, relay/startup/restart/lag/crash windows,
+artifact worker or PostgreSQL Search ordering. See the [Core API](../../../crates/libs/rustok-core/CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
 and [Inventory packet](../../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
 
 ## Current service contexts for selected source work (2026-11-02; source only)

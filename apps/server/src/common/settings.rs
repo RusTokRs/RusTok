@@ -9,6 +9,13 @@ use rustok_storage::StorageConfig;
 
 use crate::services::redis_runtime::resolve_redis_url;
 
+const MAX_OUTBOX_RELAY_BATCH_SIZE: u64 = 10_000;
+const MAX_OUTBOX_RELAY_CONCURRENCY: usize = 128;
+const MAX_OUTBOX_RELAY_INTERVAL_MS: u64 = 86_400_000;
+const MAX_OUTBOX_RELAY_CLAIM_TTL_MS: u64 = 86_400_000;
+const MAX_OUTBOX_RELAY_BACKOFF_MS: u64 = 86_400_000;
+const MAX_EVENT_CHANNEL_CAPACITY: usize = 65_536;
+
 const DEFAULT_TENANT_ID: Uuid = Uuid::from_u128(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -188,6 +195,10 @@ pub struct EventSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EventBackpressureSettings {
+    /// Enables configurable warning/critical thresholds. The server-owned
+    /// EventBus-to-Outbox bridge always enforces a hard admission bound at
+    /// broadcast capacity, even when this option is false, so the durable
+    /// forwarder cannot silently lag.
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_backpressure_max_queue_depth")]
@@ -857,10 +868,13 @@ impl RustokSettings {
         let relay_backoff = &parsed.events.relay_retry_policy;
         if relay_backoff.base_backoff_ms == 0
             || relay_backoff.max_backoff_ms < relay_backoff.base_backoff_ms
+            || relay_backoff.max_backoff_ms > MAX_OUTBOX_RELAY_BACKOFF_MS
         {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_retry_policy requires positive base_backoff_ms and max_backoff_ms >= base_backoff_ms",
+                format!(
+                    "rustok.events.relay_retry_policy requires positive base_backoff_ms, max_backoff_ms >= base_backoff_ms, and max_backoff_ms <= {MAX_OUTBOX_RELAY_BACKOFF_MS}"
+                ),
             )));
         }
 
@@ -871,38 +885,68 @@ impl RustokSettings {
             )));
         }
 
-        if parsed.events.channel_capacity == 0 {
+        if parsed.events.channel_capacity == 0
+            || parsed.events.channel_capacity > MAX_EVENT_CHANNEL_CAPACITY
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.channel_capacity must be > 0",
+                format!(
+                    "rustok.events.channel_capacity must be between 1 and {MAX_EVENT_CHANNEL_CAPACITY}"
+                ),
             )));
         }
 
-        if parsed.events.relay_interval_ms == 0 {
+        if parsed.events.relay_interval_ms == 0
+            || parsed.events.relay_interval_ms > MAX_OUTBOX_RELAY_INTERVAL_MS
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_interval_ms must be > 0",
+                format!(
+                    "rustok.events.relay_interval_ms must be between 1 and {MAX_OUTBOX_RELAY_INTERVAL_MS}"
+                ),
             )));
         }
 
-        if parsed.events.relay_batch_size == 0 {
+        if std::time::Instant::now()
+            .checked_add(std::time::Duration::from_millis(parsed.events.relay_interval_ms))
+            .is_none()
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_batch_size must be > 0",
+                "rustok.events.relay_interval_ms exceeds the supported monotonic-clock range",
             )));
         }
 
-        if parsed.events.relay_max_concurrency == 0 {
+        if parsed.events.relay_batch_size == 0
+            || parsed.events.relay_batch_size > MAX_OUTBOX_RELAY_BATCH_SIZE
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_max_concurrency must be > 0",
+                format!(
+                    "rustok.events.relay_batch_size must be between 1 and {MAX_OUTBOX_RELAY_BATCH_SIZE}"
+                ),
             )));
         }
 
-        if parsed.events.relay_claim_ttl_ms == 0 {
+        if parsed.events.relay_max_concurrency == 0
+            || parsed.events.relay_max_concurrency > MAX_OUTBOX_RELAY_CONCURRENCY
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_claim_ttl_ms must be > 0",
+                format!(
+                    "rustok.events.relay_max_concurrency must be between 1 and {MAX_OUTBOX_RELAY_CONCURRENCY}"
+                ),
+            )));
+        }
+
+        if parsed.events.relay_claim_ttl_ms == 0
+            || parsed.events.relay_claim_ttl_ms > MAX_OUTBOX_RELAY_CLAIM_TTL_MS
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "rustok.events.relay_claim_ttl_ms must be between 1 and {MAX_OUTBOX_RELAY_CLAIM_TTL_MS}"
+                ),
             )));
         }
 
@@ -1779,6 +1823,83 @@ mod tests {
         });
         RustokSettings::from_settings(&Some(equal))
             .expect("equal positive backoff bounds must be accepted");
+    }
+
+    #[test]
+    fn rejects_event_relay_durations_outside_runtime_ranges() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let oversized_channel = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "channel_capacity": usize::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_channel))
+            .expect_err("event channel capacity must remain bounded");
+        assert!(error.to_string().contains("channel_capacity must be between"));
+
+        let oversized_batch = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_batch_size": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_batch))
+            .expect_err("relay batch must remain bounded");
+        assert!(error.to_string().contains("relay_batch_size must be between"));
+
+        let oversized_concurrency = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_max_concurrency": usize::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_concurrency))
+            .expect_err("relay concurrency must remain bounded");
+        assert!(error.to_string().contains("relay_max_concurrency must be between"));
+
+        let oversized_backoff = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_retry_policy": {
+                        "base_backoff_ms": 1,
+                        "max_backoff_ms": u64::MAX
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_backoff))
+            .expect_err("backoff must remain bounded");
+        assert!(error.to_string().contains("max_backoff_ms <="));
+
+        let oversized_claim = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_claim_ttl_ms": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_claim))
+            .expect_err("claim lease must remain bounded");
+        assert!(error.to_string().contains("relay_claim_ttl_ms must be between"));
+
+        let oversized_interval = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_interval_ms": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_interval))
+            .expect_err("relay polling must remain bounded");
+        assert!(error.to_string().contains("relay_interval_ms must be between"));
     }
 
     #[test]

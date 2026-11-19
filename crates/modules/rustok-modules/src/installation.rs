@@ -553,7 +553,13 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     /// staged blob as their primary action use [`Self::discard`] and
     /// propagate.
     async fn discard_best_effort(&self, staged: &StagedArtifactBlob) {
-        let _ = self.discard(staged).await;
+        if let Err(error) = self.discard(staged).await {
+            tracing::warn!(
+                digest = %staged.digest,
+                error = %error,
+                "Failed best-effort discard of staged artifact blob"
+            );
+        }
     }
     /// Returns only digests that have crossed the durable publish boundary.
     /// The reconciler compares this set with committed control-plane references.
@@ -7528,10 +7534,17 @@ where
         // The caller is already returning the publish/commit failure. A
         // failed release is bounded by the reservation lease and must not
         // replace that primary error.
-        let _ = self
+        if let Err(error) = self
             .store
             .release_blob_publication_reservation(staged)
-            .await;
+            .await
+        {
+            tracing::warn!(
+                digest = %staged.digest,
+                error = %error,
+                "Failed best-effort release of blob publication reservation"
+            );
+        }
     }
 }
 
@@ -7967,11 +7980,7 @@ fn valid_repository_segment(value: &str) -> bool {
     })
 }
 
-pub(crate) use crate::artifact::valid_digest;
-
-pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
-}
+pub(crate) use crate::trust::{sha256_digest, valid_digest};
 
 fn validate_migration_checkpoint_request(
     request: &ArtifactMigrationCheckpointRequest,

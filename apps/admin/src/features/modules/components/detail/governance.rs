@@ -478,7 +478,11 @@ pub fn destructive_governance_confirmation_message(
         ),
         "unyank" => format!(
             "{} `{}`{} . {}",
-            tr(locale, "Unyank release for module", "Восстановить релиз модуля"),
+            tr(
+                locale,
+                "Unyank release for module",
+                "Восстановить релиз модуля"
+            ),
             module_slug,
             release_version
                 .map(|version| format!(" v{version}"))

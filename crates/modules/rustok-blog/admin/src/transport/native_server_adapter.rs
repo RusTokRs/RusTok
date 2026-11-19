@@ -356,7 +356,10 @@ async fn blog_admin_categories_native(
                 return Err(ServerFnError::new("Incomplete Blog categories projection"));
             }
         }
-        unreachable!("Blog categories are bounded by the Taxonomy owner")
+        // INVARIANT: Blog categories are bounded by the Taxonomy owner
+        Err(ServerFnError::new(
+            "Blog categories exceeded maximum supported pagination depth",
+        ))
     }
     #[cfg(not(feature = "ssr"))]
     {

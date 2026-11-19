@@ -189,6 +189,7 @@ impl IndexSourceLoadRequest {
         let schema = first.schema.clone();
         let mut unique = BTreeSet::new();
         for (position, key) in keys.iter().enumerate() {
+            // INVARIANT: batch load request validation enforces homogeneous tenant and schema scope before query execution.
             if key.tenant_id != tenant_id || key.schema != schema {
                 return Err(IndexSourceError::MixedLoadScope { position });
             }
@@ -323,12 +324,28 @@ pub struct IndexSourceFailure {
 }
 
 impl IndexSourceFailure {
+    pub const INTERNAL_ERROR: &'static str = "internal_error";
+
     pub fn retryable(code: impl Into<String>) -> Result<Self, IndexSourceError> {
         Self::new(IndexSourceFailureKind::Retryable, code)
     }
 
     pub fn permanent(code: impl Into<String>) -> Result<Self, IndexSourceError> {
         Self::new(IndexSourceFailureKind::Permanent, code)
+    }
+
+    pub fn retryable_internal_error() -> Self {
+        Self {
+            kind: IndexSourceFailureKind::Retryable,
+            code: Self::INTERNAL_ERROR.to_string(),
+        }
+    }
+
+    pub fn permanent_internal_error() -> Self {
+        Self {
+            kind: IndexSourceFailureKind::Permanent,
+            code: Self::INTERNAL_ERROR.to_string(),
+        }
     }
 
     fn new(

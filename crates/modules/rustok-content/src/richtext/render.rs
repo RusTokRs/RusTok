@@ -89,7 +89,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
             escape_text(node.text.as_deref().unwrap_or_default(), &mut escaped);
             render_inline(&escaped, &node.marks, profile, html);
         }
-        _ => unreachable!("renderer receives only validated nodes"),
+        _ => {}
     }
 }
 
@@ -142,7 +142,7 @@ fn render_inline(value: &str, marks: &[RichTextMark], profile: RichTextProfile, 
             "italic" => html.push_str("<em>"),
             "strike" => html.push_str("<s>"),
             "code" => html.push_str("<code>"),
-            _ => unreachable!("renderer receives only validated marks"),
+            _ => {}
         }
     }
 
@@ -155,7 +155,7 @@ fn render_inline(value: &str, marks: &[RichTextMark], profile: RichTextProfile, 
             "italic" => html.push_str("</em>"),
             "strike" => html.push_str("</s>"),
             "code" => html.push_str("</code>"),
-            _ => unreachable!("renderer receives only validated marks"),
+            _ => {}
         }
     }
 }

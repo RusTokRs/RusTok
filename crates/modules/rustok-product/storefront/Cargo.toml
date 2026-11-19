@@ -11,6 +11,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 hydrate = ["rustok-auth-ui/hydrate", "leptos/hydrate", "rustok-cart-storefront/hydrate", "rustok-pricing-storefront/hydrate", "rustok-ui-leptos/hydrate"]

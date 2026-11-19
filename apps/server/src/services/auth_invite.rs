@@ -4,7 +4,10 @@ use chrono::{DateTime, Utc};
 use rustok_core::events::EventTransport;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    QuerySelect, Set, TransactionTrait, sea_query::Expr,
+};
 use sha2::{Digest, Sha256};
 
 use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
@@ -13,6 +16,66 @@ use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+/// Identifies an issuance-ledger row whose lifecycle is being changed.
+#[derive(Clone, Copy)]
+pub(crate) enum InviteLookup<'a> {
+    Id(uuid::Uuid),
+    TokenHash(&'a str),
+}
+
+/// Acquire the invite row's mutation fence and return the current persisted
+/// value. Acceptance and revocation MUST use the same fence so a revocation
+/// that commits first cannot race an acceptance based on an earlier read.
+///
+/// PostgreSQL and MySQL use a row-level locking read. SQLite has no
+/// `SELECT .. FOR UPDATE`; a no-op update acquires its write lock before
+/// reading the row, avoiding a deferred read-to-write upgrade race.
+pub(crate) async fn lock_invite_for_mutation<C>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    lookup: InviteLookup<'_>,
+) -> Result<Option<auth_invites::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let select = || {
+        let query = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TenantId.eq(tenant_id));
+        match lookup {
+            InviteLookup::Id(id) => query.filter(auth_invites::Column::Id.eq(id)),
+            InviteLookup::TokenHash(token_hash) => {
+                query.filter(auth_invites::Column::TokenHash.eq(token_hash))
+            }
+        }
+    };
+
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => select().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            let update = auth_invites::Entity::update_many()
+                .col_expr(
+                    auth_invites::Column::TokenHash,
+                    Expr::col(auth_invites::Column::TokenHash),
+                )
+                .filter(auth_invites::Column::TenantId.eq(tenant_id));
+            let update = match lookup {
+                InviteLookup::Id(id) => update.filter(auth_invites::Column::Id.eq(id)),
+                InviteLookup::TokenHash(token_hash) => {
+                    update.filter(auth_invites::Column::TokenHash.eq(token_hash))
+                }
+            };
+            let result = update.exec(db).await?;
+            if result.rows_affected != 1 {
+                return Ok(None);
+            }
+            select().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for invite mutation locking".to_string(),
+        )),
+    }
+}
 
 #[derive(Debug)]
 pub enum InviteAcceptanceError {
@@ -69,6 +132,7 @@ impl AuthLifecycleService {
 
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        // INVARIANT: In-memory verification ensuring the decoded invite token belongs to the target tenant.
         if claims.tenant_id != tenant_id {
             return Err(InviteAcceptanceError::InvalidToken);
         }
@@ -110,12 +174,13 @@ impl AuthLifecycleService {
         // Fail closed on the issuance ledger: only tokens an
         // administrator actually issued (and has not revoked) are
         // acceptable, even if the signature verifies.
-        let issued = auth_invites::Entity::find()
-            .filter(auth_invites::Column::TokenHash.eq(&token_hash))
-            .filter(auth_invites::Column::TenantId.eq(tenant_id))
-            .one(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        let issued = lock_invite_for_mutation(
+            &tx,
+            tenant_id,
+            InviteLookup::TokenHash(&token_hash),
+        )
+        .await
+        .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         let issued = match issued {
             Some(invite) if invite.revoked_at.is_none() => invite,
             _ => return Err(InviteAcceptanceError::InvalidToken),
@@ -404,6 +469,76 @@ mod tests {
             &UserRole::Customer,
             false,
         ));
+    }
+
+    #[tokio::test]
+    async fn invite_mutation_lock_reads_the_current_row_for_both_lookup_keys() {
+        use sea_orm::{Database, TransactionTrait};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite test database");
+        db.execute_unprepared(
+            "CREATE TABLE auth_invites (\
+                id TEXT PRIMARY KEY NOT NULL, \
+                tenant_id TEXT NOT NULL, \
+                token_hash VARCHAR(64) NOT NULL UNIQUE, \
+                email VARCHAR(320) NOT NULL, \
+                role VARCHAR(64) NOT NULL, \
+                issued_by TEXT NULL, \
+                expires_at TEXT NOT NULL, \
+                revoked_at TEXT NULL, \
+                created_at TEXT NOT NULL\
+            )",
+        )
+        .await
+        .expect("create invite ledger");
+
+        let tenant_id = uuid::Uuid::new_v4();
+        let invite_id = uuid::Uuid::new_v4();
+        let now = Utc::now();
+        auth_invites::ActiveModel {
+            id: Set(invite_id),
+            tenant_id: Set(tenant_id),
+            token_hash: Set("test-invite-digest".to_string()),
+            email: Set("invite@example.test".to_string()),
+            role: Set("customer".to_string()),
+            issued_by: Set(None),
+            expires_at: Set((now + chrono::Duration::days(7)).into()),
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert invite");
+
+        let tx = db.begin().await.expect("begin first transaction");
+        let issued = lock_invite_for_mutation(
+            &tx,
+            tenant_id,
+            InviteLookup::TokenHash("test-invite-digest"),
+        )
+        .await
+        .expect("lock invite by digest")
+        .expect("invite exists");
+        assert!(issued.revoked_at.is_none());
+
+        let mut active: auth_invites::ActiveModel = issued.into();
+        active.revoked_at = Set(Some(Utc::now().into()));
+        active.update(&tx).await.expect("revoke invite");
+        tx.commit().await.expect("commit revocation");
+
+        let tx = db.begin().await.expect("begin second transaction");
+        let current = lock_invite_for_mutation(
+            &tx,
+            tenant_id,
+            InviteLookup::Id(invite_id),
+        )
+        .await
+        .expect("lock invite by id")
+        .expect("invite still exists");
+        assert!(current.revoked_at.is_some());
+        tx.rollback().await.expect("release invite lock");
     }
 
     #[tokio::test]

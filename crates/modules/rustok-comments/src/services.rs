@@ -171,6 +171,7 @@ impl CommentsService {
         result
     }
 
+    #[instrument(skip(self, txn, security, input), fields(tenant_id = %tenant_id, target_type = %input.target_type, target_id = %input.target_id))]
     pub(crate) async fn create_comment_record_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -201,6 +202,7 @@ impl CommentsService {
             .await
     }
 
+    #[instrument(skip(self, txn, security, input), fields(tenant_id = %tenant_id, target_type = %input.target_type, target_id = %input.target_id))]
     pub async fn create_comment_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -363,6 +365,7 @@ impl CommentsService {
         result
     }
 
+    #[instrument(skip(self, txn, security, input), fields(tenant_id = %tenant_id, comment_id = %comment_id))]
     pub(crate) async fn update_comment_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -452,6 +455,7 @@ impl CommentsService {
         result
     }
 
+    #[instrument(skip(self, txn, security), fields(tenant_id = %tenant_id, comment_id = %comment_id))]
     pub(crate) async fn delete_comment_record_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -490,6 +494,7 @@ impl CommentsService {
         .await
     }
 
+    #[instrument(skip(self, txn, security), fields(tenant_id = %tenant_id, comment_id = %comment_id))]
     pub async fn delete_comment_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -1020,6 +1025,7 @@ impl CommentsService {
         result
     }
 
+    #[instrument(skip(self, txn, security), fields(tenant_id = %tenant_id, comment_id = %comment_id, status = ?status))]
     pub(crate) async fn set_comment_status_in_tx(
         &self,
         txn: &DatabaseTransaction,

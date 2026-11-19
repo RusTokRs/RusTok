@@ -73,7 +73,9 @@ pub fn BlogDraftPreview() -> impl IntoView {
                 }
             };
             check_hash();
-            let _ = window_event_listener(leptos::ev::hashchange, move |_| check_hash());
+            leptos::on_cleanup(window_event_listener(leptos::ev::hashchange, move |_| {
+                check_hash()
+            }));
         }
     });
 

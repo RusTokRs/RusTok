@@ -106,19 +106,21 @@ pub struct TaxonomyModuleTermTranslationOwnerRegistry {
 }
 
 impl TaxonomyModuleTermTranslationOwnerRegistry {
-    pub fn register<T>(&mut self, owner: T) -> Result<(), String>
+    pub fn register<T>(&mut self, owner: T) -> Result<(), crate::TaxonomyError>
     where
         T: TaxonomyModuleTermTranslationOwner + 'static,
     {
         let module_slug = owner.module_slug().trim();
         if module_slug.is_empty() {
-            return Err("taxonomy translation owner module slug must not be empty".to_string());
+            return Err(crate::TaxonomyError::validation(
+                "taxonomy translation owner module slug must not be empty",
+            ));
         }
         if self.owners.contains_key(module_slug) {
-            return Err(format!(
+            return Err(crate::TaxonomyError::conflict(format!(
                 "taxonomy translation owner {} is already registered",
                 module_slug
-            ));
+            )));
         }
         self.owners.insert(module_slug.to_string(), Arc::new(owner));
         Ok(())
@@ -478,10 +480,18 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let next_cursor = has_more.then(|| terms.last()).flatten().map(|term| {
-            OpaqueCursor::new(term.id.to_string())
-                .expect("taxonomy UUID cursor must satisfy the opaque cursor contract")
-        });
+        let next_cursor = has_more
+            .then(|| terms.last())
+            .flatten()
+            .map(|term| {
+                OpaqueCursor::new(term.id.to_string()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "taxonomy.translation_resource_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()?;
 
         Ok(TranslationResourcePage {
             resources,
@@ -739,10 +749,17 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
-        let next_cursor = rows.last().map(|change| {
-            OpaqueCursor::new(change.id.to_string())
-                .expect("taxonomy change UUID must satisfy the opaque cursor contract")
-        });
+        let next_cursor = rows
+            .last()
+            .map(|change| {
+                OpaqueCursor::new(change.id.to_string()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "taxonomy.translation_change_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()?;
         let changes = rows
             .into_iter()
             .map(change_from_model)
@@ -810,10 +827,21 @@ fn summary_from_models(
                 ),
             )
         })?;
-    let exact_locales = translations
-        .iter()
-        .filter_map(|translation| TenantLocale::new(&translation.locale).ok())
-        .collect::<Vec<_>>();
+    let mut exact_locales = Vec::with_capacity(translations.len());
+    for translation in translations {
+        match TenantLocale::new(&translation.locale) {
+            Ok(locale) => exact_locales.push(locale),
+            Err(error) => {
+                return Err(PortError::invariant_violation(
+                    "taxonomy.invalid_locale",
+                    format!(
+                        "stored taxonomy translation locale '{}' is invalid: {error}",
+                        translation.locale
+                    ),
+                ));
+            }
+        }
+    }
     Ok(TranslationResourceSummary {
         identity: taxonomy_identity(term.id)?,
         display_label: source.name.clone(),

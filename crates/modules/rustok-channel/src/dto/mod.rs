@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::error::{ChannelError, ChannelResult};
 use crate::policy::{ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate};
 use crate::resolution::TargetSurface;
 
@@ -177,7 +178,7 @@ pub fn create_resolution_policy_set_input(
 
 pub fn create_resolution_rule_input(
     input: CreateResolutionRuleRequest,
-) -> Result<CreateChannelResolutionRuleInput, String> {
+) -> ChannelResult<CreateChannelResolutionRuleInput> {
     let CreateResolutionRuleRequest {
         priority,
         is_active,
@@ -234,12 +235,12 @@ pub fn update_resolution_rule_input(
     }
 }
 
-fn parse_target_surface(surface: &str) -> Result<TargetSurface, String> {
+fn parse_target_surface(surface: &str) -> ChannelResult<TargetSurface> {
     match surface {
         "http" => Ok(TargetSurface::Http),
-        other => Err(format!(
+        other => Err(ChannelError::Validation(format!(
             "Unsupported surface `{other}`; only `http` is currently supported"
-        )),
+        ))),
     }
 }
 
@@ -383,7 +384,7 @@ mod tests {
         })
         .expect_err("unsupported surface should be rejected");
 
-        assert!(error.contains("Unsupported surface"));
+        assert!(error.to_string().contains("Unsupported surface"));
     }
 
     #[test]

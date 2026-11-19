@@ -180,6 +180,7 @@ impl ProfileService {
     #[deprecated(
         note = "use ProfileMutationService::update_profile_handle_with_event so owner writes and durable ProfileUpdated publication remain atomic"
     )]
+    #[instrument(skip(self))]
     pub async fn update_profile_handle(
         &self,
         tenant_id: Uuid,
@@ -204,6 +205,7 @@ impl ProfileService {
     #[deprecated(
         note = "use ProfileMutationService::update_profile_content_with_event so owner writes and durable ProfileUpdated publication remain atomic"
     )]
+    #[instrument(skip(self))]
     pub async fn update_profile_content(
         &self,
         tenant_id: Uuid,
@@ -237,6 +239,7 @@ impl ProfileService {
     #[deprecated(
         note = "use ProfileMutationService::update_profile_locale_with_event so owner writes and durable ProfileUpdated publication remain atomic"
     )]
+    #[instrument(skip(self))]
     pub async fn update_profile_locale(
         &self,
         tenant_id: Uuid,
@@ -272,6 +275,7 @@ impl ProfileService {
     #[deprecated(
         note = "use ProfileMutationService::update_profile_visibility_with_event so owner writes and durable ProfileUpdated publication remain atomic"
     )]
+    #[instrument(skip(self))]
     pub async fn update_profile_visibility(
         &self,
         tenant_id: Uuid,
@@ -292,6 +296,7 @@ impl ProfileService {
     #[deprecated(
         note = "use ProfileMutationService::update_profile_media_with_event so owner writes and durable ProfileUpdated publication remain atomic"
     )]
+    #[instrument(skip(self))]
     pub async fn update_profile_media(
         &self,
         tenant_id: Uuid,
@@ -652,18 +657,6 @@ impl ProfileService {
             "user-{}",
             short_user_suffix(user_id)
         )))
-    }
-
-    #[allow(dead_code)]
-    async fn upsert_translation(
-        &self,
-        user_id: Uuid,
-        locale: &str,
-        display_name: &str,
-        bio: Option<&str>,
-    ) -> ProfileResult<()> {
-        self.upsert_translation_in_conn(&self.db, user_id, locale, display_name, bio)
-            .await
     }
 
     async fn upsert_translation_in_conn<C>(

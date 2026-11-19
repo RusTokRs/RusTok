@@ -636,6 +636,10 @@ impl AiManagementService {
 
     /// Executes a claimed Alloy workflow stage through the canonical task-run
     /// path. It does not create a parallel provider or tool execution path.
+    #[tracing::instrument(
+        skip(runtime, operator),
+        fields(tenant_id = %operator.tenant_id, %stage_id, %lease_token)
+    )]
     pub async fn execute_agent_workflow_stage(
         runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
@@ -887,6 +891,10 @@ impl AiManagementService {
         Ok(principals.into_iter().map(map_agent_principal).collect())
     }
 
+    #[tracing::instrument(
+        skip(db, operator, tenant_rbac_catalog, input),
+        fields(tenant_id = %operator.tenant_id, slug = %input.slug)
+    )]
     pub async fn create_agent_principal(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -928,6 +936,10 @@ impl AiManagementService {
         Ok(map_agent_principal(saved))
     }
 
+    #[tracing::instrument(
+        skip(db, operator, tenant_rbac_catalog, input),
+        fields(tenant_id = %operator.tenant_id, id = %id)
+    )]
     pub async fn update_agent_principal(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -996,6 +1008,10 @@ impl AiManagementService {
         items.into_iter().map(map_agent_model_assignment).collect()
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, agent_principal_id = %input.agent_principal_id)
+    )]
     pub async fn create_agent_model_assignment(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -1049,6 +1065,10 @@ impl AiManagementService {
         map_agent_model_assignment(saved)
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, id = %id)
+    )]
     pub async fn update_agent_model_assignment(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -1074,6 +1094,10 @@ impl AiManagementService {
         map_agent_model_assignment(saved)
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, workflow_slug = %input.workflow_slug)
+    )]
     pub async fn create_agent_workflow_run(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,

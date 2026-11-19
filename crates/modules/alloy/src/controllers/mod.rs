@@ -53,25 +53,28 @@ impl AlloyHttpRuntime {
     }
 }
 
+/// Errors that can occur when resolving Alloy HTTP runtime dependencies from the host context.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AlloyHttpRuntimeError {
+    #[error("Alloy HTTP routes require SharedAlloyRuntime in HostRuntimeContext")]
+    MissingSharedRuntime,
+    #[error("Alloy HTTP routes require AlloyReleaseGovernanceHandle in HostRuntimeContext")]
+    MissingReleaseGovernance,
+    #[error("Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext")]
+    MissingPublishedRhaiSource,
+}
+
 impl AlloyHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
-        let shared_runtime = runtime.shared_get::<SharedAlloyRuntime>().ok_or_else(|| {
-            anyhow::anyhow!("Alloy HTTP routes require SharedAlloyRuntime in HostRuntimeContext")
-        })?;
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, AlloyHttpRuntimeError> {
+        let shared_runtime = runtime
+            .shared_get::<SharedAlloyRuntime>()
+            .ok_or(AlloyHttpRuntimeError::MissingSharedRuntime)?;
         let release_governance = runtime
             .shared_get::<AlloyReleaseGovernanceHandle>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Alloy HTTP routes require AlloyReleaseGovernanceHandle in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(AlloyHttpRuntimeError::MissingReleaseGovernance)?;
         let published_rhai_source = runtime
             .shared_get::<AlloyPublishedRhaiSourceProviderHandle>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(AlloyHttpRuntimeError::MissingPublishedRhaiSource)?;
         Ok(Self {
             runtime: shared_runtime,
             release_governance,
@@ -875,7 +878,7 @@ pub async fn pause_script(
     Ok(Json(saved.into()))
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, AlloyHttpRuntimeError> {
     let state = match AlloyHttpRuntime::from_host(runtime) {
         Ok(state) => state,
         Err(err) => {

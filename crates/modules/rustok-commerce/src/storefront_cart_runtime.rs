@@ -185,6 +185,7 @@ impl StorefrontCartRuntime {
                     "The public SKU projection is inconsistent",
                 )
             })?;
+        // INVARIANT: cross-module product contract validation ensures foreign product projection matches cart tenant.
         if product.tenant_id != tenant_id
             || product.id != price.product_id
             || variant.product_id != product.id

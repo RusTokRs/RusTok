@@ -69,6 +69,7 @@ where
         Self { db, factory }
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn publish_next_locale(
         &self,
         tenant_id: Uuid,
@@ -153,6 +154,7 @@ where
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn publish_next_variant(
         &self,
         tenant_id: Uuid,

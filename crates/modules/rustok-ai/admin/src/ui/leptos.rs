@@ -673,7 +673,9 @@ pub fn AiAdmin() -> impl IntoView {
 
             let ws_for_open = ws.clone();
             let on_open = Closure::<dyn FnMut(Event)>::new(move |_| {
-                let _ = ws_for_open.send_with_str(&init_message);
+                if let Err(error) = ws_for_open.send_with_str(&init_message) {
+                    leptos::logging::warn!("failed to send websocket init message: {error:?}");
+                }
             });
 
             let ws_for_message = ws.clone();
@@ -689,7 +691,9 @@ pub fn AiAdmin() -> impl IntoView {
 
                 match message {
                     AiSessionSubscriptionEnvelope::ConnectionAck => {
-                        let _ = ws_for_message.send_with_str(&subscribe_message);
+                        if let Err(error) = ws_for_message.send_with_str(&subscribe_message) {
+                            leptos::logging::warn!("failed to send websocket subscribe message: {error:?}");
+                        }
                         set_live_stream.update(|state| {
                             if let Some(state) = state.as_mut() {
                                 state.connected = true;
@@ -793,7 +797,9 @@ pub fn AiAdmin() -> impl IntoView {
                             "payload": payload,
                         })
                         .to_string();
-                        let _ = ws_for_message.send_with_str(&pong);
+                        if let Err(error) = ws_for_message.send_with_str(&pong) {
+                            leptos::logging::warn!("failed to send websocket pong: {error:?}");
+                        }
                     }
                     AiSessionSubscriptionEnvelope::Complete => {
                         set_live_stream.update(|state| {
@@ -2666,7 +2672,9 @@ fn close_live_subscription_handle(handle: AiLiveSubscriptionHandle) {
     handle.ws.set_onmessage(None);
     handle.ws.set_onerror(None);
     handle.ws.set_onclose(None);
-    let _ = handle.ws.close();
+    if let Err(error) = handle.ws.close() {
+        leptos::logging::warn!("failed to close live subscription websocket: {error:?}");
+    }
     drop(handle.on_open);
     drop(handle.on_message);
     drop(handle.on_error);

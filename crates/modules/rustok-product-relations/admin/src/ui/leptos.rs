@@ -217,7 +217,7 @@ pub fn ProductRelationsPanel(
                         ProductRelationsAdminCommand::Remove { id },
                     )
                     .await;
-                    if res.is_err() || !res.unwrap().is_success() {
+                    if !res.is_ok_and(|outcome| outcome.is_success()) {
                         failed += 1;
                     }
                 }

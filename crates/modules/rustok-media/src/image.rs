@@ -397,6 +397,7 @@ impl ImageWorker {
         let parallelism = std::thread::available_parallelism()
             .map(usize::from)
             .unwrap_or(2);
+        // INVARIANT: Concurrency is clamped to [1, 2] (> 0), timeout is 60s (> 0), and ImageProcessingLimits::default() is valid.
         Self::new(
             parallelism.div_ceil(2).clamp(1, 2),
             Duration::from_secs(60),

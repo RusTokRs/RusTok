@@ -17,8 +17,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "blog_public_comments_snapshot.rs"]
 mod blog_public_comments_snapshot;
 
-/// Whether this composition registered module event listeners. A missing
-/// snapshot is not equivalent to an intentionally empty listener set.
+/// Whether this worker host requires a live module event dispatcher. Even an
+/// empty module listener set must bind an explicit registry so the transport can
+/// distinguish "no local handler" from "listener registry not initialized".
 #[derive(Clone, Copy)]
 pub struct ModuleEventDispatcherRequirement(pub bool);
 
@@ -77,6 +78,25 @@ pub fn spawn_module_event_dispatcher(
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Result<()> {
     tracing::debug!("Spawning module event dispatcher");
+    // Preflight the required event runtime before starting any module-owned
+    // worker. Previously an absent EventRuntime returned an error only after
+    // payment/commerce/media recovery tasks had already been spawned.
+    let event_bus = if module_event_dispatcher_enabled(ctx.settings()) {
+        Some(
+            ctx.shared_get::<Arc<EventRuntime>>()
+                .ok_or_else(|| {
+                    Error::Message(
+                        "EventRuntime must be initialized before module event listeners"
+                            .to_owned(),
+                    )
+                })?
+                .listener_bus
+                .clone(),
+        )
+    } else {
+        None
+    };
+
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
@@ -88,40 +108,42 @@ pub fn spawn_module_event_dispatcher(
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
 
-    if !module_event_dispatcher_enabled(ctx.settings()) {
+    let Some(event_bus) = event_bus else {
         tracing::info!(
             host_mode = ?ctx.settings().runtime.host_mode,
             "Module event dispatcher disabled for the current runtime profile"
         );
         return Ok(());
-    }
+    };
     if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
         tracing::debug!("Module event dispatcher already started");
         return Ok(());
     }
 
-    let bus = ctx
-        .shared_get::<Arc<EventRuntime>>()
-        .ok_or_else(|| {
-            Error::Message(
-                "EventRuntime must be initialized before module event listeners".to_owned(),
-            )
-        })?
-        .listener_bus
-        .clone();
     let db = ctx.db_clone();
-    let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
+    let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
 
     let handler_count = dispatcher.handler_count();
-    ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
     if handler_count == 0 {
-        tracing::info!("No module-owned event listeners registered in ModuleRegistry");
-        return Ok(());
+        tracing::info!(
+            "No module-owned event listeners registered; binding an explicit empty registry for transport routing"
+        );
     }
 
+    start_module_event_dispatcher(ctx, dispatcher, handler_count)
+}
+
+fn start_module_event_dispatcher(
+    ctx: &ServerRuntimeContext,
+    dispatcher: EventDispatcher,
+    handler_count: usize,
+) -> Result<()> {
+    // The listener registry is part of the transport contract even when it is
+    // intentionally empty: remote-only sealed events may proceed, while
+    // required local families still fail closed when no handler is registered.
+    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     let running = dispatcher.start_with_contract_delivery()?;
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
-
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
 }
@@ -1078,6 +1100,106 @@ mod lifecycle_tests {
             settings.runtime.host_mode = mode;
             assert!(!module_event_dispatcher_enabled(&settings));
         }
+    }
+
+    #[test]
+    fn missing_event_runtime_fails_before_any_module_worker_is_spawned() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let registry = ModuleRegistry::new();
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("empty module registry can build extensions");
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+
+        let error = spawn_module_event_dispatcher(&ctx, &registry, extensions)
+            .expect_err("worker host requires EventRuntime before starting any child");
+        assert!(matches!(
+            error,
+            crate::error::Error::Message(ref message)
+                if message.contains("EventRuntime must be initialized")
+        ));
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        #[cfg(feature = "mod-payment")]
+        assert!(!ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+        #[cfg(feature = "mod-product")]
+        assert!(!ctx.shared_contains::<
+            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+        >());
+        #[cfg(feature = "mod-commerce")]
+        assert!(!ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >());
+        #[cfg(feature = "commerce-marketplace-financial")]
+        assert!(!ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >());
+    }
+
+    #[tokio::test]
+    async fn empty_listener_set_binds_an_explicit_registry_for_transport_routing() {
+        use rustok_core::events::{EventTransport, MemoryTransport};
+        use rustok_events::{
+            ContractEventEnvelope, DomainEvent, EventEnvelope, ProductIndexRefreshEvent,
+        };
+        use uuid::Uuid;
+
+        let memory = MemoryTransport::with_capacity(8);
+        let bus = memory.event_bus();
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+
+        start_module_event_dispatcher(&ctx, EventDispatcher::new(bus.clone()), 0)
+            .expect("empty listener registry should start");
+
+        assert_eq!(
+            ctx.shared_get::<ModuleEventDispatcherRequirement>()
+                .map(|requirement| requirement.0),
+            Some(true),
+            "the explicit empty registry is still required by the worker transport"
+        );
+        assert_eq!(
+            ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished()),
+            Some(true)
+        );
+
+        let remote_only = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .expect("remote-only contract envelope");
+        assert!(
+            !bus.has_contract_handler(&remote_only)
+                .expect("an empty registry is initialized, not unavailable")
+        );
+
+        let tenant_id = Uuid::new_v4();
+        let root_event = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        memory
+            .publish(root_event)
+            .await
+            .expect("the empty dispatcher must keep the root-event receiver bound");
+
+        let handle = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("dispatcher handle should be owned by the runtime context");
+        handle.request_stop();
+        handle.join().await.expect("empty dispatcher should drain");
     }
 
     #[tokio::test]

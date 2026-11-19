@@ -27,7 +27,8 @@ use uuid::Uuid;
 use crate::auth::hash_password_async;
 use sha2::{Digest, Sha256};
 
-use crate::models::{auth_invites, sessions, users};
+use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
+use crate::services::auth_invite::{InviteLookup, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -295,31 +296,23 @@ where
             .await
             .map_err(super::internal_admin_error)?,
         DbBackend::Sqlite => {
-            let user = query().one(db).await.map_err(super::internal_admin_error)?;
-            if let Some(user) = user.as_ref() {
-                let result = users::Entity::update_many()
-                    .col_expr(
-                        users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
-                    )
-                    .filter(users::Column::Id.eq(user.id))
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(super::internal_admin_error)?;
-                if result.rows_affected != 1 {
-                    return Err(AuthAdminMutationError::Internal(
-                        "user mutation lock fence could not be acquired".to_string(),
-                    ));
-                }
-
-                return query()
-                    .one(db)
-                    .await
-                    .map_err(super::internal_admin_error)?
-                    .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()));
+            // The user id is known. Reserve SQLite's writer before reading so
+            // a concurrent status/role/password mutation cannot race a
+            // deferred read-to-write lock upgrade.
+            let result = users::Entity::update_many()
+                .col_expr(
+                    users::Column::UpdatedAt,
+                    Expr::col(users::Column::UpdatedAt),
+                )
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(super::internal_admin_error)?;
+            if result.rows_affected != 1 {
+                return Err(AuthAdminMutationError::NotFound("user".to_string()));
             }
-            None
+            query().one(db).await.map_err(super::internal_admin_error)?
         }
         _ => {
             return Err(AuthAdminMutationError::Internal(
@@ -1140,18 +1133,38 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        let invite = auth_invites::Entity::find_by_id(invite_id)
-            .filter(auth_invites::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(super::internal_admin_error)?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+        // Acceptance uses the same row fence. Whichever operation acquires
+        // it first determines the outcome: a committed revocation prevents
+        // acceptance, while an already accepted invite cannot be "revoked"
+        // retroactively or emit a misleading second lifecycle event.
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let invite = lock_invite_for_mutation(
+            &tx,
+            context.tenant_id,
+            InviteLookup::Id(invite_id),
+        )
+        .await
+        .map_err(super::internal_admin_error)?
+        .ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
 
         if invite.revoked_at.is_some() {
+            tx.commit().await.map_err(super::internal_admin_error)?;
             return Ok(invite_record(invite));
         }
 
-        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let consumed = auth_invite_consumptions::Entity::find()
+            .filter(auth_invite_consumptions::Column::TenantId.eq(context.tenant_id))
+            .filter(auth_invite_consumptions::Column::TokenHash.eq(&invite.token_hash))
+            .one(&tx)
+            .await
+            .map_err(super::internal_admin_error)?;
+        if consumed.is_some() {
+            tx.rollback().await.map_err(super::internal_admin_error)?;
+            return Err(AuthAdminMutationError::Conflict(
+                "user invite has already been accepted".to_string(),
+            ));
+        }
+
         let mut active: auth_invites::ActiveModel = invite.into();
         active.revoked_at = Set(Some(Utc::now().into()));
         let updated = active

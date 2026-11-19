@@ -382,16 +382,6 @@ async fn authorize_invitation_management<C: sea_orm::ConnectionTrait>(
     }
 }
 
-async fn authorize_invitation_management_in_transaction(
-    transaction: &DatabaseTransaction,
-    context: &PortContext,
-    tenant_id: Uuid,
-    group_id: Uuid,
-    actor_user_id: Uuid,
-) -> GroupsResult<()> {
-    authorize_invitation_management(transaction, context, tenant_id, group_id, actor_user_id).await
-}
-
 async fn find_group_for_update(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -402,12 +392,16 @@ async fn find_group_for_update(
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(group_id))
     };
-    match transaction.get_database_backend() {
+    let maybe_group = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    }
-    .ok_or(GroupsError::NotFound)
+        other => {
+            return Err(GroupsError::Persistence(format!(
+                "unsupported database backend: {other:?}"
+            )));
+        }
+    };
+    maybe_group.ok_or(GroupsError::NotFound)
 }
 
 async fn find_invitation_for_update(
@@ -430,12 +424,16 @@ async fn find_invitation_for_update(
         locator.group_id,
     )
     .await?;
-    match transaction.get_database_backend() {
+    let maybe_group = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    }
-    .ok_or(GroupsError::NotFound)
+        other => {
+            return Err(GroupsError::Persistence(format!(
+                "unsupported database backend: {other:?}"
+            )));
+        }
+    };
+    maybe_group.ok_or(GroupsError::NotFound)
 }
 
 async fn find_invitation_by_token_for_update(
@@ -458,12 +456,16 @@ async fn find_invitation_by_token_for_update(
         locator.group_id,
     )
     .await?;
-    match transaction.get_database_backend() {
+    let maybe_invitation = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    }
-    .ok_or_else(invalid_invitation_token)
+        other => {
+            return Err(GroupsError::Persistence(format!(
+                "unsupported database backend: {other:?}"
+            )));
+        }
+    };
+    maybe_invitation.ok_or_else(invalid_invitation_token)
 }
 
 fn require_active_group(model: &group::Model) -> GroupsResult<()> {

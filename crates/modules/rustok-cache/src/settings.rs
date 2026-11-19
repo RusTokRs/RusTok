@@ -111,32 +111,64 @@ struct RedisTargetIdentity {
     username: Option<String>,
 }
 
-fn parse_redis_url(url: &str) -> Result<url::Url, String> {
-    let parsed = url::Url::parse(url)
-        .map_err(|error| format!("redis_url '{url}' is not a valid URL: {error}"))?;
+/// Typed error for Redis URL parsing and composition.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RedisUrlError {
+    #[error("redis_url '{url}' is not a valid URL: {error}")]
+    InvalidUrl { url: String, error: String },
+    #[error("redis_url must use one of the schemes {valid}, got '{actual}'")]
+    InvalidScheme { valid: String, actual: String },
+    #[error("redis_url must include a host")]
+    MissingHost,
+    #[error("redis_url database '{path}' is not a number")]
+    InvalidDatabaseNumber { path: String },
+    #[error("redis_url database must be between 0 and 255")]
+    DatabaseOutOfRange,
+    #[error("redis_host '{host}' cannot be used in a Redis URL: {error}")]
+    InvalidHost { host: String, error: String },
+    #[error("redis_port {port} cannot be used in a Redis URL")]
+    InvalidPort { port: u16 },
+    #[error("redis_password cannot be used in a Redis URL")]
+    InvalidPassword,
+    #[error("failed to parse base redis URL: {0}")]
+    BaseUrlError(String),
+}
+
+impl From<RedisUrlError> for String {
+    fn from(error: RedisUrlError) -> Self {
+        error.to_string()
+    }
+}
+
+fn parse_redis_url(url: &str) -> Result<url::Url, RedisUrlError> {
+    let parsed = url::Url::parse(url).map_err(|error| RedisUrlError::InvalidUrl {
+        url: url.to_string(),
+        error: error.to_string(),
+    })?;
     if !VALID_URL_SCHEMES.contains(&parsed.scheme()) {
-        return Err(format!(
-            "redis_url must use one of the schemes {}, got '{}'",
-            VALID_URL_SCHEMES.join(", "),
-            parsed.scheme()
-        ));
+        return Err(RedisUrlError::InvalidScheme {
+            valid: VALID_URL_SCHEMES.join(", "),
+            actual: parsed.scheme().to_string(),
+        });
     }
     if parsed.host_str().is_none_or(str::is_empty) {
-        return Err("redis_url must include a host".to_string());
+        return Err(RedisUrlError::MissingHost);
     }
     Ok(parsed)
 }
 
-fn url_db(parsed: &url::Url) -> Result<u32, String> {
+fn url_db(parsed: &url::Url) -> Result<u32, RedisUrlError> {
     let path = parsed.path().trim_start_matches('/');
     if path.is_empty() {
         return Ok(DEFAULT_REDIS_DB);
     }
     let db = path
         .parse::<u32>()
-        .map_err(|_| format!("redis_url database '{path}' is not a number"))?;
+        .map_err(|_| RedisUrlError::InvalidDatabaseNumber {
+            path: path.to_string(),
+        })?;
     if db > 255 {
-        return Err("redis_url database must be between 0 and 255".to_string());
+        return Err(RedisUrlError::DatabaseOutOfRange);
     }
     Ok(db)
 }
@@ -310,26 +342,24 @@ impl CacheSettings {
     /// `Ok(None)` means the document names no structured target at all (no host or no port).
     /// `Err` means the document names one that cannot be expressed, which must never be replaced by
     /// the composition base URL.
-    fn url_from_fields(&self) -> Result<Option<String>, String> {
+    fn url_from_fields(&self) -> Result<Option<String>, RedisUrlError> {
         let host = self.redis_host.trim();
         if host.is_empty() || self.redis_port == 0 {
             return Ok(None);
         }
         let mut url = url::Url::parse("redis://localhost")
-            .expect("static Redis URL parses: invariant validated at startup");
-        url.set_host(Some(host)).map_err(|error| {
-            format!("redis_host '{host}' cannot be used in a Redis URL: {error}")
+            .map_err(|error| RedisUrlError::BaseUrlError(error.to_string()))?;
+        url.set_host(Some(host)).map_err(|error| RedisUrlError::InvalidHost {
+            host: host.to_string(),
+            error: error.to_string(),
         })?;
-        url.set_port(Some(self.redis_port)).map_err(|()| {
-            format!(
-                "redis_port {} cannot be used in a Redis URL",
-                self.redis_port
-            )
+        url.set_port(Some(self.redis_port)).map_err(|()| RedisUrlError::InvalidPort {
+            port: self.redis_port,
         })?;
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
             url.set_password(Some(self.redis_password.as_str()))
-                .map_err(|()| "redis_password cannot be used in a Redis URL".to_string())?;
+                .map_err(|()| RedisUrlError::InvalidPassword)?;
         }
         Ok(Some(url.to_string()))
     }
@@ -411,7 +441,7 @@ impl CacheSettings {
                         ));
                     }
                 }
-                Err(error) => errors.push(error),
+                Err(error) => errors.push(error.to_string()),
             }
             if self.mode == DEFAULT_CACHE_MODE {
                 errors.push(
@@ -432,11 +462,11 @@ impl CacheSettings {
             match self.url_from_fields() {
                 Ok(Some(url)) => {
                     if let Err(error) = parse_redis_url(&url) {
-                        errors.push(error);
+                        errors.push(error.to_string());
                     }
                 }
                 Ok(None) => {}
-                Err(error) => errors.push(error),
+                Err(error) => errors.push(error.to_string()),
             }
         }
 

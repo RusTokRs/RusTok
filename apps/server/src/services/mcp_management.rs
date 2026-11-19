@@ -118,6 +118,11 @@ const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 
 impl McpManagementService {
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, slug = %input.slug),
+        err
+    )]
     pub async fn create_client(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -340,6 +345,11 @@ impl McpManagementService {
         })
     }
 
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, client_id = %client_id),
+        err
+    )]
     pub async fn update_policy(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -631,9 +641,25 @@ impl McpManagementService {
         )
         .await?;
 
-        let staged_draft = draft
-            .to_staged_draft()
-            .map_err(|error| Error::BadRequest(error.to_string()))?;
+        let staged_draft = match draft.to_staged_draft() {
+            Ok(staged_draft) => staged_draft,
+            Err(error) => {
+                let reason = format!("Persisted scaffold draft is invalid: {error}");
+                // The draft was already claimed as APPLYING. Restore it to
+                // STAGED and record the failed attempt instead of stranding it
+                // in a state that rejects every subsequent apply request.
+                Self::mark_scaffold_apply_failed(
+                    db,
+                    tenant_id,
+                    &draft,
+                    input.applied_by,
+                    &input.workspace_root,
+                    &reason,
+                )
+                .await?;
+                return Err(Error::BadRequest(reason));
+            }
+        };
         let apply_result = match apply_staged_scaffold(&staged_draft, &input.workspace_root) {
             Ok(response) => response,
             Err(error) => {

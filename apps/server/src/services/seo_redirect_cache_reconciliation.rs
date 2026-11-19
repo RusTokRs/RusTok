@@ -170,7 +170,7 @@ fn start_seo_redirect_cache_reconciliation_with_options(
     }
 
     let candidate = SeoRedirectCacheReconciliationStartLock::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<SeoRedirectCacheReconciliationStartLock>()
         .unwrap_or(candidate);

@@ -431,12 +431,12 @@ where
             "tenant_id must not be nil".to_string(),
         ));
     }
-    if let Some(causation_id) = causation_id {
-        if causation_id.is_nil() {
-            return Err(rustok_core::Error::Validation(
-                "causation_id must not be nil".to_string(),
-            ));
-        }
+    if let Some(causation_id) = causation_id
+        && causation_id.is_nil()
+    {
+        return Err(rustok_core::Error::Validation(
+            "causation_id must not be nil".to_string(),
+        ));
     }
     let event_type = event.event_type();
     let actor_id = actor_id.filter(|id| !id.is_nil());
@@ -452,7 +452,7 @@ where
     })
 }
 
-#[allow(dead_code)]
+#[cfg(not(feature = "test-transport-fallback"))]
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
         "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",

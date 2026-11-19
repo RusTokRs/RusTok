@@ -598,15 +598,27 @@ impl Model {
     }
 
     pub fn scopes_list(&self) -> Vec<String> {
-        serde_json::from_value(self.scopes.clone()).unwrap_or_default()
+        // INVARIANT: Scopes are validated as a JSON array of strings before application persistence.
+        serde_json::from_value(self.scopes.clone()).unwrap_or_else(|error| {
+            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth scopes JSON array; defaulting to empty list");
+            Vec::new()
+        })
     }
 
     pub fn grant_types_list(&self) -> Vec<String> {
-        serde_json::from_value(self.grant_types.clone()).unwrap_or_default()
+        // INVARIANT: Grant types are validated as a JSON array of strings before application persistence.
+        serde_json::from_value(self.grant_types.clone()).unwrap_or_else(|error| {
+            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth grant types JSON array; defaulting to empty list");
+            Vec::new()
+        })
     }
 
     pub fn granted_permissions_list(&self) -> Vec<String> {
-        serde_json::from_value(self.granted_permissions.clone()).unwrap_or_default()
+        // INVARIANT: Granted permissions are validated as a JSON array of strings before application persistence.
+        serde_json::from_value(self.granted_permissions.clone()).unwrap_or_else(|error| {
+            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth granted permissions JSON array; defaulting to empty list");
+            Vec::new()
+        })
     }
 
     pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, String> {
@@ -617,7 +629,11 @@ impl Model {
     }
 
     pub fn redirect_uris_list(&self) -> Vec<String> {
-        serde_json::from_value(self.redirect_uris.clone()).unwrap_or_default()
+        // INVARIANT: Redirect URIs are validated as a JSON array of strings before application persistence.
+        serde_json::from_value(self.redirect_uris.clone()).unwrap_or_else(|error| {
+            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth redirect URIs JSON array; defaulting to empty list");
+            Vec::new()
+        })
     }
 
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {

@@ -331,7 +331,9 @@ impl EditorSessionState {
     }
 
     pub fn mark_save_failed(&mut self) {
-        let _ = self.controller.mark_save_failed();
+        if let Err(err) = self.controller.mark_save_failed() {
+            tracing::warn!(error = ?err, "Failed to mark save failed in controller");
+        }
     }
 
     pub fn announce(&mut self, message: impl Into<String>) {
@@ -390,21 +392,27 @@ impl EditorSessionState {
                 }
             }
             EditorSessionAction::SaveStarted => {
-                let _ = self.mark_save_started();
+                if let Err(err) = self.mark_save_started() {
+                    tracing::warn!(error = ?err, "Failed to mark save started");
+                }
             }
             EditorSessionAction::SaveAcknowledged {
                 page_id,
                 revision_id,
                 expected_hash,
             } => {
-                let _ = self.handle_publish_response(&page_id, &revision_id, expected_hash);
+                if let Err(err) = self.handle_publish_response(&page_id, &revision_id, expected_hash) {
+                    self.fail(err);
+                }
             }
             EditorSessionAction::SaveFailed(err) => {
                 self.mark_save_failed();
                 self.fail(err);
             }
             EditorSessionAction::PreviewAcknowledged(response) => {
-                let _ = self.handle_preview_response(&response);
+                if let Err(err) = self.handle_preview_response(&response) {
+                    self.fail(err);
+                }
             }
             EditorSessionAction::PreviewFailed(err) => {
                 self.preview_in_progress = false;

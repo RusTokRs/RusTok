@@ -21,8 +21,7 @@ use uuid::Uuid;
 use super::{
     PRODUCT_SCHEMA_ROUTING_KEY, ProductStorefrontIndexBudgetedProjectionExecutor,
     ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetObservation,
-    ProductStorefrontIndexShadowExecutor,
-    channel_relation_resolver::embedded_relation_resolver,
+    ProductStorefrontIndexShadowExecutor, channel_relation_resolver::embedded_relation_resolver,
     classify_product_storefront_index_serving_budget,
 };
 

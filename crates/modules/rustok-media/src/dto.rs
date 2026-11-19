@@ -10,7 +10,7 @@ pub use rustok_media_ports::{
     MediaImageDeliveryProfile, MediaImageDescriptor, MediaImagePublicUrlPolicy, MediaItem,
     MediaPublicImageAsset, MediaReconciliationReport, MediaReconciliationRequest,
     MediaTranslationItem, MediaUploadRequest, MediaUploadTarget, MediaUploadTransport,
-    NormalizedTranslationInput, PreparedUploadSession, UpsertTranslationInput,
+    NormalizedTranslationInput, PreparedUploadSession, UpsertTranslationInput, MediaInputError,
 };
 
 pub struct UploadInput {

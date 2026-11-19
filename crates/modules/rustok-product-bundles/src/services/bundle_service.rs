@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::Utc;
+use tracing::instrument;
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
@@ -522,6 +523,7 @@ impl BundleService {
 /// The receipt-bound owner command and the plain owner port method share this body, so an
 /// idempotent retry can never diverge from the non-idempotent write path. Slug uniqueness is
 /// checked inside the transaction instead of a pre-transaction read.
+#[instrument(skip(txn, input), fields(tenant_id = %tenant_id, slug = %input.slug))]
 pub(crate) async fn create_bundle_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -714,6 +716,7 @@ pub(crate) async fn add_bundle_item_in_tx(
 }
 
 /// Updates one bundle inside the caller transaction.
+#[instrument(skip(txn, input), fields(tenant_id = %tenant_id, id = %id))]
 pub(crate) async fn update_bundle_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -855,6 +858,7 @@ pub(crate) async fn update_bundle_in_tx(
 }
 
 /// Deletes one bundle inside the caller transaction.
+#[instrument(skip(txn), fields(tenant_id = %tenant_id, id = %id))]
 pub(crate) async fn delete_bundle_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,

@@ -86,7 +86,7 @@ async fn finalize_search_result(
             ))
         }
         Err(error) => {
-            let _ = record_search_query_log(
+            let _query_log_id = record_search_query_log(
                 db,
                 surface,
                 search_query,

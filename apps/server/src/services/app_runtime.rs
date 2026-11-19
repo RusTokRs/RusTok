@@ -167,7 +167,7 @@ pub async fn bootstrap_app_runtime(
 
         #[cfg(feature = "mod-workflow")]
         if workflow_cron_enabled(&settings) {
-            init_workflow_runtime(&runtime_ctx);
+            init_workflow_runtime(&runtime_ctx).await;
         } else {
             tracing::info!(
                 host_mode = ?settings.runtime.host_mode,
@@ -405,38 +405,53 @@ fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
 }
 
 #[cfg(feature = "mod-workflow")]
-fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
-    if ctx.shared_contains::<crate::services::app_lifecycle::WorkflowCronSchedulerHandle>() {
+async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
+    use crate::services::app_lifecycle::{
+        StopHandle, WorkflowCronSchedulerHandle, WorkflowCronSchedulerInitializationLock,
+    };
+    use rustok_workflow::WorkflowCronScheduler;
+
+    // Serialize startup with concurrent bootstraps and shutdown's handle drain.
+    let initialization = WorkflowCronSchedulerInitializationLock::ensure(ctx);
+    let _guard = initialization.0.lock().await;
+    if ctx.shared_contains::<WorkflowCronSchedulerHandle>() {
         return;
     }
 
-    use rustok_workflow::WorkflowCronScheduler;
-    let db = ctx.db_clone();
+    // A receiver subscribed after send_replace(true) will not observe the old
+    // change through changed(); inspect the current value before starting work.
+    let mut stop_rx = StopHandle::ensure(ctx).subscribe();
+    if *stop_rx.borrow() {
+        tracing::info!("Shutdown requested; skipping workflow cron scheduler startup");
+        return;
+    }
 
-    // Start the cron scheduler
-    let scheduler = WorkflowCronScheduler::new(db);
+    let scheduler = WorkflowCronScheduler::new(ctx.db_clone());
     let mut cron_task = scheduler.start();
-    let mut stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-
     let join_handle = tokio::spawn(async move {
         tokio::select! {
-            res = &mut cron_task => {
-                if let Err(error) = res {
-                    tracing::error!("Workflow cron scheduler panicked: {:?}", error);
+            result = &mut cron_task => {
+                if let Err(error) = result {
+                    if !error.is_cancelled() {
+                        tracing::error!(%error, "Workflow cron scheduler task failed");
+                    }
                 }
             }
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!("Workflow cron scheduler received shutdown signal, aborting task");
                     cron_task.abort();
+                    if let Err(error) = cron_task.await {
+                        if !error.is_cancelled() {
+                            tracing::error!(%error, "Workflow cron scheduler failed to stop cleanly");
+                        }
+                    }
                 }
             }
         }
     });
 
-    ctx.shared_insert(
-        crate::services::app_lifecycle::WorkflowCronSchedulerHandle::new(join_handle),
-    );
+    ctx.shared_insert(WorkflowCronSchedulerHandle::new(join_handle));
     tracing::info!("Workflow runtime initialized (cron scheduler)");
 }
 
@@ -1023,6 +1038,40 @@ mod tests {
             ..RustokSettings::default()
         };
         assert!(super::workflow_cron_enabled(&settings));
+    }
+
+    #[cfg(feature = "mod-workflow")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn workflow_cron_initialization_is_idempotent_and_shutdown_is_terminal() {
+        use crate::services::app_lifecycle::{
+            WorkflowCronSchedulerHandle, shutdown_runtime_workers,
+        };
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        let db = setup_test_db_with_migrations::<rustok_migrations::SqliteTestMigrator>().await;
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        // Concurrent initializers must share one scheduler handle.
+        let ((), ()) = tokio::join!(
+            super::init_workflow_runtime(&ctx),
+            super::init_workflow_runtime(&ctx),
+        );
+        let instance_id = ctx
+            .shared_map::<WorkflowCronSchedulerHandle, _>(WorkflowCronSchedulerHandle::instance_id)
+            .expect("workflow cron scheduler should be registered");
+        assert_eq!(
+            ctx.shared_map::<WorkflowCronSchedulerHandle, _>(
+                WorkflowCronSchedulerHandle::instance_id
+            ),
+            Some(instance_id),
+        );
+
+        shutdown_runtime_workers(&ctx).await;
+        assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
+
+        // Shutdown is terminal for this runtime context, including late startup.
+        super::init_workflow_runtime(&ctx).await;
+        assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
     }
 
     #[test]

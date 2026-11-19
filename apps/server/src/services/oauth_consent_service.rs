@@ -1,14 +1,13 @@
 use rustok_api::context::scope_matches;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::TransactionTrait;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::{
-    oauth_apps::Entity as OAuthApps,
-    users::{self, Entity as Users},
-};
 
-use super::oauth_app::OAuthAppService;
+use super::oauth_app::{
+    GrantConsentAttempt, OAuthAppService, lock_oauth_app_for_mutation,
+    lock_oauth_user_for_mutation,
+};
 
 impl OAuthAppService {
     /// Grant consent only after validating every authority dimension at the
@@ -21,27 +20,26 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(crate::models::oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        if scopes.is_empty() {
+            return Err(Error::BadRequest(
+                "OAuth consent must include at least one scope".to_string(),
+            ));
+        }
+
+        // Token issuance takes these same locks in app-then-user order before
+        // checking consent. Sharing that order makes grant/revoke linearizable
+        // with token exchange and with concurrent app/user deactivation.
+        let tx = db.begin().await?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await?
             .filter(|app| app.is_active())
             .ok_or(Error::NotFound)?;
-
-        let user = Users::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .one(db)
+        let user = lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
             .await?
             .filter(|user| user.is_active())
             .ok_or_else(|| {
                 Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
             })?;
-
-        if user.id != user_id {
-            return Err(Error::Unauthorized(
-                "OAuth consent subject mismatch".to_string(),
-            ));
-        }
 
         let allowed_scopes = app.scopes_list();
         let mut normalized = Vec::with_capacity(scopes.len());
@@ -62,7 +60,24 @@ impl OAuthAppService {
             }
         }
 
-        Self::grant_consent(db, app.id, user.id, tenant_id, normalized).await
+        let scopes_json = serde_json::to_value(&normalized)
+            .map_err(|_| Error::InternalServerError)?;
+        OAuthAppService::grant_consent_in_transaction(
+            &tx,
+            app.id,
+            user.id,
+            tenant_id,
+            &scopes_json,
+        )
+        .await
+        .map_err(|attempt| match attempt {
+            GrantConsentAttempt::UniqueRace => Error::Conflict(
+                "OAuth consent changed concurrently; retry the operation".to_string(),
+            ),
+            GrantConsentAttempt::Fatal(error) => error,
+        })?;
+        tx.commit().await?;
+        Ok(())
     }
 }
 

@@ -2,7 +2,7 @@ use rustok_core::events::BackpressureState;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::common::settings::{GuardrailRolloutMode, RustokSettings};
+use crate::common::settings::{GuardrailRolloutMode, RuntimeHostMode, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
@@ -336,17 +336,24 @@ pub async fn collect_runtime_guardrail_snapshot(
         status,
         observed_status,
         rollout: policy.rollout,
-        host_mode: if settings.runtime.is_registry_only() {
-            "registry_only".to_string()
-        } else {
-            "full".to_string()
-        },
+        host_mode: runtime_host_mode_label(&settings.runtime.host_mode).to_string(),
         runtime_dependencies_enabled: !settings.runtime.is_registry_only(),
         reasons,
         rate_limits,
         event_bus,
         event_transport,
         remote_executor,
+    }
+}
+
+fn runtime_host_mode_label(mode: &RuntimeHostMode) -> &'static str {
+    match mode {
+        RuntimeHostMode::Full => "full",
+        RuntimeHostMode::RegistryOnly => "registry_only",
+        RuntimeHostMode::Api => "api",
+        RuntimeHostMode::AdminSsr => "admin_ssr",
+        RuntimeHostMode::StorefrontSsr => "storefront_ssr",
+        RuntimeHostMode::Worker => "worker",
     }
 }
 
@@ -560,5 +567,27 @@ fn severity_rank(status: RuntimeGuardrailStatus) -> u8 {
         RuntimeGuardrailStatus::Ok => 0,
         RuntimeGuardrailStatus::Degraded => 1,
         RuntimeGuardrailStatus::Critical => 2,
+    }
+}
+
+#[cfg(test)]
+mod host_mode_tests {
+    use super::runtime_host_mode_label;
+    use crate::common::settings::RuntimeHostMode;
+
+    #[test]
+    fn runtime_guardrails_report_the_exact_host_mode() {
+        let cases = [
+            (RuntimeHostMode::Full, "full"),
+            (RuntimeHostMode::RegistryOnly, "registry_only"),
+            (RuntimeHostMode::Api, "api"),
+            (RuntimeHostMode::AdminSsr, "admin_ssr"),
+            (RuntimeHostMode::StorefrontSsr, "storefront_ssr"),
+            (RuntimeHostMode::Worker, "worker"),
+        ];
+
+        for (mode, expected) in cases {
+            assert_eq!(runtime_host_mode_label(&mode), expected);
+        }
     }
 }

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::Result;
 use rmcp::{
     ServerHandler, ServiceExt,
     model::{
@@ -625,7 +624,11 @@ impl RusToKMcpServer {
                         let content = Self::serialize_response(McpToolResponse::success(result))?;
                         Ok(Self::success_response(content))
                     }
-                    _ => unreachable!("ALL_ALLOY_TOOLS exhausted"),
+                    other => Err(rmcp::ErrorData::new(
+                        rmcp::model::ErrorCode::METHOD_NOT_FOUND,
+                        format!("Unknown alloy tool: {other}"),
+                        None,
+                    )),
                 }
             }
 
@@ -816,8 +819,20 @@ impl ServerHandler for RusToKMcpServer {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum McpServerError {
+    #[error("MCP server error: {0}")]
+    Server(String),
+    #[error("MCP runtime error: {0}")]
+    Runtime(#[from] crate::runtime::McpRuntimeError),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+pub type McpServerResult<T> = std::result::Result<T, McpServerError>;
+
 /// Serve the MCP server over stdio
-pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
+pub async fn serve_stdio(config: McpServerConfig) -> McpServerResult<()> {
     let McpServerConfig {
         registry,
         enabled_tools,
@@ -866,16 +881,16 @@ pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
     server
         .serve(stdio())
         .await
-        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?
+        .map_err(|e| McpServerError::Server(format!("MCP server error: {e}")))?
         .waiting()
         .await
         .map(|_| ())
-        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
+        .map_err(|e| McpServerError::Server(format!("MCP server error: {e}")))
 }
 
 fn require_args(
     args: Option<serde_json::Map<String, serde_json::Value>>,
-) -> Result<serde_json::Map<String, serde_json::Value>, rmcp::ErrorData> {
+) -> std::result::Result<serde_json::Map<String, serde_json::Value>, rmcp::ErrorData> {
     args.ok_or_else(|| rmcp::ErrorData::invalid_params("Missing arguments", None))
 }
 

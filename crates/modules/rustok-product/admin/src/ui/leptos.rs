@@ -1255,6 +1255,7 @@ fn ProductCatalogReference() -> impl IntoView {
                         let seo_copy = build_product_admin_seo_panel_copy(effective_locale.as_deref());
                         view! {
                             <SeoEntityPanel
+                                // INVARIANT: seo_builtin_slug::PRODUCT is a valid compile-time SEO target slug.
                                 target_kind=SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug")
                                 target_id=Signal::derive(move || editing_id.get())
                                 locale=Signal::derive({

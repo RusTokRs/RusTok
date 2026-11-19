@@ -192,6 +192,7 @@ impl BlogSearchProjectionSource {
         // ever passes posts already filtered by `tenant_id` (see
         // `list_public_documents`), so these post ids cannot cross tenants.
         let translations = blog_post_translation::Entity::find()
+            // Tenant isolation: post_ids are already filtered by tenant_id above
             .filter(blog_post_translation::Column::PostId.is_in(post_ids.clone()))
             .all(&self.db)
             .await

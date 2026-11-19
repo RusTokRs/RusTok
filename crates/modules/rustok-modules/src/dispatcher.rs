@@ -975,6 +975,7 @@ impl ArtifactExecutionAdmission {
         tenant_id: uuid::Uuid,
         phase: ExecutionPhase,
     ) -> bool {
+        // INVARIANT: In-memory evaluation comparing cached dispatcher registration against requested tenant_id, module, and release.
         if self.tenant_id != tenant_id
             || self.module_slug != release.slug
             || self.release_digest != release.digest

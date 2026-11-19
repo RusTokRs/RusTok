@@ -32,6 +32,11 @@ pub async fn enforce(
     mut request: Request<Body>,
     next: Next,
 ) -> Response {
+    // The runner credential is host-only. Validate it before consuming the header,
+    // then prevent it from reaching controllers, transports, or downstream middleware.
+    let runner_token_valid = runner_token_is_valid(&ctx, &request);
+    strip_runner_token_header(&mut request);
+
     let method = request.method().clone();
     let path = request.uri().path();
     tracing::debug!(path, %method, "registry_artifact_access::enforce entry");
@@ -41,7 +46,7 @@ pub async fn enforce(
     }
 
     if method == Method::POST && is_remote_runner_path(path) {
-        return if runner_token_is_valid(&ctx, &request) {
+        return if runner_token_valid {
             next.run(request).await
         } else {
             unauthorized("Missing or invalid registry runner token")
@@ -82,7 +87,7 @@ pub async fn enforce(
             next.run(request).await
         }
         RegistryOperation::ArtifactDownload => {
-            if !runner_token_is_valid(&ctx, &request)
+            if !runner_token_valid
                 && let Err(response) =
                     authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage)
                         .await
@@ -279,7 +284,11 @@ fn is_remote_runner_path(path: &str) -> bool {
         && matches!(segments[4], "heartbeat" | "complete" | "fail")
 }
 
-fn runner_token_is_valid(ctx: &ServerRuntimeContext, request: &Request<Body>) -> bool {
+fn strip_runner_token_header(request: &mut Request<Body>) {
+    request.headers_mut().remove("x-rustok-runner-token");
+}
+
+pub(super) fn runner_token_is_valid(ctx: &ServerRuntimeContext, request: &Request<Body>) -> bool {
     let settings = &ctx.settings().registry.remote_executor;
     if !settings.enabled {
         return false;
@@ -299,11 +308,9 @@ fn validate_runner_token(headers: &axum::http::HeaderMap, expected: &str) -> boo
     let Some(first) = values.next() else {
         return false;
     };
-    for duplicate in values {
-        if duplicate != first {
-            tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
-            return false;
-        }
+    if values.next().is_some() {
+        tracing::warn!("Duplicate x-rustok-runner-token headers rejected");
+        return false;
     }
     let Some(provided) = first
         .to_str()
@@ -399,13 +406,17 @@ mod tests {
     }
 
     #[test]
-    fn validate_runner_token_handles_duplicate_headers_and_quotes() {
+    fn validate_runner_token_rejects_duplicates_and_accepts_a_single_quoted_secret() {
         use axum::http::HeaderMap;
 
-        let mut headers = HeaderMap::new();
-        headers.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
-        headers.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
-        assert!(super::validate_runner_token(&headers, "\"runner-secret\""));
+        let mut single = HeaderMap::new();
+        single.insert("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        assert!(super::validate_runner_token(&single, "\"runner-secret\""));
+
+        let mut duplicates = HeaderMap::new();
+        duplicates.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        duplicates.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        assert!(!super::validate_runner_token(&duplicates, "runner-secret"));
 
         let mut conflicting = HeaderMap::new();
         conflicting.append("x-rustok-runner-token", "tok1".parse().unwrap());
@@ -418,5 +429,21 @@ mod tests {
         let mut blank = HeaderMap::new();
         blank.append("x-rustok-runner-token", "   ".parse().unwrap());
         assert!(!super::validate_runner_token(&blank, "tok1"));
+    }
+    #[test]
+    fn runner_token_header_is_removed_before_downstream_dispatch() {
+        use axum::{body::Body, http::Request};
+
+        let mut request = Request::new(Body::empty());
+        request
+            .headers_mut()
+            .append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        request
+            .headers_mut()
+            .append("x-rustok-runner-token", "second-secret".parse().unwrap());
+
+        super::strip_runner_token_header(&mut request);
+
+        assert!(!request.headers().contains_key("x-rustok-runner-token"));
     }
 }

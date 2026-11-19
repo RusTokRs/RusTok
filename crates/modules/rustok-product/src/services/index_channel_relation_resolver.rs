@@ -16,6 +16,7 @@ use rustok_channel_ports::{ChannelIndexIdentitySelector, ChannelIndexIdentitySna
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult};
 use serde_json::Value as JsonValue;
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 
 use super::{
@@ -63,6 +64,7 @@ pub fn bind_channel_observation(
             ProductSalesChannelRelationResolverError::Unavailable
         }
     })?;
+    // INVARIANT: Channel identity snapshot tenant must match port caller tenant.
     if snapshot.tenant_id != tenant_id {
         return Err(ProductSalesChannelRelationResolverError::Unavailable);
     }
@@ -137,6 +139,7 @@ impl ProductSalesChannelRelationResolver {
         Self { db, observer }
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, product_id = %product_id))]
     pub async fn reconcile_product(
         &self,
         tenant_id: Uuid,
@@ -166,6 +169,7 @@ impl ProductSalesChannelRelationResolver {
 
     /// Bounded convergence primitive for Channel identity changes, Product visibility changes, and
     /// initial backfill. An interrupted page is safe to retry from the same cursor.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, ?after_product_id, limit))]
     pub async fn reconcile_tenant_page(
         &self,
         tenant_id: Uuid,
@@ -209,6 +213,7 @@ impl ProductSalesChannelRelationResolver {
         Ok(next_product_id)
     }
 
+    #[instrument(skip(self, store, claim))]
     pub async fn execute_claim(
         &self,
         store: &ProductSalesChannelIndexRelationConvergenceStore,

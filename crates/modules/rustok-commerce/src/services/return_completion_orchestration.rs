@@ -745,6 +745,7 @@ impl ReturnCompletionOrchestrationService {
             )
             .await
             .map_err(|error| self.owner_port_error("rustok_order", error))?;
+        // INVARIANT: cross-module order return contract validation ensures foreign return projection matches caller tenant.
         if response.tenant_id != tenant_id || response.id != return_id || response.order_id.is_nil()
         {
             return Err(self.owner_port_error(

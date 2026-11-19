@@ -24,10 +24,10 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
+use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_IDLE_POLL_MS";

@@ -61,6 +61,7 @@ impl FulfillmentCreateLabelRecoveryService {
         );
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
         let operation = journal.get(tenant_id, operation_id).await?;
+        // INVARIANT: database query filtered by tenant_id precedes in-memory operation tenant verification.
         if operation.tenant_id != tenant_id || operation.operation != "create_label" {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment provider operation {operation_id} is not a create_label operation for tenant {tenant_id}"
@@ -107,6 +108,7 @@ impl FulfillmentCreateLabelRecoveryService {
                 "create_label operation {operation_id} contains invalid request_payload: {error}"
             ))
         })?;
+        // INVARIANT: payload idempotency validation ensures deserialized request tenant matches operation tenant.
         if request.tenant_id != tenant_id
             || request.fulfillment_id != operation.fulfillment_id
             || request.idempotency_key.as_deref().map(str::trim)

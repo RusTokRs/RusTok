@@ -155,7 +155,12 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
             "INSERT INTO marketplace_listing_events (id, tenant_id, listing_id, actor_id, event_kind, locale, provenance, note, metadata, created_at) VALUES (?, ?, ?, NULL, ?, NULL, 'legacy_snapshot', ?, json(?), ?)",
             values,
         ),
-        _ => unreachable!(),
+        // INVARIANT: Supported backends are PostgreSQL and SQLite; other backends return a typed error
+        other => {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "unsupported database backend for marketplace listing migration: {other:?}"
+            )));
+        }
     };
     connection.execute_raw(statement).await?;
     Ok(())

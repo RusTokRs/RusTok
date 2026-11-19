@@ -161,7 +161,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "alloy"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
@@ -13923,6 +13922,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -13938,6 +13938,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
+ "tracing",
  "uuid",
 ]
 
@@ -13947,11 +13948,15 @@ version = "0.1.0"
 dependencies = [
  "schemars 1.2.3",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "rustok-ai-media"
 version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "rustok-ai-order"
@@ -13960,6 +13965,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -13969,6 +13975,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -13984,6 +13991,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -14482,6 +14490,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -14690,7 +14699,6 @@ dependencies = [
  "leptos",
  "leptos-ui-routing",
  "leptos_axum",
- "rust_decimal",
  "rustok-api",
  "rustok-auth-ui",
  "rustok-cart",
@@ -15325,7 +15333,6 @@ dependencies = [
 name = "rustok-docs"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "axum",
  "chrono",
@@ -16112,6 +16119,7 @@ dependencies = [
  "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "utoipa",
  "uuid",
 ]
@@ -16231,7 +16239,6 @@ name = "rustok-mcp"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "anyhow",
  "async-graphql",
  "async-trait",
  "chrono",
@@ -16941,6 +16948,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
+ "tracing",
 ]
 
 [[package]]
@@ -17828,7 +17836,6 @@ dependencies = [
  "flex",
  "rustok-api",
  "rustok-blog",
- "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-forum",
@@ -17887,6 +17894,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
 ]
 
@@ -18809,7 +18817,6 @@ dependencies = [
 name = "rustok-workflow"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-graphql",
  "async-trait",
  "axum",

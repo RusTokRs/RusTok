@@ -127,6 +127,9 @@ serde_columnar = { path = "crates/utils/serde-columnar-vendored" }
 # before being switched on, which makes it a regression guard rather than a backlog of work.
 # Broader lints (`unreachable_pub`, `missing_debug_implementations`, `clippy::pedantic`) are left
 # off until someone can run them and triage the output.
+[workspace.lints.cargo]
+unused_workspace_dependencies = "allow"
+
 [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
@@ -267,7 +270,6 @@ leptos-use = "0.19.0"
 gloo-storage = "0.4.0"
 serde_qs = "1.1"
 serde_urlencoded = "0.7.1"
-chrono-humanize = "0.2.3"
 
 # Logging & Observability
 tracing = "0.1"
@@ -319,7 +321,6 @@ reqwest = { version = "0.13", features = ["json", "query", "form"] }
 url = "2.5"
 percent-encoding = "2.3"
 reqwest-middleware = { version = "0.5.2", features = ["json"] }
-reqwest-retry = "0.9.1"
 prometheus = "0.14"
 lazy_static = "1.5"
 secrecy = { version = "0.10", features = ["serde"] }

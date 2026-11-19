@@ -5,6 +5,49 @@ use std::path::{Path, PathBuf};
 use rustok_api::manifest_hash::hash_manifest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AlloyScaffoldError {
+    #[error("{0}")]
+    Validation(String),
+    #[error("Direct write during alloy_scaffold_module is forbidden. Stage the design, review it, then use alloy_apply_module_scaffold with confirm=true.")]
+    DirectWriteForbidden,
+    #[error("Failed to canonicalize scaffold source digest")]
+    DigestFailed,
+    #[error("Failed to write scaffold files: {0}")]
+    FileWrite(String),
+    #[error("Target crate directory already exists: {0}")]
+    TargetAlreadyExists(String),
+    #[error("Failed to lock staged scaffold store")]
+    LockFailed,
+    #[error("Unknown scaffold draft: {0}")]
+    UnknownDraft(String),
+    #[error("Draft context required: {0}")]
+    ContextRequired(String),
+    #[error("Workspace error: {0}")]
+    Workspace(String),
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<String> for AlloyScaffoldError {
+    fn from(s: String) -> Self {
+        Self::Validation(s)
+    }
+}
+
+impl From<&str> for AlloyScaffoldError {
+    fn from(s: &str) -> Self {
+        Self::Validation(s.to_string())
+    }
+}
+
+impl From<AlloyScaffoldError> for String {
+    fn from(err: AlloyScaffoldError) -> Self {
+        err.to_string()
+    }
+}
 
 fn default_true() -> bool {
     true
@@ -113,7 +156,7 @@ pub struct ApplyModuleScaffoldResponse {
 
 pub fn generate_module_scaffold(
     request: &ScaffoldModuleRequest,
-) -> Result<ScaffoldModulePreview, String> {
+) -> Result<ScaffoldModulePreview, AlloyScaffoldError> {
     validate_slug(&request.slug)?;
     validate_name(&request.name)?;
     validate_description(&request.description)?;
@@ -122,10 +165,7 @@ pub fn generate_module_scaffold(
     }
 
     if request.write_files {
-        return Err(
-            "Direct write during alloy_scaffold_module is forbidden. Stage the design, review it, then use alloy_apply_module_scaffold with confirm=true."
-                .to_string(),
-        );
+        return Err(AlloyScaffoldError::DirectWriteForbidden);
     }
 
     let slug = request.slug.trim().to_string();
@@ -149,20 +189,20 @@ pub fn generate_module_scaffold(
 ///
 /// Operational guidance is deliberately excluded: the digest binds only the
 /// logical crate root and the exact generated files that can be applied.
-pub fn scaffold_source_digest(preview: &ScaffoldModulePreview) -> Result<String, String> {
+pub fn scaffold_source_digest(preview: &ScaffoldModulePreview) -> Result<String, AlloyScaffoldError> {
     let digest = hash_manifest(&ScaffoldSourceSnapshot {
         crate_name: &preview.crate_name,
         crate_path: &preview.crate_path,
         files: &preview.files,
     })
-    .map_err(|_| "Failed to canonicalize scaffold source digest".to_string())?;
+    .map_err(|_| AlloyScaffoldError::DigestFailed)?;
     Ok(format!("sha256:{digest}"))
 }
 
 pub fn apply_staged_scaffold(
     draft: &StagedModuleScaffold,
     workspace_root: &str,
-) -> Result<ApplyModuleScaffoldResponse, String> {
+) -> Result<ApplyModuleScaffoldResponse, AlloyScaffoldError> {
     let source_digest = scaffold_source_digest(&draft.preview)?;
     let target_root = PathBuf::from(workspace_root).join(&draft.preview.crate_path);
     let file_map = draft
@@ -236,35 +276,32 @@ fn build_file_map(
     files
 }
 
-fn write_scaffold_files(root: &Path, file_map: &BTreeMap<String, String>) -> Result<(), String> {
+fn write_scaffold_files(root: &Path, file_map: &BTreeMap<String, String>) -> Result<(), AlloyScaffoldError> {
     if root.exists() {
-        return Err(format!(
-            "Target crate directory already exists: {}",
-            root.display()
-        ));
+        return Err(AlloyScaffoldError::TargetAlreadyExists(root.display().to_string()));
     }
 
     let workspace_root = root
         .parent()
         .and_then(Path::parent)
         .and_then(Path::parent)
-        .ok_or_else(|| "Failed to resolve workspace root from target path".to_string())?;
+        .ok_or_else(|| AlloyScaffoldError::Workspace("Failed to resolve workspace root from target path".to_string()))?;
     if !workspace_root.join("Cargo.toml").exists() {
-        return Err(format!(
+        return Err(AlloyScaffoldError::Workspace(format!(
             "workspace_root does not look like a RusToK workspace: {}",
             workspace_root.display()
-        ));
+        )));
     }
 
     for (relative_path, content) in file_map {
         let target_path = root.join(relative_path);
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                format!("Failed to create directory {}: {error}", parent.display())
+                AlloyScaffoldError::FileWrite(format!("Failed to create directory {}: {error}", parent.display()))
             })?;
         }
         fs::write(&target_path, content)
-            .map_err(|error| format!("Failed to write {}: {error}", target_path.display()))?;
+            .map_err(|error| AlloyScaffoldError::FileWrite(format!("Failed to write {}: {error}", target_path.display())))?;
     }
 
     Ok(())
@@ -380,49 +417,49 @@ fn render_lib_rs(
 }
 
 fn rust_string_literal(value: &str) -> String {
-    serde_json::to_string(value).expect("serializing a Rust string literal cannot fail")
+    serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"))
 }
 
 fn render_contract_tests() -> String {
     "#[test]\nfn crate_api_defines_minimal_contract_sections() {\n    let api = include_str!(\"../CRATE_API.md\");\n    for marker in [\n        \"## Minimum contract checklist\",\n        \"### Input DTOs and commands\",\n        \"### Domain invariants\",\n        \"### Events and outbox effects\",\n        \"### Errors and refusal codes\",\n    ] {\n        assert!(api.contains(marker), \"CRATE_API.md must contain section: {marker}\");\n    }\n}\n".to_string()
 }
 
-fn validate_slug(slug: &str) -> Result<(), String> {
+fn validate_slug(slug: &str) -> Result<(), AlloyScaffoldError> {
     let slug = slug.trim();
     if slug.is_empty() {
-        return Err("slug must not be empty".to_string());
+        return Err(AlloyScaffoldError::Validation("slug must not be empty".to_string()));
     }
     if slug.len() > 64 {
-        return Err("slug must be 64 characters or fewer".to_string());
+        return Err(AlloyScaffoldError::Validation("slug must be 64 characters or fewer".to_string()));
     }
     if !slug
         .chars()
         .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
     {
-        return Err(
+        return Err(AlloyScaffoldError::Validation(
             "slug must contain only lowercase ASCII letters, digits, '-' or '_'".to_string(),
-        );
+        ));
     }
     Ok(())
 }
 
-fn validate_name(name: &str) -> Result<(), String> {
+fn validate_name(name: &str) -> Result<(), AlloyScaffoldError> {
     validate_text(name, "name", 128)
 }
 
-fn validate_description(description: &str) -> Result<(), String> {
+fn validate_description(description: &str) -> Result<(), AlloyScaffoldError> {
     validate_text(description, "description", 4_096)
 }
 
-fn validate_text(value: &str, field: &str, maximum_len: usize) -> Result<(), String> {
+fn validate_text(value: &str, field: &str, maximum_len: usize) -> Result<(), AlloyScaffoldError> {
     if value.trim().is_empty() {
-        return Err(format!("{field} must not be empty"));
+        return Err(AlloyScaffoldError::Validation(format!("{field} must not be empty")));
     }
     if value.len() > maximum_len {
-        return Err(format!("{field} must be {maximum_len} characters or fewer"));
+        return Err(AlloyScaffoldError::Validation(format!("{field} must be {maximum_len} characters or fewer")));
     }
     if value.chars().any(char::is_control) {
-        return Err(format!("{field} must not contain control characters"));
+        return Err(AlloyScaffoldError::Validation(format!("{field} must not contain control characters")));
     }
     Ok(())
 }

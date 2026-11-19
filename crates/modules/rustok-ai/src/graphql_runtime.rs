@@ -25,11 +25,17 @@ impl AiGraphqlRuntimeData {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum AiGraphqlRuntimeError {
+    #[error("failed to initialize AI GraphQL runtime: {0}")]
+    Runtime(#[from] crate::AiError),
+}
+
 /// Capability-owned factory consumed by manifest-generated schema composition.
 #[cfg(feature = "server")]
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> Result<AiGraphqlRuntimeData, String> {
+) -> Result<AiGraphqlRuntimeData, AiGraphqlRuntimeError> {
     let runtime = crate::ai_host_runtime_from_context(inputs.host())?;
     Ok(AiGraphqlRuntimeData {
         runtime,

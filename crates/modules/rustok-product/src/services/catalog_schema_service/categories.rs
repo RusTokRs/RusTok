@@ -15,6 +15,7 @@ use super::{
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
@@ -29,6 +30,7 @@ const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 const TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES: usize = 120;
 
 impl ProductCatalogSchemaService {
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, slug = %input.slug))]
     pub async fn create_category(
         &self,
         tenant_id: Uuid,
@@ -43,8 +45,7 @@ impl ProductCatalogSchemaService {
         lock_schema_for_policy_write(&txn, tenant_id).await?;
 
         if input.kind == CatalogCategoryKind::Virtual {
-            let rule = parse_virtual_category_rule_v1(&input.rule_config)
-                .map_err(CommerceError::Validation)?;
+            let rule = parse_virtual_category_rule_v1(&input.rule_config)?;
             validate_virtual_category_rule_references(&txn, tenant_id, &rule).await?;
         }
 
@@ -93,7 +94,7 @@ impl ProductCatalogSchemaService {
             write_category_seo_translation_in_tx(&txn, tenant_id, category_id, translation).await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::CatalogCategoryCreated { category_id },
@@ -122,6 +123,7 @@ impl ProductCatalogSchemaService {
         list_categories_from_taxonomy(self, tenant_id, &locale).await
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, category_id = %input.category_id, code = %input.code))]
     pub async fn create_category_group(
         &self,
         tenant_id: Uuid,
@@ -152,7 +154,7 @@ impl ProductCatalogSchemaService {
         for translation in &input.translations {
             insert_category_group_translation(&txn, group_id, translation).await?;
         }
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::CatalogCategoryAttributesChanged {
@@ -170,6 +172,7 @@ impl ProductCatalogSchemaService {
         Ok(result)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, category_id = %input.category_id))]
     pub async fn set_category_schema_mode(
         &self,
         tenant_id: Uuid,
@@ -238,7 +241,7 @@ impl ProductCatalogSchemaService {
 
         Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::CatalogCategorySchemaModeChanged {
@@ -330,7 +333,7 @@ impl ProductCatalogSchemaService {
 
         Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::CatalogCategoryAttributesChanged {
@@ -480,16 +483,16 @@ fn taxonomy_category_hierarchy_order(
 
     let sort_siblings = |category_ids: &mut Vec<Uuid>| {
         category_ids.sort_by(|left_id, right_id| {
-            let left = owners
-                .get(left_id)
-                .expect("Taxonomy ordering owner must exist");
-            let right = owners
-                .get(right_id)
-                .expect("Taxonomy ordering owner must exist");
-            left.position
-                .cmp(&right.position)
-                .then_with(|| left.canonical_key.cmp(&right.canonical_key))
-                .then_with(|| left.id.cmp(&right.id))
+            match (owners.get(left_id), owners.get(right_id)) {
+                (Some(left), Some(right)) => left
+                    .position
+                    .cmp(&right.position)
+                    .then_with(|| left.canonical_key.cmp(&right.canonical_key))
+                    .then_with(|| left.id.cmp(&right.id)),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => left_id.cmp(right_id),
+            }
         });
     };
     sort_siblings(&mut roots);

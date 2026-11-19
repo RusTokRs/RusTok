@@ -23,8 +23,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_mcp::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, McpAccessContext, McpAccessPolicy,
     McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRuntimeBinding,
-    McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext,
-    McpToolCallAuditEvent, McpToolCallOutcome, ReviewModuleScaffoldRequest,
+    McpRuntimeError, McpRuntimeResult, McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore,
+    McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome, ReviewModuleScaffoldRequest,
     ReviewModuleScaffoldResponse, ScaffoldModuleRequest, StageModuleScaffoldResponse,
     TOOL_MCP_WHOAMI, scaffold_source_digest,
 };
@@ -133,9 +133,10 @@ impl DbBackedMcpRuntimeBridge {
             return Err(Error::Unauthorized("MCP client is inactive".into()));
         }
 
-        let policy = mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
-            .await
-            .map_err(map_db_err)?;
+        let policy =
+            mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
+                .await
+                .map_err(map_db_err)?;
         if let Some(policy) = policy.as_ref() {
             McpManagementAuthorityService::validate_runtime_policy(
                 &self.db,
@@ -193,21 +194,21 @@ impl McpAccessResolver for DbBackedMcpRuntimeBridge {
     async fn resolve_runtime_binding(
         &self,
         session: &McpSessionContext,
-    ) -> anyhow::Result<McpRuntimeBinding> {
+    ) -> McpRuntimeResult<McpRuntimeBinding> {
         let plaintext_token = session
             .plaintext_token
             .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("MCP session plaintext token is required"))?;
+            .ok_or_else(|| McpRuntimeError::Message("MCP session plaintext token is required".to_string()))?;
 
         self.resolve_binding_for_token(plaintext_token)
             .await
-            .map_err(|error| anyhow::anyhow!(error.to_string()))
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))
     }
 }
 
 #[async_trait]
 impl McpAuditSink for DbBackedMcpRuntimeBridge {
-    async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> anyhow::Result<()> {
+    async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> McpRuntimeResult<()> {
         let Some(tenant_id) = parse_uuid(event.tenant_id.as_deref()) else {
             tracing::warn!(
                 tool = %event.tool_name,
@@ -246,7 +247,7 @@ impl McpAuditSink for DbBackedMcpRuntimeBridge {
             },
         )
         .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
 
         Ok(())
     }
@@ -258,9 +259,11 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ScaffoldModuleRequest,
-    ) -> anyhow::Result<StageModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)?;
-        let client_id = client_id_from_runtime_context(context)?;
+    ) -> McpRuntimeResult<StageModuleScaffoldResponse> {
+        let tenant_id = tenant_id_from_runtime_context(context)
+            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
+        let client_id = client_id_from_runtime_context(context)
+            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let created_by = actor_user_id_from_runtime_context(context);
 
         let draft = McpManagementService::stage_scaffold_draft(
@@ -273,12 +276,13 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             },
         )
         .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
 
         let preview = draft
             .preview()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        let source_digest = scaffold_source_digest(&preview).map_err(anyhow::Error::msg)?;
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
+        let source_digest = scaffold_source_digest(&preview)
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
 
         Ok(StageModuleScaffoldResponse {
             draft_id: draft.id.to_string(),
@@ -304,19 +308,21 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ReviewModuleScaffoldRequest,
-    ) -> anyhow::Result<ReviewModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)?;
+    ) -> McpRuntimeResult<ReviewModuleScaffoldResponse> {
+        let tenant_id = tenant_id_from_runtime_context(context)
+            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let draft_id = Uuid::parse_str(&request.draft_id)
-            .map_err(|error| anyhow::anyhow!("Invalid draft id: {error}"))?;
+            .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
         let draft = McpManagementService::get_scaffold_draft(&self.db, tenant_id, draft_id)
             .await
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?
-            .ok_or_else(|| anyhow::anyhow!("Unknown scaffold draft: {}", request.draft_id))?;
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?
+            .ok_or_else(|| McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id)))?;
 
         let draft = draft
             .to_staged_draft()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        let source_digest = scaffold_source_digest(&draft.preview).map_err(anyhow::Error::msg)?;
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
+        let source_digest = scaffold_source_digest(&draft.preview)
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
         Ok(ReviewModuleScaffoldResponse {
             draft,
             source_digest,
@@ -327,11 +333,12 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ApplyModuleScaffoldRequest,
-    ) -> anyhow::Result<ApplyModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)?;
+    ) -> McpRuntimeResult<ApplyModuleScaffoldResponse> {
+        let tenant_id = tenant_id_from_runtime_context(context)
+            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let applied_by = actor_user_id_from_runtime_context(context);
         let draft_id = Uuid::parse_str(&request.draft_id)
-            .map_err(|error| anyhow::anyhow!("Invalid draft id: {error}"))?;
+            .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
 
         let (_, response) = McpManagementService::apply_scaffold_draft(
             &self.db,
@@ -344,7 +351,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             },
         )
         .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
 
         Ok(response)
     }
@@ -358,10 +365,15 @@ fn filter_active_module_permissions(
         return granted_permissions.to_vec();
     };
 
-    let permissions = granted_permissions
-        .iter()
-        .filter_map(|value| value.parse::<Permission>().ok())
-        .collect::<Vec<_>>();
+    let mut permissions = Vec::with_capacity(granted_permissions.len());
+    for value in granted_permissions {
+        match value.parse::<Permission>() {
+            Ok(permission) => permissions.push(permission),
+            Err(error) => {
+                tracing::warn!(value = %value, error = %error, "Ignoring unparseable granted permission");
+            }
+        }
+    }
     let mut active = availability.active_permissions(&permissions);
     active.sort_by_cached_key(ToString::to_string);
     active.dedup();

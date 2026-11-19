@@ -1245,6 +1245,13 @@ try {
   ) {
     fail("the raw lifecycle executor and host-composed request must remain owner-private");
   }
+  const lifecycleHeartbeat = read("crates/modules/rustok-modules/src/claim_heartbeat.rs");
+  if (
+    (lifecycleHeartbeat.match(/renew_lifecycle_claim\(db, tenant_id, module_slug, expected_revision, idempotency_key\)\.await\?/g) || []).length < 2 ||
+    !lifecycleHeartbeat.includes("drop(heartbeat);")
+  ) {
+    fail("lifecycle hook dispatch must check claim ownership before and after the hook");
+  }
   const lifecycleJournal = readTree(staticLifecycleJournalPath, "utf8");
   for (const name of [
     "record_idempotent", "replay_idempotent", "replay_idempotent_command",

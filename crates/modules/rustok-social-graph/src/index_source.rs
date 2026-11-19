@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_events::SocialGraphRelationEvent;
 use rustok_index::{
-    IndexMutation, IndexMutationEventError, IndexSource, IndexSourceCursor, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    PostgresIndexSourceFactory, PostgresIndexSourceFactoryError, SchemaRef,
-    derive_index_source_event_id, register_index_mutation_event, register_index_source,
-    register_postgres_index_source_factory,
+    DomainError, IndexMutation, IndexMutationEventError, IndexSource, IndexSourceCursor,
+    IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
+    IndexSourceRegistrationError, IndexSourceScanRequest, PostgresIndexSourceFactory,
+    PostgresIndexSourceFactoryError, SchemaRef, derive_index_source_event_id,
+    register_index_mutation_event, register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -45,7 +45,9 @@ pub enum SocialGraphIndexSourceRegistrationError {
 pub fn register_social_graph_index_source_contracts(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> Result<(), SocialGraphIndexSourceRegistrationError> {
-    let schema = relation_schema_ref().map_err(SocialGraphIndexSourceRegistrationError::Schema)?;
+    let schema = relation_schema_ref()
+        .map_err(SocialGraphIndexError::from)
+        .map_err(SocialGraphIndexSourceRegistrationError::Schema)?;
 
     register_postgres_index_source_factory(
         extensions,
@@ -73,16 +75,16 @@ impl PostgresIndexSourceFactory for SocialGraphRelationPostgresIndexSourceFactor
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
-        let schema = relation_schema_ref().map_err(|error| error.to_string())?;
+    ) -> Result<(), IndexSourceRegistrationError> {
+        let schema = relation_schema_ref()?;
         register_index_source(
             extensions,
             SOCIAL_GRAPH_INDEX_OWNER,
             SOCIAL_GRAPH_RELATION_INDEX_SOURCE,
             [schema],
             SocialGraphRelationPostgresIndexSource { db },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 
@@ -109,6 +111,7 @@ impl SocialGraphRelationPostgresIndexSource {
         request: &IndexSourceScanRequest,
         cursor: Option<&RelationCursor>,
     ) -> Result<Vec<relation::Model>, IndexSourceFailure> {
+        // INVARIANT: Index source page limit (usize) is physically guaranteed to fit within u64 on 64-bit systems.
         let fetch_limit = u64::try_from(request.limit() + 1)
             .expect("Index source page limit is bounded below u64::MAX");
         let mut query = relation::Entity::find()
@@ -254,20 +257,18 @@ fn model_into_mutation(
         .map_err(|_| permanent("social_graph_index_record_invalid"))
 }
 
-fn relation_schema_ref() -> Result<SchemaRef, SocialGraphIndexError> {
-    social_graph_relation_index_schema().map(|schema| schema.reference)
+fn relation_schema_ref() -> Result<SchemaRef, DomainError> {
+    crate::index::relation_schema_ref()
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect(
-        "static retryable source failure code must be valid: invariant validated at startup",
-    )
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect(
-        "static permanent source failure code must be valid: invariant validated at startup",
-    )
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }
 
 #[cfg(test)]

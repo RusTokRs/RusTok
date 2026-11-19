@@ -10,7 +10,7 @@ pub use rate_limit::{
     BlogGraphqlRateLimitError, BlogGraphqlRateLimitExceeded, BlogGraphqlRateLimitPolicy,
     BlogGraphqlRateLimiter, BlogGraphqlRateLimiterHandle,
 };
-pub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};
+pub use runtime_data::{BlogGraphqlRuntimeData, BlogGraphqlRuntimeError, attach_schema_data};
 pub use types::*;
 
 #[cfg(test)]

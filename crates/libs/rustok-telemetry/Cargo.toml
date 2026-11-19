@@ -18,7 +18,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
 prometheus = { version = "0.14", features = ["process"] }
-lazy_static = "1.5"
+lazy_static.workspace = true
 tokio.workspace = true
 
 # OpenTelemetry

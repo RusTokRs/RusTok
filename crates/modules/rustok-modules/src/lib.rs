@@ -19,6 +19,7 @@ mod build;
 mod build_surface;
 mod capability_events;
 mod capability_http;
+mod claim_heartbeat;
 mod composition;
 mod conflict_fences;
 mod contracts;
@@ -74,7 +75,15 @@ pub mod oci_admission;
 /// module) because non-OCI ingestion paths stage files too and must
 /// clean them up whether or not the `oci-distribution` feature is on.
 pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
-    let _ = tokio::fs::remove_file(path).await;
+    if let Err(error) = tokio::fs::remove_file(path).await {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "Failed best-effort removal of staged file"
+            );
+        }
+    }
 }
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;

@@ -62,7 +62,7 @@ pub fn parse_uuid_str(value: Option<&str>) -> AiResult<Uuid> {
 }
 
 pub fn provider_slug_from_str(value: &str) -> AiResult<ProviderSlug> {
-    ProviderSlug::new(value).map_err(AiError::Validation)
+    ProviderSlug::new(value).map_err(AiError::from)
 }
 
 pub fn validate_provider_profile_contract(
@@ -83,7 +83,7 @@ pub fn validate_provider_profile_contract(
     }
     egress_policy
         .validate_settings(descriptor, settings)
-        .map_err(AiError::Validation)?;
+        .map_err(AiError::from)?;
     for field in descriptor.credentials {
         if field.required && !credential_refs.contains_key(field.key) {
             return Err(AiError::Validation(format!(
@@ -128,7 +128,7 @@ pub fn validate_provider_target_profile_contract(
                 })?;
             egress_policy
                 .validate_settings(descriptor, &target.settings)
-                .map_err(AiError::Validation)?;
+                .map_err(AiError::from)?;
             if !credential_refs.is_empty() {
                 return Err(AiError::Validation(format!(
                     "deployment target `{target_id}` does not accept tenant credential references"
@@ -170,7 +170,7 @@ pub fn provider_config(
     egress_policy: &ProviderEgressPolicy,
 ) -> AiResult<AiProviderConfig> {
     let target_id =
-        crate::ProviderTargetId::new(&model.provider_target_id).map_err(AiError::InvalidConfig)?;
+        crate::ProviderTargetId::new(&model.provider_target_id).map_err(AiError::from)?;
     let target = targets.get(&target_id).ok_or_else(|| {
         AiError::InvalidConfig(format!(
             "deployment provider target `{target_id}` is unavailable"
@@ -245,10 +245,14 @@ pub fn string_list(value: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-pub fn uuid_list(value: &serde_json::Value) -> Vec<Uuid> {
+pub fn uuid_list(value: &serde_json::Value) -> AiResult<Vec<Uuid>> {
     string_list(value)
         .into_iter()
-        .filter_map(|value| Uuid::parse_str(&value).ok())
+        .map(|value| {
+            Uuid::parse_str(&value).map_err(|error| {
+                AiError::Validation(format!("invalid UUID `{value}` in list: {error}"))
+            })
+        })
         .collect()
 }
 

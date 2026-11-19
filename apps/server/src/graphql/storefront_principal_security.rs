@@ -46,15 +46,19 @@ fn selection_contains_storefront(
         })
 }
 
-fn document_contains_storefront(document: &ExecutableDocument) -> bool {
-    let mut visited_fragments = BTreeSet::new();
-    document.operations.iter().any(|(_, operation)| {
-        selection_contains_storefront(
-            &operation.node.selection_set.node,
-            document,
-            &mut visited_fragments,
-        )
-    })
+fn document_contains_storefront(
+    document: &ExecutableDocument,
+    operation_name: Option<&str>,
+) -> bool {
+    super::selected_operations(document, operation_name)
+        .into_iter()
+        .any(|operation| {
+            selection_contains_storefront(
+                &operation.node.selection_set.node,
+                document,
+                &mut BTreeSet::new(),
+            )
+        })
 }
 
 #[derive(Default)]
@@ -78,8 +82,9 @@ impl Extension for StorefrontPrincipalPolicyExtension {
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
         if !request.query.trim().is_empty() {
+            let operation_name = request.operation_name.clone();
             let document = request.parsed_query()?;
-            if document_contains_storefront(document) {
+            if document_contains_storefront(document, operation_name.as_deref()) {
                 request.data.insert(StorefrontOperationRequested);
             }
         }
@@ -135,7 +140,7 @@ mod tests {
             "#,
         ] {
             let document = async_graphql::parser::parse_query(query).expect("query should parse");
-            assert!(document_contains_storefront(&document));
+            assert!(document_contains_storefront(&document, None));
         }
     }
 
@@ -157,7 +162,21 @@ mod tests {
         )
         .expect("cyclic fragment query should parse");
 
-        assert!(document_contains_storefront(&document));
+        assert!(document_contains_storefront(&document, None));
+    }
+
+    #[test]
+    fn ignores_storefront_fields_in_unselected_operations() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                query PublicInfo { ping }
+                query Storefront { storefrontMe { id } }
+            "#,
+        )
+        .expect("document should parse");
+
+        assert!(!document_contains_storefront(&document, Some("PublicInfo")));
+        assert!(document_contains_storefront(&document, Some("Storefront")));
     }
 
     #[test]
@@ -174,6 +193,6 @@ mod tests {
         )
         .expect("query should parse");
 
-        assert!(!document_contains_storefront(&document));
+        assert!(!document_contains_storefront(&document, None));
     }
 }

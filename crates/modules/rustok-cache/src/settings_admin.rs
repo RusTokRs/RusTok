@@ -21,12 +21,35 @@ pub struct CacheSettingsSnapshot {
     pub schema_version: i32,
 }
 
+/// Strongly typed error returned by host-owned cache settings administration operations.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct CacheSettingsAdminError(pub String);
+
+impl From<String> for CacheSettingsAdminError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for CacheSettingsAdminError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<CacheSettingsAdminError> for String {
+    fn from(err: CacheSettingsAdminError) -> Self {
+        err.0
+    }
+}
+
 /// Host-owned persistence for the platform `cache` settings category.
 #[async_trait]
 pub trait CacheSettingsAdminPort: Send + Sync {
     /// Read the effective cache settings for `tenant_id`, with secrets redacted,
     /// together with the revision required for a compare-and-set write.
-    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, String>;
+    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError>;
 
     /// Persist validated cache settings only while the category still has the
     /// expected revision, and return the stored, redacted snapshot.
@@ -36,7 +59,7 @@ pub trait CacheSettingsAdminPort: Send + Sync {
         actor_id: Option<Uuid>,
         settings: serde_json::Value,
         expected_schema_version: i32,
-    ) -> Result<CacheSettingsSnapshot, String>;
+    ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError>;
 }
 
 /// Newtype so the host can publish the port in a type-keyed runtime context.
@@ -69,7 +92,7 @@ mod tests {
 
     #[async_trait]
     impl CacheSettingsAdminPort for RecordingPort {
-        async fn read(&self, _tenant_id: Uuid) -> Result<CacheSettingsSnapshot, String> {
+        async fn read(&self, _tenant_id: Uuid) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
             Ok(self.stored.lock().expect("lock").clone())
         }
 
@@ -79,10 +102,10 @@ mod tests {
             _actor_id: Option<Uuid>,
             settings: serde_json::Value,
             expected_schema_version: i32,
-        ) -> Result<CacheSettingsSnapshot, String> {
+        ) -> Result<CacheSettingsSnapshot, CacheSettingsAdminError> {
             let mut stored = self.stored.lock().expect("lock");
             if stored.schema_version != expected_schema_version {
-                return Err("settings changed concurrently".to_string());
+                return Err(CacheSettingsAdminError::from("settings changed concurrently"));
             }
             stored.settings = settings.clone();
             stored.schema_version += 1;

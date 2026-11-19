@@ -46,6 +46,7 @@ const paths = {
   eventLib: "crates/libs/rustok-events/src/lib.rs",
   contract: "crates/libs/rustok-events/src/contract.rs",
   rbacLib: "crates/modules/rustok-rbac/src/lib.rs",
+  rbacModule: "crates/modules/rustok-rbac/src/module.rs",
   owner: "crates/modules/rustok-rbac/src/artifact_permission_assignment.rs",
   host: "apps/server/src/controllers/artifact_permissions.rs",
   integrationTest: "crates/modules/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs",
@@ -92,9 +93,12 @@ for (const marker of [
 for (const marker of [
   "ArtifactPermissionAssignmentScope",
   "ArtifactPermissionEventPublisher",
+]) requireMarker(content.rbacLib, marker, `${paths.rbacLib}: runtime contract missing ${marker}`);
+
+for (const marker of [
   "fn dependencies(&self) -> &[&'static str]",
   '&["outbox"]',
-]) requireMarker(content.rbacLib, marker, `${paths.rbacLib}: runtime contract missing ${marker}`);
+]) requireMarker(content.rbacModule, marker, `${paths.rbacModule}: runtime contract missing ${marker}`);
 
 for (const marker of [
   "pub enum ArtifactPermissionAssignmentScope",

@@ -71,7 +71,7 @@ pub fn build_alloy_runtime(
     let executor = ScriptExecutor::new(sandbox.clone(), storage.clone())
         .with_execution_log(execution_log.clone());
     let scheduler = Arc::new(Scheduler::new(executor, storage.clone()));
-    tokio::spawn(async move {
+    let _scheduler_task = tokio::spawn(async move {
         if let Err(error) = scheduler.load_jobs().await {
             tracing::warn!("Failed to load Alloy scheduler jobs: {}", error);
         }

@@ -905,7 +905,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                 continue;
             };
             let ModuleDefinitionSource::Artifact { release } = &definition.source else {
-                unreachable!("runtime policy inputs are evaluated only for artifact definitions");
+                continue;
             };
             if installation.installation_id.is_nil()
                 || installation.release_digest != release.digest
@@ -1034,7 +1034,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                     );
                 }
             }
-            for (module_slug, required_module_slug, provider_enabled, compatible) in
+            for (module_slug, required_module_slug, provider_enabled, _compatible) in
                 unavailable_corequisites
             {
                 if !enabled.remove(&module_slug) {
@@ -1044,12 +1044,10 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                     ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable {
                         module_slug: required_module_slug,
                     }
-                } else if !compatible {
+                } else {
                     ModuleEffectivePolicyDenialReason::CoRequisiteVersionMismatch {
                         module_slug: required_module_slug,
                     }
-                } else {
-                    unreachable!("unavailable co-requisite must have a denial cause")
                 };
                 denial_reasons.entry(module_slug).or_default().push(reason);
             }

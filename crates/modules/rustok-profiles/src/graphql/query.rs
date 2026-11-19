@@ -147,6 +147,7 @@ fn profile_access_audience(ctx: &Context<'_>, tenant_id: Uuid) -> Result<Profile
         return Ok(ProfileAccessAudience::Anonymous);
     };
 
+    // INVARIANT: In-memory authorization check verifies the caller session tenant matches the target tenant.
     if auth.tenant_id != tenant_id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Authenticated profile reads must use the current tenant",

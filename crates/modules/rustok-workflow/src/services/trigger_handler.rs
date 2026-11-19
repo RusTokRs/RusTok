@@ -98,7 +98,7 @@ impl EventHandler for WorkflowTriggerHandler {
             let ctx = initial_context.clone();
             let event_id = envelope.id;
 
-            tokio::spawn(async move {
+            let _exec_task = tokio::spawn(async move {
                 if let Err(e) = engine
                     .execute(workflow_id, tenant_id, Some(event_id), steps, ctx)
                     .await

@@ -16,6 +16,7 @@ mod rbac;
 pub(crate) mod scheduler;
 pub mod search_projection;
 pub(crate) mod tag;
+pub mod taxonomy;
 mod widget;
 
 pub use widget::BlogWidgetService;

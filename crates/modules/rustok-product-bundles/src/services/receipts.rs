@@ -20,6 +20,7 @@ use rustok_api::PortError;
 use rustok_outbox::idempotency;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::dto::{BundleDto, BundleItemDto, BundleItemInput, CreateBundleInput, UpdateBundleInput};
@@ -82,6 +83,7 @@ impl From<sea_orm::DbErr> for BundleCommandError {
 
 impl BundleService {
     /// Creates one bundle with durable owner replay semantics.
+    #[instrument(skip(self, context, input), fields(tenant_id = %context.tenant_id, key = %context.idempotency_key))]
     pub async fn create_bundle_idempotent(
         &self,
         context: BundleCommandContext<'_>,
@@ -113,6 +115,7 @@ impl BundleService {
     }
 
     /// Adds one item to an existing bundle with durable owner replay semantics.
+    #[instrument(skip(self, context, item), fields(tenant_id = %context.tenant_id, bundle_id = %bundle_id, key = %context.idempotency_key))]
     pub async fn add_bundle_item_idempotent(
         &self,
         context: BundleCommandContext<'_>,
@@ -147,6 +150,7 @@ impl BundleService {
     }
 
     /// Updates one bundle with durable owner replay semantics.
+    #[instrument(skip(self, context, input), fields(tenant_id = %context.tenant_id, bundle_id = %bundle_id, key = %context.idempotency_key))]
     pub async fn update_bundle_idempotent(
         &self,
         context: BundleCommandContext<'_>,
@@ -180,6 +184,7 @@ impl BundleService {
     }
 
     /// Deletes one bundle with durable owner replay semantics.
+    #[instrument(skip(self, context), fields(tenant_id = %context.tenant_id, bundle_id = %bundle_id, key = %context.idempotency_key))]
     pub async fn delete_bundle_idempotent(
         &self,
         context: BundleCommandContext<'_>,

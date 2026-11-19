@@ -49,7 +49,7 @@ impl RusToKModule for NotificationsModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        let _ = ensure_notification_source_registry(extensions);
+        ensure_notification_source_registry(extensions);
         if extensions
             .contains::<Arc<dyn crate::NotificationInboxReconciliationInspectPortFactory>>()
         {

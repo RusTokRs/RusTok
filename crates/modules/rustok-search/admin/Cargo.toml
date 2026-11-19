@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 
@@ -28,7 +31,9 @@ ssr = [
   "dep:rustok-outbox",
   "dep:rustok-search",
   "dep:sea-orm",
+  "dep:rustok-api",
   "rustok-api/server",
+  "dep:uuid",
 ]
 
 [dependencies]
@@ -42,7 +47,7 @@ rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 leptos_router.workspace = true
-rustok-api = { workspace = true, default-features = false }
+rustok-api = { workspace = true, default-features = false, optional = true }
 
 rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }
@@ -52,5 +57,5 @@ rustok-search = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, optional = true }
 tracing.workspace = true

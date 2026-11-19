@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 loro = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -26,7 +29,6 @@ sea-orm-migration.workspace = true
 rustok-core.workspace = true
 rustok-api = { workspace = true, features = ["server", "runtime"] }
 rustok-web.workspace = true
-anyhow.workspace = true
 axum.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["full", "sync"] }

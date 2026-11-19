@@ -28,7 +28,10 @@ impl BuildEventHub {
     }
 
     pub fn publish(&self, event: BuildEvent) {
-        let _ = self.sender.send(event);
+        // INVARIANT: In broadcast channels, SendError occurs only when there are no active subscribers.
+        if let Err(error) = self.sender.send(event) {
+            tracing::trace!(%error, "BuildEvent published with no active subscribers");
+        }
     }
 }
 

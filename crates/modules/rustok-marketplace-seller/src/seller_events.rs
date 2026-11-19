@@ -54,6 +54,7 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
                     .to_string(),
             )
         })?;
+    // INVARIANT: In-memory verification that deserialized command receipt payload matches the command tenant.
     if response.tenant_id != tenant_id {
         return Err(MarketplaceSellerError::Validation(
             "marketplace seller command result tenant does not match its receipt".to_string(),
@@ -173,6 +174,7 @@ pub(crate) async fn append_receipted_member_event<C: ConnectionTrait>(
     command_kind: &str,
     response: &MarketplaceSellerMemberResponse,
 ) -> MarketplaceSellerResult<()> {
+    // INVARIANT: In-memory verification that deserialized command receipt payload matches the command tenant.
     if response.tenant_id != tenant_id {
         return Err(MarketplaceSellerError::Validation(
             "marketplace seller member result tenant does not match its receipt".to_string(),

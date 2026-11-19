@@ -449,6 +449,7 @@ impl ModuleOperationJournal {
             .map(|existing| match replay_or_conflict(request, existing)? {
                 ModuleOperationRecordOutcome::Replayed(record) => Ok(record),
                 ModuleOperationRecordOutcome::Recorded(_) => {
+                    // INVARIANT: replay_or_conflict on an existing record returns either Replayed or an error, never Recorded.
                     unreachable!("existing record replays")
                 }
             })

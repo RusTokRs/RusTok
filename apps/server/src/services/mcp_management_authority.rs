@@ -77,6 +77,7 @@ impl McpManagementAuthorityService {
         client: &mcp_clients::Model,
         policy: &mcp_policies::Model,
     ) -> Result<(), McpManagementAuthorityError> {
+        // INVARIANT: In-memory verification ensuring client and policy match the active tenant.
         if client.tenant_id != tenant_id
             || policy.tenant_id != tenant_id
             || policy.client_id != client.id
@@ -117,6 +118,7 @@ impl McpManagementAuthorityService {
             .map_err(|error| internal_error("load MCP policy", error))?;
 
         if let Some(policy) = policy {
+            // INVARIANT: In-memory verification confirming database-scoped MCP policy matches the tenant.
             if policy.tenant_id != tenant_id {
                 return Err(McpManagementAuthorityError::Forbidden(
                     "MCP policy belongs to another tenant".to_string(),

@@ -19,12 +19,12 @@ const forbidText = (source, value, label) => {
 const countText = (source, value) => source.split(value).length - 1;
 
 const cargoPath = "crates/modules/rustok-pricing/admin/Cargo.toml";
-const transportPath = "crates/modules/rustok-pricing/admin/src/transport.rs";
+const transportPath = "crates/modules/rustok-pricing/admin/src/transport/mod.rs";
 const graphqlPath = "crates/modules/rustok-pricing/admin/src/transport/graphql_adapter.rs";
 const safetyPath =
   "crates/modules/rustok-pricing/admin/src/transport/graphql_error_safety.rs";
 const nativePath =
-  "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter/mod.rs";
 const evidencePath =
   "crates/modules/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json";
 const reviewPath =

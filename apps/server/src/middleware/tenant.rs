@@ -431,13 +431,16 @@ impl TenantCacheMetricsStore {
             .await;
             if let Ok(mut conn) = result {
                 let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
-                let _ = tenant_cache_redis_timeout(
+                if let Err(error) = tenant_cache_redis_timeout(
                     "metrics INCR",
                     redis::cmd("INCR")
                         .arg(redis_key)
                         .query_async::<u64>(&mut conn),
                 )
-                .await;
+                .await
+                {
+                    tracing::debug!(%error, "Best-effort Redis tenant metrics INCR failed");
+                }
             }
         }
     }
@@ -677,7 +680,7 @@ pub async fn init_tenant_cache_infrastructure(
     ctx: &ServerRuntimeContext,
     cache_service: &CacheService,
 ) -> crate::error::Result<()> {
-    let _ = ctx.shared_insert_if_absent(cache_service.clone());
+    ctx.shared_insert_if_absent(cache_service.clone());
     let canonical_cache_service = ctx.shared_get::<CacheService>().ok_or_else(|| {
         crate::error::Error::Cache("tenant cache service is unavailable".to_string())
     })?;
@@ -687,7 +690,7 @@ pub async fn init_tenant_cache_infrastructure(
     }
 
     let infrastructure = TenantCacheInfrastructure::new(&canonical_cache_service).await?;
-    let _ = ctx.shared_insert_if_absent(Arc::new(infrastructure));
+    ctx.shared_insert_if_absent(Arc::new(infrastructure));
     Ok(())
 }
 

@@ -277,6 +277,7 @@ fn validate_ledger(
     captured: &CheckoutPaymentCapturedState,
     checkpoint: &crate::entities::checkout_marketplace_economics_checkpoint::Model,
 ) -> CheckoutMarketplaceFinancialResult<()> {
+    // INVARIANT: cross-module ledger contract validation ensures foreign ledger response matches checkout tenant.
     if ledger.tenant_id != tenant_id
         || ledger.order_id != captured.order.id
         || ledger.source_id != captured.order.id

@@ -8,6 +8,18 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum GuestCartTokenExtractionError {
+    #[error("Conflicting guest cart access tokens")]
+    ConflictingTokens,
+    #[error("Invalid guest cart access token")]
+    InvalidToken,
+    #[error("Duplicate guest cart access tokens")]
+    DuplicateTokens,
+    #[error("Invalid guest cart cookie")]
+    InvalidCookie,
+}
+
 /// Bind the guest-cart capability to the current HTTP request.
 ///
 /// The cart domain persists only a SHA-256 digest. The plaintext capability is
@@ -16,7 +28,7 @@ use axum::{
 pub async fn resolve(request: Request<Body>, next: Next) -> Response {
     let presented_token = match extract_presented_token(request.headers()) {
         Ok(token) => token,
-        Err(message) => return (StatusCode::UNAUTHORIZED, message).into_response(),
+        Err(err) => return (StatusCode::UNAUTHORIZED, err.to_string()).into_response(),
     };
 
     let presented_token_present = presented_token.is_some();
@@ -54,13 +66,13 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
     response
 }
 
-fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
+fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let header_token = extract_header_token(headers)?;
     let cookie_token = extract_cookie_token(headers)?;
 
     match (header_token, cookie_token) {
         (Some(header), Some(cookie)) if header != cookie => {
-            Err("Conflicting guest cart access tokens")
+            Err(GuestCartTokenExtractionError::ConflictingTokens)
         }
         (Some(header), _) => Ok(Some(header)),
         (_, Some(cookie)) => Ok(Some(cookie)),
@@ -68,19 +80,19 @@ fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'stat
     }
 }
 
-fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
+fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let values = headers.get_all(crate::GUEST_CART_TOKEN_HEADER);
     let mut token = None;
 
     for value in values.iter() {
         let text = value
             .to_str()
-            .map_err(|_| "Invalid guest cart access token")?;
+            .map_err(|_| GuestCartTokenExtractionError::InvalidToken)?;
         let normalized = crate::normalize_presented_guest_cart_token(text)
-            .ok_or("Invalid guest cart access token")?;
+            .ok_or(GuestCartTokenExtractionError::InvalidToken)?;
 
         if token.is_some() {
-            return Err("Duplicate guest cart access tokens");
+            return Err(GuestCartTokenExtractionError::DuplicateTokens);
         }
         token = Some(normalized);
     }
@@ -88,13 +100,13 @@ fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, &'static 
     Ok(token)
 }
 
-fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
+fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, GuestCartTokenExtractionError> {
     let mut token = None;
 
     for raw_header in headers.get_all(COOKIE).iter() {
         let raw = raw_header
             .to_str()
-            .map_err(|_| "Invalid guest cart cookie")?;
+            .map_err(|_| GuestCartTokenExtractionError::InvalidCookie)?;
 
         for entry in raw.split(';') {
             let entry = entry.trim();
@@ -106,9 +118,9 @@ fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, &'static 
             }
 
             let normalized = crate::normalize_presented_guest_cart_token(value)
-                .ok_or("Invalid guest cart access token")?;
+                .ok_or(GuestCartTokenExtractionError::InvalidToken)?;
             if token.is_some() {
-                return Err("Duplicate guest cart access tokens");
+                return Err(GuestCartTokenExtractionError::DuplicateTokens);
             }
             token = Some(normalized);
         }
@@ -119,7 +131,7 @@ fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, &'static 
 
 #[cfg(test)]
 mod tests {
-    use super::extract_presented_token;
+    use super::*;
     use axum::http::HeaderMap;
 
     fn token(seed: char) -> String {
@@ -158,7 +170,7 @@ mod tests {
 
         assert_eq!(
             extract_presented_token(&headers),
-            Err("Duplicate guest cart access tokens")
+            Err(GuestCartTokenExtractionError::DuplicateTokens)
         );
     }
 
@@ -181,7 +193,7 @@ mod tests {
 
         assert_eq!(
             extract_presented_token(&headers),
-            Err("Duplicate guest cart access tokens")
+            Err(GuestCartTokenExtractionError::DuplicateTokens)
         );
     }
 
@@ -202,7 +214,7 @@ mod tests {
 
         assert_eq!(
             extract_presented_token(&headers),
-            Err("Invalid guest cart access token")
+            Err(GuestCartTokenExtractionError::InvalidToken)
         );
     }
 
@@ -220,6 +232,9 @@ mod tests {
                 .expect("cookie"),
         );
 
-        assert!(extract_presented_token(&headers).is_err());
+        assert_eq!(
+            extract_presented_token(&headers),
+            Err(GuestCartTokenExtractionError::ConflictingTokens)
+        );
     }
 }

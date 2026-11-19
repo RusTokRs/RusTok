@@ -151,6 +151,7 @@ impl ChannelIndexIdentityReadPort for GrpcChannelIndexIdentity {
                     .ok_or_else(invalid_snapshot)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // INVARIANT: Response validation verifies that the remote gRPC service returned data for the requested tenant.
         if response.tenant_id != tenant_id.to_string()
             || response.generation > i64::MAX as u64
             || (!channel_ids.is_empty()

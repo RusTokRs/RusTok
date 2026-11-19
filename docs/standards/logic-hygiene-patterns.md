@@ -265,6 +265,33 @@ flowchart TD
 
 ---
 
+### Pattern 10A: Selected GraphQL Operation Policy (`P-GQL-SELECTED-OP`)
+
+- **Category:** GraphQL transport security and request correctness.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed behavior:** A GraphQL document can contain several named operations, but the executor runs only the operation selected by `operationName`. A request-preparation security policy that scans every operation can reject a harmless selected operation because an unselected operation contains an admin, tenant, service-principal, or legacy mutation field. This is a false authorization denial and a request-level availability defect.
+- **Remediation:** Parse the document and classify only the operation the executor will run. A missing operation name selects the sole operation; a multi-operation document without a name is invalid and has no selected operation. `operationName` selects the executed AST operation; it is never itself an authorization grant. Permissions and field policy remain server-owned.
+- **Verification:** In a multi-operation document, select a public operation beside an unselected sensitive operation and verify it executes; select the sensitive operation and verify its guard still denies; cover a single named operation and a multi-operation document without a name.
+- **Detection:** Review GraphQL `prepare_request` classifiers for unfiltered `document.operations.iter()` loops and ensure their policy input matches the operation passed to `NextExecute`.
+
+### Pattern 10B: Cycle-Safe GraphQL Fragment Traversal (`P-GQL-FRAGMENT-CYCLE`)
+
+- **Category:** GraphQL parser hardening and denial-of-service resistance.
+- **Logic dimensions:** Preconditions and bounds, algorithmic correctness.
+- **Observed behavior:** GraphQL fragment spreads form a directed graph, not a guaranteed tree. The parser can produce an AST containing cyclic fragment references; GraphQL validation rejects the cycle later, but host `prepare_request` security classifiers run before that validation. Recursive fragment inspection without a visited set can therefore recurse indefinitely and overflow the request task's stack before the normal validation error is returned.
+- **Remediation:** Track visited fragment names per selected operation before descending into a spread. When classification depends on traversal context, include that context in the visited key. Continue inspecting the first visit so sensitive fields reachable through a cycle are still detected; do not rely on later GraphQL validation to protect earlier host preflight code.
+- **Verification:** Cover self-cycles and multi-fragment cycles, with a sensitive field in the reachable fragment; classification must terminate and still detect the field.
+- **Detection:** Review recursive `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for cycle guards.
+
+### Pattern 10C: Token-Effective Authority on REST (`P-TOKEN-CEILING`)
+
+- **Category:** Authentication, OAuth, and RBAC authorization.
+- **Logic dimensions:** Preconditions, authorization, and branch completeness.
+- **Observed behavior:** In the server's [channel REST controller](../../apps/server/src/controllers/channel.rs), an authenticated `CurrentUser` has a token-effective permission snapshot, but the prior channel-management guard re-resolved persisted RBAC grants by user ID. Unlike the GraphQL execution path, the REST handler had no task-local RBAC request scope. An OAuth token narrowed to unrelated scopes could therefore be admitted on the strength of its user's broader database grants.
+- **Remediation:** Enforce the current authenticated token's effective permissions at the REST admission boundary; do not silently re-resolve unscoped user grants when the token carries a narrower ceiling. Also bind actor tenant to the routed tenant before allowing writes. Owner-defined RBAC semantics (including implied manage permissions) still apply through `has_effective_permission`.
+- **Verification:** With a privileged underlying/inferred role, supply a permission snapshot without the required token-effective manage grant and verify denial; allow valid effective manage grants and deny a mismatched tenant.
+- **Detection:** Review authenticated HTTP handlers for `RbacService::has_permission`, `RbacService::has_any_permission` or `get_user_permissions` calls that receive only tenant/user IDs while a token-effective `CurrentUser` is available.
+
 ### Pattern 11: Transactional Batching & Anti-N+1 (`P-BATCH-QUERY`)
 * **Category:** Algorithmic & Concurrency Performance
 * **Problem:** Executing per-item queries inside a transaction can increase round trips and extend lock duration. Measure the affected path and check transaction semantics before changing it.
@@ -561,6 +588,9 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-CONFIG-BOUND` | Preconditions | All writers reject invalid combinations and limits | Manual |
 | `P-DEAD-TWIN` | Ownership | Active callers and exports show whether an implementation is redundant | Heuristic: broad inner lint suppression |
 | `P-BOUNDED-TREE` | Algorithmic bounds | Deep, wide, and cyclic input respects the declared budget | Manual |
+| `P-GQL-SELECTED-OP` | GraphQL authorization | Only the operation selected for execution is classified | Manual |
+| `P-GQL-FRAGMENT-CYCLE` | GraphQL parser safety | Cyclic fragment graphs terminate while retaining reachable field detection | Manual |
+| `P-TOKEN-CEILING` | OAuth/RBAC authorization | REST gates cannot widen the effective token permissions by rereading grants | Manual |
 | `P-BATCH-QUERY` | Performance and concurrency | Query count stays bounded without changing lock or result semantics | Heuristic: transaction query in a loop |
 | `P-ZERO-PANIC-PROD` | Reliability | Runtime inputs cannot trigger panic paths | Heuristic: panic-prone calls |
 | `P-HOTPATH-ALLOC` | Allocation | Invalid requests avoid unnecessary allocations on the affected path | Heuristic: early clone |
@@ -1166,6 +1196,14 @@ Detection: `cargo xtask doctor hygiene --crate <crate>` or
 `rg -n '^\s*(let\s+_\s*=\s*)?(tokio::)?spawn\(' crates/ apps/`.
 Doctor detects unassigned `spawn(...)` statements that terminate with a semicolon, while exempting test suites, tail expressions returning `JoinHandle`, and bound variables.
 
+## P-BROADCAST-OUTBOX-ADMISSION — Bound and lifecycle-order in-memory outbox bridges
+
+- **Category:** Event delivery, backpressure, and lifecycle shutdown.
+- **Logic dimensions:** Side-effect completeness, order/concurrency, capacity bounds, failure semantics.
+- **Observed behavior:** A Tokio broadcast sender can return success while a slow receiver has already fallen behind and old messages are overwritten. If configurable backpressure is disabled, retrying one outbox write can block the forwarder long enough for that loss to occur. Subscribing only inside a spawned task also leaves a first-publish window with no receiver. Finally, stopping the forwarder concurrently with producers creates a check-empty/late-publish race during shutdown.
+- **Remediation:** Subscribe synchronously before returning the publisher; always enforce a hard admission limit no greater than broadcast capacity even when configurable early thresholds are disabled; give the forwarder a dedicated stop signal and drain it only after producers have stopped and joined. Keep the original envelope through retries. A process-local bridge is still not crash-durable before its first outbox insert; business mutations requiring atomic event durability must use the transactional outbox.
+- **Evidence:** [Server event bus](../../apps/server/src/services/event_bus.rs), [server lifecycle](../../apps/server/src/services/app_lifecycle.rs), [event transport contract](../../apps/server/docs/event-transport.md). Regression coverage is authored but uncompiled/unrun in this task.
+
 ## P-UNSAFE-VEC-SETLEN — Validate capacity and bounds before mutating vector length
 
 - **Category:** Memory safety and `unsafe` invariant preservation.
@@ -1414,3 +1452,92 @@ own document contract.
 
 Detection: `rg -n 'as_f64\(\)|JSON\.parse\(|JSON\.stringify\(' crates/modules/rustok-modules/src/settings.rs apps/next-admin/src/features/modules/components`;
 inspect numeric values and whether the parsed document is ever written back.
+
+
+## Distributed event delivery, leases, and backpressure
+
+### Lease ownership must be unique across replicas
+
+A process-local counter is not a distributed lease identity. If two replicas
+both claim work as `worker-1`, an expired lease can be reclaimed by the second
+replica while the stale first worker still presents the same owner string. The
+stale worker can then pass an owner-equality check and commit work under the
+new lease.
+
+**Invariant:** every lease owner token is unique across concurrent replicas and
+worker restarts. Use a per-instance UUID or a storage-issued fencing token;
+keep any local counter only for diagnostics. Validate the token against the
+storage column's actual length.
+
+**Regression check:** create two workers with the same local instance number
+and assert that their lease owner tokens differ. Also verify the serialized
+token fits the owner column.
+
+### Backpressure reservation must be atomic and match the real queue
+
+A load-then-increment sequence is a check-then-act race: concurrent producers
+can all observe capacity below the critical threshold and collectively exceed
+it. With a bounded broadcast ring, a controller configured larger than the
+ring can also accept messages that Tokio has already overwritten for a slow
+receiver.
+
+**Invariant:** reserve queue capacity with a compare-and-swap loop, and never
+configure the logical queue depth above the underlying channel capacity.
+Every successful reservation must be released exactly once after processing,
+on send failure, for lagged messages, and when a receiver is dropped or
+cancelled.
+
+**Regression check:** race concurrent acquisitions against a known critical
+depth and assert the accepted count never exceeds it. Exercise send failure,
+normal completion, lag, cancellation, and receiver teardown to ensure the
+depth returns to zero.
+
+### Durable forwarders must retry the same identity
+
+Consuming an in-memory event and logging a failed database write is data loss.
+Retrying a write without idempotent storage semantics is also unsafe: an
+ambiguous commit can succeed in storage while returning an error to the caller,
+and a naive retry then fails on the duplicate primary key.
+
+**Invariant:** keep the original envelope and its ID until durable persistence
+is confirmed. The outbox insert must accept an exact duplicate of the same
+canonical envelope, but reject reuse of that ID for different facts. Do not
+acknowledge downstream delivery merely because an event entered a broadcast
+queue; wait for all required local handlers to complete.
+
+**Regression check:** force a transient transport failure and assert that the
+same envelope ID is retried and persisted once. Publish the same envelope twice
+and assert one row; reuse its ID with different payload and assert a conflict.
+For projection delivery, block a handler and verify the relay call remains
+pending, then fail the handler and verify the relay receives an error.
+
+### Required background workers must be visible to readiness
+
+A long-lived worker can fail independently of the HTTP host. If startup registers
+the worker but readiness omits its handle, the host can remain green while durable
+delivery, retention, recovery, or another required projection has stopped.
+
+**Invariant:** every worker that is required for the current runtime profile must
+have one readiness snapshot tied to its actual task-handle liveness. Optional
+workers become required once they are successfully started. The snapshot must not
+infer health merely from configuration when the worker was never created.
+
+**Regression check:** start each required worker in the test runtime, assert that
+its readiness snapshot is required and live, terminate its task, and assert that
+the snapshot reports it as finished.
+
+### Shutdown must drain durable handoffs before aborting
+
+Aborting a worker while it owns an accepted but not-yet-persisted event discards
+the only copy of that event. A shutdown signal should stop new work, allow
+already accepted work to reach durable storage, and use a bounded timeout only
+as the final fallback.
+
+**Invariant:** signal and join event-forwarding workers cooperatively. Drain
+their accepted queue before dropping the receiver; after the deadline, abort
+and release any in-memory capacity reservations so the host cannot leak
+backpressure state.
+
+**Regression check:** request shutdown with queued events and a transient
+transport failure, then assert that the worker retries, persists the same
+envelope, releases all queue permits, and exits before the shutdown deadline.

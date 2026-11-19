@@ -158,10 +158,14 @@ async fn assign(
     input: ArtifactRolePermissionAssignmentRequest,
     granted: bool,
 ) -> Result<Response> {
-    let permission_key = input.permission_key.trim().to_string();
-    if permission_key.is_empty() {
+    if input.permission_key.trim().is_empty() {
         return Err(Error::BadRequest(
             "permission_key must not be empty".to_string(),
+        ));
+    }
+    if input.permission_key.trim() != input.permission_key {
+        return Err(Error::BadRequest(
+            "permission_key must not contain leading or trailing whitespace".to_string(),
         ));
     }
     let idempotency_key = input.idempotency_key.trim().trim_matches('"').to_string();
@@ -181,7 +185,7 @@ async fn assign(
             role_id,
             scope: input.scope.into(),
             installation_id: input.installation_id,
-            permission_key,
+            permission_key: input.permission_key,
             actor_id,
             granted,
             idempotency_key,

@@ -190,6 +190,7 @@ pub(super) async fn bind_category_attribute(
         .map_err(Into::into)
 }
 
+#[expect(dead_code, reason = "Product attribute values transport pending UI editor panel integration")]
 pub(super) async fn save_product_attribute_values(
     tenant_id: String,
     product_id: String,
@@ -344,6 +345,7 @@ fn map_category_record(
     }
 }
 
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()

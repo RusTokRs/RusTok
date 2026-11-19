@@ -56,7 +56,11 @@ pub fn Textarea(
 
     let full_class = move || {
         let c = custom.get_value();
-        textarea_classes(size, invalid.get(), (!c.trim().is_empty()).then_some(c.as_str()))
+        textarea_classes(
+            size,
+            invalid.get(),
+            (!c.trim().is_empty()).then_some(c.as_str()),
+        )
     };
 
     view! {

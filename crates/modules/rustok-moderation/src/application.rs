@@ -28,6 +28,7 @@ pub(crate) async fn enqueue_application_operation_in_transaction(
     case: &moderation_case::Model,
     decision: &moderation_decision::Model,
 ) -> ModerationResult<()> {
+    // INVARIANT: In-memory identity and tenant check ensures the decision and case belong to the active transaction tenant.
     if case.tenant_id != tenant_id
         || decision.tenant_id != tenant_id
         || decision.case_id != case.id
@@ -631,7 +632,13 @@ impl ModerationService {
                 )
                 .await?;
             }
-            _ => unreachable!("validated application error status"),
+            // INVARIANT: next_status is guaranteed by transition matrix to be PendingRetry, Rejected, or OperatorReview.
+            other => {
+                return Err(ModerationError::Invariant(format!(
+                    "unexpected application error status transition: {}",
+                    other.as_str()
+                )));
+            }
         }
 
         let operation = map_application_operation(operation)?;

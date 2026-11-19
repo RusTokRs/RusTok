@@ -1227,7 +1227,9 @@ where
             Ok(read) => read,
             Err(error) => {
                 let message = format!("Cargo output read failed: {error}");
-                let _ = failure_sender.send(message.clone()).await;
+                if let Err(send_err) = failure_sender.send(message.clone()).await {
+                    eprintln!("warning: failed to notify failure_sender of cargo read failure: {send_err}");
+                }
                 return Err(command_failed(message));
             }
         };
@@ -1237,7 +1239,9 @@ where
         let previous = budget.fetch_add(read, Ordering::AcqRel);
         if previous.saturating_add(read) > MAX_LOCAL_CARGO_OUTPUT_BYTES {
             let message = "Cargo output exceeded the local authoring limit".to_string();
-            let _ = failure_sender.send(message.clone()).await;
+            if let Err(send_err) = failure_sender.send(message.clone()).await {
+                eprintln!("warning: failed to notify failure_sender of cargo limit exceeded: {send_err}");
+            }
             return Err(command_failed(message));
         }
         output.extend_from_slice(&buffer[..read]);

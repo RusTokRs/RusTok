@@ -483,7 +483,8 @@ async fn channel_service_read_port_reads_channel_by_all_selectors() {
         PortActor::system(),
         "en",
         "nil-tenant-test",
-    );
+    )
+    .with_deadline(std::time::Duration::from_secs(5));
     let nil_tenant_err = port
         .read_channel(
             nil_context,

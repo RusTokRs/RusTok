@@ -217,9 +217,11 @@ impl ProductCatalogSchemaService {
         )
         .await?;
         for patch in &patches {
-            let definition = definitions
-                .get(&patch.attribute_id)
-                .expect("validated Variant attribute definition must exist");
+            let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                CommerceError::Validation(
+                    "validated Variant attribute definition must exist".into(),
+                )
+            })?;
             write_variant_value_patch(
                 &txn,
                 tenant_id,
@@ -232,7 +234,7 @@ impl ProductCatalogSchemaService {
         }
         if !patches.is_empty() {
             touch_variant_owner(&txn, tenant_id, variant_id).await?;
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::VariantUpdated {
@@ -318,7 +320,7 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
             touch_variant_owner(&txn, tenant_id, variant_id).await?;
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::VariantUpdated {
@@ -617,6 +619,7 @@ where
     let mut localized_text = None;
 
     match &patch.value {
+        // INVARIANT: Clear returns early above before this match.
         ProductAttributeValuePatchValue::Clear => unreachable!(),
         ProductAttributeValuePatchValue::Text(value) if definition.is_localized => {
             localized_text = Some(value.clone())
@@ -668,7 +671,11 @@ where
     ))
     .one(conn)
     .await?
-    .expect("INSERT RETURNING id must return a row")
+    .ok_or_else(|| {
+        CommerceError::Database(sea_orm::DbErr::Custom(
+            "INSERT RETURNING id must return a row".to_string(),
+        ))
+    })?
     .id;
 
     conn.execute_raw(Statement::from_sql_and_values(

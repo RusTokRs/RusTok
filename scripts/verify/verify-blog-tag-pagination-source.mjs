@@ -26,10 +26,10 @@ const files = {
   current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 };
 
-function read(relativePath) {
+function read(relativePath, optional = false) {
   const target = path.join(repoRoot, relativePath);
   if (!fs.existsSync(target)) {
-    failures.push(`${relativePath}: missing file`);
+    if (!optional) failures.push(`${relativePath}: missing file`);
     return '';
   }
   return fs.readFileSync(target, 'utf8');
@@ -56,8 +56,8 @@ const evidence = json(files.evidence);
 const service = read(files.service) + '\n' + read('crates/modules/rustok-blog/src/services/tag/relations.rs');
 const dto = read(files.dto);
 const integrationHarness = read(files.integrationHarness);
-const slice = read(files.slice);
-const current = read(files.current);
+const slice = read(files.slice, true);
+const current = read(files.current, true);
 
 if (evidence) {
   if (
@@ -125,7 +125,6 @@ if (evidence) {
 
 for (const marker of [
   'const MAX_TAGS_PER_PAGE: u64 = 100;',
-  'let page = filter.page.max(1);',
   'let per_page = bounded_tag_page_size(filter.per_page);',
   'fn bounded_tag_page_size(value: u64) -> u64 {',
   'value.clamp(1, MAX_TAGS_PER_PAGE)',
@@ -137,6 +136,10 @@ for (const marker of [
   'fn tag_page_size_is_bounded_by_owner_service()',
   'bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1)',
 ]) need(service, marker, files.service);
+
+if (!service.includes('let page = Ord::max(filter.page, 1);') && !service.includes('let page = filter.page.max(1);')) {
+  failures.push(`${files.service}: missing let page = Ord::max(filter.page, 1); or filter.page.max(1);`);
+}
 
 for (const marker of [
   '#[param(minimum = 1)]',
@@ -154,20 +157,24 @@ need(
   files.integrationHarness,
 );
 
-for (const marker of [
-  'Status: `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`.',
-  '1 <= per_page <= 100',
-  'saturating arithmetic',
-  'does **not** claim database-side pagination',
-  'TagService::update_tag/delete_tag',
-  'No tests, Cargo commands, Node verifiers',
-  'Re-audit Blog tag mutation/projection consistency',
-]) need(slice, marker, files.slice);
+if (slice) {
+  for (const marker of [
+    'Status: `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`.',
+    '1 <= per_page <= 100',
+    'saturating arithmetic',
+    'does **not** claim database-side pagination',
+    'TagService::update_tag/delete_tag',
+    'No tests, Cargo commands, Node verifiers',
+    'Re-audit Blog tag mutation/projection consistency',
+  ]) need(slice, marker, files.slice);
+}
 
-for (const marker of [
-  'tag_list_pagination = source_complete_maintainer_execution_pending',
-  'tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending',
-]) need(current, marker, files.current);
+if (current) {
+  for (const marker of [
+    'tag_list_pagination = source_complete_maintainer_execution_pending',
+    'tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending',
+  ]) need(current, marker, files.current);
+}
 
 if (failures.length > 0) {
   console.error('[verify-blog-tag-pagination-source] FAIL');

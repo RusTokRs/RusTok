@@ -16,7 +16,7 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::stop_handle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -155,7 +155,7 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
     let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let instance_id = NOTIFICATION_CANDIDATE_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let worker_id = format!("notification-candidate-{instance_id}");
+    let worker_id = notification_candidate_worker_id(instance_id);
     let commit_guard = Arc::new(ServerNotificationTenantCapabilityCommitGuard {
         db: ctx.db_clone(),
         module_registry: module_registry.clone(),
@@ -187,6 +187,10 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         )),
     });
     Ok(())
+}
+
+fn notification_candidate_worker_id(instance_id: u64) -> String {
+    format!("notification-candidate-{instance_id}-{}", uuid::Uuid::new_v4())
 }
 
 async fn notification_candidate_worker_loop(
@@ -356,5 +360,20 @@ async fn tenant_notification_policy(
             );
             TenantNotificationPolicy::Unavailable
         }
+    }
+}
+
+#[cfg(test)]
+mod worker_identity_tests {
+    use super::notification_candidate_worker_id;
+
+    #[test]
+    fn candidate_lease_owner_ids_are_unique_even_when_local_instance_ids_match() {
+        let first = notification_candidate_worker_id(1);
+        let second = notification_candidate_worker_id(1);
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("notification-candidate-1-"));
+        assert!(first.len() <= 191, "owner identity must fit the module contract");
     }
 }

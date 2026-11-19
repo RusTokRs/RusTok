@@ -159,6 +159,7 @@ fn validate_context(
     user_id: Uuid,
 ) -> Result<(), PortError> {
     context.require_policy(PortCallPolicy::read())?;
+    // INVARIANT: In-memory verification ensuring PortContext tenant matches caller context.
     if context.tenant_id != tenant_id.to_string() {
         return Err(PortError::validation(
             TENANT_MISMATCH_CODE,

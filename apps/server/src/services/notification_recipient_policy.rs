@@ -360,6 +360,7 @@ fn parse_bool(variable: &str, value: &str) -> Result<bool, String> {
 }
 
 fn require_matching_tenant(context: &PortContext, tenant_id: uuid::Uuid) -> Result<(), PortError> {
+    // INVARIANT: In-memory verification ensuring PortContext tenant matches recipient policy tenant.
     if context.tenant_id != tenant_id.to_string() {
         return Err(PortError::validation(
             "notifications.relation_tenant_mismatch",

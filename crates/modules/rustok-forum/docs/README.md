@@ -9,6 +9,10 @@ forum-owned persistence and remains an independent bounded-context boundary.
 truth for Forum task status, sequencing, definitions of done, the planned shared
 notifications module, and cross-module release gates.
 
+The [Forum moderation revision migration contract](./forum-moderation-revision-migration-contract.md)
+documents the schema, trigger parity, and migration guarantees for Forum-owned
+moderation revision fencing clocks.
+
 ## Purpose
 
 - publish the canonical Forum runtime contract for categories, topics, replies and moderation;

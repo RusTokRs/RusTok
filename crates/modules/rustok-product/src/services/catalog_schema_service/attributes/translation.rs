@@ -260,8 +260,10 @@ struct Aggregate {
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG is a valid compile-time slug constant.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract: descriptor invariant validated at startup"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND is a valid compile-time resource kind constant.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Product Attribute resource kind must satisfy Translation contract: descriptor invariant validated at startup"),
             display_name: "Product attribute copy".to_string(),
@@ -511,7 +513,7 @@ ON CONFLICT (option_id, locale) DO UPDATE SET label = EXCLUDED.label
             )
         })?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             actor_user_id,
             DomainEvent::ProductAttributeUpdated { attribute_id },

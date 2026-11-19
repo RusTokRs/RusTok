@@ -1,3 +1,34 @@
+use async_graphql::Positioned;
+use async_graphql::parser::types::{ExecutableDocument, OperationDefinition};
+
+/// Return only the GraphQL operation selected by the request.
+///
+/// Security extensions must not authorize or reject operations that the
+/// GraphQL executor will not run. A missing operation name selects the sole
+/// operation only; multi-operation documents without an operation name are
+/// invalid at execution and therefore have no selected operation here.
+pub(crate) fn selected_operations<'a>(
+    document: &'a ExecutableDocument,
+    operation_name: Option<&str>,
+) -> Vec<&'a Positioned<OperationDefinition>> {
+    let mut operations = document.operations.iter();
+
+    match operation_name {
+        // OperationDefinition has no name field; the parser stores operation
+        // names as keys of DocumentOperations::Multiple.
+        Some(selected) => operations
+            .filter_map(|(name, operation)| {
+                name.is_some_and(|name| name.as_str() == selected)
+                    .then_some(operation)
+            })
+            .collect(),
+        None => match (operations.next(), operations.next()) {
+            (Some((_, only)), None) => vec![only],
+            _ => Vec::new(),
+        },
+    }
+}
+
 mod artifact_lifecycle;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;
@@ -38,3 +69,50 @@ pub mod transition_lifecycle;
 pub mod types;
 
 pub use schema::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
+
+#[cfg(test)]
+mod operation_selection_tests {
+    use super::selected_operations;
+
+    #[test]
+    fn selects_only_the_named_operation() {
+        use async_graphql::parser::types::Selection;
+
+        let document =
+            async_graphql::parser::parse_query("query Public { ping } query Admin { users }")
+                .expect("document should parse");
+
+        let public = selected_operations(&document, Some("Public"));
+        assert_eq!(public.len(), 1);
+        assert!(matches!(
+            &public[0].node.selection_set.node.items[0].node,
+            Selection::Field(field) if field.node.name.node.as_str() == "ping"
+        ));
+
+        let admin = selected_operations(&document, Some("Admin"));
+        assert_eq!(admin.len(), 1);
+        assert!(matches!(
+            &admin[0].node.selection_set.node.items[0].node,
+            Selection::Field(field) if field.node.name.node.as_str() == "users"
+        ));
+
+        assert!(selected_operations(&document, Some("Unknown")).is_empty());
+    }
+
+    #[test]
+    fn only_anonymous_or_single_operation_documents_need_no_name() {
+        let single = async_graphql::parser::parse_query("query Public { ping }")
+            .expect("document should parse");
+        assert_eq!(selected_operations(&single, None).len(), 1);
+        assert_eq!(selected_operations(&single, Some("Public")).len(), 1);
+
+        let anonymous =
+            async_graphql::parser::parse_query("{ ping }").expect("document should parse");
+        assert_eq!(selected_operations(&anonymous, None).len(), 1);
+
+        let multiple =
+            async_graphql::parser::parse_query("query Public { ping } query Admin { users }")
+                .expect("document should parse");
+        assert!(selected_operations(&multiple, None).is_empty());
+    }
+}

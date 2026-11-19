@@ -145,13 +145,13 @@ pub async fn admit<T: Serialize>(
     operation: &str,
     request: &T,
 ) -> Result<Admission, PortError> {
-    if let OwnerOperationScope::Tenant(tenant_id) = scope {
-        if tenant_id.is_nil() {
-            return Err(PortError::validation(
-                "outbox.operation_receipt_tenant_invalid",
-                "tenant_id cannot be nil",
-            ));
-        }
+    if let OwnerOperationScope::Tenant(tenant_id) = scope
+        && tenant_id.is_nil()
+    {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_tenant_invalid",
+            "tenant_id cannot be nil",
+        ));
     }
     let owner_slug = validate_identity(owner_slug, "owner_slug")?;
     let idempotency_key = validate_identity(idempotency_key, "idempotency_key")?;

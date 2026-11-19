@@ -13,9 +13,9 @@ use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::{
-    AiProviderTargetCatalog, AiStructuredResultKeyringConfig, ProviderEgressPolicy,
-    SharedAiEgressPolicy, SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry,
-    SharedAiStructuredResultKeyringConfig,
+    AiError, AiProviderTargetCatalog, AiResult, AiStructuredResultKeyringConfig,
+    ProviderEgressPolicy, SharedAiEgressPolicy, SharedAiProviderTargetCatalog,
+    SharedAiSecretResolverRegistry, SharedAiStructuredResultKeyringConfig,
 };
 
 pub(crate) struct AiDeploymentRuntime {
@@ -26,7 +26,7 @@ pub(crate) struct AiDeploymentRuntime {
 }
 
 impl AiDeploymentRuntime {
-    pub fn from_environment() -> Result<Self, String> {
+    pub fn from_environment() -> AiResult<Self> {
         let egress_policy = ProviderEgressPolicy {
             allowed_origins: json_string_list("RUSTOK_AI_EGRESS_ALLOWED_ORIGINS_JSON")?,
             allow_local_origins: environment_bool("RUSTOK_AI_EGRESS_ALLOW_LOCAL_ORIGINS")?,
@@ -48,28 +48,32 @@ impl AiDeploymentRuntime {
 
 fn structured_result_keyring_from_environment(
     secrets: &SecretResolverRegistry,
-) -> Result<Option<AiStructuredResultKeyringConfig>, String> {
+) -> AiResult<Option<AiStructuredResultKeyringConfig>> {
     let Some(value) = std::env::var_os("RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON") else {
         return Ok(None);
     };
     let config =
         serde_json::from_str::<AiStructuredResultKeyringConfig>(value.to_string_lossy().as_ref())
-            .map_err(|error| format!("invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {error}"))?;
+            .map_err(|error| {
+                AiError::InvalidConfig(format!(
+                    "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {error}"
+                ))
+            })?;
     config.validate().map_err(|error| {
-        format!(
+        AiError::InvalidConfig(format!(
             "invalid RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON: {}",
             error.code
-        )
+        ))
     })?;
     if config
         .keys
         .values()
         .any(|reference| !secrets.contains(&reference.resolver))
     {
-        return Err(
+        return Err(AiError::InvalidConfig(
             "RUSTOK_AI_STRUCTURED_RESULT_KEYRING_JSON references an unregistered resolver"
                 .to_string(),
-        );
+        ));
     }
     Ok(Some(config))
 }
@@ -133,12 +137,16 @@ impl DeploymentSecretResolverConfig {
     }
 }
 
-fn secret_registry_from_environment() -> Result<SecretResolverRegistry, String> {
+fn secret_registry_from_environment() -> AiResult<SecretResolverRegistry> {
     let mut builder = SecretResolverRegistry::builder().cache_ttl(Duration::from_secs(60));
     let configs = match std::env::var_os("RUSTOK_AI_SECRET_RESOLVERS_JSON") {
         Some(raw) => {
             serde_json::from_str::<Vec<DeploymentSecretResolverConfig>>(&raw.to_string_lossy())
-                .map_err(|error| format!("invalid RUSTOK_AI_SECRET_RESOLVERS_JSON: {error}"))?
+                .map_err(|error| {
+                    AiError::InvalidConfig(format!(
+                        "invalid RUSTOK_AI_SECRET_RESOLVERS_JSON: {error}"
+                    ))
+                })?
         }
         None => legacy_secret_resolver_configs()?,
     };
@@ -149,18 +157,20 @@ fn secret_registry_from_environment() -> Result<SecretResolverRegistry, String> 
     Ok(builder.build())
 }
 
-fn validate_config_aliases(configs: &[DeploymentSecretResolverConfig]) -> Result<(), String> {
+fn validate_config_aliases(configs: &[DeploymentSecretResolverConfig]) -> AiResult<()> {
     let mut aliases = BTreeSet::new();
     for config in configs {
         let alias = config.alias().trim();
         if alias.is_empty() || !aliases.insert(alias.to_string()) {
-            return Err("secret resolver aliases must be unique and non-empty".to_string());
+            return Err(AiError::InvalidConfig(
+                "secret resolver aliases must be unique and non-empty".to_string(),
+            ));
         }
     }
     Ok(())
 }
 
-fn legacy_secret_resolver_configs() -> Result<Vec<DeploymentSecretResolverConfig>, String> {
+fn legacy_secret_resolver_configs() -> AiResult<Vec<DeploymentSecretResolverConfig>> {
     let mut configs = vec![DeploymentSecretResolverConfig::Env {
         alias: "env".to_string(),
         key_prefixes: secret_prefixes()?,
@@ -178,7 +188,7 @@ fn legacy_secret_resolver_configs() -> Result<Vec<DeploymentSecretResolverConfig
 fn register_deployment_resolver(
     builder: rustok_secrets::SecretResolverRegistryBuilder,
     config: DeploymentSecretResolverConfig,
-) -> Result<rustok_secrets::SecretResolverRegistryBuilder, String> {
+) -> AiResult<rustok_secrets::SecretResolverRegistryBuilder> {
     match config {
         DeploymentSecretResolverConfig::Env {
             alias,
@@ -209,7 +219,7 @@ fn register_deployment_resolver(
                 kubernetes_token_path,
             )?;
             let resolver = VaultResolver::new(endpoint, namespace, kv_mount, auth)
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             Ok(builder.resolver(alias, resolver, policy(key_prefixes)?))
         }
         DeploymentSecretResolverConfig::Kubernetes {
@@ -218,7 +228,7 @@ fn register_deployment_resolver(
             key_prefixes,
         } => {
             let resolver = KubernetesSecretResolver::in_cluster(namespace)
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             Ok(builder.resolver(alias, resolver, policy(key_prefixes)?))
         }
         DeploymentSecretResolverConfig::AwsSecretsManager {
@@ -231,7 +241,7 @@ fn register_deployment_resolver(
             key_prefixes,
         } => {
             GcpSecretManagerResolver::validate_project(&project)
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             Ok(builder.resolver(alias, LazyGcpResolver::new(project), policy(key_prefixes)?))
         }
         DeploymentSecretResolverConfig::AzureKeyVault {
@@ -240,18 +250,18 @@ fn register_deployment_resolver(
             key_prefixes,
         } => {
             let resolver = AzureKeyVaultResolver::from_default_credential(&endpoint)
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             Ok(builder.resolver(alias, resolver, policy(key_prefixes)?))
         }
     }
 }
 
-fn policy(prefixes: Vec<String>) -> Result<SecretAccessPolicy, String> {
+fn policy(prefixes: Vec<String>) -> AiResult<SecretAccessPolicy> {
     if prefixes.is_empty() || prefixes.iter().any(|prefix| prefix.trim().is_empty()) {
-        return Err(
+        return Err(AiError::InvalidConfig(
             "secret resolver key_prefixes must contain non-empty deployment-owned prefixes"
                 .to_string(),
-        );
+        ));
     }
     Ok(SecretAccessPolicy::Prefix(prefixes))
 }
@@ -262,24 +272,30 @@ fn vault_auth(
     kubernetes_role: Option<String>,
     kubernetes_auth_mount: Option<String>,
     kubernetes_token_path: Option<PathBuf>,
-) -> Result<VaultAuth, String> {
+) -> AiResult<VaultAuth> {
     let token = match (token_env, token_file) {
         (Some(name), None) => {
             Some(std::env::var(name).map(SecretString::from).map_err(|_| {
-                "configured Vault token environment variable is missing".to_string()
+                AiError::InvalidConfig(
+                    "configured Vault token environment variable is missing".to_string(),
+                )
             })?)
         }
         (None, Some(path)) => Some(SecretString::from(
             std::fs::read_to_string(path)
-                .map_err(|error| format!("configured Vault token file cannot be read: {error}"))?
+                .map_err(|error| {
+                    AiError::InvalidConfig(format!(
+                        "configured Vault token file cannot be read: {error}"
+                    ))
+                })?
                 .trim()
                 .to_string(),
         )),
         (None, None) => None,
         _ => {
-            return Err(
+            return Err(AiError::InvalidConfig(
                 "Vault configuration accepts exactly one token_env or token_file".to_string(),
-            );
+            ));
         }
     };
     if let Some(token) = token {
@@ -287,19 +303,19 @@ fn vault_auth(
             || kubernetes_auth_mount.is_some()
             || kubernetes_token_path.is_some()
         {
-            return Err(
+            return Err(AiError::InvalidConfig(
                 "Vault token auth cannot be combined with Kubernetes auth fields".to_string(),
-            );
+            ));
         }
         return Ok(VaultAuth::Token(token));
     }
     Ok(VaultAuth::Kubernetes {
         role: kubernetes_role
-            .ok_or_else(|| "Vault Kubernetes auth requires kubernetes_role".to_string())?,
+            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_role".to_string()))?,
         auth_mount: kubernetes_auth_mount
-            .ok_or_else(|| "Vault Kubernetes auth requires kubernetes_auth_mount".to_string())?,
+            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_auth_mount".to_string()))?,
         service_account_token_path: kubernetes_token_path
-            .ok_or_else(|| "Vault Kubernetes auth requires kubernetes_token_path".to_string())?,
+            .ok_or_else(|| AiError::InvalidConfig("Vault Kubernetes auth requires kubernetes_token_path".to_string()))?,
     })
 }
 
@@ -343,7 +359,7 @@ impl SecretResolver for LazyGcpResolver {
     }
 }
 
-fn secret_prefixes() -> Result<Vec<String>, String> {
+fn secret_prefixes() -> AiResult<Vec<String>> {
     let prefixes = json_string_list("RUSTOK_AI_SECRET_ENV_PREFIXES_JSON")?;
     if prefixes.is_empty() {
         Ok(vec!["RUSTOK_AI_".to_string()])
@@ -352,21 +368,21 @@ fn secret_prefixes() -> Result<Vec<String>, String> {
     }
 }
 
-fn json_string_list(name: &str) -> Result<Vec<String>, String> {
+fn json_string_list(name: &str) -> AiResult<Vec<String>> {
     let Some(raw) = std::env::var_os(name) else {
         return Ok(Vec::new());
     };
     serde_json::from_str::<Vec<String>>(&raw.to_string_lossy())
-        .map_err(|error| format!("invalid {name}: {error}"))
+        .map_err(|error| AiError::InvalidConfig(format!("invalid {name}: {error}")))
 }
 
-fn environment_bool(name: &str) -> Result<bool, String> {
+fn environment_bool(name: &str) -> AiResult<bool> {
     let Some(raw) = std::env::var_os(name) else {
         return Ok(false);
     };
     raw.to_string_lossy()
         .parse::<bool>()
-        .map_err(|error| format!("invalid {name}: {error}"))
+        .map_err(|error| AiError::InvalidConfig(format!("invalid {name}: {error}")))
 }
 
 #[cfg(test)]

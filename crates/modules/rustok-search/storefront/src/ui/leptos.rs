@@ -627,15 +627,20 @@ fn track_result_click(
 
     ev.prevent_default();
     spawn_local(async move {
-        let _ = transport::track_search_click(
+        if let Err(err) = transport::track_search_click(
             query_log_id,
             document_id,
             Some(position),
             Some(href.clone()),
         )
-        .await;
+        .await
+        {
+            tracing::warn!(error = ?err, "Failed to track search click");
+        }
 
-        let _ = window.location().set_href(&href);
+        if let Err(err) = window.location().set_href(&href) {
+            tracing::warn!(error = ?err, href = %href, "Failed to navigate to href");
+        }
     });
 }
 
@@ -769,7 +774,9 @@ fn navigate_to_catalog_search(submission: &CatalogSearchSubmission) {
         url.search_params().delete("sort_desc");
     }
 
-    let _ = window.location().set_href(&url.href());
+    if let Err(err) = window.location().set_href(&url.href()) {
+        tracing::warn!(error = ?err, "Failed to navigate to search filters URL");
+    }
 }
 
 fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
@@ -797,7 +804,9 @@ fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
         None => url.search_params().delete("preset"),
     }
 
-    let _ = window.location().set_href(&url.href());
+    if let Err(err) = window.location().set_href(&url.href()) {
+        tracing::warn!(error = ?err, "Failed to navigate to search query URL");
+    }
 }
 
 fn navigate_to_href(href: &str) {
@@ -805,5 +814,7 @@ fn navigate_to_href(href: &str) {
         return;
     };
 
-    let _ = window.location().set_href(href);
+    if let Err(err) = window.location().set_href(href) {
+        tracing::warn!(error = ?err, href = %href, "Failed to navigate to href");
+    }
 }

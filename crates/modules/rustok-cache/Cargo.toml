@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = ["redis-cache"]
 redis-cache = ["rustok-core/redis-cache", "dep:redis", "dep:futures-util"]
@@ -19,6 +22,7 @@ redis-cache = ["rustok-core/redis-cache", "dep:redis", "dep:futures-util"]
 [dependencies]
 rustok-core = { workspace = true }
 rustok-telemetry = { workspace = true }
+thiserror.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
 tokio.workspace = true

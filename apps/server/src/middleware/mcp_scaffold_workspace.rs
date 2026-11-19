@@ -4,7 +4,7 @@ use axum::{
     Json,
     body::{Body, to_bytes},
     extract::State,
-    http::{Method, Request, StatusCode, request::Parts},
+    http::{Method, Request, StatusCode, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -53,7 +53,15 @@ pub async fn authorize_workspace(
         Err(response) => return *response,
     };
 
-    next.run(Request::from_parts(parts, Body::from(body))).await
+    next.run(request_with_normalized_body(parts, body)).await
+}
+
+fn request_with_normalized_body(mut parts: Parts, body: Vec<u8>) -> Request<Body> {
+    // The body was parsed and serialized again, so the inbound framing length
+    // is no longer authoritative. Let the reconstructed body provide its size.
+    parts.headers.remove(header::CONTENT_LENGTH);
+    parts.headers.remove(header::TRANSFER_ENCODING);
+    Request::from_parts(parts, Body::from(body))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +332,24 @@ mod tests {
     use super::{RequestMode, is_remote_tool_path, is_scaffold_apply_path, request_mode};
     use axum::http::Method;
     use uuid::Uuid;
+
+    #[test]
+    fn normalized_request_drops_stale_body_framing_headers() {
+        use axum::{
+            body::Body,
+            http::{Request, header},
+        };
+
+        let request = Request::builder()
+            .header(header::CONTENT_LENGTH, "4096")
+            .body(Body::empty())
+            .expect("build request");
+        let (parts, _) = request.into_parts();
+
+        let normalized = super::request_with_normalized_body(parts, b"{}".to_vec());
+        assert!(!normalized.headers().contains_key(header::CONTENT_LENGTH));
+        assert!(!normalized.headers().contains_key(header::TRANSFER_ENCODING));
+    }
 
     #[test]
     fn matches_only_scaffold_apply_routes() {

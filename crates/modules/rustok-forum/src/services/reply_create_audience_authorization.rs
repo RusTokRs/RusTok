@@ -79,6 +79,7 @@ impl ForumReplyCreateAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumReplyCreateAudienceAuthorization> {
         enforce_scope(security, Resource::ForumReplies, Action::Create)?;
+        // INVARIANT: database query filtered by tenant_id precedes in-memory topic tenant verification.
         if topic.tenant_id != tenant_id {
             return Err(ForumError::TopicNotFound(topic.id));
         }

@@ -158,6 +158,7 @@ impl RegistryGovernanceService {
     /// Loads one exact owner-derived publish status projection without querying
     /// registry persistence, deriving lifecycle policy, or copying it into a
     /// server-local snapshot.
+    #[tracing::instrument(skip(self, authority), fields(request_id = %request_id), err)]
     pub async fn publish_request_status_snapshot_for_authority(
         &self,
         request_id: &str,
@@ -175,6 +176,7 @@ impl RegistryGovernanceService {
 
     /// Resolves only the owner-managed artifact delivery facts required by the
     /// storage host. It intentionally does not expose a SeaORM request model.
+    #[tracing::instrument(skip(self), fields(request_id = %request_id), err)]
     pub async fn publish_artifact_download_snapshot(
         &self,
         request_id: &str,

@@ -70,7 +70,8 @@ pub(crate) fn parse_module_version_requirement(
     if value.trim().is_empty() {
         return Err(ModuleVersionRequirementError::Empty);
     }
-    VersionReq::parse(value).map_err(|error| ModuleVersionRequirementError::Parse(error.to_string()))
+    VersionReq::parse(value)
+        .map_err(|error| ModuleVersionRequirementError::Parse(error.to_string()))
 }
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
@@ -1635,11 +1636,11 @@ pub(crate) fn schedule_cron_expression(value: &str) -> Option<String> {
         return None;
     }
     let normalized = fields.join(" ");
-    Some(match fields.len() {
-        5 => format!("0 {normalized}"),
-        6 => normalized,
-        _ => unreachable!("field count is already validated"),
-    })
+    match fields.len() {
+        5 => Some(format!("0 {normalized}")),
+        6 => Some(normalized),
+        _ => None,
+    }
 }
 
 /// Canonical immutable identity for a declared schedule. Durable slot records

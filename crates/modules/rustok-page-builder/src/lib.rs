@@ -42,7 +42,9 @@ pub mod static_landing_materialization;
 pub mod static_publish_policy;
 pub mod transport;
 
-pub use document::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
+pub use document::{
+    PAGE_BUILDER_DOCUMENT_FORMAT, PageBuilderDocumentError, validate_page_builder_document,
+};
 pub use domain::{
     ComponentRegistryContract, ComponentRegistryManifest, CurrentContextGateMode,
     FLY_HTML_RENDERER_ID, FLY_LANDING_PROPERTY_FIELD, FLY_LANDING_SECTION_FIELD,

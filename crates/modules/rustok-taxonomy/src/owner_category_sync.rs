@@ -307,6 +307,7 @@ async fn ensure_category_identity(
         .one(txn)
         .await?
     {
+        // INVARIANT: In-memory verification ensuring the category UUID belongs to the active tenant and is not claimed by another tenant or incompatible term.
         if existing.tenant_id != tenant_id
             || existing.kind != TaxonomyTermKind::Category
             || existing.scope_type != TaxonomyScopeType::Module

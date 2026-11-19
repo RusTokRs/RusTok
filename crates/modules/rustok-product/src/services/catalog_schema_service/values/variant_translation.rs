@@ -454,7 +454,7 @@ ON CONFLICT (value_id, locale) DO UPDATE SET value_text = EXCLUDED.value_text
             return Err(CommerceError::VariantNotFound(after.variant_id).into());
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             actor_user_id,
             DomainEvent::VariantUpdated {
@@ -736,8 +736,10 @@ ORDER BY value_id, change_seq DESC
 impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTargetProvider {
     fn descriptor(&self) -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG is a valid compile-time slug constant.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract: invariant validated at startup"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND is a valid compile-time resource kind constant.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
                 "the static resource kind is 23 printable ASCII bytes with no surrounding whitespace",
             ),

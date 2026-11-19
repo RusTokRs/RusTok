@@ -3,7 +3,7 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
-use crate::executor::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
+use crate::claim_heartbeat::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
 use crate::{
     DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlaneError,
     ModuleDefinitionSource, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,

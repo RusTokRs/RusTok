@@ -1344,6 +1344,55 @@ mod tests {
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
 
     #[test]
+    fn runtime_worker_readiness_uses_one_canonical_check_per_worker() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let checks = check_runtime_workers(&ctx, ctx.settings());
+        let mut names = std::collections::HashSet::new();
+
+        for check in &checks {
+            assert!(
+                names.insert(check.name.as_str()),
+                "duplicate readiness check name: {}",
+                check.name
+            );
+        }
+
+        for name in [
+            "worker:outbox_relay",
+            "worker:outbox_retention",
+            "worker:remote_executor_reaper",
+        ] {
+            assert_eq!(
+                checks.iter().filter(|check| check.name == name).count(),
+                1,
+                "{name} must have exactly one canonical readiness check"
+            );
+        }
+
+        #[cfg(feature = "mod-seo")]
+        {
+            for name in [
+                "worker:seo_bulk",
+                "worker:seo_sitemap",
+                "worker:seo_index_repair",
+            ] {
+                assert_eq!(
+                    checks.iter().filter(|check| check.name == name).count(),
+                    1,
+                    "{name} must have exactly one canonical readiness check"
+                );
+            }
+            assert!(
+                !checks.iter().any(|check| check.name == "worker:seo_bulk_worker"),
+                "SEO readiness must use the configured canonical worker checks"
+            );
+        }
+    }
+
+    #[test]
     fn readiness_lag_comparison_handles_full_u64_threshold_range() {
         assert!(lag_exceeds_threshold(10, 9));
         assert!(!lag_exceeds_threshold(10, 10));

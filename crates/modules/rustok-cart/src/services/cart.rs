@@ -361,6 +361,7 @@ impl CartService {
         self.get_cart(tenant_id, cart_id).await
     }
 
+    #[tracing::instrument(skip(self, adjustments))]
     pub async fn set_adjustments(
         &self,
         tenant_id: Uuid,

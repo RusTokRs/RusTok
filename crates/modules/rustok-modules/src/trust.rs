@@ -121,6 +121,15 @@ pub(crate) fn is_sha256_digest(value: &str) -> bool {
     })
 }
 
+pub(crate) use is_sha256_digest as valid_digest;
+
+pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
 /// Immutable policy revisions selected by the control plane for one admission.
 /// The verifier must return a decision produced against exactly these revisions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -130,7 +130,8 @@ impl SearchProjectionDriver {
         self.ensure_postgres()?;
         if tenant_id.is_nil() || entity_id.is_nil() {
             return Err(Error::Validation(
-                "Search entity refresh requires valid non-nil tenant and entity identifiers".to_owned(),
+                "Search entity refresh requires valid non-nil tenant and entity identifiers"
+                    .to_owned(),
             ));
         }
         validate_entity_type(entity_type)?;
@@ -193,7 +194,8 @@ impl SearchProjectionDriver {
         self.ensure_postgres()?;
         if tenant_id.is_nil() || entity_id.is_nil() {
             return Err(Error::Validation(
-                "Search entity deletion requires valid non-nil tenant and entity identifiers".to_owned(),
+                "Search entity deletion requires valid non-nil tenant and entity identifiers"
+                    .to_owned(),
             ));
         }
         validate_entity_type(entity_type)?;
@@ -260,6 +262,7 @@ impl SearchProjectionDriver {
         tenant_id: Uuid,
         document: &SearchProjectionDocument,
     ) -> Result<()> {
+        // INVARIANT: In-memory verification ensuring the projection document belongs to the active tenant.
         if document.tenant_id != tenant_id
             || document.source_module != self.source_module()
             || !document.is_public

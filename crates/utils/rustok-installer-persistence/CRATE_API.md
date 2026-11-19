@@ -53,7 +53,7 @@
 - **Bounded & Sanitized Error Disclosures:** `bounded_http_job_error_message` prevents connection strings, raw passwords, and internal infrastructure exceptions from being stored in public job records.
 - **Job Output Size Capping:** HTTP installer job outputs exceeding 256 KB (`MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES`) omit bulky payloads to protect the persistence store.
 - **Lock Owner Validation:** Empty or whitespace-only lock owners are rejected with an explicit validation error.
-- **TTL Clamping:** Lock acquisition TTL is bounded below by 1 second (`ttl.max(Duration::seconds(1))`).
+- **Lease TTL Validation:** Lock TTL must be 1–86,400 seconds; zero, negative, and over-limit durations are rejected. Timestamp addition is checked and returns an error instead of panicking on overflow.
 - **Postgres Database Provisioning Validation:** URL scheme verification (`postgres` / `postgresql`), non-empty database names, non-empty usernames, and strict SQL identifier quoting (`quote_ident`, `quote_literal`).
 - **Production Environment Seed Guard:** Rejects `SeedProfile::Dev` when `plan.environment.is_production()`.
 - **Seed lifecycle replay:** The deterministic tenant/module/direction/actor key
@@ -69,13 +69,27 @@
 ## 4. Concurrency & Concurrency Models
 
 - **Compare-and-Set Job Terminal State:** `finish_http_job_succeeded` and `finish_http_job_failed` filter on `status = running`, guaranteeing that once a terminal status is written, concurrent transitions fail.
-- **PostgreSQL Serializable Lock Acquisition:** Lock acquisition under PostgreSQL begins a `Serializable` transaction to eliminate TOCTOU race conditions when multiple installer instances compete.
+- **Serializable Lock Acquisition:** PostgreSQL and MySQL begin lock acquisition in a `Serializable` transaction. SQLite uses the conditional session-claim update as its write fence.
+- **Fail-Closed Global Admission:** A session is claimed only from `draft` with `lock_owner IS NULL`, and cannot be claimed twice. Any other unreconciled session with a recorded owner blocks a new apply even after its lease expires. `recovery_required` blocks admission even if its owner has been cleared; completed, safely failed, and freshly cleaned sessions release the gate.
+- **No Lease-Expiry Takeover:** Expiry is not proof that the old process stopped. Stale sessions require explicit reconciliation before another apply can start.
+- **Owner Enforcement Boundary:** Adapters generate unique per-attempt owner values, but `record_receipt`, `set_state`, and `set_tenant_id` do not yet compare owner equality on every write. The fail-closed gate prevents automatic overlap; full stale-worker fencing and resumable recovery remain open.
 - **Atomic Administrator Provisioning:** Admin identity creation (`ensure_user_on`) and SuperAdmin role assignment (`assign_role_permissions_on`) occur inside a single database transaction. Any failure triggers rollback, ensuring zero orphaned identities without roles.
 - **Terminal Session Permanence:** Completed installer sessions permanently record `completed_at`, and `has_completed_session()` remains `true` even in the presence of subsequent failed recovery attempts.
 
 ---
 
 ## 5. Audit History & Verification Evidence
+
+- **Installer lease hardening (2026-11-18):**
+  - Added one-time draft-session claims and a fail-closed global admission gate that
+    retains unfinished and `recovery_required` sessions after lease expiry.
+  - Extended serializable acquisition to MySQL and retained PostgreSQL; SQLite
+    obtains a write fence through the conditional claim update.
+  - Bounded TTLs to 1–86,400 seconds and guarded timestamp addition against overflow.
+  - Added regression coverage for same-session re-claim, expired-lease blocking,
+    recovery-required blocking, final-state release, and TTL bounds.
+  - Verification was not run in this task at the user's request; see the server
+    implementation plan for exact commands.
 
 - **Phase FS-09 Component Audit (2026-10-31):**
   - Standardized `Cargo.toml` with workspace metadata (`repository.workspace = true`, `rust-version.workspace = true`, `readme = "README.md"`, `rustok-migrations.workspace = true`, `[package.metadata.docs.rs]`).

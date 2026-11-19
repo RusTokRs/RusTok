@@ -55,13 +55,23 @@ impl ModuleArtifactMaintenanceHandle {
 /// Deployment-owned configuration for the admission-reverification leg.
 /// The leg exists only when the operator configures a verification
 /// endpoint; pointing it at a worker is an explicit deployment decision,
-/// and invalid configuration disables the leg loudly at startup rather
-/// than letting stale evidence pass for fresh.
+/// and invalid configuration fails runtime startup rather than silently
+/// disabling a configured security operation.
 struct AdmissionReverificationConfig {
     endpoint: String,
     tls: MutualTlsClientConfig,
     trust_policy: AdmissionReverificationPolicyRevision,
     actor_id: Uuid,
+}
+
+/// An unset verifier endpoint is an explicitly optional leg. Once set,
+/// every required configuration value must be valid before worker startup.
+fn resolve_admission_reverification_config(
+    configured: Option<Result<AdmissionReverificationConfig, String>>,
+) -> Result<Option<AdmissionReverificationConfig>, String> {
+    configured
+        .transpose()
+        .map_err(|error| format!("Invalid artifact admission reverification configuration: {error}"))
 }
 
 fn admission_reverification_config_from_env()
@@ -179,31 +189,23 @@ pub fn spawn_module_artifact_maintenance_handle(
     storage: StorageRuntime,
     poll_interval_ms: u64,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
-) -> ModuleArtifactMaintenanceHandle {
+) -> Result<ModuleArtifactMaintenanceHandle, String> {
+    // Validate configured security policy before spawning any worker task.
+    // A malformed configured verifier must fail bootstrap, not look healthy
+    // while indefinitely skipping required admission reverification.
+    let reverification_config =
+        resolve_admission_reverification_config(admission_reverification_config_from_env())?;
     let instance_id = MODULE_ARTIFACT_MAINTENANCE_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let min_interval_ms = if cfg!(test) { 5 } else { 1_000 };
     let interval = Duration::from_millis(poll_interval_ms.max(min_interval_ms));
 
-    let reverification_config = match admission_reverification_config_from_env() {
-        Some(Ok(config)) => Some(config),
-        Some(Err(error)) => {
-            error!(
-                worker = "module_artifact_maintenance",
-                instance_id,
-                error = %error,
-                "Admission reverification is misconfigured; the leg is disabled and durable evidence will not refresh"
-            );
-            None
-        }
-        None => {
-            info!(
-                worker = "module_artifact_maintenance",
-                instance_id,
-                "Admission reverification endpoint is not configured; evidence refresh leg disabled"
-            );
-            None
-        }
-    };
+    if reverification_config.is_none() {
+        info!(
+            worker = "module_artifact_maintenance",
+            instance_id,
+            "Admission reverification endpoint is not configured; evidence refresh leg disabled"
+        );
+    }
 
     info!(
         worker = "module_artifact_maintenance",
@@ -453,8 +455,30 @@ pub fn spawn_module_artifact_maintenance_handle(
         }
     });
 
-    ModuleArtifactMaintenanceHandle {
+    Ok(ModuleArtifactMaintenanceHandle {
         instance_id,
         join_handle,
+    })
+}
+
+#[cfg(test)]
+mod startup_configuration_tests {
+    use super::*;
+
+    #[test]
+    fn absent_reverification_configuration_is_explicitly_optional() {
+        assert!(resolve_admission_reverification_config(None).unwrap().is_none());
+    }
+
+    #[test]
+    fn malformed_configured_reverification_cannot_be_silently_disabled() {
+        let result = resolve_admission_reverification_config(Some(Err(
+            "RUSTOK_MODULE_MAINTENANCE_TRUST_POLICY_REVISION must be positive".to_string(),
+        )));
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("misconfigured security verifier must reject worker startup"),
+        };
+        assert!(error.contains("TRUST_POLICY_REVISION"), "{error}");
     }
 }

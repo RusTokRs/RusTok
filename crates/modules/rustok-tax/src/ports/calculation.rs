@@ -49,13 +49,6 @@ impl TaxCalculationPort for crate::TaxService {
         context: PortContext,
         request: TaxCalculationInput,
     ) -> Result<TaxCalculationResult, PortError> {
-        use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
-        let _ = (
-            PortCallPolicy::read(),
-            std::any::TypeId::of::<PortContext>(),
-            std::any::TypeId::of::<PortError>(),
-            std::any::TypeId::of::<PortErrorKind>(),
-        );
         let owner_operation = "calculate_tax";
         require_tax_calculation_policy(&context, owner_operation)?;
         let expected_currency = validate_tax_request(&context, owner_operation, &request)?;

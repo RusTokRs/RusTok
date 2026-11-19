@@ -321,8 +321,7 @@ where
     let definitions = rows
         .into_iter()
         .map(product_field_definition_from_row)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommerceError::Validation)?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
@@ -331,8 +330,8 @@ rustok_api::impl_field_definition_source!(product_field_definitions_storage::Mod
 
 pub fn product_field_definition_from_row(
     row: product_field_definitions_storage::Model,
-) -> Result<FieldDefinition, String> {
-    rustok_core::field_schema::field_definition_from_source(&row)
+) -> Result<FieldDefinition, CommerceError> {
+    rustok_core::field_schema::field_definition_from_source(&row).map_err(CommerceError::Validation)
 }
 
 pub fn split_product_metadata_payload(

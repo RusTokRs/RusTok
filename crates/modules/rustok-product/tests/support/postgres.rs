@@ -34,7 +34,9 @@ where
         db.execute_unprepared("CREATE TABLE tenants (id UUID PRIMARY KEY)")
             .await?;
         let manager = SchemaManager::new(&db);
-        rustok_outbox_storage::SysEventsMigration.up(&manager).await?;
+        rustok_outbox_storage::SysEventsMigration
+            .up(&manager)
+            .await?;
         for migration in rustok_taxonomy::TaxonomyModule.migrations() {
             migration.up(&manager).await?;
         }

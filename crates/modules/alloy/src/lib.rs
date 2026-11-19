@@ -47,7 +47,7 @@ pub use authoring::{
 };
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
-pub use controllers::{EXECUTION_HISTORY_ROUTES, axum_router};
+pub use controllers::{AlloyHttpRuntimeError, EXECUTION_HISTORY_ROUTES, axum_router};
 pub use engine::{RhaiConfig, RhaiLimits, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
 pub use execution_log::{

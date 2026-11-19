@@ -128,6 +128,7 @@ impl RefundReconciliationService {
             serde_json::from_value(operation.request_payload.clone()).map_err(|_| {
                 PaymentError::provider_invalid_response(&provider_id, "refund_journal_request")
             })?;
+        // INVARIANT: payload idempotency validation ensures deserialized request tenant matches refund tenant.
         if request.tenant_id != tenant_id
             || request.collection_id != refund.payment_collection_id
             || request.idempotency_key.as_deref() != Some(idempotency_key.as_str())

@@ -123,6 +123,45 @@ RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD='...' \
 
 The username/password pair may both be omitted when the disposable broker permits anonymous access.
 
+## Standalone Product through the HTTP host
+
+The separate `product_index_refresh_standalone_chain` test starts the Channel identity service,
+the Product catalog service, the standalone Outbox relay, and the Axum host. It creates three
+disposable PostgreSQL databases and uses a unique stream on a disposable Iggy broker. The test
+provisions a tenant, the runtime-selected Index schemas through the Index registration API, and an
+empty Flex snapshot in Product's local projection before startup. It does not exercise Flex refresh.
+
+An authenticated `UpdateProduct` call changes a localized title. The test checks that the pending
+refresh names the committed root event and carries the exact Product revision from gRPC replay.
+Once the relay starts, the host fetches the projection over gRPC and applies the mutation under its
+canonical identity. The test checks the new title and absence of the Product row in the host
+database, then checks the relay's dispatched state and the host consumer group's broker offset.
+
+The fixture passed locally on 2026-11-17 against PostgreSQL 16 and Iggy 0.9.0 with loopback gRPC.
+This result covers one localized Product update. The redelivery scenarios above remain separate.
+
+Build the three standalone executables with their `service` features:
+
+```bash
+cargo build --locked -p rustok-product -p rustok-channel -p rustok-outbox \
+  --features rustok-product/service,rustok-channel/service,rustok-outbox/service \
+  --bin rustok-product-catalog-service --bin rustok-channel-service --bin rustok-outbox-service
+```
+
+Point `RUSTOK_PRODUCT_INDEX_CHAIN_PRODUCT_BINARY`, `RUSTOK_PRODUCT_INDEX_CHAIN_CHANNEL_BINARY`,
+and `RUSTOK_PRODUCT_INDEX_CHAIN_OUTBOX_BINARY` to those executables. Set
+`RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to a disposable PostgreSQL instance with database creation
+rights, and set the three `RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_*` variables above for the
+disposable broker. The broker stream is left for the disposable broker's teardown. Run:
+
+```bash
+cargo test --locked -p rustok-server --no-default-features --features mod-product,mod-social_graph \
+  --test product_index_refresh_standalone_chain -- --ignored --nocapture
+```
+
+The headless host build includes `mod-social_graph` to satisfy the compiled registry's dependency
+contract with the Social Graph package manifest.
+
 ## Manual GitHub Actions runner
 
 The repository also provides a maintainer-owned manual runner:

@@ -238,6 +238,7 @@ impl ProductSalesChannelIndexRelationStore {
                 vec![
                     tenant_id.into(),
                     after_sequence_no.into(),
+                    // INVARIANT: relation page limit is clamped and bounded below i64::MAX.
                     i64::try_from(limit)
                         .expect("relation page limit is bounded below i64::MAX")
                         .into(),
@@ -268,6 +269,7 @@ impl ProductSalesChannelIndexRelationStore {
         }
         ensure_postgres(&self.db)?;
 
+        // INVARIANT: relation page limit is clamped and bounded below i64::MAX.
         let limit = i64::try_from(limit).expect("relation page limit is bounded below i64::MAX");
         let (sql, values) = match after_product_id {
             Some(after_product_id) => (
