@@ -1,5 +1,32 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — Comments direct-worker shutdown registration (2026-11-22)
+
+The opt-in Comments TCP listener already had one startup reservation and
+checked shutdown after its asynchronous socket bind. The Comments durable
+schedule-audit source-retry handoff similarly reserved a unique worker and
+checked stop after constructing its durable dependencies. However, neither
+path synchronized the final stop-check → `tokio::spawn` → published handle
+sequence with `shutdown_runtime_workers` taking those handles. A direct
+starter could publish a task after shutdown had already taken the old
+value, detaching the task from its intended join/abort owner.
+
+Both Comments starters now acquire the existing process-local
+`DirectWorkerRegistrationLock` for only the final admission/spawn/handle
+publication, and shutdown takes both their handles under that same gate.
+The TCP socket bind occurs before acquiring the gate, so a slow bind cannot
+block shutdown. Once the stop flag is broadcast, a later starter refuses
+publication under the gate. Shutdown still removes the separate TCP listener
+address metadata after taking its task, and the existing per-worker startup
+reservations continue to prevent duplicate starts. No change to persistent
+handoff claim leases or delivery semantics.
+
+Existing source-level tests for shutdown admission and terminated-join
+handles remain; the direct-registration gate contention regression also
+covers the shared registration primitive. New runtime/broker/SQL tests
+and formatting/build verification remain maintainer-owned and were not run.
+
+
 ## Server audit continuation — direct worker registration and shutdown (2026-11-22)
 
 Several public worker starters can run outside the router's
