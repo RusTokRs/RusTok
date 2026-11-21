@@ -23,8 +23,12 @@ handoff claim leases or delivery semantics.
 
 Existing source-level tests for shutdown admission and terminated-join
 handles remain; the direct-registration gate contention regression also
-covers the shared registration primitive. New runtime/broker/SQL tests
-and formatting/build verification remain maintainer-owned and were not run.
+covers the shared registration primitive. A Comments-specific regression now
+holds the publication gate, asserts shutdown cannot take either task while
+that gate is held, publishes the TCP listener and durable handoff handles,
+then confirms both are taken and joined/aborted without a detached owner.
+Runtime/broker/SQL tests and formatting/build verification remain
+maintainer-owned and were not run.
 
 
 ## Server audit continuation — direct worker registration and shutdown (2026-11-22)
