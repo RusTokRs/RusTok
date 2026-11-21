@@ -137,8 +137,7 @@ fn normalize_target_kind(value: &str) -> ForumResult<&'static str> {
 
 fn resource_for_target_kind(target_kind: &str) -> Resource {
     match target_kind {
-        "topic" => Resource::ForumTopics,
         "reply" => Resource::ForumReplies,
-        _ => unreachable!("target kind is normalized before authorization"),
+        "topic" | _ => Resource::ForumTopics,
     }
 }
