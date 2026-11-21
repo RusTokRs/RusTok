@@ -232,6 +232,15 @@ listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 
+The in-process `EventBus` forwarder and `TransactionalEventBus`
+now obtain their `Arc<dyn EventTransport>` from one atomic,
+process-local runtime singleton resolver. A caller that loses a
+first-insert race cannot continue writing through its discarded
+default `OutboxTransport` while other publishers use the winning
+configured transport. Explicitly preinstalled transports remain
+authoritative; the change does not add retries or alter the selected
+delivery profile.
+
 Tenant resolution HTTP failures now return bounded static client
 messages. The status and error code still distinguish missing/conflicting
 tenant headers, invalid hosts, invalid identifiers, base-domain slug

@@ -1,5 +1,24 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — EventBus transport registration race (2026-11-21)
+
+The server had two transport registration paths using
+`ServerRuntimeContext::shared_insert_if_absent`. The EventBus forwarder
+handled a losing insert by fetching the registered winner (with a
+fallback), but `transactional_event_bus_from_context` ignored the
+boolean and returned its locally created `OutboxTransport` even after
+a concurrent publisher had installed another transport. This can split
+transactional writes from the runtime transport selected by the
+forwarder, bypassing configured delivery behavior for one caller.
+
+Both paths now use the already-present
+`shared_get_or_insert_with::<Arc<dyn EventTransport>>` atomic
+singleton contract. It returns the exact published transport regardless
+of whether that caller created it. The event bus lifecycle/stop lock is
+unchanged, as are existing transaction writer contracts. New regression
+tests cover racing resolver calls, transactional construction and
+preinstalled transport ownership. Tests/build/format commands not run.
+
 ## Server audit continuation — tenant HTTP error redaction (2026-11-21)
 
 `TenantResolutionError::error_message` previously returned
