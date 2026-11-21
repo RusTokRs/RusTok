@@ -444,8 +444,11 @@ fn map_flex_module_availability_error(
                 "Module 'flex' is not enabled for this tenant",
             ))
         }
-        flex::rest::FlexModuleAvailabilityError::Unavailable(error) => {
-            tracing::error!(%error, "Flex module availability lookup failed");
+        flex::rest::FlexModuleAvailabilityError::Unavailable(_error) => {
+            tracing::error!(
+                error_code = "flex_module_availability_lookup_failed",
+                "Flex module availability lookup failed"
+            );
             crate::error::Error::InternalServerError
         }
     }
