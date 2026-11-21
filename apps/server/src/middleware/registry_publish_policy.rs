@@ -29,7 +29,7 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     }
     tracing::debug!(path, method = %request.method(), "registry_publish_policy::enforce entry");
 
-    let (mut parts, body) = request.into_parts();
+    let (parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_PUBLISH_BODY_BYTES).await {
         Ok(bytes) => bytes,
         Err(_) => return bad_request("Registry publish body is invalid or too large"),
