@@ -228,7 +228,14 @@ pub async fn start_product_index_refresh_worker_if_enabled(
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, ProductIndexRefreshStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Product Index refresh worker startup is already in progress; retry".to_string(),
+        ));
     };
     if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
         return Ok(());
