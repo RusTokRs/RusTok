@@ -1,5 +1,390 @@
 # Server App — Implementation Plan
 
+## Installer HTTP admission cancellation follow-up (2026-11-21)
+
+Branch: `agent/server-installer-admission-cancellation-20261121`, based on
+`a9431fdefd08693eab7aa0aaab87169b877af239`.
+
+The HTTP installer previously inserted a process-local `ActiveInstallerJobHandle`
+then awaited `create_http_job` in the cancelable HTTP request future before
+spawning its execution task. A dropped request during that await could leak the
+local admission slot; if the database committed the `running` row before
+cancellation, no executor task would run and the unique running-job fence would
+block all later installation attempts.
+
+- Request validation and all fallible synchronous preparation now precede the
+  local reservation. After reservation there is **no await** before spawning.
+- A single background task owns both the durable claim and the installer
+  executor; the HTTP handler observes claim success/failure through a oneshot
+  channel. Dropping the HTTP receiver cannot cancel either step. The guard
+  releases the process-local slot when claim creation fails or the task exits.
+- Durable unique-constraint losers still return HTTP 409; other database errors
+  return redacted HTTP 500; a stopping host rejects new apply requests with 503.
+- If shutdown is observed after the job claim commits but before executor
+  entry, its background owner marks the still-unstarted job `failed` with the
+  existing redacted error mapping, rather than launching new side effects.
+- Regression tests cover early receiver cancellation, claim failure cleanup,
+  shutdown after a durable claim but before execution, and stop-signal admission
+  refusal.
+- **No compilation, formatting, unit/integration tests, or migrations were run**;
+  the maintainer will verify them. Check request disconnects during claim
+  persistence, concurrent replica requests, and shutdown during apply.
+
+Limit: this closes the HTTP cancellation gap **only**. A worker-process crash,
+panicked claim after an ambiguous database commit, or hard runtime abort can
+still leave a `running` row. Do not clear stale rows by age or restart another
+installer based on an expired lock. Safe crash reconciliation needs durable
+owner/attempt fencing, receipt inspection and validation of external effects.
+
+## OAuth secret rotation lock and concurrent-success fence (2026-11-21)
+
+Branch: `agent/server-oauth-secret-lock-boundary-20261121`, forked from
+`a9431fdefd08693eab7aa0aaab87169b877af239` as a bounded auth-service
+follow-up independent of the pending installer and auth-email PRs.
+
+- Previously the OAuth administration provider acquired a database transaction
+  and exclusive OAuth app lock, then generated two random tokens and awaited
+  Argon2 hashing while holding that lock. This needlessly serialized token
+  issuance, revocation and other app mutations behind expensive CPU work.
+- Rotation now first reads the tenant-scoped app and checks its permissions and
+  `can_rotate_secret()` state, then prepares the new plaintext and Argon2 hash
+  **before** beginning a transaction. The commit stage acquires the existing
+  backend-specific app mutation fence, rechecks every authoritative condition,
+  and writes the secret hash in the same database transaction.
+- A prepared rotation records the previous hash and rejects a commit when the
+  current persisted hash changed during preparation (typed conflict, not a
+  generic validation error). Two competing rotations
+  against the same old secret can no longer both report successful issuance of
+  their own new secret: the stale candidate must retry.
+- A SQLite regression test prepares a rotation, commits a competing hash
+  update, and verifies the stale rotation is rejected without overwriting the
+  winner. The existing end-to-end guarded rotation test continues to cover
+  tenant, delegated permissions and successful secret validation.
+- **No cargo check, cargo test, formatter, lint, migrations or multi-replica
+  verification were run**, as requested by the maintainer. Check PostgreSQL
+  concurrent rotations against token issuance and revocation in deployment.
+
+Limitations: the changed-hash comparison is a conflict fence only for the
+preparation window. A deliberately **sequential** second rotation remains
+permitted; secret rotation does not automatically revoke existing OAuth token
+families. Database errors and failed commits remain redacted to callers.
+
+## Module event dispatcher and recovery worker single-owner follow-up (2026-11-21)
+
+Branch: `agent/server-module-worker-single-owner-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`. This is a bounded
+continuation of the server runtime audit, separate from pending auth-email,
+installer and OAuth rotation PRs.
+
+- The paid-order label, marketplace-financial and payment-provider event
+  recovery workers previously checked for a stored handle and then spawned
+  their own Tokio task before publishing a handle. Parallel composition could
+  pass both checks and overwrite a handle, leaving the earlier task running
+  without a shutdown owner. They now atomically reserve a distinct per-runtime
+  worker key before spawning. Missing optional provider/runtime prerequisites
+  release their reservation so later bootstrap retries may succeed.
+- The module event dispatcher also previously used a non-atomic handle check.
+  Its startup now reserves one dispatcher owner before assembling runtime
+  extensions or starting child workers. A failed dispatcher launch releases
+  its reservation and does not mark the required listener registry healthy.
+- The dependent Product media, Commerce paid-label, marketplace-financial and
+  Payment recovery workers start only after a successful dispatcher start.
+  Their individual gates reject new starts after the process stop signal;
+  Product media startup now also checks its existing handle before reserving.
+- Tests cover concurrent Payment worker composition and stable handle identity,
+  release on missing Fulfillment/financial runtime dependency, and refusal of
+  new recovery work after shutdown. Existing dispatcher startup tests remain.
+- **No formatting, build, Cargo tests, lints, migrations or multi-replica
+  execution occurred here.** Run focused server lifecycle tests for each
+  enabled feature and full/workflow host modes before merge.
+
+Remaining risks: these are per-process reservations, not distributed worker
+leases. External payment/shipping effects must remain idempotent and durable.
+A process crash still requires replay/recovery from owner receipts. The
+bootstrap lock serializes normal host initialization with shutdown, but callers
+bypassing it should not treat this reservation as a universal host lifecycle
+contract; short spawn/handle-publication windows require normal host ownership.
+
+## OAuth app mutation and RFC 7009 serialization follow-up (2026-11-21)
+
+Branch: `agent/server-oauth-app-mutation-fences-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. Independent of
+pending auth-email, installer, OAuth secret-rotation and worker-startup PRs.
+
+### Confirmed defects and changes
+
+- The manual OAuth app update handler read `can_edit()` and the app's current
+  type outside a transaction, then persisted scopes/grants/redirect URIs and
+  translations later. Another replica could change app ownership, revoke or
+  alter security policy in between. The handler now begins a transaction,
+  acquires the same app-row mutation lock used by OAuth token issuance and
+  manifest sync, rechecks editability under that lock and commits the base
+  update, translations and authoritative response projection together.
+- Explicit app revocation similarly read `can_revoke()` before acquiring a
+  mutation lock. Revocation now checks current tenant-scoped app ownership
+  under the lock before deactivating the app and invalidating tokens, consents,
+  and authorization codes in the same transaction. The deactivation update
+  also matches tenant ID and fails closed if no row is changed.
+- RFC 7009 token-family revocation now reserves the app mutation fence before
+  looking up the presented token. It therefore serializes with authorization
+  code and refresh-token issuance that use the app-then-subject lock order,
+  rather than racing creation of a refresh successor after an unprotected read.
+  The scoped unknown-token path still succeeds without an existence oracle.
+- The family-revocation update changes only rows not previously revoked, so
+  repeated requests do not rewrite the original `revoked_at` timestamp.
+- The ordinary OAuth client-secret rotation CAS also checks the live
+  `app_type` against the allowed set, so a configuration/manifest change during
+  Argon2 preparation cannot authorize a secret on an unsupported app type.
+  A SQLite regression proves the stale CAS is rejected without changing the
+  stored secret hash.
+- A new SQLite integration regression simulates transfer of a manual app to
+  manifest-owned state and ensures manual edit/revocation are rejected without
+  altering its active status and redirect configuration. The existing RFC 7009
+  family replay test now asserts preserved revocation timestamps.
+
+**Verification not performed** (per maintainer instruction): no compilation,
+formatting, test execution, database migration or multi-replica exercise. Before
+merge run scoped `rustok-server` compile and OAuth integration tests, plus
+PostgreSQL interleaving tests for manifest synchronization, app edits,
+revocation and concurrent refresh/revocation operations. This patch does not
+claim durable multi-replica recovery or eliminate every possible stale-read
+in other app/service entrypoints.
+
+## OAuth replay revocation transaction fences (2026-11-21)
+
+Branch: `agent/server-oauth-reuse-revocation-fencing-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. This is a
+standalone `apps/server` OAuth token-service continuation and intentionally
+does not depend on pending app mutation and rotation PRs.
+
+### Confirmed interleaving defects
+
+- The OAuth refresh-token reuse detector previously read a revoked token and
+  calculated its grace age without holding the app-row mutation fence. Its
+  family-wide update then ran without a transaction. A concurrent refresh
+  operation could issue a replacement after the replay detector had already
+  marked the then-current family revoked, leaving a live descendant from a
+  lineage the server considered compromised.
+- A used OAuth authorization code observed by the preflight path similarly
+  revoked its issued access/refresh token lineage using a standalone update
+  instead of an app-locked transaction. A concurrent code/refresh exchange
+  could therefore pass the same unprotected window before the replay result.
+
+### Remediation and coverage
+
+- The refresh reuse detector first looks up an exact revoked, client/tenant
+  scoped token without locking the app, avoiding a database write-fence per
+  unknown token. A positive candidate opens a transaction, takes the canonical
+  tenant/app mutation lock (including for inactive apps), and **re-reads** the
+  candidate with all scoped predicates inside the transaction. The replay-age
+  decision and family update are based solely on this authoritative read;
+  the transaction commits before the protocol returns `invalid_grant`. Grace
+  and missing-record no-op paths explicitly roll back to release SQLite's
+  reserved writer. Persistence and commit failures return `server_error`.
+- The authorization-code replay wrapper now starts a transaction, reserves the
+  same app-row fence used by code exchange and refresh rotation, revokes the
+  code-bound lineage via the existing shared in-transaction service, and
+  commits the security effect. The CAS-miss path that already held the app
+  lock is unchanged, avoiding a nested transaction.
+- Existing SQLite refresh-reuse failure/retry and code-family scope tests now
+  persist an OAuth app and tenant, exercising the actual row-lock path rather
+  than a token table in isolation. The code replay test checks revocation when
+  the app is already inactive, injects a database update failure and verifies
+  that the failure surfaces and does not mutate tokens, then retries and
+  verifies the scoped successful revocation.
+
+**Verification outstanding:** No tests, compilation, formatting, lint, or
+multi-replica PostgreSQL interleaving tests were run (maintainer runs tests).
+Run the targeted `services::oauth_token_service::tests`, crate-level check,
+and deployment concurrency tests before integration. This still does not
+provide recoverable refresh-token response replay after a lost successful
+response, nor distributed exclusivity for unrelated writers outside the
+canonical app mutation lock.
+
+## OAuth authorization-code creation fence (2026-11-21)
+
+Branch: `agent/server-oauth-code-issuance-fence-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`; independent of
+the other open server audit PRs.
+
+### Confirmed TOCTOU defect
+
+All OAuth authorization routes (JSON, browser direct issue and consent
+approval) previously preflighted a client, grant, scopes, redirect and sometimes
+consent before calling `OAuthAppService::generate_authorization_code`. The
+service inserted the code without checking any of those authorities inside a
+transaction. A concurrent client revoke or consent revoke could commit first,
+invalidate all pending codes, and then the stale authorization route could
+create a new code **after** the invalidation. A subsequent client reactivation
+or renewed consent could make that code unexpectedly redeemable.
+
+### Implementation
+
+- The authorization-code generator starts a transaction and obtains the
+  canonical tenant-scoped OAuth app lock followed by the user lock. It checks
+  current app/subject activity, `authorization_code` grant and supported app
+  type, exact registered redirect URI, non-empty scopes within the current
+  app ceiling, and active scope-covering third-party consent.
+- It then creates and hashes a random code, inserts the pending code and
+  commits before returning plaintext. Failed policy decisions never insert a
+  code. This preserves the original `generate_authorization_code` API used
+  by all three REST authorization paths and shares the lock order used by
+  consent grant/revoke, app mutation and token exchange.
+- Focused SQLite regressions exercise missing/revoked/regranted consent,
+  app revocation, cross-tenant request, stale redirect/scopes and inactive
+  subject, including no-code-insert assertions.
+- The controller now maps an authoritative admission miss to
+  `invalid_client`, a stale policy/redirect/scope to `invalid_request`, and a
+  missing active subject/consent to `access_denied` rather than conflating
+  every failed admission with a 500. Unexpected persistence errors still map
+  to redacted `server_error` and are logged. A transport regression checks
+  both OAuth error kinds and HTTP status codes, including detail redaction.
+
+**Verification left to maintainer:** no compile, format, Cargo tests, lints
+or live PostgreSQL multi-replica interleaving tests were executed. Run
+`cargo check -p rustok-server --lib` and
+`cargo test -p rustok-server --lib services::oauth_app::tests` in the
+relevant feature profile before merge, plus end-to-end authorize/consent
+browser flows and concurrent revoke/issue tests on PostgreSQL. Security
+under real concurrency depends on all cooperating paths using the same
+app-then-subject lock order. This does not bind an authorization-code
+write to a live HTTP session generation after an already-authenticated
+request begins; token exchange still checks subject/credential epochs.
+
+## Background worker single-owner admission — Notifications, Search and Index (2026-11-21)
+
+Branch: `agent/server-notification-worker-startup-ownership-20261121`,
+forked from main `a9431fdefd08693eab7aa0aaab87169b877af239`;
+independent of the module dispatcher and OAuth draft branches.
+
+### Confirmed defects
+
+- Candidate, fanout and outbox-intake startup each checked
+  `shared_contains::<...WorkerHandle>()` before dependency construction
+  and later executed an unconditional `shared_insert(...tokio::spawn(...))`.
+  Concurrent callers could both pass the initial check, launch duplicate
+  tasks and overwrite the context's sole JoinHandle, leaving one task
+  invisible to the normal drain. In Outbox intake, two callers could also
+  concurrently register consumer event types and backfill receipts before
+  any handle was published.
+- Candidate and fanout worker startup had no admission-time check of the
+  shared `StopHandle`. A late caller could spawn a worker while the server
+  already had its shutdown signal set.
+- Forum Search inbox, Forum Search typed contract consumer, Product Index
+  refresh, and Social Graph Index consumer showed the same check-then-publish
+  race. The three broker-backed consumers also opened persistent Iggy
+  consumer groups asynchronously **before** publishing handles; concurrent
+  starters could open two groups and lose a JoinHandle. All four also needed
+  a stop check between preparation and task admission.
+- A second caller observing an in-progress reservation initially returned
+  `Ok(())`, even if the first caller had not yet finished and could still
+  fail. That was a false startup-success signal for external bootstrap
+  callers not coordinated by `ServerBootstrapInitializationLock`.
+
+### Changes
+
+- Added a typed `ServerRuntimeStartReservation<'_, T>` in
+  `server_runtime_context.rs`: it takes a process-local atomic
+  `shared_insert_if_absent` claim, releases it on startup error or future
+  cancellation via `Drop`, and retains the claim after handle publication
+  through `commit`.
+- Candidate and fanout reserve after their readiness/dependency checks,
+  before constructing/spawning their workers. If construction fails or
+  shutdown begins during preparation, the claim is removed so a retry can
+  succeed. Only the one admitted caller publishes a JoinHandle.
+- Outbox intake reserves **before** async registration and full legacy
+  receipt backfill; an aborted backfill cannot strand its local startup
+  reservation. Successful backfill followed by handle publication retains
+  the claim. Existing durable receipt idempotence remains unchanged.
+- Forum Search inbox reserves immediately before worker admission. Its
+  unsupported-backend and missing-source early exits remain no-ops without a
+  claim, while a shutdown before publication aborts startup.
+- Forum Search contract, Product Index refresh and Social Graph Index now
+  reserve their distinct worker marker **before** the async persistent
+  consumer open. This prevents duplicate group open and ensures cancellation
+  during broker I/O automatically releases the reservation. Validate
+  configuration and check shared `StopHandle` before/after broker open, before
+  recording worker-start telemetry and publishing the task.
+- Each of the seven callers now distinguishes a completed worker (idempotent
+  success) from another starter still working (retryable `Error::Message`).
+  The latter cannot be reported as success until the winner actually
+  publishes a handle, and never overrides an existing one.
+- The reservation constructor is deliberately lazy (`bool::then`, not
+  `then_some`), because a losing contender must **not** construct a temporary
+  drop guard capable of deleting the winning claim.
+- Tests cover failed-start claim release, retained successful ownership,
+  concurrent contention by 12 threads and cancellation by dropping an
+  in-flight async startup future before it completes.
+
+**Handoff:** No Cargo tests, rustfmt, clippy, compilation, migrations or
+multi-process checks were run per maintainer preference. Run
+`cargo check -p rustok-server --lib` and targeted
+`services::server_runtime_context::tests`,
+`services::notification_candidate_worker`,
+`services::notification_fanout_worker`,
+`services::notification_outbox_intake_worker`,
+`services::forum_search_inbox_worker`,
+`services::product_index_refresh_worker`, and
+`services::social_graph_index_worker` tests. Validate lifecycle
+shutdown/backfill interleavings and network consumer-open cancellation with a
+real DB, Iggy broker and two concurrent starter calls. This reserves **one worker per runtime context**, not one per
+deployment. It does not add durable cross-replica worker leader election.
+
+## Worker recovery after DLQ publication failure and cooperative shutdown (2026-11-21)
+
+Branch: `agent/server-social-graph-poison-recovery-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`; independent of the
+open startup ownership and OAuth branches.
+
+### Defects confirmed in `apps/server`
+
+- `social_graph_index_worker.rs` ended the raw poison DLQ publish retry loop
+  with an `Err(_error)` match arm while its formatted error referenced
+  `{error}`. This is an unresolved Rust identifier in a compiled function
+  body and prevents the corresponding module from compiling. The raw broker
+  error also should not become a general worker error surface because its
+  text is uncontrolled transport data.
+- `marketplace_financial_worker.rs` performed three distinct durable
+  reconciliation stages sequentially on each timer tick: adapt provider
+  reversals, sweep reversal events, and sweep paid-order events. After
+  shutdown began during stage one or two, the worker could still admit later
+  stages before checking the stop channel again. This lengthened shutdown and
+  admitted avoidable external recovery work after host stop.
+
+### Remediation
+
+- Replaced the invalid raw-poison terminal error reference with a stable,
+  redacted diagnostic containing the retry attempt count and the crucial
+  guarantee that the source broker offset remains uncommitted. The existing
+  release-claim/lease and receipt publication logic is preserved; on
+  redelivery the worker can reclaim or recognize its durable receipt. Added
+  a focused regression for the failure diagnostic.
+- Factored marketplace financial reconciliation sequencing into
+  `run_recovery_phases`. Each phase runs to completion (a durable operation
+  is not cancelled mid-write), but the stop receiver is checked before the
+  initial phase and after every phase; an observed stop prevents admission
+  of the following phase. The outer worker exits rather than sleeping for
+  another tick. A deterministic asynchronous test covers stop before any
+  phase, after phase one, after phase two, after phase three, and successful
+  all-three completion without stop.
+
+### Verification and limits
+
+**No compilation, tests, formatting, lint or live Iggy/database failover
+exercises were run**, per maintainer preference. Suggested commands:
+```sh
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::social_graph_index_worker::tests
+cargo test -p rustok-server --lib services::marketplace_financial_worker::tests
+```
+Also exercise a real broker failure at the last DLQ attempt and a process
+stop between financial phases with a real database. Crash between Iggy
+publication and durable receipt publication still has an inherent
+at-least-once retry window (dependent on the broker's deterministic ID
+deduplication); this patch does **not** claim transactional exactly-once
+delivery across broker and database.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
@@ -46,8 +431,44 @@ has been exhaustively verified or that the full-stack audit gates are closed.
   configured base-domain suffixes. Malformed non-ASCII input cannot panic the
   handler, even when a caller bypasses the ordinary host validator. A test
   exercises a multibyte boundary.
-- These additional changes were committed to the same existing draft PR;
-  no tests, builds, linters, format checks, or migrations were executed here.
+- These changes were committed to PR #4760 (subsequently merged into
+  `main`); no tests, builds, linters, format checks, or migrations were
+  executed in that GitHub-only pass.
+
+### Auth email task shutdown and locale follow-up (after merge of #4760)
+
+The original host ran password-reset and verification email tasks as detached
+Tokio tasks whose JoinHandles were dropped by HTTP callers. A best-effort stop
+check before spawning did not make accepted sends part of the host drain.
+
+- `AuthEmailTaskRegistry` now tracks active sends independently of returned
+  JoinHandles. Task admission and registry closure use the same mutex, preventing
+  a spawn racing with shutdown from escaping the task snapshot. Completion is
+  tracked through a drop guard that also runs when cancellation occurs before
+  the first poll. The host waits up to five seconds for sends and then aborts
+  and observes remaining tasks within another bounded second.
+- The panic boundary encloses future construction as well as its subsequent
+  polling; a synchronous factory panic cannot escape as an unobserved join
+  error. Added focused regressions for dropped caller handles, cancellation,
+  panics, and the host shutdown integration point.
+- Shared SMTP transport caching now keeps the first inserted pool under
+  concurrent sender construction instead of overwriting a valid connection
+  pool. Shutdown-skipped sends contribute to the existing skipped metric.
+- Locale selection now matches the first language subtag (including uppercase
+  and region variants), so arbitrary prefixes such as `ruby` or `russian`
+  no longer select Russian templates.
+- The code additions that preceded the merge are in #4760. The new locale,
+  shutdown-skip telemetry and live documentation reconciliation are in
+  `agent/server-auth-mail-lifecycle-followup-20261121`, based on main
+  `c5000ee004c65e07f78083da242ed9c5be6e79b2`.
+- **No tests, lint, formatter, builds, or integration suites were run here.**
+  Maintainer should run focused auth-email unit/integration coverage, server
+  compilation and format checks, and real SMTP shutdown scenarios.
+
+This is only process-local graceful draining. Durable email delivery requires
+an owner-level persisted request/outbox and replay contract; a hard process
+kill, transport failure, or host timeout can still lose an email. It is not
+safe to claim at-least-once delivery from this in-memory registry alone.
 
 Unclosed owner-level work remains, including durable delivery/retry for
 password-reset and verification email tasks, crash reconciliation of HTTP
