@@ -1128,7 +1128,7 @@ async fn generate_blog_draft(
         },
     )
     .await?;
-    validate_blog_draft_payload(&generated).map_err(AiError::Validation)?;
+    validate_blog_draft_payload(&generated).map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
@@ -1207,7 +1207,7 @@ pub(crate) async fn generate_content_moderation(
     )
     .await?;
 
-    validate_moderation_decision(&decision).map_err(AiError::Validation)
+    validate_moderation_decision(&decision).map_err(|err| AiError::Validation(err.to_string()))
 }
 
 pub(crate) async fn generate_product_attributes(
