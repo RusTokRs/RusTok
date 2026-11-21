@@ -104,7 +104,11 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result. HTTP and CLI now use unique host-generated
+  persist the terminal result. Before the executor enters, exhausted claim
+  creation retries attempt a bounded, exact-job/session/submission CAS to
+  close an ambiguous committed `running` job as `failed`; database outages can
+  still prevent this cleanup, and no job whose effects began is reset. HTTP
+  and CLI now use unique host-generated
   lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
   Persistence blocks new applies while any unreconciled session has a
   recorded owner, even after lease expiry; `recovery_required` remains blocking
