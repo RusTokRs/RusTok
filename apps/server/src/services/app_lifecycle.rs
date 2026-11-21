@@ -788,6 +788,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    // Auth sends are request-spawned, not startup-owned. Their registry retains
+    // task ownership after HTTP callers discard JoinHandles, and closes new
+    // admission while allowing a bounded grace period for accepted sends.
+    let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
+
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
             await_runtime_worker_shutdown(
@@ -1216,6 +1221,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         relay_drain,
         retention_drain,
         auth_retention_drain,
+        auth_email_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
