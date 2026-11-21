@@ -483,7 +483,8 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   preflight **without** holding a SQL transaction while generating and Argon2-
   hashing the replacement secret. The commit phase locks the current app row,
   repeats the permission and rotation-admission checks, and rejects a prepared
-  rotation when another operation has already changed the secret hash. Thus
+  rotation with a typed conflict when another operation has already changed
+  the secret hash. Thus
   expensive hashing does not hold an app mutation lock, and simultaneous
   rotations from the same original secret cannot both report success while
   one silently invalidates the other. A stale preparation must be retried;
