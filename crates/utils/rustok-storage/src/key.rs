@@ -46,6 +46,9 @@ impl ObjectKey {
         object_id: Uuid,
         extension: &str,
     ) -> Result<Self, KeyError> {
+        if object_id.is_nil() {
+            return Err(KeyError::InvalidObjectIdentity);
+        }
         let namespace = validated_segment("namespace", namespace, 64)?;
         let extension = validated_extension(extension)?;
         let scope = scope_segment(scope)?;
@@ -122,8 +125,16 @@ impl std::fmt::Display for DigestObjectKey {
 
 fn scope_segment(scope: ObjectScope) -> Result<String, KeyError> {
     match scope {
-        ObjectScope::Tenant(tenant_id) => Ok(format!("tenants/{tenant_id}")),
+        ObjectScope::Tenant(tenant_id) => {
+            if tenant_id.is_nil() {
+                return Err(KeyError::InvalidTenantIdentity);
+            }
+            Ok(format!("tenants/{tenant_id}"))
+        }
         ObjectScope::TenantModule { tenant_id, module } => {
+            if tenant_id.is_nil() {
+                return Err(KeyError::InvalidTenantIdentity);
+            }
             let module = validated_segment("module", &module, 64)?;
             Ok(format!("tenants/{tenant_id}/modules/{module}"))
         }
@@ -176,6 +187,10 @@ fn validated_extension(value: &str) -> Result<&str, KeyError> {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum KeyError {
+    #[error("Tenant identity must be non-nil")]
+    InvalidTenantIdentity,
+    #[error("Object identity must be non-nil")]
+    InvalidObjectIdentity,
     #[error("Namespace tenant, owner, and instance identities must be non-nil")]
     InvalidNamespaceIdentity,
     #[error("invalid {name} segment `{value}`")]

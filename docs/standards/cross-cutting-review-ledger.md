@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14 (14/17 completed — 82.4%)
+- **Active Phase:** CC-16: CQRS Read Projections, Search & Index Synchronization
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15 (15/17 completed — 88.2%)
 - **Active Branch:** `main`
 
 ---
@@ -69,7 +69,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed)
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed)
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed)
-- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
+- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
@@ -524,14 +524,29 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 ### CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
 
 - **Canonical Documents:** [crates/utils/rustok-storage/README.md](../../crates/utils/rustok-storage/README.md), [crates/modules/rustok-media/docs/README.md](../../crates/modules/rustok-media/docs/README.md), [DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md](../../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md).
-- **Primary Owner Crates:** `rustok-storage`, `rustok-media`, `crates/modules/rustok-media-transport`.
+- **Primary Owner Crates:** `rustok-storage`, `rustok-media`, `crates/modules/rustok-media/ports`.
 - **CodeGraph Target:** `ObjectStorage StorageBackend generate_presigned_url MediaService CanonicalObjectKey`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-15.01 — Tenant-Scoped Object Keys**
-- [ ] **CC-15.02 — Path Traversal Prevention**
-- [ ] **CC-15.03 — Presigned Upload Expiration & Verification**
-- [ ] **CC-15.04 — Media Extraction SSRF Guard**
+- [x] **CC-15.01 — Tenant-Scoped Object Keys**
+  - Audited canonical object keys in `crates/utils/rustok-storage/src/key.rs` (`ObjectKey::chronological`, `DigestObjectKey::sha256`).
+  - Enforced non-nil tenant and object identity invariants across all object scopes (`ObjectScope::Tenant`, `ObjectScope::TenantModule`, `ObjectScope::Namespace`): nil tenant and object UUIDs are rejected with typed `KeyError::InvalidTenantIdentity` and `KeyError::InvalidObjectIdentity`.
+  - Verified tenant isolation and calendar-sharded key layout (`media/objects/tenants/{tenant_id}/YYYY/MM/DD/{shard}/{id}.{ext}`).
+- [x] **CC-15.02 — Path Traversal Prevention**
+  - Audited key segment and extension sanitization in `rustok-storage/src/key.rs` (`validated_segment`, `validated_extension`): restricted to ASCII lowercase alphanumeric and hyphen, prohibiting path traversal sequences (`..`, `/`, `\`), null bytes, or spaces.
+  - Audited file name normalization in `rustok-media/src/service.rs` (`normalize_original_name`): cleans path separators, strips control characters and null bytes, trims dots, ensuring clean storage and display names.
+  - Verified capability public image access in `rustok-media/src/public_image.rs` (`read_public_image`): enforces 64-char lowercase SHA-256 hex checksum validation, tenant binding, and direct-storage path decoupling.
+- [x] **CC-15.03 — Presigned Upload Expiration & Verification**
+  - Audited direct upload session lifecycle in `rustok-media/src/service.rs` (`prepare_upload_session`, `complete_upload_session`).
+  - Enforced bounded session expiry (1 sec to 15 mins) and state transition integrity via atomic CAS conditional update (`Pending` -> `Finalizing`), eliminating TOCTOU concurrency races and duplicate asset creation across concurrent finalize calls.
+  - Verified staging object cleanup upon completion/expiration and background reconciliation (`reconcile_upload_sessions`, `reconcile_storage`).
+- [x] **CC-15.04 — Media Extraction SSRF Guard**
+  - Audited remote gRPC transport security for extracted Media pilots in `crates/modules/rustok-media/ports/src/grpc/connection.rs` (`GrpcMediaPublicImageConnectionConfig`).
+  - Enforced fail-closed SSRF guards: external plaintext endpoints (`http://`) are strictly rejected with `InsecureEndpointForbidden`; plaintext loopback requires explicit opt-in (`allow_insecure_loopback = true`); connect timeout is bounded (max 30s).
+  - Added unit test matrix in `connection.rs` locking in SSRF defenses.
+  - Synchronized verification scripts (`verify-profiles-media-provider-composition.mjs`, `verify-ai-media-fba.mjs`). Scoped checks passed: `cargo test -p rustok-storage --lib` (12 passed), `cargo test -p rustok-media-ports --features grpc-client --lib` (22 passed), `cargo test -p rustok-media --lib` (48 passed). Clean gatekeeper diff approved via `verify-remediation-gate.py`.
 
 ---
 
