@@ -1505,7 +1505,7 @@ mod tests {
         }
 
         assert!(
-            response.checks.iter().any(|check| check.name == "host_mode"),
+            response.checks.iter().any(|check| check.name == "worker_host_mode"),
             "surface hosts must retain the general-worker ownership marker"
         );
     }
