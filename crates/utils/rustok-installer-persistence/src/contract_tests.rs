@@ -503,7 +503,7 @@ async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
             .finish_unstarted_http_job_failed(
                 job_id,
                 job_id,
-                submitted_at + chrono::Duration::seconds(1),
+                submitted_at.clone() + chrono::Duration::seconds(1),
             )
             .await
             .expect("wrong submission time is a no-op"),
