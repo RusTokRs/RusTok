@@ -2358,8 +2358,10 @@ A pre-existing or restored counter key without a TTL therefore remained
 permanent: subsequent requests kept incrementing it, while the middleware
 reported a one-second retry delay forever.
 
-- The atomic script now checks the key TTL on every increment and attaches the
-  configured window whenever the key exists without an expiry.
+- The atomic script now checks the key TTL in milliseconds on every increment
+  and attaches the configured window whenever the key exists without an expiry.
+  Reset and Retry-After values round up to whole seconds, avoiding early retry
+  instructions from floor-rounded TTLs.
 - If Redis still reports a negative TTL after the repair attempt, the script
   returns an error. The middleware treats that as backend unavailable (503),
   preserving fail-closed behavior instead of silently creating a permanent

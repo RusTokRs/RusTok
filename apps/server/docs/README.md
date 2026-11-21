@@ -209,6 +209,8 @@ through 365 days for both memory and Redis backends; disabled limiters remain
 disabled. Redis rate-limit counters without an expiry are repaired in the
 atomic script; if an expiry still cannot be established, the request fails
 closed with backend unavailable instead of leaving a permanent counter lockout.
+Redis uses millisecond TTLs, and memory/Redis reset headers round up to whole
+seconds so clients are not instructed to retry before the window actually ends.
 
 Database pool settings are validated before connecting: an omitted
 `max_connections` uses the pool default of 10, explicit values may not exceed
