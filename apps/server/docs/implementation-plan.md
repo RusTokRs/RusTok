@@ -1,5 +1,37 @@
 # Server App — Implementation Plan
 
+## Installer HTTP admission cancellation follow-up (2026-11-21)
+
+Branch: `agent/server-installer-admission-cancellation-20261121`, based on
+`a9431fdefd08693eab7aa0aaab87169b877af239`.
+
+The HTTP installer previously inserted a process-local `ActiveInstallerJobHandle`
+then awaited `create_http_job` in the cancelable HTTP request future before
+spawning its execution task. A dropped request during that await could leak the
+local admission slot; if the database committed the `running` row before
+cancellation, no executor task would run and the unique running-job fence would
+block all later installation attempts.
+
+- Request validation and all fallible synchronous preparation now precede the
+  local reservation. After reservation there is **no await** before spawning.
+- A single background task owns both the durable claim and the installer
+  executor; the HTTP handler observes claim success/failure through a oneshot
+  channel. Dropping the HTTP receiver cannot cancel either step. The guard
+  releases the process-local slot when claim creation fails or the task exits.
+- Durable unique-constraint losers still return HTTP 409; other database errors
+  return redacted HTTP 500; a stopping host rejects new apply requests with 503.
+- Regression tests cover early receiver cancellation, claim failure cleanup,
+  and stop-signal admission refusal.
+- **No compilation, formatting, unit/integration tests, or migrations were run**;
+  the maintainer will verify them. Check request disconnects during claim
+  persistence, concurrent replica requests, and shutdown during apply.
+
+Limit: this closes the HTTP cancellation gap **only**. A worker-process crash,
+panicked claim after an ambiguous database commit, or hard runtime abort can
+still leave a `running` row. Do not clear stale rows by age or restart another
+installer based on an expired lock. Safe crash reconciliation needs durable
+owner/attempt fencing, receipt inspection and validation of external effects.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
