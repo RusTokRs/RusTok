@@ -314,7 +314,7 @@ impl RateLimiter {
         }
 
         let reset_at = counter.window_start + window;
-        let reset_secs = rate_limit_retry_after(reset_at.saturating_duration_since(now));
+        let reset_secs = rate_limit_reset_after(reset_at.saturating_duration_since(now));
 
         Ok(RateLimitInfo {
             limit: max_requests,
