@@ -289,8 +289,11 @@ fn prune_disabled_flex_surface(openapi: &mut OpenApiDoc) {
 fn prune_unused_components(openapi: &mut OpenApiDoc) {
     let path_document = match serde_json::to_value(&openapi.paths) {
         Ok(value) => value,
-        Err(error) => {
-            tracing::error!(%error, "Failed to serialize OpenAPI paths for component pruning");
+        Err(_error) => {
+            tracing::error!(
+                error_code = "openapi_path_component_pruning_serialization_failed",
+                "Failed to serialize OpenAPI paths for component pruning"
+            );
             return;
         }
     };

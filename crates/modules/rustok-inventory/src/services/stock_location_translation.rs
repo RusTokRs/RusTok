@@ -344,6 +344,7 @@ impl StockLocationTranslationService {
                 &txn,
                 tenant_id,
                 stock_location_id,
+                // INVARIANT: changed Inventory translation apply guarantees operation_id is populated via (!unchanged).then(generate_id).
                 operation_id.expect("changed Inventory translation apply must have operation id"),
                 &resource_revision,
                 StockLocationTranslationChangeLifecycle::Active,
@@ -441,14 +442,13 @@ fn build_snapshot(
     let resource_revision = resource_revision(&stock_location, &translations);
     let source_revision = locale_revision(&source);
     let target_revision = target.as_ref().map(locale_revision);
-    let exact_locales = translations
-        .iter()
-        .filter_map(|translation| {
-            TenantLocale::new(&translation.locale)
-                .ok()
-                .map(TenantLocale::into_inner)
-        })
-        .collect();
+    let mut exact_locales = Vec::with_capacity(translations.len());
+    for translation in &translations {
+        let locale = TenantLocale::new(&translation.locale)
+            .map_err(|e| StockLocationTranslationExactLocaleError::Validation(e.to_string()))?
+            .into_inner();
+        exact_locales.push(locale);
+    }
 
     Ok(StockLocationTranslationExactLocaleSnapshot {
         stock_location_id: stock_location.id,
@@ -579,6 +579,7 @@ fn digest_revision(payload: &[u8]) -> String {
     let mut revision = String::with_capacity(71);
     revision.push_str("sha256:");
     for byte in digest {
+        // INVARIANT: writing formatted hex to an in-memory String buffer is infallible.
         write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
     }
     revision

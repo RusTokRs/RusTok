@@ -17,6 +17,7 @@ impl PostService {
     /// Walking by (scheduled_at, id) bounds each database read and keeps
     /// forward progress even when the oldest rows cannot be published.
     /// A run can inspect more than `limit` rows if there are failures.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, limit))]
     pub async fn publish_scheduled_posts(
         &self,
         tenant_id: Uuid,
@@ -163,6 +164,7 @@ impl PostService {
     pub async fn list_tenants_with_due_scheduled_posts(&self) -> BlogResult<Vec<Uuid>> {
         let now = chrono::Utc::now();
         let posts = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.is_not_null())
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
             .filter(blog_post::Column::ScheduledAt.is_not_null())
             .filter(blog_post::Column::ScheduledAt.lte(now))

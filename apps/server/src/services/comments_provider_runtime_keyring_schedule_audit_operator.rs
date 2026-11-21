@@ -191,7 +191,7 @@ pub fn materialize_comments_tcp_delegation_schedule_audit_operator(
         config.control_plane_tenant_id(),
         recovery,
     );
-    let _ = runtime_ctx.shared_insert_if_absent(runtime);
+    runtime_ctx.shared_insert_if_absent(runtime);
     Ok(())
 }
 

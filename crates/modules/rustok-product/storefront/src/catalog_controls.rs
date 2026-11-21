@@ -89,13 +89,13 @@ pub fn serialize_attribute_filters(filters: &[String]) -> String {
 ///
 /// The entry grammar and panel mutations belong to `rustok_grid`; the storefront and admin grids
 /// therefore share one selection language instead of owning private copies.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "public storefront helper for attribute filters")]
 pub fn parse_attribute_filter(entry: &str) -> Option<(String, String)> {
     split_selection(entry).map(|(code, value)| (code.to_string(), value.to_string()))
 }
 
 /// True when `code=value` is already part of the active attribute-filter list.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "public storefront helper for attribute filters")]
 pub fn is_attribute_filter_selected(filters: &[String], code: &str, value: &str) -> bool {
     is_selection_selected(filters, code, value)
 }
@@ -107,7 +107,7 @@ pub fn toggle_attribute_filter(filters: &[String], code: &str, value: &str) -> V
 }
 
 /// True when `code=<any value>` is part of the active attribute-filter list.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "public storefront helper for attribute filters")]
 pub fn has_attribute_filter_for_code(filters: &[String], code: &str) -> bool {
     has_selection_for_key(filters, code)
 }

@@ -12,6 +12,9 @@ rust-version.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
@@ -22,9 +25,6 @@ ssr = [
 
 [dependencies]
 leptos.workspace = true
-rustok-ui-core.workspace = true
-rustok-ui-transport.workspace = true
-rustok-graphql.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 rustok-core.workspace = true
@@ -33,5 +33,3 @@ rustok-seo = { path = "..", default-features = false }
 [dev-dependencies]
 tokio.workspace = true
 
-[package.metadata.cargo-udeps.ignore]
-normal = ["rustok-graphql", "rustok-ui-core", "rustok-ui-transport"]

@@ -8,8 +8,8 @@ use rustok_index::{
     IndexLinkValue, IndexMutation, IndexRecord, IndexSchema, IndexSource, IndexSourceCursor,
     IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
     IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName, LinkedEntityKey,
-    LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef, SchemaVersion,
-    derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
+    LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, IndexSourceRegistrationError,
+    SchemaRef, SchemaVersion, derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
     register_postgres_index_source_factory,
 };
 use sea_orm::DatabaseConnection;
@@ -36,6 +36,12 @@ enum ProductIndexBridgeError {
     InvalidCursor,
     #[error("Product Index source row is invalid")]
     InvalidRow,
+}
+
+impl From<DomainError> for ProductIndexBridgeError {
+    fn from(error: DomainError) -> Self {
+        Self::InvalidContract(error)
+    }
 }
 
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
@@ -119,11 +125,10 @@ fn validated_schema(schema: IndexSchema) -> Result<IndexSchema, ProductIndexBrid
     Ok(schema)
 }
 
-fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
+fn product_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product")
-            .map_err(ProductIndexBridgeError::InvalidContract)?,
-        entity: EntityName::new("product").map_err(ProductIndexBridgeError::InvalidContract)?,
+        module: ModuleName::new("rustok-product")?,
+        entity: EntityName::new("product")?,
         version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
@@ -191,7 +196,7 @@ impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let port = extensions
             .get::<Arc<dyn ProductLocaleReplayPort>>()
             .cloned()
@@ -205,10 +210,10 @@ impl PostgresIndexSourceFactory for ProductPostgresIndexSourceFactory {
             extensions,
             "product",
             PRODUCT_INDEX_SOURCE,
-            [product_schema_ref().map_err(|error| error.to_string())?],
+            [product_schema_ref()?],
             ProductPostgresIndexSource { port },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 
@@ -280,13 +285,12 @@ impl IndexSource for ProductPostgresIndexSource {
             .await
             .map_err(map_port_error)?;
         if let Some(next) = &page.next
-            && (page.entries.len() != request.limit()
-                || page
-                    .entries
-                    .last()
-                    .map(ProductLocaleReplayEntry::key)
-                    .as_ref()
-                    != Some(next))
+            && (page
+                .entries
+                .last()
+                .map(ProductLocaleReplayEntry::key)
+                .as_ref()
+                != Some(next))
         {
             return Err(permanent("product_index_page_invalid"));
         }
@@ -546,23 +550,13 @@ fn optional_string_value(value: Option<String>) -> IndexValue {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::retryable(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::retryable("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::permanent(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::permanent("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }
 
 #[cfg(test)]

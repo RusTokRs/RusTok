@@ -483,7 +483,9 @@ impl StructuredAccounting {
             .await
             .map_err(|_| accounting_unavailable())?;
         if updated.rows_affected != 1 {
-            transaction.rollback().await.ok();
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(?rollback_err, "failed to rollback structured budget transaction");
+            }
             return Err(PortError::new(
                 rustok_api::PortErrorKind::Unavailable,
                 "ai.structured.quota_exhausted",
@@ -941,7 +943,9 @@ impl StructuredAccounting {
                 .await
                 .map_err(|_| accounting_unavailable())?;
             if acquired.rows_affected != 1 {
-                transaction.rollback().await.ok();
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(?rollback_err, "failed to rollback orphaned lease claim transaction");
+                }
                 continue;
             }
             let execution = ai_structured_executions::Entity::find_by_id(candidate.id)

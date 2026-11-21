@@ -7,6 +7,8 @@ pub mod steps;
 pub mod webhook;
 pub mod workflows;
 
+use crate::error::WorkflowResult;
+
 #[derive(Clone)]
 pub struct WorkflowHttpRuntime {
     db: DatabaseConnection,
@@ -26,7 +28,7 @@ impl WorkflowHttpRuntime {
     }
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> WorkflowResult<axum::Router> {
     let state = WorkflowHttpRuntime::from_host(runtime);
     Ok(axum::Router::new()
         .route(
@@ -61,7 +63,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .with_state(state))
 }
 
-pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> WorkflowResult<axum::Router> {
     let state = WorkflowHttpRuntime::from_host(runtime);
     Ok(axum::Router::new()
         .route(

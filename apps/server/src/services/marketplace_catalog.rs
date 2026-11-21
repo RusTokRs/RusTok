@@ -329,15 +329,19 @@ impl RegistryCatalogModule {
                 .map(RegistryCatalogVersion::from_catalog_version)
                 .collect()
         };
-        let versions = normalize_registry_versions(
-            versions
-                .into_iter()
-                .filter_map(|version| version.into_catalog_version().ok())
-                .collect(),
-        )
-        .into_iter()
-        .map(RegistryCatalogVersion::from_catalog_version)
-        .collect();
+        let mut catalog_versions = Vec::with_capacity(versions.len());
+        for version in versions {
+            match version.into_catalog_version() {
+                Ok(catalog_version) => catalog_versions.push(catalog_version),
+                Err(error) => {
+                    tracing::warn!(%error, "Ignoring invalid marketplace catalog version during normalization");
+                }
+            }
+        }
+        let versions = normalize_registry_versions(catalog_versions)
+            .into_iter()
+            .map(RegistryCatalogVersion::from_catalog_version)
+            .collect();
 
         Self {
             slug,

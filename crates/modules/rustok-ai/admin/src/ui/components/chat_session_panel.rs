@@ -166,7 +166,9 @@ pub fn AiChatSessionPanel(
                                                                                     on:click=move |_| {
                                                                                         let approval_id = approve_id.clone();
                                                                                         spawn_local(async move {
-                                                                                            let _ = transport::resume_approval(approval_id, true, None).await;
+                                                                                            if let Err(error) = transport::resume_approval(approval_id, true, None).await {
+                                                                                                leptos::logging::error!("failed to resume approval: {error}");
+                                                                                            }
                                                                                             set_refresh_nonce.update(|value| *value += 1);
                                                                                         });
                                                                                     }
@@ -179,7 +181,9 @@ pub fn AiChatSessionPanel(
                                                                                         let approval_id = reject_id.clone();
                                                                                         let reject_reason = reject_reason.clone();
                                                                                         spawn_local(async move {
-                                                                                            let _ = transport::resume_approval(approval_id, false, Some(reject_reason)).await;
+                                                                                            if let Err(error) = transport::resume_approval(approval_id, false, Some(reject_reason)).await {
+                                                                                                leptos::logging::error!("failed to reject approval: {error}");
+                                                                                            }
                                                                                             set_refresh_nonce.update(|value| *value += 1);
                                                                                         });
                                                                                     }

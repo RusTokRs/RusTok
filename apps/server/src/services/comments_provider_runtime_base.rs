@@ -536,13 +536,7 @@ fn parse_comments_tcp_service_actor_id(value: &str) -> std::result::Result<PortA
 }
 
 fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
-    if let Some(handle) = runtime_ctx.shared_get::<StopHandle>() {
-        return handle;
-    }
-
-    let (candidate, _receiver) = StopHandle::new();
-    let _ = runtime_ctx.shared_insert_if_absent(candidate.clone());
-    runtime_ctx.shared_get::<StopHandle>().unwrap_or(candidate)
+    StopHandle::ensure(runtime_ctx)
 }
 
 async fn run_comments_tcp_listener(

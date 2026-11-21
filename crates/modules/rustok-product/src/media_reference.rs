@@ -344,7 +344,13 @@ fn require_maintenance_permission(context: &PortContext, write: bool) -> Result<
     let claims: Vec<rustok_api::Permission> = context
         .claims
         .iter()
-        .filter_map(|claim| claim.parse().ok())
+        .filter_map(|claim| match claim.parse() {
+            Ok(permission) => Some(permission),
+            Err(parse_error) => {
+                tracing::debug!(claim = %claim, error = %parse_error, "Skipping unparseable permission claim");
+                None
+            }
+        })
         .collect();
     if !rustok_api::has_effective_permission(&claims, &permission) {
         return Err(PortError::forbidden(

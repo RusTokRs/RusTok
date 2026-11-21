@@ -273,7 +273,9 @@ fn push_str_const(output: &mut String, name: &str, value: &str) {
 }
 
 fn push_str_slice_const(output: &mut String, name: &str, values: &[String]) {
-    output.push_str("#[expect(dead_code, reason = \"generated manifest slice may be partially consumed\")]\n");
+    output.push_str(
+        "#[expect(dead_code, reason = \"generated manifest slice may be partially consumed\")]\n",
+    );
     output.push_str(&format!("pub const {name}: &[&str] = &["));
     for value in values {
         output.push_str(&format!("{value:?},"));

@@ -257,8 +257,10 @@ impl TransactionalEventBus {
         let envelope = self.build_envelope(tenant_id, actor_id, event)?;
         let envelope_id = envelope.id;
 
-        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
-            outbox.write_to_outbox(txn, envelope).await?;
+        if self.transport.supports_transactional_writes() {
+            self.transport
+                .write_root_in_transaction(txn, envelope)
+                .await?;
         } else {
             #[cfg(feature = "test-transport-fallback")]
             {
@@ -401,8 +403,10 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
     {
         let envelope_id = envelope.id();
-        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
-            outbox.write_contract_to_outbox(txn, envelope).await?;
+        if self.transport.supports_transactional_writes() {
+            self.transport
+                .write_contract_in_transaction(txn, envelope)
+                .await?;
         } else {
             #[cfg(feature = "test-transport-fallback")]
             {
@@ -452,7 +456,7 @@ where
     })
 }
 
-#[allow(dead_code)]
+#[cfg(not(feature = "test-transport-fallback"))]
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
         "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",

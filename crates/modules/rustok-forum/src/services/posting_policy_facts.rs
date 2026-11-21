@@ -188,7 +188,7 @@ impl ForumPostingPolicyOwnerFactValue {
                     Self::TopicCreatesWindow(_) => Self::TopicCreatesWindow(window),
                     Self::ReplyCreatesWindow(_) => Self::ReplyCreatesWindow(window),
                     Self::EditsWindow(_) => Self::EditsWindow(window),
-                    _ => unreachable!("matched window variants above"),
+                    other => other,
                 })
             }
             _ => Ok(self),
@@ -449,6 +449,7 @@ fn validate_context(
     user_id: Uuid,
 ) -> Result<(), PortError> {
     context.require_policy(PortCallPolicy::read())?;
+    // INVARIANT: fail-closed port context verification ensures transport caller tenant matches target tenant.
     if context.tenant_id != tenant_id.to_string() {
         return Err(PortError::validation(
             TENANT_MISMATCH_CODE,

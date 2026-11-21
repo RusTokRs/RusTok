@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
@@ -9,10 +8,9 @@ use crate::recovery::{
     read_tenant_override_enabled, record_operation_override_state, store_hook_settings_digest,
 };
 
-/// Claim leases last 300 seconds; renewing every minute leaves several
-/// missed-heartbeat opportunities before another command may reclaim the
-/// aggregate.
-const LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
+pub(crate) use crate::claim_heartbeat::{
+    ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat,
+};
 use crate::{
     ModuleCommandContext, ModuleControlPlaneError, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
@@ -23,7 +21,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct ModuleLifecycleToggleRequest {
+pub(crate) struct ModuleLifecycleToggleRequest {
     pub tenant_id: uuid::Uuid,
     pub module_slug: String,
     /// Lifecycle hook direction for this command. Recovery may restore an
@@ -51,8 +49,9 @@ pub struct ModuleLifecycleToggleRequest {
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
     /// Host-composed schema or resolution failure. The owner checks the
     /// journal for replay before rejecting a new command with unavailable evidence.
-    pub static_settings_schema:
-        Option<Result<HashMap<String, crate::ModuleSettingSpec>, StaticSettingsSchemaResolutionError>>,
+    pub static_settings_schema: Option<
+        Result<HashMap<String, crate::ModuleSettingSpec>, StaticSettingsSchemaResolutionError>,
+    >,
 }
 
 /// Typed error wrapper for host static settings schema resolution failure.
@@ -139,7 +138,7 @@ pub enum ModuleLifecycleExecutionError {
     PolicyTransition(String),
 }
 
-pub async fn execute_module_toggle(
+pub(crate) async fn execute_module_toggle(
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
     policy_transition_coordinator: Option<ModuleEffectivePolicyTransitionCoordinator>,
@@ -187,6 +186,23 @@ pub async fn execute_module_toggle(
     {
         return replay_lifecycle_operation(db, &operation_request, existing, settings).await;
     }
+    if let Some(source_id) = request.recovery_source_id {
+        // This entry point is public; a caller must not bypass the recovery
+        // owner's evidence gate by constructing a compensation directly.
+        // Replay above is read-only, while a missing receipt must never start
+        // another hook merely because an earlier claim was cleared.
+        let source = crate::recovery::module_operation_recovery_plan(db, source_id)
+            .await
+            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+        if source.tenant_id != request.tenant_id || source.module_slug != request.module_slug {
+            return Err(ModuleLifecycleExecutionError::InvalidCommandIdentity);
+        }
+        if !source.retryable {
+            return Err(ModuleLifecycleExecutionError::PolicyTransition(
+                crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE.to_string(),
+            ));
+        }
+    }
     validate_module_toggle(
         dispatcher.catalog(),
         &request.ordering_enabled_modules,
@@ -205,6 +221,9 @@ pub async fn execute_module_toggle(
             "publisher is required for an effective-policy transition".to_string(),
         ));
     }
+    let definition = dispatcher.catalog().get(&request.module_slug).ok_or_else(|| {
+        ModuleLifecycleExecutionError::Persistence("validated module definition disappeared".to_string())
+    })?;
     let operation = match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
         .await
         .map_err(map_idempotency_store_error)?
@@ -224,15 +243,53 @@ pub async fn execute_module_toggle(
     };
     let expected_revision = request.expected_revision;
     let idempotency_key = request.context.idempotency_key;
-    if let Err(error) = StaticTenantLifecycleStore::claim(
+    if let Err(error) = crate::lifecycle_transition_fence::claim(
         db,
         request.tenant_id,
         &request.module_slug,
+        definition,
         expected_revision,
         idempotency_key,
     )
     .await
     {
+        use crate::lifecycle_transition_fence::LifecycleAdmissionError;
+        let error = match error {
+            LifecycleAdmissionError::TransitionInProgress => {
+                let mapped = ModuleLifecycleExecutionError::PolicyTransition(
+                    "an unresolved module release transition blocks lifecycle changes".to_string(),
+                );
+                return Err(match ModuleOperationJournal::mark_failed(
+                    db, operation.id,
+                    "transition-fence: an unresolved module release transition blocks lifecycle changes",
+                ).await {
+                    Ok(()) => mapped,
+                    Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
+                        "{mapped}; additionally, recording the transition failure failed: {journal_error}"
+                    )),
+                });
+            }
+            LifecycleAdmissionError::StaleDefinition => {
+                let mapped = ModuleLifecycleExecutionError::PolicyTransition(
+                    "the selected artifact definition is no longer the active installation".to_string(),
+                );
+                return Err(match ModuleOperationJournal::mark_failed(
+                    db, operation.id,
+                    "transition-fence: artifact definition no longer matches active installation",
+                ).await {
+                    Ok(()) => mapped,
+                    Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
+                        "{mapped}; additionally, recording the definition failure failed: {journal_error}"
+                    )),
+                });
+            }
+            LifecycleAdmissionError::Database(message) => {
+                // Commit or rollback may have been acknowledged ambiguously.
+                // Preserve the validated journal; never assume the claim was absent.
+                return Err(ModuleLifecycleExecutionError::Persistence(message));
+            }
+            LifecycleAdmissionError::Claim(error) => error,
+        };
         let contention = matches!(
             error,
             StaticTenantLifecycleStoreError::RevisionConflict { .. }
@@ -266,9 +323,9 @@ pub async fn execute_module_toggle(
         return Err(mapped);
     }
     let lifecycle_claim = (expected_revision, idempotency_key);
-    // An unresolved checkpoint in either scope may still recover its
-    // predecessor. This read prevents known conflicts; rollout creation and
-    // this claim still require a shared transactional fence.
+    // Recheck as defense in depth; admission already checked under the shared
+    // platform lock while acquiring the journal claim. This cannot fence a
+    // hook that continues after its claim has been lost or released.
     let checkpoint_result =
         crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
             db,
@@ -295,7 +352,7 @@ pub async fn execute_module_toggle(
             ModuleLifecycleExecutionError::PolicyTransition(reason) => {
                 format!("transition-fence: {reason}")
             }
-            _ => unreachable!("transition check emits only persistence or policy errors"),
+            other => format!("transition-error: {other}"),
         };
         let error = match ModuleOperationJournal::mark_failed(db, operation.id, &message).await {
             Ok(()) => error,
@@ -582,14 +639,10 @@ pub async fn execute_module_toggle(
                      failed did not persist: {journal_error}"
                 )),
             };
-        return Err(release_claim_after_error(
-            db,
-            request.tenant_id,
-            &request.module_slug,
-            idempotency_key,
-            execution_error,
-        )
-        .await);
+        // A dispatch error, lost lease, or uncertain transport result does
+        // not prove that an issued hook and its external effects stopped.
+        // Keep the durable fence for explicit reconciliation.
+        return Err(execution_error);
     }
 
     let requested_override_enabled = request.requested_override_enabled;
@@ -614,14 +667,8 @@ pub async fn execute_module_toggle(
                     "{primary}; recording the failure also failed: {error}"
                 )),
             };
-            return Err(release_claim_after_error(
-                db,
-                tenant_id,
-                &module_slug,
-                idempotency_key,
-                primary,
-            )
-            .await);
+            // The pre-hook has already been issued. Preserve its fence.
+            return Err(primary);
         }
     };
     let coordinator = policy_transition_coordinator;
@@ -705,14 +752,8 @@ pub async fn execute_module_toggle(
                          failed did not persist: {journal_error}"
                     )),
                 };
-            let error = release_claim_after_error(
-                db,
-                request.tenant_id,
-                &request.module_slug,
-                idempotency_key,
-                error,
-            )
-            .await;
+            // A transaction/commit error can be ambiguous, and a pre-hook
+            // has already been issued. Preserve the fence.
             return Err(error);
         }
     };
@@ -771,14 +812,10 @@ pub async fn execute_module_toggle(
                  operation hook-failed did not persist: {journal_error}"
             )),
         };
-        return Err(release_claim_after_error(
-            db,
-            request.tenant_id,
-            &request.module_slug,
-            idempotency_key,
-            execution_error,
-        )
-        .await);
+        // A dispatch error, lost lease, or uncertain transport result does
+        // not prove that an issued hook and its external effects stopped.
+        // Keep the durable fence for explicit reconciliation.
+        return Err(execution_error);
     }
 
     // Terminal success and claim release commit atomically. A crash before
@@ -796,16 +833,9 @@ pub async fn execute_module_toggle(
     let result_snapshot = match serde_json::to_string(&result) {
         Ok(snapshot) => snapshot,
         Err(error) => {
-            return Err(release_claim_after_error(
-                db,
-                request.tenant_id,
-                &request.module_slug,
-                idempotency_key,
-                ModuleLifecycleExecutionError::Persistence(format!(
-                    "serializing the lifecycle operation result snapshot failed: {error}"
-                )),
-            )
-            .await);
+            return Err(ModuleLifecycleExecutionError::Persistence(format!(
+                "serializing the lifecycle operation result snapshot failed: {error}"
+            )));
         }
     };
     let operation_id = operation.id;
@@ -820,6 +850,23 @@ pub async fn execute_module_toggle(
             )
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+            // Journal completion and claim release share the same transaction.
+            // Recheck after locking the journal row, so a delayed completion
+            // cannot commit success under an expired or replaced claim.
+            let claim_live = StaticTenantLifecycleStore::heartbeat(
+                transaction,
+                completion_tenant_id,
+                &completion_module_slug,
+                committed_revision,
+                idempotency_key,
+            )
+            .await
+            .map_err(map_static_lifecycle_store_error)?;
+            if !claim_live {
+                return Err(ModuleLifecycleExecutionError::ClaimLost {
+                    module_slug: completion_module_slug,
+                });
+            }
             StaticTenantLifecycleStore::release(
                 transaction,
                 completion_tenant_id,
@@ -837,99 +884,12 @@ pub async fn execute_module_toggle(
     Ok(result)
 }
 
-#[derive(Debug)]
-pub(crate) enum ClaimHeartbeatDispatchError {
-    Hook(String),
-    ClaimLost { module_slug: String },
-    Persistence(String),
-}
 
-/// One claim-lease renewal tick. Extracted as a named future so the
-/// dispatch loop can re-arm the same pinned future type after each
-/// successful renewal (distinct `async move` blocks are distinct types).
-async fn lifecycle_claim_heartbeat_tick(
-    db: &DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    module_slug: &str,
-    expected_revision: u64,
-    idempotency_key: uuid::Uuid,
-) -> Result<bool, StaticTenantLifecycleStoreError> {
-    tokio::time::sleep(LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL).await;
-    StaticTenantLifecycleStore::heartbeat(
-        db,
-        tenant_id,
-        module_slug,
-        expected_revision,
-        idempotency_key,
-    )
-    .await
-}
-
-/// Dispatches one lifecycle hook while renewing the exact aggregate claim.
-/// If the claim lease has already been reclaimed or the revision advanced,
-/// dispatch is abandoned before the caller performs any further durable
-/// lifecycle write under the stale claim.
-pub(crate) async fn dispatch_lifecycle_with_claim_heartbeat(
-    db: &DatabaseConnection,
-    dispatcher: &ModuleExecutionDispatcher<'_>,
-    tenant_id: uuid::Uuid,
-    module_slug: &str,
-    settings: &serde_json::Value,
-    phase: ModuleLifecycleHookPhase,
-    expected_revision: u64,
-    idempotency_key: uuid::Uuid,
-) -> Result<(), ClaimHeartbeatDispatchError> {
-    let dispatch = dispatcher.dispatch_lifecycle(db, tenant_id, module_slug, settings, phase);
-    tokio::pin!(dispatch);
-    // Poll the heartbeat as an independent future rather than awaiting it
-    // inside the timer branch. A hook may temporarily hold the only pooled
-    // SQLite connection; the dispatch future must keep making progress so
-    // it can release that connection for the heartbeat query.
-    let mut heartbeat = Box::pin(lifecycle_claim_heartbeat_tick(
-        db,
-        tenant_id,
-        module_slug,
-        expected_revision,
-        idempotency_key,
-    ));
-    loop {
-        tokio::select! {
-            biased;
-            result = &mut dispatch => {
-                return result.map_err(|error| {
-                    ClaimHeartbeatDispatchError::Hook(error.to_string())
-                });
-            }
-            heartbeat_result = &mut heartbeat => {
-                match heartbeat_result {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        return Err(ClaimHeartbeatDispatchError::ClaimLost {
-                            module_slug: module_slug.to_string(),
-                        });
-                    }
-                    Err(error) => {
-                        return Err(ClaimHeartbeatDispatchError::Persistence(
-                            map_static_lifecycle_store_error(error).to_string(),
-                        ));
-                    }
-                }
-                heartbeat = Box::pin(lifecycle_claim_heartbeat_tick(
-                    db,
-                    tenant_id,
-                    module_slug,
-                    expected_revision,
-                    idempotency_key,
-                ));
-            }
-        }
-    }
-}
 
 /// Releases the lifecycle claim on an error path without ever
 /// discarding either failure: the primary error stays visible, and a
-/// release failure is reported alongside it (the claim lease remains as
-/// the final self-healing bound).
+/// release failure is reported alongside it. A retained claim requires
+/// explicit reconciliation; expiry alone does not clear it.
 async fn release_claim_after_error(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
@@ -941,7 +901,7 @@ async fn release_claim_after_error(
         Ok(()) => primary_error,
         Err(release_error) => ModuleLifecycleExecutionError::Persistence(format!(
             "{primary_error}; additionally failed to release the lifecycle \
-             claim (it will expire via its lease): {release_error}"
+             claim (it remains fenced for reconciliation): {release_error}"
         )),
     }
 }
@@ -985,7 +945,7 @@ fn map_idempotency_store_error(
     }
 }
 
-fn map_static_lifecycle_store_error(
+pub(crate) fn map_static_lifecycle_store_error(
     error: StaticTenantLifecycleStoreError,
 ) -> ModuleLifecycleExecutionError {
     match error {
@@ -1268,6 +1228,8 @@ mod tests {
 
     async fn journal_and_state_database() -> DatabaseConnection {
         let database = journal_only_database().await;
+        database.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))")
+            .await.expect("lifecycle admission lock fixture");
         database
             .execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
             .await
@@ -1307,6 +1269,7 @@ mod tests {
                     revision INTEGER NOT NULL, \
                     active_idempotency_key TEXT, \
                     active_claimed_at TEXT, \
+                    claim_owner TEXT NOT NULL DEFAULT 'journal', \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     PRIMARY KEY (tenant_id, module_slug), \
@@ -1338,6 +1301,68 @@ mod tests {
             ))
             .await
             .expect("tenant fixture");
+    }
+
+    struct ReclaimDuringHook {
+        calls: std::sync::Arc<AtomicUsize>,
+        replacement: uuid::Uuid,
+    }
+
+    impl MigrationSource for ReclaimDuringHook {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> { Vec::new() }
+    }
+
+    #[async_trait]
+    impl RusToKModule for ReclaimDuringHook {
+        fn slug(&self) -> &'static str { "claim_test" }
+        fn name(&self) -> &'static str { "Claim test" }
+        fn description(&self) -> &'static str { "Lifecycle claim test" }
+        fn version(&self) -> &'static str { "0.1.0" }
+
+        async fn pre_enable(&self, ctx: rustok_core::ModuleContext<'_>) -> rustok_core::Result<()> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            ctx.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00Z' \
+                 WHERE tenant_id = ?1 AND module_slug = 'claim_test'",
+                vec![ctx.tenant_id.to_string().into()],
+            )).await.expect("expire old claim");
+            assert!(matches!(
+                StaticTenantLifecycleStore::claim(ctx.db, ctx.tenant_id, "claim_test", 0, self.replacement).await,
+                Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })
+            ));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn lifecycle_hook_checks_claim_before_and_after_dispatch() {
+        let database = journal_and_state_database().await;
+        let tenant = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant).await;
+        let old = uuid::Uuid::new_v4();
+        let replacement = uuid::Uuid::new_v4();
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let registry = ModuleRegistry::new().register(ReclaimDuringHook { calls: calls.clone(), replacement });
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        StaticTenantLifecycleStore::claim(&database, tenant, "claim_test", 0, old).await.unwrap();
+
+        // A hook that outlives its lease cannot be reported successful or
+        // have its fence stolen by another worker.
+        assert!(matches!(dispatch_lifecycle_with_claim_heartbeat(
+            &database, &dispatcher, tenant, "claim_test", &serde_json::json!({}),
+            ModuleLifecycleHookPhase::PreEnable, 0, old,
+        ).await, Err(ClaimHeartbeatDispatchError::ClaimLost { .. })));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(StaticTenantLifecycleStore::snapshot(&database, tenant, "claim_test").await.unwrap().active_idempotency_key, Some(old));
+
+        // A stale holder must not start another hook at all.
+        assert!(matches!(dispatch_lifecycle_with_claim_heartbeat(
+            &database, &dispatcher, tenant, "claim_test", &serde_json::json!({}),
+            ModuleLifecycleHookPhase::PreEnable, 0, old,
+        ).await, Err(ClaimHeartbeatDispatchError::ClaimLost { .. })));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     async fn operation_count(
@@ -1747,6 +1772,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lifecycle_admission_and_checkpoint_fence_share_scope() {
+        let db = journal_and_state_database().await;
+        let tenant = uuid::Uuid::new_v4();
+        let other = uuid::Uuid::new_v4();
+        seed_tenant(&db, tenant).await;
+        seed_tenant(&db, other).await;
+        let key = uuid::Uuid::new_v4();
+        let definition = ModuleDefinition::from_static_registry_module(&OptionalModule);
+        crate::lifecycle_transition_fence::claim(&db, tenant, "optional_test", &definition, 0, key)
+            .await.unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        crate::installation::acquire_artifact_activation_lock(
+            &tx, &crate::ModuleInstallationScope::Platform, "optional_test",
+        ).await.unwrap();
+        assert!(crate::lifecycle_transition_fence::has_journal_claim(
+            &tx, &crate::ModuleInstallationScope::Platform, "optional_test",
+        ).await.unwrap());
+        assert!(!crate::lifecycle_transition_fence::has_journal_claim(
+            &tx, &crate::ModuleInstallationScope::Tenant { tenant_id: other }, "optional_test",
+        ).await.unwrap());
+        tx.rollback().await.unwrap();
+        StaticTenantLifecycleStore::release(&db, tenant, "optional_test", key).await.unwrap();
+        let now = chrono::Utc::now();
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &crate::ModuleTransitionCheckpoint {
+            operation_id: uuid::Uuid::new_v4(), revision: 1, module_slug: "optional_test".into(),
+            tenant_id: None, predecessor_digest: None, candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::Fenced,
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
+            created_at: now, updated_at: now,
+        }).await.unwrap();
+        assert!(matches!(crate::lifecycle_transition_fence::claim(
+            &db, tenant, "optional_test", &definition, 0, uuid::Uuid::new_v4(),
+        ).await, Err(crate::lifecycle_transition_fence::LifecycleAdmissionError::TransitionInProgress)));
+        assert!(StaticTenantLifecycleStore::snapshot(&db, tenant, "optional_test")
+            .await.unwrap().active_idempotency_key.is_none());
+    }
+
+    #[tokio::test]
     async fn lifecycle_replay_survives_transition_while_new_changes_are_blocked() {
         let database = journal_and_state_database().await;
         let registry = ModuleRegistry::new().register(OptionalModule);
@@ -1818,7 +1882,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_hook_recovery_checks_original_settings_and_binds_source_operation() {
+    async fn expired_claim_rolls_back_terminal_lifecycle_completion() {
+        let db = journal_and_state_database().await;
+        let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&db, tenant_id).await;
+        let registry = ModuleRegistry::new().register(OptionalModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let key = uuid::Uuid::new_v4();
+        let request = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, key),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: None,
+        };
+        db.execute_unprepared("CREATE TRIGGER expire_claim_at_completion AFTER UPDATE OF status ON module_operations WHEN OLD.status = 'committed_hook_pending' AND NEW.status = 'committed' BEGIN UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00Z' WHERE module_slug = 'optional_test'; END").await.unwrap();
+        assert!(matches!(execute_module_toggle(&db, &dispatcher, None, request).await,
+            Err(ModuleLifecycleExecutionError::ClaimLost { .. })));
+        let row = db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "SELECT status FROM module_operations WHERE idempotency_key = ?1", vec![key.into()],
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<String>("", "status").unwrap(), "committed_hook_pending");
+        let snapshot = StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert_eq!(snapshot.active_idempotency_key, Some(key));
+    }
+
+    #[tokio::test]
+    async fn retry_and_compensation_require_original_execution_evidence() {
         struct RecoveryModule(std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>);
         impl MigrationSource for RecoveryModule {
             fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
@@ -1897,164 +1997,75 @@ mod tests {
                 .unwrap()
                 .remove(0);
         let plan = crate::recovery::module_operation_recovery_plan(&db, original.id)
-            .await
-            .unwrap();
-        assert!(plan.retryable && plan.hook_settings_digest_recorded);
-
+            .await.unwrap();
+        assert!(!plan.retryable && plan.hook_settings_digest_recorded);
+        assert_eq!(plan.recommended_action, crate::ModuleOperationRecoveryAction::None);
+        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap().active_idempotency_key, Some(toggle_key));
         let collision = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(tenant_id, toggle_key),
-            expected_revision: 0,
+            operation_id: original.id, context: command_context(tenant_id, toggle_key), expected_revision: 0,
         };
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
-            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
-        ));
+        assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
+            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)));
 
-        let now = chrono::Utc::now();
-        let mut checkpoint = crate::ModuleTransitionCheckpoint {
-            operation_id: uuid::Uuid::new_v4(),
-            revision: 1,
-            module_slug: "optional_test".into(),
-            tenant_id: None,
-            predecessor_digest: Some("predecessor".into()),
-            candidate_digest: "candidate".into(),
-            state: crate::ModuleTransitionState::InterventionRequired {
-                failure_reason: "recovery required".into(),
-            },
-            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]),
-            recovery_attempt_count: 0,
-            created_at: now,
-            updated_at: now,
+        let retry_key = uuid::Uuid::new_v4();
+        let retry = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id, context: command_context(tenant_id, retry_key), expected_revision: 1,
         };
-        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
-            .await
-            .unwrap();
-        let blocked = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(tenant_id, uuid::Uuid::new_v4()),
-            expected_revision: 1,
-        };
-        for _ in 0..2 {
-            assert!(
-                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, blocked.clone()).await,
-                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "release_transition_unresolved")
-            );
+        // Both a retained claim and a legacy/missing claim must fail closed.
+        // This fixture-only release is not a production reconciliation.
+        for remove_claim in [false, true] {
+            if remove_claim {
+                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key).await.unwrap();
+            }
+            assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason))
+                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
+            assert_eq!(operation_count(&db, tenant_id, retry_key).await, 0);
         }
-        assert_eq!(inputs.lock().unwrap().len(), 1);
-        assert!(
-            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
-                .await
-                .unwrap()
-                .active_idempotency_key
-                .is_none()
-        );
-        checkpoint.revision = 2;
-        checkpoint.state = crate::ModuleTransitionState::Converged { finalized_at: now };
-        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
-            .await
-            .unwrap();
-
-        TenantModuleStateStore::persist_settings(
-            &db,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "optional_test".into(),
-                settings: serde_json::json!({"limit": 2}),
-            },
-        )
-        .await
-        .unwrap();
-        let mut retry = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(tenant_id, uuid::Uuid::new_v4()),
-            expected_revision: 1,
+        // A caller cannot bypass the recovery service through the public
+        // executor with a new recovery_source_id either.
+        let compensation_key = uuid::Uuid::new_v4();
+        let compensation = ModuleLifecycleToggleRequest {
+            tenant_id, module_slug: "optional_test".into(), enabled: false,
+            context: command_context(tenant_id, compensation_key), expected_revision: 1,
+            recovery_source_id: Some(original.id), effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(), previous_override_enabled: Some(true),
+            requested_override_enabled: None, current_settings: settings,
+            policy_transition: None, static_settings_schema: None,
         };
-        for _ in 0..2 {
-            assert!(
-                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
-                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "hook_settings_changed")
-            );
-        }
+        assert!(matches!(execute_module_toggle(&db, &dispatcher, None, compensation).await,
+            Err(ModuleLifecycleExecutionError::PolicyTransition(reason))
+                if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
+        assert_eq!(operation_count(&db, tenant_id, compensation_key).await, 0);
         assert_eq!(inputs.lock().unwrap().len(), 1);
-        assert!(
-            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
-                .await
-                .unwrap()
-                .active_idempotency_key
-                .is_none()
-        );
+        assert_eq!(ModuleOperationJournal::find(&db, original.id).await.unwrap().unwrap().status,
+            ModuleOperationStatus::CommittedHookFailed);
 
-        TenantModuleStateStore::persist_settings(
-            &db,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "optional_test".into(),
-                settings: settings.clone(),
-            },
-        )
-        .await
-        .unwrap();
-        retry.context.idempotency_key = uuid::Uuid::new_v4();
-        db.execute_unprepared("CREATE TRIGGER fail_original_resolution BEFORE UPDATE OF status ON module_operations WHEN OLD.status = 'committed_hook_failed' AND NEW.status = 'committed' BEGIN SELECT RAISE(ABORT, 'forced resolution failure'); END").await.unwrap();
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await,
-            Err(crate::ModuleOperationRecoveryError::Persistence(_))
-        ));
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await,
-            Err(crate::ModuleOperationRecoveryError::OperationInProgress)
-        ));
-        assert_eq!(
-            ModuleOperationJournal::find(&db, original.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            ModuleOperationStatus::CommittedHookFailed
-        );
-        db.execute_unprepared("DROP TRIGGER fail_original_resolution")
-            .await
-            .unwrap();
-        retry.context.idempotency_key = uuid::Uuid::new_v4();
-        let recovered =
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await
-                .unwrap();
-        assert_eq!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry)
-                .await
-                .unwrap(),
-            recovered
-        );
-        assert_eq!(
-            *inputs.lock().unwrap(),
-            vec![settings.clone(), settings.clone(), settings]
-        );
-        assert_eq!(
-            ModuleOperationJournal::find(&db, original.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            ModuleOperationStatus::Committed
-        );
-        assert_eq!(
-            ModuleOperationJournal::find(&db, recovered.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            ModuleOperationStatus::Committed
-        );
+        // A committed historical retry remains a read-only idempotent replay,
+        // even though creating a new retry is disabled.
+        let replay_key = uuid::Uuid::new_v4();
+        let replay_context = command_context(tenant_id, replay_key);
+        let previous = ModuleOperationJournal::record(&db, ModuleOperationRequest {
+            tenant_id, module_slug: "optional_test".into(), requested_enabled: true,
+            previous_effective_enabled: plan.previous_effective_enabled,
+            requested_by: Some(replay_context.actor_id.to_string()),
+            trace_id: Some(replay_context.trace_id.clone()),
+            correlation_id: replay_context.correlation_id.to_string(),
+            idempotency_key: Some(replay_key), recovery_source_id: Some(original.id),
+            expected_revision: Some(1),
+        }).await.unwrap();
+        ModuleOperationJournal::mark_committed(&db, previous.id).await.unwrap();
+        let replayed = crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher,
+            crate::recovery::ModulePostHookRetryRequest {
+                operation_id: original.id, context: replay_context, expected_revision: 1,
+            }).await.unwrap();
+        assert_eq!(replayed.id, previous.id);
+        assert_eq!(inputs.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
     #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL temporary table privileges"]
-    async fn postgres_post_hook_recovery_preserves_original_settings() {
+    async fn postgres_post_hook_recovery_fails_closed_without_execution_evidence() {
         struct PgRecoveryModule(std::sync::Arc<AtomicUsize>);
         impl MigrationSource for PgRecoveryModule {
             fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
@@ -2100,8 +2111,9 @@ mod tests {
             "CREATE UNIQUE INDEX ON module_operations (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
             "CREATE TEMP TABLE module_operation_override_states (operation_id UUID PRIMARY KEY, previous_override_enabled BOOLEAN, requested_override_enabled BOOLEAN)",
             "CREATE TEMP TABLE tenant_modules (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, enabled BOOLEAN, settings JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (tenant_id, module_slug))",
-            "CREATE TEMP TABLE module_static_tenant_lifecycle (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, revision BIGINT NOT NULL, active_idempotency_key UUID, active_claimed_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (tenant_id, module_slug))",
+            "CREATE TEMP TABLE module_static_tenant_lifecycle (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, revision BIGINT NOT NULL, active_idempotency_key UUID, active_claimed_at TIMESTAMPTZ, claim_owner TEXT NOT NULL DEFAULT 'journal', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (tenant_id, module_slug))",
             "CREATE TEMP TABLE module_transition_checkpoints (operation_id UUID PRIMARY KEY, revision BIGINT NOT NULL, module_slug TEXT NOT NULL, tenant_id UUID, predecessor_digest TEXT, candidate_digest TEXT NOT NULL, state JSONB NOT NULL, security_epoch BIGINT NOT NULL, fences JSONB NOT NULL, recovery_attempt_count INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL)",
+            "CREATE TEMP TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))",
         ] {
             db.execute_unprepared(sql).await.unwrap();
         }
@@ -2155,133 +2167,22 @@ mod tests {
                 .await
                 .unwrap()
                 .remove(0);
-        let collision = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(tenant_id, toggle_key),
-            expected_revision: 0,
+        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test").await.unwrap().active_idempotency_key, Some(toggle_key));
+        let retry = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id, context: command_context(tenant_id, uuid::Uuid::new_v4()), expected_revision: 1,
         };
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
-            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
-        ));
-        let mut retry = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(tenant_id, uuid::Uuid::new_v4()),
-            expected_revision: 1,
-        };
-        let foreign_tenant = uuid::Uuid::new_v4();
-        let foreign_retry = crate::recovery::ModulePostHookRetryRequest {
-            operation_id: original.id,
-            context: command_context(foreign_tenant, uuid::Uuid::new_v4()),
-            expected_revision: 1,
-        };
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, foreign_retry)
-                .await,
-            Err(crate::ModuleOperationRecoveryError::InvalidCommandIdentity)
-        ));
-        let now = chrono::Utc::now();
-        let mut checkpoint = crate::ModuleTransitionCheckpoint {
-            operation_id: uuid::Uuid::new_v4(),
-            revision: 1,
-            module_slug: "optional_test".into(),
-            tenant_id: None,
-            predecessor_digest: Some("predecessor".into()),
-            candidate_digest: "candidate".into(),
-            state: crate::ModuleTransitionState::InterventionRequired {
-                failure_reason: "recovery required".into(),
-            },
-            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
-            fences: crate::ConflictFenceSet::new(vec![]),
-            recovery_attempt_count: 0,
-            created_at: now,
-            updated_at: now,
-        };
-        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
-            .await
-            .unwrap();
-        for _ in 0..2 {
-            assert!(
-                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
-                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "release_transition_unresolved")
-            );
+        for remove_claim in [false, true] {
+            if remove_claim {
+                // Fixture only: absence of a claim is not evidence of quiescence.
+                StaticTenantLifecycleStore::release(&db, tenant_id, "optional_test", toggle_key).await.unwrap();
+            }
+            assert!(matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason))
+                    if reason == crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE));
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        checkpoint.revision = 2;
-        checkpoint.state = crate::ModuleTransitionState::Converged { finalized_at: now };
-        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
-            .await
-            .unwrap();
-        retry.context.idempotency_key = uuid::Uuid::new_v4();
-        TenantModuleStateStore::persist_settings(
-            &db,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "optional_test".into(),
-                settings: serde_json::json!({"limit": 2}),
-            },
-        )
-        .await
-        .unwrap();
-        assert!(
-            matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
-            Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "hook_settings_changed")
-        );
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        TenantModuleStateStore::persist_settings(
-            &db,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "optional_test".into(),
-                settings,
-            },
-        )
-        .await
-        .unwrap();
-        retry.context.idempotency_key = uuid::Uuid::new_v4();
-        db.execute_unprepared("CREATE FUNCTION pg_temp.block_recovery_resolution() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.status = 'committed_hook_failed' AND NEW.status = 'committed' THEN RAISE EXCEPTION 'forced resolution failure'; END IF; RETURN NEW; END; $$").await.unwrap();
-        db.execute_unprepared("CREATE TRIGGER block_recovery_resolution BEFORE UPDATE OF status ON module_operations FOR EACH ROW EXECUTE FUNCTION pg_temp.block_recovery_resolution()").await.unwrap();
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await,
-            Err(crate::ModuleOperationRecoveryError::Persistence(_))
-        ));
-        assert!(matches!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await,
-            Err(crate::ModuleOperationRecoveryError::OperationInProgress)
-        ));
-        assert_eq!(
-            ModuleOperationJournal::find(&db, original.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            ModuleOperationStatus::CommittedHookFailed
-        );
-        db.execute_unprepared("DROP TRIGGER block_recovery_resolution ON module_operations")
-            .await
-            .unwrap();
-        retry.context.idempotency_key = uuid::Uuid::new_v4();
-        let completed =
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
-                .await
-                .unwrap();
-        assert_eq!(
-            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry)
-                .await
-                .unwrap(),
-            completed
-        );
-        assert_eq!(calls.load(Ordering::SeqCst), 3);
-        assert_eq!(
-            ModuleOperationJournal::find(&db, original.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            ModuleOperationStatus::Committed
-        );
+        assert_eq!(ModuleOperationJournal::find(&db, original.id).await.unwrap().unwrap().status,
+            ModuleOperationStatus::CommittedHookFailed);
     }
 
     #[tokio::test]

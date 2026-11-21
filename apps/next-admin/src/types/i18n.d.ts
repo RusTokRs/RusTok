@@ -824,6 +824,12 @@ export type AppMessageKey =
   | 'modules.holds.tenant.title'
   | 'modules-holds-unavailable'
   | 'modules.holds.unavailable'
+  | 'modules-policy-error-description'
+  | 'modules.policy.error.description'
+  | 'modules-policy-error-retry'
+  | 'modules.policy.error.retry'
+  | 'modules-policy-error-title'
+  | 'modules.policy.error.title'
   | 'modules-recovery-action-error'
   | 'modules.recovery.action.error'
   | 'modules-recovery-action-success'
@@ -852,6 +858,8 @@ export type AppMessageKey =
   | 'modules.recovery.revision.error'
   | 'modules-recovery-title'
   | 'modules.recovery.title'
+  | 'modules-recovery-unavailable'
+  | 'modules.recovery.unavailable'
   | 'modules-rollback-action'
   | 'modules.rollback.action'
   | 'modules-rollback-cancel'
@@ -870,6 +878,10 @@ export type AppMessageKey =
   | 'modules.section.core'
   | 'modules-section-optional'
   | 'modules.section.optional'
+  | 'modules-settings-integer-invalid'
+  | 'modules.settings.integer.invalid'
+  | 'modules-settings-writeUnconfirmed'
+  | 'modules.settings.writeUnconfirmed'
   | 'modules-subtitle'
   | 'modules.subtitle'
   | 'modules-title'
@@ -3250,6 +3262,12 @@ export interface AppMessageArgs {
   'modules.holds.tenant.title'?: Record<string, never>;
   'modules-holds-unavailable'?: Record<string, never>;
   'modules.holds.unavailable'?: Record<string, never>;
+  'modules-policy-error-description'?: Record<string, never>;
+  'modules.policy.error.description'?: Record<string, never>;
+  'modules-policy-error-retry'?: Record<string, never>;
+  'modules.policy.error.retry'?: Record<string, never>;
+  'modules-policy-error-title'?: Record<string, never>;
+  'modules.policy.error.title'?: Record<string, never>;
   'modules-recovery-action-error'?: Record<string, never>;
   'modules.recovery.action.error'?: Record<string, never>;
   'modules-recovery-action-success'?: Record<string, never>;
@@ -3278,6 +3296,8 @@ export interface AppMessageArgs {
   'modules.recovery.revision.error'?: Record<string, never>;
   'modules-recovery-title'?: Record<string, never>;
   'modules.recovery.title'?: Record<string, never>;
+  'modules-recovery-unavailable'?: Record<string, never>;
+  'modules.recovery.unavailable'?: Record<string, never>;
   'modules-rollback-action'?: Record<string, never>;
   'modules.rollback.action'?: Record<string, never>;
   'modules-rollback-cancel'?: Record<string, never>;
@@ -3296,6 +3316,10 @@ export interface AppMessageArgs {
   'modules.section.core'?: Record<string, never>;
   'modules-section-optional'?: Record<string, never>;
   'modules.section.optional'?: Record<string, never>;
+  'modules-settings-integer-invalid'?: Record<string, never>;
+  'modules.settings.integer.invalid'?: Record<string, never>;
+  'modules-settings-writeUnconfirmed'?: Record<string, never>;
+  'modules.settings.writeUnconfirmed'?: Record<string, never>;
   'modules-subtitle'?: Record<string, never>;
   'modules.subtitle'?: Record<string, never>;
   'modules-title'?: Record<string, never>;
@@ -5677,6 +5701,12 @@ export interface AppMessages {
   'modules.holds.tenant.title': Record<string, never>;
   'modules-holds-unavailable': Record<string, never>;
   'modules.holds.unavailable': Record<string, never>;
+  'modules-policy-error-description': Record<string, never>;
+  'modules.policy.error.description': Record<string, never>;
+  'modules-policy-error-retry': Record<string, never>;
+  'modules.policy.error.retry': Record<string, never>;
+  'modules-policy-error-title': Record<string, never>;
+  'modules.policy.error.title': Record<string, never>;
   'modules-recovery-action-error': Record<string, never>;
   'modules.recovery.action.error': Record<string, never>;
   'modules-recovery-action-success': Record<string, never>;
@@ -5705,6 +5735,8 @@ export interface AppMessages {
   'modules.recovery.revision.error': Record<string, never>;
   'modules-recovery-title': Record<string, never>;
   'modules.recovery.title': Record<string, never>;
+  'modules-recovery-unavailable': Record<string, never>;
+  'modules.recovery.unavailable': Record<string, never>;
   'modules-rollback-action': Record<string, never>;
   'modules.rollback.action': Record<string, never>;
   'modules-rollback-cancel': Record<string, never>;
@@ -5723,6 +5755,10 @@ export interface AppMessages {
   'modules.section.core': Record<string, never>;
   'modules-section-optional': Record<string, never>;
   'modules.section.optional': Record<string, never>;
+  'modules-settings-integer-invalid': Record<string, never>;
+  'modules.settings.integer.invalid': Record<string, never>;
+  'modules-settings-writeUnconfirmed': Record<string, never>;
+  'modules.settings.writeUnconfirmed': Record<string, never>;
   'modules-subtitle': Record<string, never>;
   'modules.subtitle': Record<string, never>;
   'modules-title': Record<string, never>;

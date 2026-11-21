@@ -14,8 +14,12 @@ use super::types::{
 };
 use super::{require_host_actor, require_host_authority, require_tenant_settings_scope};
 
-fn graphql_settings_internal_error(message: &'static str, error: impl Display) -> FieldError {
-    tracing::error!(%error, message, "GraphQL settings mutation failed");
+fn graphql_settings_internal_error(message: &'static str, _error: impl Display) -> FieldError {
+    tracing::error!(
+        error_code = "graphql_settings_mutation_failed",
+        operation = message,
+        "GraphQL settings mutation failed"
+    );
     <FieldError as GraphQLError>::internal_error(message)
 }
 

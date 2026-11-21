@@ -453,6 +453,14 @@ pub fn check_all_permissions(
     user: &CurrentUser,
     permissions: &[Permission],
 ) -> Result<(), (StatusCode, String)> {
+    // Fail closed: an empty requirement set at an authorization gate is a
+    // caller bug, never a grant (same convention as `check_any_permission`).
+    if permissions.is_empty() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Insufficient permissions. Required all of: ".to_string(),
+        ));
+    }
     if !permissions
         .iter()
         .all(|permission| has_effective_permission(user, permission))
@@ -573,10 +581,10 @@ mod tests {
     }
 
     #[test]
-    fn test_check_all_permissions_empty_is_ok() {
+    fn test_check_all_permissions_empty_is_forbidden() {
         let customer_user = create_test_user(UserRole::Customer);
         let result = check_all_permissions(&customer_user, &[]);
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]

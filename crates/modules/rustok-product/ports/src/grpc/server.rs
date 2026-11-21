@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt, sync::Arc};
+use std::{collections::HashSet, fmt, io, sync::Arc};
 
 use crate::ProductAttachedValuesWritePort;
 use crate::{
@@ -30,8 +30,9 @@ use super::proto::product_catalog_command_service_server::ProductCatalogCommandS
 use super::proto::product_catalog_read_service_server::ProductCatalogReadService;
 use super::proto::{JsonRequest, JsonResponse};
 use crate::{
-    ProductLocaleReplayKey, ProductLocaleReplayPort, ProductLocaleReplayScan,
-    ProductVariantReplayPort, ProductVariantReplayScan,
+    ProductLocaleReplayEntry, ProductLocaleReplayKey, ProductLocaleReplayPage,
+    ProductLocaleReplayPort, ProductLocaleReplayScan, ProductVariantReplayPort,
+    ProductVariantReplayScan,
 };
 
 /// Provider-side adapter. The wrapped Product owner port retains catalog policy and persistence.
@@ -422,7 +423,7 @@ where
             .scan_locale_replay(context, input)
             .await
             .map_err(port_error_to_status)?;
-        json_response(&page)
+        locale_replay_page_response(page)
     }
 
     async fn load_locale_replay(
@@ -1022,6 +1023,77 @@ fn json_response<T: Serialize>(value: &T) -> Result<Response<JsonResponse>, Stat
         ))
     })?;
     Ok(Response::new(JsonResponse { output_json }))
+}
+
+// Leave space for the protobuf bytes field and gRPC frame within the default 4 MiB receive limit.
+const LOCALE_REPLAY_JSON_LIMIT: usize = 4 * 1024 * 1024 - 16;
+
+fn locale_replay_page_response(
+    page: ProductLocaleReplayPage,
+) -> Result<Response<JsonResponse>, Status> {
+    #[derive(Serialize)]
+    struct Page<'a> {
+        entries: &'a [ProductLocaleReplayEntry],
+        next: Option<ProductLocaleReplayKey>,
+    }
+
+    let mut count = page.entries.len();
+    let mut output = BoundedReplayJson::default();
+    loop {
+        let entries = &page.entries[..count];
+        let next = if count == page.entries.len() {
+            page.next.clone()
+        } else {
+            entries.last().map(ProductLocaleReplayEntry::key)
+        };
+        match serde_json::to_writer(&mut output, &Page { entries, next }) {
+            Ok(()) => {
+                return Ok(Response::new(JsonResponse {
+                    output_json: output.bytes,
+                }));
+            }
+            Err(_) if output.exceeded && count > 1 => {
+                count /= 2;
+                output.bytes.clear();
+                output.exceeded = false;
+            }
+            Err(_) if output.exceeded => {
+                return Err(port_error_to_status(PortError::invariant_violation(
+                    "product.locale_replay_entry_too_large",
+                    "A Product locale replay entry exceeds the gRPC response limit",
+                )));
+            }
+            Err(error) => {
+                return Err(port_error_to_status(PortError::invariant_violation(
+                    "product.transport_encode",
+                    error.to_string(),
+                )));
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct BoundedReplayJson {
+    bytes: Vec<u8>,
+    exceeded: bool,
+}
+
+impl io::Write for BoundedReplayJson {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > LOCALE_REPLAY_JSON_LIMIT - self.bytes.len() {
+            self.exceeded = true;
+            return Err(io::Error::other(
+                "Product locale replay response exceeds the byte limit",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn port_error_to_status(error: PortError) -> Status {

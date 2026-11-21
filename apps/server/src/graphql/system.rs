@@ -91,20 +91,23 @@ fn require_cache_read_authority(ctx: &Context<'_>) -> Result<()> {
     ))
 }
 
-fn require_host_read() -> Result<()> {
+fn require_host_authority(_ctx: &Context<'_>, required: HostAuthority) -> Result<()> {
     if crate::host_authority::current_host_authority()
-        .is_some_and(|authority| authority.allows(HostAuthority::Read))
+        .filter(|authority| authority.allows(required))
+        .is_some()
     {
         return Ok(());
     }
 
-    Err(<FieldError as GraphQLError>::permission_denied(
-        "host-global authority required",
-    ))
+    Err(<FieldError as GraphQLError>::permission_denied("host-global authority required"))
 }
 
-fn graphql_system_internal_error(message: &'static str, error: impl Display) -> FieldError {
-    tracing::error!(%error, message, "GraphQL system query failed");
+fn graphql_system_internal_error(message: &'static str, _error: impl Display) -> FieldError {
+    tracing::error!(
+        error_code = "graphql_system_query_failed",
+        operation = message,
+        "GraphQL system query failed"
+    );
     <FieldError as GraphQLError>::internal_error(message)
 }
 
@@ -118,7 +121,7 @@ impl SystemQuery {
     /// Detailed system health is a host-operator diagnostic surface. Public
     /// liveness/readiness checks must use the dedicated HTTP health endpoints.
     async fn system_health(&self, ctx: &Context<'_>) -> Result<SystemHealthSummary> {
-        require_host_read()?;
+        require_host_authority(ctx, HostAuthority::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let mut components = Vec::new();
         let mut overall = "ok";
@@ -212,7 +215,7 @@ impl SystemQuery {
 
     /// Event transport topology and all-tenant queue counts require host read authority.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        require_host_read()?;
+        require_host_authority(ctx, HostAuthority::Read)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;

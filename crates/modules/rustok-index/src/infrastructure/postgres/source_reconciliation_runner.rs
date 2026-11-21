@@ -105,7 +105,9 @@ impl IndexReconciliationRunRequest {
         }
         let worker_id = worker_id.into();
         validate_storage_text(&worker_id, MAX_WORKER_ID_BYTES)
-            .map_err(|reason| IndexReconciliationRunError::InvalidWorkerId { reason })?;
+            .map_err(|reason| IndexReconciliationRunError::InvalidWorkerId {
+                reason: reason.as_str(),
+            })?;
         let lease_seconds = validate_lease_duration(lease_duration)?;
         Ok(Self {
             tenant_id,
@@ -1139,18 +1141,41 @@ fn validate_source_name(source_name: &str) -> Result<(), IndexReconciliationRunE
     Ok(())
 }
 
-fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), &'static str> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum StorageTextError {
+    #[error("must not be empty")]
+    Empty,
+    #[error("must not contain leading or trailing whitespace")]
+    LeadingOrTrailingWhitespace,
+    #[error("exceeds the storage limit")]
+    ExceedsLimit,
+    #[error("must not contain control characters")]
+    ControlCharacters,
+}
+
+impl StorageTextError {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "must not be empty",
+            Self::LeadingOrTrailingWhitespace => "must not contain leading or trailing whitespace",
+            Self::ExceedsLimit => "exceeds the storage limit",
+            Self::ControlCharacters => "must not contain control characters",
+        }
+    }
+}
+
+fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), StorageTextError> {
     if value.is_empty() {
-        return Err("must not be empty");
+        return Err(StorageTextError::Empty);
     }
     if value.trim() != value {
-        return Err("must not contain leading or trailing whitespace");
+        return Err(StorageTextError::LeadingOrTrailingWhitespace);
     }
     if value.len() > max_bytes {
-        return Err("exceeds the storage limit");
+        return Err(StorageTextError::ExceedsLimit);
     }
     if value.chars().any(char::is_control) {
-        return Err("must not contain control characters");
+        return Err(StorageTextError::ControlCharacters);
     }
     Ok(())
 }

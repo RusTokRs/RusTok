@@ -202,6 +202,8 @@ pub enum StaticSettingsLocalizationError {
     },
     #[error("static settings owner operation is already active for `{0}`")]
     OwnerOperationInProgress(String),
+    #[error("localized settings are blocked by an unresolved module transition")]
+    TransitionInProgress,
     #[error("static settings localized source snapshot changed while it was being read")]
     SourceSnapshotUnstable,
     #[error("static settings localization owner state is inconsistent: {0}")]
@@ -330,21 +332,26 @@ impl StaticSettingsLocalizationService {
             Admission::Run(lease) => lease,
         };
 
-        if let Err(error) = StaticTenantLifecycleStore::claim(
+        if let Err(error) = crate::settings_claim::claim(
             &self.db,
             command.tenant_id,
             registry.module_slug(),
             command.expected_owner_revision,
-            command.context.idempotency_key,
+            lease,
         )
         .await
-        .map_err(map_owner_error)
+        .map_err(map_settings_claim_error)
         {
-            fail_receipt(&self.db, lease, &error).await?;
+            // A transport error can arrive after the claim was committed.
+            // Keep the request fingerprint instead of recording a terminal
+            // failure while ownership is uncertain.
+            if !matches!(error, StaticSettingsLocalizationError::Database(_) | StaticSettingsLocalizationError::OperationReceipt(_) | StaticSettingsLocalizationError::OwnerOperationInProgress(_)) {
+                fail_receipt(&self.db, lease, &error).await?;
+            }
             return Err(error);
         }
 
-        let transaction = match self.db.begin().await {
+        let transaction = match crate::backend::begin_fenced_transaction(&self.db).await {
             Ok(transaction) => transaction,
             Err(error) => {
                 let error = database_error(error);
@@ -359,6 +366,16 @@ impl StaticSettingsLocalizationService {
                 configure_tenant_scope(&transaction, command.tenant_id)
                     .await
                     .map_err(|error| database_error(error.to_string()))?;
+                crate::settings_claim::lock_receipt(&transaction, lease)
+                    .await
+                    .map_err(map_settings_claim_error)?;
+                crate::settings_transition_fence::lock_and_check(
+                    &transaction,
+                    command.tenant_id,
+                    registry.module_slug(),
+                )
+                .await
+                .map_err(map_settings_transition_fence_error)?;
                 let current = load_exact_row(
                     &transaction,
                     command.tenant_id,
@@ -406,12 +423,12 @@ impl StaticSettingsLocalizationService {
                     },
                 )
                 .await?;
-                let advanced_owner_revision = StaticTenantLifecycleStore::advance(
+                let advanced_owner_revision = StaticTenantLifecycleStore::advance_settings(
                     &transaction,
                     command.tenant_id,
                     registry.module_slug(),
                     command.expected_owner_revision,
-                    command.context.idempotency_key,
+                    lease.token,
                 )
                 .await
                 .map_err(map_owner_error)?;
@@ -420,14 +437,14 @@ impl StaticSettingsLocalizationService {
                         "static owner revision advanced unexpectedly".to_string(),
                     ));
                 }
-                StaticTenantLifecycleStore::release(
+                crate::settings_claim::release_in_transaction(
                     &transaction,
                     command.tenant_id,
                     registry.module_slug(),
-                    command.context.idempotency_key,
+                    lease,
                 )
                 .await
-                .map_err(map_owner_error)?;
+                .map_err(map_settings_claim_error)?;
                 let record = StaticLocalizedSettingRecord {
                     tenant_id: command.tenant_id,
                     module_slug: registry.module_slug().to_string(),
@@ -451,7 +468,11 @@ impl StaticSettingsLocalizationService {
             }
             Err(error) => {
                 if let Err(rollback_err) = transaction.rollback().await {
-                    tracing::warn!(%rollback_err, "failed to rollback static settings localization transaction");
+                    // Outcome is unknown: do not release the aggregate or
+                    // finalize/delete its receipt while writes may survive.
+                    return Err(StaticSettingsLocalizationError::Database(format!(
+                        "{error}; additionally, rollback of static settings localization failed: {rollback_err}"
+                    )));
                 }
                 abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
                     .await?;
@@ -626,17 +647,25 @@ async fn abandon_claim_and_fail(
     lease: idempotency::Lease,
     error: &StaticSettingsLocalizationError,
 ) -> Result<(), StaticSettingsLocalizationError> {
-    let release = StaticTenantLifecycleStore::release(
-        database,
-        command.tenant_id,
-        module_slug,
-        command.context.idempotency_key,
-    )
-    .await
-    .map_err(map_owner_error);
-    let receipt = fail_receipt(database, lease, error).await;
-    release?;
-    receipt
+    if let Err(release_error) = crate::settings_claim::abandon(
+        database, command.tenant_id, module_slug, lease,
+    ).await {
+        // Do not mark a receipt terminal when the cleanup outcome is unknown.
+        return Err(StaticSettingsLocalizationError::Database(format!(
+            "{error}; additionally, releasing the lifecycle claim failed: {release_error}"
+        )));
+    }
+    // A database failure is not a permanent domain rejection. Retain the
+    // request hash in processing state; the shared receipt lease controls any
+    // later same-request retry. Never delete a possibly rebound fingerprint.
+    if matches!(error, StaticSettingsLocalizationError::Database(_)) {
+        return Ok(());
+    }
+    fail_receipt(database, lease, error).await.map_err(|receipt_error| {
+        StaticSettingsLocalizationError::Database(format!(
+            "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
+        ))
+    })
 }
 
 async fn fail_receipt(
@@ -656,6 +685,7 @@ async fn fail_receipt(
         StaticSettingsLocalizationError::TargetRevisionConflict { .. }
         | StaticSettingsLocalizationError::OwnerRevisionConflict { .. }
         | StaticSettingsLocalizationError::OwnerOperationInProgress(_)
+        | StaticSettingsLocalizationError::TransitionInProgress
         | StaticSettingsLocalizationError::SourceSnapshotUnstable => PortError::conflict(
             "modules.static_settings_localization_conflict",
             error.to_string(),
@@ -743,6 +773,27 @@ fn revision_value(revision: u64) -> Result<sea_orm::Value, StaticSettingsLocaliz
     })
 }
 
+fn map_settings_transition_fence_error(
+    error: crate::settings_transition_fence::SettingsTransitionFenceError,
+) -> StaticSettingsLocalizationError {
+    match error {
+        crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress => {
+            StaticSettingsLocalizationError::TransitionInProgress
+        }
+        crate::settings_transition_fence::SettingsTransitionFenceError::Database(message) => {
+            StaticSettingsLocalizationError::Database(message)
+        }
+    }
+}
+
+fn map_settings_claim_error(error: crate::settings_claim::SettingsClaimError) -> StaticSettingsLocalizationError {
+    match error {
+        crate::settings_claim::SettingsClaimError::Receipt(error) => StaticSettingsLocalizationError::OperationReceipt(error),
+        crate::settings_claim::SettingsClaimError::Owner(error) => map_owner_error(error),
+        crate::settings_claim::SettingsClaimError::Database(error) => StaticSettingsLocalizationError::Database(error),
+    }
+}
+
 fn map_owner_error(error: StaticTenantLifecycleStoreError) -> StaticSettingsLocalizationError {
     match error {
         StaticTenantLifecycleStoreError::RevisionConflict {
@@ -807,6 +858,68 @@ mod tests {
             BTreeSet::new(),
         )
         .expect("registry")
+    }
+
+    #[tokio::test]
+    async fn uncertain_claim_preserves_localization_receipt_identity() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        ).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let mut command = StaticLocalizedSettingApplyCommand {
+            tenant_id: tenant,
+            field_id: "storefront.hero.title".into(),
+            locale: "en".into(),
+            value: "Hello".into(),
+            expected_owner_revision: 0,
+            expected_target_revision: 0,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+            },
+        };
+        let service = StaticSettingsLocalizationService::new(db);
+        let registry = registry();
+        // No lifecycle tables: the claim returns a database error after the
+        // receipt has been admitted, leaving an uncertain claim outcome.
+        assert!(matches!(service.apply_exact(&registry, command.clone()).await,
+            Err(StaticSettingsLocalizationError::Database(_))));
+        assert!(matches!(service.apply_exact(&registry, command.clone()).await,
+            Err(StaticSettingsLocalizationError::OperationReceipt(error))
+            if error.code == "outbox.operation_receipt_in_progress"));
+        command.value = "Changed".into();
+        assert!(matches!(service.apply_exact(&registry, command).await,
+            Err(StaticSettingsLocalizationError::OperationReceipt(error))
+            if error.code == "outbox.operation_receipt_conflict"));
+    }
+
+    #[tokio::test]
+    async fn localization_cleanup_failure_does_not_finalize_receipt() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        ).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let command = StaticLocalizedSettingApplyCommand {
+            tenant_id: tenant, field_id: "storefront.hero.title".into(), locale: "en".into(),
+            value: "Hello".into(), expected_owner_revision: 0, expected_target_revision: 0,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+            },
+        };
+        let request = serde_json::json!({"fixture": true});
+        let scope = idempotency::OwnerOperationScope::Tenant(tenant);
+        let key = command.context.idempotency_key.to_string();
+        let lease = match idempotency::admit(&db, scope, OWNER_SLUG, &key, APPLY_OPERATION, &request).await.unwrap() {
+            Admission::Run(lease) => lease, _ => panic!("first admission must run"),
+        };
+        let error = StaticSettingsLocalizationError::SourceSnapshotUnstable;
+        assert!(matches!(abandon_claim_and_fail(&db, "storefront", &command, lease, &error).await,
+            Err(StaticSettingsLocalizationError::Database(message)) if message.contains("source snapshot changed") && message.contains("releasing the lifecycle claim failed")));
+        assert!(matches!(idempotency::admit(&db, scope, OWNER_SLUG, &key, APPLY_OPERATION, &request).await,
+            Err(error) if error.code == "outbox.operation_receipt_in_progress"));
     }
 
     #[test]

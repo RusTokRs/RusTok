@@ -118,6 +118,7 @@ pub(super) async fn replace_for_locale(
     Ok(())
 }
 
+#[tracing::instrument(skip(db))]
 pub(super) async fn delete_all(
     db: &impl ConnectionTrait,
     tenant_id: Uuid,

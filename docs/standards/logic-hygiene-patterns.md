@@ -1225,6 +1225,14 @@ Detection: `cargo xtask doctor hygiene --crate <crate>` or
 `rg -n '^\s*(let\s+_\s*=\s*)?(tokio::)?spawn\(' crates/ apps/`.
 Doctor detects unassigned `spawn(...)` statements that terminate with a semicolon, while exempting test suites, tail expressions returning `JoinHandle`, and bound variables.
 
+## P-BROADCAST-OUTBOX-ADMISSION — Bound and lifecycle-order in-memory outbox bridges
+
+- **Category:** Event delivery, backpressure, and lifecycle shutdown.
+- **Logic dimensions:** Side-effect completeness, order/concurrency, capacity bounds, failure semantics.
+- **Observed behavior:** A Tokio broadcast sender can return success while a slow receiver has already fallen behind and old messages are overwritten. If configurable backpressure is disabled, retrying one outbox write can block the forwarder long enough for that loss to occur. Subscribing only inside a spawned task also leaves a first-publish window with no receiver. Finally, stopping the forwarder concurrently with producers creates a check-empty/late-publish race during shutdown.
+- **Remediation:** Subscribe synchronously before returning the publisher; always enforce a hard admission limit no greater than broadcast capacity even when configurable early thresholds are disabled; give the forwarder a dedicated stop signal and drain it only after producers have stopped and joined. Keep the original envelope through retries. A process-local bridge is still not crash-durable before its first outbox insert; business mutations requiring atomic event durability must use the transactional outbox.
+- **Evidence:** [Server event bus](../../apps/server/src/services/event_bus.rs), [server lifecycle](../../apps/server/src/services/app_lifecycle.rs), [event transport contract](../../apps/server/docs/event-transport.md). Regression coverage is authored but uncompiled/unrun in this task.
+
 ## P-UNSAFE-VEC-SETLEN — Validate capacity and bounds before mutating vector length
 
 - **Category:** Memory safety and `unsafe` invariant preservation.
@@ -1440,3 +1448,125 @@ tracing::info!(%user_id, %tenant_id, "User authenticated successfully");
 Detection: `cargo xtask doctor hygiene --crate <crate>` or
 `rg -n '\b(println|eprintln|dbg)!\s*\(' crates/ apps/`.
 Doctor flags raw print macros in non-test, non-CLI production crates.
+
+## P-LOSSY-JSON-NUMBER — Preserve numeric identity at validation and UI boundaries
+
+- **Category:** Numeric precision and transport integrity.
+- **Logic dimensions:** Preconditions and bounds; calculation correctness.
+- **Observed behavior:** Static module settings converted JSON integers to `f64`
+  before checking bounds, and Next Admin parsed and reserialized the same
+  documents with JavaScript `Number`. A valid integer above 2^53 can round to a
+  different integer, bypass a limit, or be silently changed by an unrelated edit.
+- **Remediation:** Preserve the owner's numeric domain throughout the write path.
+  Compare integer values without casting them to floating point; if a bound is
+  represented as a finite float, compare against its mathematical ceiling or
+  floor in a wide integer domain. This does not make the float bound itself an
+  exact representation of every integer. For browser JSON editing, use a
+  lossless parser/serializer, including every structured-field editor that
+  rewrites the document. Use an exact bound type when the contract requires it.
+
+```rust
+// An integer upper bound check against an already represented finite f64.
+let exceeds = integer_value > max_bound.floor() as i128;
+```
+
+```ts
+const updated = formatSettingsJson(originalDocument, true);
+const edited = mergeSettingsJson(updated, changes);
+```
+
+The helpers above refer to the module settings editor's lossless JSON boundary;
+other owners must use the corresponding parser and object validation for their
+own document contract.
+
+Detection: `rg -n 'as_f64\(\)|JSON\.parse\(|JSON\.stringify\(' crates/modules/rustok-modules/src/settings.rs apps/next-admin/src/features/modules/components`;
+inspect numeric values and whether the parsed document is ever written back.
+
+
+## Distributed event delivery, leases, and backpressure
+
+### Lease ownership must be unique across replicas
+
+A process-local counter is not a distributed lease identity. If two replicas
+both claim work as `worker-1`, an expired lease can be reclaimed by the second
+replica while the stale first worker still presents the same owner string. The
+stale worker can then pass an owner-equality check and commit work under the
+new lease.
+
+**Invariant:** every lease owner token is unique across concurrent replicas and
+worker restarts. Use a per-instance UUID or a storage-issued fencing token;
+keep any local counter only for diagnostics. Validate the token against the
+storage column's actual length.
+
+**Regression check:** create two workers with the same local instance number
+and assert that their lease owner tokens differ. Also verify the serialized
+token fits the owner column.
+
+### Backpressure reservation must be atomic and match the real queue
+
+A load-then-increment sequence is a check-then-act race: concurrent producers
+can all observe capacity below the critical threshold and collectively exceed
+it. With a bounded broadcast ring, a controller configured larger than the
+ring can also accept messages that Tokio has already overwritten for a slow
+receiver.
+
+**Invariant:** reserve queue capacity with a compare-and-swap loop, and never
+configure the logical queue depth above the underlying channel capacity.
+Every successful reservation must be released exactly once after processing,
+on send failure, for lagged messages, and when a receiver is dropped or
+cancelled.
+
+**Regression check:** race concurrent acquisitions against a known critical
+depth and assert the accepted count never exceeds it. Exercise send failure,
+normal completion, lag, cancellation, and receiver teardown to ensure the
+depth returns to zero.
+
+### Durable forwarders must retry the same identity
+
+Consuming an in-memory event and logging a failed database write is data loss.
+Retrying a write without idempotent storage semantics is also unsafe: an
+ambiguous commit can succeed in storage while returning an error to the caller,
+and a naive retry then fails on the duplicate primary key.
+
+**Invariant:** keep the original envelope and its ID until durable persistence
+is confirmed. The outbox insert must accept an exact duplicate of the same
+canonical envelope, but reject reuse of that ID for different facts. Do not
+acknowledge downstream delivery merely because an event entered a broadcast
+queue; wait for all required local handlers to complete.
+
+**Regression check:** force a transient transport failure and assert that the
+same envelope ID is retried and persisted once. Publish the same envelope twice
+and assert one row; reuse its ID with different payload and assert a conflict.
+For projection delivery, block a handler and verify the relay call remains
+pending, then fail the handler and verify the relay receives an error.
+
+### Required background workers must be visible to readiness
+
+A long-lived worker can fail independently of the HTTP host. If startup registers
+the worker but readiness omits its handle, the host can remain green while durable
+delivery, retention, recovery, or another required projection has stopped.
+
+**Invariant:** every worker that is required for the current runtime profile must
+have one readiness snapshot tied to its actual task-handle liveness. Optional
+workers become required once they are successfully started. The snapshot must not
+infer health merely from configuration when the worker was never created.
+
+**Regression check:** start each required worker in the test runtime, assert that
+its readiness snapshot is required and live, terminate its task, and assert that
+the snapshot reports it as finished.
+
+### Shutdown must drain durable handoffs before aborting
+
+Aborting a worker while it owns an accepted but not-yet-persisted event discards
+the only copy of that event. A shutdown signal should stop new work, allow
+already accepted work to reach durable storage, and use a bounded timeout only
+as the final fallback.
+
+**Invariant:** signal and join event-forwarding workers cooperatively. Drain
+their accepted queue before dropping the receiver; after the deadline, abort
+and release any in-memory capacity reservations so the host cannot leak
+backpressure state.
+
+**Regression check:** request shutdown with queued events and a transient
+transport failure, then assert that the worker retries, persists the same
+envelope, releases all queue permits, and exits before the shutdown deadline.

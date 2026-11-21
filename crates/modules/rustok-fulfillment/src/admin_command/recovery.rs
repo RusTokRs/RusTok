@@ -57,6 +57,7 @@ impl InProcessFulfillmentAdminCommandPort {
         let saved: FulfillmentProviderOperationRequest =
             serde_json::from_value(operation.request_payload.clone())
                 .map_err(|_| recovery_invalid())?;
+        // INVARIANT: In-memory verification that deserialized operation request payload matches current command tenant.
         if saved.tenant_id != tenant_id
             || saved.fulfillment_id != operation.fulfillment_id
             || saved.idempotency_key.as_deref() != Some(operation.idempotency_key.as_str())

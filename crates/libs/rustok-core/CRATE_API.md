@@ -138,22 +138,28 @@ The prelude exports foundational types (`AppContext`, `CacheBackend`, `InMemoryC
 - `EventHandler::handles_contract(&ContractEventPayload) -> bool` defaults to false;
   `handle_contract(&ContractEventEnvelope)` defaults to a typed refusal, never fake success.
 - `EventDispatcher::start_with_contract_delivery(self) -> Result<RunningDispatcher>` binds
-  explicit module handlers to the existing bus. Legacy `start()` and root APIs remain.
+  explicit module handlers to the existing bus. Legacy `start()` remains available for
+  best-effort broadcast dispatch.
 - `EventBus::has_contract_handler(&ContractEventEnvelope) -> Result<bool>` requires a live
   registry; it does not infer readiness from root broadcast subscriber counts.
 - `EventBus::publish_contract_envelope` and `MemoryTransport::publish_contract` validate sealed
-  frames and await all matching handlers. Capacity is bounded with immediate refusal, not an
-  extra in-memory queue. No-handler, closed/unbound registry and handler errors propagate.
+  frames and await all matching handlers. `EventBus::publish_root_envelope_and_wait` validates a
+  root envelope and awaits every matching root handler through the same live registry; an
+  initialized empty registry accepts an unmatched root event. Capacity is bounded with immediate
+  refusal, not an extra in-memory queue. Closed/unbound registry and handler errors propagate.
 - The fallible typed startup rejects concurrency/queue settings above Tokio's `MAX_PERMITS`
   before binding or spawning; invalid bounds cannot panic while poisoning the listener registry.
 
 The bus stores a Weak listener binding; the running task owns the strong registration. Stop,
 abort, task exit/unwind close it, including a final closure check after awaited handler work.
-This avoids a handler-to-bus ownership cycle. Root broadcast remains best-effort; it does not
-inherit the sealed acknowledgement guarantee. Core owns no Inventory switch or domain publisher.
-Outbox owns durable retry/DLQ; remote transport consumers still own persistent receive/cursor ACK.
-Six new delivery definitions are uncompiled/unrun; real runtime evidence remains open. See the
-[delivery decision](../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).
+This avoids a handler-to-bus ownership cycle. The generic `EventBus.publish_envelope` broadcast
+API remains best-effort; only the Outbox relay's root path uses the acknowledged registry method.
+The Outbox root path dispatches through the module registry, not arbitrary broadcast
+subscribers; this is not a remote broker cursor acknowledgement. Core owns no Inventory switch or domain publisher. Outbox
+owns durable retry/DLQ; remote transport consumers still own persistent receive/cursor ACK. The
+new delivery definitions are uncompiled/unrun; real runtime evidence remains open. See the
+[sealed-family decision](../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01)
+and [root-delivery decision](../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
 
 ## Required-module delivery continuation (2026-11-02)
 

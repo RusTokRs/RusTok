@@ -233,10 +233,11 @@ pub fn OrderView() -> impl IntoView {
                                                                     set_copied_tracking.set(true);
                                                                     #[cfg(target_arch = "wasm32")]
                                                                     if let Some(win) = web_sys::window() {
-                                                                        let _ = win.navigator().clipboard().write_text(&tr_val);
+                                                                        let promise = win.navigator().clipboard().write_text(&tr_val);
+                                                                        drop(promise);
                                                                     }
                                                                     #[cfg(not(target_arch = "wasm32"))]
-                                                                    let _ = &tr_val;
+                                                                    let _tr_ref = &tr_val;
                                                                 }
                                                             >
                                                                 {move || if copied_tracking.get() {

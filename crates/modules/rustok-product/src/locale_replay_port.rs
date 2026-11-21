@@ -114,6 +114,7 @@ impl PostgresProductLocaleReplay {
                         tracing::warn!(%tenant_id, %error, "Product locale replay could not read Channel generation");
                         storage_unavailable()
                     })?;
+                // INVARIANT: Channel identity snapshot tenant must match port caller tenant.
                 if snapshot.tenant_id != tenant_id || !snapshot.channel_ids.is_empty() {
                     return Err(invalid_row());
                 }

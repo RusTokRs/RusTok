@@ -106,6 +106,7 @@ impl ShipmentStockPort for InventoryShipmentStockPort {
             )
             .await
             .map_err(ShipmentStockError::Owner)?;
+        // INVARIANT: cross-module inventory binding contract validation ensures foreign snapshot matches caller tenant.
         if snapshot.tenant_id != tenant_id
             || snapshot.order_id != scope.order_id
             || snapshot.items.len() != expected.len()

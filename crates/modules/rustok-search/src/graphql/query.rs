@@ -619,7 +619,8 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
+            let parsed =
+                Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
             if parsed.is_nil() {
                 return Err(FieldError::new("UUID cannot be nil"));
             }
@@ -1023,22 +1024,23 @@ async fn enforce_storefront_rate_limit(ctx: &Context<'_>, surface: &'static str)
     }
 }
 
+/// Header carrying the client IP after the server's request-trust evaluation.
+/// The server middleware strips any client-supplied value and re-inserts the
+/// effective IP, so this is the only forwarding header a module may trust.
+const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
+
 fn extract_client_id(headers: &HeaderMap) -> String {
+    // The storefront rate limit is keyed by this identity, so it must not
+    // come from client-controlled forwarding headers: rotating
+    // `X-Forwarded-For` per request would mint a fresh bucket every time.
+    // Without the server-trusted IP the caller falls through to the
+    // user/anonymous identity in the key builder (fail-closed).
     headers
-        .get("x-forwarded-for")
+        .get(TRUSTED_CLIENT_IP_HEADER)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
         .map(str::trim)
         .filter(|value| value.parse::<std::net::IpAddr>().is_ok())
         .map(|value| format!("ip:{value}"))
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|value| value.to_str().ok())
-                .map(str::trim)
-                .filter(|value| value.parse::<std::net::IpAddr>().is_ok())
-                .map(|value| format!("ip:{value}"))
-        })
         .unwrap_or_else(|| "ip:unknown".to_string())
 }
 
@@ -1127,7 +1129,7 @@ async fn finalize_search_result(
                 0,
             );
             metrics::record_module_error("search", error_type, "error");
-            let _ = record_search_query_log(
+            record_search_query_log(
                 db,
                 surface,
                 search_query,
@@ -1213,8 +1215,10 @@ async fn record_search_query_log(
 mod tests {
     use super::{
         ADMIN_GLOBAL_SEARCH_SURFACE, SEARCH_PREVIEW_SURFACE, STOREFRONT_SEARCH_SURFACE,
-        SearchSurfacePolicy, resolve_surface_tenant_scope,
+        SearchSurfacePolicy, TRUSTED_CLIENT_IP_HEADER, extract_client_id,
+        resolve_surface_tenant_scope,
     };
+    use axum::http::HeaderMap;
     use rustok_api::TenantContext;
     use uuid::Uuid;
 
@@ -1279,6 +1283,21 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn storefront_rate_limit_identity_uses_only_the_server_trusted_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert(TRUSTED_CLIENT_IP_HEADER, "203.0.113.7".parse().unwrap());
+        headers.insert("x-forwarded-for", "198.51.100.9".parse().unwrap());
+        assert_eq!(extract_client_id(&headers), "ip:203.0.113.7");
+
+        // Rotating client-supplied forwarding headers must not mint fresh
+        // rate-limit buckets.
+        let mut spoofed = HeaderMap::new();
+        spoofed.insert("x-forwarded-for", "198.51.100.9".parse().unwrap());
+        spoofed.insert("x-real-ip", "192.0.2.44".parse().unwrap());
+        assert_eq!(extract_client_id(&spoofed), "ip:unknown");
     }
 
     #[test]

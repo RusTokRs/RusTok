@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait,
     QueryFilter, QuerySelect, Set,
 };
 use serde::Serialize;
@@ -200,6 +200,72 @@ pub async fn admit<T: Serialize>(
     }
 }
 
+/// Locks and verifies a processing receipt inside an owner transaction.
+///
+/// This must precede the owner's aggregate lock whenever receipt reclamation
+/// and aggregate ownership are coordinated. The row lock remains held until
+/// transaction end; a reclaimed or terminal receipt cannot acquire it. This
+/// does not itself extend the receipt lease or fence external side effects.
+pub async fn lock_current(transaction: &DatabaseTransaction, lease: Lease) -> Result<(), PortError> {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
+    let update = entity::Entity::update_many()
+        .col_expr(entity::Column::LeaseToken, sea_orm::sea_query::Expr::value(lease.token))
+        .filter(entity::Column::Id.eq(lease.operation_id))
+        .filter(entity::Column::LeaseToken.eq(lease.token))
+        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .exec(transaction)
+        .await
+        .map_err(database_error)?;
+    if update.rows_affected != 1 {
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_lease_lost",
+            "receipt is no longer owned by this worker",
+        ));
+    }
+    Ok(())
+}
+
+/// Renews a processing lease, postponing reclamation by another admission.
+///
+/// An operation that may run longer than the processing lease (see
+/// `PROCESSING_LEASE_MINUTES`) must renew periodically; without renewal a
+/// later admission with the same idempotency key reclaims the receipt and
+/// runs the operation concurrently. Renewal is fenced by the lease token:
+/// a worker that already lost the lease learns so here instead of at
+/// completion time, after its side effects have escaped.
+pub async fn renew_lease(database: &DatabaseConnection, lease: Lease) -> Result<(), PortError> {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
+    let now = Utc::now().fixed_offset();
+    let update = entity::Entity::update_many()
+        .col_expr(
+            entity::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(entity::Column::Id.eq(lease.operation_id))
+        .filter(entity::Column::LeaseToken.eq(lease.token))
+        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .exec(database)
+        .await
+        .map_err(database_error)?;
+    if update.rows_affected != 1 {
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_lease_lost",
+            "receipt is no longer owned by this worker",
+        ));
+    }
+    Ok(())
+}
+
 /// Stores a successful response inside the caller's owner transaction.
 pub async fn complete<C, T>(connection: &C, lease: Lease, response: &T) -> Result<(), PortError>
 where
@@ -358,6 +424,57 @@ where
     Ok(())
 }
 
+/// Deletes up to `batch_size` terminal (`completed`/`failed`) receipts
+/// whose completion is older than `older_than`, and reports how many were
+/// removed.
+///
+/// Receipts are the replay memory of the idempotency primitive: pruning one
+/// means a later retry with the same key admits and runs the operation
+/// again, so the window is an operator policy, not a correctness
+/// requirement. Processing receipts are never touched — they may still
+/// finish, fail, or be reclaimed through the normal lease path.
+pub async fn prune_terminal_receipts(
+    database: &DatabaseConnection,
+    older_than: Duration,
+    batch_size: u64,
+) -> Result<u64, PortError> {
+    if older_than <= Duration::zero() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_retention_invalid",
+            "operation receipt retention window must be positive",
+        ));
+    }
+    if batch_size == 0 {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_retention_invalid",
+            "operation receipt prune batch size must be greater than zero",
+        ));
+    }
+    let cutoff = (Utc::now() - older_than).fixed_offset();
+    let candidate_ids: Vec<Uuid> = entity::Entity::find()
+        .select_only()
+        .column(entity::Column::Id)
+        .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
+        .filter(entity::Column::CompletedAt.is_not_null())
+        .filter(entity::Column::CompletedAt.lte(cutoff))
+        .limit(batch_size)
+        .into_tuple::<Uuid>()
+        .all(database)
+        .await
+        .map_err(database_error)?;
+    if candidate_ids.is_empty() {
+        return Ok(0);
+    }
+    let removed = entity::Entity::delete_many()
+        .filter(entity::Column::Id.is_in(candidate_ids))
+        .filter(entity::Column::Status.is_in([STATUS_COMPLETED, STATUS_FAILED]))
+        .filter(entity::Column::CompletedAt.lte(cutoff))
+        .exec(database)
+        .await
+        .map_err(database_error)?;
+    Ok(removed.rows_affected)
+}
+
 async fn inspect_or_reclaim(
     database: &DatabaseConnection,
     existing: entity::Model,
@@ -485,7 +602,7 @@ fn request_hash<T: Serialize>(
         "owner_slug": owner_slug,
         "operation": operation,
         "scope_key": scope_key,
-        "request": canonical_json(&request),
+        "request": canonical_json(&request, 0)?,
     });
     let bytes = serde_json::to_vec(&value).map_err(|error| {
         PortError::validation(
@@ -496,20 +613,50 @@ fn request_hash<T: Serialize>(
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 
-fn canonical_json(value: &Value) -> Value {
-    match value {
-        Value::Array(values) => Value::Array(values.iter().map(canonical_json).collect()),
+/// Deepest request shape that gets fingerprinted. Anything deeper is a
+/// caller bug (or an attempt to exhaust the stack through recursion), and
+/// is rejected instead of being hashed.
+const MAX_REQUEST_HASH_DEPTH: usize = 64;
+
+fn canonical_json(value: &Value, depth: usize) -> Result<Value, PortError> {
+    if depth > MAX_REQUEST_HASH_DEPTH {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_request_invalid",
+            "owner operation request is nested too deeply to fingerprint",
+        ));
+    }
+    Ok(match value {
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|value| canonical_json(value, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
         Value::Object(values) => {
             let mut keys = values.keys().collect::<Vec<_>>();
             keys.sort();
             let mut output = serde_json::Map::new();
             for key in keys {
-                output.insert(key.clone(), canonical_json(&values[key]));
+                output.insert(key.clone(), canonical_json(&values[key], depth + 1)?);
             }
             Value::Object(output)
         }
+        // Numerically equal values must fingerprint identically regardless
+        // of the client's JSON spelling: `1` and `1.0` are the same
+        // request, and rejecting the replay as a key conflict would be a
+        // false positive. Integral floats inside the exact integer range
+        // therefore canonicalise to integers. (Receipts stored before this
+        // canonicalisation keep their original hash; only requests that
+        // actually mix spellings across retries observe a difference.)
+        Value::Number(number) => match number.as_f64() {
+            // 2^53 bounds the range where an f64 names one exact integer.
+            Some(float) if float.fract() == 0.0 && float.abs() < 9_007_199_254_740_992.0 => {
+                Value::Number((float as i64).into())
+            }
+            _ => value.clone(),
+        },
         value => value.clone(),
-    }
+    })
 }
 
 fn database_error(error: sea_orm::DbErr) -> PortError {
@@ -540,6 +687,35 @@ mod tests {
             .await
             .unwrap();
         verify_readable_schema(&database).await.unwrap();
+    }
+
+    #[test]
+    fn request_hash_ignores_key_order_and_number_spelling() {
+        let scope = OwnerOperationScope::Platform;
+        let first = request_hash(
+            "test-owner",
+            "test-op",
+            &scope.scope_key(),
+            &serde_json::json!({"amount": 1, "nested": {"b": 2, "a": [1.0, 2]}}),
+        )
+        .expect("hash");
+        let second = request_hash(
+            "test-owner",
+            "test-op",
+            &scope.scope_key(),
+            &serde_json::json!({"nested": {"a": [1, 2.0], "b": 2.0}, "amount": 1.0}),
+        )
+        .expect("hash");
+        assert_eq!(first, second);
+
+        let different = request_hash(
+            "test-owner",
+            "test-op",
+            &scope.scope_key(),
+            &serde_json::json!({"amount": 1.5}),
+        )
+        .expect("hash");
+        assert_ne!(first, different);
     }
 
     #[test]
@@ -616,6 +792,121 @@ mod tests {
                 "AAAAAAAAAAAAAAAAx",
             ),
         );
+    }
+
+    #[tokio::test]
+    async fn terminal_receipt_pruning_removes_only_aged_terminal_rows() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+        let tenant = Uuid::new_v4();
+        let request = serde_json::json!({"request": true});
+        let lease = match admit(
+            &database,
+            OwnerOperationScope::Tenant(tenant),
+            "test-owner",
+            "aged-receipt",
+            "test-prune",
+            &request,
+        )
+        .await
+        .expect("receipt should admit")
+        {
+            Admission::Run(lease) => lease,
+            _ => panic!("first admission must run"),
+        };
+        complete(&database, lease, &serde_json::json!({"ok": true}))
+            .await
+            .expect("receipt should complete");
+
+        // Nothing is old enough yet.
+        assert_eq!(
+            prune_terminal_receipts(&database, Duration::days(90), 10)
+                .await
+                .expect("prune"),
+            0
+        );
+
+        // Age the completion past the window; the receipt is then pruned
+        // and the same key admits a fresh run instead of replaying.
+        entity::Entity::update_many()
+            .col_expr(
+                entity::Column::CompletedAt,
+                sea_orm::sea_query::Expr::value(
+                    (Utc::now() - Duration::days(120)).fixed_offset(),
+                ),
+            )
+            .filter(entity::Column::Id.eq(lease.operation_id))
+            .exec(&database)
+            .await
+            .expect("age receipt");
+        assert_eq!(
+            prune_terminal_receipts(&database, Duration::days(90), 10)
+                .await
+                .expect("prune"),
+            1
+        );
+        assert!(matches!(
+            admit(
+                &database,
+                OwnerOperationScope::Tenant(tenant),
+                "test-owner",
+                "aged-receipt",
+                "test-prune",
+                &request,
+            )
+            .await
+            .expect("re-admission"),
+            Admission::Run(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn lease_renewal_is_fenced_by_the_lease_token() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+
+        let lease = match admit(
+            &database,
+            OwnerOperationScope::Tenant(Uuid::new_v4()),
+            "test-owner",
+            "renewable-lease",
+            "test-renewal",
+            &serde_json::json!({"request": true}),
+        )
+        .await
+        .expect("receipt should admit")
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(_) | Admission::ReplayError(_) => {
+                panic!("first admission must run")
+            }
+        };
+
+        renew_lease(&database, lease)
+            .await
+            .expect("the lease holder can renew");
+
+        let lost = renew_lease(
+            &database,
+            Lease {
+                operation_id: lease.operation_id,
+                token: Uuid::new_v4(),
+            },
+        )
+        .await
+        .expect_err("a stale token cannot renew");
+        assert_eq!(lost.code, "outbox.operation_receipt_lease_lost");
+        assert!(lost.retryable);
     }
 
     #[tokio::test]

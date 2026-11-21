@@ -234,14 +234,12 @@ fn validate_semantic_key(
         return Err(NotificationKeyError::TooLong { kind, max_bytes });
     }
 
-    let first = value
-        .chars()
-        .next()
-        .expect("non-empty notification key has a first character");
-    let last = value
-        .chars()
-        .last()
-        .expect("non-empty notification key has a last character");
+    let Some(first) = value.chars().next() else {
+        return Err(NotificationKeyError::Empty { kind });
+    };
+    let Some(last) = value.chars().last() else {
+        return Err(NotificationKeyError::Empty { kind });
+    };
     if !is_key_alphanumeric(first) || !is_key_alphanumeric(last) {
         return Err(NotificationKeyError::InvalidBoundary { kind });
     }

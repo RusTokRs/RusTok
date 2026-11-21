@@ -170,10 +170,12 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         let template_data = NotificationTemplateData::try_new(data)
             .map_err(|_| NotificationProviderError::InvalidEvent)?;
 
+        let template_key = NotificationTemplateKey::new(MESSAGE_DISPATCHED_TYPE)
+            .map_err(|_| NotificationProviderError::InvalidEvent)?;
+
         Ok(Some(NotificationSemanticDescriptor {
             notification_type: message_dispatched_type(),
-            template_key: NotificationTemplateKey::new(MESSAGE_DISPATCHED_TYPE)
-                .expect("messenger message dispatched template key must stay valid"),
+            template_key,
             target: NotificationTargetRef {
                 owner: messenger_source_slug(),
                 kind: messenger_conversation_target_kind(),
@@ -262,7 +264,7 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
             let last_user_id = batch
                 .last()
                 .map(|m| m.user_id)
-                .expect("batch cannot be empty if has_more is true");
+                .ok_or(NotificationProviderError::Internal { retryable: false })?;
             Some(
                 NotificationAudienceCursor::new(last_user_id.to_string())
                     .map_err(|_| NotificationProviderError::Internal { retryable: false })?,
@@ -334,16 +336,19 @@ fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError
 }
 
 pub fn messenger_source_slug() -> NotificationSourceSlug {
+    // INVARIANT: MESSENGER_SOURCE is a compile-time constant matching validated slug format.
     NotificationSourceSlug::new(MESSENGER_SOURCE)
         .expect("messenger notification source slug must stay valid")
 }
 
 pub fn message_dispatched_type() -> NotificationTypeKey {
+    // INVARIANT: MESSAGE_DISPATCHED_TYPE is a compile-time constant matching validated key format.
     NotificationTypeKey::new(MESSAGE_DISPATCHED_TYPE)
         .expect("messenger message dispatched type must stay valid")
 }
 
 pub fn messenger_conversation_target_kind() -> NotificationTargetKind {
+    // INVARIANT: MESSENGER_CONVERSATION_TARGET is a compile-time constant matching validated target format.
     NotificationTargetKind::new(MESSENGER_CONVERSATION_TARGET)
         .expect("messenger conversation target kind must stay valid")
 }

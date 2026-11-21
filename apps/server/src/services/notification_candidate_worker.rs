@@ -16,9 +16,9 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::stop_handle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const CANDIDATE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
@@ -81,6 +81,11 @@ impl NotificationTenantCapabilityCommitGuard for ServerNotificationTenantCapabil
         Ok(NotificationTenantCapabilityCommitDecision::Allow)
     }
 }
+
+// Marker owns the entire local bootstrap window, not just the JoinHandle slot.
+// It is distinct from the published worker handle so callers cannot race
+// while dependencies are being materialized.
+struct NotificationCandidateWorkerStartupReservation;
 
 pub struct NotificationCandidateWorkerHandle {
     instance_id: u64,
@@ -152,10 +157,33 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         .shared_get::<ModuleRegistry>()
         .ok_or_else(|| Error::Message("module registry is unavailable".to_string()))?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification candidate worker cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, NotificationCandidateWorkerStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<NotificationCandidateWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Notification candidate worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    // Another bootstrap may have committed the worker before this reservation
+    // was created by an older caller. Never overwrite an existing JoinHandle.
+    if ctx.shared_contains::<NotificationCandidateWorkerHandle>() {
+        return Ok(());
+    }
+    let stop_rx = stop.subscribe();
 
     let instance_id = NOTIFICATION_CANDIDATE_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let worker_id = format!("notification-candidate-{instance_id}");
+    let worker_id = notification_candidate_worker_id(instance_id);
     let commit_guard = Arc::new(ServerNotificationTenantCapabilityCommitGuard {
         db: ctx.db_clone(),
         module_registry: module_registry.clone(),
@@ -177,6 +205,11 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         batch_size = worker.batch_size(),
         "Starting notification candidate worker"
     );
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification candidate worker startup interrupted by server shutdown".to_string(),
+        ));
+    }
     ctx.shared_insert(NotificationCandidateWorkerHandle {
         instance_id,
         _handle: tokio::spawn(notification_candidate_worker_loop(
@@ -186,7 +219,12 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
+}
+
+fn notification_candidate_worker_id(instance_id: u64) -> String {
+    format!("notification-candidate-{instance_id}-{}", uuid::Uuid::new_v4())
 }
 
 async fn notification_candidate_worker_loop(
@@ -211,7 +249,6 @@ async fn notification_candidate_worker_loop(
                     worker_id = worker.worker_id(),
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification candidate worker failed to select claimable items"
                 );
                 Vec::new()
@@ -262,7 +299,6 @@ async fn notification_candidate_worker_loop(
                     item_id = %work.item_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification candidate processing completed with durable failure state"
                 ),
             }
@@ -319,7 +355,6 @@ async fn candidate_work_policy_observation(
                 item_id = %work.item_id,
                 error_code = error.stable_code(),
                 retryable = error.is_retryable(),
-                error = %error,
                 "Notification candidate tenant-policy deferral failed"
             );
         }
@@ -347,14 +382,29 @@ async fn tenant_notification_policy(
             );
             TenantNotificationPolicy::Disabled
         }
-        Err(error) => {
+        Err(_error) => {
             tracing::warn!(
                 tenant_id = %tenant_id,
                 module_slug = NOTIFICATIONS_MODULE_SLUG,
-                error = %error,
+                error_code = "notification_tenant_policy_lookup_failed",
                 "Notification candidate policy lookup failed closed"
             );
             TenantNotificationPolicy::Unavailable
         }
+    }
+}
+
+#[cfg(test)]
+mod worker_identity_tests {
+    use super::notification_candidate_worker_id;
+
+    #[test]
+    fn candidate_lease_owner_ids_are_unique_even_when_local_instance_ids_match() {
+        let first = notification_candidate_worker_id(1);
+        let second = notification_candidate_worker_id(1);
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("notification-candidate-1-"));
+        assert!(first.len() <= 191, "owner identity must fit the module contract");
     }
 }

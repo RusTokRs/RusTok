@@ -10,8 +10,8 @@ use rustok_web::CspNonce;
 use crate::shared::context::seo_page_context::fetch_seo_page_context;
 
 use super::{
-    private_permanent_redirect, private_status_response, render_module_page_with_nonce,
-    storefront_html_response,
+    policy_document_response, private_permanent_redirect, private_status_response,
+    render_module_page_with_nonce,
 };
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
@@ -75,7 +75,7 @@ pub(crate) async fn render_forum_category_route_response(
                     None
                 }
             };
-            storefront_html_response(
+            policy_document_response(
                 render_module_page_with_nonce(
                     effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
@@ -85,7 +85,8 @@ pub(crate) async fn render_forum_category_route_response(
                     None,
                 )
                 .await,
-                csp_nonce.is_some(),
+                effective_locale.as_str(),
+                csp_nonce,
             )
         }
     }

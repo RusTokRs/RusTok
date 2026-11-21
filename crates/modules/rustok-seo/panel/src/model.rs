@@ -196,13 +196,13 @@ impl SeoEntityForm {
         &self,
         target_kind: SeoTargetSlug,
         target_id: &str,
-    ) -> Result<SeoMetaMutationInput, String> {
+    ) -> Result<SeoMetaMutationInput, SeoPanelError> {
         let target_id = validate_target_id(target_id)?.to_string();
         let locale = if self.locale.trim().is_empty() {
-            return Err("Host locale is required.".to_string());
+            return Err(SeoPanelError::MissingHostLocale);
         } else {
             normalize_locale_tag(self.locale.as_str())
-                .ok_or_else(|| "Invalid host locale.".to_string())?
+                .ok_or(SeoPanelError::InvalidHostLocale)?
         };
 
         Ok(SeoMetaMutationInput {
@@ -284,7 +284,7 @@ impl SeoEntityForm {
         }
     }
 
-    fn parse_structured_data(&self) -> Result<Option<Value>, String> {
+    fn parse_structured_data(&self) -> Result<Option<Value>, SeoPanelError> {
         let normalized_schema_type =
             normalize_schema_type_input(self.structured_data_type.as_str());
         let schema_type = normalized_schema_type.as_deref().unwrap_or("");
@@ -298,7 +298,7 @@ impl SeoEntityForm {
         } else {
             Some(
                 serde_json::from_str::<Value>(payload)
-                    .map_err(|err| format!("Invalid structured data payload JSON: {err}"))?,
+                    .map_err(|err| SeoPanelError::InvalidJson(err.to_string()))?,
             )
         };
 
@@ -307,10 +307,7 @@ impl SeoEntityForm {
                 .as_ref()
                 .is_some_and(|value| !has_non_empty_json_ld_type(value))
             {
-                return Err(
-                    "Structured data payload must contain at least one non-empty @type when schema type is empty."
-                        .to_string(),
-                );
+                return Err(SeoPanelError::MissingJsonLdType);
             }
             return Ok(payload_value);
         }
@@ -323,20 +320,17 @@ impl SeoEntityForm {
                     let normalized_existing_type = normalize_schema_type_input(existing_type)
                         .unwrap_or_else(|| existing_type.to_string());
                     if normalized_existing_type != schema_type {
-                        return Err(
-                            "Structured data payload @type must match schema type field."
-                                .to_string(),
-                        );
+                        return Err(SeoPanelError::MismatchedSchemaType);
                     }
                 }
                 object.remove("@type");
                 object
             }
             Some(_) => {
-                return Err(
+                return Err(SeoPanelError::Validation(
                     "Structured data payload must be a JSON object when schema type is set."
                         .to_string(),
-                );
+                ));
             }
             None => Map::new(),
         };
@@ -616,14 +610,52 @@ pub fn remediation_hint_for_issue_code(issue_code: &str) -> SeoRemediationHint {
     }
 }
 
-pub fn validate_target_id(value: &str) -> Result<Uuid, String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SeoPanelError {
+    #[error("Target id is required.")]
+    MissingTargetId,
+    #[error("Invalid target id.")]
+    InvalidTargetId,
+    #[error("Host locale is required.")]
+    MissingHostLocale,
+    #[error("Invalid host locale.")]
+    InvalidHostLocale,
+    #[error("Invalid structured data payload JSON: {0}")]
+    InvalidJson(String),
+    #[error("Structured data payload must contain at least one non-empty @type when schema type is empty.")]
+    MissingJsonLdType,
+    #[error("Structured data payload @type must match schema type field.")]
+    MismatchedSchemaType,
+    #[error("{0}")]
+    Validation(String),
+}
+
+impl SeoPanelError {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::MissingTargetId => "Target id is required.",
+            Self::InvalidTargetId => "Invalid target id.",
+            Self::MissingHostLocale => "Host locale is required.",
+            Self::InvalidHostLocale => "Invalid host locale.",
+            Self::MissingJsonLdType => {
+                "Structured data payload must contain at least one non-empty @type when schema type is empty."
+            }
+            Self::MismatchedSchemaType => {
+                "Structured data payload @type must match schema type field."
+            }
+            Self::InvalidJson(msg) | Self::Validation(msg) => msg.as_str(),
+        }
+    }
+}
+
+pub fn validate_target_id(value: &str) -> Result<Uuid, SeoPanelError> {
     if value.trim().is_empty() {
-        return Err("Target id is required.".to_string());
+        return Err(SeoPanelError::MissingTargetId);
     }
 
-    let id = Uuid::parse_str(value.trim()).map_err(|_| "Invalid target id.".to_string())?;
+    let id = Uuid::parse_str(value.trim()).map_err(|_| SeoPanelError::InvalidTargetId)?;
     if id.is_nil() {
-        return Err("Invalid target id.".to_string());
+        return Err(SeoPanelError::InvalidTargetId);
     }
     Ok(id)
 }
@@ -673,7 +705,7 @@ mod tests {
             )
             .expect_err("missing locale should fail");
 
-        assert_eq!(error, "Host locale is required.");
+        assert_eq!(error, SeoPanelError::MissingHostLocale);
     }
 
     #[test]
@@ -727,7 +759,10 @@ mod tests {
 
         assert_eq!(
             error,
-            "Structured data payload must be a JSON object when schema type is set."
+            SeoPanelError::Validation(
+                "Structured data payload must be a JSON object when schema type is set."
+                    .to_string()
+            )
         );
     }
 
@@ -743,10 +778,7 @@ mod tests {
             )
             .expect_err("payload without @type should fail");
 
-        assert_eq!(
-            error,
-            "Structured data payload must contain at least one non-empty @type when schema type is empty."
-        );
+        assert_eq!(error, SeoPanelError::MissingJsonLdType);
     }
 
     #[test]
@@ -762,10 +794,7 @@ mod tests {
             )
             .expect_err("mismatched @type should fail");
 
-        assert_eq!(
-            error,
-            "Structured data payload @type must match schema type field."
-        );
+        assert_eq!(error, SeoPanelError::MismatchedSchemaType);
     }
 
     #[test]

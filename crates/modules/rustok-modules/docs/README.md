@@ -1,5 +1,9 @@
 # rustok-modules documentation
 
+New to the crate? Start with the [architecture guide](./architecture.md) for
+the subsystem map, the main command flows, and the invariants to respect
+before changing durable behavior.
+
 ## Purpose
 
 This Core module owns the module platform control plane and artifact lifecycle.
@@ -64,6 +68,20 @@ static settings mutation also appends `TenantUpdated` to the canonical outbox
 inside the same owner transaction as the settings, revision, and replay receipt;
 outbox failure aborts the mutation.
 
+For static normalized, exact-locale and source-locale settings writes, a database
+error while claiming the aggregate leaves the admitted receipt processing rather
+than recording a terminal failure. A failed rollback does not trigger claim
+release or receipt finalization; failed claim cleanup also retains the receipt.
+Retryable static normalized settings errors and database errors in locale writes
+keep the request fingerprint in processing state even after confirmed cleanup;
+the same request must wait for receipt lease expiry before retrying. The shared
+receipt implementation can reclaim processing after five minutes, including
+uncertain cases; retaining the receipt is not a durable reconciliation fence,
+and same-key overlap after expiry still needs owner-specific recovery. A receipt
+token alone cannot safely replace the aggregate key without atomic admission,
+claim/reclaim and handling of existing claims. The new failure-path tests remain
+unrun.
+
 SQLite reads use the tenant owner's `tenant_identity_keys` projection in the
 same statement as the module rows. The tenant migration must be applied before
 these reads; an unavailable projection fails the read rather than falling back
@@ -80,8 +98,15 @@ silently selected or discarded.
 Journal admission, idempotency lookup, and the tenant-scoped failure list
 validate the owner identity projection within each statement. Admission stores
 the parent's exact SQLite key, so a valid text parent remains compatible with
-the foreign key. Operation-ID and idempotency-key legacy encodings still need
-explicit reconciliation.
+the foreign key. The reaper revalidates each operation ID and its tenant inside
+its transaction before updating a journal or releasing a claim. Direct journal
+status, discard, recovery and result-snapshot statements now check operation-ID
+uniqueness, supported operation/key encodings and tenant owner identity in the
+same SQLite statement. This is an identity-consistency fence, not caller
+access authorization. Unsupported operation-ID and idempotency-key legacy
+encodings require explicit reconciliation. SQLite SQL models, including a
+two-connection stale-read scenario, passed; the new Rust regressions have not
+been run.
 
 Current writes normalize against the active host-resolved manifest schema, and
 disable retains settings. The server supplies the active schema to the owner
@@ -91,10 +116,10 @@ with the intent and revision. Dormant settings can be repaired while disabled
 via `update_static_normalized_settings`. The standalone installer does not yet
 compose the static schema for seed toggles. Static rows do not yet
 persist the exact schema digest plus `not_applicable`/`ready`/`migration_required`
-columns. The server manifest adapter can return an empty schema for an unknown
-module or when its package manifest is absent; this does not prove the active
-release declares no settings and must be removed by the owner schema-evidence
-cutover. Both static settings write paths now reject a detected unresolved
+columns. The server manifest adapter rejects an unknown module or missing package
+manifest rather than treating it as an empty schema. The package schema still
+needs exact active-release evidence through the owner schema-evidence cutover.
+Both static settings write paths now reject a detected unresolved
 tenant or platform transition with a predecessor, rather than substituting the
 candidate schema for missing predecessor evidence. This conservative read is
 not atomic with transition creation and does not cover static distribution
@@ -105,22 +130,16 @@ The reviewed settings CAS currently compares recorded intent and platform
 default, not the complete effective policy with dependencies, quarantine,
 maintenance, and runtime availability. It must not be used as evidence that
 the reviewed effective-policy snapshot is unchanged.
-Post-hook recovery compares current settings with the canonical digest recorded
-in the original lifecycle commit before dispatch. A mismatch or absent legacy
-evidence blocks automatic retry; the owner does not store another settings
-copy. Retry and compensation identity binds the original operation, and retry
-completion and original failure resolution commit together. Artifact settings
-writers do not yet share the lifecycle aggregate claim, so production
-concurrency and runtime-release fencing remain unverified.
-Older recovery journal entries without a source-operation identity cannot be
-replayed as newly source-bound commands; they require explicit operator review.
-The ignored `postgres_post_hook_recovery_preserves_original_settings` owner
-test uses temporary PostgreSQL tables to exercise the actual migration,
-lifecycle commit, changed-settings rejection, tenant-context and idempotency
-checks, unresolved-transition rejection, atomic recovery rollback on a forced
-failure, and successful replay.
-It does not establish production database concurrency, RLS, or fleet-fence
-behavior.
+New post-hook retry and compensation are disabled: the settings digest and
+selected-intent evidence do not establish the original executable/installation
+identity or prove external work stopped. Plans report `retryable = false` and
+recommend no automated action; existing committed retry receipts can be replayed
+without dispatch. The public executor also rejects new source-bound compensation
+commands. This includes legacy operations whose aggregate claim is already
+absent. No proof-based reconciliation procedure is implemented. Ordinary new
+toggles and old writers are not yet comprehensively fenced from every legacy
+uncertain operation. See the server lifecycle incident runbook. The new Rust
+regressions, including the ignored PostgreSQL test, have not been executed.
 
 The canonical current/target contract and gap table are in
 [Settings and Configuration Architecture](../../../../docs/architecture/settings.md),
@@ -185,8 +204,9 @@ by a host from a boolean set. Its `sha256:` policy revision covers the exact
 ordered definition catalog, normalized platform defaults, and persisted tenant
 overrides plus owner-resolved artifact runtime evidence. Each selected artifact
 must resolve an exact active installation through tenant RLS, a matching durable
-capability-policy revision, an available isolated executor, and an enabled
-dependency closure. The policy retains only redacted installation/revision facts,
+capability-policy revision, an affirmative executor-availability input, and an
+enabled dependency closure. This input is not necessarily a health probe. The
+policy retains only redacted installation/revision facts,
 not grant contents or resolver failures. A channel owner can add a canonical
 tenant-safe snapshot containing channel identity, surface, binding state, and
 its own `sha256:` revision. The modules owner evaluates that snapshot without
@@ -209,12 +229,100 @@ factor executor availability in, so two policies sharing one revision can
 differ in the enabled set while workers flap. That is an accepted trade, not
 an oversight — churning the durable revision on every worker flap would
 invalidate every revision-keyed cache and transition consumer cluster-wide.
-The consequences are bounded and one-directional: a revision-matched cache
-entry can lag executor recovery (a module stays denied until TTL or
-invalidation, at most the cache `max_age`), and it can lag executor loss
-only until dispatch, where executor availability is re-checked before any
-guest execution. Consumers must therefore treat the revision as an intent
-identity, never as proof that an executor is currently available. Browser transports receive only
+A cached decision can lag both recovery and loss; a revision match does not
+prove current executor availability. Dispatch checks do not protect earlier
+authorization consumers such as server guards and RBAC. The current server
+policy path builds its catalog from the static registry and does not wire an
+artifact executor into that lifecycle reader; executor kind support is not a
+worker health probe. Do not infer live artifact-worker health from that path.
+The active installation resolver chooses the effective tenant/platform scope by
+slug before checking release identity, including when the two scopes have
+selected different versions. Disabled and uninstalled installations do not
+participate; an ambiguous winning scope fails closed. The single and batched
+resolvers use the same selection. The multi-chunk read is not a repeatable-read
+snapshot and needs further transactional fencing. Lifecycle-hook dispatch also
+uses this resolver, so a hook targeting a shadowed release fails closed; its
+rollout/transition behavior needs end-to-end verification. Lifecycle hook
+dispatch under the static tenant aggregate renews the exact live claim
+immediately before starting and again when the hook succeeds; a heartbeat
+cannot revive an expired or missing lease. Revision advance checks the live
+claim in the state transaction; successful lifecycle and post-hook-retry
+completion recheck ownership and release the claim in the same transaction as
+their journal changes. An expired or replaced claim rolls those changes back.
+The lease check is at statement time, not commit time. PostgreSQL heartbeat and
+advance now materialize a row lock before evaluating the lease deadline. The
+equivalent SQL was exercised with separate sessions against a disposable
+PostgreSQL 18.6 server, including lock waits past expiry and a rolled-back
+settings write. That SQL experiment does not execute Rust or SeaORM; the Rust
+lock-wait regressions and application integration remain unrun. These checks
+only reject an observed stale
+holder: a lease may expire while external work still runs,
+and dropping a hook future does not prove its side effects stopped. Expired
+journal claims are no longer reclaimed or released by the watchdog; hook and
+uncertain commit failures retain the fence. This deliberately blocks recovery
+until external quiescence is established and the operation is reconciled. No
+safe automated reconciliation procedure exists yet; an operator flag or lease
+expiry is not proof of quiescence. Other node actions, existing deployments
+running older writers, and external effects remain outside this guarantee.
+PostgreSQL concurrency tests are still required. The server lifecycle reaper now retains an ID-ordered page
+cursor across polls, including no-op pages, and wraps at the end. This avoids
+repeatedly scanning the same full batch of live or non-releasable rows; the
+one-shot `reap_stale` API does not retain a cursor. Each page still locks journal
+rows before claims and performs SQLite identity checks. The cursor is process-local
+and advances only after commit; restarts begin at the first page, errors retry the
+same page, and persistently locked or corrupt rows can still impede progress.
+The page limit bounds returned rows, not database scan/sort cost; SQLite also
+performs per-candidate identity validation. ID ordering no longer prioritizes
+the oldest or nonterminal journal entries. Eventual coverage
+assumes successful scans, unlocked rows, a running worker and a finite traversal
+(not an indefinitely growing tail). Rust and real PostgreSQL concurrency tests
+remain unrun. Event and schedule
+projections now share the order-independent scope and ambiguity selector with
+runtime and select before descriptor parsing: an invalid winning descriptor
+cannot restore the platform fallback. Both projections validate the winning
+descriptor's slug, version and digest against the installation and its payload
+digest against admission, even if no binding matches the event. The schedule materializer warns and omits
+an ambiguous or invalid slug while continuing other bindings. For events, an
+incomplete subscription projection is an error before any enqueue or downstream
+publish, rather than silently acknowledging potential lost deliveries. This
+can block unrelated events for the tenant (and an invalid platform winner can
+affect multiple tenants); relay attempts are finite and failed outbox rows need
+operator recovery after repair. A delivery insert conflict is replayable only
+when the existing row belongs to the requesting tenant and has the same source
+digest; a global source-ID collision in another tenant fails closed even without
+RLS. The unique identity remains global, so such a collision requires repair
+rather than creating a second delivery. Replay resolves the then-current subscriptions,
+not a snapshot of those at the original event time. Schedule omissions do not
+promise replay of missed slots: an unseen binding starts its cursor when first
+materialized. Both projection queries return at most 10,001 eligible rows to
+Rust: 10,000 is the supported limit and the extra row detects overflow. Event
+overflow fails the relay projection before publication; schedule overflow fails
+the poll before cursor or slot writes. This is a row-count bound, not a bound on
+descriptor bytes or database scan work. Event and schedule enqueue and schedule
+claim also compare descriptor identity with installation and admission. Event
+claim repeats the comparison in its work-item read. A corrupt descriptor or
+identity mismatch returns a storage error instead of cancelling/dead-lettering
+the item; the claim transaction rolls back and pending work requires repair.
+This can stall a tenant queue. This is not full parity: runtime validates the
+complete installed artifact and exact release, whereas these checks cover the
+descriptor and selected identity columns only. Projection, claim and dispatch
+are not transactionally fenced against later changes. Rust queue/projection
+tests and PostgreSQL/RLS and concurrency verification remain outstanding.
+Artifact binding admission requires an enabled artifact definition for the exact
+release and a matching installation fact; the non-lifecycle executor rechecks
+both against its resolved installation. A static definition with the same slug
+cannot grant artifact execution. Because the current server resolver is
+static-only, artifact bindings using it fail closed until artifact-aware policy
+composition is wired. Lifecycle hooks have a separate admission path. These
+checks still depend on owner provenance, and are not a transactional lock over
+subsequent execution.
+The server's `get_latest` cache hit does not check an independently obtained
+current owner revision. It exposes only policy; consumers requiring both policy
+and defaults use an uncached resolution that supplies the same manifest defaults
+to policy construction. Owner reads are not a single database transaction.
+Observed invalidations fence local in-flight cache fills, but delayed or missed
+events, concurrent database changes, and post-check changes remain freshness
+gaps; TTL is not a transactional authorization guarantee. Browser transports receive only
 `rustok_api::ModuleEffectivePolicyView`: its
 policy revision, per-module effective result, and stable redacted denial
 taxonomy. The host composes one `SharedModuleEffectivePolicyReader` with the
@@ -624,8 +732,11 @@ the same semantic binding into a conflict.
 never authorizes a new execution. A live pending receipt returns `InProgress`;
 expired pending receipts transition to `reconciliation_required`, and execution
 errors do the same rather than deleting them. This prevents automatic
-same-key replay but intentionally means ambiguous operations remain blocked
-until an owner-specific reconciliation workflow is implemented. The stable
+same-key re-execution. The exact original executor can still commit its proven
+response after advisory expiry; its operation ID and full request identity must
+match. Ambiguous operations with no proven response remain blocked until an
+owner-specific reconciliation workflow is implemented. That workflow must fence
+late completion before it authorizes any competing action. The stable
 host idempotency key is propagated through `ArtifactBindingExecutionContext`,
 `SandboxContext`, and Rhai's read-only `IDEMPOTENCY_KEY` constant. That identity
 is useful to effect owners but does not itself make guest effects idempotent or
@@ -953,10 +1064,9 @@ returns the transition result; the server never reads the owner-binding table
 or returns its persistence model from that boundary.
 Lifecycle toggle, retry, compensation, and settings responses follow the same
 rule: the modules owner returns the exact module identity plus current operation
-or state facts, and the server maps them without a recovery-plan preflight or a
-post-command `tenant_modules` or `module_operations` model read. Inherited
-compensation availability is the owner's effective-policy decision rather than
-an adapter reconstruction.
+or state facts, and the server maps them without a post-command
+`tenant_modules` or `module_operations` model read. New retry and compensation
+are currently denied by the owner due to missing execution and quiescence evidence.
 Detail reads attach `ModuleGovernanceLifecycleSnapshot`, whose owner service
 derives moderation policy, validation gates, events, and available governance
 actions from durable registry state. A missing catalog handle or unsupported
@@ -992,11 +1102,88 @@ activation deliberately does not synthesize a governed-transition checkpoint,
 preflight result, conflict-fence decision, observation window, or rollout
 hold: those records exist only when a governed transition is created
 separately for the exact activation operation through the transition owner.
-Plain activation, deactivation, and uninstall are fenced while an unresolved
-governed checkpoint owns the slug in the same scope (a platform-scope
-checkpoint also fences tenant-scope mutations): the governed saga owns the
-serving selection until its checkpoint resolves, and `rollback_artifact`
-remains the operator recovery path out of it.
+Plain activation, deactivation, uninstall, tenant lifecycle and admission
+reverification reject unresolved governed checkpoints in overlapping scopes:
+platform changes check every tenant; tenant changes check their own tenant and
+platform. `InterventionRequired` remains unresolved even though automatic
+progression is terminal. Rollback may resolve its own checkpoint, but rejects
+other overlapping checkpoints. Governed staging and these serving mutations
+acquire the same platform slug lock, then the tenant lock when required.
+Staging rechecks conflicting checkpoints and the exact predecessor installation
+under that lock; normalized, localized and source-locale settings commits also
+reject unresolved checkpoints under the platform lock, including first-install
+transitions without a predecessor. Settings transactions lock their receipt
+before the platform lock and hold both through commit; on a domain conflict
+they roll back, release the aggregate claim, and record a replayable failure.
+PostgreSQL transactions use READ COMMITTED so post-lock checks see commits made
+while waiting. The platform lock serializes all tenants of a slug, a deliberate
+concurrency cost.
+
+Lifecycle toggle and post-hook recovery admission now take that same platform
+lock while checking checkpoints and acquiring the durable journal aggregate
+claim. For an artifact target they also resolve the tenant/platform winning
+installation under that lock and compare its admitted descriptor to the target
+catalog definition before committing the claim. Staging and artifact
+serving-lock users check overlapping journal claims while holding the lock; even
+an expired claim blocks them until it is cleared. PostgreSQL fails closed when
+row security is active for the lifecycle aggregate or, for artifact claim
+admission, any of the installation, admission, tenant-lifecycle or uninstall
+tables under the current role. Checkpoint fence lookups also fail closed under
+active checkpoint-table RLS, since a policy might hide a platform or overlapping
+tenant checkpoint. The visibility checks acquire transaction-held table locks
+before inspecting RLS so policy DDL cannot race those reads. Equivalent SQL
+experiments on disposable PostgreSQL 18.6 confirmed the checkpoint visibility
+check detects an RLS-hidden platform row and holds its table lock against DDL;
+they also checked the four artifact table locks. They do not run Rust or prove
+application role policies. Filtered rows could hide claims or a higher
+priority selection; an auditable cross-tenant policy has not yet been
+established. These checks may make lifecycle admission, settings, serving or
+staging unavailable for RLS-restricted roles. SQLite normalizes tenant UUID storage forms for the claim
+check.
+
+This is not yet a complete lifecycle fence: the new journal path retains
+uncertain claims, but older writers or other execution paths can still overlap
+external effects. The target descriptor check does not pin the precomputed dependency or
+policy snapshot, nor distinguish two installations with identical descriptors;
+post-hook recovery lacks durable evidence of the original artifact release and
+is now disabled for new attempts.
+Native catalog/distribution identity is not revalidated by this check. Static
+distribution rollouts do not participate, and staging does not validate
+existing static settings against the candidate schema. Rollout items alone are
+not a complete set of affected native modules: the platform binary and removed
+predecessor selections also matter. Converged or superseded status and assignment
+lease expiry do not prove an already issued node action has stopped. A complete
+fence needs a fleet execution boundary and reconciliation of uncertain node
+actions, not just a per-slug status check. Static rollout and artifact node
+reconciliation assignment claim, heartbeat, and report use the database wall
+clock and check leases after locking. Rollout locks the release head before the
+rollout head; artifact reconciliation locks its state and validates installation
+identities before heartbeat. These changes have not been compiled or tested
+against real PostgreSQL. SQLite only compares canonical millisecond UTC lease
+timestamps; active claims in older timestamp formats fail closed instead of being
+replayed, renewed, or reclaimed. Before deployment, stop old agents and writers,
+reconcile any uncertain node actions, and repair or clear legacy claims only
+after confirming their work has stopped. The lease changes do not fence already
+issued artifact node actions: on heartbeat failure the agent waits for an
+in-flight materializer and does not start a report, but that materializer can
+continue work and cancellation alone would not prove external or filesystem
+effects stopped. Shutdown can interrupt the wait. Its processor handles pending
+and prepared work only, although the owner also offers active assignments for
+drift observation; that mismatch remains unresolved. The low-level checkpoint, static lifecycle
+claim, tenant module state writers, lifecycle journal mutations, and raw toggle executor
+are crate-private. The public lifecycle writer constructs the execution request and
+performs the owner validations. Raw journal, checkpoint and aggregate methods exposed
+by `test-support` are only for fixtures; do not enable this Cargo feature in any
+production build (including through feature unification). Journal maintenance and
+other low-level APIs still require a separate boundary review. This visibility change
+is an API break for callers of the raw executor and journal mutations; migrate to
+owner commands, not test fixtures. Old binaries and direct SQL also bypass the
+protocol; quiesce old writers before relying on it. It does not establish hook
+identity or quiescence, or block legacy uncertain operations without a claim. SQLite
+tenant-scoped checkpoint queries normalize native BLOB and legacy TEXT UUID
+representations; an undecodable selected row fails the read. Normalization can
+scan checkpoint rows. New Rust regressions and real PostgreSQL race tests have
+not been run.
 
 `SeaOrmModuleTransitionService::start_governed_automatic_artifact_transition`
 is the governed start saga. It loads the exact admitted candidate and the
@@ -1124,7 +1311,56 @@ execution failures spend the `max_attempts` dead-letter budget, so a
 temporarily disabled module receives its queued work after re-enable
 instead of losing it permanently. A permanently disabled module's held
 deliveries remain until the module is re-enabled or its work is purged
-through uninstall.
+through uninstall. Each claim now stores a fresh UUID independently of the
+failure-attempt budget. Every completion requires that exact token and a live
+lease according to the database clock; a held delivery can therefore reuse its
+attempt number without accepting the previous completion. PostgreSQL creates
+claim deadlines and retry delays using `clock_timestamp()`, rather than the
+transaction-start `NOW()`, so time spent waiting before the statement does not
+silently consume a fresh lease. PostgreSQL completion locks the delivery row
+before checking expiry, avoiding a check performed before a lock wait. The
+guard is at the database statement, not a fence for guest side effects already
+in flight; the lock-wait regression has not yet run on real PostgreSQL.
+Missing or out-of-scope installations, missing admission identity, and corrupt
+release descriptors are repair errors rather than proof of unavailability;
+claim rolls back rather than terminally cancelling or dead-lettering such work.
+
+Migration `000092` requires a **stop-the-world worker upgrade**: stop all old
+event and schedule delivery workers before migration and do not restart them.
+They do not check claim tokens. Existing running rows get a NULL token and
+cannot be completed by new workers; they expire and are retried under normal
+queue policy. The migration refuses automatic downgrade. Downstream callers of
+the queue completion API must carry the claim token from the work item.
+
+The delivery adapters rotate their starting tenant and log per-tenant claim or
+materialization failures while continuing to other tenants. If no item is
+claimed, they return the first error; when another tenant supplies work, the
+error remains observable in logs. A poison item still blocks later work within
+its own tenant, and tenant enumeration failures remain global.
+
+Static settings, localized settings and source-locale writes lock the current
+receipt before touching the lifecycle aggregate. A tenant-scoped fence binds
+that aggregate claim to the exact receipt and lease; reclaim can transfer only
+its own recorded claim, while a journal or unrecognized claim remains busy
+until its owner reconciles it. Completion and cleanup lock the same receipt
+before the aggregate, preventing a stale worker from cleaning up the new claim.
+The aggregate row also records the owner domain (`journal` or `settings`).
+Journal heartbeat, advance and release check that domain on the aggregate
+itself; the stale reaper no longer releases claims. These paths cannot take or
+release a settings claim even if UUIDs match. Settings writes use settings-only advance and release. This
+avoids relying on a tenant-RLS-filtered fence lookup in journal workers. The
+cross-owner changes and their Rust regression tests remain unverified on the
+real application and require PostgreSQL concurrency/lock-wait testing.
+
+Migration `000093` requires stopping **all old static lifecycle and settings
+writers** and reconciling active aggregate claims before upgrade. Legacy claims
+are not distinguishable by owner: the migration fails if any remain, and it
+refuses automatic downgrade. Do not run mixed old and new writers. An unrelated
+expired journal claim is not automatically stolen by settings; investigate it.
+There is no implemented proof-based lifecycle reconciliation procedure yet. Fence rows can remain after a claim is superseded
+by another owner and need an owner-verified retention procedure; they cannot by
+themselves authorize a claim transfer. PostgreSQL/RLS and concurrency evidence
+for this protocol remains required before production.
 
 ### UI resource projection
 

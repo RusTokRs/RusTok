@@ -29,7 +29,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
     let (action_error, set_action_error) = signal(Option::<String>::None);
 
     Effect::new(move |_| {
-        let _ = selected_post_query.get();
+        selected_post_query.track();
         set_page.set(1);
     });
 

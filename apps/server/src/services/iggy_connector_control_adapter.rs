@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_iggy_connector::{
-    IggyConnectorConfigurationSnapshot, IggyConnectorControl, IggyConnectorSettingsInput,
-    IggyConnectorUpdateOutcome,
+    IggyConnectorConfigurationSnapshot, IggyConnectorControl, IggyConnectorControlError,
+    IggyConnectorSettingsInput, IggyConnectorUpdateOutcome,
 };
 use uuid::Uuid;
 
@@ -21,10 +21,10 @@ impl ServerIggyConnectorControl {
 
 #[async_trait]
 impl IggyConnectorControl for ServerIggyConnectorControl {
-    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, String> {
+    async fn configuration(&self) -> Result<IggyConnectorConfigurationSnapshot, IggyConnectorControlError> {
         IggyConnectorSettingsService::configuration(&self.runtime)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| IggyConnectorControlError(error.to_string()))
     }
 
     async fn update_configuration(
@@ -32,13 +32,13 @@ impl IggyConnectorControl for ServerIggyConnectorControl {
         input: IggyConnectorSettingsInput,
         actor_id: Uuid,
         actor_tenant_id: Uuid,
-    ) -> Result<IggyConnectorUpdateOutcome, String> {
+    ) -> Result<IggyConnectorUpdateOutcome, IggyConnectorControlError> {
         IggyConnectorSettingsService::save(&self.runtime, input, actor_id, actor_tenant_id)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| IggyConnectorControlError(error.to_string()))?;
         let snapshot = IggyConnectorSettingsService::configuration(&self.runtime)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| IggyConnectorControlError(error.to_string()))?;
         Ok(IggyConnectorUpdateOutcome {
             desired_mode: snapshot.desired_mode,
             configured: snapshot.configured,

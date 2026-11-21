@@ -302,10 +302,17 @@ fn tenant_locale_entry_weight(
 }
 
 fn tenant_locale_cache(ctx: &ServerRuntimeContext) -> Arc<TenantLocaleCache> {
-    let candidate = Arc::new(TenantLocaleCache::new());
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<Arc<TenantLocaleCache>>()
-        .unwrap_or(candidate)
+    if let Some(existing) = ctx.shared_get::<Arc<TenantLocaleCache>>() {
+        existing
+    } else {
+        let candidate = Arc::new(TenantLocaleCache::new());
+        if ctx.shared_insert_if_absent(candidate.clone()) {
+            candidate
+        } else {
+            ctx.shared_get::<Arc<TenantLocaleCache>>()
+                .unwrap_or(candidate)
+        }
+    }
 }
 
 pub async fn resolve_locale(
@@ -326,8 +333,12 @@ pub async fn resolve_locale(
     if let Some(tenant) = tenant_context.as_ref() {
         let locales = match get_tenant_locales_cached(&ctx, tenant.id).await {
             Ok(locales) => locales,
-            Err(error) => {
-                tracing::error!(%error, tenant_id = %tenant.id, "locale::resolve_locale get_tenant_locales_cached FAILED");
+            Err(_error) => {
+                tracing::error!(
+                    tenant_id = %tenant.id,
+                    error_code = "tenant_locale_cache_lookup_failed",
+                    "Tenant locale cache lookup failed"
+                );
                 return Ok(
                     HttpError::internal("Failed to resolve tenant locale policy").into_response(),
                 );

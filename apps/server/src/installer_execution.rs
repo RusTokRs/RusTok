@@ -173,27 +173,29 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
     async fn record_receipt(
         &self,
         runtime: &DatabaseConnection,
+        session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> std::result::Result<InstallReceiptRecord, InstallExecutionError> {
-        InstallPersistencePort::record_receipt(&SeaOrmInstallerPorts, runtime, receipt).await
+        InstallPersistencePort::record_receipt(&SeaOrmInstallerPorts, runtime, session, receipt)
+            .await
     }
 
     async fn set_state(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         state: InstallState,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::set_state(&SeaOrmInstallerPorts, runtime, session_id, state).await
+        InstallPersistencePort::set_state(&SeaOrmInstallerPorts, runtime, session, state).await
     }
 
     async fn set_tenant_id(
         &self,
         runtime: &DatabaseConnection,
-        session_id: Uuid,
+        session: &InstallSessionRecord,
         tenant_id: Uuid,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::set_tenant_id(&SeaOrmInstallerPorts, runtime, session_id, tenant_id)
+        InstallPersistencePort::set_tenant_id(&SeaOrmInstallerPorts, runtime, session, tenant_id)
             .await
     }
 }

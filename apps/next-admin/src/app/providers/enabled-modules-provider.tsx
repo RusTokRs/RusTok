@@ -1,6 +1,7 @@
 import { auth } from '@/auth';
 import { fetchEnabledModules } from '@/shared/api/modules';
 import { EnabledModulesClientProvider } from '@/shared/lib/enabled-modules-context';
+import { ModulePolicyError } from './module-policy-error';
 
 export async function EnabledModulesProvider({
   children
@@ -10,17 +11,16 @@ export async function EnabledModulesProvider({
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
-  let enabledModules: string[] = [];
+  if (!token || !tenantSlug) return <ModulePolicyError />;
 
-  if (token && tenantSlug) {
-    try {
-      enabledModules = await fetchEnabledModules({ token, tenantSlug });
-    } catch (error) {
-      console.warn(
-        'Failed to load enabled modules for Next admin shell.',
-        error
-      );
-    }
+  let enabledModules: string[];
+  try {
+    enabledModules = await fetchEnabledModules({ token, tenantSlug });
+  } catch (error) {
+    // This provider is in the dashboard layout, outside that segment's
+    // error boundary. Never supply an empty policy after a failed read.
+    console.error('Failed to fetch module availability', error);
+    return <ModulePolicyError />;
   }
 
   return (

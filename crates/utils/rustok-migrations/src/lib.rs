@@ -65,6 +65,9 @@ mod composition {
     mod m20261025_000005_add_oauth_token_family;
     mod m20261028_000001_enforce_single_running_install_http_job;
     mod m20261101_000001_add_user_password_changed_at;
+    mod m20261118_000001_add_sys_event_consumer_retention;
+    mod m20261118_000002_add_installer_attempt_fencing;
+    mod m20261121_000001_add_sys_events_tenant_projection;
 
     #[cfg(test)]
     mod contract_tests;
@@ -166,6 +169,7 @@ mod composition {
                 Box::new(m20250101_000001_create_tenants::Migration),
                 publish_tables,
                 Box::new(m20260426_000001_create_install_sessions::Migration),
+                Box::new(m20261118_000002_add_installer_attempt_fencing::Migration),
                 static_owner,
             ]
         }
@@ -180,22 +184,32 @@ mod composition {
         db: &sea_orm_migration::sea_orm::DatabaseConnection,
     ) -> Result<(), DbErr> {
         let owner_migration = "m20260722_000034_static_promotions";
+        let fencing_migration = "m20261118_000002_add_installer_attempt_fencing";
         let manager = SchemaManager::new(db);
         let version_placeholder = match db.get_database_backend() {
             sea_orm_migration::sea_orm::DbBackend::Postgres => "$1",
             _ => "?",
         };
-        if manager.has_table("seaql_migrations").await?
-            && db
+        if manager.has_table("seaql_migrations").await? {
+            let owner_applied = db
                 .query_one_raw(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
                     db.get_database_backend(),
                     format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
                     [owner_migration.into()],
                 ))
                 .await?
-                .is_some()
-        {
-            return Ok(());
+                .is_some();
+            let fencing_applied = db
+                .query_one_raw(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
+                    db.get_database_backend(),
+                    format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
+                    [fencing_migration.into()],
+                ))
+                .await?
+                .is_some();
+            if owner_applied && fencing_applied {
+                return Ok(());
+            }
         }
         InstallerOwnerMigrator::up(db, None).await
     }
@@ -348,6 +362,15 @@ mod composition {
         all.push(Box::new(
             m20261101_000001_add_user_password_changed_at::Migration,
         ));
+        all.push(Box::new(
+            m20261118_000001_add_sys_event_consumer_retention::Migration,
+        ));
+        all.push(Box::new(
+            m20261118_000002_add_installer_attempt_fencing::Migration,
+        ));
+        all.push(Box::new(
+            m20261121_000001_add_sys_events_tenant_projection::Migration,
+        ));
         all
     }
 
@@ -445,6 +468,20 @@ mod composition {
             ] {
                 assert!(manager.has_table(table).await.unwrap(), "missing {table}");
             }
+            assert!(
+                manager
+                    .has_column("install_sessions", "attempt_generation")
+                    .await
+                    .unwrap(),
+                "installer attempt generation must exist before the owner import boundary"
+            );
+            assert!(
+                manager
+                    .has_column("install_step_receipts", "attempt_generation")
+                    .await
+                    .unwrap(),
+                "installer receipts must persist their attempt generation"
+            );
             assert!(
                 !manager.has_table("users").await.unwrap(),
                 "tenant/runtime schema must remain untouched before owner import"

@@ -53,6 +53,8 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-18](./2026-11-18-outbox-consumer-retention-acknowledgements.md) | Outbox retention honors registered durable consumers | Accepted | In progress | Extends [Outbox runtime](./2026-03-11-queue-runtime-source-of-truth-outbox.md) and [Acknowledged local root-event delivery](./2026-11-18-acknowledged-root-event-delivery.md) |
+| [2026-11-18](./2026-11-18-acknowledged-root-event-delivery.md) | Acknowledged local root-event delivery | Accepted | In progress | Extends [Sealed typed event families](./2026-07-17-sealed-typed-event-families.md) |
 | [2026-11-13](./2026-11-13-standalone-admin-editor-delivery.md) | Standalone admin editor delivery | Accepted | In progress | Extends [Page Builder server preview delivery](./2026-11-12-page-builder-server-preview-delivery.md), [Fly SSR control contract and route-carried view state](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md) |
 | [2026-11-13](./2026-11-13-auth-owned-client-ffa-boundary.md) | Auth-owned shared client FFA boundary | Accepted | In progress | Extends [HttpOnly session migration](./2026-09-27-leptos-httponly-session-migration.md) |
 | [2026-11-12](./2026-11-12-page-builder-server-preview-delivery.md) | Page Builder server preview delivery | Accepted | Implemented | Extends [Fly SSR control contract and route-carried view state](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md) |

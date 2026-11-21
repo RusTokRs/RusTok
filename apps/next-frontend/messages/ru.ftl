@@ -463,3 +463,7 @@ Blog-reactions-signIn = Войдите, чтобы оставить реакци
 Blog-reactions-loading = Загрузка реакций...
 Blog-reactions-unavailable = Реакции временно недоступны.
 Blog-reactions-updateError = Не удалось изменить реакцию.
+
+ModulePolicy-title = Не удалось проверить доступность модулей
+ModulePolicy-description = Магазин временно недоступен. Повторите попытку.
+ModulePolicy-retry = Повторить

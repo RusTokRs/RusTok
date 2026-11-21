@@ -77,7 +77,7 @@ async fn test_transition_checkpoint_persistence_and_update() {
     };
 
     // 1. Save initial checkpoint
-    TransitionCheckpointStore::save_checkpoint(&db, &initial_checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &initial_checkpoint)
         .await
         .expect("save_checkpoint should succeed");
 
@@ -118,7 +118,7 @@ async fn test_transition_checkpoint_persistence_and_update() {
         updated_at: Utc::now(),
     };
 
-    TransitionCheckpointStore::save_checkpoint(&db, &updated_checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &updated_checkpoint)
         .await
         .expect("update save_checkpoint should succeed");
 
@@ -186,7 +186,7 @@ async fn active_checkpoint_listing_discovers_intervention_required() {
             },
         ),
     ] {
-        TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+        TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
             .await
             .expect("seed checkpoint");
     }
@@ -204,6 +204,45 @@ async fn active_checkpoint_listing_discovers_intervention_required() {
     assert!(unresolved_ids.contains(&intervention_operation_id));
     assert!(!unresolved_ids.contains(&converged_operation_id));
     assert!(!unresolved_ids.contains(&recovered_operation_id));
+}
+
+// Exercise native and historical encodings in both tenant-scoped fence reads.
+#[tokio::test]
+async fn unresolved_text_tenant_checkpoint_is_not_silently_skipped() {
+    let db = setup_db().await;
+    let tenant = Uuid::new_v4();
+    let now = Utc::now();
+    let checkpoint = ModuleTransitionCheckpoint {
+        operation_id: Uuid::new_v4(), revision: 1, module_slug: "orders".into(),
+        tenant_id: Some(tenant), predecessor_digest: Some("predecessor".into()),
+        candidate_digest: "candidate".into(),
+        state: ModuleTransitionState::InterventionRequired { failure_reason: "operator decision".into() },
+        security_epoch: GlobalSecurityEpoch::INITIAL, fences: ConflictFenceSet::new(vec![]),
+        recovery_attempt_count: 0, created_at: now, updated_at: now,
+    };
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint).await.unwrap();
+    for representation in [tenant.to_string(), tenant.to_string().to_uppercase(), tenant.simple().to_string()] {
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "UPDATE module_transition_checkpoints SET tenant_id = ?1 WHERE operation_id = ?2",
+            vec![representation.into(), checkpoint.operation_id.into()],
+        )).await.unwrap();
+        for rows in [
+            TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, Some(tenant)).await,
+            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(&db, "orders", tenant).await,
+        ] {
+            // SQLx UUID decoding may reject TEXT even though it matched; a
+            // storage error is safe, but silently returning no fence is not.
+            assert!(match rows {
+                Ok(rows) => rows.iter().any(|row| row.operation_id == checkpoint.operation_id),
+                Err(_) => true,
+            }, "legacy checkpoint must be returned or fail closed");
+        }
+        assert!(TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, Some(Uuid::new_v4()))
+            .await.unwrap().is_empty());
+        assert!(TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(&db, "other", tenant)
+            .await.unwrap().is_empty());
+    }
 }
 
 #[tokio::test]
@@ -456,20 +495,20 @@ async fn resolve_post_hook_failure_accepts_typed_and_legacy_shapes_only() {
 
     // Typed shape: Validated -> Running -> CommittedHookPending ->
     // CommittedHookFailed resolves to Committed.
-    let typed = ModuleOperationJournal::record(&db, request())
+    let typed = ModuleOperationJournal::record_for_test(&db, request())
         .await
         .expect("record typed operation");
-    ModuleOperationJournal::mark_running(&db, typed.id)
+    ModuleOperationJournal::mark_running_for_test(&db, typed.id)
         .await
         .expect("running");
-    ModuleOperationJournal::mark_committed_hook_pending(&db, typed.id)
+    ModuleOperationJournal::mark_committed_hook_pending_for_test(&db, typed.id)
         .await
         .expect("hook pending");
-    ModuleOperationJournal::mark_committed_hook_failed(&db, typed.id, "hook timeout")
+    ModuleOperationJournal::mark_committed_hook_failed_for_test(&db, typed.id, "hook timeout")
         .await
         .expect("hook failed");
     assert!(
-        ModuleOperationJournal::resolve_post_hook_failure(&db, typed.id)
+        ModuleOperationJournal::resolve_post_hook_failure_for_test(&db, typed.id)
             .await
             .expect("resolve typed")
     );
@@ -483,33 +522,33 @@ async fn resolve_post_hook_failure_accepts_typed_and_legacy_shapes_only() {
     );
 
     // Legacy shape: Failed with the pre-split `post-hook:` message prefix.
-    let legacy = ModuleOperationJournal::record(&db, request())
+    let legacy = ModuleOperationJournal::record_for_test(&db, request())
         .await
         .expect("record legacy operation");
-    ModuleOperationJournal::mark_running(&db, legacy.id)
+    ModuleOperationJournal::mark_running_for_test(&db, legacy.id)
         .await
         .expect("legacy running");
-    ModuleOperationJournal::mark_failed(&db, legacy.id, "post-hook: timeout")
+    ModuleOperationJournal::mark_failed_for_test(&db, legacy.id, "post-hook: timeout")
         .await
         .expect("legacy failed");
     assert!(
-        ModuleOperationJournal::resolve_post_hook_failure(&db, legacy.id)
+        ModuleOperationJournal::resolve_post_hook_failure_for_test(&db, legacy.id)
             .await
             .expect("resolve legacy")
     );
 
     // A plain failure never committed its state and must not resolve.
-    let plain = ModuleOperationJournal::record(&db, request())
+    let plain = ModuleOperationJournal::record_for_test(&db, request())
         .await
         .expect("record plain operation");
-    ModuleOperationJournal::mark_running(&db, plain.id)
+    ModuleOperationJournal::mark_running_for_test(&db, plain.id)
         .await
         .expect("plain running");
-    ModuleOperationJournal::mark_failed(&db, plain.id, "pre-hook: denied")
+    ModuleOperationJournal::mark_failed_for_test(&db, plain.id, "pre-hook: denied")
         .await
         .expect("plain failed");
     assert!(
-        !ModuleOperationJournal::resolve_post_hook_failure(&db, plain.id)
+        !ModuleOperationJournal::resolve_post_hook_failure_for_test(&db, plain.id)
             .await
             .expect("resolve plain")
     );
@@ -547,13 +586,13 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
         expected_revision: Some(1),
     };
 
-    let with_result = ModuleOperationJournal::record(&db, request())
+    let with_result = ModuleOperationJournal::record_for_test(&db, request())
         .await
         .expect("record operation with result");
-    ModuleOperationJournal::mark_running(&db, with_result.id)
+    ModuleOperationJournal::mark_running_for_test(&db, with_result.id)
         .await
         .expect("running");
-    ModuleOperationJournal::mark_committed_with_result(&db, with_result.id, "{\"revision\":2}")
+    ModuleOperationJournal::mark_committed_with_result_for_test(&db, with_result.id, "{\"revision\":2}")
         .await
         .expect("commit with result");
     assert_eq!(
@@ -573,7 +612,7 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
 
     // A terminal row cannot be recommitted with a different result.
     assert!(
-        ModuleOperationJournal::mark_committed_with_result(
+        ModuleOperationJournal::mark_committed_with_result_for_test(
             &db,
             with_result.id,
             "{\"revision\":3}",
@@ -589,10 +628,10 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
     );
 
     // Plain commits (the legacy/recovery shape) store no snapshot.
-    let plain = ModuleOperationJournal::record(&db, request())
+    let plain = ModuleOperationJournal::record_for_test(&db, request())
         .await
         .expect("record plain operation");
-    ModuleOperationJournal::mark_committed(&db, plain.id)
+    ModuleOperationJournal::mark_committed_for_test(&db, plain.id)
         .await
         .expect("plain commit from validated");
     assert_eq!(

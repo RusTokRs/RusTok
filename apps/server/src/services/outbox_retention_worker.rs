@@ -65,9 +65,12 @@ async fn supervise_outbox_retention(
                     tracing::debug!("Outbox retention prune run found nothing to prune");
                 }
             }
-            Err(error) => {
+            Err(_error) => {
                 OUTBOX_RETENTION_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
-                tracing::error!(error = %error, "Outbox retention prune failed");
+                tracing::error!(
+                    error_code = "outbox_retention_prune_failed",
+                    "Outbox retention prune failed"
+                );
             }
         }
 
@@ -121,6 +124,7 @@ mod tests {
                 retention: OutboxRetention::new(db).with_config(OutboxRetentionConfig {
                     retention: chrono::Duration::days(30),
                     batch_size: 10,
+                    ..Default::default()
                 }),
             },
             stop_rx,

@@ -107,11 +107,11 @@ async fn worker_loop(
                             );
                         }
                     }
-                    Err(error) => {
+                    Err(_error) => {
                         tracing::error!(
                             worker = "paid_order_create_label",
                             instance_id,
-                            error = %error,
+                            error_code = "paid_order_label_recovery_failed",
                             "Paid-order label recovery sweep failed"
                         );
                     }

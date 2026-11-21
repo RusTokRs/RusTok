@@ -16,4 +16,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 server = []
 
+[lints]
+workspace = true
+
 [dependencies]
+thiserror.workspace = true
+

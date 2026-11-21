@@ -345,3 +345,76 @@ groups:
         annotations:
           summary: "Critical errors in module"
           description: "Module {{$labels.module}} has {{ $value | humanize }} critical errors/sec"
+  - name: rustok_outbox_alerts
+    interval: 30s
+    rules:
+      # Any event landing in the DLQ needs operator attention: it exhausted
+      # its retries (or was permanently undispatchable) and stays failed
+      # until replayed from the admin DLQ surface.
+      - alert: OutboxEventsEnteringDlq
+        expr: increase(rustok_outbox_relay_dlq_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox events entered the DLQ"
+          description: "{{ $value }} outbox events moved to the dead-letter queue in the last 15 minutes. Inspect and replay them from the admin DLQ surface."
+
+      # A rising share of failed dispatches means the target transport or a
+      # consumer is unhealthy long before the DLQ threshold is reached.
+      - alert: OutboxRelayFailureRateHigh
+        expr: |
+          (
+            rate(rustok_outbox_relay_failure_total[10m])
+            /
+            clamp_min(rate(rustok_outbox_relay_processed_total[10m]), 0.001)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox relay failure rate is high"
+          description: "More than 25% of outbox dispatches failed over the last 10 minutes. Check the target transport and the newest last_error values."
+
+      # Dispatch latency percentiles come from the shared dispatch
+      # histogram (milliseconds) recorded per relayed event.
+      - alert: OutboxDispatchLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            rate(rustok_event_dispatch_latency_ms_bucket{consumer="outbox_relay"}[5m])
+          ) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox dispatch latency is high"
+          description: "P95 outbox dispatch latency is {{ $value }}ms (threshold: 1000ms). Slow dispatches risk outliving claim leases; verify publish timeouts stay below claim TTL."
+
+      # The supervisor restarts a crashed relay loop; repeated restarts
+      # mean delivery is effectively stalled.
+      - alert: OutboxRelayWorkerRestarting
+        expr: increase(rustok_runtime_worker_restarts_total{worker="outbox_relay"}[10m]) > 3
+        for: 2m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox relay worker is repeatedly restarting"
+          description: "The outbox relay worker restarted more than three times in ten minutes. Inspect the terminal error before increasing restart delays."
+
+      # Retention failures leave delivered rows (and prunable receipts)
+      # accumulating; the worker retries each interval, so a growing
+      # counter means a persistent cause.
+      - alert: OutboxRetentionFailing
+        expr: increase(rustok_runtime_worker_failures_total{worker="outbox_retention"}[30m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox retention prune is failing"
+          description: "The outbox retention worker failed more than three times in thirty minutes. Delivered events and terminal receipts are not being pruned."

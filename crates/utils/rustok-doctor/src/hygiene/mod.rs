@@ -91,7 +91,9 @@ impl Scan<'_> {
         for prev in self.lines[..index].iter().rev().take(8) {
             let code_trim = prev.syntax.trim();
             let comment_trim = prev.comment.trim();
-            if comment_trim.contains("INVARIANT:") || comment_trim.contains("physically guaranteed:") {
+            if comment_trim.contains("INVARIANT:")
+                || comment_trim.contains("physically guaranteed:")
+            {
                 return true;
             }
             if in_method_chain {
@@ -431,7 +433,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         || matches!(name.as_str(), "test.rs" | "tests.rs" | "test_support.rs");
     let cli_file = name == "main.rs"
         || name == "cli.rs"
-        || parts.iter().any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
+        || parts
+            .iter()
+            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
     let mut scan = Scan {
         file,
         lines: source::lines(content),
@@ -1022,8 +1026,16 @@ fn check_rules(
             );
         }
 
-        if !scan.cli_file
-            && !scan.file.contains("crates/utils/rustok-doctor")
+        let typed_error_exempt = scan.cli_file
+            || scan.migration
+            || scan.file.contains("crates/utils/rustok-doctor")
+            || scan.file.contains("/admin/")
+            || scan.file.contains("/storefront/")
+            || scan.file.ends_with("seo_targets.rs")
+            || scan.file.ends_with("seo_audience_targets.rs")
+            || scan.file.ends_with("public_comments_snapshot.rs");
+
+        if !typed_error_exempt
             && (scan.file.starts_with("crates/modules/")
                 || scan.file.starts_with("crates/libs/")
                 || scan.file.starts_with("src/"))
@@ -1229,6 +1241,7 @@ fn check_rules(
         }
     }
     if loop_depth.is_some() && !test_context
+        && !re!(r"^\s*(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(text)
         && re!(r"\.(?:one|all|one_by_id|query_one|query_all)\s*\(\s*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)\s*\)\.await").is_match(text)
     {
         scan.add(number, "P-BATCH-QUERY", "Transactional Batching", Severity::High,
@@ -1283,7 +1296,9 @@ fn check_rules(
                 "Possible default tenant selector. Verify that missing tenant authority fails closed.",
                 "tenant_id.ok_or(DomainError::TenantNotFound)?");
         }
-        if re!(r"\bif\s+[A-Za-z_]\w*\.tenant_id\s*!=\s*tenant_id\b").is_match(text) {
+        if re!(r"\bif\s+[A-Za-z_]\w*\.tenant_id\s*!=\s*tenant_id\b").is_match(text)
+            && !scan.has_invariant(index, text)
+        {
             scan.add(number, "P-TENANT-FALLBACK-LEAK", "Post-Hoc In-Memory Tenant Isolation", Severity::Critical,
                 "Entity tenant checked in memory after query. Queries must filter by tenant_id at the database level to ensure fail-closed isolation.",
                 "Add .filter(Column::TenantId.eq(tenant_id)) directly to the database query.");

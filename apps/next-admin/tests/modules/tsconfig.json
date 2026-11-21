@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../../src/*"],
+      "@rustok/ui-controls/*": [
+        "../../../../packages/rustok-ui-controls/src/*"
+      ],
+      "react": ["../../node_modules/react"],
+      "react/*": ["../../node_modules/react/*"],
+      "clsx": ["../../node_modules/clsx"],
+      "tailwind-merge": ["../../node_modules/tailwind-merge"]
+    }
+  }
+}

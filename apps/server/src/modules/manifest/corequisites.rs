@@ -206,9 +206,11 @@ fn validate_corequisite_selection(
                     "selected deployment co-requisite '{co_requisite}' has invalid module version '{installed}'"
                 )
             })?;
-            let requirement = VersionReq::parse(requirement).expect(
-                "deployment co-requisite requirement was validated before provider comparison",
-            );
+            let requirement = VersionReq::parse(requirement).map_err(|error| {
+                format!(
+                    "module '{slug}' has invalid deployment co-requisite requirement '{requirement}': {error}"
+                )
+            })?;
             if !requirement.matches(&installed_version) {
                 return Err(format!(
                     "module '{slug}' requires deployment co-requisite '{co_requisite}' version '{}', but selected '{installed}'",

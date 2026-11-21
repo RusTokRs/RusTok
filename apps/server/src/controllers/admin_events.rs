@@ -266,15 +266,18 @@ fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> SimpleExpr
 }
 
 fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
-    // New envelopes always persist their canonical tenant at the top level.
-    // Older events without that key can use the nested legacy event tenant;
-    // when both exist, nested data must never grant access to another tenant.
+    // The denormalised `tenant_id` column is authoritative (and indexed);
+    // new writers always populate it. Rows written before the column was
+    // backfilled fall back to the payload: new envelopes persist their
+    // canonical tenant at the top level, older events can use the nested
+    // legacy event tenant; when both exist, nested data must never grant
+    // access to another tenant.
     match backend {
         DbBackend::Sqlite => {
-            "(CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)"
+            "(tenant_id = ?1 OR (tenant_id IS NULL AND (CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)))"
         }
         _ => {
-            "(CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)"
+            "(tenant_id = $1::uuid OR (tenant_id IS NULL AND (CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)))"
         }
     }
 }
@@ -491,7 +494,7 @@ mod tests {
     #[tokio::test]
     async fn dlq_legacy_tenant_fallback_requires_missing_canonical_key() {
         use super::sys_event_tenant_condition;
-        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+        use sea_orm::{PaginatorTrait, QueryFilter};
 
         let db = Database::connect("sqlite::memory:")
             .await

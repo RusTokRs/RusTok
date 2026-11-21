@@ -235,7 +235,7 @@ mod tests {
         let user_a = Uuid::new_v4();
         let user_b = Uuid::new_v4();
         for (role, tenant) in [(role_a, tenant_a), (role_b, tenant_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO roles (id, tenant_id) VALUES (?, ?)",
                 [role.to_string().into(), tenant.to_string().into()],
@@ -244,7 +244,7 @@ mod tests {
             .expect("insert role");
         }
         for (user, tenant) in [(user_a, tenant_a), (user_b, tenant_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
                 [user.to_string().into(), tenant.to_string().into()],
@@ -253,7 +253,7 @@ mod tests {
             .expect("insert user");
         }
         for (user, role) in [(user_a, role_a), (user_b, role_a), (user_a, role_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
                 [
@@ -301,7 +301,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),
@@ -338,7 +338,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),

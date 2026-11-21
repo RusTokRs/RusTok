@@ -29,6 +29,7 @@ impl AuthLifecycleService {
     ) -> Result<(), AuthLifecycleError> {
         let claims = decode_email_verification_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidVerificationToken)?;
+        // INVARIANT: In-memory verification ensuring the decoded email verification token belongs to the target tenant.
         if claims.tenant_id != tenant_id {
             return Err(AuthLifecycleError::InvalidVerificationToken);
         }

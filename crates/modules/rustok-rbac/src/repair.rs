@@ -102,10 +102,10 @@ where
     C: ConnectionTrait,
 {
     ensure_supported_backend(db.get_database_backend())?;
-    if let Some(tenant_id) = options.tenant_id {
-        if tenant_id.is_nil() {
-            return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
-        }
+    if let Some(tenant_id) = options.tenant_id
+        && tenant_id.is_nil()
+    {
+        return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
     }
     let tenant_ids = load_tenant_ids(db, options.tenant_id).await?;
     if let Some(tenant_id) = options.tenant_id
@@ -300,8 +300,7 @@ where
         Some(tenant_id) => (
             match backend {
                 DbBackend::Sqlite => "SELECT id FROM tenants WHERE id = ?1",
-                DbBackend::Postgres | DbBackend::MySql => "SELECT id FROM tenants WHERE id = $1",
-                _ => unreachable!("RBAC backend was validated before system-role repair"),
+                _ => "SELECT id FROM tenants WHERE id = $1",
             },
             vec![tenant_id.into()],
         ),
@@ -329,10 +328,9 @@ where
         DbBackend::Sqlite => {
             "SELECT id, is_system FROM roles WHERE tenant_id = ?1 AND slug = ?2 LIMIT 1"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
@@ -363,10 +361,9 @@ where
         DbBackend::Sqlite => {
             "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?1, ?2, ?3, ?4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ($1, $2, $3, $4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     execute(
         db,
@@ -395,10 +392,9 @@ where
         DbBackend::Sqlite => {
             "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
@@ -425,10 +421,9 @@ where
         DbBackend::Sqlite => {
             "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?1, ?2, ?3, ?4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES ($1, $2, $3, $4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     execute(
         db,
@@ -455,10 +450,9 @@ where
         DbBackend::Sqlite => {
             "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?1"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = $1"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -493,10 +487,9 @@ where
         DbBackend::Sqlite => {
             "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3) ON CONFLICT (role_id, permission_id) DO NOTHING"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ($1, $2, $3) ON CONFLICT (role_id, permission_id) DO NOTHING"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     execute(
         db,
@@ -523,10 +516,9 @@ where
         DbBackend::Sqlite => {
             "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        _ => {
             "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2"
         }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
     };
     execute(db, sql, vec![role_id.into(), permission_id.into()]).await
 }
@@ -541,10 +533,7 @@ where
     let backend = db.get_database_backend();
     let sql = match backend {
         DbBackend::Sqlite => "SELECT user_id FROM user_roles WHERE role_id = ?1",
-        DbBackend::Postgres | DbBackend::MySql => {
-            "SELECT user_id FROM user_roles WHERE role_id = $1"
-        }
-        _ => unreachable!("RBAC backend was validated before system-role repair"),
+        _ => "SELECT user_id FROM user_roles WHERE role_id = $1",
     };
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(

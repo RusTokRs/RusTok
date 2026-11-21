@@ -76,8 +76,11 @@ keys. Missing or malformed trusted-side hops fall back to the actual peer;
 an untrusted peer cannot supply an authoritative forwarding header. If both
 header formats are present, `X-Forwarded-For` takes precedence. For
 forwarded host and scheme, the host consumes the most recently appended
-(rightmost) value instead of trusting a potentially spoofed first value;
-forwarded schemes other than `http` and `https` are ignored.
+(rightmost) value instead of trusting a potentially spoofed first value.
+When `X-Forwarded-Host` or `X-Forwarded-Proto` is present but malformed,
+it is not silently replaced by a conflicting RFC `Forwarded` value.
+RFC `Forwarded` remains a fallback only when the corresponding `X-Forwarded-*`
+header is absent; forwarded schemes other than `http` and `https` are ignored.
 
 **Ingress requirement:** the edge proxy must discard untrusted incoming
 forwarded headers or append the actual observed client IP. A proxy that
@@ -101,31 +104,50 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result; recovery requires fencing and reconciliation of
-  actual effects, not automatic expiry.
-- OAuth manifest synchronization is not one atomic, serialized tenant-wide
-  reconciliation; built-in auth email delivery remains best effort.
-- Module-settings change notification uses a non-transactional event forwarder;
-  notification delivery can be lost. Search lag and worker readiness do not
-  cover all failure modes. See the server implementation plan for these gates.
+  persist the terminal result. HTTP and CLI now use unique host-generated
+  lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
+  Persistence blocks new applies while any unreconciled session has a
+  recorded owner, even after lease expiry; `recovery_required` remains blocking
+  until manual reconciliation. However, state/receipt writes do not yet
+  compare the owner on every mutation, and resumable execution plus effect
+  reconciliation remain unimplemented; do not reset stale jobs based only on
+  lease expiry.
+- OAuth manifest synchronization is atomic and serialized per tenant. The
+  all-tenants bootstrap pass commits one tenant at a time, not as a single
+  cross-tenant transaction. Built-in auth email delivery remains best effort.
+- Static module-settings changes use the canonical transactional outbox. The
+  legacy in-process EventBus-to-Outbox bridge is still not crash-durable before
+  its first outbox insert: a process crash or forced abort in that window can
+  lose a non-transactional event. Business mutations requiring atomic publication
+  must use `TransactionalEventBus`. Search lag and worker readiness do not cover
+  all failure modes; see the server implementation plan.
 - First-party in-place refresh rotation retains only the immediately previous
   token digest. Older revoked generations are rejected as unknown but cannot
-  trigger full-lineage theft revocation. The durable rotation-history and
-  incident-reconciliation contract remains open; see the implementation plan.
+  trigger full-lineage theft revocation. A replay inside the 30-second race
+  window is rejected without revoking the live session, but the server does
+  not replay the successful refresh response; if that response was lost, the
+  client cannot recover its replacement cookie from the old token. Durable
+  rotation history, idempotent response recovery, and incident reconciliation
+  remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
-  falsely reporting only an invalid grant. Durable incident/retry evidence and
-  two-replica failure-injection verification remain pending.
+  falsely reporting only an invalid grant. Its 30-second grace window suppresses
+  family revocation for a likely concurrent duplicate, but still returns
+  `invalid_grant` and does not replay the replacement token; a lost successful
+  response cannot be recovered from the old token. Durable incident/retry
+  evidence and two-replica failure-injection verification remain pending.
 
 ## Acknowledged sealed delivery (source only)
 
 The reservation-fact continuation source-wires acknowledged sealed module startup on the actual
 listener bus. `outbox` awaits explicit local handlers; `outbox_iggy` accepts the original frame
 at the configured primary, then awaits required local delivery. Failure retains the same Outbox
-identity for retry, potentially resending remotely. Root best-effort fanout is unchanged. The
-host composes owner handlers and durable artifact intake; it never publishes Inventory facts.
-Five new transport-double definitions are uncompiled/unrun, not real Iggy/cursor/ACK or
-relay/restart/concurrency evidence. Canonical digests, SQL/Search, generic Index and Product
+identity for retry, potentially resending remotely. Root `DomainEvent` delivery through the
+Outbox target now awaits matching registered module handlers; the generic in-process broadcast
+API remains best-effort. The host composes owner handlers and durable artifact intake; it never
+publishes Inventory facts. See the [root-delivery decision](../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+The new transport-double and regression definitions are uncompiled/unrun, not real Iggy/cursor/ACK
+or relay/restart/concurrency evidence. Canonical digests, SQL/Search, generic Index and Product
 step 8 remain open. See the [runtime contract](docs/README.md#acknowledged-sealed-delivery-2026-11-01-source-only)
 and [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
 

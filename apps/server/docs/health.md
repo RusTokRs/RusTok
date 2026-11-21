@@ -21,8 +21,10 @@ works as a read-only catalog host, not as a full monolith.
 
 Important: `host_mode` does not replace deployment profile. `DeploymentProfile` continues to describe build/deploy
 surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-api`), while
-`settings.rustok.runtime.host_mode` describes only the runtime-exposed API surface (`full` or
-`registry_only`).
+`settings.rustok.runtime.host_mode` describes the exact runtime-exposed surface:
+`full`, `api`, `worker`, `admin_ssr`, `storefront_ssr`, or `registry_only`.
+The `/health/runtime` snapshot reports this exact value; it does not infer a host mode
+from the build/deployment profile.
 
 A separate compile-time profile invariant: `embed-admin` and `embed-storefront`
 control not only routes but also linkage of the corresponding UI hosts. Similarly,
@@ -46,7 +48,7 @@ their selected surface.
   `tenants`, `users`, `sys_events` when the active delivery profile is
   `outbox` or `outbox_iggy`, and
   `search_documents` when `rustok.features.search_indexing = true`;
-- `cache_backend` — basic check of tenant cache path;
+- `cache_backend` — basic check of tenant cache path. Its public readiness reason includes the pending-generation count but never echoes raw Redis/recovery error text;
 - `marketplace_providers` — non-critical snapshot of configured catalog
   providers. Local-only operation composes no synthetic remote provider; every
   registry in `RUSTOK_MARKETPLACE_REGISTRIES` is unknown until its first
@@ -93,20 +95,41 @@ but by itself does not mean the process should be removed from service discovery
 
 ### Runtime worker checks
 
-In `full` and `worker` host modes `/health/ready` additionally verifies mandatory
-background workers with actual handles in the server runtime shared store.
+Every non-registry runtime host also verifies the cache-reconciliation supervisors
+that protect its local schema and routing caches. These checks run in `api`,
+`admin_ssr`, and `storefront_ssr` modes even though those hosts do not run the
+general background-worker set:
+
+- `worker:field_definition_cache_generation` — critical in non-registry runtime
+  modes; the GraphQL field-definition cache must reconcile the durable generation
+  and invalidate stale schemas after missed events or database recovery;
+- `worker:seo_redirect_cache_reconciliation` — critical when `mod-seo` is
+  compiled and the host serves requests (`full`, `api`, `admin_ssr`,
+  `storefront_ssr`); it is not required in worker-only or registry-only mode.
+
+In `full` and `worker` host modes `/health/ready` additionally verifies the
+mandatory general background workers with actual handles in the server runtime
+shared store.
 
 Checks are published in `checks` with `kind = "worker"`:
 
 - `worker:outbox_relay` — critical worker if the active delivery profile uses
-  the transactional outbox and runtime
-  built relay config;
-- `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
-- `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.
+  the transactional outbox and runtime built relay config;
+- `worker:outbox_retention` — critical worker when the resolved `EventRuntime`
+  includes an Outbox retention configuration;
+- `worker:remote_executor_reaper` — critical worker if
+  `rustok.registry.remote_executor.enabled = true`;
+- `worker:event_forwarder` — critical once the server-owned `EventBus` and its
+  in-process Outbox forwarder have been composed; it is optional before that bus exists;
+- `worker:seo_bulk`, `worker:seo_sitemap`, and `worker:seo_index_repair` —
+  critical when their corresponding settings are enabled and the build contains
+  `mod-seo`. They observe the same supervised SEO worker handle under distinct
+  configuration gates.
 - `worker:auth_retention` — critical if auth retention is enabled;
-- `worker:module_event_dispatcher` — critical when composition registered at least one listener.
-  Before composition has evaluated the listener set it is treated as required;
-  a confirmed empty set does not require a dispatcher task;
+- `worker:module_event_dispatcher` — critical once the event runtime has been
+  composed. An explicit empty listener registry still requires a live dispatcher:
+  it distinguishes “no local handler” from “listener registry not initialized”.
+  Before composition binds that registry, readiness fails closed;
 - `worker:module_work_scheduler` — critical when module composition registered scheduled work.
   Before the registration set is evaluated it is treated as required; an absent or empty
   registration set does not require a scheduler task. Startup is serialized per
@@ -116,16 +139,24 @@ Checks are published in `checks` with `kind = "worker"`:
   `worker:paid_order_create_label` (`mod-commerce`),
   `worker:marketplace_financial_recovery` (`commerce-marketplace-financial`), and
   `worker:product_media_release` (`mod-product`) — critical when compiled in;
+- `worker:product_index_refresh` (`mod-product`), `worker:social_graph_index`
+  (`mod-social_graph`), `worker:forum_search_inbox` and
+  `worker:forum_search_contract_consumer` (`mod-forum`),
+  `worker:comments_tcp_listener` and `worker:comments_schedule_audit_handoff`
+  (`mod-comments`), and the notification intake/fanout/candidate workers
+  (`mod-notifications`) — critical once their corresponding handles are
+  registered; optional before those module runtimes start them;
 - `worker:workflow_cron` — critical if `mod-workflow` is compiled in and cron is enabled.
 
 If a worker is disabled by settings, check remains `ok` and `non_critical` with reason
 `worker disabled by runtime settings`. If a mandatory worker is not registered in `shared_store`
 or its task has already finished, check becomes `critical` + `unhealthy`. This prevents considering full
 runtime ready until mandatory relay/worker lifecycle is started.
-These checks only establish local task liveness: a live task may be stuck or repeatedly
-fail its work. They do not measure successful progress, backlog age, or remote workers,
-and do not yet cover every background worker. Monitor the relevant queues and errors
-separately; a green readiness result is not proof that recovery is progressing.
+Most checks establish local task liveness; the cache-reconciliation checks also
+require the supervisor's latest reconciliation state to be healthy. They do not
+measure continuous progress, backlog age, or remote workers, and do not yet cover
+every background worker. Monitor the relevant queues and errors separately; a green
+readiness result is not proof that every recovery queue is draining.
 
 ### Registry-only mode
 
@@ -179,9 +210,11 @@ Worker/readiness metrics:
 
 - `rustok_runtime_worker_state{worker}`: `-1 = missing`, `0 = disabled`,
   `1 = running`, `2 = stopped`. Worker labels include the readiness workers above
-  (using underscores instead of the `worker:` prefix), retention, and enabled SEO
-  variants. Newly covered worker labels are also emitted as disabled for host modes
-  that do not run local workers; feature-gated labels exist only when compiled in.
+  (using underscores instead of the `worker:` prefix), including
+  `field_definition_cache_generation` and the feature-gated
+  `seo_redirect_cache_reconciliation`, retention, and enabled SEO variants.
+  Newly covered worker labels are also emitted as disabled for host modes
+  that do not require them; feature-gated labels exist only when compiled in.
 - `rustok_runtime_worker_lifecycle_state{worker,state}`:
   `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.
 - `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — number of restart cycles for relay supervisor

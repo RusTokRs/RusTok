@@ -16,7 +16,7 @@ use rustok_blog::openapi::openapi_document;
 /// is deliberately not part of this contract.
 const CONTROLLERS_MOD: &str = include_str!("../src/controllers/mod.rs");
 const OPENAPI_SOURCE: &str = include_str!("../src/controllers/openapi.rs");
-const CONTROLLER_SOURCES: [(&str, &str); 5] = [
+const CONTROLLER_SOURCES: [(&str, &str); 6] = [
     ("posts.rs", include_str!("../src/controllers/posts.rs")),
     (
         "categories.rs",
@@ -31,13 +31,14 @@ const CONTROLLER_SOURCES: [(&str, &str); 5] = [
         include_str!("../src/controllers/preview_token.rs"),
     ),
     ("tags.rs", include_str!("../src/controllers/tags.rs")),
+    ("widgets.rs", include_str!("../src/controllers/widgets.rs")),
 ];
 
 /// The number of paths `controllers::axum_router` registers today. A new route must be
 /// added to the document and to the controller set below in the same change.
-const ROUTER_PATH_COUNT: usize = 24;
+const ROUTER_PATH_COUNT: usize = 27;
 /// The number of handlers that declare a `#[utoipa::path]` in the controller set.
-const DOCUMENTED_HANDLER_COUNT: usize = 37;
+const DOCUMENTED_HANDLER_COUNT: usize = 40;
 
 /// Path literals of the routes `controllers::axum_router` registers. The feature-gated
 /// asset router is merged in, not registered with `.route`, so it cannot appear here.

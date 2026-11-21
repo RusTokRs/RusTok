@@ -78,9 +78,16 @@ pub struct NormalizedTranslationInput {
     pub caption: Option<String>,
 }
 
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum MediaInputError {
+    #[error("invalid tenant locale '{0}'")]
+    InvalidLocale(String),
+}
+
 impl UpsertTranslationInput {
-    pub fn normalize(self) -> Result<NormalizedTranslationInput, String> {
-        let locale = TenantLocale::new(&self.locale).map_err(|_| self.locale.clone())?;
+    pub fn normalize(self) -> Result<NormalizedTranslationInput, MediaInputError> {
+        let locale = TenantLocale::new(&self.locale)
+            .map_err(|_| MediaInputError::InvalidLocale(self.locale.clone()))?;
 
         Ok(NormalizedTranslationInput {
             locale,

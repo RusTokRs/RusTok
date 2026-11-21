@@ -501,14 +501,14 @@ impl CatalogService {
                 .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductCreated { product_id },
         )
         .await?;
         if attributes_changed {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductAttributeValuesChanged { product_id },
@@ -517,7 +517,7 @@ impl CatalogService {
         }
 
         if input.publish {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductPublished { product_id },
@@ -916,7 +916,7 @@ impl CatalogService {
                 )
                 .await?;
         if attributes_changed {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductAttributeValuesChanged { product_id },
@@ -932,28 +932,28 @@ impl CatalogService {
                 .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUpdated { product_id },
         )
         .await?;
         if will_become_active {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductPublished { product_id },
             )
             .await?;
         } else if will_archive {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductArchived { product_id },
             )
             .await?;
         } else if will_deactivate {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductUnpublished { product_id },
@@ -966,7 +966,7 @@ impl CatalogService {
                 Patch::Clear => None,
                 Patch::Keep => existing_product.primary_category_id,
             };
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductPrimaryCategoryChanged {
@@ -1044,7 +1044,7 @@ impl CatalogService {
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductPublished { product_id },
@@ -1107,7 +1107,7 @@ impl CatalogService {
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUnpublished { product_id },
@@ -1170,7 +1170,7 @@ impl CatalogService {
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductArchived { product_id },
@@ -1328,7 +1328,7 @@ impl CatalogService {
             ));
         }
 
-        txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &image_ids)
+        txn.publish_product_deleted_in_tx(tenant_id, Some(actor_id), product_id, &image_ids)
             .await?;
 
         record_product_operation_result(&());
@@ -1506,7 +1506,7 @@ impl CatalogService {
             }
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::VariantCreated {
@@ -1759,7 +1759,7 @@ impl CatalogService {
                 .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::VariantUpdated {
@@ -1836,7 +1836,7 @@ impl CatalogService {
             ));
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::VariantDeleted {
@@ -2019,7 +2019,7 @@ impl CatalogService {
             });
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUpdated { product_id },
@@ -2131,7 +2131,7 @@ impl CatalogService {
             }
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUpdated { product_id },
@@ -2215,7 +2215,7 @@ impl CatalogService {
             .collect::<Vec<_>>();
         persist_product_image_order_in_tx(&txn, product_id, remaining_image_ids.as_slice()).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUpdated { product_id },
@@ -2268,7 +2268,7 @@ impl CatalogService {
 
         persist_product_image_order_in_tx(&txn, product_id, image_ids.as_slice()).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductUpdated { product_id },

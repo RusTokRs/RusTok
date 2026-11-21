@@ -24,10 +24,10 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
+use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_IDLE_POLL_MS";
@@ -89,6 +89,9 @@ impl ProductIndexRefreshWorkerConfig {
         })
     }
 }
+
+// Claims the local consumer lifecycle before opening its durable broker group.
+struct ProductIndexRefreshStartupReservation;
 
 pub struct ProductIndexRefreshWorkerHandle {
     handle: JoinHandle<()>,
@@ -159,9 +162,9 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         return Ok(());
     }
 
-    if let Err(error) = runtime_consumer_metrics::ensure_registered() {
+    if let Err(_error) = runtime_consumer_metrics::ensure_registered() {
         tracing::debug!(
-            error = %error,
+            error_code = "runtime_consumer_metrics_unavailable",
             worker = METRICS_CONSUMER,
             "Runtime consumer metrics are unavailable; continuing without registration"
         );
@@ -214,6 +217,31 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         }
     }
 
+    // A broker consumer may be opened asynchronously. Reserve first so two
+    // starters cannot both establish a durable consumer and orphan one task.
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Product Index refresh consumer cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ProductIndexRefreshStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Product Index refresh worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
+        return Ok(());
+    }
+    let config = ProductIndexRefreshWorkerConfig::from_context(ctx)?;
+
     let group = Arc::new(
         transport
             .open_persistent_contract_consumer_group(
@@ -246,8 +274,12 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         events,
     };
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
-    let config = ProductIndexRefreshWorkerConfig::from_context(ctx)?;
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Product Index refresh consumer startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
     let instance_id = PRODUCT_INDEX_REFRESH_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);
     tracing::info!(
@@ -261,6 +293,7 @@ pub async fn start_product_index_refresh_worker_if_enabled(
     ctx.shared_insert(ProductIndexRefreshWorkerHandle {
         handle: tokio::spawn(product_index_refresh_worker_loop(runtime, config, stop_rx)),
     });
+    reservation.commit();
     Ok(())
 }
 
@@ -315,7 +348,7 @@ async fn product_index_refresh_worker_loop(
                     return;
                 }
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_RECEIVE,
@@ -324,7 +357,7 @@ async fn product_index_refresh_worker_loop(
                 record_worker_termination("receive_failure");
                 tracing::error!(
                     worker = METRICS_CONSUMER,
-                    error = %error,
+                    error_code = "product_index.refresh.receive_failed",
                     "Product Index refresh broker receive failed; source offset remains uncommitted"
                 );
                 return;
@@ -350,7 +383,7 @@ async fn process_consumed_delivery(
         },
     ) {
         Ok(delivery) => delivery,
-        Err(error) => {
+        Err(_error) => {
             runtime_consumer_metrics::record_failure(
                 METRICS_CONSUMER,
                 STAGE_DECODE,
@@ -360,7 +393,7 @@ async fn process_consumed_delivery(
             tracing::error!(
                 worker = METRICS_CONSUMER,
                 event_id = %consumed.envelope.id(),
-                error = %error,
+                error_code = DECODE_FAILURE_CODE,
                 "Product Index refresh envelope projection failed; source offset remains uncommitted"
             );
             return false;
@@ -395,7 +428,7 @@ async fn process_consumed_delivery(
                 );
                 return true;
             }
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
@@ -406,7 +439,7 @@ async fn process_consumed_delivery(
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = PROCESS_FAILURE_CODE,
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Product Index refresh processing failed; retrying without committing the broker offset"
@@ -417,7 +450,7 @@ async fn process_consumed_delivery(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_PROCESS,
@@ -427,7 +460,7 @@ async fn process_consumed_delivery(
                 tracing::error!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = PROCESS_FAILURE_CODE,
                     attempt,
                     "Product Index refresh processing exhausted bounded retries; source offset remains uncommitted for broker redelivery"
                 );
@@ -506,7 +539,7 @@ async fn acknowledge_unrelated(
     loop {
         match runtime.group.acknowledge(consumed).await {
             Ok(()) => return true,
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
@@ -517,7 +550,7 @@ async fn acknowledge_unrelated(
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = ACK_FAILURE_CODE,
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Unrelated sealed domain event acknowledgement failed; retrying acknowledgement only"
@@ -528,7 +561,7 @@ async fn acknowledge_unrelated(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_ACKNOWLEDGEMENT,
@@ -538,7 +571,7 @@ async fn acknowledge_unrelated(
                 tracing::error!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = ACK_FAILURE_CODE,
                     attempt,
                     "Unrelated sealed domain event acknowledgement exhausted bounded retries; source offset remains uncommitted"
                 );

@@ -268,8 +268,7 @@ impl CreateCatalogCategoryInput {
         }
         match self.kind {
             CatalogCategoryKind::Virtual => {
-                parse_virtual_category_rule_v1(&self.rule_config)
-                    .map_err(CommerceError::Validation)?;
+                parse_virtual_category_rule_v1(&self.rule_config)?;
             }
             CatalogCategoryKind::Structural | CatalogCategoryKind::Collection
                 if !self.rule_config.is_null()
@@ -1311,6 +1310,7 @@ where
     let mut localized_text = None;
 
     match &patch.value {
+        // INVARIANT: Clear returns early above before this match.
         ProductAttributeValuePatchValue::Clear => unreachable!(),
         ProductAttributeValuePatchValue::Text(value) if definition.is_localized => {
             localized_text = Some(value.clone())
@@ -1362,7 +1362,11 @@ where
     ))
     .one(conn)
     .await?
-    .expect("INSERT RETURNING id must return a row")
+    .ok_or_else(|| {
+        CommerceError::Database(sea_orm::DbErr::Custom(
+            "INSERT RETURNING id must return a row".to_string(),
+        ))
+    })?
     .id;
 
     conn.execute_raw(Statement::from_sql_and_values(

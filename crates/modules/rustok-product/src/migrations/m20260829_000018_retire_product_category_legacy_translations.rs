@@ -158,7 +158,12 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
     for category in categories {
         let taxonomy_id = category
             .taxonomy_category_id
-            .expect("binding checked above");
+            .ok_or_else(|| {
+                DbErr::Migration(format!(
+                    "Product Category legacy-storage retirement blocked: taxonomy_category_id is missing for Product category {}",
+                    category.id,
+                ))
+            })?;
         let term = term_by_id.get(&taxonomy_id).ok_or_else(|| {
             DbErr::Migration(format!(
                 "Product Category legacy-storage retirement blocked: Taxonomy Category {taxonomy_id} is missing for Product category {}",

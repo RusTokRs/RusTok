@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
+import { fetchEnabledModules } from '@/shared/api/modules';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
 import {
@@ -43,10 +44,6 @@ type RecentActivityResponse = {
   recentActivity: ActivityItem[];
 };
 
-type EnabledModulesResponse = {
-  enabledModules: string[];
-};
-
 const DASHBOARD_STATS_QUERY = `
 query DashboardStats {
   dashboardStats {
@@ -65,12 +62,6 @@ query RecentActivity($limit: Int!) {
     timestamp
     user { id name }
   }
-}
-`;
-
-const ENABLED_MODULES_QUERY = `
-query EnabledModules {
-  enabledModules
 }
 `;
 
@@ -101,18 +92,13 @@ async function loadOverviewData(
         token,
         tenantSlug
       ),
-      graphqlRequest<undefined, EnabledModulesResponse>(
-        ENABLED_MODULES_QUERY,
-        undefined,
-        token,
-        tenantSlug
-      )
+      fetchEnabledModules({ token, tenantSlug })
     ]);
 
     return {
       stats: statsData.dashboardStats,
       recentActivity: activityData.recentActivity,
-      enabledModules: modulesData.enabledModules,
+      enabledModules: modulesData,
       error: null
     };
   } catch (error) {
@@ -157,6 +143,22 @@ export default async function DashboardPage() {
   const { stats, recentActivity, enabledModules, error } =
     await loadOverviewData(token, tenantSlug);
 
+  if (error) {
+    return (
+      <PageContainer
+        pageTitle={`Welcome back, ${userName}`}
+        pageDescription='Live RusTok workspace overview from apps/server.'
+      >
+        <Card className='border-destructive/30 bg-destructive/5'>
+          <CardHeader>
+            <CardTitle>Dashboard data is unavailable</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+        </Card>
+      </PageContainer>
+    );
+  }
+
   const renderContext: AdminRenderContext = {
     token,
     tenantSlug,
@@ -179,15 +181,6 @@ export default async function DashboardPage() {
       pageDescription='Live RusTok workspace overview from apps/server.'
     >
       <div className='flex flex-1 flex-col gap-6'>
-        {error && (
-          <Card className='border-destructive/30 bg-destructive/5'>
-            <CardHeader>
-              <CardTitle>Dashboard data is unavailable</CardTitle>
-              <CardDescription>{error}</CardDescription>
-            </CardHeader>
-          </Card>
-        )}
-
         <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
           <StatCard
             title='Total users'

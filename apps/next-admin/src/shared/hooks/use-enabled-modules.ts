@@ -9,13 +9,3 @@ export function useEnabledModules(): string[] {
 export function useIsModuleEnabled(slug: string): boolean {
   return useEnabledModules().includes(slug);
 }
-
-export function useEnabledModulesActions() {
-  const { replaceEnabledModules, setModuleEnabled } =
-    useEnabledModulesContext();
-
-  return {
-    replaceEnabledModules,
-    setModuleEnabled
-  };
-}

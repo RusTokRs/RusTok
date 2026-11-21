@@ -42,8 +42,11 @@ impl From<rustok_starter::StarterExecutionReport> for StarterExecutionReportPayl
 
 const MAX_STARTER_BLUEPRINT_NAME_LEN: usize = 64;
 
-fn graphql_starter_internal_error(error: impl Display) -> FieldError {
-    tracing::error!(%error, "Starter blueprint import failed");
+fn graphql_starter_internal_error(_error: impl Display) -> FieldError {
+    tracing::error!(
+        error_code = "graphql_starter_blueprint_import_failed",
+        "Starter blueprint import failed"
+    );
     <FieldError as GraphQLError>::internal_error("Starter blueprint import failed")
 }
 

@@ -143,12 +143,15 @@ pub struct ModuleDetailPanelInput {
     pub settings_form_draft: Signal<HashMap<String, String>>,
     pub settings_draft: Signal<String>,
     pub settings_editable: Signal<bool>,
+    pub settings_snapshot_invalid: Signal<bool>,
+    pub settings_draft_conflict: Signal<bool>,
     pub settings_saving: Signal<bool>,
     pub loading: Signal<bool>,
     pub access_token: Signal<Option<String>>,
     pub tenant_slug: Signal<Option<String>>,
     pub on_settings_field_input: Callback<(String, String)>,
     pub on_settings_input: Callback<String>,
+    pub on_discard_settings_draft: Callback<()>,
     pub on_save_settings: Callback<()>,
     pub on_refresh_detail: Callback<()>,
     pub on_close: Callback<()>,
@@ -166,12 +169,15 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
         settings_form_draft,
         settings_draft,
         settings_editable,
+        settings_snapshot_invalid,
+        settings_draft_conflict,
         settings_saving,
         loading,
         access_token,
         tenant_slug,
         on_settings_field_input,
         on_settings_input,
+        on_discard_settings_draft,
         on_save_settings,
         on_refresh_detail,
         on_close,
@@ -2324,6 +2330,19 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             {move || if settings_saving.get() { tr(locale, "Saving...", "Сохранение...") } else { tr(locale, "Save settings", "Сохранить настройки") }}
                                         </button>
                                     </div>
+                                    <Show when=move || settings_draft_conflict.get()>
+                                        <div class="mt-3 space-y-2 text-sm text-destructive" role="alert">
+                                            <p>{crate::i18n::t(Some(locale.as_str()), "modules.settings.draft_conflict", "Settings or their schema changed. Your draft is preserved but cannot be saved against the new snapshot.")}</p>
+                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground disabled:opacity-50" disabled=move || settings_saving.get() || loading.get() on:click=move |_| on_discard_settings_draft.run(())>
+                                                {crate::i18n::t(Some(locale.as_str()), "modules.settings.discard_draft", "Discard draft and load current settings")}
+                                            </button>
+                                        </div>
+                                    </Show>
+                                    <Show when=move || settings_snapshot_invalid.get()>
+                                        <p class="mt-3 text-sm text-destructive" role="alert">
+                                            {crate::i18n::t(Some(locale.as_str()), "modules.settings.snapshot_invalid", "The stored settings cannot be safely edited. Refresh or repair the settings snapshot.")}
+                                        </p>
+                                    </Show>
                                     <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                             {move || match tenant_module_for_body.get_value().as_ref() {
@@ -2479,11 +2498,13 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                                             }.into_any()
                                                                         } else {
                                                                             let field_key_for_input = field_key.clone();
-                                                                            let step = if field_type == "integer" { "1" } else { "any" };
+                                                                            // Keep incomplete numeric text in the draft; browser number inputs
+                                                                            // can expose invalid visible text as an empty string.
+                                                                            let input_mode = if field_type == "integer" { "numeric" } else { "decimal" };
                                                                             view! {
                                                                                 <input
-                                                                                    type="number"
-                                                                                    step=step
+                                                                                    type="text"
+                                                                                    inputmode=input_mode
                                                                                     class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
                                                                                     prop:value=value_for_text
                                                                                     disabled=move || disabled.get()

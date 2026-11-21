@@ -20,6 +20,7 @@ use rustok_api::PortError;
 use rustok_outbox::idempotency;
 use sea_orm::{DatabaseTransaction, TransactionTrait};
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -82,6 +83,7 @@ impl From<sea_orm::DbErr> for ProductRelationCommandError {
 
 impl ProductRelationService {
     /// Creates one relation with durable owner replay semantics.
+    #[instrument(skip(self, context, input), fields(tenant_id = %context.tenant_id, key = %context.idempotency_key))]
     pub async fn create_relation_idempotent(
         &self,
         context: ProductRelationCommandContext<'_>,
@@ -115,6 +117,7 @@ impl ProductRelationService {
     }
 
     /// Updates one relation with durable owner replay semantics.
+    #[instrument(skip(self, context, input), fields(tenant_id = %context.tenant_id, relation_id = %relation_id, key = %context.idempotency_key))]
     pub async fn update_relation_idempotent(
         &self,
         context: ProductRelationCommandContext<'_>,
@@ -150,6 +153,7 @@ impl ProductRelationService {
     }
 
     /// Deletes one relation with durable owner replay semantics.
+    #[instrument(skip(self, context), fields(tenant_id = %context.tenant_id, relation_id = %relation_id, key = %context.idempotency_key))]
     pub async fn delete_relation_idempotent(
         &self,
         context: ProductRelationCommandContext<'_>,
@@ -183,6 +187,7 @@ impl ProductRelationService {
     }
 
     /// Reorders a complete relation group with durable owner replay semantics.
+    #[instrument(skip(self, context, input), fields(tenant_id = %context.tenant_id, key = %context.idempotency_key))]
     pub async fn reorder_relations_idempotent(
         &self,
         context: ProductRelationCommandContext<'_>,

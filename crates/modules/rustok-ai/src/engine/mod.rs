@@ -13,9 +13,9 @@ pub use catalog::provider_factory_supports;
 #[cfg(feature = "server")]
 pub use catalog::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy};
 pub use catalog::{
-    ProviderCatalogEntry, ProviderConfigField, ProviderDefaultSetting, ProviderFeature,
-    ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId, provider_catalog,
-    provider_catalog_entry,
+    ProviderCatalogEntry, ProviderCatalogError, ProviderConfigField, ProviderDefaultSetting,
+    ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId,
+    provider_catalog, provider_catalog_entry,
 };
 #[cfg(feature = "server")]
 pub use inference::{InferenceEngine, inference_for_slug};

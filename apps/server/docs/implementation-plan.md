@@ -1,5 +1,480 @@
 # Server App — Implementation Plan
 
+## Installer HTTP admission cancellation follow-up (2026-11-21)
+
+Branch: `agent/server-installer-admission-cancellation-20261121`, based on
+`a9431fdefd08693eab7aa0aaab87169b877af239`.
+
+The HTTP installer previously inserted a process-local `ActiveInstallerJobHandle`
+then awaited `create_http_job` in the cancelable HTTP request future before
+spawning its execution task. A dropped request during that await could leak the
+local admission slot; if the database committed the `running` row before
+cancellation, no executor task would run and the unique running-job fence would
+block all later installation attempts.
+
+- Request validation and all fallible synchronous preparation now precede the
+  local reservation. After reservation there is **no await** before spawning.
+- A single background task owns both the durable claim and the installer
+  executor; the HTTP handler observes claim success/failure through a oneshot
+  channel. Dropping the HTTP receiver cannot cancel either step. The guard
+  releases the process-local slot when claim creation fails or the task exits.
+- Durable unique-constraint losers still return HTTP 409; other database errors
+  return redacted HTTP 500; a stopping host rejects new apply requests with 503.
+- If shutdown is observed after the job claim commits but before executor
+  entry, its background owner marks the still-unstarted job `failed` with the
+  existing redacted error mapping, rather than launching new side effects.
+- Regression tests cover early receiver cancellation, claim failure cleanup,
+  shutdown after a durable claim but before execution, and stop-signal admission
+  refusal.
+- **No compilation, formatting, unit/integration tests, or migrations were run**;
+  the maintainer will verify them. Check request disconnects during claim
+  persistence, concurrent replica requests, and shutdown during apply.
+
+Limit: this closes the HTTP cancellation gap **only**. A worker-process crash,
+panicked claim after an ambiguous database commit, or hard runtime abort can
+still leave a `running` row. Do not clear stale rows by age or restart another
+installer based on an expired lock. Safe crash reconciliation needs durable
+owner/attempt fencing, receipt inspection and validation of external effects.
+
+## OAuth secret rotation lock and concurrent-success fence (2026-11-21)
+
+Branch: `agent/server-oauth-secret-lock-boundary-20261121`, forked from
+`a9431fdefd08693eab7aa0aaab87169b877af239` as a bounded auth-service
+follow-up independent of the pending installer and auth-email PRs.
+
+- Previously the OAuth administration provider acquired a database transaction
+  and exclusive OAuth app lock, then generated two random tokens and awaited
+  Argon2 hashing while holding that lock. This needlessly serialized token
+  issuance, revocation and other app mutations behind expensive CPU work.
+- Rotation now first reads the tenant-scoped app and checks its permissions and
+  `can_rotate_secret()` state, then prepares the new plaintext and Argon2 hash
+  **before** beginning a transaction. The commit stage acquires the existing
+  backend-specific app mutation fence, rechecks every authoritative condition,
+  and writes the secret hash in the same database transaction.
+- A prepared rotation records the previous hash and rejects a commit when the
+  current persisted hash changed during preparation (typed conflict, not a
+  generic validation error). Two competing rotations
+  against the same old secret can no longer both report successful issuance of
+  their own new secret: the stale candidate must retry.
+- A SQLite regression test prepares a rotation, commits a competing hash
+  update, and verifies the stale rotation is rejected without overwriting the
+  winner. The existing end-to-end guarded rotation test continues to cover
+  tenant, delegated permissions and successful secret validation.
+- **No cargo check, cargo test, formatter, lint, migrations or multi-replica
+  verification were run**, as requested by the maintainer. Check PostgreSQL
+  concurrent rotations against token issuance and revocation in deployment.
+
+Limitations: the changed-hash comparison is a conflict fence only for the
+preparation window. A deliberately **sequential** second rotation remains
+permitted; secret rotation does not automatically revoke existing OAuth token
+families. Database errors and failed commits remain redacted to callers.
+
+## Module event dispatcher and recovery worker single-owner follow-up (2026-11-21)
+
+Branch: `agent/server-module-worker-single-owner-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`. This is a bounded
+continuation of the server runtime audit, separate from pending auth-email,
+installer and OAuth rotation PRs.
+
+- The paid-order label, marketplace-financial and payment-provider event
+  recovery workers previously checked for a stored handle and then spawned
+  their own Tokio task before publishing a handle. Parallel composition could
+  pass both checks and overwrite a handle, leaving the earlier task running
+  without a shutdown owner. They now atomically reserve a distinct per-runtime
+  worker key before spawning. Missing optional provider/runtime prerequisites
+  release their reservation so later bootstrap retries may succeed.
+- The module event dispatcher also previously used a non-atomic handle check.
+  Its startup now reserves one dispatcher owner before assembling runtime
+  extensions or starting child workers. A failed dispatcher launch releases
+  its reservation and does not mark the required listener registry healthy.
+- The dependent Product media, Commerce paid-label, marketplace-financial and
+  Payment recovery workers start only after a successful dispatcher start.
+  Their individual gates reject new starts after the process stop signal;
+  Product media startup now also checks its existing handle before reserving.
+- Tests cover concurrent Payment worker composition and stable handle identity,
+  release on missing Fulfillment/financial runtime dependency, and refusal of
+  new recovery work after shutdown. Existing dispatcher startup tests remain.
+- **No formatting, build, Cargo tests, lints, migrations or multi-replica
+  execution occurred here.** Run focused server lifecycle tests for each
+  enabled feature and full/workflow host modes before merge.
+
+Remaining risks: these are per-process reservations, not distributed worker
+leases. External payment/shipping effects must remain idempotent and durable.
+A process crash still requires replay/recovery from owner receipts. The
+bootstrap lock serializes normal host initialization with shutdown, but callers
+bypassing it should not treat this reservation as a universal host lifecycle
+contract; short spawn/handle-publication windows require normal host ownership.
+
+## OAuth app mutation and RFC 7009 serialization follow-up (2026-11-21)
+
+Branch: `agent/server-oauth-app-mutation-fences-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. Independent of
+pending auth-email, installer, OAuth secret-rotation and worker-startup PRs.
+
+### Confirmed defects and changes
+
+- The manual OAuth app update handler read `can_edit()` and the app's current
+  type outside a transaction, then persisted scopes/grants/redirect URIs and
+  translations later. Another replica could change app ownership, revoke or
+  alter security policy in between. The handler now begins a transaction,
+  acquires the same app-row mutation lock used by OAuth token issuance and
+  manifest sync, rechecks editability under that lock and commits the base
+  update, translations and authoritative response projection together.
+- Explicit app revocation similarly read `can_revoke()` before acquiring a
+  mutation lock. Revocation now checks current tenant-scoped app ownership
+  under the lock before deactivating the app and invalidating tokens, consents,
+  and authorization codes in the same transaction. The deactivation update
+  also matches tenant ID and fails closed if no row is changed.
+- RFC 7009 token-family revocation now reserves the app mutation fence before
+  looking up the presented token. It therefore serializes with authorization
+  code and refresh-token issuance that use the app-then-subject lock order,
+  rather than racing creation of a refresh successor after an unprotected read.
+  The scoped unknown-token path still succeeds without an existence oracle.
+- The family-revocation update changes only rows not previously revoked, so
+  repeated requests do not rewrite the original `revoked_at` timestamp.
+- The ordinary OAuth client-secret rotation CAS also checks the live
+  `app_type` against the allowed set, so a configuration/manifest change during
+  Argon2 preparation cannot authorize a secret on an unsupported app type.
+  A SQLite regression proves the stale CAS is rejected without changing the
+  stored secret hash.
+- A new SQLite integration regression simulates transfer of a manual app to
+  manifest-owned state and ensures manual edit/revocation are rejected without
+  altering its active status and redirect configuration. The existing RFC 7009
+  family replay test now asserts preserved revocation timestamps.
+
+**Verification not performed** (per maintainer instruction): no compilation,
+formatting, test execution, database migration or multi-replica exercise. Before
+merge run scoped `rustok-server` compile and OAuth integration tests, plus
+PostgreSQL interleaving tests for manifest synchronization, app edits,
+revocation and concurrent refresh/revocation operations. This patch does not
+claim durable multi-replica recovery or eliminate every possible stale-read
+in other app/service entrypoints.
+
+## OAuth replay revocation transaction fences (2026-11-21)
+
+Branch: `agent/server-oauth-reuse-revocation-fencing-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. This is a
+standalone `apps/server` OAuth token-service continuation and intentionally
+does not depend on pending app mutation and rotation PRs.
+
+### Confirmed interleaving defects
+
+- The OAuth refresh-token reuse detector previously read a revoked token and
+  calculated its grace age without holding the app-row mutation fence. Its
+  family-wide update then ran without a transaction. A concurrent refresh
+  operation could issue a replacement after the replay detector had already
+  marked the then-current family revoked, leaving a live descendant from a
+  lineage the server considered compromised.
+- A used OAuth authorization code observed by the preflight path similarly
+  revoked its issued access/refresh token lineage using a standalone update
+  instead of an app-locked transaction. A concurrent code/refresh exchange
+  could therefore pass the same unprotected window before the replay result.
+
+### Remediation and coverage
+
+- The refresh reuse detector first looks up an exact revoked, client/tenant
+  scoped token without locking the app, avoiding a database write-fence per
+  unknown token. A positive candidate opens a transaction, takes the canonical
+  tenant/app mutation lock (including for inactive apps), and **re-reads** the
+  candidate with all scoped predicates inside the transaction. The replay-age
+  decision and family update are based solely on this authoritative read;
+  the transaction commits before the protocol returns `invalid_grant`. Grace
+  and missing-record no-op paths explicitly roll back to release SQLite's
+  reserved writer. Persistence and commit failures return `server_error`.
+- The authorization-code replay wrapper now starts a transaction, reserves the
+  same app-row fence used by code exchange and refresh rotation, revokes the
+  code-bound lineage via the existing shared in-transaction service, and
+  commits the security effect. The CAS-miss path that already held the app
+  lock is unchanged, avoiding a nested transaction.
+- Existing SQLite refresh-reuse failure/retry and code-family scope tests now
+  persist an OAuth app and tenant, exercising the actual row-lock path rather
+  than a token table in isolation. The code replay test checks revocation when
+  the app is already inactive, injects a database update failure and verifies
+  that the failure surfaces and does not mutate tokens, then retries and
+  verifies the scoped successful revocation.
+
+**Verification outstanding:** No tests, compilation, formatting, lint, or
+multi-replica PostgreSQL interleaving tests were run (maintainer runs tests).
+Run the targeted `services::oauth_token_service::tests`, crate-level check,
+and deployment concurrency tests before integration. This still does not
+provide recoverable refresh-token response replay after a lost successful
+response, nor distributed exclusivity for unrelated writers outside the
+canonical app mutation lock.
+
+## OAuth authorization-code creation fence (2026-11-21)
+
+Branch: `agent/server-oauth-code-issuance-fence-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`; independent of
+the other open server audit PRs.
+
+### Confirmed TOCTOU defect
+
+All OAuth authorization routes (JSON, browser direct issue and consent
+approval) previously preflighted a client, grant, scopes, redirect and sometimes
+consent before calling `OAuthAppService::generate_authorization_code`. The
+service inserted the code without checking any of those authorities inside a
+transaction. A concurrent client revoke or consent revoke could commit first,
+invalidate all pending codes, and then the stale authorization route could
+create a new code **after** the invalidation. A subsequent client reactivation
+or renewed consent could make that code unexpectedly redeemable.
+
+### Implementation
+
+- The authorization-code generator starts a transaction and obtains the
+  canonical tenant-scoped OAuth app lock followed by the user lock. It checks
+  current app/subject activity, `authorization_code` grant and supported app
+  type, exact registered redirect URI, non-empty scopes within the current
+  app ceiling, and active scope-covering third-party consent.
+- It then creates and hashes a random code, inserts the pending code and
+  commits before returning plaintext. Failed policy decisions never insert a
+  code. This preserves the original `generate_authorization_code` API used
+  by all three REST authorization paths and shares the lock order used by
+  consent grant/revoke, app mutation and token exchange.
+- Focused SQLite regressions exercise missing/revoked/regranted consent,
+  app revocation, cross-tenant request, stale redirect/scopes and inactive
+  subject, including no-code-insert assertions.
+- The controller now maps an authoritative admission miss to
+  `invalid_client`, a stale policy/redirect/scope to `invalid_request`, and a
+  missing active subject/consent to `access_denied` rather than conflating
+  every failed admission with a 500. Unexpected persistence errors still map
+  to redacted `server_error` and are logged. A transport regression checks
+  both OAuth error kinds and HTTP status codes, including detail redaction.
+
+**Verification left to maintainer:** no compile, format, Cargo tests, lints
+or live PostgreSQL multi-replica interleaving tests were executed. Run
+`cargo check -p rustok-server --lib` and
+`cargo test -p rustok-server --lib services::oauth_app::tests` in the
+relevant feature profile before merge, plus end-to-end authorize/consent
+browser flows and concurrent revoke/issue tests on PostgreSQL. Security
+under real concurrency depends on all cooperating paths using the same
+app-then-subject lock order. This does not bind an authorization-code
+write to a live HTTP session generation after an already-authenticated
+request begins; token exchange still checks subject/credential epochs.
+
+## Background worker single-owner admission — Notifications, Search and Index (2026-11-21)
+
+Branch: `agent/server-notification-worker-startup-ownership-20261121`,
+forked from main `a9431fdefd08693eab7aa0aaab87169b877af239`;
+independent of the module dispatcher and OAuth draft branches.
+
+### Confirmed defects
+
+- Candidate, fanout and outbox-intake startup each checked
+  `shared_contains::<...WorkerHandle>()` before dependency construction
+  and later executed an unconditional `shared_insert(...tokio::spawn(...))`.
+  Concurrent callers could both pass the initial check, launch duplicate
+  tasks and overwrite the context's sole JoinHandle, leaving one task
+  invisible to the normal drain. In Outbox intake, two callers could also
+  concurrently register consumer event types and backfill receipts before
+  any handle was published.
+- Candidate and fanout worker startup had no admission-time check of the
+  shared `StopHandle`. A late caller could spawn a worker while the server
+  already had its shutdown signal set.
+- Forum Search inbox, Forum Search typed contract consumer, Product Index
+  refresh, and Social Graph Index consumer showed the same check-then-publish
+  race. The three broker-backed consumers also opened persistent Iggy
+  consumer groups asynchronously **before** publishing handles; concurrent
+  starters could open two groups and lose a JoinHandle. All four also needed
+  a stop check between preparation and task admission.
+- A second caller observing an in-progress reservation initially returned
+  `Ok(())`, even if the first caller had not yet finished and could still
+  fail. That was a false startup-success signal for external bootstrap
+  callers not coordinated by `ServerBootstrapInitializationLock`.
+
+### Changes
+
+- Added a typed `ServerRuntimeStartReservation<'_, T>` in
+  `server_runtime_context.rs`: it takes a process-local atomic
+  `shared_insert_if_absent` claim, releases it on startup error or future
+  cancellation via `Drop`, and retains the claim after handle publication
+  through `commit`.
+- Candidate and fanout reserve after their readiness/dependency checks,
+  before constructing/spawning their workers. If construction fails or
+  shutdown begins during preparation, the claim is removed so a retry can
+  succeed. Only the one admitted caller publishes a JoinHandle.
+- Outbox intake reserves **before** async registration and full legacy
+  receipt backfill; an aborted backfill cannot strand its local startup
+  reservation. Successful backfill followed by handle publication retains
+  the claim. Existing durable receipt idempotence remains unchanged.
+- Forum Search inbox reserves immediately before worker admission. Its
+  unsupported-backend and missing-source early exits remain no-ops without a
+  claim, while a shutdown before publication aborts startup.
+- Forum Search contract, Product Index refresh and Social Graph Index now
+  reserve their distinct worker marker **before** the async persistent
+  consumer open. This prevents duplicate group open and ensures cancellation
+  during broker I/O automatically releases the reservation. Validate
+  configuration and check shared `StopHandle` before/after broker open, before
+  recording worker-start telemetry and publishing the task.
+- Each of the seven callers now distinguishes a completed worker (idempotent
+  success) from another starter still working (retryable `Error::Message`).
+  The latter cannot be reported as success until the winner actually
+  publishes a handle, and never overrides an existing one.
+- The reservation constructor is deliberately lazy (`bool::then`, not
+  `then_some`), because a losing contender must **not** construct a temporary
+  drop guard capable of deleting the winning claim.
+- Tests cover failed-start claim release, retained successful ownership,
+  concurrent contention by 12 threads and cancellation by dropping an
+  in-flight async startup future before it completes.
+
+**Handoff:** No Cargo tests, rustfmt, clippy, compilation, migrations or
+multi-process checks were run per maintainer preference. Run
+`cargo check -p rustok-server --lib` and targeted
+`services::server_runtime_context::tests`,
+`services::notification_candidate_worker`,
+`services::notification_fanout_worker`,
+`services::notification_outbox_intake_worker`,
+`services::forum_search_inbox_worker`,
+`services::product_index_refresh_worker`, and
+`services::social_graph_index_worker` tests. Validate lifecycle
+shutdown/backfill interleavings and network consumer-open cancellation with a
+real DB, Iggy broker and two concurrent starter calls. This reserves **one worker per runtime context**, not one per
+deployment. It does not add durable cross-replica worker leader election.
+
+## Worker recovery after DLQ publication failure and cooperative shutdown (2026-11-21)
+
+Branch: `agent/server-social-graph-poison-recovery-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`; independent of the
+open startup ownership and OAuth branches.
+
+### Defects confirmed in `apps/server`
+
+- `social_graph_index_worker.rs` ended the raw poison DLQ publish retry loop
+  with an `Err(_error)` match arm while its formatted error referenced
+  `{error}`. This is an unresolved Rust identifier in a compiled function
+  body and prevents the corresponding module from compiling. The raw broker
+  error also should not become a general worker error surface because its
+  text is uncontrolled transport data.
+- `marketplace_financial_worker.rs` performed three distinct durable
+  reconciliation stages sequentially on each timer tick: adapt provider
+  reversals, sweep reversal events, and sweep paid-order events. After
+  shutdown began during stage one or two, the worker could still admit later
+  stages before checking the stop channel again. This lengthened shutdown and
+  admitted avoidable external recovery work after host stop.
+
+### Remediation
+
+- Replaced the invalid raw-poison terminal error reference with a stable,
+  redacted diagnostic containing the retry attempt count and the crucial
+  guarantee that the source broker offset remains uncommitted. The existing
+  release-claim/lease and receipt publication logic is preserved; on
+  redelivery the worker can reclaim or recognize its durable receipt. Added
+  a focused regression for the failure diagnostic.
+- Factored marketplace financial reconciliation sequencing into
+  `run_recovery_phases`. Each phase runs to completion (a durable operation
+  is not cancelled mid-write), but the stop receiver is checked before the
+  initial phase and after every phase; an observed stop prevents admission
+  of the following phase. The outer worker exits rather than sleeping for
+  another tick. A deterministic asynchronous test covers stop before any
+  phase, after phase one, after phase two, after phase three, and successful
+  all-three completion without stop.
+
+### Verification and limits
+
+**No compilation, tests, formatting, lint or live Iggy/database failover
+exercises were run**, per maintainer preference. Suggested commands:
+```sh
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::social_graph_index_worker::tests
+cargo test -p rustok-server --lib services::marketplace_financial_worker::tests
+```
+Also exercise a real broker failure at the last DLQ attempt and a process
+stop between financial phases with a real database. Crash between Iggy
+publication and durable receipt publication still has an inherent
+at-least-once retry window (dependent on the broker's deterministic ID
+deduplication); this patch does **not** claim transactional exactly-once
+delivery across broker and database.
+
+## Server runtime follow-up (2026-11-21)
+
+This bounded continuation follows merged PR #4759 and stays on
+`agent/server-runtime-lifecycle-followup-20261121`.
+The pass examined remaining host services, controller request boundaries,
+middleware admission, transaction outcomes, and cooperative shutdown of
+registered background workers; it is **not** a claim that every server path
+has been exhaustively verified or that the full-stack audit gates are closed.
+
+- Generic settings writes now reject both missing and nil actor UUIDs before
+  opening a transaction. This preserves the documented non-nil actor identity
+  for persisted settings rows and their transactional outbox events.
+- CSP reporting batches count only actual CSP violations against the bounded
+  processing limit, so unrelated Reporting API entry types cannot suppress
+  CSP reports that appear later in the same batch.
+- The search-backend readiness TCP target now parses URL authorities instead
+  of splitting strings at slashes. Query strings/fragments no longer become
+  hostname bytes; invalid ports and schemes fail consistently, with legacy
+  bare `host:port` configuration retained.
+- Observability authentication rejects **all** duplicate Authorization fields,
+  including identical copies; this avoids intermediary-dependent token parsing.
+- Focused regression tests were added for each change. **Cargo tests, format,
+  integration, and multi-replica concurrency tests were not run** in the
+  GitHub-API-only editing environment, per maintainer request.
+
+### Continuation: retention, tenant parsing, and worker bootstrap
+
+- Auth-artifact retention now deletes sessions, invite consumptions/invites,
+  OAuth tokens, and OAuth authorization codes inside a **single transaction**.
+  An error in any leg rolls back preceding deletes; counts are returned only
+  after commit. A SQLite regression deliberately removes the second table
+  after inserting an expired session and checks that the first delete rolls
+  back. This changes transaction locking behavior, so verify with PostgreSQL
+  under concurrent auth traffic before production rollout.
+- The optional Notifications Outbox intake backfill checks the process stop
+  signal before registration, after registration, before and after each page,
+  and before each receipt. An interrupted bootstrap exits instead of draining
+  an unbounded historical receipt backlog while host shutdown waits for the
+  bootstrap lock. Outbox registration and acknowledgement remain durable and
+  idempotent; no in-flight SQL operation is forcibly cancelled. A watch-signal
+  regression test checks refusal after shutdown. This does not make initial
+  backfill bounded in **normal** startup, and does not replace durable recovery.
+- Tenant subdomain matching now checks UTF-8 slice boundaries before comparing
+  configured base-domain suffixes. Malformed non-ASCII input cannot panic the
+  handler, even when a caller bypasses the ordinary host validator. A test
+  exercises a multibyte boundary.
+- These changes were committed to PR #4760 (subsequently merged into
+  `main`); no tests, builds, linters, format checks, or migrations were
+  executed in that GitHub-only pass.
+
+### Auth email task shutdown and locale follow-up (after merge of #4760)
+
+The original host ran password-reset and verification email tasks as detached
+Tokio tasks whose JoinHandles were dropped by HTTP callers. A best-effort stop
+check before spawning did not make accepted sends part of the host drain.
+
+- `AuthEmailTaskRegistry` now tracks active sends independently of returned
+  JoinHandles. Task admission and registry closure use the same mutex, preventing
+  a spawn racing with shutdown from escaping the task snapshot. Completion is
+  tracked through a drop guard that also runs when cancellation occurs before
+  the first poll. The host waits up to five seconds for sends and then aborts
+  and observes remaining tasks within another bounded second.
+- The panic boundary encloses future construction as well as its subsequent
+  polling; a synchronous factory panic cannot escape as an unobserved join
+  error. Added focused regressions for dropped caller handles, cancellation,
+  panics, and the host shutdown integration point.
+- Shared SMTP transport caching now keeps the first inserted pool under
+  concurrent sender construction instead of overwriting a valid connection
+  pool. Shutdown-skipped sends contribute to the existing skipped metric.
+- Locale selection now matches the first language subtag (including uppercase
+  and region variants), so arbitrary prefixes such as `ruby` or `russian`
+  no longer select Russian templates.
+- The code additions that preceded the merge are in #4760. The new locale,
+  shutdown-skip telemetry and live documentation reconciliation are in
+  `agent/server-auth-mail-lifecycle-followup-20261121`, based on main
+  `c5000ee004c65e07f78083da242ed9c5be6e79b2`.
+- **No tests, lint, formatter, builds, or integration suites were run here.**
+  Maintainer should run focused auth-email unit/integration coverage, server
+  compilation and format checks, and real SMTP shutdown scenarios.
+
+This is only process-local graceful draining. Durable email delivery requires
+an owner-level persisted request/outbox and replay contract; a hard process
+kill, transport failure, or host timeout can still lose an email. It is not
+safe to claim at-least-once delivery from this in-memory registry alone.
+
+Unclosed owner-level work remains, including durable delivery/retry for
+password-reset and verification email tasks, crash reconciliation of HTTP
+installer jobs, and stronger lifecycle fences across process and replica
+boundaries. This change does not assert those contracts are solved.
+
 ## Focus
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
@@ -53,7 +528,16 @@ so even malformed cross-user family IDs cannot revoke another user's tokens
 inside one app/tenant.
 First-party logout also accepts the immediately preceding rotated cookie
 under the session row lock, revoking its live successor after a lost refresh
-response.
+response. Refresh-reuse detection now takes that same database-specific row
+lock before evaluating the grace window or revoking the session, preventing a
+stale ActiveModel snapshot from overwriting a concurrent token rotation.
+Focused regression tests cover the in-grace race, post-grace revocation, and
+persistence-failure rollback. Session-id logout also acquires the session row
+lock (or SQLite write fence) before converting the row into an ActiveModel
+update; its regression test exercises the actual logout service and repeated
+idempotent logout. The 30-second grace window is not an idempotent retry
+protocol: the old token is rejected without revoking the current session, but
+a lost successful response still cannot be recovered.
 
 Remaining auth contract gaps requiring owner-level design and verification:
 the in-place first-party refresh session stores only the immediately previous
@@ -970,3 +1454,708 @@ Deferred work remains the service-token TTL policy, the cross-crate OAuth code-r
 event, deduplication of `RbacService::record_claim_role_mismatch()`, and database/Redis
 failure-path evidence. The historical source-guard/ADR failures recorded in earlier batches
 were resolved by the refreshed `main`; the current runs above pass.
+
+
+## P9 — Empty module listener registry routing (2026-11-18)
+
+A worker host must bind the module listener registry even when the composed
+module set registers zero handlers. Previously the host treated an empty set as
+a reason not to start the dispatcher. That left the configured transport unable
+to distinguish an intentionally empty registry from a dispatcher that had not
+initialized: remote-only sealed families were refused before reaching Iggy, and
+the single-node outbox target had no local receiver for root events.
+
+### Implemented
+
+- Worker hosts now start the dispatcher for both populated and empty listener
+  sets. The empty registry is explicit and remains part of readiness; it is not
+  represented as a missing worker.
+- Required local sealed families still fail closed when no matching handler
+  exists. Remote-only families can be sent to the configured primary when the
+  registry is explicitly empty.
+- Added regression coverage for empty-registry startup and remote-only delivery.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::module_event_dispatcher
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+
+
+
+## P10 — Unique notification lease-owner identities (2026-11-18)
+
+The server adapters previously derived the distributed lease owner for
+notification fanout and candidate work from a process-local atomic counter.
+Every replica therefore started with the same owner string (for example,
+`notification-fanout-1`). The owner services fence completion by comparing
+that string and the lease expiry. If a slow worker outlived its lease and another
+replica reclaimed the row with the same owner string, the stale worker could
+mistake the new lease for its own and commit after the reclaim.
+
+### Implemented
+
+- Fanout and candidate lease-owner IDs now include a fresh UUID for each worker
+  instance. The local atomic instance ID remains only for host-local handle
+  identity and diagnostics.
+- Added regression tests proving that two worker instances with the same local
+  counter value receive different lease-owner IDs and remain within the owner
+  contract's length limit.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::notification_fanout_worker
+cargo test -p rustok-server --lib services::notification_candidate_worker
+```
+
+
+
+## P11 — Comments worker readiness visibility (2026-11-18)
+
+The Comments TCP listener and schedule-audit handoff worker already had bounded
+shutdown drains, but neither appeared in the runtime worker snapshots. A task
+could therefore terminate unexpectedly while the HTTP health endpoint remained
+green.
+
+### Implemented
+
+- The optional Comments TCP listener and schedule-audit handoff worker are now
+  included in readiness whenever their handles are present.
+- Added a lifecycle regression test that verifies both workers are required
+  while running and are removed by the normal shutdown drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib --features mod-comments
+cargo test -p rustok-server --lib services::app_lifecycle::lifecycle_tests::comments_listener_and_audit_handoff_workers_are_required_when_started
+```
+
+
+
+## P12 — Notification intake versus Outbox retention (resolved by P18)
+
+The original failure boundary was real: Notifications persisted accepted
+receipts and permanent rejections in owner tables while Outbox pruned dispatched
+`sys_events` rows solely by age. A stalled intake worker could therefore lose
+its source envelope before recording a terminal outcome.
+
+P18 resolves the cross-owner boundary with Outbox-owned durable consumer
+registrations and per-event acknowledgements. The Outbox owner does not query
+notification-owned tables, and Notifications does not mutate relay state.
+See the accepted [consumer-retention decision](../../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
+
+The guarantee applies to rows that still exist when the consumer registration
+is committed. Already-pruned historical events cannot be reconstructed; old
+terminal notification receipts are backfilled before retention starts.
+
+
+
+## P13 — Acknowledge root-event projections before outbox completion (2026-11-18)
+
+The sealed contract path already awaited matching module handlers, but root
+`DomainEvent` delivery only broadcast into an in-memory channel. The outbox
+relay could mark a row dispatched before root projections completed; handler
+errors after the configured retry budget were logged and swallowed. In the
+Iggy profile, a local root-projection failure was also swallowed after remote
+acceptance, leaving no durable local retry.
+
+### Implemented
+
+- Added an acknowledged root-delivery path through the existing explicit module
+  listener registry. It waits for every matching handler and propagates handler,
+  capacity, and shutdown failures to the outbox relay.
+- The single-node `outbox` profile now uses the acknowledged local target.
+  The `outbox_iggy` profile also returns local projection failures so the
+  canonical outbox envelope is retried unchanged.
+- An unavailable local registry is rejected before irreversible remote
+  publication. A projection failure after remote acceptance may still cause
+  the same envelope to be published again; remote consumers must be idempotent.
+- Added regression coverage for handler completion, projection failure,
+  explicit empty registries, primary refusal, and retry with the same event ID.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::contract_delivery
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+
+
+
+## P14 — Retry and graceful shutdown for the in-process event forwarder (2026-11-18)
+
+The server event forwarder previously consumed an in-memory event and only
+logged a transport error. A transient database failure therefore lost the
+event before it reached the durable outbox. Backpressure accounting also had
+no release path for forwarded events or lagged messages, and the configured
+queue depth could exceed the Tokio broadcast ring capacity, allowing the ring
+to drop events before backpressure rejected new publishers. Shutdown aborted
+the forwarder immediately, discarding queued or in-flight events.
+
+### Implemented
+
+- The forwarder retries the same envelope with bounded exponential delay until
+  the transport accepts it; transport panics are caught and retried as well.
+- Root OutboxTransport publication is idempotent by envelope ID and verifies
+  exact canonical facts before accepting a duplicate, covering ambiguous
+  database commit responses.
+- Backpressure permits are released after persistence, for lagged messages,
+  and when queued messages are discarded during task teardown.
+- The effective backpressure depth is clamped to the broadcast capacity, and
+  permit acquisition uses compare-and-swap so concurrent publishers cannot
+  exceed the configured critical depth.
+- Shutdown signals the forwarder to drain accepted messages and allows up to
+  30 seconds before forced abort. P17 orders this dedicated drain after producer
+  workers have joined.
+- Added regression coverage for transient transport failure, shutdown draining,
+  permit release, concurrent backpressure acquisition, and idempotent outbox
+  retries.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::backpressure
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+cargo test -p rustok-outbox --test sqlite_transport_regression_test
+```
+
+
+
+## P15 — Event forwarder readiness visibility (2026-11-18)
+
+The event forwarder was supervised and drained during shutdown, but it was not
+included in the runtime worker readiness snapshot. If its supervisor exited,
+the HTTP host could remain green even though the in-memory-to-outbox bridge was
+no longer running.
+
+### Implemented
+
+- A started event forwarder is now a required worker in local runtime readiness.
+- Readiness reports it as finished if its supervisor task has terminated.
+- Added a lifecycle regression assertion for the forwarder's required/live
+  snapshot state.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::app_lifecycle::tests::shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones
+```
+
+
+
+## P16 — Cross-cutting event-delivery invariants documented (2026-11-18)
+
+Codified the recurring failure patterns found in the server audit in
+`docs/standards/logic-hygiene-patterns.md`: replica-unique lease ownership,
+atomic backpressure reservation, durable idempotent forwarding, acknowledged
+projection delivery, and cooperative shutdown. Each invariant now includes a
+specific regression check so future changes can preserve the same guarantees.
+
+
+## P17 — Close event-forwarder admission and shutdown races (2026-11-18)
+
+The P14 bridge still had two loss windows: with the default
+`backpressure.enabled = false`, the Tokio broadcast ring could overwrite
+accepted events while the forwarder retried a failed outbox write; and the
+shared stop signal let the forwarder drain concurrently with producers that
+were still completing in-flight work. A third startup race allowed the first
+publisher to run before the spawned forwarder had subscribed.
+
+### Implemented
+
+- Install a hard admission controller for the server-owned EventBus-to-Outbox
+  forwarder bus, including when configurable backpressure is disabled. The hard
+  depth equals the broadcast capacity; enabling backpressure adds configurable
+  early thresholds and a possibly smaller depth.
+- Honor configured `channel_capacity` even when EventBus is requested before
+  EventRuntime has been composed.
+- Subscribe the initial forwarder receiver synchronously before returning the
+  EventBus to its first publisher; supervised restarts create a fresh receiver.
+- Give the forwarder a dedicated stop signal. The global stop first quiesces
+  producers; the forwarder is stopped and drained only after all other
+  registered worker drains have joined.
+- Add regressions for default hard admission, first-publish subscription, and
+  producer-first shutdown draining.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+```
+
+
+## P18 — Retain Outbox events until required consumers acknowledge (2026-11-18)
+
+The Notifications intake worker previously wrote terminal outcomes into
+notification-owned tables, while Outbox retention deleted dispatched source
+events by age alone. A prolonged intake outage could therefore remove an event
+before its notification receipt or permanent rejection existed.
+
+### Implemented
+
+- Added Outbox-owned `sys_event_consumers` registrations and
+  `sys_event_consumer_receipts` acknowledgements. Retention now deletes a
+  dispatched event only after every registered consumer for its event type has
+  acknowledged the canonical event ID.
+- Added an append-only platform migration and shared standalone schema helper.
+  Receipt rows cascade with the canonical Outbox event.
+- Notifications registers its supported event types before the server starts
+  runtime workers and retention. A neutral receipt port commits the Outbox
+  acknowledgement in the same transaction as the accepted intake receipt or
+  permanent rejection; retryable failures create neither terminal receipt nor
+  acknowledgement.
+- Added bounded startup backfill for existing terminal Notifications receipts
+  before retention starts. Already-pruned IDs are harmless because the owner
+  terminal receipt is already durable.
+- Added regression coverage for multi-consumer retention holds, idempotent
+  acknowledgements, and atomic notification receipt/Outbox acknowledgement.
+- Registration is durable and additive. Disabling intake does not silently
+  release its retention obligation; unacknowledged events remain stored until
+  intake recovers or an operator explicitly retires the consumer after drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-outbox-storage --lib
+cargo test -p rustok-outbox-storage --lib consumers
+cargo check -p rustok-outbox --lib
+cargo test -p rustok-outbox --lib retention
+cargo check -p rustok-notifications --all-targets
+cargo test -p rustok-notifications --test outbox_intake_sqlite
+cargo check -p rustok-server --lib --features mod-notifications
+cargo test -p rustok-server --lib services::notification_outbox_intake_worker
+cargo test -p rustok-migrations
+node scripts/verify/verify-notifications-outbox-intake.mjs
+node scripts/verify/verify-outbox-retention-and-event-metrics.mjs
+node scripts/verify/verify-migration-backfill-contracts.mjs
+```
+
+PostgreSQL migration and concurrent retention/acknowledgement behavior remain
+maintainer/CI gates.
+
+
+## P19 — Release backpressure reservations on dispatcher lag (2026-11-18)
+
+The module dispatcher handled `broadcast::RecvError::Lagged` by advancing the
+receiver and continuing, but did not release the backpressure reservations for
+the skipped envelopes. Under a slow handler, the broadcast ring can overwrite
+events; those accepted-but-lost messages therefore remained counted forever and
+could eventually make the backpressure controller reject healthy publishers.
+
+### Implemented
+
+- Release one EventBus backpressure reservation for every skipped envelope when
+  the module dispatcher observes broadcast lag.
+- Clamp dispatcher semaphore capacities in the legacy `start()` path so
+  externally supplied oversized `DispatcherConfig` values cannot panic inside
+  the spawned task.
+- Use saturating retry-attempt arithmetic so `retry_count = usize::MAX` cannot
+  overflow before handler execution.
+- Added a regression test proving lagged reservations return the controller to
+  zero after the retained event completes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::handler
+```
+
+
+
+## P20 — Surface core runtime worker failures in readiness (2026-11-18)
+
+The readiness review identified the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO workers as critical runtime obligations.
+The health controller already owned explicit, configuration-aware checks for
+these workers. Mirroring them in `additional_runtime_worker_snapshots` was
+redundant and emitted duplicate Outbox/remote-executor checks plus a second,
+non-canonical SEO worker label. P21 records and corrects that implementation
+mistake; the explicit checks in `health.rs` remain authoritative.
+
+### Implemented
+
+- Kept the existing explicit checks for Outbox relay/retention,
+  remote-executor reaper, and each enabled SEO worker as the single source of
+  readiness truth.
+- Kept the event-forwarder snapshot in the additional worker list because it
+  has no separate explicit check; it becomes required when the EventBus
+  forwarder handle is registered.
+- Added a regression test that rejects duplicate readiness check names and
+  asserts one canonical check for each core worker.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib controllers::health::tests::runtime_worker_readiness_uses_one_canonical_check_per_worker
+cargo test -p rustok-server --lib services::app_lifecycle::tests::additional_workers_respect_host_modes_and_auth_retention_config
+cargo check -p rustok-server --lib --features commerce-marketplace-financial
+cargo check -p rustok-server --lib --no-default-features --features mod-seo
+```
+
+
+## P21 — Keep runtime worker readiness single-source (2026-11-18)
+
+A source-level re-review found that `controllers/health.rs` already creates
+configuration-aware checks for the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO worker variants. The additional lifecycle
+snapshot list had duplicated those checks. The extra Outbox/remote entries
+reused the same check names; the SEO entry used a second name for the same
+supervised handle. Duplicate readiness entries can confuse operators and
+produce repeated worker metrics.
+
+### Implemented
+
+- Removed the redundant Outbox relay, Outbox retention, remote-executor, and
+  SEO entries from `additional_runtime_worker_snapshots`; the existing
+  `health.rs` checks remain the only canonical entries for those workers.
+- Retained the EventBus forwarder snapshot, which has no separate explicit
+  check, and classified it as optional until its handle is registered.
+- Removed a duplicate feature-gated import that would fail compilation when
+  `commerce-marketplace-financial` is enabled.
+- Removed the redundant SEO snapshot (which had been gated by both
+  `mod-workflow` and `mod-seo`); the canonical SEO readiness checks remain
+  independently gated by `mod-seo`.
+- Added a regression test asserting readiness check names are unique and that
+  Outbox, remote-executor, and SEO worker checks each have one canonical entry.
+- Updated the host-mode snapshot test to treat EventBus forwarding and optional
+  Comments workers as optional until their runtime handles are registered.
+- Updated the readiness runbook to document Outbox retention, EventBus
+  forwarder, and the three independently configured SEO worker checks.
+
+### Verification status
+
+Not run in this task, at the user's request. No Rust compilation, formatting,
+or tests are claimed. Run the commands listed under P20 on one revision before
+integration; tests remain with the maintainer.
+
+## P22 — Atomic tenant-scoped OAuth manifest reconciliation (2026-11-18)
+
+The manifest sync previously committed app upserts and translation writes
+individually, then used a separate transaction for orphan cleanup. A conflict
+or storage failure late in the pass could leave a tenant with a partially
+updated OAuth application set. Concurrent server replicas could also perform
+the same read/upsert/orphan sequence without a tenant-level serialization fence.
+
+### Implemented
+
+- The sync_app_connections flow now acquires an exclusive tenant-row lock before
+  reading the current managed-app set. PostgreSQL/MySQL use FOR UPDATE;
+  SQLite takes its write fence before the first read. Existing managed-app
+  rows are then locked with the same app-mutation fence used by token issuance
+  and consent before security-sensitive configuration is updated.
+- App creation/reactivation, first-party manifest updates, translation writes,
+  orphan deactivation, token revocation, consent revocation, and authorization-code
+  invalidation now share one transaction per tenant.
+- A failure in any manifest entry or orphan cleanup rolls back all earlier
+  writes from that tenant's reconciliation.
+- Reconciliation includes already-inactive managed apps, repairs stale credentials
+  left by older versions, and clears credentials again before reactivating a
+  previously disabled app. Embedded-app reactivation also checks the combined
+  active/revoked state instead of the raw is_active column alone.
+- Explicit manual app revocation uses the same credential cleanup path and
+  revokes active user consents alongside tokens and pending authorization codes.
+- Added a regression case where an embedded app is upserted before a later
+  manual-app slug conflict; the earlier embedded-app write must not leak.
+- The all-tenants bootstrap remains a sequence of per-tenant transactions,
+  not a single global transaction across every tenant. A failure can leave
+  earlier tenants committed while later tenants have not yet been processed;
+  rerunning the idempotent sync reconciles those tenants.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
+cargo test -p rustok-server --lib services::oauth_app::tests::app_revocation_revokes_active_user_consents
+cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_reactivates_embedded_app_with_revocation_timestamp
+cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
+cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
+```
+
+## P23 — Unique installer lease-owner identities (2026-11-18)
+
+The HTTP adapter used the shared literal owner `http`, while the CLI used the
+shared literal `rustok-cli install apply`. Those labels were not unique to an
+execution attempt. The persistence layer records the owner at acquisition but
+does not yet compare it on every state/receipt write, so unique values alone
+are diagnostic/preparatory rather than a complete stale-worker fence.
+
+### Implemented
+
+- Added one shared lock-owner builder in `rustok-installer`. It sanitizes a
+  short diagnostic label and appends the optional stable session/job ID plus a
+  fresh attempt UUID; the result is bounded below the `VARCHAR(128)` session
+  column limit.
+- The HTTP adapter now uses its durable job/session ID and a fresh attempt ID.
+- The CLI adapter and `InstallApplyOptions::default()` also generate a fresh
+  attempt-specific owner rather than a static label.
+- Added contract coverage for unique owners across attempts, label
+  sanitization, storage length, and unique defaults; added HTTP-adapter coverage.
+
+### Remaining boundary
+
+This is a unique owner token, not a monotonic attempt-generation protocol,
+and persistence writes do not yet verify owner equality. The fail-closed
+session-admission gate added in P25 prevents automatic overlap after lease
+expiry, but the HTTP executor still runs in-process, is not resumable after
+process loss, and does not reconcile ambiguous external effects. Stale
+`running` jobs must not be reset based only on lease expiry. The durable
+recovery ADR remains in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo check -p rustok-installer-cli
+```
+
+## P24 — Bounded installer lease TTL input (2026-11-18)
+
+The HTTP adapter accepted arbitrary `lock_ttl_secs` values while the CLI only
+checked positivity. The persistence layer added the TTL to the current
+timestamp directly, so an extreme value could overflow the timestamp range.
+
+### Implemented
+
+- Added a shared contract: installer lease TTL must be between 1 and 86,400
+  seconds (default 900). The execution state machine validates it even when
+  called outside the HTTP/CLI adapters.
+- HTTP and CLI adapters reject zero, negative, and over-limit values before
+  creating or starting an installer job.
+- Persistence now uses checked timestamp addition and returns a database error
+  instead of panicking if a direct caller supplies an unrepresentable duration.
+- Added shared contract and HTTP-controller regression coverage for both bounds.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime installer_lock_ttl_is_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+cargo test -p rustok-installer-persistence --lib
+```
+
+## P25 — Fail-closed installer session admission (2026-11-18)
+
+Lock arbitration previously treated `lock_expires_at` as proof that a worker
+had stopped. A new apply could therefore start while a stale executor was
+still running. The current persistence adapter does not yet compare owner
+identity on every state/receipt mutation, so automatic lease-based takeover
+was unsafe.
+
+### Implemented
+
+- A session row can be claimed only once (`lock_owner IS NULL` and
+  `status = draft`); a second attempt cannot overwrite its existing owner.
+- Any other unreconciled session with a recorded owner blocks a new apply
+  even when its lease timestamp has expired. Expiry alone is no longer treated
+  as proof that the previous process stopped. `recovery_required` also blocks
+  admission until manual reconciliation, despite being terminal for execution.
+- PostgreSQL and MySQL lock acquisition now uses a serializable transaction;
+  SQLite obtains its write fence through the conditional session-claim update.
+- `completed`, safely `failed`, and `fresh_install_cleaned` sessions release
+  the global admission gate. `recovery_required` and stale unfinished sessions
+  require explicit reconciliation before another apply can start.
+- Regression coverage verifies same-session re-claim rejection, expired-lease
+  blocking, and release after finalization.
+
+### Remaining boundary
+
+State, tenant, and receipt mutations do not yet compare the persisted owner on
+every write. There is no monotonic attempt generation, periodic lease renewal,
+resumable executor, or automatic external-effect reconciliation. The fail-closed
+gate prevents automatic overlap but intentionally leaves stale sessions blocked
+until an operator reconciles them. The durable recovery ADR remains in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer-persistence --lib session_persistence_lifecycle_and_state_transitions
+cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+```
+
+## P26 — Serialize first-party refresh-token reuse revocation (2026-11-18)
+
+Refresh-token reuse detection previously read the immediately preceding token
+hash without locking its session row, then converted the read snapshot into an
+ActiveModel update. A concurrent successful refresh could rotate the row
+between those operations; the stale update could then overwrite the newer
+token hash or expiry while revoking the session.
+
+### Implemented
+
+- Reused the database-specific previous-session lookup used by logout, which
+  acquires `FOR UPDATE` on PostgreSQL/MySQL and a conditional SQLite write
+  fence before returning the row.
+- Refresh reuse detection now holds that row lock while evaluating the grace
+  window and applying the revocation update.
+- Session-id logout no longer reads an active session and then updates its stale
+  snapshot without a lock. It locks the row on PostgreSQL/MySQL and reserves a
+  SQLite write before reading, then publishes the logout event in the same
+  transaction as the revocation.
+- Added regression tests for an in-grace duplicate (reject without revoking),
+  post-grace replay (revoke the live lineage), and failed revocation persistence
+  (propagate the storage error and preserve the active session).
+- Corrected the grace-window contract for both first-party and OAuth
+  refresh: it suppresses revocation for a likely concurrent duplicate but is
+  not an idempotent retry. The old token still receives an invalid-token error;
+  if the successful response is lost, it cannot recover the replacement
+  cookie/token. Full rotation history and idempotent response recovery remain
+  open owner-level design gaps.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_inside_grace_is_rejected_without_revoking_live_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_revocation_failure_is_propagated_without_false_success
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_find_previous_rotated_token_without_crossing_tenant
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+```
+
+## P27 — Use write-first SQLite fences in auth and OAuth mutations (2026-11-18)
+
+Several auth and OAuth mutation paths used SELECT followed by a no-op
+UPDATE to acquire SQLite's writer lock. In a deferred transaction this can
+race another writer during lock promotion; the direct profile path also
+converted a row read under unsupported SQLite row-lock syntax into a full
+ActiveModel update.
+
+### Implemented
+
+- Profile updates now use the shared database-specific user-row lock helper.
+- Login user lookup reserves SQLite's writer by the tenant/email key before
+  reading the account; user-by-id and current-session mutation helpers also
+  reserve the write lock before their first read.
+- Refresh and previous-refresh lookups now reserve the SQLite writer directly
+  by the presented digest, then reload the matching row while the transaction
+  owns the write fence.
+- Session-id logout already uses a write-first fence by tenant/session ID.
+- OAuth token issuance now reserves SQLite's writer by known app/subject IDs
+  before reloading the current client and subject state; it no longer performs
+  a read-first lock upgrade on those rows.
+- OAuth admin app mutations use the same write-first fence by tenant/app ID;
+  admin user mutations fence by tenant/user ID before loading their snapshots.
+- Admin user mutations also reserve SQLite's writer by tenant/user ID before
+  reading the row used for status, role, password, or profile changes.
+- Unsupported database backends now fail closed in these auth lock helpers
+  instead of silently running an unlocked read.
+- Existing SQLite tests exercise login, profile update, password change,
+  refresh/reuse, and logout paths through the new lock helpers.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::failed_attempts_lock_atomically_and_ignore_obsolete_credentials
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::update_profile_trims_name_and_allows_clearing_with_blank_value
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::change_password_rejects_expired_current_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
+```
+
+## P28 — Revalidate OAuth consent inside token-issuance transactions (2026-11-18)
+
+Authorization-code and refresh flows validated consent before starting their
+issuance transaction. They later acquired the app and subject locks, but did
+not re-read consent under those locks. A concurrent consent re-grant or scope
+narrowing could therefore commit between preflight validation and token
+persistence; the exchange could return credentials carrying a stale consent
+epoch or scopes that the user had just narrowed.
+
+### Implemented
+
+- Prepared user-token bundles now retain the consent grant timestamp observed
+  during preparation.
+- Authorization-code exchange revalidates active consent, requested scopes,
+  and the prepared grant epoch after acquiring the app and subject locks.
+- Refresh rotation revalidates active consent and scope coverage against the
+  presented refresh token's stored consent epoch under the same locks.
+- A stale epoch returns invalid_grant and a scope no longer covered by the
+  current consent returns invalid_scope before the authorization code or
+  refresh token is consumed and before replacement credentials are persisted.
+- Added a SQLite regression test that changes the consent epoch after token
+  preparation and verifies refresh commit rejects without consuming the old
+  refresh token or inserting replacement credentials; it also verifies
+  narrowed consent rejects wider token scopes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_consent_revalidation_rejects_stale_grant_epoch_and_scopes
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
+cargo test -p rustok-server --lib services::oauth_admin_guard::tests::guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling
+```

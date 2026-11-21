@@ -53,7 +53,7 @@ pub use model::{
 };
 
 #[cfg(feature = "server")]
-pub use graphql::NewsletterGraphqlRuntimeData;
+pub use graphql::{NewsletterGraphqlRuntimeData, NewsletterGraphqlRuntimeError};
 #[cfg(feature = "server")]
 pub use module::NewsletterModule;
 #[cfg(feature = "server")]

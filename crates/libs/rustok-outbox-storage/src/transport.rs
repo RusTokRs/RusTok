@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Set,
-    sea_query::OnConflict,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, Set, sea_query::OnConflict,
 };
 use std::any::Any;
 use uuid::Uuid;
@@ -88,11 +88,7 @@ impl OutboxTransport {
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         entity::Entity::insert(active_model)
-            .on_conflict(
-                OnConflict::column(entity::Column::Id)
-                    .do_nothing()
-                    .to_owned(),
-            )
+            .on_conflict(OnConflict::column(entity::Column::Id).do_nothing().to_owned())
             .exec_without_returning(txn)
             .await
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
@@ -170,6 +166,7 @@ impl OutboxTransport {
         let payload = serde_json::to_value(&envelope)?;
         Self::model(
             envelope.id,
+            Some(envelope.tenant_id),
             envelope.event_type,
             envelope.schema_version,
             payload,
@@ -183,14 +180,16 @@ impl OutboxTransport {
             .validate_registered_schema()
             .map_err(|error| Error::Validation(error.to_string()))?;
         let id = envelope.id();
+        let tenant_id = envelope.tenant_id();
         let event_type = envelope.event_type().to_string();
         let schema_version = envelope.schema_version();
         let payload = serde_json::to_value(&envelope)?;
-        Self::model(id, event_type, schema_version, payload)
+        Self::model(id, Some(tenant_id), event_type, schema_version, payload)
     }
 
     fn model(
         id: uuid::Uuid,
+        tenant_id: Option<uuid::Uuid>,
         event_type: String,
         schema_version: u16,
         payload: serde_json::Value,
@@ -200,6 +199,8 @@ impl OutboxTransport {
                 "outbox event id must not be nil".to_string(),
             ));
         }
+        // A nil tenant UUID denotes platform scope, same as no tenant.
+        let tenant_id = tenant_id.filter(|tenant_id| !tenant_id.is_nil());
         if event_type.trim().is_empty() || event_type.len() > 255 {
             return Err(Error::Validation(
                 "outbox event_type must contain 1 to 255 bytes".to_string(),
@@ -213,6 +214,7 @@ impl OutboxTransport {
 
         Ok(entity::ActiveModel {
             id: Set(id),
+            tenant_id: Set(tenant_id),
             event_type: Set(event_type),
             schema_version: Set(schema_version),
             payload: Set(payload),
@@ -283,9 +285,56 @@ impl TransactionalEventWriter for OutboxTransport {
 #[async_trait]
 impl EventTransport for OutboxTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        entity::Entity::insert(Self::model_from_envelope(envelope)?)
+        let envelope_id = envelope.id;
+        let event_type = envelope.event_type.clone();
+        let schema_version = i16::try_from(envelope.schema_version).map_err(|_| {
+            Error::Validation(format!(
+                "outbox schema_version {} exceeds database SMALLINT range",
+                envelope.schema_version
+            ))
+        })?;
+        let payload_envelope = envelope.clone();
+        let active_model = Self::model_from_envelope(envelope)?;
+
+        let affected = entity::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(entity::Column::Id)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .exec_without_returning(&self.db)
             .await?;
+        if affected == 1 {
+            return Ok(());
+        }
+        if affected != 0 {
+            return Err(Error::Internal(format!(
+                "outbox write for event {envelope_id} affected {affected} rows"
+            )));
+        }
+
+        let stored = entity::Entity::find_by_id(envelope_id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("sys_event {envelope_id}")))?;
+        // Idempotent replay compares canonical facts only. Generated
+        // metadata (`timestamp`, `trace_id`, `retry_count`) legitimately
+        // differs when a producer rebuilds the same logical event, exactly
+        // as in the contract write-once comparison.
+        let stored_envelope: EventEnvelope =
+            serde_json::from_value(stored.payload.clone()).map_err(|_| {
+                Error::Validation(format!(
+                    "outbox event id {envelope_id} already belongs to different canonical facts"
+                ))
+            })?;
+        if stored.event_type != event_type
+            || stored.schema_version != schema_version
+            || !same_root_publication(&stored_envelope, &payload_envelope)
+        {
+            return Err(Error::Validation(format!(
+                "outbox event id {envelope_id} already belongs to different canonical facts"
+            )));
+        }
         Ok(())
     }
 
@@ -295,19 +344,58 @@ impl EventTransport for OutboxTransport {
                 "outbox event_id must not be nil".to_string(),
             ));
         }
-        let mut model: entity::ActiveModel = entity::Entity::find_by_id(event_id)
+        // Atomic state transition: only a pending row may be acknowledged.
+        // A read-modify-write through a stale snapshot could resurrect a
+        // dead-lettered row or steal another worker's live claim.
+        let result = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(event_id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .set(entity::ActiveModel {
+                status: Set(SysEventStatus::Dispatched),
+                dispatched_at: Set(Some(Utc::now())),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                last_error: Set(None),
+                next_attempt_at: Set(None),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected == 1 {
+            return Ok(());
+        }
+        // Distinguish an idempotent re-acknowledgement from a real state
+        // conflict without ever overwriting the current state.
+        let stored = entity::Entity::find_by_id(event_id)
             .one(&self.db)
             .await?
-            .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?
-            .into();
-        model.status = Set(SysEventStatus::Dispatched);
-        model.dispatched_at = Set(Some(Utc::now()));
-        model.claimed_by = Set(None);
-        model.claimed_at = Set(None);
-        model.last_error = Set(None);
-        model.next_attempt_at = Set(None);
-        model.update(&self.db).await?;
-        Ok(())
+            .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?;
+        if stored.status == SysEventStatus::Dispatched {
+            return Ok(());
+        }
+        Err(Error::Validation(format!(
+            "outbox event {event_id} cannot be acknowledged from its current state"
+        )))
+    }
+
+    fn supports_transactional_writes(&self) -> bool {
+        true
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        self.write_to_outbox(transaction, envelope).await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> Result<()> {
+        self.write_contract_to_outbox(transaction, envelope).await
     }
 
     fn reliability_level(&self) -> ReliabilityLevel {
@@ -359,6 +447,22 @@ mod tests {
             channel_slug: "web-store".to_string(),
             terms_version,
         }
+    }
+
+    #[test]
+    fn root_replay_comparison_ignores_generated_metadata() {
+        let first = envelope();
+        let mut replay = first.clone();
+        replay.timestamp = chrono::Utc::now();
+        replay.trace_id = Some("another-trace".to_string());
+        replay.retry_count = 3;
+        assert!(same_root_publication(&first, &replay));
+
+        let mut different_facts = first.clone();
+        different_facts.event = DomainEvent::UserLoggedIn {
+            user_id: Uuid::new_v4(),
+        };
+        assert!(!same_root_publication(&first, &different_facts));
     }
 
     #[test]

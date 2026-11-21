@@ -868,13 +868,13 @@ enum ArtifactExecutionAdmissionKind {
 /// policy/lifecycle owner for one exact tenant, release, and installation
 /// target.
 ///
-/// Hosts can obtain a token only from
-/// `ModuleEffectivePolicy::admit_artifact_execution`; the fields and all
-/// other constructors are crate-private, so a transport cannot fabricate
-/// admission from descriptor data, headers, or an enabled-slug set. The
-/// production executor additionally re-resolves current effective policy
-/// for every non-lifecycle dispatch, so a token minted under a policy
-/// that has since been revoked still cannot execute.
+/// Hosts obtain a token through
+/// `ModuleEffectivePolicy::admit_artifact_execution`; fields and other
+/// constructors are crate-private. The policy must come from the trusted owner:
+/// deserialization validates structure, not provenance. Before non-lifecycle
+/// dispatch, the production executor re-resolves policy and checks the exact
+/// artifact release and installation again. This is not an atomic lock against
+/// a policy change after the recheck.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactExecutionAdmission {
     kind: ArtifactExecutionAdmissionKind,
@@ -975,6 +975,7 @@ impl ArtifactExecutionAdmission {
         tenant_id: uuid::Uuid,
         phase: ExecutionPhase,
     ) -> bool {
+        // INVARIANT: In-memory evaluation comparing cached dispatcher registration against requested tenant_id, module, and release.
         if self.tenant_id != tenant_id
             || self.module_slug != release.slug
             || self.release_digest != release.digest

@@ -227,8 +227,8 @@ impl CartOperationGuard {
 
 impl Drop for CartOperationGuard {
     fn drop(&mut self) {
-        if !self.finished {
-            let _ = self.state.try_update(|state| state.abandon(self.id));
+        if !self.finished && self.state.try_update(|state| state.abandon(self.id)).is_none() {
+            tracing::trace!("state signal disposed during CartOperationGuard::drop");
         }
     }
 }
@@ -388,10 +388,16 @@ impl BuyerCartController {
     /// Refuse until a full reload restores the canonical session; no credentials are broadcast.
     pub fn invalidate_external_auth(&self) {
         // Fence Product observations synchronously, before any reactive restore effect runs.
-        let _ = self
+        if self
             .generation
-            .try_update(|generation| *generation = generation.saturating_add(1));
-        let _ = self.external_auth_changed.try_set(true);
+            .try_update(|generation| *generation = generation.saturating_add(1))
+            .is_none()
+        {
+            tracing::trace!("generation signal disposed during invalidate_external_auth");
+        }
+        if self.external_auth_changed.try_set(true).is_none() {
+            tracing::trace!("external_auth_changed signal disposed during invalidate_external_auth");
+        }
     }
     #[cfg(target_arch = "wasm32")]
     pub(super) fn matches_checkpoint_key(&self, key: &str) -> bool {
@@ -470,9 +476,13 @@ impl BuyerCartController {
     fn finish_and_retry(&self, guard: CartOperationGuard) {
         if guard.finish() {
             // Releasing the guard notifies observers; its owner may already be gone.
-            let _ = self
+            if self
                 .retry
-                .try_update(|retry| *retry = retry.saturating_add(1));
+                .try_update(|retry| *retry = retry.saturating_add(1))
+                .is_none()
+            {
+                tracing::trace!("retry signal disposed during finish_and_retry");
+            }
         }
     }
     fn checkpoint(&self, scope: &ClientScope) -> Result<BuyerCartCheckpoint, BuyerCartError> {
@@ -523,14 +533,26 @@ impl BuyerCartController {
             self.finish_and_retry(guard);
             return;
         }
-        let _ = self.inspection_scope.try_set(Some(scope));
-        let _ = self
+        if self.inspection_scope.try_set(Some(scope)).is_none() {
+            tracing::trace!("inspection_scope signal disposed during inspect");
+        }
+        if self
             .state
-            .try_set(BuyerCartSession::restoring(session.cart_id));
-        let _ = self.bound_scope.try_set(None);
-        let _ = self
+            .try_set(BuyerCartSession::restoring(session.cart_id))
+            .is_none()
+        {
+            tracing::trace!("state signal disposed during inspect");
+        }
+        if self.bound_scope.try_set(None).is_none() {
+            tracing::trace!("bound_scope signal disposed during inspect");
+        }
+        if self
             .generation
-            .try_update(|generation| *generation = generation.saturating_add(1));
+            .try_update(|generation| *generation = generation.saturating_add(1))
+            .is_none()
+        {
+            tracing::trace!("generation signal disposed during inspect");
+        }
         // The restore effect must run after this synchronous recovery reservation is released.
         self.finish_and_retry(guard);
     }
@@ -544,9 +566,13 @@ impl BuyerCartController {
             .is_err()
         {
             if self.current_generation(&scope, generation) {
-                let _ = self
+                if self
                     .state
-                    .try_update(|session| session.fail(BuyerCartError::Restore));
+                    .try_update(|session| session.fail(BuyerCartError::Restore))
+                    .is_none()
+                {
+                    tracing::trace!("state signal disposed during reset_reference");
+                }
             }
             guard.finish();
             return;
@@ -561,9 +587,13 @@ impl BuyerCartController {
             return;
         }
         if !persisted {
-            let _ = self
+            if self
                 .state
-                .try_update(|session| session.fail(BuyerCartError::Restore));
+                .try_update(|session| session.fail(BuyerCartError::Restore))
+                .is_none()
+            {
+                tracing::trace!("state signal disposed during reset_reference");
+            }
             guard.finish();
             return;
         }
@@ -572,14 +602,28 @@ impl BuyerCartController {
             self.finish_and_retry(guard);
             return;
         }
-        let _ = self.initialized.try_set_value(true);
-        let _ = self.inspection_scope.try_set(None);
-        let _ = self.reference.try_set(None);
-        let _ = self.state.try_set(BuyerCartSession::restoring(None));
-        let _ = self.bound_scope.try_set(None);
-        let _ = self
+        if self.initialized.try_set_value(true).is_none() {
+            tracing::trace!("initialized signal disposed during reset_reference");
+        }
+        if self.inspection_scope.try_set(None).is_none() {
+            tracing::trace!("inspection_scope signal disposed during reset_reference");
+        }
+        if self.reference.try_set(None).is_none() {
+            tracing::trace!("reference signal disposed during reset_reference");
+        }
+        if self.state.try_set(BuyerCartSession::restoring(None)).is_none() {
+            tracing::trace!("state signal disposed during reset_reference");
+        }
+        if self.bound_scope.try_set(None).is_none() {
+            tracing::trace!("bound_scope signal disposed during reset_reference");
+        }
+        if self
             .generation
-            .try_update(|generation| *generation = generation.saturating_add(1));
+            .try_update(|generation| *generation = generation.saturating_add(1))
+            .is_none()
+        {
+            tracing::trace!("generation signal disposed during reset_reference");
+        }
         self.finish_and_retry(guard);
     }
     pub async fn add_variant(

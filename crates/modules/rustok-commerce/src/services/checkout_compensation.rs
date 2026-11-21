@@ -476,6 +476,7 @@ fn validate_compensation_identity(
     operation: &checkout_operation::Model,
     identity: &CheckoutOrderIdentitySnapshot,
 ) -> CheckoutCompensationResult<()> {
+    // INVARIANT: database query filtered by tenant_id precedes in-memory compensation identity snapshot validation.
     if identity.tenant_id != tenant_id
         || identity.checkout_operation_id != operation.id
         || identity.source_cart_id.is_some() && identity.source_cart_id != Some(operation.cart_id)

@@ -6,6 +6,16 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown order fulfillment requirement `{0}`")]
+pub struct UnknownOrderLineFulfillmentRequirementError(pub String);
+
+impl From<UnknownOrderLineFulfillmentRequirementError> for String {
+    fn from(error: UnknownOrderLineFulfillmentRequirementError) -> Self {
+        error.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderLineFulfillmentRequirement {
@@ -14,11 +24,11 @@ pub enum OrderLineFulfillmentRequirement {
 }
 
 impl OrderLineFulfillmentRequirement {
-    pub fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, UnknownOrderLineFulfillmentRequirementError> {
         match value.trim().to_ascii_lowercase().as_str() {
             "digital" => Ok(Self::Digital),
             "physical" => Ok(Self::Physical),
-            _ => Err(format!("unknown order fulfillment requirement `{value}`")),
+            _ => Err(UnknownOrderLineFulfillmentRequirementError(value.to_string())),
         }
     }
 

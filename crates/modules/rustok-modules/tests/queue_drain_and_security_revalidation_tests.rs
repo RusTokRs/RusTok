@@ -53,7 +53,7 @@ async fn test_event_claim_revalidates_security_state_and_dead_letters() {
                 dependency_lock, installed_at\
              ) VALUES (?1, 'tenant', ?2, 'official', 'analytics', 'sha256:0000000000000000000000000000000000000000000000000000000000000000', \
                 ?3, ?4, 'wasm', 'wasm:v1', 'sha256:0000000000000000000000000000000000000000000000000000000000000000', \
-                'entrypoint.wasm', '{\"schema_version\":1,\"module\":{\"slug\":\"analytics\",\"version\":\"1.0.0\"}}', \
+                'entrypoint.wasm', ?7, \
                 ?5, ?6, 1, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', '[]', '2026-09-01T00:00:00Z')",
             vec![
                 installation_id.to_string().into(),
@@ -62,6 +62,13 @@ async fn test_event_claim_revalidates_security_state_and_dead_letters() {
                 module_version.into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
+                serde_json::json!({
+                    "schema_version": rustok_modules::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                    "slug": module_slug, "version": module_version,
+                    "payload_kind": "rhai", "module_kind": "optional",
+                    "runtime_abi": "rustok:module/runtime@1", "platform_compatibility": "^0.1",
+                    "artifact_digest": format!("sha256:{}", "0".repeat(64)), "entrypoint": "main"
+                }).to_string().into(),
             ],
         ))
         .await

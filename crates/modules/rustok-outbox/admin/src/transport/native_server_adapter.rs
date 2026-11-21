@@ -81,36 +81,33 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
                 HealthStatus::Unhealthy => "unhealthy",
             }
             .to_string(),
-            counters: vec![
-                OutboxCounterSnapshot {
-                    key: "pending".to_string(),
-                    label: "Pending events".to_string(),
-                    value: query_status_count(&db, backend, tenant.id, "pending")
-                        .await
-                        .map_err(ServerFnError::new)?,
-                },
-                OutboxCounterSnapshot {
-                    key: "dispatched".to_string(),
-                    label: "Dispatched events".to_string(),
-                    value: query_status_count(&db, backend, tenant.id, "dispatched")
-                        .await
-                        .map_err(ServerFnError::new)?,
-                },
-                OutboxCounterSnapshot {
-                    key: "failed".to_string(),
-                    label: "Failed events".to_string(),
-                    value: query_status_count(&db, backend, tenant.id, "failed")
-                        .await
-                        .map_err(ServerFnError::new)?,
-                },
-                OutboxCounterSnapshot {
-                    key: "retries".to_string(),
-                    label: "Max retry count".to_string(),
-                    value: query_max_retry_count(&db, backend, tenant.id)
-                        .await
-                        .map_err(ServerFnError::new)?,
-                },
-            ],
+            counters: {
+                let counters = query_counters(&db, backend, tenant.id)
+                    .await
+                    .map_err(ServerFnError::new)?;
+                vec![
+                    OutboxCounterSnapshot {
+                        key: "pending".to_string(),
+                        label: "Pending events".to_string(),
+                        value: counters.pending,
+                    },
+                    OutboxCounterSnapshot {
+                        key: "dispatched".to_string(),
+                        label: "Dispatched events".to_string(),
+                        value: counters.dispatched,
+                    },
+                    OutboxCounterSnapshot {
+                        key: "failed".to_string(),
+                        label: "Failed events".to_string(),
+                        value: counters.failed,
+                    },
+                    OutboxCounterSnapshot {
+                        key: "retries".to_string(),
+                        label: "Max retry count".to_string(),
+                        value: counters.max_retry_count,
+                    },
+                ]
+            },
             relay_notes: vec![
                 "Relay execution remains owned by apps/server runtime wiring.".to_string(),
                 "This module-owned UI is read-only and does not replace transport controllers."
@@ -126,73 +123,64 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
     }
 }
 
+/// Tenant-scoped operational counters, read in one aggregate pass.
+///
+/// Previously each card ran its own tenant-filtered scan of `sys_events`,
+/// so opening the page cost four passes over the table's tenant slice and
+/// a read error was silently rendered as "0 events". Errors now propagate.
 #[cfg(feature = "ssr")]
-async fn query_status_count(
-    db: &sea_orm::DatabaseConnection,
-    backend: sea_orm::DbBackend,
-    tenant_id: uuid::Uuid,
-    status: &str,
-) -> Result<u64, sea_orm::DbErr> {
-    use sea_orm::{ConnectionTrait, QueryResult, Statement};
-
-    if !matches!(status, "pending" | "dispatched" | "failed") {
-        return Ok(0);
-    }
-
-    let sql = tenant_scoped_status_sql(backend);
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            sql,
-            [status.into(), tenant_id.to_string().into()],
-        ))
-        .await?;
-    Ok(row
-        .and_then(|row: QueryResult| row.try_get::<i64>("", "value").ok())
-        .unwrap_or_default() as u64)
+#[derive(Debug, Default, PartialEq, Eq)]
+struct OutboxCounters {
+    pending: u64,
+    dispatched: u64,
+    failed: u64,
+    max_retry_count: u64,
 }
 
 #[cfg(feature = "ssr")]
-async fn query_max_retry_count(
+async fn query_counters(
     db: &sea_orm::DatabaseConnection,
     backend: sea_orm::DbBackend,
     tenant_id: uuid::Uuid,
-) -> Result<u64, sea_orm::DbErr> {
-    use sea_orm::{ConnectionTrait, QueryResult, Statement};
+) -> Result<OutboxCounters, sea_orm::DbErr> {
+    use sea_orm::{ConnectionTrait, Statement};
 
-    let sql = tenant_scoped_max_retry_sql(backend);
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
-            sql,
+            tenant_scoped_counters_sql(backend),
             [tenant_id.to_string().into()],
         ))
         .await?;
-    Ok(row
-        .and_then(|row: QueryResult| row.try_get::<i64>("", "value").ok())
-        .unwrap_or_default() as u64)
-}
-
-#[cfg(feature = "ssr")]
-fn tenant_scoped_status_sql(backend: sea_orm::DbBackend) -> &'static str {
-    match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "SELECT COUNT(*) AS value FROM sys_events WHERE status = ?1 AND (CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?2 ELSE json_extract(payload, '$.event.tenant_id') = ?2 END)"
+    let mut counters = OutboxCounters::default();
+    for row in rows {
+        let status: String = row.try_get("", "status")?;
+        let count: i64 = row.try_get("", "value")?;
+        let max_retry: i64 = row.try_get("", "max_retry")?;
+        match status.as_str() {
+            "pending" => counters.pending = count as u64,
+            "dispatched" => counters.dispatched = count as u64,
+            "failed" => counters.failed = count as u64,
+            // Unknown statuses cannot be produced by the relay; ignore
+            // them rather than inventing a card for them.
+            _ => {}
         }
-        _ => {
-            "SELECT COUNT(*) AS value FROM sys_events WHERE status = $1 AND (CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $2 ELSE payload->'event'->>'tenant_id' = $2 END)"
-        }
+        counters.max_retry_count = counters.max_retry_count.max(max_retry as u64);
     }
+    Ok(counters)
 }
 
+/// Tenant predicate for operator reads: the denormalised `tenant_id`
+/// column is authoritative (and indexed); the payload extraction remains
+/// only as a fallback for rows written before the column was backfilled.
 #[cfg(feature = "ssr")]
-fn tenant_scoped_max_retry_sql(backend: sea_orm::DbBackend) -> &'static str {
+fn tenant_scoped_counters_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END"
+            "SELECT status, COUNT(*) AS value, COALESCE(MAX(retry_count), 0) AS max_retry FROM sys_events WHERE tenant_id = ?1 OR (tenant_id IS NULL AND (CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)) GROUP BY status"
         }
         _ => {
-            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END"
+            "SELECT status, COUNT(*) AS value, COALESCE(MAX(retry_count), 0)::bigint AS max_retry FROM sys_events WHERE tenant_id = $1::uuid OR (tenant_id IS NULL AND (CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)) GROUP BY status"
         }
     }
 }
@@ -201,30 +189,15 @@ fn tenant_scoped_max_retry_sql(backend: sea_orm::DbBackend) -> &'static str {
 mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
-    use super::{
-        query_max_retry_count, query_status_count, tenant_scoped_max_retry_sql,
-        tenant_scoped_status_sql,
-    };
+    use super::{OutboxCounters, query_counters, tenant_scoped_counters_sql};
 
     #[test]
-    fn operational_queries_prefer_canonical_tenant_over_legacy_fallback() {
+    fn operational_queries_prefer_the_tenant_column_over_payload_fallback() {
         for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
-            let status = tenant_scoped_status_sql(backend);
-            let retries = tenant_scoped_max_retry_sql(backend);
-            assert!(status.contains("CASE WHEN"));
-            assert!(status.contains("ELSE"));
-            assert!(retries.contains("CASE WHEN"));
-            assert!(retries.contains("ELSE"));
-            match backend {
-                DbBackend::Sqlite => {
-                    assert!(status.contains("json_type(payload, '$.tenant_id') IS NOT NULL"));
-                    assert!(retries.contains("json_type(payload, '$.tenant_id') IS NOT NULL"));
-                }
-                _ => {
-                    assert!(status.contains("payload->'tenant_id' IS NOT NULL"));
-                    assert!(retries.contains("payload->'tenant_id' IS NOT NULL"));
-                }
-            }
+            let sql = tenant_scoped_counters_sql(backend);
+            assert!(sql.contains("tenant_id ="));
+            assert!(sql.contains("tenant_id IS NULL"));
+            assert!(sql.contains("GROUP BY status"));
         }
     }
 
@@ -234,15 +207,18 @@ mod tests {
             .await
             .expect("SQLite database");
         db.execute_unprepared(
-            "CREATE TABLE sys_events (id TEXT PRIMARY KEY, status TEXT NOT NULL, payload JSON NOT NULL, retry_count INTEGER NOT NULL)",
+            "CREATE TABLE sys_events (id TEXT PRIMARY KEY, tenant_id TEXT, status TEXT NOT NULL, payload JSON NOT NULL, retry_count INTEGER NOT NULL)",
         )
         .await
         .expect("create minimal outbox table");
 
         let tenant_a = uuid::Uuid::new_v4();
         let tenant_b = uuid::Uuid::new_v4();
+        // (tenant_id column, payload, retry_count): the column wins when
+        // populated; the payload fallback covers un-backfilled rows.
         let rows = [
             (
+                Some(tenant_a),
                 serde_json::json!({
                     "tenant_id": tenant_a,
                     "event": {"tenant_id": tenant_b}
@@ -250,18 +226,24 @@ mod tests {
                 9_i64,
             ),
             (
+                None,
                 serde_json::json!({"event": {"tenant_id": tenant_b}}),
                 3_i64,
             ),
-            (serde_json::json!({"tenant_id": tenant_b}), 5_i64),
+            (
+                Some(tenant_b),
+                serde_json::json!({"tenant_id": tenant_b}),
+                5_i64,
+            ),
         ];
 
-        for (payload, retry_count) in rows {
+        for (tenant_id, payload, retry_count) in rows {
             db.execute(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "INSERT INTO sys_events (id, status, payload, retry_count) VALUES (?1, 'pending', ?2, ?3)",
+                "INSERT INTO sys_events (id, tenant_id, status, payload, retry_count) VALUES (?1, ?2, 'pending', ?3, ?4)",
                 [
                     uuid::Uuid::new_v4().to_string().into(),
+                    tenant_id.map(|id| id.to_string()).into(),
                     payload.to_string().into(),
                     retry_count.into(),
                 ],
@@ -271,28 +253,26 @@ mod tests {
         }
 
         assert_eq!(
-            query_status_count(&db, DbBackend::Sqlite, tenant_a, "pending")
+            query_counters(&db, DbBackend::Sqlite, tenant_a)
                 .await
-                .expect("tenant A count"),
-            1
+                .expect("tenant A counters"),
+            OutboxCounters {
+                pending: 1,
+                dispatched: 0,
+                failed: 0,
+                max_retry_count: 9,
+            }
         );
         assert_eq!(
-            query_status_count(&db, DbBackend::Sqlite, tenant_b, "pending")
+            query_counters(&db, DbBackend::Sqlite, tenant_b)
                 .await
-                .expect("tenant B count"),
-            2
-        );
-        assert_eq!(
-            query_max_retry_count(&db, DbBackend::Sqlite, tenant_a)
-                .await
-                .expect("tenant A max retry"),
-            9
-        );
-        assert_eq!(
-            query_max_retry_count(&db, DbBackend::Sqlite, tenant_b)
-                .await
-                .expect("tenant B max retry"),
-            5
+                .expect("tenant B counters"),
+            OutboxCounters {
+                pending: 2,
+                dispatched: 0,
+                failed: 0,
+                max_retry_count: 5,
+            }
         );
     }
 }

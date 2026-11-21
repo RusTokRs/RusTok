@@ -85,7 +85,7 @@ export function RecoveryWorkspace({
   ) => {
     if (
       busyOperation ||
-      (action === 'retry' && !plan.retryable) ||
+      !plan.retryable ||
       (action === 'compensate' && plan.issue !== 'post_hook_failed')
     )
       return;
@@ -194,6 +194,11 @@ export function RecoveryWorkspace({
               <p className='text-muted-foreground text-xs'>
                 {plan.errorMessage || plan.issue}
               </p>
+              {!plan.retryable && (
+                <p className='text-muted-foreground text-xs'>
+                  {t('recovery.unavailable')}
+                </p>
+              )}
               <div className='flex flex-wrap gap-2'>
                 <Badge variant='outline'>{plan.status}</Badge>
                 <Badge variant='outline'>{plan.recommendedAction}</Badge>
@@ -214,7 +219,9 @@ export function RecoveryWorkspace({
               <Button
                 size='sm'
                 disabled={
-                  Boolean(busyOperation) || plan.issue !== 'post_hook_failed'
+                  Boolean(busyOperation) ||
+                  !plan.retryable ||
+                  plan.issue !== 'post_hook_failed'
                 }
                 onClick={() => void execute(plan, 'compensate')}
               >

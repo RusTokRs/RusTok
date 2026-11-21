@@ -8,15 +8,15 @@ use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
-use crate::models::tenants;
+use crate::models::{tenants, users};
 use chrono::Utc;
 use reqwest::Url;
 use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -25,7 +25,7 @@ use uuid::Uuid;
 /// Outcome classification for one consent-grant attempt: a unique-index
 /// race against a concurrent first grant is retryable, everything else
 /// is a plain internal failure.
-enum GrantConsentAttempt {
+pub(crate) enum GrantConsentAttempt {
     UniqueRace,
     Fatal(Error),
 }
@@ -101,10 +101,101 @@ impl std::fmt::Debug for RotateSecretResult {
     }
 }
 
+/// Build an update model that writes only fields editable through the
+/// manual-app API. A stale full-row ActiveModel can otherwise restore
+/// lifecycle and runtime-owned values (for example, reactivate an app after
+/// a concurrent revoke or erase a newer last_used_at timestamp).
+fn manual_app_update_base(app: oauth_apps::Model) -> OAuthAppActiveModel {
+    let mut active: OAuthAppActiveModel = app.into();
+    active.slug = ActiveValue::NotSet;
+    active.app_type = ActiveValue::NotSet;
+    active.client_id = ActiveValue::NotSet;
+    active.client_secret_hash = ActiveValue::NotSet;
+    active.manifest_ref = ActiveValue::NotSet;
+    active.auto_created = ActiveValue::NotSet;
+    active.is_active = ActiveValue::NotSet;
+    active.revoked_at = ActiveValue::NotSet;
+    active.last_used_at = ActiveValue::NotSet;
+    active.metadata = ActiveValue::NotSet;
+    active.created_at = ActiveValue::NotSet;
+    active
+}
+
+/// Lock an OAuth app in the same order used by token issuance. Consent
+/// grants/revocations use this fence so they cannot race a token exchange that
+/// has already validated the app.
+pub(crate) async fn lock_oauth_app_for_mutation<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<oauth_apps::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        OAuthApps::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            // Acquire the SQLite write fence before reading. A read-first
+            // deferred transaction can fail with SQLITE_BUSY_SNAPSHOT when
+            // another writer commits between the read and lock upgrade.
+            let locked = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth app mutation locking".to_string(),
+        )),
+    }
+}
+
+/// Lock a user subject in the same app-then-user order used by token issuance.
+pub(crate) async fn lock_oauth_user_for_mutation<C>(
+    db: &C,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<users::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            let locked = users::Entity::update_many()
+                .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth subject mutation locking".to_string(),
+        )),
+    }
+}
+
 pub struct OAuthAppService;
 
 impl OAuthAppService {
     /// Registers a manual OAuth client application with generated credentials and tenant association.
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, slug = %input.slug, client_id))]
     pub async fn create_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -120,9 +211,10 @@ impl OAuthAppService {
         )?;
         validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
         // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
-        // slug into a 409 the caller can act on, instead of a 500 raised from a
-        // constraint violation deep inside the insert transaction.
-        ensure_slug_available(db, tenant_id, &input.slug).await?;
+        // slug into a 409 the caller can act on; the insert-error path below
+        // repeats the check to preserve that result when concurrent creates race.
+        let slug = input.slug.clone();
+        ensure_slug_available(db, tenant_id, &slug).await?;
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
@@ -157,8 +249,34 @@ impl OAuthAppService {
             updated_at: Set(Utc::now().into()),
         }
         .insert(db)
-        .await
-        .map_err(|error| Error::Message(format!("failed to insert oauth app: {error}")))?;
+        .await;
+
+        let app = match app {
+            Ok(app) => app,
+            Err(insert_error) => {
+                match ensure_slug_available(db, tenant_id, &slug).await {
+                    Err(error @ Error::Conflict(_)) => return Err(error),
+                    Err(error) => {
+                        tracing::error!(
+                            %error,
+                            tenant_id = %tenant_id,
+                            slug = %slug,
+                            "Failed to recheck OAuth app slug after insert failure"
+                        );
+                    }
+                    Ok(()) => {}
+                }
+                tracing::error!(
+                    %insert_error,
+                    tenant_id = %tenant_id,
+                    slug = %slug,
+                    "Failed to insert OAuth app"
+                );
+                return Err(Error::InternalServerError);
+            }
+        };
+
+        tracing::Span::current().record("client_id", tracing::field::display(app.client_id));
 
         Ok(CreateOAuthAppResult {
             app,
@@ -167,6 +285,7 @@ impl OAuthAppService {
     }
 
     /// Update a manual OAuth app.
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, app_id = %app_id))]
     pub async fn update_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -174,9 +293,12 @@ impl OAuthAppService {
         input: UpdateOAuthAppInput,
     ) -> Result<oauth_apps::Model> {
         let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        // The authorization decision and security-sensitive OAuth configuration
+        // mutation must observe the same app version. Manifest reconciliation,
+        // token issuance and consent use this app-row fence too. On SQLite it
+        // reserves the writer before reading to avoid read-to-write races.
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -200,13 +322,10 @@ impl OAuthAppService {
 
         // Go through the ActiveModel wrapper: name/description are
         // translation-owned (`#[sea_orm(ignore)]` here) and its update
-        // path syncs them into oauth_app_translations. The stored
-        // client secret is explicitly excluded via NotSet so this
-        // (possibly stale) read can never revert a concurrent secret
-        // rotation.
-        let existing_secret_hash = app.client_secret_hash.clone();
-        let mut active: OAuthAppActiveModel = app.into();
-        active.client_secret_hash = ActiveValue::NotSet;
+        // path syncs them into oauth_app_translations. The base model marks
+        // immutable, lifecycle and runtime-owned columns NotSet so this
+        // pre-read cannot undo a concurrent revoke, secret rotation or use.
+        let mut active = manual_app_update_base(app);
         active.name = Set(input.name);
         active.description = Set(input.description);
         active.icon_url = Set(input.icon_url);
@@ -221,15 +340,23 @@ impl OAuthAppService {
         active.updated_at = Set(Utc::now().into());
 
         let mut updated = active
-            .update(db)
+            .update(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
-        // The update above deliberately leaves the stored secret
-        // untouched (NotSet); reflect the pre-existing hash in the
-        // returned model instead of reporting "no secret".
-        if updated.client_secret_hash.is_none() {
-            updated.client_secret_hash = existing_secret_hash;
-        }
+        // The ActiveModel update deliberately leaves these columns NotSet.
+        // Read their projection under the same lock/transaction so the response
+        // represents the committed mutation, not a stale preflight snapshot.
+        let current = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        updated.client_secret_hash = current.client_secret_hash;
+        updated.is_active = current.is_active;
+        updated.revoked_at = current.revoked_at;
+        updated.last_used_at = current.last_used_at;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(updated)
     }
 
@@ -306,9 +433,9 @@ impl OAuthAppService {
             ));
         }
 
-        let expected_hash = app.client_secret_hash.clone().ok_or_else(|| {
-            Error::BadRequest("This OAuth app has no rotatable secret".to_string())
-        })?;
+        // A first-party app may start as a public PKCE client with no secret.
+        // The first rotation uses NULL as the compare-and-swap precondition.
+        let expected_hash = app.client_secret_hash.clone();
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
         let updated_at = Utc::now();
@@ -319,7 +446,7 @@ impl OAuthAppService {
             db,
             tenant_id,
             app_id,
-            &expected_hash,
+            expected_hash.as_deref(),
             &new_hash,
             updated_at.clone(),
         )
@@ -340,7 +467,7 @@ impl OAuthAppService {
         })
     }
 
-    /// Revoke an app — deactivate and revoke all its tokens.
+    /// Revoke an app — deactivate it and revoke tokens, consents, and pending codes.
     ///
     /// Tenancy is part of the lookup, not something the caller is trusted to
     /// have checked first: a revoke keyed on a bare `app_id` would let any
@@ -351,12 +478,13 @@ impl OAuthAppService {
         app_id: Uuid,
     ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+        // Check revocation eligibility only after acquiring the app mutation
+        // fence. A manifest sync may claim the app after an unprotected read;
+        // the old path could then revoke newly manifest-managed credentials.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
+            .ok_or(Error::NotFound)?;
 
         if !app.can_revoke() {
             return Err(Error::BadRequest(
@@ -368,14 +496,18 @@ impl OAuthAppService {
         let now = Utc::now();
 
         // Deactivate the app (column-scoped; see update_app)
-        oauth_apps::Entity::update_many()
+        let deactivated = oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if deactivated.rows_affected != 1 {
+            return Err(Error::NotFound);
+        }
 
         let updated = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
@@ -384,23 +516,7 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
-        // Revoke all active tokens for this app. `app` was loaded under the
-        // tenant filter above, so `app_id` is already tenant-owned; the extra
-        // tenant predicate keeps this statement correct even if a future caller
-        // reaches it without that lookup.
-        use sea_orm::sea_query::Expr;
-        oauth_tokens::Entity::update_many()
-            .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-            .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-            .filter(
-                sea_orm::Condition::all()
-                    .add(oauth_tokens::Column::AppId.eq(app_id))
-                    .add(oauth_tokens::Column::TenantId.eq(tenant_id))
-                    .add(oauth_tokens::Column::RevokedAt.is_null()),
-            )
-            .exec(&tx)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+        revoke_oauth_app_credentials(&tx, app_id, tenant_id, now).await?;
 
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
@@ -458,7 +574,13 @@ impl OAuthAppService {
         Ok(())
     }
 
-    /// Generate and store an authorization code for an app + user
+    /// Atomically admit and store one authorization code under the same app ->
+    /// user lock order used by exchange, consent grants and revocation.
+    ///
+    /// HTTP authorization preflight is advisory: app settings, the user's
+    /// active status and third-party consent may change before this insert.
+    /// Revalidate them inside the transaction to avoid creating a code after
+    /// revocation has already invalidated all previously pending codes.
     pub async fn generate_authorization_code(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -468,37 +590,88 @@ impl OAuthAppService {
         scopes: Vec<String>,
         code_challenge: String,
     ) -> Result<String> {
-        // Generate random 43 character code
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|app| app.is_active())
+            .ok_or(Error::NotFound)?;
+        if !app.supports_grant_type("authorization_code") || app.app_type == "service" {
+            return Err(Error::BadRequest(
+                "OAuth application does not allow authorization-code grants".to_string(),
+            ));
+        }
+        if !app.redirect_uris_list().contains(&redirect_uri) {
+            return Err(Error::BadRequest(
+                "OAuth redirect URI is no longer registered".to_string(),
+            ));
+        }
+        let allowed_scopes = app.scopes_list();
+        if scopes.is_empty()
+            || scopes.iter().any(|scope| {
+                scope.trim().is_empty() || !scope_matches(&allowed_scopes, scope)
+            })
+        {
+            return Err(Error::BadRequest(
+                "OAuth authorization scopes are no longer permitted".to_string(),
+            ));
+        }
+
+        let user = lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth authorization subject is missing or inactive".to_string())
+            })?;
+
+        if app.requires_user_consent() {
+            let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
+                .await
+                .map_err(|_| Error::InternalServerError)?
+                .ok_or_else(|| {
+                    Error::Unauthorized(
+                        "OAuth authorization requires active user consent".to_string(),
+                    )
+                })?;
+            let granted_scopes = consent.scopes_list();
+            if !scopes
+                .iter()
+                .all(|scope| scope_matches(&granted_scopes, scope))
+            {
+                return Err(Error::Unauthorized(
+                    "OAuth authorization scopes exceed current user consent".to_string(),
+                ));
+            }
+        }
+
+        // Generate a fresh code only after the caller has passed authoritative
+        // checks. Hashing an opaque random code does not leak plaintext to DB.
         let random_bytes: [u8; 32] = rand::random();
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-
-        // Hash it for DB storage
         use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(code.as_bytes());
-        let code_hash = hex::encode(hasher.finalize());
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
 
-        // Save to DB
+        let now = Utc::now();
         OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
-            user_id: Set(user_id),
+            user_id: Set(user.id),
             tenant_id: Set(tenant_id),
             code_hash: Set(code_hash),
             redirect_uri: Set(redirect_uri),
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
             code_challenge_method: Set("S256".to_string()),
-            // Code valid for 10 minutes
-            expires_at: Set((Utc::now() + chrono::Duration::minutes(10)).into()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
             used_at: Set(None),
-            created_at: Set(Utc::now().into()),
+            created_at: Set(now.into()),
         }
-        .insert(db)
+        .insert(&tx)
         .await
         .map_err(|_| Error::InternalServerError)?;
-
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(code)
     }
 
@@ -531,9 +704,12 @@ impl OAuthAppService {
 
     /// Revoke an OAuth access or refresh token and its family by hash (RFC 7009).
     ///
-    /// The lookup and family-wide revocation share one transaction. The token
-    /// predicate is scoped by client and tenant, and unknown tokens succeed
-    /// without revealing whether a hash existed. Access JWTs are registered
+    /// The app mutation fence, lookup and family-wide revocation share one
+    /// transaction. Token issuance/refresh takes the app lock first too: this
+    /// prevents revocation from missing a fresh refresh-family successor that
+    /// commits concurrently. The token predicate is scoped by client and
+    /// tenant, and unknown tokens succeed without revealing existence.
+    /// Access JWTs are registered
     /// as `token_kind = access` rows, so revocation fences an already-issued
     /// JWT before its signed TTL; refresh rows fence the rotation lineage.
     pub async fn revoke_token_by_hash(
@@ -543,6 +719,14 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Acquire the same app-row fence as refresh rotation and token issuance
+        // BEFORE reading the revocation target. Otherwise a refresh can commit
+        // its replacement after this lookup but before the family update.
+        // A missing app is not an existence oracle: still complete the normal
+        // scoped unknown-token path without a distinct public result.
+        let _app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         let token = OAuthTokens::find()
             .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
             .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -570,6 +754,9 @@ impl OAuthAppService {
                 .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
                 .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
                 .filter(family_scope)
+                // A repeated RFC 7009 request must not rewrite the original
+                // revocation timestamp of an already-invalid family member.
+                .filter(oauth_tokens::Column::RevokedAt.is_null())
                 .exec(&tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
@@ -623,13 +810,28 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        if scopes.is_empty() {
+            return Err(Error::BadRequest(
+                "OAuth consent must include at least one scope".to_string(),
+            ));
+        }
+
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Keep the same lock order as token issuance and consent revocation.
+        // This serializes concurrent grants and prevents consent from being
+        // created after either the app or subject has become inactive.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .filter(|app| app.is_active())
             .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
+            })?;
 
         let app_scopes = app.scopes_list();
         if scopes
@@ -642,42 +844,36 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-
-        // Two concurrent first-time grants can both observe "no consent
-        // row" and race to insert; the partial unique index lets exactly
-        // one win. The loser retries and lands on the update path
-        // instead of surfacing a 500 for a legitimate double-submit.
-        const MAX_ATTEMPTS: usize = 3;
-        for attempt in 0..MAX_ATTEMPTS {
-            match Self::grant_consent_once(db, app_id, user_id, tenant_id, &scopes_json).await {
-                Ok(()) => return Ok(()),
-                Err(GrantConsentAttempt::UniqueRace) if attempt + 1 < MAX_ATTEMPTS => continue,
-                Err(GrantConsentAttempt::UniqueRace) => {
-                    return Err(Error::InternalServerError);
-                }
-                Err(GrantConsentAttempt::Fatal(error)) => return Err(error),
-            }
-        }
-
-        Err(Error::InternalServerError)
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json)
+            .await
+            .map_err(|attempt| match attempt {
+                GrantConsentAttempt::UniqueRace => Error::Conflict(
+                    "OAuth consent changed concurrently; retry the operation".to_string(),
+                ),
+                GrantConsentAttempt::Fatal(error) => error,
+            })?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        Ok(())
     }
 
-    async fn grant_consent_once(
-        db: &DatabaseConnection,
+    /// Upsert consent on a caller-owned transaction. Strict admin paths first
+    /// lock the app and subject rows, then call this helper so a grant cannot
+    /// commit against a client/user that became inactive during validation.
+    pub(crate) async fn grant_consent_in_transaction<C>(
+        db: &C,
         app_id: Uuid,
         user_id: Uuid,
         tenant_id: Uuid,
         scopes_json: &serde_json::Value,
-    ) -> std::result::Result<(), GrantConsentAttempt> {
-        let tx = db
-            .begin()
-            .await
-            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
+    ) -> std::result::Result<(), GrantConsentAttempt>
+    where
+        C: ConnectionTrait,
+    {
         let existing = OAuthConsents::find()
             .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
             .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
             .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+            .one(db)
             .await
             .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
 
@@ -688,7 +884,7 @@ impl OAuthAppService {
                 active.granted_at = Set(Utc::now().into());
                 active.revoked_at = Set(None);
                 active
-                    .update(&tx)
+                    .update(db)
                     .await
                     .map_err(GrantConsentAttempt::classify)?;
             }
@@ -702,13 +898,11 @@ impl OAuthAppService {
                     granted_at: Set(Utc::now().into()),
                     revoked_at: Set(None),
                 }
-                .insert(&tx)
+                .insert(db)
                 .await
                 .map_err(GrantConsentAttempt::classify)?;
             }
         }
-
-        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 
@@ -720,6 +914,17 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Match token issuance's app-then-user lock order. Without these
+        // fences an exchange can read active consent, then commit a new token
+        // after this revocation has already committed.
+        lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
         let consent = OAuthConsents::find_active_consent(&tx, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
@@ -756,6 +961,19 @@ impl OAuthAppService {
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        crate::models::oauth_authorization_codes::Entity::update_many()
+            .col_expr(
+                crate::models::oauth_authorization_codes::Column::UsedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UserId.eq(user_id))
+            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         tracing::debug!(
             app_id = %app_id,
             user_id = %user_id,
@@ -784,7 +1002,27 @@ pub async fn sync_app_connections(
     tenant_id: Uuid,
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
-    let existing = OAuthApps::find_by_tenant(db, tenant_id)
+    // Serialize the entire manifest reconciliation for this tenant. Every app
+    // upsert, translation write, orphan deactivation, token/consent revocation,
+    // and authorization-code invalidation must commit or roll back together.
+    let tx = db.begin().await.map_err(|error| {
+        tracing::error!(%error, %tenant_id, "Failed to start OAuth manifest reconciliation");
+        Error::InternalServerError
+    })?;
+    lock_tenant_for_manifest_sync(&tx, tenant_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, "Failed to lock tenant for OAuth manifest reconciliation");
+            Error::InternalServerError
+        })?
+        .ok_or_else(|| {
+            tracing::error!(%tenant_id, "Tenant disappeared during OAuth manifest reconciliation");
+            Error::InternalServerError
+        })?;
+
+    let existing = OAuthApps::find()
+        .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        .all(&tx)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -799,11 +1037,11 @@ pub async fn sync_app_connections(
 
     // 1. Embedded apps
     if manifest.build.server.embed_admin {
-        upsert_embedded_app(db, tenant_id, "leptos-admin", &["*:*"]).await?;
+        upsert_embedded_app(&tx, tenant_id, "leptos-admin", &["*:*"]).await?;
         active_slugs.insert("leptos-admin".to_string());
     }
     if manifest.build.server.embed_storefront {
-        upsert_embedded_app(db, tenant_id, "leptos-storefront", &["*:*"]).await?;
+        upsert_embedded_app(&tx, tenant_id, "leptos-storefront", &["*:*"]).await?;
         active_slugs.insert("leptos-storefront".to_string());
     }
 
@@ -811,7 +1049,7 @@ pub async fn sync_app_connections(
     for sf in &manifest.build.storefront {
         if !manifest.build.server.embed_storefront || sf.stack == "next" {
             upsert_first_party_app(
-                db,
+                &tx,
                 tenant_id,
                 &sf.id,
                 &format!("{} storefront", sf.id),
@@ -830,7 +1068,7 @@ pub async fn sync_app_connections(
     if !manifest.build.server.embed_admin && !manifest.build.admin.stack.is_empty() {
         let slug = format!("{}-admin", manifest.build.admin.stack);
         upsert_first_party_app(
-            db,
+            &tx,
             tenant_id,
             &slug,
             &format!("{} Admin", manifest.build.admin.stack),
@@ -844,67 +1082,90 @@ pub async fn sync_app_connections(
         active_slugs.insert(slug);
     }
 
-    // 4. Deactivate orphaned apps owned by this manifest entry set and revoke
-    // their outstanding OAuth tokens in one database transaction. A failed write must
-    // never produce a successful sync response while orphaned clients remain
-    // active, and a token revocation failure must roll back deactivation.
+    // 4. Deactivate orphaned apps and revoke their credentials in this same
+    // tenant transaction. A failed upsert or cleanup must not leave a partial
+    // manifest projection behind.
     let orphaned = existing
         .iter()
         .filter(|app| {
             app.auto_created
                 && app.manifest_ref.as_deref() == Some(app.slug.as_str())
-                && app.is_active()
                 && !active_slugs.contains(&app.slug)
         })
         .collect::<Vec<_>>();
-    if !orphaned.is_empty() {
-        let tx = db.begin().await.map_err(|error| {
-            tracing::error!(%error, %tenant_id, "Failed to start orphan OAuth app deactivation");
-            Error::InternalServerError
-        })?;
-        let now = Utc::now();
-        for app in orphaned {
+    let now = Utc::now();
+    for app in orphaned {
+        let current_app = lock_oauth_app_for_mutation(&tx, app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    %tenant_id,
+                    app_id = %app.id,
+                    "Failed to lock orphan OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                tracing::error!(
+                    %tenant_id,
+                    app_id = %app.id,
+                    "Orphan OAuth app disappeared during manifest sync"
+                );
+                Error::Conflict("orphan OAuth app disappeared during manifest sync".to_string())
+            })?;
+        if !current_app.auto_created
+            || current_app.manifest_ref.as_deref() != Some(current_app.slug.as_str())
+        {
+            return Err(Error::Conflict(format!(
+                "OAuth app `{}` changed manifest ownership during sync",
+                current_app.slug
+            )));
+        }
+
+        // Also repair legacy inactive rows whose dependent credentials were
+        // not revoked by earlier manifest-sync implementations.
+        if current_app.is_active || current_app.revoked_at.is_none() {
             let result = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
-                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
-                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
-                .filter(oauth_apps::Column::Id.eq(app.id))
+                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
+                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
+                .filter(oauth_apps::Column::Id.eq(current_app.id))
                 .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                .filter(oauth_apps::Column::Slug.eq(app.slug.clone()))
-                .filter(oauth_apps::Column::AppType.eq(app.app_type.clone()))
+                .filter(oauth_apps::Column::Slug.eq(current_app.slug.clone()))
+                .filter(oauth_apps::Column::AppType.eq(current_app.app_type.clone()))
                 .filter(oauth_apps::Column::AutoCreated.eq(true))
-                .filter(oauth_apps::Column::ManifestRef.eq(Some(app.slug.clone())))
-                .filter(oauth_apps::Column::IsActive.eq(true))
+                .filter(oauth_apps::Column::ManifestRef.eq(Some(current_app.slug.clone())))
                 .exec(&tx)
                 .await
                 .map_err(|error| {
-                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to deactivate orphan OAuth app");
+                    tracing::error!(
+                        %error,
+                        %tenant_id,
+                        app_id = %current_app.id,
+                        "Failed to deactivate orphan OAuth app"
+                    );
                     Error::InternalServerError
                 })?;
             if result.rows_affected != 1 {
-                tracing::error!(%tenant_id, app_id = %app.id, "Orphan OAuth app state changed during manifest sync");
-                return Err(Error::InternalServerError);
+                tracing::error!(
+                    %tenant_id,
+                    app_id = %current_app.id,
+                    "Orphan OAuth app state changed during manifest sync"
+                );
+                return Err(Error::Conflict(
+                    "orphan OAuth app changed during manifest sync".to_string(),
+                ));
             }
-
-            oauth_tokens::Entity::update_many()
-                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
-                .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
-                .filter(oauth_tokens::Column::AppId.eq(app.id))
-                .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
-                .filter(oauth_tokens::Column::RevokedAt.is_null())
-                .exec(&tx)
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
-                    Error::InternalServerError
-                })?;
         }
-        tx.commit().await.map_err(|error| {
-            tracing::error!(%error, %tenant_id, "Failed to commit orphan OAuth app deactivation");
-            Error::InternalServerError
-        })?;
+
+        revoke_oauth_app_credentials(&tx, current_app.id, tenant_id, now.clone()).await?;
     }
 
+    tx.commit().await.map_err(|error| {
+        tracing::error!(%error, %tenant_id, "Failed to commit OAuth manifest reconciliation");
+        Error::InternalServerError
+    })?;
     Ok(())
 }
 
@@ -936,6 +1197,98 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
     Ok(())
 }
 
+async fn lock_tenant_for_manifest_sync<C>(
+    db: &C,
+    tenant_id: Uuid,
+) -> std::result::Result<Option<tenants::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || tenants::Entity::find_by_id(tenant_id);
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            // Acquire a SQLite write fence before reading. This avoids the
+            // read-first deferred-transaction upgrade race between replicas.
+            let locked = tenants::Entity::update_many()
+                .col_expr(
+                    tenants::Column::UpdatedAt,
+                    Expr::col(tenants::Column::UpdatedAt),
+                )
+                .filter(tenants::Column::Id.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth manifest synchronization".to_string(),
+        )),
+    }
+}
+
+async fn revoke_oauth_app_credentials<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
+    OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(Some(now.clone())))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now.clone()))
+        .filter(oauth_tokens::Column::AppId.eq(app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, %app_id, "Failed to revoke OAuth app tokens");
+            Error::InternalServerError
+        })?;
+
+    OAuthConsents::update_many()
+        .col_expr(
+            crate::models::oauth_consents::Column::RevokedAt,
+            Expr::value(Some(now.clone())),
+        )
+        .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
+        .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+        .filter(crate::models::oauth_consents::Column::RevokedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %tenant_id, %app_id, "Failed to revoke OAuth app consents");
+            Error::InternalServerError
+        })?;
+
+    crate::models::oauth_authorization_codes::Entity::update_many()
+        .col_expr(
+            crate::models::oauth_authorization_codes::Column::UsedAt,
+            Expr::value(now),
+        )
+        .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+        .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+        .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                %tenant_id,
+                %app_id,
+                "Failed to invalidate OAuth app authorization codes"
+            );
+            Error::InternalServerError
+        })?;
+
+    Ok(())
+}
+
 fn ensure_manifest_app_ownership(
     app: &oauth_apps::Model,
     slug: &str,
@@ -953,12 +1306,15 @@ fn ensure_manifest_app_ownership(
 }
 
 /// Upsert an embedded app (no credentials needed)
-async fn upsert_embedded_app(
-    db: &DatabaseConnection,
+async fn upsert_embedded_app<C>(
+    db: &C,
     tenant_id: Uuid,
     slug: &str,
     scopes: &[&str],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     let existing = OAuthApps::find()
         .filter(
             sea_orm::Condition::all()
@@ -977,12 +1333,29 @@ async fn upsert_embedded_app(
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock embedded OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "embedded OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
         ensure_manifest_app_ownership(&app, slug, "embedded")?;
         // Reactivate with a column-scoped write so a stale read cannot overwrite
         // unrelated runtime-owned fields such as last_used_at.
-        if !app.is_active {
+        if !app.is_active() {
             let now = Utc::now();
+            revoke_oauth_app_credentials(db, app.id, tenant_id, now.clone()).await?;
             let updated = oauth_apps::Entity::update_many()
                 .col_expr(oauth_apps::Column::IsActive, Expr::value(true))
                 .col_expr(
@@ -995,7 +1368,6 @@ async fn upsert_embedded_app(
                 .filter(oauth_apps::Column::AppType.eq("embedded"))
                 .filter(oauth_apps::Column::AutoCreated.eq(true))
                 .filter(oauth_apps::Column::ManifestRef.eq(Some(slug.to_string())))
-                .filter(oauth_apps::Column::IsActive.eq(false))
                 .exec(db)
                 .await
                 .map_err(|error| {
@@ -1056,8 +1428,8 @@ async fn upsert_embedded_app(
 
 /// Upsert a first-party app (creates credentials on first creation)
 #[allow(clippy::too_many_arguments)]
-async fn upsert_first_party_app(
-    db: &DatabaseConnection,
+async fn upsert_first_party_app<C>(
+    db: &C,
     tenant_id: Uuid,
     slug: &str,
     name: &str,
@@ -1066,16 +1438,21 @@ async fn upsert_first_party_app(
     scopes: &[&str],
     grant_types: &[&str],
     granted_permissions: &[String],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
+    let allow_loopback_http = public_url_uses_loopback_http(public_url);
     validate_managed_app_configuration(
         "first_party",
         redirect_uris,
         &scopes_vec,
         &grant_types_vec,
         &granted_permissions_vec,
+        allow_loopback_http,
     )?;
 
     let existing = OAuthApps::find()
@@ -1096,7 +1473,26 @@ async fn upsert_first_party_app(
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock first-party OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "first-party OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
+        if !app.is_active() {
+            revoke_oauth_app_credentials(db, app.id, tenant_id, Utc::now()).await?;
+        }
         update_first_party_app_from_manifest(
             db,
             &app,
@@ -1111,9 +1507,6 @@ async fn upsert_first_party_app(
         )
         .await?;
     } else {
-        let client_secret_plain = generate_client_secret()?;
-        let client_secret_hash = auth::hash_password(&client_secret_plain)?;
-
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -1123,7 +1516,7 @@ async fn upsert_first_party_app(
             app_type: Set("first_party".to_string()),
             icon_url: Set(None),
             client_id: Set(Uuid::new_v4()),
-            client_secret_hash: Set(Some(client_secret_hash)),
+            client_secret_hash: Set(None),
             redirect_uris: Set(
                 serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?
             ),
@@ -1153,19 +1546,18 @@ async fn upsert_first_party_app(
             Error::InternalServerError
         })?;
 
-        // Log the credentials (in production, these should go to a secure channel)
         tracing::info!(
             client_id = %app.client_id,
             slug = slug,
-            "First-party OAuth app created. Client secret was generated (store securely)."
+            "First-party OAuth app created as a public PKCE client; rotate a secret to enable SSR client_credentials"
         );
     }
 
     Ok(())
 }
 
-async fn update_first_party_app_from_manifest(
-    db: &DatabaseConnection,
+async fn update_first_party_app_from_manifest<C>(
+    db: &C,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     slug: &str,
@@ -1175,7 +1567,10 @@ async fn update_first_party_app_from_manifest(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     ensure_manifest_app_ownership(app, slug, "first_party")?;
     let scopes_json = serde_json::to_value(scopes).map_err(|_| Error::InternalServerError)?;
     let grant_types_json =
@@ -1281,7 +1676,7 @@ async fn replace_oauth_secret_if_current(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     app_id: Uuid,
-    expected_hash: &str,
+    expected_hash: Option<&str>,
     new_hash: &str,
     updated_at: chrono::DateTime<Utc>,
 ) -> Result<bool> {
@@ -1293,7 +1688,22 @@ async fn replace_oauth_secret_if_current(
         .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(updated_at))
         .filter(oauth_apps::Column::Id.eq(app_id))
         .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-        .filter(oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string())))
+        // Rotation eligibility was checked before Argon2 hashing. Require
+        // the same eligible app-type set at the atomic write: a concurrent
+        // manifest reconciliation must not turn an embedded/unsupported app
+        // into an accidental confidential client through a stale preflight.
+        .filter(oauth_apps::Column::AppType.is_in([
+            "first_party",
+            "third_party",
+            "mobile",
+            "service",
+        ]))
+        .filter(match expected_hash {
+            Some(expected_hash) => {
+                oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string()))
+            }
+            None => oauth_apps::Column::ClientSecretHash.is_null(),
+        })
         .exec(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -1406,6 +1816,7 @@ fn validate_manual_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        app_type == "mobile",
     )
 }
 
@@ -1415,6 +1826,7 @@ fn validate_managed_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     validate_app_configuration(
         app_type,
@@ -1422,6 +1834,7 @@ fn validate_managed_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        allow_loopback_http,
     )
 }
 
@@ -1431,6 +1844,7 @@ fn validate_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     if scopes.is_empty() {
         return Err(Error::BadRequest(
@@ -1455,9 +1869,40 @@ fn validate_app_configuration(
         }
     }
 
+    if grant_types.iter().any(|item| item == "refresh_token")
+        && !grant_types.iter().any(|item| item == "authorization_code")
+    {
+        return Err(Error::BadRequest(
+            "refresh_token grant requires authorization_code grant".to_string(),
+        ));
+    }
+
     if app_type == "service" && grant_types.iter().any(|item| item == "authorization_code") {
         return Err(Error::BadRequest(
             "Service apps cannot use authorization_code grant".to_string(),
+        ));
+    }
+
+    let supports_authorization_code = grant_types
+        .iter()
+        .any(|item| item == "authorization_code");
+    let supports_client_credentials = grant_types
+        .iter()
+        .any(|item| item == "client_credentials");
+
+    if matches!(app_type, "mobile" | "third_party") && supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps cannot use client_credentials grant".to_string(),
+        ));
+    }
+    if matches!(app_type, "mobile" | "third_party") && !supports_authorization_code {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps must use authorization_code grant".to_string(),
+        ));
+    }
+    if app_type == "service" && !supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Service apps must use client_credentials grant".to_string(),
         ));
     }
 
@@ -1477,7 +1922,7 @@ fn validate_app_configuration(
     }
 
     for redirect_uri in redirect_uris {
-        validate_redirect_uri(app_type, redirect_uri)?;
+        validate_redirect_uri(app_type, redirect_uri, allow_loopback_http)?;
     }
 
     Ok(())
@@ -1485,10 +1930,15 @@ fn validate_app_configuration(
 
 /// Redirect URIs are compared byte-for-byte at authorize time, so the
 /// registered value itself must be a safe absolute URI: no fragment
-/// (RFC 6749 section 3.1.2), no user info, TLS everywhere except
-/// loopback (RFC 8252 section 7.3), and private-use schemes only for
-/// native/mobile apps (RFC 8252 section 7.1).
-fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
+/// (RFC 6749 section 3.1.2), no user info, and HTTPS for web clients.
+/// HTTP loopback is limited to native mobile clients and manifest-managed
+/// first-party apps whose configured public URL is itself loopback (local
+/// development). Private-use schemes remain limited to native/mobile apps.
+fn validate_redirect_uri(
+    app_type: &str,
+    redirect_uri: &str,
+    allow_loopback_http: bool,
+) -> Result<()> {
     let invalid = |reason: &str| {
         Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {reason}"))
     };
@@ -1508,14 +1958,15 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
             }
         }
         "http" => {
-            let host = url.host_str().unwrap_or_default();
-            let loopback = host == "localhost"
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback());
+            let loopback = url.host_str().is_some_and(is_loopback_host);
             if !loopback {
                 return Err(invalid(
                     "http is only allowed for loopback hosts; use https",
+                ));
+            }
+            if !allow_loopback_http {
+                return Err(invalid(
+                    "http loopback redirects are only allowed for native mobile apps or first-party local development",
                 ));
             }
         }
@@ -1526,10 +1977,43 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
             if app_type != "mobile" {
                 return Err(invalid("custom schemes are only allowed for mobile apps"));
             }
+            if !is_private_use_redirect_scheme(scheme) {
+                return Err(invalid(
+                    "mobile custom schemes must use reverse-domain private-use names",
+                ));
+            }
         }
     }
 
     Ok(())
+}
+
+fn is_private_use_redirect_scheme(scheme: &str) -> bool {
+    let mut labels = scheme.split('.');
+    labels.next().is_some_and(|label| !label.is_empty())
+        && scheme.contains('.')
+        && labels.all(|label| !label.is_empty())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+    host.trim_end_matches('.').eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+fn public_url_uses_loopback_http(public_url: &str) -> bool {
+    Url::parse(public_url).is_ok_and(|url| {
+        url.scheme() == "http"
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && url.host_str().is_some_and(is_loopback_host)
+    })
 }
 
 fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
@@ -1585,10 +2069,54 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-        QueryFilter, Schema, Set,
+        PaginatorTrait, QueryFilter, Schema, Set,
     };
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn empty_oauth_consent_is_rejected_before_app_lookup() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let error = OAuthAppService::grant_consent(
+            &db,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            tenant.id,
+            Vec::new(),
+        )
+        .await
+        .expect_err("empty consent must be rejected");
+        assert!(matches!(error, Error::BadRequest(_)));
+    }
+
+    async fn insert_pending_authorization_code(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Uuid {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        oauth_authorization_codes::ActiveModel {
+            id: Set(id),
+            app_id: Set(app_id),
+            user_id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            code_hash: Set(format!("pending-{id}")),
+            redirect_uri: Set("https://partner.example.com/oauth/callback".to_string()),
+            scopes: Set(serde_json::json!(["catalog:read"])),
+            code_challenge: Set("challenge".to_string()),
+            code_challenge_method: Set("S256".to_string()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert pending authorization code");
+        id
+    }
 
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -1777,6 +2305,114 @@ mod tests {
     }
 
     #[test]
+    fn third_party_web_clients_reject_http_loopback_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "third_party",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_err(),
+                "third-party web clients must use HTTPS: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_mobile_clients_accept_ipv4_and_ipv6_loopback_http_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "mobile",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_ok(),
+                "native mobile clients may use loopback HTTP: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn mobile_custom_redirect_schemes_must_use_reverse_domain_private_use_names() {
+        for redirect_uri in [
+            "ftp://example.com/callback",
+            "mailto:callback@example.com",
+            "tel:+15551234567",
+            "urn:example:oauth",
+            "myapp://callback",
+        ] {
+            assert!(
+                validate_redirect_uri("mobile", redirect_uri, true).is_err(),
+                "registered URI schemes must not be accepted as private-use schemes: {redirect_uri}"
+            );
+        }
+
+        assert!(
+            validate_redirect_uri("mobile", "com.example.app:/oauth/callback", true).is_ok(),
+            "reverse-domain private-use schemes are supported for native apps"
+        );
+    }
+
+    #[test]
+    fn mobile_and_first_party_clients_reject_non_loopback_http_redirect_uris() {
+        for app_type in ["mobile", "first_party"] {
+            assert!(
+                validate_redirect_uri(app_type, "http://example.com/callback", true).is_err(),
+                "{app_type} must not use cleartext HTTP on a non-loopback host"
+            );
+        }
+    }
+
+    #[test]
+    fn first_party_loopback_http_is_allowed_only_for_loopback_public_urls() {
+        let redirect_uris = vec!["http://localhost:3000/auth/callback".to_string()];
+        let scopes = vec!["profile".to_string()];
+        let grant_types = vec!["authorization_code".to_string()];
+
+        assert!(public_url_uses_loopback_http("http://localhost:3000"));
+        assert!(public_url_uses_loopback_http("http://[::1]:3000"));
+        assert!(!public_url_uses_loopback_http("https://localhost:3000"));
+        assert!(!public_url_uses_loopback_http("http://admin.example.com"));
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("http://localhost:3000"),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("https://admin.example.com"),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn authorization_code_requires_redirect_uri() {
         let result = validate_manual_app_configuration(
             "third_party",
@@ -1787,6 +2423,100 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn refresh_token_grant_requires_authorization_code_for_all_app_types() {
+        let scopes = vec!["profile".to_string()];
+        let refresh_only = vec!["refresh_token".to_string()];
+
+        assert!(
+            validate_manual_app_configuration("third_party", &[], &scopes, &refresh_only, &[],)
+                .is_err()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &[],
+                &scopes,
+                &refresh_only,
+                &[],
+                false,
+            )
+            .is_err()
+        );
+
+        let authorization_and_refresh = vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ];
+        assert!(
+            validate_manual_app_configuration(
+                "third_party",
+                &["https://client.example/callback".to_string()],
+                &scopes,
+                &authorization_and_refresh,
+                &[],
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn public_client_types_cannot_use_client_credentials() {
+        for app_type in ["mobile", "third_party"] {
+            let result = validate_manual_app_configuration(
+                app_type,
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            );
+            assert!(
+                result.is_err(),
+                "{app_type} apps must not receive userless client-credentials grants"
+            );
+        }
+    }
+
+    #[test]
+    fn service_apps_require_client_credentials_and_first_party_apps_can_be_hybrid() {
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &["https://service.example/callback".to_string()],
+                &["catalog:read".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            )
+            .is_err()
+        );
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &["https://shop.example/callback".to_string()],
+                &["storefront:read".to_string()],
+                &[
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                    "client_credentials".to_string(),
+                ],
+                &["storefront:read".to_string()],
+                false,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -2154,6 +2884,183 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn authorization_code_issuance_rechecks_consent_and_revocation() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-consent-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-consent-fence@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create consent subject");
+        let redirect_uri = "https://partner.example.com/callback";
+        let scopes = vec!["openid".to_string()];
+        let issue = || {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                user.id,
+                tenant.id,
+                redirect_uri.to_string(),
+                scopes.clone(),
+                "challenge".to_string(),
+            )
+        };
+
+        let missing_consent = issue().await
+            .expect_err("third-party app must not issue without current consent");
+        assert!(matches!(missing_consent, Error::Unauthorized(_)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("grant consent");
+        let code = issue().await.expect("issue after consent");
+        use sha2::{Digest, Sha256};
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+        let pending = oauth_authorization_codes::Entity::find()
+            .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .one(&db)
+            .await
+            .expect("find pending code")
+            .expect("pending code exists");
+        assert_eq!(pending.app_id, app.id);
+        assert_eq!(pending.user_id, user.id);
+        assert!(pending.used_at.is_none());
+
+        OAuthAppService::revoke_user_consent(&db, app.id, user.id, tenant.id)
+            .await
+            .expect("revoke consent and pending codes");
+        assert!(matches!(issue().await, Err(Error::Unauthorized(_))));
+        let revoked_code = oauth_authorization_codes::Entity::find_by_id(pending.id)
+            .one(&db)
+            .await
+            .expect("reload prior code")
+            .expect("prior code survives for replay detection");
+        assert!(revoked_code.used_at.is_some());
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            1,
+            "no code may be admitted after consent revocation"
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("renew consent");
+        let _another_code = issue().await.expect("admit code after re-consent");
+        OAuthAppService::revoke_app(&db, tenant.id, app.id)
+            .await
+            .expect("revoke app and pending codes");
+        assert!(matches!(issue().await, Err(Error::NotFound)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            2,
+            "app revocation cannot be followed by newly inserted auth codes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn authorization_code_issuance_rechecks_user_and_current_app_policy() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-user-policy-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-user-policy@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create authorization subject");
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            vec!["openid".to_string()],
+        )
+        .await
+        .expect("grant active consent");
+
+        let issue = |tenant_id| OAuthAppService::generate_authorization_code(
+            &db,
+            app.id,
+            user.id,
+            tenant_id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()],
+            "challenge".to_string(),
+        );
+        assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
+
+        // A stale preflight cannot bind a code to a redirect the app no longer
+        // accepts, nor to scopes that were narrowed before the authoritative
+        // app-row lock.
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://new.example.com/callback"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("change registered redirect");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://partner.example.com/callback"])),
+            )
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["profile"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("narrow allowed scopes");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["openid"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("restore app scopes");
+        let mut inactive = users::ActiveModel::from(user);
+        inactive.status = Set(rustok_core::UserStatus::Inactive);
+        inactive.update(&db).await.expect("deactivate subject");
+        assert!(matches!(issue(tenant.id).await, Err(Error::Unauthorized(_))));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+            "invalid tenant, redirect, scope and user decisions cannot persist codes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn rfc7009_revocation_always_succeeds() {
         let (db, tenant) = test_db_with_tenant().await;
         let app = insert_revocation_app(&db, tenant.id, "rfc7009-unknown").await;
@@ -2176,6 +3083,7 @@ mod tests {
             .await
             .expect("revoke refresh family");
 
+        let mut first_revoked_at = Vec::new();
         for id in [root.id, child.id] {
             let token = oauth_tokens::Entity::find_by_id(id)
                 .one(&db)
@@ -2186,6 +3094,7 @@ mod tests {
                 token.revoked_at.is_some(),
                 "family token {id} must be revoked"
             );
+            first_revoked_at.push((id, token.revoked_at));
         }
         let unrelated = oauth_tokens::Entity::find_by_id(unrelated.id)
             .one(&db)
@@ -2197,6 +3106,17 @@ mod tests {
         OAuthAppService::revoke_token_by_hash(&db, "family-child", app.id, tenant.id)
             .await
             .expect("repeat revocation is idempotent");
+        for (id, first_timestamp) in first_revoked_at {
+            let current = oauth_tokens::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("reload revoked token")
+                .expect("token remains present");
+            assert_eq!(
+                current.revoked_at, first_timestamp,
+                "replayed revocation must preserve the original revocation timestamp"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2534,6 +3454,83 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn stale_manual_app_update_cannot_restore_revocation_or_last_used_state() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Race-safe app".to_string(),
+                    slug: "race-safe-app".to_string(),
+                    description: Some("Initial".to_string()),
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+
+        let stale = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("read stale app")
+            .expect("app exists");
+        OAuthAppService::touch_last_used(&db, stale.id)
+            .await
+            .expect("record runtime use");
+        let used_at = OAuthAppsEntity::find_by_id(stale.id)
+            .one(&db)
+            .await
+            .expect("read last-used timestamp")
+            .and_then(|app| app.last_used_at)
+            .expect("runtime use timestamp");
+
+        OAuthAppService::revoke_app(&db, tenant.id, stale.id)
+            .await
+            .expect("revoke app");
+
+        let mut update = manual_app_update_base(stale);
+        update.name = Set("Updated after revoke".to_string());
+        update.description = Set(Some("Updated metadata".to_string()));
+        update.icon_url = Set(None);
+        update.redirect_uris = Set(serde_json::json!([
+            "https://partner.example.com/updated-callback"
+        ]));
+        update.scopes = Set(serde_json::json!(["catalog:*"]));
+        update.grant_types = Set(serde_json::json!(["authorization_code", "refresh_token"]));
+        update.granted_permissions = Set(serde_json::json!([]));
+        update.updated_at = Set(Utc::now().into());
+
+        oauth_apps::scope_runtime_copy_locale("en".to_string(), update.update(&db))
+            .await
+            .expect("apply stale editable-field update");
+
+        let stored = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app remains present");
+        assert!(!stored.is_active, "stale update must not reactivate a revoked app");
+        assert!(stored.revoked_at.is_some(), "revocation timestamp must survive");
+        assert_eq!(
+            stored.last_used_at,
+            Some(used_at),
+            "stale update must not erase a newer runtime-owned use timestamp"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manual_app_crud_and_token_revocation_round_trip() {
         let (db, tenant) = test_db_with_tenant().await;
 
@@ -2602,6 +3599,10 @@ mod tests {
         .expect("update app");
 
         assert_eq!(updated.name, "Partner app v2");
+        assert!(
+            updated.can_rotate_secret(),
+            "an editable update must retain the current stored credential state"
+        );
         assert_eq!(
             updated.redirect_uris_list(),
             vec!["https://partner.example.com/oauth/callback".to_string()]
@@ -2628,7 +3629,7 @@ mod tests {
                 &db,
                 tenant.id,
                 created.app.id,
-                &stale_secret_hash,
+                Some(&stale_secret_hash),
                 "stale-hash",
                 Utc::now(),
             )
@@ -2668,6 +3669,84 @@ mod tests {
         .await
         .expect("insert oauth token");
 
+        OAuthAppService::grant_consent_strict(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant user consent through the strict admin path");
+        let consent_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
+        OAuthAppService::revoke_user_consent(&db, created.app.id, token_user.id, tenant.id)
+            .await
+            .expect("revoke user consent");
+        let consent_code = oauth_authorization_codes::Entity::find_by_id(consent_code_id)
+            .one(&db)
+            .await
+            .expect("load consent-bound code")
+            .expect("consent-bound code exists");
+        assert!(
+            consent_code.used_at.is_some(),
+            "consent revocation must invalidate pending authorization codes"
+        );
+
+        // The lower-level service path must also serialize an update/regrant
+        // against the same app and subject fences.
+        OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("regrant consent through the lower-level service");
+        OAuthAppService::revoke_user_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+        )
+        .await
+        .expect("revoke lower-level service grant");
+
+        let mut inactive_user: crate::models::users::ActiveModel = token_user.clone().into();
+        inactive_user.status = Set(rustok_core::UserStatus::Inactive);
+        inactive_user
+            .update(&db)
+            .await
+            .expect("deactivate consent subject");
+        let strict_grant_for_inactive_user =
+            OAuthAppService::grant_consent_strict(
+                &db,
+                created.app.id,
+                token_user.id,
+                tenant.id,
+                vec!["catalog:read".to_string()],
+            )
+            .await
+            .expect_err("strict grant must reject an inactive user");
+        assert!(matches!(
+            strict_grant_for_inactive_user,
+            Error::Unauthorized(_)
+        ));
+
+        let grant_for_inactive_user = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("ordinary grant must reject an inactive user");
+        assert!(matches!(grant_for_inactive_user, Error::Unauthorized(_)));
+
+        let app_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
             .await
             .expect("revoke app");
@@ -2681,6 +3760,147 @@ mod tests {
             .expect("load oauth tokens");
         assert_eq!(revoked_tokens.len(), 1);
         assert!(revoked_tokens[0].revoked_at.is_some());
+
+        let app_code = oauth_authorization_codes::Entity::find_by_id(app_code_id)
+            .one(&db)
+            .await
+            .expect("load app-bound code")
+            .expect("app-bound code exists");
+        assert!(
+            app_code.used_at.is_some(),
+            "app revocation must invalidate pending authorization codes"
+        );
+
+        let grant_after_revoke = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("revoked app must not receive new consent");
+        assert!(matches!(grant_after_revoke, Error::NotFound));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn oauth_secret_rotation_cas_rechecks_allowed_app_type() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rotation-type-change").await;
+        assert!(app.can_rotate_secret());
+        assert!(app.client_secret_hash.is_none());
+
+        // The app type changes after a secret-rotation preflight but before
+        // its hash CAS. The database, not the earlier snapshot, arbitrates
+        // whether the rotation remains permitted.
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AppType, Expr::value("embedded"))
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&db)
+            .await
+            .expect("change OAuth app type concurrently");
+        assert!(
+            !replace_oauth_secret_if_current(
+                &db,
+                tenant.id,
+                app.id,
+                app.client_secret_hash.as_deref(),
+                "new-secret-hash-that-must-not-be-persisted",
+                Utc::now(),
+            )
+            .await
+            .expect("atomic rotation predicate"),
+            "stale rotation must not set a secret for an unsupported app type"
+        );
+        let stored = OAuthApps::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app exists");
+        assert_eq!(stored.app_type, "embedded");
+        assert!(stored.client_secret_hash.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manual_oauth_edit_and_revoke_reject_newly_manifest_owned_app() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Pending ownership change".to_string(),
+                    slug: "pending-ownership-change".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+        let app_id = created.app.id;
+        assert!(created.app.can_edit() && created.app.can_revoke());
+
+        // Model the ownership transfer performed by a manifest reconciliation:
+        // a different writer acquires the canonical row fence and commits new
+        // ownership before either manual mutation is admitted.
+        let tx = db.begin().await.expect("ownership transaction");
+        let before = lock_oauth_app_for_mutation(&tx, app_id, tenant.id)
+            .await
+            .expect("lock app")
+            .expect("manual app still exists");
+        assert!(before.can_edit());
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AutoCreated, Expr::value(true))
+            .col_expr(
+                oauth_apps::Column::ManifestRef,
+                Expr::value(Some("manifest-owned".to_string())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&tx)
+            .await
+            .expect("manifest claims ownership");
+        tx.commit().await.expect("ownership commits");
+
+        let edit = OAuthAppService::update_app(
+            &db,
+            tenant.id,
+            app_id,
+            UpdateOAuthAppInput {
+                name: "Unexpected manual edit".to_string(),
+                description: None,
+                icon_url: None,
+                redirect_uris: vec!["https://attacker.example.com/callback".to_string()],
+                scopes: vec!["catalog:write".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: vec![],
+            },
+        )
+        .await;
+        assert!(matches!(edit, Err(Error::BadRequest(_))));
+        let revoke = OAuthAppService::revoke_app(&db, tenant.id, app_id).await;
+        assert!(matches!(revoke, Err(Error::BadRequest(_))));
+
+        let stored = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .one(&db)
+            .await
+            .expect("reload claimed app")
+            .expect("app remains");
+        assert!(stored.is_active());
+        assert!(stored.managed_by_manifest());
+        assert_eq!(stored.redirect_uris_list(), vec!["https://partner.example.com/callback"]);
+        assert!(stored.revoked_at.is_none());
     }
 
     #[tokio::test]
@@ -2776,6 +3996,133 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn manifest_sync_reactivates_embedded_app_with_revocation_timestamp() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let now = Utc::now();
+        let app = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("leptos-admin".to_string()),
+            slug: Set("leptos-admin".to_string()),
+            description: Set(Some("Auto-created embedded app".to_string())),
+            app_type: Set("embedded".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(None),
+            redirect_uris: Set(serde_json::json!([])),
+            scopes: Set(serde_json::json!(["*:*"])),
+            grant_types: Set(serde_json::json!([])),
+            granted_permissions: Set(serde_json::json!([])),
+            manifest_ref: Set(Some("leptos-admin".to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(Some(now.clone())),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(now.clone().into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert embedded app with stale revocation timestamp");
+
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = true;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront.clear();
+
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("sync manifest and reactivate embedded app");
+
+        let reactivated = OAuthAppsEntity::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("load embedded app after sync")
+            .expect("embedded app remains present");
+        assert!(reactivated.is_active());
+        assert!(
+            reactivated.revoked_at.is_none(),
+            "embedded app reactivation must clear a stale revocation timestamp"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn app_revocation_revokes_active_user_consents() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "app-revoke-consent@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert consent subject");
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Consent revocation app".to_string(),
+                slug: format!("consent-revocation-{}", Uuid::new_v4()),
+                description: None,
+                app_type: "third_party".to_string(),
+                icon_url: None,
+                redirect_uris: vec!["https://client.example.com/callback".to_string()],
+                scopes: vec!["catalog:read".to_string()],
+                grant_types: vec![
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                ],
+                granted_permissions: vec![],
+            },
+        )
+        .await
+        .expect("create OAuth app");
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant consent before app revocation");
+        let active_consent = OAuthConsents::find_active_consent(
+            &db,
+            created.app.id,
+            user.id,
+            tenant.id,
+        )
+        .await
+        .expect("load active consent")
+        .expect("consent exists before app revocation");
+
+        OAuthAppService::revoke_app(&db, tenant.id, created.app.id)
+            .await
+            .expect("revoke OAuth app");
+
+        let stored_consent = oauth_consents::Entity::find_by_id(active_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app revocation")
+            .expect("consent history remains present");
+        assert!(
+            stored_consent.revoked_at.is_some(),
+            "revoking an OAuth app must revoke all active user consents"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, created.app.id, user.id, tenant.id)
+                .await
+                .expect("check active consent after app revocation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
         let (db, tenant) = test_db_with_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
@@ -2783,7 +4130,7 @@ mod tests {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("Operator-owned app".to_string()),
-            slug: Set("next-admin".to_string()),
+            slug: Set("shop".to_string()),
             description: Set(Some("Created manually".to_string())),
             app_type: Set("service".to_string()),
             icon_url: Set(None),
@@ -2807,13 +4154,18 @@ mod tests {
         .expect("insert manually managed app");
 
         let mut manifest = crate::modules::ModulesManifest::default();
-        manifest.build.server.embed_admin = false;
+        manifest.build.server.embed_admin = true;
         manifest.build.server.embed_storefront = false;
-        manifest.build.admin.stack = "next".to_string();
-        manifest.build.admin.public_url = "https://admin.example.com".to_string();
-        manifest.build.admin.redirect_uris =
-            vec!["https://admin.example.com/auth/callback".to_string()];
-        manifest.build.storefront.clear();
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront = serde_json::from_value(serde_json::json!([
+            {
+                "id": "shop",
+                "stack": "next",
+                "public_url": "https://shop.example.com",
+                "redirect_uris": ["https://shop.example.com/auth/callback"]
+            }
+        ]))
+        .expect("deserialize storefront build config");
 
         assert!(
             matches!(
@@ -2821,6 +4173,17 @@ mod tests {
                 Err(Error::Conflict(_))
             ),
             "sync must report a conflict instead of claiming a manually created app by slug"
+        );
+
+        let leaked_embedded_app = OAuthAppsEntity::find()
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .filter(oauth_apps::Column::Slug.eq("leptos-admin"))
+            .one(&db)
+            .await
+            .expect("query embedded app after failed sync");
+        assert!(
+            leaked_embedded_app.is_none(),
+            "an earlier embedded-app upsert must roll back when a later manifest entry conflicts"
         );
 
         let persisted = OAuthAppsEntity::find_by_id(manual.id)
@@ -2879,6 +4242,29 @@ mod tests {
         .await
         .expect("insert orphan app");
 
+        let orphan_user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "orphan-oauth-code-user@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert orphan authorization-code user");
+        let orphan_consent = oauth_consents::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(orphan_app.id),
+            user_id: Set(orphan_user.id),
+            tenant_id: Set(tenant.id),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            granted_at: Set(Utc::now().into()),
+            revoked_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert active consent for orphan app");
+        let orphan_code_id =
+            insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
+
         let auto_created_for_another_manifest_entry = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -2911,14 +4297,14 @@ mod tests {
         let old_token = oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(orphan_app.id),
-            user_id: Set(None),
+            user_id: Set(Some(orphan_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
             family_id: Set(None),
-            authorization_code_id: Set(None),
-            grant_type: Set("client_credentials".to_string()),
+            authorization_code_id: Set(Some(orphan_code_id)),
+            grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
-            consent_granted_at: Set(None),
+            consent_granted_at: Set(Some(Utc::now().into())),
             scopes: Set(serde_json::json!(["storefront:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
             revoked_at: Set(None),
@@ -2960,6 +4346,14 @@ mod tests {
             .find(|app| app.slug == "next-admin")
             .expect("next-admin app");
         assert_eq!(next_admin.app_type, "first_party");
+        assert!(
+            next_admin.client_secret_hash.is_none(),
+            "manifest-created first-party apps must be usable as public PKCE clients"
+        );
+        assert!(
+            next_admin.can_rotate_secret(),
+            "operators must be able to provision the optional SSR credential"
+        );
         assert_eq!(
             next_admin.redirect_uris_list(),
             vec!["https://admin.example.com/auth/callback".to_string()]
@@ -3023,6 +4417,30 @@ mod tests {
             token.revoked_at.is_some(),
             "removed managed app must revoke its tokens"
         );
+        let orphan_code = oauth_authorization_codes::Entity::find_by_id(orphan_code_id)
+            .one(&db)
+            .await
+            .expect("read orphan authorization code")
+            .expect("orphan authorization code remains as used evidence");
+        assert!(
+            orphan_code.used_at.is_some(),
+            "removing a managed app must invalidate its pending authorization codes"
+        );
+        let revoked_orphan_consent = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after orphan cleanup")
+            .expect("orphan consent remains as revocation evidence");
+        assert!(
+            revoked_orphan_consent.revoked_at.is_some(),
+            "removing a managed app must revoke its previously granted user consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after orphan cleanup")
+                .is_none()
+        );
 
         OAuthAppService::touch_last_used(&db, next_admin.id)
             .await
@@ -3057,6 +4475,75 @@ mod tests {
             resynced.last_used_at, last_used_before_resync,
             "manifest sync must not overwrite runtime-owned usage timestamps"
         );
+
+        // Simulate an inactive managed app left by an older server version:
+        // the app is disabled, but a dependent token, consent, and code remain live.
+        let mut legacy_consent: oauth_consents::ActiveModel =
+            revoked_orphan_consent.clone().into();
+        legacy_consent.revoked_at = Set(None);
+        legacy_consent
+            .update(&db)
+            .await
+            .expect("restore legacy active consent fixture");
+        let mut legacy_token: oauth_tokens::ActiveModel = token.clone().into();
+        legacy_token.revoked_at = Set(None);
+        legacy_token
+            .update(&db)
+            .await
+            .expect("restore legacy active token fixture");
+        let mut legacy_code: oauth_authorization_codes::ActiveModel = orphan_code.clone().into();
+        legacy_code.used_at = Set(None);
+        legacy_code
+            .update(&db)
+            .await
+            .expect("restore legacy pending code fixture");
+
+        manifest.build.storefront.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "old-storefront",
+                "stack": "next",
+                "public_url": "https://old.example.com",
+                "redirect_uris": ["https://old.example.com/callback"]
+            }))
+            .expect("deserialize re-added storefront config"),
+        );
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("re-add previously orphaned manifest app");
+        let reactivated_orphan = OAuthAppsEntity::find_by_id(orphan_app.id)
+            .one(&db)
+            .await
+            .expect("load reactivated orphan")
+            .expect("previously orphaned app remains present");
+        assert!(reactivated_orphan.is_active);
+        assert!(reactivated_orphan.revoked_at.is_none());
+        let consent_after_reactivation = oauth_consents::Entity::find_by_id(orphan_consent.id)
+            .one(&db)
+            .await
+            .expect("load consent after app reactivation")
+            .expect("consent history remains present");
+        assert!(
+            consent_after_reactivation.revoked_at.is_some(),
+            "re-adding a manifest app must not restore previously revoked consent"
+        );
+        assert!(
+            OAuthConsents::find_active_consent(&db, orphan_app.id, orphan_user.id, tenant.id)
+                .await
+                .expect("check active consent after app reactivation")
+                .is_none()
+        );
+        let token_after_reactivation = oauth_tokens::Entity::find_by_id(old_token.id)
+            .one(&db)
+            .await
+            .expect("load token after app reactivation")
+            .expect("token history remains present");
+        assert!(token_after_reactivation.revoked_at.is_some());
+        let code_after_reactivation = oauth_authorization_codes::Entity::find_by_id(orphan_code_id)
+            .one(&db)
+            .await
+            .expect("load code after app reactivation")
+            .expect("authorization-code history remains present");
+        assert!(code_after_reactivation.used_at.is_some());
     }
 
     #[tokio::test]

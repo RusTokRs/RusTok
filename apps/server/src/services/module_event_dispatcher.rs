@@ -17,8 +17,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "blog_public_comments_snapshot.rs"]
 mod blog_public_comments_snapshot;
 
-/// Whether this composition registered module event listeners. A missing
-/// snapshot is not equivalent to an intentionally empty listener set.
+/// Whether this worker host requires a live module event dispatcher. Even an
+/// empty module listener set must bind an explicit registry so the transport can
+/// distinguish "no local handler" from "listener registry not initialized".
 #[derive(Clone, Copy)]
 pub struct ModuleEventDispatcherRequirement(pub bool);
 
@@ -30,6 +31,16 @@ pub struct ModuleEventDispatcherRequirement(pub bool);
 /// request a cooperative drain and join the receive loop instead of leaking it
 /// past the server. Abort remains the emergency fallback after the host drain
 /// deadline.
+// A separate type per worker makes registration atomic without requiring a
+// Clone implementation for a JoinHandle or publishing a provisional handle.
+#[cfg(feature = "mod-commerce")]
+struct PaidOrderLabelWorkerReservation;
+#[cfg(feature = "commerce-marketplace-financial")]
+struct MarketplaceFinancialWorkerReservation;
+#[cfg(feature = "mod-payment")]
+struct PaymentProviderEventWorkerReservation;
+struct ModuleEventDispatcherReservation;
+
 pub struct ModuleEventDispatcherHandle {
     running: rustok_core::RunningDispatcher,
 }
@@ -77,51 +88,100 @@ pub fn spawn_module_event_dispatcher(
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Result<()> {
     tracing::debug!("Spawning module event dispatcher");
-    #[cfg(feature = "mod-product")]
-    spawn_product_media_release_worker_if_enabled(ctx);
+    // Preflight the required event runtime before starting any module-owned
+    // worker. Previously an absent EventRuntime returned an error only after
+    // payment/commerce/media recovery tasks had already been spawned.
+    let event_bus = if module_event_dispatcher_enabled(ctx.settings()) {
+        Some(
+            ctx.shared_get::<Arc<EventRuntime>>()
+                .ok_or_else(|| {
+                    Error::Message(
+                        "EventRuntime must be initialized before module event listeners"
+                            .to_owned(),
+                    )
+                })?
+                .listener_bus
+                .clone(),
+        )
+    } else {
+        None
+    };
+
+    // Two parallel composition attempts must not each start a dispatcher and
+    // overwrite the other's shutdown handle. Reserve the lifecycle *before*
+    // any module worker initialization or registration side effects.
+    if event_bus.is_some() {
+        if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+            return Err(Error::Message(
+                "server shutdown started before module dispatcher initialization".to_string(),
+            ));
+        }
+        if ctx.shared_contains::<ModuleEventDispatcherHandle>()
+            || !ctx.shared_insert_if_absent(ModuleEventDispatcherReservation)
+        {
+            tracing::debug!("Module event dispatcher already started or initializing");
+            return Ok(());
+        }
+    }
+
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
 
+    let Some(event_bus) = event_bus else {
+        tracing::info!(
+            host_mode = ?ctx.settings().runtime.host_mode,
+            "Module event dispatcher disabled for the current runtime profile"
+        );
+        return Ok(());
+    };
+    let db = ctx.db_clone();
+    let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
+
+    let handler_count = dispatcher.handler_count();
+    if handler_count == 0 {
+        tracing::info!(
+            "No module-owned event listeners registered; binding an explicit empty registry for transport routing"
+        );
+    }
+
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        ctx.shared_remove::<ModuleEventDispatcherReservation>();
+        return Err(Error::Message(
+            "server shutdown started during module dispatcher initialization".to_string(),
+        ));
+    }
+    let result = start_module_event_dispatcher(ctx, dispatcher, handler_count);
+    if result.is_err() {
+        // Failure must not permanently poison a later initialization retry.
+        ctx.shared_remove::<ModuleEventDispatcherReservation>();
+        return result;
+    }
+
+    // Required dispatcher startup has succeeded. Optional recovery workers may
+    // now begin their own loops; a failed dispatcher start leaves none behind.
+    #[cfg(feature = "mod-product")]
+    spawn_product_media_release_worker_if_enabled(ctx);
     #[cfg(feature = "mod-commerce")]
     spawn_paid_order_label_worker_if_enabled(ctx);
     #[cfg(feature = "commerce-marketplace-financial")]
     spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
+    result
+}
 
-    if !module_event_dispatcher_enabled(ctx.settings()) {
-        tracing::info!(
-            host_mode = ?ctx.settings().runtime.host_mode,
-            "Module event dispatcher disabled for the current runtime profile"
-        );
-        return Ok(());
-    }
-    if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
-        tracing::debug!("Module event dispatcher already started");
-        return Ok(());
-    }
-
-    let bus = ctx
-        .shared_get::<Arc<EventRuntime>>()
-        .ok_or_else(|| {
-            Error::Message(
-                "EventRuntime must be initialized before module event listeners".to_owned(),
-            )
-        })?
-        .listener_bus
-        .clone();
-    let db = ctx.db_clone();
-    let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
-
-    let handler_count = dispatcher.handler_count();
-    ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
-    if handler_count == 0 {
-        tracing::info!("No module-owned event listeners registered in ModuleRegistry");
-        return Ok(());
-    }
-
+fn start_module_event_dispatcher(
+    ctx: &ServerRuntimeContext,
+    dispatcher: EventDispatcher,
+    handler_count: usize,
+) -> Result<()> {
+    // The listener registry is part of the transport contract even when it is
+    // intentionally empty: remote-only sealed events may proceed, while
+    // required local families still fail closed when no handler is registered.
     let running = dispatcher.start_with_contract_delivery()?;
+    // Publish the required-listener flag only after the dispatcher actually
+    // starts; a failed start is not a running/healthy listener registry.
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
-
+    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
 }
@@ -182,61 +242,73 @@ fn enrich_runtime_extensions_after_event_start(
 
 #[cfg(feature = "mod-commerce")]
 fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(PaidOrderLabelWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     if let Some(handle) =
         crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         )
     {
         ctx.shared_insert(handle);
+    } else {
+        // The dependent fulfillment registry is not ready. Do not permanently
+        // reserve a worker that never started: a later composition may retry.
+        ctx.shared_remove::<PaidOrderLabelWorkerReservation>();
     }
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
 fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(MarketplaceFinancialWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     if let Some(handle) =
         crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         )
     {
         ctx.shared_insert(handle);
+    } else {
+        ctx.shared_remove::<MarketplaceFinancialWorkerReservation>();
     }
 }
 
 #[cfg(feature = "mod-payment")]
 fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(PaymentProviderEventWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     ctx.shared_insert(
         crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         ),
     );
 }
@@ -761,13 +833,17 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
     use crate::services::product_media_release_worker::spawn_product_media_release_worker;
     // Reserve before spawning: concurrent composition must not create two workers.
     struct ProductMediaReleaseWorkerReservation;
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
+        || ctx.shared_contains::<
+            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+        >()
         || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
     {
         return;
     }
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop.subscribe()));
 }
 
 #[cfg(test)]
@@ -1061,6 +1137,97 @@ mod lifecycle_tests {
     use super::*;
     use crate::common::settings::RuntimeHostMode;
 
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_payment_recovery_starts_only_one_runtime_worker() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let arrivals = Arc::new(tokio::sync::Barrier::new(16));
+        let mut calls = Vec::new();
+        for _ in 0..16 {
+            let ctx = ctx.clone();
+            let arrivals = Arc::clone(&arrivals);
+            calls.push(tokio::spawn(async move {
+                arrivals.wait().await;
+                spawn_payment_provider_event_worker_if_enabled(&ctx);
+            }));
+        }
+        for call in calls {
+            call.await.expect("worker composition should not panic");
+        }
+        let first_instance = ctx
+            .shared_map::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+                _,
+            >(|worker| worker.instance_id())
+            .expect("one payment recovery worker must be registered");
+        assert!(ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
+        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert_eq!(
+            ctx.shared_map::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+                _,
+            >(|worker| worker.instance_id()),
+            Some(first_instance),
+            "repeated startup cannot overwrite the owner handle"
+        );
+
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        if let Some(worker) = ctx.shared_take::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >() {
+            tokio::time::timeout(std::time::Duration::from_secs(3), worker.join())
+                .await
+                .expect("payment recovery should stop cooperatively")
+                .expect("payment recovery join should succeed");
+        }
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    #[test]
+    fn unavailable_fulfillment_registry_does_not_poison_worker_admission() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        spawn_paid_order_label_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<PaidOrderLabelWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >());
+    }
+
+    #[cfg(feature = "commerce-marketplace-financial")]
+    #[test]
+    fn unavailable_financial_runtime_does_not_poison_worker_admission() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        spawn_marketplace_financial_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<MarketplaceFinancialWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >());
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn stopped_host_does_not_register_payment_recovery_worker() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+    }
+
     #[test]
     fn module_event_dispatcher_runs_only_in_background_worker_profiles() {
         for mode in [RuntimeHostMode::Full, RuntimeHostMode::Worker] {
@@ -1078,6 +1245,106 @@ mod lifecycle_tests {
             settings.runtime.host_mode = mode;
             assert!(!module_event_dispatcher_enabled(&settings));
         }
+    }
+
+    #[test]
+    fn missing_event_runtime_fails_before_any_module_worker_is_spawned() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let registry = ModuleRegistry::new();
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("empty module registry can build extensions");
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+
+        let error = spawn_module_event_dispatcher(&ctx, &registry, extensions)
+            .expect_err("worker host requires EventRuntime before starting any child");
+        assert!(matches!(
+            error,
+            crate::error::Error::Message(ref message)
+                if message.contains("EventRuntime must be initialized")
+        ));
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        #[cfg(feature = "mod-payment")]
+        assert!(!ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+        #[cfg(feature = "mod-product")]
+        assert!(!ctx.shared_contains::<
+            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+        >());
+        #[cfg(feature = "mod-commerce")]
+        assert!(!ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >());
+        #[cfg(feature = "commerce-marketplace-financial")]
+        assert!(!ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >());
+    }
+
+    #[tokio::test]
+    async fn empty_listener_set_binds_an_explicit_registry_for_transport_routing() {
+        use rustok_core::events::{EventTransport, MemoryTransport};
+        use rustok_events::{
+            ContractEventEnvelope, DomainEvent, EventEnvelope, ProductIndexRefreshEvent,
+        };
+        use uuid::Uuid;
+
+        let memory = MemoryTransport::with_capacity(8);
+        let bus = memory.event_bus();
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+
+        start_module_event_dispatcher(&ctx, EventDispatcher::new(bus.clone()), 0)
+            .expect("empty listener registry should start");
+
+        assert_eq!(
+            ctx.shared_get::<ModuleEventDispatcherRequirement>()
+                .map(|requirement| requirement.0),
+            Some(true),
+            "the explicit empty registry is still required by the worker transport"
+        );
+        assert_eq!(
+            ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished()),
+            Some(true)
+        );
+
+        let remote_only = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .expect("remote-only contract envelope");
+        assert!(
+            !bus.has_contract_handler(&remote_only)
+                .expect("an empty registry is initialized, not unavailable")
+        );
+
+        let tenant_id = Uuid::new_v4();
+        let root_event = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        memory
+            .publish(root_event)
+            .await
+            .expect("the empty dispatcher must keep the root-event receiver bound");
+
+        let handle = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("dispatcher handle should be owned by the runtime context");
+        handle.request_stop();
+        handle.join().await.expect("empty dispatcher should drain");
     }
 
     #[tokio::test]

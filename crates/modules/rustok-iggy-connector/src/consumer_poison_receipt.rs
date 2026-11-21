@@ -309,7 +309,9 @@ impl ConsumerPoisonReceiptStore {
                     .map_err(storage_error)?
                 {
                     decode_and_validate_receipt(&row, identity, backend)?;
-                    unreachable!("matching delivery UUID must also match source coordinates");
+                    return Err(ConsumerPoisonReceiptError::Storage(
+                        "matching delivery UUID had mismatched source coordinates".to_owned(),
+                    ));
                 }
                 return Err(ConsumerPoisonReceiptError::Storage(
                     "reserved consumer poison receipt disappeared before claim".to_owned(),
@@ -555,16 +557,14 @@ fn storage_error(error: impl std::fmt::Display) -> ConsumerPoisonReceiptError {
 fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported database backend was validated"),
+        DbBackend::Sqlite | _ => "?",
     }
 }
 
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
-        DbBackend::Sqlite => value.to_string().into(),
-        _ => unreachable!("unsupported database backend was validated"),
+        DbBackend::Sqlite | _ => value.to_string().into(),
     }
 }
 
@@ -575,11 +575,10 @@ fn stored_uuid(
 ) -> Result<Uuid, ConsumerPoisonReceiptError> {
     match backend {
         DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        DbBackend::Sqlite => {
+        DbBackend::Sqlite | _ => {
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
-        _ => unreachable!("unsupported database backend was validated"),
     }
 }
 
@@ -595,14 +594,13 @@ fn source_offset_value(offset: u64) -> Result<SqlValue, ConsumerPoisonReceiptErr
 }
 
 fn source_key_values(identity: &ConsumerPoisonIdentity) -> Vec<SqlValue> {
+    let offset_i64 = identity.source_offset.min(i64::MAX as u64) as i64;
     vec![
         identity.consumer_group.clone().into(),
         identity.source_stream.clone().into(),
         identity.source_topic.clone().into(),
         i64::from(identity.source_partition).into(),
-        source_offset_i64(identity.source_offset)
-            .expect("validated poison source offset must fit i64")
-            .into(),
+        offset_i64.into(),
     ]
 }
 
@@ -672,10 +670,9 @@ fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Postgres => {
             format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
         }
-        DbBackend::Sqlite => {
+        DbBackend::Sqlite | _ => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
-        _ => unreachable!("unsupported database backend was validated"),
     }
 }
 

@@ -83,6 +83,7 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--pg-dump")?),
             required("--admin-url-env")?,
         ),
+        // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
     }
 }
@@ -291,6 +292,7 @@ fn file_mode(path: &Path, indexed: Option<&str>) -> Result<String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        let _ = indexed;
         return Ok(if fs::metadata(path)?.permissions().mode() & 0o111 != 0 {
             "100755"
         } else {

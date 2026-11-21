@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
         .add_service(service)
         .serve_with_shutdown(bind, async {
             if let Err(error) = tokio::signal::ctrl_c().await {
-                eprintln!("Flex shutdown signal unavailable: {error}");
+                tracing::error!(%error, "Flex shutdown signal unavailable");
             }
         })
         .await

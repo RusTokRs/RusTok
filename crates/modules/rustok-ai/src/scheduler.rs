@@ -119,8 +119,8 @@ impl ModuleWorkRegistration for AiAgentWorkflowWorkRegistration {
         host: &HostRuntimeContext,
         scheduler: &ModuleWorkScheduler,
     ) -> Result<(), ModuleWorkError> {
-        let runtime =
-            crate::ai_host_runtime_from_context(host).map_err(ModuleWorkError::Handler)?;
+        let runtime = crate::ai_host_runtime_from_context(host)
+            .map_err(|error| ModuleWorkError::Handler(error.to_string()))?;
         AiAgentWorkflowWorkAdapter::new(runtime, Duration::minutes(5))
             .register_with(scheduler)
             .await

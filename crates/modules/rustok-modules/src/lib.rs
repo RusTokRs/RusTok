@@ -19,6 +19,7 @@ mod build;
 mod build_surface;
 mod capability_events;
 mod capability_http;
+mod claim_heartbeat;
 mod composition;
 mod conflict_fences;
 mod contracts;
@@ -34,6 +35,7 @@ pub mod data_snapshot_readiness;
 pub mod data_upgrade;
 mod definition;
 mod delivery_descriptor;
+mod delivery_lease;
 mod dependency;
 mod dispatcher;
 mod distribution;
@@ -52,6 +54,7 @@ mod governance;
 mod idempotency;
 mod infrastructure;
 mod installation;
+mod installation_selection;
 mod lifecycle;
 mod lifecycle_writer;
 mod marketplace;
@@ -72,7 +75,15 @@ pub mod oci_admission;
 /// module) because non-OCI ingestion paths stage files too and must
 /// clean them up whether or not the `oci-distribution` feature is on.
 pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
-    let _ = tokio::fs::remove_file(path).await;
+    if let Err(error) = tokio::fs::remove_file(path).await
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!(
+            path = %path.display(),
+            error = %error,
+            "Failed best-effort removal of staged file"
+        );
+    }
 }
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
@@ -101,6 +112,9 @@ mod secrets;
 mod security_epoch;
 mod security_state;
 mod settings;
+mod settings_claim;
+mod settings_transition_fence;
+mod lifecycle_transition_fence;
 mod settings_guard;
 pub mod source_object;
 mod static_package;
@@ -454,10 +468,8 @@ pub use execution_audit::{
     ArtifactBindingExecutionAuditError, SeaOrmArtifactBindingExecutionAuditReader,
     SeaOrmArtifactExecutionObserver,
 };
-pub use executor::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
-    execute_module_toggle,
-};
+pub use executor::{ModuleLifecycleExecutionError, ModuleLifecycleToggleResult};
+pub(crate) use executor::{ModuleLifecycleToggleRequest, execute_module_toggle};
 pub use external_prebuilt_ingress::{
     ExternalAbiCapabilityEvidence, ExternalLineageEvidence, ExternalPolicyEvidence,
     ExternalPrebuiltIngressCommand, ExternalPrebuiltIngressError, ExternalPrebuiltIngressEvidence,
@@ -570,8 +582,8 @@ pub use oci_admission::{
 #[cfg(feature = "oci-distribution")]
 pub use oci_transport::OciTransportError;
 pub use operation_store::{
-    MAX_STALE_MODULE_OPERATIONS_PER_REAP, ModuleOperationJournal, ModuleOperationRecord,
-    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
+    MAX_STALE_MODULE_OPERATIONS_PER_REAP, ModuleOperationJournal, ModuleOperationReapCursor,
+    ModuleOperationRecord, ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
     ModuleOperationStoreError, StaleModuleOperationReapReport, StaticTenantLifecycleClaim,
     StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore, StaticTenantLifecycleStoreError,
     TenantModuleSettingsRecord, TenantModuleStateRecord,
@@ -590,7 +602,7 @@ pub use policy::{
 };
 pub use policy_cache::{
     DEFAULT_POLICY_CACHE_MAX_AGE_SECONDS, DEFAULT_POLICY_CACHE_MAX_ENTRIES,
-    ModuleEffectivePolicyCache,
+    ModuleEffectivePolicyCache, PolicyCacheReadStamp,
 };
 pub use policy_revision_consumer::{
     ModulePolicyRevisionConsumerError, ModulePolicyRevisionCursorState,

@@ -2,16 +2,16 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     AlloyScaffoldState, ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse,
-    McpScaffoldDraftRuntimeContext,
+    McpScaffoldDraftRuntimeContext, alloy_scaffold::AlloyScaffoldError,
 };
 
 pub const MCP_SCAFFOLD_WORKSPACE_ROOT_ENV: &str = "RUSTOK_MCP_SCAFFOLD_WORKSPACE_ROOT";
 
-pub fn authorize_scaffold_workspace(requested_root: &str) -> Result<String, String> {
+pub fn authorize_scaffold_workspace(requested_root: &str) -> Result<String, AlloyScaffoldError> {
     let configured = std::env::var(MCP_SCAFFOLD_WORKSPACE_ROOT_ENV).map_err(|_| {
-        format!(
+        AlloyScaffoldError::Workspace(format!(
             "MCP scaffold apply is disabled; host must configure {MCP_SCAFFOLD_WORKSPACE_ROOT_ENV}"
-        )
+        ))
     })?;
     authorize_scaffold_workspace_with_config(requested_root, &configured)
 }
@@ -20,7 +20,7 @@ pub async fn apply_authorized_module_scaffold(
     state: &AlloyScaffoldState,
     context: Option<McpScaffoldDraftRuntimeContext>,
     mut request: ApplyModuleScaffoldRequest,
-) -> Result<ApplyModuleScaffoldResponse, String> {
+) -> Result<ApplyModuleScaffoldResponse, AlloyScaffoldError> {
     request.workspace_root = authorize_scaffold_workspace(&request.workspace_root)?;
     crate::alloy_tools_unchecked::alloy_apply_module_scaffold(state, context, request).await
 }
@@ -28,59 +28,59 @@ pub async fn apply_authorized_module_scaffold(
 fn authorize_scaffold_workspace_with_config(
     requested_root: &str,
     configured_root: &str,
-) -> Result<String, String> {
+) -> Result<String, AlloyScaffoldError> {
     let requested_root = requested_root.trim();
     let configured_root = configured_root.trim();
     if requested_root.is_empty() {
-        return Err("workspace_root is required for MCP scaffold apply".to_string());
+        return Err(AlloyScaffoldError::Workspace("workspace_root is required for MCP scaffold apply".to_string()));
     }
     if configured_root.is_empty() {
-        return Err(format!(
+        return Err(AlloyScaffoldError::Workspace(format!(
             "{MCP_SCAFFOLD_WORKSPACE_ROOT_ENV} must not be empty"
-        ));
+        )));
     }
 
     let configured = canonical_workspace_root(Path::new(configured_root), "configured")?;
     let requested = canonical_workspace_root(Path::new(requested_root), "requested")?;
     if requested != configured {
-        return Err("Requested MCP scaffold workspace is not authorized by the host".to_string());
+        return Err(AlloyScaffoldError::Workspace("Requested MCP scaffold workspace is not authorized by the host".to_string()));
     }
 
     Ok(configured.to_string_lossy().into_owned())
 }
 
-fn canonical_workspace_root(path: &Path, source: &str) -> Result<PathBuf, String> {
+fn canonical_workspace_root(path: &Path, source: &str) -> Result<PathBuf, AlloyScaffoldError> {
     if !path.is_absolute() {
-        return Err(format!(
+        return Err(AlloyScaffoldError::Workspace(format!(
             "{source} MCP scaffold workspace root must be absolute"
-        ));
+        )));
     }
 
     let canonical = std::fs::canonicalize(path).map_err(|error| {
-        format!(
+        AlloyScaffoldError::Workspace(format!(
             "Failed to resolve {source} MCP scaffold workspace root `{}`: {error}",
             path.display()
-        )
+        ))
     })?;
     if !canonical.join("Cargo.toml").is_file() {
-        return Err(format!(
+        return Err(AlloyScaffoldError::Workspace(format!(
             "{source} MCP scaffold workspace root `{}` is missing Cargo.toml",
             canonical.display()
-        ));
+        )));
     }
 
     let crates_path = canonical.join("crates");
     let canonical_crates = std::fs::canonicalize(&crates_path).map_err(|error| {
-        format!(
+        AlloyScaffoldError::Workspace(format!(
             "Failed to resolve MCP scaffold crates directory `{}`: {error}",
             crates_path.display()
-        )
+        ))
     })?;
     if !canonical_crates.is_dir() || !canonical_crates.starts_with(&canonical) {
-        return Err(
+        return Err(AlloyScaffoldError::Workspace(
             "MCP scaffold crates directory must be contained by the configured workspace"
                 .to_string(),
-        );
+        ));
     }
 
     Ok(canonical)

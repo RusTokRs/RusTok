@@ -84,19 +84,22 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
     let mut origins: Vec<HeaderValue> = if let Some(configured) = allowed_origins {
         configured
             .iter()
-            .map(|origin| normalize_host_origin(origin))
-            .filter_map(|origin| match origin.parse::<HeaderValue>() {
-                Ok(value) => Some(value),
-                Err(error) => {
-                    // Dropping an origin silently would narrow the allow-list
-                    // without any operator-visible signal.
-                    tracing::error!(
-                        %origin,
-                        %error,
-                        "Configured CORS origin is not a valid header value; \
-                         requests from it will be denied"
-                    );
-                    None
+            .enumerate()
+            .filter_map(|(origin_index, origin)| {
+                let normalized = normalize_host_origin(origin);
+                match normalized.parse::<HeaderValue>() {
+                    Ok(value) => Some(value),
+                    Err(_error) => {
+                        // Identify the configuration entry without logging its
+                        // potentially credential-bearing URL or query string.
+                        tracing::error!(
+                            origin_index,
+                            error_code = "cors_origin_invalid_header_value",
+                            "Configured CORS origin is not a valid header value; \
+                             requests from it will be denied"
+                        );
+                        None
+                    }
                 }
             })
             .collect()
@@ -123,7 +126,7 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
             origins.extend(
                 DEFAULT_DEV_ORIGINS
                     .iter()
-                    .filter_map(|origin| HeaderValue::from_str(origin).ok()),
+                    .map(|&origin| HeaderValue::from_static(origin)),
             );
         }
     }

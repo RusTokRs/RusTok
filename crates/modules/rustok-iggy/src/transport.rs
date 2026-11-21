@@ -144,11 +144,12 @@ impl IggyTransport {
                 *publisher = Some(connected);
             }
 
-            let result = publisher
-                .as_ref()
-                .expect("deterministic DLQ publisher must be initialized")
-                .publish(&entry)
-                .await;
+            let pub_ref = publisher.as_ref().ok_or_else(|| {
+                rustok_core::Error::External(
+                    "deterministic DLQ publisher is not initialized".to_string(),
+                )
+            })?;
+            let result = pub_ref.publish(&entry).await;
             if let Err(error) = result {
                 tracing::error!(
                     error_code = error.stable_code(),

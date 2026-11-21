@@ -379,8 +379,7 @@ impl PermissionCache for MokaPermissionCache {
         let Some(token) = current_permission_cache_token(&key) else {
             return;
         };
-        let _ = self
-            .insert_if_current(tenant_id, user_id, token, permissions)
+        self.insert_if_current(tenant_id, user_id, token, permissions)
             .await;
     }
 

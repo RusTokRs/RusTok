@@ -131,13 +131,24 @@ fn default_per_page() -> u32 {
     20
 }
 
+/// Error indicating an unsupported or invalid script status filter.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("Unsupported script status filter: {0}")]
+pub struct ScriptStatusFilterError(pub String);
+
+impl From<ScriptStatusFilterError> for String {
+    fn from(error: ScriptStatusFilterError) -> Self {
+        error.to_string()
+    }
+}
+
 impl ListScriptsQuery {
-    pub fn status_filter(&self) -> Result<Option<ScriptStatus>, String> {
+    pub fn status_filter(&self) -> Result<Option<ScriptStatus>, ScriptStatusFilterError> {
         self.status
             .as_deref()
             .map(|status| {
                 ScriptStatus::parse(status)
-                    .ok_or_else(|| format!("Unsupported script status filter: {status}"))
+                    .ok_or_else(|| ScriptStatusFilterError(status.to_string()))
             })
             .transpose()
     }
@@ -572,7 +583,7 @@ mod tests {
 
         assert_eq!(
             invalid.status_filter(),
-            Err("Unsupported script status filter: retired".to_string())
+            Err(ScriptStatusFilterError("retired".to_string()))
         );
     }
 

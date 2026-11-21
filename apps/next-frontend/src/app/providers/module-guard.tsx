@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { fetchEnabledModules, getStorefrontTenantSlug } from "@/shared/api/modules";
+import {
+  fetchEnabledModules,
+  getStorefrontTenantSlug,
+} from "@/shared/api/modules";
+import { ModulePolicyError } from "./module-policy-error";
 
 export async function ModuleGuard({
   slug,
@@ -12,14 +16,12 @@ export async function ModuleGuard({
   fallback?: ReactNode;
 }) {
   const tenantSlug = getStorefrontTenantSlug();
-  let enabledModules: string[] = [];
+  let enabledModules: string[];
 
-  if (tenantSlug) {
-    try {
-      enabledModules = await fetchEnabledModules(tenantSlug);
-    } catch (error) {
-      console.warn(`Failed to verify module '${slug}' storefront availability:`, error);
-    }
+  try {
+    enabledModules = await fetchEnabledModules(tenantSlug);
+  } catch {
+    return <ModulePolicyError />;
   }
 
   if (!enabledModules.includes(slug)) {
@@ -31,4 +33,3 @@ export async function ModuleGuard({
 
   return <>{children}</>;
 }
-

@@ -27,21 +27,77 @@ pub const MIN_CACHE_BACKEND_TTL: Duration = Duration::from_millis(1);
 #[cfg(feature = "redis-cache")]
 const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Error returned when a Redis operation fails or times out.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CacheBackendOperationError {
+    #[error("{operation} timed out after {timeout_ms} ms")]
+    Timeout {
+        operation: String,
+        timeout_ms: u128,
+    },
+    #[error("{operation} failed: {error}")]
+    Execution {
+        operation: String,
+        error: String,
+    },
+}
+
+impl From<CacheBackendOperationError> for String {
+    fn from(err: CacheBackendOperationError) -> Self {
+        err.to_string()
+    }
+}
+
+/// Error returned when pub/sub invalidation subscription or publishing fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CacheInvalidationTransportError {
+    #[error("invalid cache invalidation subscription channel: {0}")]
+    InvalidChannel(String),
+    #[error("redis invalidation subscription is not configured")]
+    NotConfigured,
+    #[error("{0}")]
+    Operation(#[from] CacheBackendOperationError),
+    #[error("{0}")]
+    Custom(String),
+}
+
+impl From<String> for CacheInvalidationTransportError {
+    fn from(s: String) -> Self {
+        Self::Custom(s)
+    }
+}
+
+impl From<&str> for CacheInvalidationTransportError {
+    fn from(s: &str) -> Self {
+        Self::Custom(s.to_string())
+    }
+}
+
+impl From<CacheInvalidationTransportError> for String {
+    fn from(err: CacheInvalidationTransportError) -> Self {
+        err.to_string()
+    }
+}
+
 #[cfg(feature = "redis-cache")]
-async fn redis_with_timeout<T, F, E>(operation: &str, future: F) -> Result<T, String>
+async fn redis_with_timeout<T, F, E>(
+    operation: &str,
+    future: F,
+) -> Result<T, CacheBackendOperationError>
 where
     F: Future<Output = Result<T, E>>,
     E: std::fmt::Display,
 {
     tokio::time::timeout(CACHE_REDIS_OPERATION_TIMEOUT, future)
         .await
-        .map_err(|_| {
-            format!(
-                "{operation} timed out after {} ms",
-                CACHE_REDIS_OPERATION_TIMEOUT.as_millis()
-            )
+        .map_err(|_| CacheBackendOperationError::Timeout {
+            operation: operation.to_string(),
+            timeout_ms: CACHE_REDIS_OPERATION_TIMEOUT.as_millis(),
         })?
-        .map_err(|error| format!("{operation} failed: {error}"))
+        .map_err(|error| CacheBackendOperationError::Execution {
+            operation: operation.to_string(),
+            error: error.to_string(),
+        })
 }
 
 /// Identity of one backend configuration inside the shared registry.
@@ -368,6 +424,7 @@ impl CacheService {
     /// probe does it automatically). A backend that suspended reads because unsynchronized local
     /// mutations exceeded its bounded capacity resumes only when this returns `Ok`; failures are
     /// reported so readiness stays degraded instead of silently serving possibly stale bytes.
+    #[tracing::instrument(skip(self))]
     pub async fn reconcile_local_state(&self) -> rustok_core::Result<usize> {
         let backends: Vec<Arc<dyn CacheBackend>> = self
             .shared_registry()
@@ -553,6 +610,7 @@ impl CacheService {
     ///
     /// With Redis enabled this publishes to Redis pub/sub; in all builds it also notifies
     /// local subscribers so tests and single-instance runtimes use the same contract.
+    #[tracing::instrument(skip(self, message), fields(channel = %message.channel, key = %message.key))]
     pub async fn publish_invalidation(
         &self,
         message: CacheInvalidationMessage,
@@ -772,7 +830,7 @@ impl CacheInvalidationService {
         &self,
         channel: &str,
         handler: F,
-    ) -> Result<(), String>
+    ) -> Result<(), CacheInvalidationTransportError>
     where
         F: FnMut(CacheInvalidationMessage) -> Fut,
         Fut: Future<Output = ()>,
@@ -787,7 +845,7 @@ impl CacheInvalidationService {
         channel: &str,
         ready: R,
         mut handler: F,
-    ) -> Result<(), String>
+    ) -> Result<(), CacheInvalidationTransportError>
     where
         F: FnMut(CacheInvalidationMessage) -> Fut,
         Fut: Future<Output = ()>,
@@ -796,13 +854,13 @@ impl CacheInvalidationService {
     {
         if let Err(error) = CacheInvalidationMessage::try_new(channel, "subscription-probe") {
             self.stats.rejected_total.fetch_add(1, Ordering::Relaxed);
-            return Err(format!(
-                "invalid cache invalidation subscription channel: {error:?}"
-            ));
+            return Err(CacheInvalidationTransportError::InvalidChannel(format!(
+                "{error:?}"
+            )));
         }
 
         let Some(client) = &self.redis_client else {
-            return Err("redis invalidation subscription is not configured".to_string());
+            return Err(CacheInvalidationTransportError::NotConfigured);
         };
 
         let mut pubsub = redis_with_timeout(
@@ -840,7 +898,9 @@ impl CacheInvalidationService {
             }
         }
 
-        Err("pubsub stream closed".to_string())
+        Err(CacheInvalidationTransportError::Custom(
+            "pubsub stream closed".to_string(),
+        ))
     }
 
     /// Publish one validated invalidation to local subscribers and, when configured, to Redis.
@@ -849,6 +909,7 @@ impl CacheInvalidationService {
     /// contract. A configured-but-unreachable Redis is reported as an error: acknowledging a
     /// best-effort fan-out as success would let other instances keep stale entries without any
     /// signal to the caller.
+    #[tracing::instrument(skip(self, message), fields(channel = %message.channel, key = %message.key))]
     pub async fn publish(
         &self,
         message: CacheInvalidationMessage,
@@ -887,7 +948,7 @@ impl CacheInvalidationService {
                     );
                     Err(CacheInvalidationError::SharedTransport {
                         local_subscribers,
-                        detail,
+                        detail: detail.to_string(),
                     })
                 }
             };
@@ -903,7 +964,7 @@ impl CacheInvalidationService {
     async fn publish_connection_manager(
         &self,
         client: &redis::Client,
-    ) -> Result<redis::aio::ConnectionManager, String> {
+    ) -> Result<redis::aio::ConnectionManager, CacheBackendOperationError> {
         let mut state = self.publish_manager.lock().await;
         if let Some(manager) = state.as_ref() {
             return Ok(manager.clone());
@@ -922,7 +983,7 @@ impl CacheInvalidationService {
         &self,
         client: &redis::Client,
         message: &CacheInvalidationMessage,
-    ) -> Result<(), String> {
+    ) -> Result<(), CacheInvalidationTransportError> {
         let mut manager = self.publish_connection_manager(client).await?;
         let published = redis_with_timeout(
             "Redis invalidation PUBLISH",
@@ -939,7 +1000,7 @@ impl CacheInvalidationService {
             Err(detail) => {
                 // Drop the broken connection so the next publish can reconnect instead of reusing it.
                 *self.publish_manager.lock().await = None;
-                Err(detail)
+                Err(CacheInvalidationTransportError::Operation(detail))
             }
         }
     }

@@ -197,7 +197,9 @@ async fn observer_loop(
     let mut observer = None;
     loop {
         if *stop_rx.borrow() {
-            let _ = publisher.mark_unavailable();
+            if let Err(error) = publisher.mark_unavailable() {
+                tracing::warn!(%error, "Failed to mark DLQ duplicate alert observer unavailable on shutdown");
+            }
             return;
         }
 
@@ -240,7 +242,9 @@ async fn observer_loop(
             match connection {
                 Ok(connected) => observer = Some(connected),
                 Err(error) => {
-                    let _ = publisher.mark_unavailable();
+                    if let Err(unavail_err) = publisher.mark_unavailable() {
+                        tracing::warn!(error = %unavail_err, "Failed to mark DLQ duplicate observer unavailable on connect failure");
+                    }
                     tracing::warn!(
                         error_code = error.stable_code(),
                         "Physical DLQ duplicate observer could not connect; event delivery remains active"
@@ -266,7 +270,9 @@ async fn observer_loop(
                 }
                 Err(error) => {
                     let preserve_state = connected.preserves_process_local_state_after_scan_error();
-                    let _ = publisher.mark_unavailable();
+                    if let Err(unavail_err) = publisher.mark_unavailable() {
+                        tracing::warn!(error = %unavail_err, "Failed to mark DLQ duplicate observer unavailable on scan error");
+                    }
                     tracing::warn!(
                         error_code = error.stable_code(),
                         preserves_process_local_state = preserve_state,
@@ -280,7 +286,9 @@ async fn observer_loop(
         }
 
         if wait_or_stop(config.poll, &mut stop_rx).await {
-            let _ = publisher.mark_unavailable();
+            if let Err(unavail_err) = publisher.mark_unavailable() {
+                tracing::warn!(error = %unavail_err, "Failed to mark DLQ duplicate observer unavailable on poll exit");
+            }
             return;
         }
     }

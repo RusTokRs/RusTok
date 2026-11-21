@@ -344,11 +344,16 @@ impl RegionTranslationService {
             .or_else(|| (!unchanged).then(generate_id));
 
         if !unchanged {
+            let op_id = operation_id.ok_or_else(|| {
+                RegionTranslationExactLocaleError::Region(RegionError::Validation(
+                    "changed Region translation apply requires operation id".to_string(),
+                ))
+            })?;
             record_region_translation_change_in_tx(
                 &txn,
                 tenant_id,
                 region_id,
-                operation_id.expect("changed Region translation apply must have operation id"),
+                op_id,
                 &resource_revision,
                 RegionTranslationChangeLifecycle::Active,
             )
@@ -437,12 +442,17 @@ fn build_snapshot(
     let target_revision = target.as_ref().map(locale_revision);
     let exact_locales = translations
         .iter()
-        .filter_map(|translation| {
+        .map(|translation| {
             TenantLocale::new(&translation.locale)
-                .ok()
                 .map(TenantLocale::into_inner)
+                .map_err(|error| {
+                    RegionTranslationExactLocaleError::Region(RegionError::Validation(format!(
+                        "invalid region translation locale `{}`: {error}",
+                        translation.locale
+                    )))
+                })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(RegionTranslationExactLocaleSnapshot {
         region_id: region.id,
@@ -543,11 +553,13 @@ fn append_text(payload: &mut Vec<u8>, value: &str) {
 }
 
 fn digest_revision(payload: &[u8]) -> String {
+    const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
     let digest = sha256_digest(&[payload]);
     let mut revision = String::with_capacity(71);
     revision.push_str("sha256:");
     for byte in digest {
-        write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
+        revision.push(HEX_DIGITS[(byte >> 4) as usize] as char);
+        revision.push(HEX_DIGITS[(byte & 0x0f) as usize] as char);
     }
     revision
 }

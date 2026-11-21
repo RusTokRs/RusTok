@@ -9,7 +9,19 @@ use crate::error::{AuthError, Result};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
-const MIN_HS256_SECRET_BYTES: usize = 32;
+pub(crate) const MIN_HS256_SECRET_BYTES: usize = 32;
+
+/// The single HS256 secret-strength rule, shared by startup validation and
+/// by key materialization in `jwt.rs` so the two can never drift apart:
+/// at least `MIN_HS256_SECRET_BYTES` non-whitespace bytes. (Counting only
+/// `trim().len()` would credit interior whitespace toward the minimum.)
+pub(crate) fn hs256_secret_has_min_length(secret: &str) -> bool {
+    secret
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .count()
+        >= MIN_HS256_SECRET_BYTES
+}
 const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
 const MAX_ACCESS_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;
 const MIN_REFRESH_EXPIRATION_SECS: u64 = 60 * 5;
@@ -320,7 +332,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 
     match config.algorithm {
         JwtAlgorithm::HS256 => {
-            if config.secret.trim().len() < MIN_HS256_SECRET_BYTES {
+            if !hs256_secret_has_min_length(&config.secret) {
                 return Err(AuthError::Internal(format!(
                     "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
                 )));

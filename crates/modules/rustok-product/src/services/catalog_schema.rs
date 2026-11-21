@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::error::{CommerceError, CommerceResult};
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VirtualCategoryRuleV1 {
@@ -38,11 +40,14 @@ pub enum VirtualCategoryAttributeCondition {
     },
 }
 
-pub fn parse_virtual_category_rule_v1(value: &Value) -> Result<VirtualCategoryRuleV1, String> {
-    let rule: VirtualCategoryRuleV1 = serde_json::from_value(value.clone())
-        .map_err(|error| format!("invalid virtual category V1 rule: {error}"))?;
+pub fn parse_virtual_category_rule_v1(value: &Value) -> CommerceResult<VirtualCategoryRuleV1> {
+    let rule: VirtualCategoryRuleV1 = serde_json::from_value(value.clone()).map_err(|error| {
+        CommerceError::Validation(format!("invalid virtual category V1 rule: {error}"))
+    })?;
     if rule.version != 1 {
-        return Err("virtual category rule version must be 1".into());
+        return Err(CommerceError::Validation(
+            "virtual category rule version must be 1".into(),
+        ));
     }
     if rule.statuses.is_empty()
         && rule.primary_category_subtree_id.is_none()
@@ -51,58 +56,66 @@ pub fn parse_virtual_category_rule_v1(value: &Value) -> Result<VirtualCategoryRu
         && rule.in_stock.is_none()
         && rule.attributes.is_empty()
     {
-        return Err("virtual category rule must contain at least one predicate".into());
+        return Err(CommerceError::Validation(
+            "virtual category rule must contain at least one predicate".into(),
+        ));
     }
     if rule
         .statuses
         .iter()
         .any(|status| !matches!(status.as_str(), "draft" | "active" | "archived"))
     {
-        return Err("virtual category statuses must be draft, active, or archived".into());
+        return Err(CommerceError::Validation(
+            "virtual category statuses must be draft, active, or archived".into(),
+        ));
     }
     if rule
         .price_min
         .zip(rule.price_max)
         .is_some_and(|(min, max)| min > max)
     {
-        return Err("virtual category price_min must not exceed price_max".into());
+        return Err(CommerceError::Validation(
+            "virtual category price_min must not exceed price_max".into(),
+        ));
     }
     let mut attribute_codes = HashSet::new();
     for attribute in &rule.attributes {
         let code = attribute.code.trim();
         if code.is_empty() || code.len() > 128 {
-            return Err("virtual category attribute code must contain 1..128 characters".into());
+            return Err(CommerceError::Validation(
+                "virtual category attribute code must contain 1..128 characters".into(),
+            ));
         }
         if !attribute_codes.insert(code) {
-            return Err(format!(
+            return Err(CommerceError::Validation(format!(
                 "virtual category attribute {} occurs more than once",
                 attribute.code
-            ));
+            )));
         }
         match &attribute.condition {
             VirtualCategoryAttributeCondition::Eq { value } if value.trim().is_empty() => {
-                return Err(format!(
+                return Err(CommerceError::Validation(format!(
                     "virtual category attribute {} equality value must not be empty",
                     attribute.code
-                ));
+                )));
             }
             VirtualCategoryAttributeCondition::Range {
                 min: None,
                 max: None,
             } => {
-                return Err(format!(
+                return Err(CommerceError::Validation(format!(
                     "virtual category attribute {} range requires min or max",
                     attribute.code
-                ));
+                )));
             }
             VirtualCategoryAttributeCondition::Range {
                 min: Some(min),
                 max: Some(max),
             } if min > max => {
-                return Err(format!(
+                return Err(CommerceError::Validation(format!(
                     "virtual category attribute {} min must not exceed max",
                     attribute.code
-                ));
+                )));
             }
             _ => {}
         }
@@ -596,11 +609,10 @@ fn merge_json_object(base: &mut Value, local: &Value) {
     if !base.is_object() {
         *base = Value::Object(Default::default());
     }
-    let base = base
-        .as_object_mut()
-        .expect("validation overrides were normalized to an object");
-    for (key, value) in local {
-        base.insert(key.clone(), value.clone());
+    if let Some(base) = base.as_object_mut() {
+        for (key, value) in local {
+            base.insert(key.clone(), value.clone());
+        }
     }
 }
 

@@ -678,6 +678,7 @@ fn digest_revision(payload: &[u8]) -> String {
     let mut revision = String::with_capacity(71);
     revision.push_str("sha256:");
     for byte in digest {
+        // INVARIANT: writing to in-memory String cannot fail.
         write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
     }
     revision

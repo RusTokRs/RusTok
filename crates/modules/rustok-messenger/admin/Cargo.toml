@@ -9,6 +9,9 @@ description = "Leptos admin UI package for the rustok-messenger module"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 
@@ -33,7 +36,6 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
-leptos-ui-routing.workspace = true
 leptos_router.workspace = true
 rustok-api = { workspace = true, default-features = false }
 
@@ -47,4 +49,4 @@ uuid.workspace = true
 tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui-routing", "leptos_axum", "rustok-messenger", "rustok-core"]
+normal = ["leptos_axum", "rustok-messenger", "rustok-core"]

@@ -130,7 +130,7 @@ where
 {
     let request = distribution_deployment_request(plan, session.id, tenant_id)?;
     let session = ports
-        .set_state(runtime, session.id, InstallState::Deploying)
+        .set_state(runtime, &session, InstallState::Deploying)
         .await?;
     let deployment = ports.deploy_distribution(runtime, request.clone()).await?;
     validate_deployment(&request, &deployment)?;
@@ -147,7 +147,7 @@ where
         }),
     )
     .map_err(|error| InstallExecutionError::new(error.to_string()))?;
-    let recorded = ports.record_receipt(runtime, &receipt).await?;
+    let recorded = ports.record_receipt(runtime, &session, &receipt).await?;
 
     Ok(DistributionDeploymentOutput {
         session,
@@ -315,6 +315,7 @@ mod tests {
         async fn record_receipt(
             &self,
             _runtime: &(),
+            _session: &InstallSessionRecord,
             receipt: &InstallReceipt,
         ) -> Result<InstallReceiptRecord, InstallExecutionError> {
             self.receipts.lock().unwrap().push(receipt.clone());
@@ -327,27 +328,24 @@ mod tests {
         async fn set_state(
             &self,
             _runtime: &(),
-            session_id: Uuid,
+            session: &InstallSessionRecord,
             state: InstallState,
         ) -> Result<InstallSessionRecord, InstallExecutionError> {
             self.states.lock().unwrap().push(state);
-            Ok(InstallSessionRecord {
-                id: session_id,
-                ..session()
-            })
+            let mut updated = session.clone();
+            updated.status = state.as_str().to_string();
+            Ok(updated)
         }
 
         async fn set_tenant_id(
             &self,
             _runtime: &(),
-            session_id: Uuid,
+            session: &InstallSessionRecord,
             tenant_id: Uuid,
         ) -> Result<InstallSessionRecord, InstallExecutionError> {
-            Ok(InstallSessionRecord {
-                id: session_id,
-                tenant_id: Some(tenant_id),
-                ..session()
-            })
+            let mut updated = session.clone();
+            updated.tenant_id = Some(tenant_id);
+            Ok(updated)
         }
     }
 
@@ -508,7 +506,9 @@ mod tests {
         InstallSessionRecord {
             id: Uuid::from_u128(3),
             tenant_id: None,
-            lock_owner: None,
+            status: InstallState::AdminProvisioned.as_str().to_string(),
+            attempt_generation: 1,
+            lock_owner: Some("installer-test-attempt".to_string()),
             lock_expires_at: None,
         }
     }

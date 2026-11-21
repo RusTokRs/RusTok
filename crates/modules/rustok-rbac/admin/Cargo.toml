@@ -18,6 +18,7 @@ hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate", "rustok-grid-leptos/hydra
 ssr = [
   "leptos/ssr",
   "rustok-auth-ui/ssr",
+  "dep:rustok-api",
   "rustok-api/server",
   "dep:leptos_axum",
   "dep:rustok-core",
@@ -30,7 +31,7 @@ rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
-rustok-api = { workspace = true, default-features = false }
+rustok-api = { workspace = true, default-features = false, optional = true }
 rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }
 
@@ -39,6 +40,9 @@ rustok-core = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true
+
+[lints]
+workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["rustok-rbac"]

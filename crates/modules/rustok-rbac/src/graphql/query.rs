@@ -66,8 +66,13 @@ async fn role_display_name(
         return Ok(presentation.name);
     }
 
-    let source_locale = StoredLocale::new("en")
-        .expect("RBAC built-in presentation source locale must remain concrete");
+    let source_locale = match StoredLocale::new("en") {
+        Ok(locale) => locale,
+        Err(error) => {
+            tracing::warn!(%error, "RBAC built-in presentation source locale initialization failed");
+            return Ok(resource_key);
+        }
+    };
     if requested_locale != &source_locale {
         let source = store
             .find_exact(
@@ -594,6 +599,17 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
         (
             Resource::Messages,
             vec![Action::Create, Action::Read, Action::Delete, Action::List],
+        ),
+        (
+            Resource::Newsletter,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
         ),
     ]
 }

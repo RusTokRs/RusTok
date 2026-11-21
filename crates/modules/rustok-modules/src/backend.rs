@@ -8,7 +8,10 @@
 //! against a different engine and fail — or worse, misbehave — far from
 //! the boundary where the configuration mistake was made.
 
-use sea_orm::{ConnectionTrait, DbBackend, DbErr, QueryResult, Statement, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, IsolationLevel,
+    QueryResult, Statement, TransactionTrait, Value,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -19,6 +22,21 @@ use uuid::Uuid;
 pub(crate) enum SupportedBackend {
     Postgres,
     Sqlite,
+}
+
+/// Start a transaction whose post-lock PostgreSQL reads see newly committed
+/// rows even when the server's default isolation level is repeatable read.
+/// SQLite obtains its write reservation when the fence row is modified; a
+/// stale read-to-write upgrade fails rather than committing an old snapshot.
+pub(crate) async fn begin_fenced_transaction(
+    db: &DatabaseConnection,
+) -> Result<DatabaseTransaction, DbErr> {
+    match SupportedBackend::new(db.get_database_backend()).map_err(DbErr::from)? {
+        SupportedBackend::Postgres => db
+            .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+            .await,
+        SupportedBackend::Sqlite => db.begin().await,
+    }
 }
 
 /// The connection uses a backend this crate does not support.
@@ -113,6 +131,15 @@ impl SupportedBackend {
         match self {
             Self::Postgres => "NOW()",
             Self::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+        }
+    }
+
+    /// Wall clock for lease fencing; PostgreSQL NOW() is fixed at transaction
+    /// start and can be stale after a lock wait.
+    pub(crate) fn lease_now_sql(self) -> &'static str {
+        match self {
+            Self::Postgres => "clock_timestamp()",
+            Self::Sqlite => self.now_sql(),
         }
     }
 

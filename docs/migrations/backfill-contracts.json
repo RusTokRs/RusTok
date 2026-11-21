@@ -408,6 +408,22 @@
       "reason": "Assigns each existing tenant starter its own row UUID as the initial CAS token; later updates and recreated rows receive fresh tokens",
       "setup_sql": "INSERT INTO page_starters (id, tenant_id, starter_key, category, name, content) VALUES ('77000000-0000-0000-0000-0000000000d1'::uuid, '77000000-0000-0000-0000-0000000000d2'::uuid, 'revision-fixture', 'test', 'Fixture', '{\"pages\":[]}'::jsonb)",
       "assertion_sql": "SELECT EXISTS (SELECT 1 FROM page_starters WHERE id = '77000000-0000-0000-0000-0000000000d1'::uuid AND revision = id) AS passed"
+    },
+    {
+      "id": "outbox-durable-consumer-retention-ledger",
+      "migration": "m20261118_000001_add_sys_event_consumer_retention",
+      "mode": "none",
+      "owner": "rustok-outbox",
+      "reason": "Creates generic consumer registration and acknowledgement tables with a cascading event receipt foreign key; no historical consumer registrations existed before this contract, so no row data is transformed or backfilled by the schema migration"
+    },
+    {
+      "id": "outbox-sys-events-tenant-projection-backfill",
+      "migration": "m20261121_000001_add_sys_events_tenant_projection",
+      "mode": "fixture",
+      "owner": "rustok-outbox",
+      "reason": "Adds the denormalised sys_events.tenant_id projection column and backfills it from each row's canonical payload tenant (top-level key preferred, legacy nested event tenant as fallback); rows without a well-formed UUID tenant keep NULL platform scope and payload remains the canonical envelope",
+      "setup_sql": "INSERT INTO sys_events (id, event_type, schema_version, payload, status, retry_count, created_at) VALUES ('88000000-0000-0000-0000-0000000000a1'::uuid, 'fixture.tenant_projection', 1, '{\"tenant_id\":\"88000000-0000-0000-0000-0000000000a2\",\"event\":{\"tenant_id\":\"88000000-0000-0000-0000-0000000000a3\"}}'::jsonb, 'dispatched', 0, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM sys_events WHERE id = '88000000-0000-0000-0000-0000000000a1'::uuid AND tenant_id = '88000000-0000-0000-0000-0000000000a2'::uuid) AS passed"
     }
   ]
 }

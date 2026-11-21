@@ -23,6 +23,7 @@ use crate::error::{Error, Result, http_error};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
+use crate::services::channel_cache_invalidation::publish_channel_resolution_invalidation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 async fn bootstrap(
@@ -427,7 +428,7 @@ async fn create_resolution_rule(
     let rule = service
         .create_resolution_rule(
             policy_set_id,
-            create_resolution_rule_input(input).map_err(Error::BadRequest)?,
+            create_resolution_rule_input(input).map_err(map_channel_error)?,
         )
         .await
         .map_err(map_channel_error)?;
@@ -590,12 +591,9 @@ async fn ensure_channel_belongs_to_tenant(
 ) -> Result<ChannelResponse> {
     let service = ChannelService::new(ctx.db_clone());
     let channel = service
-        .get_channel(channel_id)
+        .get_channel_for_tenant(tenant_id, channel_id)
         .await
         .map_err(map_channel_error)?;
-    if channel.tenant_id != tenant_id {
-        return Err(Error::NotFound);
-    }
     Ok(channel)
 }
 
@@ -605,13 +603,10 @@ async fn ensure_policy_set_belongs_to_tenant(
     policy_set_id: Uuid,
 ) -> Result<()> {
     let service = ChannelService::new(ctx.db_clone());
-    let policy_set = service
-        .get_resolution_policy_set(policy_set_id)
+    service
+        .get_resolution_policy_set_for_tenant(tenant_id, policy_set_id)
         .await
         .map_err(map_channel_error)?;
-    if policy_set.tenant_id != tenant_id {
-        return Err(Error::NotFound);
-    }
     Ok(())
 }
 
@@ -653,12 +648,18 @@ fn map_channel_error(error: rustok_channel::ChannelError) -> Error {
             "channel_conflict",
             "The requested channel resource conflicts with an existing resource",
         )),
-        ChannelError::Database(error) => {
-            tracing::error!(%error, "Channel controller database operation failed");
+        ChannelError::Database(_error) => {
+            tracing::error!(
+                error_code = "channel_database_operation_failed",
+                "Channel controller database operation failed"
+            );
             Error::InternalServerError
         }
-        ChannelError::Serialization(error) => {
-            tracing::error!(%error, "Channel controller serialization failed");
+        ChannelError::Serialization(_error) => {
+            tracing::error!(
+                error_code = "channel_response_serialization_failed",
+                "Channel controller serialization failed"
+            );
             Error::InternalServerError
         }
     }
@@ -669,7 +670,11 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 }
 
 async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
+    // The local version fence protects this process immediately; publishing the
+    // durable generation lets other replicas invalidate without waiting for the
+    // five-second reconciliation fallback.
     invalidate_tenant_channel_cache(ctx, tenant_id).await;
+    publish_channel_resolution_invalidation(ctx, tenant_id).await;
 }
 
 pub fn router() -> crate::routes::ServerRouter {

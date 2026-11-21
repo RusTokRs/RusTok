@@ -158,10 +158,11 @@ impl NotificationSourceProvider for GroupsNotificationSourceProvider {
             ("group_id".to_string(), invitation.group_id.to_string()),
         ]))
         .map_err(|_| NotificationProviderError::InvalidEvent)?;
+        let template_key = NotificationTemplateKey::new(TARGETED_INVITATION_CREATED_TYPE)
+            .map_err(|_| NotificationProviderError::InvalidEvent)?;
         Ok(Some(NotificationSemanticDescriptor {
             notification_type: targeted_invitation_created_type(),
-            template_key: NotificationTemplateKey::new(TARGETED_INVITATION_CREATED_TYPE)
-                .expect("groups targeted invitation template key must stay valid"),
+            template_key,
             target: NotificationTargetRef {
                 owner: groups_source_slug(),
                 kind: group_invitation_target_kind(),
@@ -231,16 +232,19 @@ fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError
 }
 
 fn groups_source_slug() -> NotificationSourceSlug {
+    // INVARIANT: GROUPS_SOURCE is a compile-time constant matching validated slug format.
     NotificationSourceSlug::new(GROUPS_SOURCE)
         .expect("groups notification source slug must stay valid")
 }
 
 fn targeted_invitation_created_type() -> NotificationTypeKey {
+    // INVARIANT: TARGETED_INVITATION_CREATED_TYPE is a compile-time constant matching validated key format.
     NotificationTypeKey::new(TARGETED_INVITATION_CREATED_TYPE)
         .expect("groups targeted invitation type must stay valid")
 }
 
 fn group_invitation_target_kind() -> NotificationTargetKind {
+    // INVARIANT: GROUP_INVITATION_TARGET is a compile-time constant matching validated target format.
     NotificationTargetKind::new(GROUP_INVITATION_TARGET)
         .expect("groups invitation target kind must stay valid")
 }

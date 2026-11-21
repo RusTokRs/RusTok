@@ -84,7 +84,13 @@ pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
         )));
     }
 
-    let digits: Vec<u32> = inn.chars().map(|c| c.to_digit(10).unwrap()).collect();
+    let digits: Vec<u32> = inn
+        .chars()
+        .map(|c| {
+            c.to_digit(10)
+                .ok_or_else(|| PartyError::Validation("Non-digit char in INN".into()))
+        })
+        .collect::<Result<_, _>>()?;
     let weights = [2, 4, 10, 3, 5, 9, 4, 6, 8];
 
     let sum: u32 = digits[..9]
@@ -112,7 +118,13 @@ pub fn validate_inn_12(inn: &str) -> PartyResult<()> {
         )));
     }
 
-    let digits: Vec<u32> = inn.chars().map(|c| c.to_digit(10).unwrap()).collect();
+    let digits: Vec<u32> = inn
+        .chars()
+        .map(|c| {
+            c.to_digit(10)
+                .ok_or_else(|| PartyError::Validation("Non-digit char in INN".into()))
+        })
+        .collect::<Result<_, _>>()?;
 
     // 11th digit check
     let weights_11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
@@ -171,7 +183,11 @@ pub fn validate_ogrn_13(ogrn: &str) -> PartyResult<()> {
         .parse()
         .map_err(|_| PartyError::Validation("Invalid OGRN prefix".into()))?;
     let check_digit = (first_12 % 11) % 10;
-    let actual_last = ogrn.chars().last().unwrap().to_digit(10).unwrap() as u64;
+    let actual_last = ogrn
+        .chars()
+        .last()
+        .and_then(|c| c.to_digit(10))
+        .ok_or_else(|| PartyError::Validation("Invalid OGRN check digit".into()))? as u64;
 
     if actual_last != check_digit {
         return Err(PartyError::Validation(format!(
@@ -194,7 +210,11 @@ pub fn validate_ogrnip_15(ogrnip: &str) -> PartyResult<()> {
         .parse()
         .map_err(|_| PartyError::Validation("Invalid OGRNIP prefix".into()))?;
     let check_digit = (first_14 % 13) % 10;
-    let actual_last = ogrnip.chars().last().unwrap().to_digit(10).unwrap() as u64;
+    let actual_last = ogrnip
+        .chars()
+        .last()
+        .and_then(|c| c.to_digit(10))
+        .ok_or_else(|| PartyError::Validation("Invalid OGRNIP check digit".into()))? as u64;
 
     if actual_last != check_digit {
         return Err(PartyError::Validation(format!(

@@ -627,6 +627,7 @@ fn owner_patch_value_validation(
             accepted: false,
             issues: vec![TranslationPatchIssue {
                 field: Some(
+                    // INVARIANT: Static Fulfillment field key 'name' satisfies target contract.
                     FieldKey::new("name")
                         .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),
@@ -639,6 +640,7 @@ fn owner_patch_value_validation(
             accepted: false,
             issues: vec![TranslationPatchIssue {
                 field: Some(
+                    // INVARIANT: Static Fulfillment field key 'name' satisfies target contract.
                     FieldKey::new("name")
                         .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),

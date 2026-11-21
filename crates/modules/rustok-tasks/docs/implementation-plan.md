@@ -12,6 +12,7 @@ Sovereign domain capability and client surfaces for Team Issues & Tasks.
 - Backend crate: `rustok-tasks`
 - Admin UI crate: `rustok-tasks-admin`
 - Storefront UI crate: `rustok-tasks-storefront`
+- FFA transport profile: in-progress transport parity gap tracked while UI transport facade and adapters are completed in Phase 4.
 
 ## Local work phases
 - [x] Phase 1: Canonical FBA scaffolding and contract registration

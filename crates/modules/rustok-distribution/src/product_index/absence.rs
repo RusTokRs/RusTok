@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
-    EntityKey, EntityName, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
-    IndexSourceFailure, ModuleName, PostgresIndexSourceFactory, SchemaRef, SchemaVersion,
-    register_index_source_absence_provider, register_postgres_index_source_factory,
+    DomainError, EntityKey, EntityName, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
+    IndexSourceFailure, IndexSourceRegistrationError, ModuleName, PostgresIndexSourceFactory,
+    SchemaRef, SchemaVersion, register_index_source_absence_provider,
+    register_postgres_index_source_factory,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value as JsonValue;
@@ -45,15 +46,15 @@ impl PostgresIndexSourceFactory for ProductLocaleAbsencePostgresFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         register_index_source_absence_provider(
             extensions,
             "product",
             PRODUCT_ABSENCE_PROVIDER,
             [product_schema_ref()?],
             ProductLocaleAbsenceProvider { db },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 
@@ -154,10 +155,10 @@ fn require_product_key(db: &DatabaseConnection, key: &EntityKey) -> Result<(), I
     Ok(())
 }
 
-fn product_schema_ref() -> Result<SchemaRef, String> {
+fn product_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product").map_err(|error| error.to_string())?,
-        entity: EntityName::new("product").map_err(|error| error.to_string())?,
+        module: ModuleName::new("rustok-product")?,
+        entity: EntityName::new("product")?,
         version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
@@ -177,21 +178,11 @@ fn non_negative_u64(value: i64) -> Result<u64, IndexSourceFailure> {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::retryable(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::retryable("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::permanent(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::permanent("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }

@@ -90,6 +90,16 @@ pub(crate) async fn list_authorized_artifact_ui_contributions(
 /// Executes only the admitted Command binding selected by one Action or Form
 /// contribution. The caller cannot name a raw binding; HTTP and GraphQL share
 /// this path, including dynamic RBAC and durable binding idempotency.
+#[tracing::instrument(
+    skip(ctx, input),
+    fields(
+        tenant_id = %tenant_id,
+        actor_id = %actor_id,
+        installation_id = %installation_id,
+        contribution_id = %contribution_id,
+    ),
+    err
+)]
 pub(crate) async fn execute_artifact_ui_action(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,

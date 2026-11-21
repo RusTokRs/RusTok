@@ -77,15 +77,15 @@ pub use engine::{
 #[cfg(feature = "server")]
 pub use engine::{InferenceEngine, inference_for_slug};
 pub use engine::{
-    ProviderCatalogEntry, ProviderConfigField, ProviderDefaultSetting, ProviderFeature,
-    ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId, provider_catalog,
-    provider_catalog_entry,
+    ProviderCatalogEntry, ProviderCatalogError, ProviderConfigField, ProviderDefaultSetting,
+    ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId,
+    provider_catalog, provider_catalog_entry,
 };
 pub use error::{AiError, AiResult};
 #[cfg(feature = "graphql")]
 pub use graphql_runtime::AI_GRAPHQL_CONTRIBUTION;
 #[cfg(all(feature = "graphql", feature = "server"))]
-pub use graphql_runtime::{AiGraphqlRuntimeData, attach_schema_data};
+pub use graphql_runtime::{AiGraphqlRuntimeData, AiGraphqlRuntimeError, attach_schema_data};
 pub use mcp::{McpClientAdapter, ToolExecutionResult, ToolSourceLineage};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};

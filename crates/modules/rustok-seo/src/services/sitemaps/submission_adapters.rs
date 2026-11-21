@@ -13,9 +13,67 @@ pub(in super::super) struct SitemapSubmitEndpoint {
     pub(in super::super) request_url: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(in super::super) enum SitemapSubmissionError {
+    #[error("sitemap submission timeout must be greater than zero")]
+    InvalidTimeout,
+    #[error("sitemap submission URL exceeds the {MAX_SITEMAP_SUBMIT_URL_LEN} byte limit")]
+    UrlTooLong,
+    #[error("sitemap submission URL rejected: {0}")]
+    SsrfRejected(String),
+    #[error("sitemap submission URL returned an unexpected validation result")]
+    UnexpectedValidation,
+    #[error("invalid sitemap submission URL: {0}")]
+    InvalidUrl(String),
+    #[error("sitemap submission URL userinfo is not allowed")]
+    UserinfoNotAllowed,
+    #[error("insecure sitemap submission HTTP is disabled; platform operators may opt in with {ALLOW_INSECURE_HTTP_ENV}")]
+    InsecureHttpDisabled,
+    #[error("unsupported sitemap submission URL scheme `{0}`")]
+    UnsupportedScheme(String),
+    #[error("sitemap submission URL host is required")]
+    MissingHost,
+    #[error("local or internal sitemap submission hostnames are not allowed")]
+    InternalHostNotAllowed,
+    #[error("sitemap submission URL host could not be canonicalized")]
+    CanonicalizeHostFailed,
+    #[error("sitemap submission destination port is required")]
+    MissingPort,
+    #[error("sitemap submission DNS resolution failed: {0}")]
+    DnsResolutionFailed(String),
+    #[error("sitemap submission destination resolved to no addresses")]
+    NoAddresses,
+    #[error("sitemap submission destination resolves to a private, local, reserved, or multicast address")]
+    PrivateIpRejected,
+    #[error("failed to create secure sitemap submission client for endpoint `{endpoint}`: {error}")]
+    ClientBuildFailed { endpoint: String, error: String },
+    #[error("request timeout for endpoint `{endpoint}`: {error}")]
+    Timeout { endpoint: String, error: String },
+    #[error("request failed for endpoint `{endpoint}` with error: {error}")]
+    RequestFailed { endpoint: String, error: String },
+    #[error("endpoint `{endpoint}` attempted a redirect with status {status}; redirects are not allowed")]
+    RedirectNotAllowed { endpoint: String, status: reqwest::StatusCode },
+    #[error("endpoint `{endpoint}` responded with status {status}")]
+    HttpStatus { endpoint: String, status: reqwest::StatusCode },
+    #[error("{0}")]
+    Custom(String),
+}
+
+impl From<&str> for SitemapSubmissionError {
+    fn from(s: &str) -> Self {
+        Self::Custom(s.to_string())
+    }
+}
+
+impl From<String> for SitemapSubmissionError {
+    fn from(s: String) -> Self {
+        Self::Custom(s)
+    }
+}
+
 #[async_trait::async_trait]
 pub(in super::super) trait SitemapSubmissionAdapter: Send + Sync {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String>;
+    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), SitemapSubmissionError>;
 }
 
 pub(super) struct HttpSitemapSubmissionAdapter {
@@ -41,9 +99,9 @@ struct ResolvedSitemapSubmitTarget {
 }
 
 impl SitemapSubmissionRuntime {
-    pub(in super::super) fn default_with_timeout(timeout_secs: u64) -> Result<Self, String> {
+    pub(in super::super) fn default_with_timeout(timeout_secs: u64) -> Result<Self, SitemapSubmissionError> {
         if timeout_secs == 0 {
-            return Err("sitemap submission timeout must be greater than zero".to_string());
+            return Err(SitemapSubmissionError::InvalidTimeout);
         }
         Ok(Self {
             adapter: Box::new(HttpSitemapSubmissionAdapter {
@@ -59,7 +117,7 @@ impl SitemapSubmissionRuntime {
 
 #[async_trait::async_trait]
 impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String> {
+    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), SitemapSubmissionError> {
         let target = resolve_sitemap_submit_target(endpoint.request_url.as_str()).await?;
         let client = reqwest::Client::builder()
             .timeout(self.timeout)
@@ -68,86 +126,74 @@ impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
             .no_proxy()
             .resolve(target.host.as_str(), target.address)
             .build()
-            .map_err(|error| {
-                format!(
-                    "failed to create secure sitemap submission client for endpoint `{}`: {error}",
-                    endpoint.endpoint
-                )
+            .map_err(|error| SitemapSubmissionError::ClientBuildFailed {
+                endpoint: endpoint.endpoint.clone(),
+                error: error.to_string(),
             })?;
         let response = client.get(target.url).send().await.map_err(|error| {
             if error.is_timeout() {
-                format!(
-                    "request timeout for endpoint `{}`: {error}",
-                    endpoint.endpoint
-                )
+                SitemapSubmissionError::Timeout {
+                    endpoint: endpoint.endpoint.clone(),
+                    error: error.to_string(),
+                }
             } else {
-                format!(
-                    "request failed for endpoint `{}` with error: {error}",
-                    endpoint.endpoint
-                )
+                SitemapSubmissionError::RequestFailed {
+                    endpoint: endpoint.endpoint.clone(),
+                    error: error.to_string(),
+                }
             }
         })?;
         if response.status().is_redirection() {
-            return Err(format!(
-                "endpoint `{}` attempted a redirect with status {}; redirects are not allowed",
-                endpoint.endpoint,
-                response.status()
-            ));
+            return Err(SitemapSubmissionError::RedirectNotAllowed {
+                endpoint: endpoint.endpoint,
+                status: response.status(),
+            });
         }
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(format!(
-                "endpoint `{}` responded with status {}",
-                endpoint.endpoint,
-                response.status()
-            ))
+            Err(SitemapSubmissionError::HttpStatus {
+                endpoint: endpoint.endpoint,
+                status: response.status(),
+            })
         }
     }
 }
 
-fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTarget, String> {
+fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTarget, SitemapSubmissionError> {
     if raw_url.len() > MAX_SITEMAP_SUBMIT_URL_LEN {
-        return Err(format!(
-            "sitemap submission URL exceeds the {MAX_SITEMAP_SUBMIT_URL_LEN} byte limit"
-        ));
+        return Err(SitemapSubmissionError::UrlTooLong);
     }
 
     match SsrfProtection::new().validate_url(raw_url) {
         ValidationResult::Valid => {}
         ValidationResult::Invalid { reason } => {
-            return Err(format!("sitemap submission URL rejected: {reason}"));
+            return Err(SitemapSubmissionError::SsrfRejected(reason.to_string()));
         }
         ValidationResult::Sanitized { .. } => {
-            return Err(
-                "sitemap submission URL returned an unexpected validation result".to_string(),
-            );
+            return Err(SitemapSubmissionError::UnexpectedValidation);
         }
     }
 
     let mut url = reqwest::Url::parse(raw_url)
-        .map_err(|error| format!("invalid sitemap submission URL: {error}"))?;
+        .map_err(|error| SitemapSubmissionError::InvalidUrl(error.to_string()))?;
     if !url.username().is_empty() || url.password().is_some() {
-        return Err("sitemap submission URL userinfo is not allowed".to_string());
+        return Err(SitemapSubmissionError::UserinfoNotAllowed);
     }
     match url.scheme() {
         "https" => {}
         "http" if insecure_http_allowed() => {}
         "http" => {
-            return Err(format!(
-                "insecure sitemap submission HTTP is disabled; platform operators may opt in with {ALLOW_INSECURE_HTTP_ENV}"
-            ));
+            return Err(SitemapSubmissionError::InsecureHttpDisabled);
         }
         scheme => {
-            return Err(format!(
-                "unsupported sitemap submission URL scheme `{scheme}`"
-            ));
+            return Err(SitemapSubmissionError::UnsupportedScheme(scheme.to_string()));
         }
     }
 
     let host = url
         .host_str()
-        .ok_or_else(|| "sitemap submission URL host is required".to_string())?
+        .ok_or(SitemapSubmissionError::MissingHost)?
         .trim_end_matches('.')
         .to_ascii_lowercase();
     if host.is_empty()
@@ -157,37 +203,34 @@ fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTa
         || host.ends_with(".internal")
         || host.ends_with(".home.arpa")
     {
-        return Err("local or internal sitemap submission hostnames are not allowed".to_string());
+        return Err(SitemapSubmissionError::InternalHostNotAllowed);
     }
     url.set_host(Some(host.as_str()))
-        .map_err(|_| "sitemap submission URL host could not be canonicalized".to_string())?;
+        .map_err(|_| SitemapSubmissionError::CanonicalizeHostFailed)?;
     let port = url
         .port_or_known_default()
-        .ok_or_else(|| "sitemap submission destination port is required".to_string())?;
+        .ok_or(SitemapSubmissionError::MissingPort)?;
 
     Ok(ParsedSitemapSubmitTarget { url, host, port })
 }
 
 async fn resolve_sitemap_submit_target(
     raw_url: &str,
-) -> Result<ResolvedSitemapSubmitTarget, String> {
+) -> Result<ResolvedSitemapSubmitTarget, SitemapSubmissionError> {
     let target = validate_sitemap_submit_target(raw_url)?;
     let addresses = if let Ok(ip) = IpAddr::from_str(target.host.as_str()) {
         vec![SocketAddr::new(ip, target.port)]
     } else {
         tokio::net::lookup_host((target.host.as_str(), target.port))
             .await
-            .map_err(|error| format!("sitemap submission DNS resolution failed: {error}"))?
+            .map_err(|error| SitemapSubmissionError::DnsResolutionFailed(error.to_string()))?
             .collect::<Vec<_>>()
     };
     if addresses.is_empty() {
-        return Err("sitemap submission destination resolved to no addresses".to_string());
+        return Err(SitemapSubmissionError::NoAddresses);
     }
     if addresses.iter().any(|address| !is_public_ip(address.ip())) {
-        return Err(
-            "sitemap submission destination resolves to a private, local, reserved, or multicast address"
-                .to_string(),
-        );
+        return Err(SitemapSubmissionError::PrivateIpRejected);
     }
 
     Ok(ResolvedSitemapSubmitTarget {

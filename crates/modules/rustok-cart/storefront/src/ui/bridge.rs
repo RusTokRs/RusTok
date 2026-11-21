@@ -48,7 +48,9 @@ impl DrawerVisibility {
                 .try_update_value(|value| value.take())
                 .flatten();
             if let Some(target) = target.filter(|target| target.is_connected()) {
-                let _ = target.focus();
+                if let Err(err) = target.focus() {
+                    leptos::logging::warn!("failed to restore focus to origin: {:?}", err);
+                }
             }
         }
         true
@@ -85,7 +87,9 @@ pub(crate) fn publish_count(count: Option<u64>) {
         if let Ok(event) =
             web_sys::CustomEvent::new_with_event_init_dict("rustok:cart:updated", &init)
         {
-            let _ = window.dispatch_event(&event);
+            if let Err(err) = window.dispatch_event(&event) {
+                leptos::logging::warn!("failed to dispatch cart updated event: {:?}", err);
+            }
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -123,9 +127,12 @@ impl Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         use leptos::wasm_bindgen::JsCast;
-        let _ = self
+        if let Err(err) = self
             .window
-            .remove_event_listener_with_callback(self.name, self.callback.as_ref().unchecked_ref());
+            .remove_event_listener_with_callback(self.name, self.callback.as_ref().unchecked_ref())
+        {
+            leptos::logging::warn!("failed to remove event listener: {:?}", err);
+        }
     }
 }
 

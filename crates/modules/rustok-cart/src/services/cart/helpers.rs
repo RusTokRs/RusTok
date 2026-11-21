@@ -148,7 +148,7 @@ pub fn normalize_line_item_shipping_profile(
 pub fn line_item_fulfillment_requirement(
     value: &str,
 ) -> CartResult<CartLineFulfillmentRequirement> {
-    CartLineFulfillmentRequirement::parse(value).map_err(CartError::Validation)
+    CartLineFulfillmentRequirement::parse(value).map_err(|e| CartError::Validation(e.to_string()))
 }
 
 pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
@@ -1362,6 +1362,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(skip(conn))]
 pub async fn reconcile_cart_shipping_state<C>(conn: &C, cart_id: Uuid) -> CartResult<()>
 where
     C: ConnectionTrait,
@@ -1484,6 +1485,7 @@ pub fn round_to_currency(amount: Decimal, currency_code: &str) -> CartResult<Dec
         .map_err(|error| CartError::Validation(error.to_string()))
 }
 
+#[tracing::instrument(skip(conn))]
 pub async fn update_line_item_marketplace_snapshot_in_tx<C>(
     conn: &C,
     line_item_id: Uuid,

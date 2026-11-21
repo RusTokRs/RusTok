@@ -490,7 +490,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         "profiles" => {
             let profiles_str = format_allowed_profiles(
                 cell_locale.as_deref(),
-                item.allowed_shipping_profile_slugs.as_ref(),
+                item.allowed_shipping_profile_slugs.as_deref(),
             );
             let title_str = profiles_str.clone();
             view! {

@@ -696,9 +696,15 @@ modules-depends_on = Depends on
 modules-toast-enabled = Module enabled successfully
 modules-toast-disabled = Module disabled successfully
 modules-error-load = Failed to load modules
+modules-settings-writeUnconfirmed = The save could not be confirmed and may have completed. If the session and snapshot have not changed, retry here to resend the same operation, or close and review the current settings before making a new attempt. The retry is not retained after closing or reloading.
+modules-policy-error-title = Module availability could not be verified
+modules-policy-error-description = Check your session and connection, then retry. No decision was made that this module is disabled.
+modules-policy-error-retry = Retry availability check
+modules-settings-integer-invalid = Enter a non-negative whole number without leading zeros. Correct this field before editing JSON or saving.
 
 modules-recovery-title = Lifecycle recovery
-modules-recovery-description = Retry failed post-hooks or compensate committed operations.
+modules-recovery-description = Review failed lifecycle operations and available recovery actions.
+modules-recovery-unavailable = Automatic recovery is unavailable until the original hook identity and the termination of its external effects can be proven. Do not clear the fence based on lease expiry alone.
 modules-recovery-refresh = Refresh recovery
 modules-recovery-refreshing = Refreshing…
 modules-recovery-empty = No lifecycle recovery items.

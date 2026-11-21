@@ -64,6 +64,7 @@ pub enum Resource {
     TranslationGlossaries,
     Conversations,
     Messages,
+    Newsletter,
 }
 
 impl fmt::Display for Resource {
@@ -127,6 +128,7 @@ impl fmt::Display for Resource {
             Self::TranslationGlossaries => "translation_glossaries",
             Self::Conversations => "conversations",
             Self::Messages => "messages",
+            Self::Newsletter => "newsletter",
         };
         write!(f, "{value}")
     }
@@ -195,6 +197,7 @@ impl FromStr for Resource {
             "translation_glossaries" => Ok(Self::TranslationGlossaries),
             "conversations" => Ok(Self::Conversations),
             "messages" => Ok(Self::Messages),
+            "newsletter" => Ok(Self::Newsletter),
             _ => Err(format!("Unknown resource: {value}")),
         }
     }
@@ -611,6 +614,12 @@ impl Permission {
         MESSAGES_READ => (Messages, Read),
         MESSAGES_DELETE => (Messages, Delete),
         MESSAGES_LIST => (Messages, List),
+        NEWSLETTER_CREATE => (Newsletter, Create),
+        NEWSLETTER_READ => (Newsletter, Read),
+        NEWSLETTER_UPDATE => (Newsletter, Update),
+        NEWSLETTER_DELETE => (Newsletter, Delete),
+        NEWSLETTER_LIST => (Newsletter, List),
+        NEWSLETTER_MANAGE => (Newsletter, Manage),
     }
 }
 
@@ -626,6 +635,17 @@ mod tests {
 
         let manage: Permission = "settings:manage".parse().expect("parse settings:manage");
         assert_eq!(manage, Permission::SETTINGS_MANAGE);
+    }
+
+    #[test]
+    fn parse_newsletter_permissions_round_trip() {
+        let perm: Permission = "newsletter:manage".parse().expect("parse newsletter:manage");
+        assert_eq!(perm, Permission::NEWSLETTER_MANAGE);
+        assert_eq!(perm.to_string(), "newsletter:manage");
+        assert!(has_effective_permission(
+            &[Permission::NEWSLETTER_MANAGE],
+            &Permission::NEWSLETTER_READ
+        ));
     }
 
     #[test]

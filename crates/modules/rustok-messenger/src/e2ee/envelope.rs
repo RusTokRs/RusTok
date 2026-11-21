@@ -53,25 +53,35 @@ pub struct EncryptedPayload {
 
 impl EncryptedPayload {
     /// Validates basic structural invariants of the opaque ciphertext.
-    pub fn validate(&self) -> Result<(), &'static str> {
+    pub fn validate(&self) -> Result<(), crate::error::MessengerError> {
         if self.sender_key.is_empty() {
-            return Err("Sender key must not be empty");
+            return Err(crate::error::MessengerError::Validation(
+                "Sender key must not be empty".to_string(),
+            ));
         }
         if self.ciphertext.is_empty() {
-            return Err("Ciphertext must not be empty");
+            return Err(crate::error::MessengerError::Validation(
+                "Ciphertext must not be empty".to_string(),
+            ));
         }
         match self.algorithm {
             E2eeEncryptionAlgo::OlmV1Curve25519AesSha2 => {
                 if self.recipient_key.is_none() {
-                    return Err("Olm 1-on-1 ciphertext must designate recipient_key");
+                    return Err(crate::error::MessengerError::Validation(
+                        "Olm 1-on-1 ciphertext must designate recipient_key".to_string(),
+                    ));
                 }
             }
             E2eeEncryptionAlgo::MegolmV1AesSha2 => {
                 if self.session_id.is_none() {
-                    return Err("Megolm group ciphertext must designate session_id");
+                    return Err(crate::error::MessengerError::Validation(
+                        "Megolm group ciphertext must designate session_id".to_string(),
+                    ));
                 }
                 if self.message_index.is_none() {
-                    return Err("Megolm group ciphertext must include message_index");
+                    return Err(crate::error::MessengerError::Validation(
+                        "Megolm group ciphertext must include message_index".to_string(),
+                    ));
                 }
             }
         }

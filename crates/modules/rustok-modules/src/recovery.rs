@@ -3,7 +3,7 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
-use crate::executor::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
+use crate::claim_heartbeat::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
 use crate::{
     DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlaneError,
     ModuleDefinitionSource, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
@@ -13,6 +13,12 @@ use crate::{
     StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
     TenantModuleStateRequest, TenantModuleStateStore, artifact_settings,
 };
+
+/// No current journal row carries both a trustworthy original execution
+/// identity and proof that its external work is quiescent. Never infer either
+/// from the settings digest, a lease expiry, or an absent aggregate claim.
+pub(crate) const RECOVERY_EVIDENCE_UNAVAILABLE: &str =
+    "hook_identity_and_quiescence_unverified";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ModuleOperationOverrideState {
@@ -99,18 +105,13 @@ impl ModuleOperationRecoveryPlan {
         let override_state_recorded = override_state.is_some();
         let hook_settings_digest_recorded =
             override_state.is_some_and(|state| state.hook_settings_digest_recorded);
-        let retryable =
-            issue.retryable() && override_state_recorded && hook_settings_digest_recorded;
-        let recommended_action = if retryable {
-            ModuleOperationRecoveryAction::RetryPostHook
-        } else if matches!(
-            issue,
-            ModuleOperationIssue::PreHookFailed | ModuleOperationIssue::Orphaned
-        ) {
-            ModuleOperationRecoveryAction::RepeatToggle
-        } else {
-            ModuleOperationRecoveryAction::None
-        };
+        // These facts describe the committed state and input, not the
+        // original executor, installation, or termination of external work.
+        // New recovery hooks are therefore unavailable even for old rows
+        // whose aggregate claim is already absent. A future evidence protocol
+        // must replace this fail-closed decision, not a caller-supplied flag.
+        let retryable = false;
+        let recommended_action = ModuleOperationRecoveryAction::None;
         Self {
             operation_id: operation.id,
             tenant_id: operation.tenant_id,
@@ -304,14 +305,12 @@ pub(crate) async fn retry_failed_post_hook_operation(
     }
     if !plan.retryable {
         return Err(ModuleOperationRecoveryError::NotRetryable(
-            plan.issue.to_string(),
+            RECOVERY_EVIDENCE_UNAVAILABLE.to_string(),
         ));
     }
-    if dispatcher.catalog().get(&plan.module_slug).is_none() {
-        return Err(ModuleOperationRecoveryError::NotRetryable(
-            "unknown_module".to_string(),
-        ));
-    }
+    let definition = dispatcher.catalog().get(&plan.module_slug).ok_or_else(|| {
+        ModuleOperationRecoveryError::NotRetryable("unknown_module".to_string())
+    })?;
     let operation = match ModuleOperationJournal::record_idempotent(db, journal_request)
         .await
         .map_err(|error| match error {
@@ -325,15 +324,36 @@ pub(crate) async fn retry_failed_post_hook_operation(
             return replay_post_hook_recovery(db, operation).await;
         }
     };
-    if let Err(error) = StaticTenantLifecycleStore::claim(
+    if let Err(error) = crate::lifecycle_transition_fence::claim(
         db,
         plan.tenant_id,
         &plan.module_slug,
+        definition,
         request.expected_revision,
         request.context.idempotency_key,
     )
     .await
     {
+        use crate::lifecycle_transition_fence::LifecycleAdmissionError;
+        let error = match error {
+            LifecycleAdmissionError::TransitionInProgress => {
+                return Err(mark_recovery_operation_failed(
+                    db, operation.id,
+                    ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
+                ).await);
+            }
+            LifecycleAdmissionError::StaleDefinition => {
+                return Err(mark_recovery_operation_failed(
+                    db, operation.id,
+                    ModuleOperationRecoveryError::NotRetryable("artifact_definition_changed".to_string()),
+                ).await);
+            }
+            LifecycleAdmissionError::Database(message) => {
+                // Keep the validated operation if commit/rollback was uncertain.
+                return Err(ModuleOperationRecoveryError::Persistence(message));
+            }
+            LifecycleAdmissionError::Claim(error) => error,
+        };
         let contention = matches!(
             error,
             StaticTenantLifecycleStoreError::RevisionConflict { .. }
@@ -375,23 +395,37 @@ pub(crate) async fn retry_failed_post_hook_operation(
         operation.clone(),
     )
     .await;
-    let release_result = StaticTenantLifecycleStore::release(
-        db,
-        plan.tenant_id,
-        &plan.module_slug,
-        request.context.idempotency_key,
-    )
-    .await
-    .map_err(map_lifecycle_claim_error);
-    match (claimed_result, release_result) {
-        (Ok(operation), Ok(())) => Ok(operation),
-        (Ok(_), Err(release_error)) => Err(release_error),
-        (Err(error), Ok(())) => Err(error),
-        (Err(error), Err(release_error)) => {
-            Err(ModuleOperationRecoveryError::Persistence(format!(
-                "{error}; additionally failed to release the lifecycle claim \
-                 (it will expire via its lease): {release_error}"
-            )))
+    match claimed_result {
+        // Success already released the exact live claim atomically with the
+        // recovery journal updates; a second release would not be idempotent.
+        Ok(operation) => Ok(operation),
+        Err(error) => {
+            // Hook failure, lost ownership, and infrastructure/commit
+            // uncertainty do not prove external effects stopped. Do not
+            // release the fence on these paths.
+            if matches!(
+                &error,
+                ModuleOperationRecoveryError::PostHookFailed(_)
+                    | ModuleOperationRecoveryError::ClaimLost
+                    | ModuleOperationRecoveryError::Persistence(_)
+            ) {
+                return Err(error);
+            }
+            let release_result = StaticTenantLifecycleStore::release(
+                db,
+                plan.tenant_id,
+                &plan.module_slug,
+                request.context.idempotency_key,
+            )
+            .await
+            .map_err(map_lifecycle_claim_error);
+            match release_result {
+                Ok(()) => Err(error),
+                Err(release_error) => Err(ModuleOperationRecoveryError::Persistence(format!(
+                    "{error}; additionally failed to release the lifecycle claim \
+                     (it remains fenced for reconciliation): {release_error}"
+                ))),
+            }
         }
     }
 }
@@ -449,7 +483,7 @@ async fn retry_failed_post_hook_operation_claimed(
         return Err(discard_unstarted_recovery_operation(
             db,
             operation.id,
-            ModuleOperationRecoveryError::NotRetryable(plan.issue.to_string()),
+            ModuleOperationRecoveryError::NotRetryable(RECOVERY_EVIDENCE_UNAVAILABLE.to_string()),
         )
         .await);
     }
@@ -462,9 +496,8 @@ async fn retry_failed_post_hook_operation_claimed(
         .await);
     }
 
-    // Match the lifecycle toggle boundary: unresolved tenant and platform
-    // transitions must not run another hook against an unstable release.
-    // Transition creation is not yet serialized with this read.
+    // Defense in depth after the serialized claim admission: unresolved tenant
+    // or platform transitions must not run another hook against an unstable release.
     let checkpoints = match crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
         db, &plan.module_slug, plan.tenant_id,
     ).await {
@@ -651,6 +684,8 @@ async fn retry_failed_post_hook_operation_claimed(
             }
         });
     }
+    let expected_revision = request.expected_revision;
+    let idempotency_key = request.context.idempotency_key;
     db.transaction::<_, (), ModuleOperationRecoveryError>(|transaction| {
         Box::pin(async move {
             ModuleOperationJournal::mark_committed(transaction, operation.id)
@@ -667,11 +702,40 @@ async fn retry_failed_post_hook_operation_claimed(
                     "original operation was not in a resolvable post-hook-failed state".to_string(),
                 ));
             }
+            // Lock and revalidate the exact live claim inside the same
+            // transaction as both journal transitions. A stolen or expired
+            // claim must roll back both changes, not resolve the original
+            // failure and only then discover ownership was lost.
+            if !StaticTenantLifecycleStore::heartbeat(
+                transaction,
+                plan.tenant_id,
+                &plan.module_slug,
+                expected_revision,
+                idempotency_key,
+            )
+            .await
+            .map_err(map_lifecycle_claim_error)?
+            {
+                return Err(ModuleOperationRecoveryError::ClaimLost);
+            }
+            StaticTenantLifecycleStore::release(
+                transaction,
+                plan.tenant_id,
+                &plan.module_slug,
+                idempotency_key,
+            )
+            .await
+            .map_err(map_lifecycle_claim_error)?;
             Ok(())
         })
     })
     .await
-    .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    .map_err(|error| match error {
+        sea_orm::TransactionError::Connection(error) => {
+            ModuleOperationRecoveryError::Persistence(error.to_string())
+        }
+        sea_orm::TransactionError::Transaction(error) => error,
+    })?;
     Ok(operation)
 }
 
@@ -1005,17 +1069,17 @@ mod tests {
     }
 
     #[test]
-    fn only_post_hook_failures_with_selected_state_are_retryable() {
+    fn recovery_plans_do_not_recommend_execution_without_quiescence_evidence() {
         let post_hook = ModuleOperationRecoveryPlan::from_snapshot(
             snapshot(Some("post-hook: timeout")),
             Some(override_state()),
         );
         assert_eq!(post_hook.issue, ModuleOperationIssue::PostHookFailed);
-        assert!(post_hook.retryable);
+        assert!(!post_hook.retryable);
         assert!(post_hook.override_state_recorded);
         assert_eq!(
             post_hook.recommended_action,
-            ModuleOperationRecoveryAction::RetryPostHook
+            ModuleOperationRecoveryAction::None
         );
 
         let mut legacy_state = override_state();
@@ -1048,7 +1112,7 @@ mod tests {
         assert!(!pre_hook.retryable);
         assert_eq!(
             pre_hook.recommended_action,
-            ModuleOperationRecoveryAction::RepeatToggle
+            ModuleOperationRecoveryAction::None
         );
 
         let mut orphaned_snapshot = snapshot(Some("owner did not finish within the claim lease"));
@@ -1059,7 +1123,7 @@ mod tests {
         assert!(!orphaned.retryable);
         assert_eq!(
             orphaned.recommended_action,
-            ModuleOperationRecoveryAction::RepeatToggle
+            ModuleOperationRecoveryAction::None
         );
 
         let state_commit = ModuleOperationRecoveryPlan::from_snapshot(
@@ -1098,7 +1162,8 @@ mod tests {
         assert_eq!(view.operation_id, operation_id.to_string());
         assert_eq!(view.tenant_id, tenant_id.to_string());
         assert_eq!(view.issue, "post_hook_failed");
-        assert_eq!(view.recommended_action, "retry_post_hook");
+        assert_eq!(view.recommended_action, "none");
+        assert!(!view.retryable);
         assert!(view.correlation_id.is_some());
         assert_eq!(view.requested_by.as_deref(), Some("operator"));
         assert!(

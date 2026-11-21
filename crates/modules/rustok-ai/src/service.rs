@@ -1330,7 +1330,9 @@ impl AiManagementService {
             )
             .await?;
             let mut decision_trace: crate::model::AiRunDecisionTrace =
-                serde_json::from_value(run.decision_trace.clone()).unwrap_or_default();
+                serde_json::from_value(run.decision_trace.clone()).map_err(|error| {
+                    AiError::Runtime(format!("invalid run decision trace JSON: {error}"))
+                })?;
             decision_trace = enrich_decision_trace(
                 decision_trace,
                 ExecutionMode::Direct,

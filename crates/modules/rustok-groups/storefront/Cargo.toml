@@ -9,6 +9,9 @@ description = "Leptos storefront FFA package for social group discovery"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 

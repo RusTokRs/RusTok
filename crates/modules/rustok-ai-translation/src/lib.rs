@@ -192,21 +192,26 @@ impl AiMachineTranslationAdapter {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum AiTranslationError {
+    #[error("invalid task descriptor: {0}")]
+    TaskDescriptor(String),
+    #[error(transparent)]
+    Ai(#[from] rustok_ai::AiError),
+}
+
 /// Composes the optional machine-translation provider from the neutral host
 /// context. The bridge owns descriptor registration; the host does not import
 /// AI runtime types or construct either owner service.
 #[cfg(feature = "server")]
 pub fn machine_translation_port_from_context(
     context: &rustok_api::HostRuntimeContext,
-) -> Result<Option<Arc<dyn MachineTranslationPort>>, String> {
+) -> Result<Option<Arc<dyn MachineTranslationPort>>, AiTranslationError> {
     let catalog = rustok_ai::AiStructuredTaskCatalog::default();
     catalog
         .register(machine_translation_task_descriptor())
         .map_err(|error| {
-            format!(
-                "invalid machine-translation task descriptor: {}",
-                error.code
-            )
+            AiTranslationError::TaskDescriptor(error.code.to_string())
         })?;
     let Some(ai) = rustok_ai::structured_task_port_from_context(context, catalog)? else {
         return Ok(None);

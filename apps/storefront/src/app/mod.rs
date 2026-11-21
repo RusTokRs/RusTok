@@ -18,7 +18,7 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
         .map(|tenant| tenant.slug)
         .unwrap_or_default();
     #[cfg(not(feature = "ssr"))]
-    let cart_tenant = rustok_auth_ui::ui::leptos::storage::get_tenant().unwrap_or_default();
+    let cart_tenant = crate::shared::api::configured_tenant_slug().unwrap_or_default();
     let enabled_modules = use_enabled_modules().get_untracked();
     let header_navigation_views =
         components_for_slot(StorefrontSlot::HeaderNavigation, Some(&enabled_modules))
@@ -180,18 +180,19 @@ pub fn StorefrontShell(
     locale: String,
     enabled_modules: Vec<String>,
     query_params: HashMap<String, String>,
+    #[prop(optional)] fetch_initial: bool,
 ) -> impl IntoView {
     init_modules();
 
     view! {
-        <EnabledModulesProvider initial_modules=enabled_modules>
+        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.clone() fetch_initial=fetch_initial>
             <ModuleRequestProvider
                 locale=Some(locale.clone())
                 route_segment=None
                 subpath=None
-                query_params=query_params
+                query_params=query_params.clone()
             >
-                <StorefrontShellContent locale=locale />
+                <StorefrontShellContent locale=locale.clone() />
             </ModuleRequestProvider>
         </EnabledModulesProvider>
     }
@@ -203,18 +204,19 @@ pub fn StorefrontModulePage(
     enabled_modules: Vec<String>,
     route_segment: String,
     query_params: HashMap<String, String>,
+    #[prop(optional)] fetch_initial: bool,
 ) -> impl IntoView {
     init_modules();
 
     view! {
-        <EnabledModulesProvider initial_modules=enabled_modules>
+        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.clone() fetch_initial=fetch_initial>
             <ModuleRequestProvider
                 locale=Some(locale.clone())
                 route_segment=Some(route_segment.clone())
                 subpath=None
-                query_params=query_params
+                query_params=query_params.clone()
             >
-                <StorefrontModulePageContent locale=locale route_segment=route_segment />
+                <StorefrontModulePageContent locale=locale.clone() route_segment=route_segment.clone() />
             </ModuleRequestProvider>
         </EnabledModulesProvider>
     }

@@ -266,7 +266,7 @@ pub(crate) async fn fetch_product(
         .map_err(|error| context.map_error(error))
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for future admin product pricing views")]
 pub(crate) async fn fetch_product_pricing(
     token: Option<String>,
     tenant_slug: Option<String>,

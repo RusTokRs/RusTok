@@ -100,6 +100,10 @@ impl Model {
     }
 
     pub fn scopes_list(&self) -> Vec<String> {
-        serde_json::from_value(self.scopes.clone()).unwrap_or_default()
+        // INVARIANT: Token scopes are validated as a JSON array of strings before token issuance and persistence.
+        serde_json::from_value(self.scopes.clone()).unwrap_or_else(|error| {
+            tracing::warn!(token_id = %self.id, %error, "Failed to decode OAuth token scopes JSON array; defaulting to empty list");
+            Vec::new()
+        })
     }
 }

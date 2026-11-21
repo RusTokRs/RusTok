@@ -63,6 +63,11 @@ impl RegistryGovernanceService {
             ))
     }
 
+    #[tracing::instrument(
+        skip(self, request, authority, context),
+        fields(module_slug = %request.module.name, dry_run = %request.dry_run),
+        err
+    )]
     pub async fn create_publish_request(
         &self,
         request: &RegistryPublishRequest,

@@ -45,6 +45,14 @@ Architecture classification: `apps/next-frontend` is a Next.js composition host,
   filter; supported locales are taken from host-owned message loaders.
 - query semantics for module-owned storefront surfaces must remain in parity with `apps/storefront`;
   host does not invent a separate schema/policy on top of backend and Leptos host contract.
+- module availability reads reject missing tenant scope, GraphQL errors/partial data, malformed
+  lists and responses at the server's unpaginated 100-item cap. Root provider, route guard and
+  home composition show a localized retryable error rather than inventing an empty policy or a
+  disabled-module 404. Exactly 100 enabled modules also fails closed until the owner exposes a
+  complete and appropriately authorized projection. Retry uses `router.refresh()`; browser/SSR
+  integration still needs verification. Leptos GraphQL rejects capped lists too, with localized
+  error handling for its shell and generic module pages; separate module-owned routes and real
+  Leptos SSR/CSR behavior remain to be verified.
 - Search storefront composition lives in `src/features/search`: host passes route locale, tenant slug,
   enabled modules and the shared GraphQL executor, product-owned `packages/rustok-product` reads the
   public `storefrontCatalogSearchOptions(locale: String!)`, and `packages/search` receives only

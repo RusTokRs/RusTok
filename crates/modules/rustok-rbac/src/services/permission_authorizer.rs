@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorize_all_permissions_allows_empty_requirements() {
+    async fn authorize_all_permissions_denies_empty_requirements() {
         let resolver = StubResolver {
             permissions: vec![Permission::USERS_READ],
             cache_hit: true,
@@ -268,9 +268,9 @@ mod tests {
                 .unwrap();
 
         assert_eq!(decision.engine, AuthzEngine::Policy);
-        assert!(decision.allowed);
+        assert!(!decision.allowed);
         assert!(decision.missing_permissions.is_empty());
-        assert!(decision.denied_reason.is_none());
+        assert!(decision.denied_reason.is_some());
         assert_eq!(decision.resolved_permissions, vec![Permission::USERS_READ]);
         assert_eq!(decision.permissions_count, 1);
         assert!(decision.cache_hit);

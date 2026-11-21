@@ -20,47 +20,134 @@ pub const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 pub const DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 300;
 pub const DEFAULT_HTTP_CONCURRENCY_LIMIT: usize = 512;
 
+// Keep operator-provided values within ranges that are safe for Tokio deadlines
+// and Tower's semaphore-backed concurrency limiter.
+const MAX_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 600;
+const MAX_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 3_600;
+const MAX_HTTP_CONCURRENCY_LIMIT: usize = 16_384;
+
 static HTTP_REQUEST_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS);
 static HTTP_UPLOAD_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS);
 
+fn bounded_timeout_seconds(
+    value: u64,
+    default: u64,
+    maximum: u64,
+    setting: &'static str,
+) -> u64 {
+    if value == 0 {
+        tracing::warn!(setting, default, "HTTP timeout must be positive; using the default");
+        return default;
+    }
+    if value > maximum {
+        tracing::warn!(
+            setting,
+            configured = value,
+            maximum,
+            "HTTP timeout exceeds the supported maximum; clamping"
+        );
+        return maximum;
+    }
+    value
+}
+
+fn parse_timeout_setting(
+    raw: Option<&str>,
+    setting: &'static str,
+    default: u64,
+    maximum: u64,
+) -> u64 {
+    let Some(raw) = raw else {
+        return default;
+    };
+    match raw.parse::<u64>() {
+        Ok(value) => bounded_timeout_seconds(value, default, maximum, setting),
+        Err(_error) => {
+            tracing::warn!(
+                setting,
+                error_code = "http_timeout_setting_invalid",
+                "Invalid HTTP timeout setting; using the default"
+            );
+            default
+        }
+    }
+}
+
+fn parse_http_concurrency_limit(raw: Option<&str>) -> usize {
+    let Some(raw) = raw else {
+        return DEFAULT_HTTP_CONCURRENCY_LIMIT;
+    };
+    match raw.parse::<usize>() {
+        Ok(0) => {
+            tracing::warn!(
+                setting = "RUSTOK_HTTP_CONCURRENCY_LIMIT",
+                default = DEFAULT_HTTP_CONCURRENCY_LIMIT,
+                "HTTP concurrency limit must be positive; using the default"
+            );
+            DEFAULT_HTTP_CONCURRENCY_LIMIT
+        }
+        Ok(limit) if limit > MAX_HTTP_CONCURRENCY_LIMIT => {
+            tracing::warn!(
+                setting = "RUSTOK_HTTP_CONCURRENCY_LIMIT",
+                configured = limit,
+                maximum = MAX_HTTP_CONCURRENCY_LIMIT,
+                "HTTP concurrency limit exceeds the supported maximum; clamping"
+            );
+            MAX_HTTP_CONCURRENCY_LIMIT
+        }
+        Ok(limit) => limit,
+        Err(error) => {
+            tracing::warn!(
+                setting = "RUSTOK_HTTP_CONCURRENCY_LIMIT",
+                %error,
+                "Invalid HTTP concurrency limit; using the default"
+            );
+            DEFAULT_HTTP_CONCURRENCY_LIMIT
+        }
+    }
+}
+
 pub fn resolve_http_concurrency_limit() -> usize {
-    std::env::var("RUSTOK_HTTP_CONCURRENCY_LIMIT")
-        .ok()
-        .and_then(|val| val.parse::<usize>().ok())
-        .filter(|&limit| limit > 0)
-        .unwrap_or(DEFAULT_HTTP_CONCURRENCY_LIMIT)
+    let raw = std::env::var("RUSTOK_HTTP_CONCURRENCY_LIMIT").ok();
+    parse_http_concurrency_limit(raw.as_deref())
 }
 
 /// Configures global lock-free timeout thresholds for HTTP request budgets.
 pub fn init_http_timeouts(request_secs: u64, upload_secs: u64) {
-    let req = if request_secs > 0 {
-        request_secs
-    } else {
-        DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS
-    };
-    let upl = if upload_secs > 0 {
-        upload_secs
-    } else {
-        DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS
-    };
+    let req = bounded_timeout_seconds(
+        request_secs,
+        DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+        MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+        "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
+    );
+    let upl = bounded_timeout_seconds(
+        upload_secs,
+        DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
+        MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
+        "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
+    );
     HTTP_REQUEST_TIMEOUT_SECS.store(req, Ordering::Relaxed);
     HTTP_UPLOAD_TIMEOUT_SECS.store(upl, Ordering::Relaxed);
 }
 
 pub fn resolve_http_timeout_seconds() -> u64 {
-    std::env::var("RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|val| val.parse::<u64>().ok())
-        .filter(|&secs| secs > 0)
-        .unwrap_or(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS)
+    let raw = std::env::var("RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS").ok();
+    parse_timeout_setting(
+        raw.as_deref(),
+        "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
+        DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+        MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+    )
 }
 
 pub fn resolve_upload_timeout_seconds() -> u64 {
-    std::env::var("RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|val| val.parse::<u64>().ok())
-        .filter(|&secs| secs > 0)
-        .unwrap_or(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS)
+    let raw = std::env::var("RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS").ok();
+    parse_timeout_setting(
+        raw.as_deref(),
+        "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
+        DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
+        MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
+    )
 }
 
 /// Custom [`MakeSpan`] that attaches the request's `x-request-id` and `x-correlation-id`
@@ -141,8 +228,8 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
     let multipart = content_type
-        .map(|value| value.starts_with("multipart/form-data"))
-        .unwrap_or(false);
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("multipart/form-data"));
 
     // Extended deadlines belong to owner-declared binary upload transports,
     // not to any URL containing `/media` or any client-supplied Content-Type.
@@ -482,6 +569,17 @@ mod tests {
             .unwrap();
         assert!(is_upload_request(&post_req));
 
+        let malformed_multipart_req = Request::builder()
+            .method("POST")
+            .uri("/api/media")
+            .header("content-type", "multipart/form-data-evil; boundary=abc")
+            .body(())
+            .unwrap();
+        assert!(
+            !is_upload_request(&malformed_multipart_req),
+            "a malformed media type must not receive the extended upload deadline"
+        );
+
         let put_req = Request::builder()
             .method("PUT")
             .uri("/v2/catalog/publish/550e8400-e29b-41d4-a716-446655440000/artifact")
@@ -632,5 +730,62 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn http_timeout_settings_are_bounded_before_becoming_tokio_deadlines() {
+        assert_eq!(
+            bounded_timeout_seconds(
+                0,
+                DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+                MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+                "request",
+            ),
+            DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS
+        );
+        assert_eq!(
+            bounded_timeout_seconds(
+                u64::MAX,
+                DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+                MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+                "request",
+            ),
+            MAX_HTTP_REQUEST_TIMEOUT_SECONDS
+        );
+        assert_eq!(
+            parse_timeout_setting(
+                Some("999999"),
+                "request",
+                DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+                MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+            ),
+            MAX_HTTP_REQUEST_TIMEOUT_SECONDS
+        );
+        assert_eq!(
+            parse_timeout_setting(
+                Some("not-a-number"),
+                "request",
+                DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+                MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+            ),
+            DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS
+        );
+    }
+
+    #[test]
+    fn http_concurrency_limit_is_bounded_before_constructing_tower_semaphore() {
+        assert_eq!(parse_http_concurrency_limit(Some("1")), 1);
+        assert_eq!(
+            parse_http_concurrency_limit(Some("16385")),
+            MAX_HTTP_CONCURRENCY_LIMIT
+        );
+        assert_eq!(
+            parse_http_concurrency_limit(Some("0")),
+            DEFAULT_HTTP_CONCURRENCY_LIMIT
+        );
+        assert_eq!(
+            parse_http_concurrency_limit(Some("invalid")),
+            DEFAULT_HTTP_CONCURRENCY_LIMIT
+        );
     }
 }

@@ -324,6 +324,10 @@ impl AiManagementService {
         profile.map(map_provider_profile).transpose()
     }
 
+    #[tracing::instrument(
+        skip(db, operator, provider_targets, egress_policy, secrets, input),
+        fields(tenant_id = %operator.tenant_id, slug = %input.slug)
+    )]
     pub async fn create_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -375,6 +379,10 @@ impl AiManagementService {
         map_provider_profile(profile)
     }
 
+    #[tracing::instrument(
+        skip(db, operator, provider_targets, egress_policy, secrets, input),
+        fields(tenant_id = %operator.tenant_id, id = %id)
+    )]
     pub async fn update_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -510,6 +518,10 @@ impl AiManagementService {
             .collect::<AiResult<Vec<_>>>()
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, slug = %input.slug)
+    )]
     pub async fn create_task_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -545,6 +557,10 @@ impl AiManagementService {
         map_task_profile(profile)
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, id = %id)
+    )]
     pub async fn update_task_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -586,6 +602,10 @@ impl AiManagementService {
         Ok(profiles.into_iter().map(map_tool_profile).collect())
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, slug = %input.slug)
+    )]
     pub async fn create_tool_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
@@ -614,6 +634,10 @@ impl AiManagementService {
         Ok(map_tool_profile(profile))
     }
 
+    #[tracing::instrument(
+        skip(db, operator, input),
+        fields(tenant_id = %operator.tenant_id, id = %id)
+    )]
     pub async fn update_tool_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,

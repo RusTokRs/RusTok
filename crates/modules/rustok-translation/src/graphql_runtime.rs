@@ -138,10 +138,32 @@ impl TranslationGraphqlRuntimeData {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct TranslationGraphqlRuntimeError(pub String);
+
+impl From<&str> for TranslationGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for TranslationGraphqlRuntimeError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<TranslationGraphqlRuntimeError> for String {
+    fn from(e: TranslationGraphqlRuntimeError) -> Self {
+        e.0
+    }
+}
+
 /// Capability-owned factory consumed by manifest-generated schema composition.
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> Result<TranslationGraphqlRuntimeData, String> {
+) -> Result<TranslationGraphqlRuntimeData, TranslationGraphqlRuntimeError> {
     let database = inputs.db_clone();
     let providers = inputs
         .shared_get::<Arc<TranslationTargetRegistry>>()

@@ -45,7 +45,7 @@ pub use dto::{
     CartLineItemResponse, CartMarketplaceLineSnapshot, CartResponse, CartShippingOptionSummary,
     CartShippingSelectionInput, CartStatus, CartTaxLineResponse, CreateCartInput,
     ListCartMarketplaceLineSnapshotsRequest, MarketplaceCartLineSnapshotInput,
-    SetCartAdjustmentInput, UpdateCartContextInput,
+    ParseFulfillmentRequirementError, SetCartAdjustmentInput, UpdateCartContextInput,
 };
 pub use entities::{
     cart as cart_entity, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
@@ -64,6 +64,7 @@ pub use guest_access::{
     take_transient_guest_token, verify_current_guest_cart_access, verify_guest_cart_token,
     with_guest_cart_request_scope,
 };
+pub use guest_access_http::GuestCartTokenExtractionError;
 pub use marketplace_snapshot::{
     AddMarketplaceCartLineRequest, BindMarketplaceCartLineSnapshotRequest,
     ListMarketplaceCartLineSnapshotsRequest, MarketplaceCartSnapshotCommandPort,

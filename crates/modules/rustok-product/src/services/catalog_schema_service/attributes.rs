@@ -12,6 +12,7 @@ use rustok_outbox_storage::idempotency;
 use sea_orm::{ConnectionTrait, DatabaseConnection, FromQueryResult, Statement};
 use serde::Serialize;
 use std::collections::HashMap;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
@@ -38,6 +39,7 @@ use rustok_events::DomainEvent;
 const PRODUCT_SCHEMA_RECEIPT_OWNER: &str = "product";
 
 impl ProductCatalogSchemaService {
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, code = %input.code))]
     pub async fn create_attribute(
         &self,
         tenant_id: Uuid,
@@ -124,7 +126,7 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeCreated { attribute_id },
@@ -140,6 +142,7 @@ impl ProductCatalogSchemaService {
         Ok(result)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, attribute_id = %input.attribute_id, code = %input.code))]
     pub async fn create_attribute_option(
         &self,
         tenant_id: Uuid,
@@ -197,7 +200,7 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
         }
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeOptionCreated {

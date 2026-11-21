@@ -340,21 +340,11 @@ fn owner_failure(error: InventorySourceError) -> IndexSourceFailure {
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::permanent(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::permanent("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::retryable(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::retryable("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }

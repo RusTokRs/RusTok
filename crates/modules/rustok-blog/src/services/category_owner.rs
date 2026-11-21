@@ -7,6 +7,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use super::category::{
@@ -27,7 +28,8 @@ use crate::ports::taxonomy::{
 /// Public Blog Category owner facade.
 ///
 /// Blog keeps membership, settings, timestamps and command authorization. Canonical
-/// Category identity/copy/hierarchy is owned by Taxonomy through the typed binding;
+/// Category identity/copy/hierarchy is owned by Taxonomy through `BlogTaxonomyPort`
+/// (delegating to `TaxonomyOwnerCategoryReader` in server composition);
 /// neither public reads nor command writes depend on the retired Blog translation mirror.
 pub struct CategoryService {
     commands: CategoryCommandCore,
@@ -67,6 +69,7 @@ impl CategoryService {
         self
     }
 
+    #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -100,6 +103,7 @@ impl CategoryService {
         .await
     }
 
+    #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, %category_id))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -112,6 +116,7 @@ impl CategoryService {
             .await
     }
 
+    #[instrument(skip(self, security), fields(tenant_id = %tenant_id, %category_id))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

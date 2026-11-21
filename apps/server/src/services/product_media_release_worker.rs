@@ -62,7 +62,10 @@ pub fn spawn_product_media_release_worker(
                                 tracing::info!(examined = report.examined, released = report.released, failed = report.failed,
                                     "Product Media removal delivery completed");
                             }},
-                            Err(error) => tracing::error!(%error, "Product Media removal delivery failed"),
+                            Err(_error) => tracing::error!(
+                                error_code = "product_media_release_delivery_failed",
+                                "Product Media removal delivery failed"
+                            ),
                         }
                     }
                 }

@@ -545,7 +545,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_regions")?;
         let requested_locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let regions = RegionService::new(db.clone())
@@ -706,7 +706,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_me")?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -741,7 +741,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_returns")?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let filter = filter.unwrap_or(StorefrontReturnsFilter {
@@ -807,7 +807,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_refunds")?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let filter = filter.unwrap_or(StorefrontRefundsFilter {
@@ -874,7 +874,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_order_changes")?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let filter = filter.unwrap_or(StorefrontOrderChangesFilter {
@@ -941,7 +941,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_order")?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let order = load_storefront_customer_order(
@@ -972,7 +972,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_orders")?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let auth = ctx
@@ -1145,6 +1145,7 @@ impl CommerceQuery {
             &[Permission::ORDERS_LIST],
             "Permission denied: orders:list required",
         )?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Order list reads")?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -1197,6 +1198,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Order change reads")?;
         let item = match OrderService::new(db.clone(), event_bus.clone())
             .get_order_change(tenant_id, id)
             .await
@@ -1224,6 +1226,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Order change list reads")?;
         let filter = filter.unwrap_or(OrderChangesFilter {
             order_id: None,
             status: None,
@@ -1271,6 +1274,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Order return reads")?;
         let item = match OrderService::new(db.clone(), event_bus.clone())
             .get_return(tenant_id, id)
             .await
@@ -1298,6 +1302,7 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Order return list reads")?;
         let filter = filter.unwrap_or(OrderReturnsFilter {
             order_id: None,
             status: None,
@@ -1342,6 +1347,7 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Payment collection reads")?;
         let collection = match PaymentService::new(db.clone())
             .get_collection(tenant_id, id)
             .await
@@ -1370,6 +1376,8 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Payment collection list reads")?;
         let filter = filter.unwrap_or(PaymentCollectionsFilter {
             status: None,
             order_id: None,
@@ -1418,6 +1426,7 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Refund reads")?;
         let refund = match PaymentService::new(db.clone())
             .get_refund(tenant_id, id)
             .await
@@ -1444,6 +1453,7 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Refund list reads")?;
         let filter = filter.unwrap_or(RefundsFilter {
             payment_collection_id: None,
             order_id: None,

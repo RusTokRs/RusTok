@@ -12,8 +12,8 @@ use sea_orm::{
 
 use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
-    hash_refresh_token, normalize_display_name, normalize_email, validate_password_policy,
-    verify_password_async,
+    hash_refresh_token, normalize_display_name, normalize_email, password_hash_needs_rehash,
+    validate_password_policy, verify_password_async,
 };
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -21,6 +21,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
+use tracing::instrument;
 
 use super::rbac_service::RbacService;
 
@@ -182,9 +183,11 @@ const MAX_FAILED_LOGIN_ATTEMPTS: i32 = 10;
 /// A successful password reset or password change clears the lock early.
 const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 
-/// Replay of a rotated-away refresh token inside this window is treated
-/// as a lost-response retry; after it, reuse means the token was copied
-/// and the whole session lineage is revoked.
+/// A replay of the immediately previous refresh token inside this window
+/// is rejected without revoking the current session, because it may be a
+/// concurrent request racing the successful rotation. This is not an
+/// idempotent retry: the caller still needs the successful response to receive
+/// the replacement cookie. After the window, replay revokes the session lineage.
 const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 impl AuthLifecycleService {
@@ -211,6 +214,7 @@ impl AuthLifecycleService {
     /// Publish a user audit event inside the caller's transaction so
     /// the event is durably recorded exactly when the state change it
     /// describes commits (transactional outbox).
+    #[instrument(skip(db, tx, event))]
     pub(crate) async fn publish_user_event_in_tx(
         db: DatabaseConnection,
         tx: &DatabaseTransaction,
@@ -235,6 +239,7 @@ impl AuthLifecycleService {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.store(0, Ordering::Relaxed);
     }
 
+    #[instrument(skip(ctx, password, email, name))]
     pub async fn create_user_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -258,6 +263,7 @@ impl AuthLifecycleService {
         .await
     }
 
+    #[instrument(skip(db, password, email, name))]
     pub(crate) async fn create_user_db(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -312,6 +318,7 @@ impl AuthLifecycleService {
         })
     }
 
+    #[instrument(skip(db, prepared))]
     pub(crate) async fn create_user_in_tx<C>(
         db: &C,
         tenant_id: uuid::Uuid,
@@ -388,6 +395,7 @@ impl AuthLifecycleService {
         Ok(())
     }
 
+    #[instrument(skip(ctx, name))]
     pub async fn update_profile_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -404,12 +412,8 @@ impl AuthLifecycleService {
         name: Option<String>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .lock_exclusive()
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?
+        let user = Self::find_user_for_update_in_tx(&tx, tenant_id, user_id)
+            .await?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
         let next_name = match name {
@@ -559,6 +563,21 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailNotVerified);
         }
 
+        // Transparently upgrade a stored hash whose Argon2id parameters
+        // predate the current target: the plaintext is only available here,
+        // at a successful verification. The new hash is computed before the
+        // transaction opens and applied inside it only after the locked row
+        // proves the credential did not rotate in the meantime.
+        let upgraded_password_hash = if password_hash_needs_rehash(&user.password_hash) {
+            Some(
+                hash_password_async(password.to_string())
+                    .await
+                    .map_err(AuthLifecycleError::from)?,
+            )
+        } else {
+            None
+        };
+
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, &email)
             .await?
@@ -580,6 +599,9 @@ impl AuthLifecycleService {
 
         let now = Utc::now();
         let mut user_active: users::ActiveModel = locked_user.into();
+        if let Some(upgraded_password_hash) = upgraded_password_hash {
+            user_active.password_hash = Set(upgraded_password_hash);
+        }
         user_active.last_login_at = Set(Some(now.into()));
         user_active.failed_login_count = Set(0);
         user_active.locked_until = Set(None);
@@ -619,7 +641,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(), AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user =
-            Self::find_user_for_password_change_in_tx(&tx, tenant_id, observed_user.id).await?;
+            Self::find_user_for_update_in_tx(&tx, tenant_id, observed_user.id).await?;
         if let Some(user) = user
             .filter(|u| u.password_hash == observed_user.password_hash && !Self::is_login_locked(u))
         {
@@ -673,30 +695,63 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Reserve SQLite's write lock by the unique tenant/email key
+                // before loading the account. This avoids a deferred
+                // read-then-write upgrade racing a concurrent login or
+                // credential mutation.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND email = ?2",
+                    [tenant_id.into(), normalized_email.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                        [tenant_id.into(), existing.id.into()],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
+        }
+    }
+
+    async fn find_session_by_id_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+    ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        let query = || {
+            sessions::Entity::find_by_id(session_id)
+                .filter(sessions::Column::TenantId.eq(tenant_id))
+                .filter(sessions::Column::RevokedAt.is_null())
+        };
+        match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query()
+                .lock_exclusive()
+                .one(txn)
+                .await
+                .map_err(AuthLifecycleError::from),
+            DatabaseBackend::Sqlite => {
+                // The id is already known, so reserve the SQLite write lock
+                // before reading. A concurrent refresh/logout cannot change
+                // the session between the state read and the revocation write.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND revoked_at IS NULL",
+                    [tenant_id.into(), session_id.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+                if result.rows_affected() != 1 {
+                    return Ok(None);
+                }
+                query().one(txn).await.map_err(AuthLifecycleError::from)
+            }
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
@@ -712,7 +767,7 @@ impl AuthLifecycleService {
     /// rotation when the response carrying the new cookie was lost.
     /// Resolve that digest as well, while holding the same row lock used by
     /// refresh, so a successful logout revokes the active lineage.
-    async fn find_previous_refresh_session_for_logout_in_tx(
+    async fn find_previous_refresh_session_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         token_hash: &str,
@@ -748,41 +803,32 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from)?,
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Match by digest in the write fence itself. This reserves the
+                // SQLite writer before reading the row and avoids promoting a
+                // stale deferred read transaction after another rotation.
+                let sql = if previous_hash {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND previous_token_hash = ?2 AND revoked_at IS NULL"
+                } else {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND token_hash = ?2"
+                };
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    sql,
+                    [tenant_id.into(), token_hash.to_string().into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let sql = if previous_hash {
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND previous_token_hash = ?3 AND revoked_at IS NULL"
-                    } else {
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL"
-                    };
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        sql,
-                        [
-                            tenant_id.into(),
-                            existing.id.into(),
-                            token_hash.to_string().into(),
-                        ],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        // Another rotation/revocation may have won. Never
-                        // accept a row whose candidate hash changed.
-                        return query.one(txn).await.map_err(AuthLifecycleError::from);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                None
+                query
+                    .one(txn)
+                    .await
+                    .map_err(AuthLifecycleError::from)?
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
+            _ => return Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         };
 
         Ok(session)
@@ -899,23 +945,23 @@ impl AuthLifecycleService {
         ))
     }
 
-    /// OAuth BCP refresh-token reuse detection for the in-place rotation
-    /// model: the session row remembers the hash rotated away at the
-    /// previous refresh. Presenting that hash after the grace window can
-    /// only happen if the token was copied, so the lineage is revoked.
+    /// Detect reuse of the immediately preceding refresh token. Resolve it
+    /// under the same database-specific session-row lock as refresh/logout:
+    /// without that lock, a concurrent rotation could replace the row after
+    /// this read and an ActiveModel update built from the stale snapshot could
+    /// overwrite the newer token hash or expiry while revoking the session.
     /// Older generations are not remembered and read as unknown tokens.
     async fn detect_refresh_reuse_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         token_hash: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let previous = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::PreviousTokenHash.eq(token_hash.to_string()))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .one(txn)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        let previous = Self::find_previous_refresh_session_for_update_in_tx(
+            txn,
+            tenant_id,
+            token_hash,
+        )
+        .await?;
 
         if let Some(previous) = previous {
             let within_grace = previous
@@ -960,7 +1006,7 @@ impl AuthLifecycleService {
         .await
     }
 
-    async fn find_user_for_password_change_in_tx(
+    async fn find_user_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
@@ -974,30 +1020,24 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // The key is known, so reserve SQLite's write lock before the
+                // first read. A deferred read-then-write upgrade can otherwise
+                // race another credential/profile mutation.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), user_id.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                        [tenant_id.into(), existing.id.into()],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
@@ -1007,12 +1047,13 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        let now = Utc::now();
         let query = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(Utc::now()));
+            .filter(sessions::Column::ExpiresAt.gt(now.clone()));
 
         match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query
@@ -1021,35 +1062,23 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query
-                    .clone()
-                    .one(txn)
+                // Reserve the write lock using the complete active-session
+                // predicate before loading the row that will be mutated.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
+                    [tenant_id.into(), user_id.into(), session_id.into(), now.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
-                if let Some(existing) = existing.as_ref() {
-                    let statement = Statement::from_sql_and_values(
-                        DatabaseBackend::Sqlite,
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
-                        [
-                            tenant_id.into(),
-                            user_id.into(),
-                            existing.id.into(),
-                            Utc::now().into(),
-                        ],
-                    );
-                    let result = txn
-                        .execute_raw(statement)
-                        .await
-                        .map_err(AuthLifecycleError::from)?;
-                    if result.rows_affected() != 1 {
-                        return Ok(None);
-                    }
-
-                    return query.one(txn).await.map_err(AuthLifecycleError::from);
+                if result.rows_affected() != 1 {
+                    return Ok(None);
                 }
-                Ok(None)
+                query.one(txn).await.map_err(AuthLifecycleError::from)
             }
-            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         }
     }
 
@@ -1087,7 +1116,7 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id)
+        let user = Self::find_user_for_update_in_tx(&txn, tenant_id, user_id)
             .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
@@ -1158,12 +1187,16 @@ impl AuthLifecycleService {
         let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(refresh_token);
 
-        let session = match Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
-            .await?
+        let session = match Self::find_refresh_session_for_update_in_tx(
+            &txn,
+            tenant_id,
+            &token_hash,
+        )
+        .await?
         {
             Some(session) => Some(session),
             None => {
-                Self::find_previous_refresh_session_for_logout_in_tx(&txn, tenant_id, &token_hash)
+                Self::find_previous_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
                     .await?
             }
         }
@@ -1209,12 +1242,8 @@ impl AuthLifecycleService {
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let session = sessions::Entity::find_by_id(session_id)
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        let session =
+            Self::find_session_by_id_for_update_in_tx(&tx, tenant_id, session_id).await?;
 
         // Logout stays idempotent: an unknown or already-revoked
         // session is a successful no-op and emits no event.
@@ -1498,18 +1527,21 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
-        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-        QuerySelect, Set, TransactionTrait,
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+        Set, TransactionTrait,
     };
     use serial_test::serial;
     use std::sync::atomic::Ordering;
+    use uuid::Uuid;
 
     fn test_auth_config(
         secret: &str,
         access_expiration: u64,
         refresh_expiration: u64,
     ) -> AuthConfig {
-        AuthConfig::new(secret.to_string())
+        // Token keys fail closed below 32 bytes; pad the per-test label so
+        // each test keeps a distinct secret without repeating a full key.
+        AuthConfig::new(format!("{secret}:test-only-secret-padding-for-length"))
             .with_expiration(access_expiration, refresh_expiration)
             .with_issuer("rustok-test")
             .with_audience("rustok-test")
@@ -2166,7 +2198,7 @@ mod tests {
             db.clone(),
             crate::common::settings::RustokSettings::default(),
         );
-        let config = AuthConfig::new("register-atomic-secret".to_string())
+        let config = AuthConfig::new("register-atomic-secret-key-for-tests!".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
         let result = AuthLifecycleService::register_runtime(
@@ -2210,7 +2242,7 @@ mod tests {
             .await
             .expect("failed to create user");
 
-        let config = AuthConfig::new("login-atomic-secret".to_string())
+        let config = AuthConfig::new("login-atomic-secret-key-for-tests-32b!".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
         let result = AuthLifecycleService::login_with_config(
@@ -2369,12 +2401,12 @@ mod tests {
         let tx = db.begin().await.expect("transaction");
         assert!(
             AuthLifecycleService::find_refresh_session_for_update_in_tx(&tx, tenant.id, &old_hash)
-            .await
-            .expect("current-token query")
-            .is_none()
+                .await
+                .expect("current-token query")
+                .is_none()
         );
         assert!(
-            AuthLifecycleService::find_previous_refresh_session_for_logout_in_tx(
+            AuthLifecycleService::find_previous_refresh_session_for_update_in_tx(
                 &tx,
                 Uuid::new_v4(),
                 &old_hash,
@@ -2383,7 +2415,7 @@ mod tests {
             .expect("other-tenant query")
             .is_none()
         );
-        let selected = AuthLifecycleService::find_previous_refresh_session_for_logout_in_tx(
+        let selected = AuthLifecycleService::find_previous_refresh_session_for_update_in_tx(
             &tx, tenant.id, &old_hash,
         )
         .await
@@ -2447,6 +2479,184 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_inside_grace_is_rejected_without_revoking_live_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Refresh grace tenant", "refresh-grace")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "refresh-grace@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let previous_token = "refresh-token-inside-grace";
+        let current_token = "current-refresh-token-inside-grace";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(5)).into()));
+        let session = session.insert(&db).await.expect("session");
+        let config = test_auth_config("refresh-grace-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session remains present");
+        assert!(stored.is_active());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+        assert_eq!(
+            stored.previous_token_hash,
+            Some(hash_refresh_token(previous_token))
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_after_grace_revokes_live_session_lineage() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Refresh reuse tenant", "refresh-reuse")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "refresh-reuse@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let previous_token = "refresh-token-after-grace";
+        let current_token = "current-refresh-token-after-grace";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(60)).into()));
+        let session = session.insert(&db).await.expect("session");
+        let config = test_auth_config("refresh-reuse-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session remains as revocation evidence");
+        assert!(!stored.is_active());
+        assert!(stored.revoked_at.is_some());
+        assert!(stored.previous_token_hash.is_none());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_revocation_failure_is_propagated_without_false_success() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "Refresh reuse failure tenant",
+            "refresh-reuse-failure",
+        )
+        .insert(&db)
+        .await
+        .expect("tenant");
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "refresh-reuse-failure@example.com",
+            "hash",
+        )
+        .insert(&db)
+        .await
+        .expect("user");
+        let previous_token = "refresh-token-revocation-failure";
+        let current_token = "current-refresh-token-revocation-failure";
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(current_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.previous_token_hash = Set(Some(hash_refresh_token(previous_token)));
+        session.previous_token_revoked_at =
+            Set(Some((Utc::now() - Duration::seconds(60)).into()));
+        let session = session.insert(&db).await.expect("session");
+
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_refresh_reuse_revocation
+             BEFORE UPDATE ON sessions
+             WHEN NEW.revoked_at IS NOT NULL
+             BEGIN
+                 SELECT RAISE(ABORT, 'simulated refresh-reuse revocation failure');
+             END;",
+        )
+        .await
+        .expect("install revocation failure trigger");
+        let config = test_auth_config("refresh-reuse-failure-secret", 600, 3600);
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            previous_token,
+            false,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::Internal(_))
+        ));
+        db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
+            .await
+            .expect("remove revocation failure trigger");
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session after failed revocation")
+            .expect("session remains present");
+        assert!(stored.is_active());
+        assert_eq!(stored.token_hash, hash_refresh_token(current_token));
+        assert_eq!(
+            stored.previous_token_hash,
+            Some(hash_refresh_token(previous_token))
+        );
     }
 
     #[tokio::test]
@@ -2873,6 +3083,57 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn logout_by_session_id_revokes_under_lock_and_is_idempotent() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Logout by session id", "logout-by-session-id")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "logout-by-id@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token("logout-by-id-refresh-token"),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("session");
+
+        AuthLifecycleService::logout_db(&db, tenant.id, session.id)
+            .await
+            .expect("logout active session");
+
+        let revoked = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read revoked session")
+            .expect("session remains as revocation evidence");
+        let revoked_at = revoked.revoked_at.expect("session was revoked");
+        assert_eq!(
+            revoked.token_hash,
+            hash_refresh_token("logout-by-id-refresh-token"),
+            "logout must not overwrite the current token digest"
+        );
+
+        AuthLifecycleService::logout_db(&db, tenant.id, session.id)
+            .await
+            .expect("repeated logout is idempotent");
+        let after_repeat = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session after repeated logout")
+            .expect("session remains present");
+        assert_eq!(after_repeat.revoked_at, Some(revoked_at));
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn logout_with_previous_cookie_revokes_the_rotated_active_session() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Lost refresh response", "lost-refresh-response")
@@ -2912,7 +3173,7 @@ mod tests {
 
         assert!(matches!(
             AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie)
-            .await,
+                .await,
             Err(AuthLifecycleError::InvalidRefreshToken)
         ));
     }

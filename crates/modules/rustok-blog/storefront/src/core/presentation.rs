@@ -405,7 +405,6 @@ pub fn published_post_card_view(input: PublishedPostCardInput<'_>) -> PublishedP
 
 /// Extracts a draft preview token from a URL fragment (e.g. `#token=…` or `token=…`).
 /// Returns `None` if the fragment does not contain a non-empty `token` parameter.
-#[allow(dead_code)]
 pub fn parse_preview_token_from_fragment(fragment: &str) -> Option<String> {
     let raw = fragment.trim().strip_prefix('#').unwrap_or(fragment.trim());
     if raw.is_empty() {

@@ -96,15 +96,12 @@ pub fn page_for_route_segment(
     route_segment: &str,
     enabled_modules: Option<&HashSet<String>>,
 ) -> StorefrontPageLookup {
-    let page = page_registry()
-        .read()
-        .ok()
-        .and_then(|guard| {
-            guard
-                .iter()
-                .find(|page| page.route_segment == route_segment)
-                .cloned()
-        });
+    let page = page_registry().read().ok().and_then(|guard| {
+        guard
+            .iter()
+            .find(|page| page.route_segment == route_segment)
+            .cloned()
+    });
 
     let Some(page) = page else {
         return StorefrontPageLookup::Missing;

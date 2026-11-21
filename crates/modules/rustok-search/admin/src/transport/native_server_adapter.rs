@@ -751,7 +751,7 @@ async fn update_search_settings_native(
         .map_err(ServerFnError::new)?;
 
         let event_bus = app_ctx.transactional_event_bus()?;
-        let _ = event_bus
+        if let Err(publish_err) = event_bus
             .publish(
                 tenant.id,
                 Some(auth.user_id),
@@ -761,7 +761,10 @@ async fn update_search_settings_native(
                     changed_by: auth.user_id,
                 },
             )
-            .await;
+            .await
+        {
+            tracing::warn!(error = %publish_err, "Failed to publish SearchSettingsChanged domain event");
+        }
 
         Ok(map_search_settings_payload(settings))
     }
@@ -822,7 +825,7 @@ async fn trigger_search_rebuild_native(
             )
             .await
             .map_err(ServerFnError::new)?;
-        let _ = event_bus
+        if let Err(publish_err) = event_bus
             .publish(
                 tenant.id,
                 Some(auth.user_id),
@@ -832,7 +835,10 @@ async fn trigger_search_rebuild_native(
                     queued_by: auth.user_id,
                 },
             )
-            .await;
+            .await
+        {
+            tracing::warn!(error = %publish_err, "Failed to publish SearchRebuildQueued domain event");
+        }
 
         Ok(TriggerSearchRebuildPayload {
             success: true,
@@ -1457,7 +1463,7 @@ async fn finalize_search_result(
             ))
         }
         Err(error) => {
-            let _ = record_search_query_log(
+            let _query_log_id = record_search_query_log(
                 db,
                 surface,
                 search_query,

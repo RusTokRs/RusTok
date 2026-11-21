@@ -15,12 +15,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 [lib]
 crate-type = ["rlib"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
-hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
+hydrate = ["leptos/hydrate"]
 ssr = [
     "leptos/ssr",
-  "rustok-auth-ui/ssr",
     "dep:leptos_axum",
     "dep:rustok-core",
     "dep:rustok-outbox",
@@ -34,7 +36,6 @@ ssr = [
 rustok-ui-core.workspace = true
 async-graphql.workspace = true
 leptos.workspace = true
-rustok-auth-ui.workspace = true
 leptos-ui-routing.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
@@ -55,5 +56,3 @@ uuid.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 
-[package.metadata.cargo-udeps.ignore]
-normal = ["rustok-auth-ui"]

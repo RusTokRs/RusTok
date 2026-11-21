@@ -15,11 +15,11 @@ The cross-component sequence and completion rules are defined by the
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
 - Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`, `m20261102_000090_journal_uuid_uniqueness`, `m20261103_000091_tenant_identity_indexes`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`, `m20261102_000090_journal_uuid_uniqueness`, `m20261103_000091_tenant_identity_indexes`, `m20261117_000092_delivery_claim_tokens`, `m20261117_000093_settings_claim_fences`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
-- N/N+1 compatibility: Durable intent journal before CAS mutations; CAS-protected receipts; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Bounded migration plan digest verification.
+- N/N+1 compatibility: Durable intent journal before CAS mutations; CAS-protected receipts; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Bounded migration plan digest verification. **Compatibility gap:** claim-fencing migrations `000092`/`000093` do not support mixed old/new workers or writers; all legacy static aggregate claims must be reconciled before `000093`. Neither migration permits automatic downgrade. The cross-owner aggregate guard and its tests are source-wired but unverified; an approved compatible rollout strategy and Rust/PostgreSQL/RLS/concurrency verification remain release blockers.
 - External side effects & fences: Monotonic release-security epoch checks and owner operation locks (`derive_canonical_conflict_keys`, `fleet_operations_tool`) exist; terminal production traffic/job/write fences and fleet convergence evidence remain incomplete. Queue-drain contracts and retired-generation rejection do not by themselves prove production fencing.
 - Uncertain-outcome recovery: `DataBackfillCoordinator` remains a memory-store prototype without production persistence or verified uncertain-outcome reconciliation; `ReleaseAdmissionIntentJournal` recovery scan and single-attempt predecessor recovery for operations tools have separate owner evidence. Durable backfill integration remains required.
 - Responsible module owner: Platform Foundation Team
@@ -126,6 +126,25 @@ and retry completion resolve atomically. Artifact settings writers still lack a
 shared lifecycle fence. The reviewed enabled comparison also needs
 the complete effective policy rather than defaulted tenant intent.
 
+Static normalized, localized settings and source-locale commands retain
+processing receipts on uncertain claim or cleanup, and do not release claims or
+finalize receipts after rollback failure. Static normalized settings explicitly
+roll back before cleanup on tenant-scope setup failure, and retain the request
+fingerprint after retryable errors; locale writes retain it for database errors.
+The shared receipt lease still reclaims processing after five minutes, but
+settings now lock the receipt before aggregate acquisition, mutation and cleanup.
+A durable fence relates a receipt to its aggregate lease token, so exact reclaim
+can transfer only its own claim and cannot accept a journal or another settings
+namespace merely because the caller UUID matches. Unknown or expired journal
+claims are not stolen by settings. A predecessor with an old receipt token
+cannot acquire, mutate or clean up after reclaim. Legacy active claims are not
+identifiable this way: migration `000093` requires all old writers stopped and
+active claims reconciled before it proceeds. Mixed-version rollout and automatic
+downgrade are not supported, leaving a release-compatibility gap. The new Rust
+regressions are unrun; PostgreSQL/RLS, crash and concurrent-reclaim/rollback
+verification is still needed. External side effects and static rollout/schema
+fences are separate concerns.
+
 The server lifecycle tests using real SQLite migrations exposed a UUID storage
 mismatch: SeaORM/SQLx writes tenant IDs as blobs while parts of the module
 control plane bind hyphenated text. Lifecycle aggregate and `tenant_modules`
@@ -203,15 +222,25 @@ this rule. This paragraph records implementation state, not a new compile or
 test claim.
 
 Interactive artifact-binding receipts are not an exactly-once side-effect
-fence. Their 60-second pending lease can expire at the declared maximum
-binding execution timeout; an ambiguous execution error can also cause the host
-to delete the pending receipt before a same-key retry. The host now logs a
-failure to abandon, but no fenced executor or guest-visible reconciliation
-contract exists to establish whether side effects occurred. Keep this as an
-open recovery design gate: do not claim crash-safe replay or change pending
-claim reset/recovery semantics until the ambiguous-outcome boundary is
-reconciled. See the `Known limitation / pending implementation` note in the
-module README.
+fence. Their advisory 60-second pending lease can expire at the declared maximum
+binding execution timeout. Expiry and ambiguous execution failures park the
+receipt for reconciliation; neither deletes it nor permits a second execution.
+The original operation may still commit its proven result after expiry, matched
+by exact operation and request identity. A future reconciliation workflow must
+fence late completion before acting. No fenced executor or guest-visible
+reconciliation contract yet establishes whether side effects occurred after
+process loss. Crash-safe replay and effect-owner reconciliation remain open.
+
+## Numeric setting boundary follow-up
+
+The source compares integer JSON values exactly against represented finite `f64`
+bounds and rejects an out-of-range `2^64` floating integer. Integer schemas
+reject `f64` bounds with absolute value at least 2^53, where the declared value
+may already have rounded before owner validation. This is deliberately
+conservative and also rejects exactly representable large bounds. Schema bounds
+remain `f64`, so an exact schema-boundary contract and migration across manifest
+and UI projections remain open. The added owner tests require execution with the Rust toolchain; they do not
+establish runtime evidence.
 
 ## Current verification evidence
 
@@ -601,12 +630,145 @@ routes in `artifact_runtime.rs` on `ArtifactCapabilityBrokerResolverRouter`. Ver
 
 On 2026-09-02, the fail-closed `ModuleEffectivePolicyCache` and revision-dependent
 caching were delivered. `crates/modules/rustok-modules` implements `ModuleEffectivePolicyCache`
-validating each cache lookup against `EffectivePolicyCacheIdentity::matches` with
+with revision-matching lookups and separate unchecked `get_latest` lookups, plus
 explicit invalidation APIs (`invalidate_tenant`, `invalidate_if_stale`, `apply_transition_event`).
 `apps/server` integrated the cache into `ServerRuntimeContext` and `EffectiveModulePolicyService`
-via `resolve_snapshot_cached` and `resolve_cached`. All 5 tests in
+via the then-current cached snapshot and policy paths. All 5 tests in
 `crates/modules/rustok-modules/tests/policy_cache_tests.rs` passed with 0 warnings. Server checks,
 Next Admin typecheck/lint, the write-path verifier, and UI i18n parity all passed.
+
+The later local cache audit adds a process-wide invalidation generation to fence
+in-flight server fills and revalidate hits, with three attempts before returning
+an error. A simultaneous fresh fill wins over later completions; unrelated tenant
+events can also force a retry. TTL uses monotonic time. The server cache now
+returns only policy; consumers needing defaults use uncached resolution, passing
+the same manifest defaults to policy construction. This is not a current-revision
+check, a distributed invalidation guarantee, or a database transaction. The
+legacy unconditional `insert` is not safe for asynchronous owner reads.
+Deterministic cache and server retry tests are added but require Rust compilation
+and execution.
+
+Artifact admission and non-lifecycle runtime revalidation now require matching
+artifact definition and installation facts instead of accepting a static
+same-slug decision. This deliberately denies server artifact bindings until
+its policy resolver is composed with the artifact-aware catalog and runtime
+inputs; lifecycle hook admission is separate. Tests cover same-slug denial,
+release and installation mismatch, tenant scope, and runtime revalidation, but
+need Rust execution and end-to-end server coverage.
+
+Artifact installation resolution now selects the enabled tenant/platform winner
+by slug before testing the requested release; this closes the case where a
+platform version was selectable despite a different tenant version shadowing it.
+Single, exact, and batched callers share the same selector; duplicate winning
+scope entries are errors. The bounded per-slug SQL selection was exercised with
+SQLite fixtures, while the new Rust integration tests and PostgreSQL/RLS checks
+remain unrun. Lifecycle-hook dispatch also uses this selector, so hooks for a
+shadowed release fail closed; rollout/transition effects require integration
+verification. Static lifecycle hooks now check and renew an unexpired exact
+claim before dispatch and after a successful return; heartbeat no longer revives
+an already expired or missing timestamp. Revision advance now rejects expired
+claims. The existing post-hook retry completion path resolves both journal entries
+and releases the exact live claim in one transaction, but new retry/compensation
+is now disabled until original executor identity and external quiescence can be
+proved; old committed retry receipts remain replayable. Lifecycle completion
+checks its live claim inside the success transaction. The live predicate is
+checked at statement time, not commit time. Added SQLite claim, rollback, hook,
+and recovery tests are not yet run. This is not external-effect fencing: a hook can continue after
+lease expiry, and cancelling its future cannot prove remote side effects stopped.
+The watchdog and new journal claimants retain expired claims instead of releasing
+or reclaiming them. Uncertain hook and commit paths retain their claims too.
+This is fail-closed, not an automated recovery mechanism: quiescence evidence,
+reconciliation and node-action fencing remain open. The raw toggle executor and
+journal mutations are now owner-private (fixture-only mutation wrappers require
+`test-support`); this closes an in-process API bypass, not the legacy uncertainty
+hole. The following pieces are still required before recovery can be enabled:
+
+1. Persist immutable execution identity and the no-dispatch/dispatch boundary
+   with the journal and aggregate claim, atomically under the platform slug lock.
+   An absent marker, `failed` status, or an expired lease is not evidence that
+   no hook ran. Existing `record_idempotent` precedes claim admission, so a scan
+   of journal rows alone cannot safely distinguish a concurrent new record from
+   an uncertain legacy operation. Migrate legacy rows conservatively and define
+   the transaction/lock order and SQLite UUID and PostgreSQL RLS behavior before
+   using the new evidence for admission. Preserve read-only idempotent replay.
+2. All toggle, settings, serving/staging and rollout admissions must consult the
+   same complete evidence under a compatible fence. Fail closed when evidence or
+   cross-tenant visibility is incomplete; do not silently backfill a legacy
+   uncertain operation as never dispatched. Snapshot and validate the complete
+   relevant dependency and policy closure, not just the target artifact.
+3. Establish a trusted execution boundary whose durable receipts bind the exact
+   attempt, executor incarnation, payload and external effects. Reconciliation
+   must prove every delegated effect has terminated or is fenced and must commit
+   the resulting journal/claim transition atomically. A future cancellation,
+   operator flag, missing heartbeat or manual claim deletion is not such proof.
+   Rollout/node actions need an equivalent execution fence, not merely lease CAS.
+4. Test crash and commit-ambiguity windows, concurrent admission and old writers,
+   identity/RLS variants, external execution and reconciliation end to end on
+   both supported backends. Deployment must first quiesce incompatible binaries.
+
+Equivalent SQL was run on
+an isolated PostgreSQL 18.6 server with separate sessions: heartbeat and both
+journal/settings advances rejected claims that expired during a row-lock wait,
+and the settings write rolled back; platform slug-lock waiters saw the preceding
+claim or checkpoint after commit. A separate RLS experiment demonstrated a
+hidden platform checkpoint and confirmed that the new visibility query takes a
+table lock that prevents concurrent RLS DDL until commit. Artifact selection
+visibility acquired locks on all four guarded tables. These experiments do not
+run the Rust/SeaORM paths; their regressions and full PostgreSQL concurrency
+coverage remain unrun. A SQLite SQL model reproduced starvation in the old
+fixed-order bounded reaper. The server now retains an ID-ordered cursor across
+bounded pages and wraps at the end, even when pages have no changes. Cursors
+advance only on commit and restart on process restart; a failed page is retried
+and an indefinitely locked row, a persistent data error or an indefinitely
+growing tail can still impede coverage. The one-shot reaper does not retain a
+cursor. ID ordering gives up oldest/active-first priority, and a page limit does
+not bound scan or sort cost. SQLite identity checks and PostgreSQL
+operation-before-claim locking remain in the page transaction. The SQLite
+reaper rechecks each operation's exact ID and tenant through `find` before
+mutating or releasing; direct status/discard/recovery/result statements check
+ID uniqueness, supported key encodings and tenant consistency in the same
+SQLite statement. A SQLite SQL model reproduced a cross-tenant wrong-row update
+without the prior fence. The exact new SQL was exercised against supported and
+corrupt identities and in a two-connection stale-read/WAL model; these do not
+exercise the Rust implementation or prove caller authorization. The new Rust
+tests and real PostgreSQL concurrent-worker coverage are still unrun. Artifact tenant lifecycle and admission reverification no longer discard
+`InterventionRequired` checkpoints just because automatic progression is
+terminal; isolated helper and lifecycle regressions were added but not run.
+The checkpoint-creation read/write race remains open because not every creator
+shares the activation locks. SQLite tenant-scoped checkpoint lookups also bind
+native UUIDs and can silently omit legacy TEXT tenant IDs; a SQLite model
+reproduced this, and the fail-closed owner fix and ignored regression remain
+open. Event and schedule projections now use the same order-independent
+scope and ambiguity selector before decoding descriptors. A corrupt tenant
+winner cannot resurrect a platform fallback. Selected descriptors now must match
+the installation slug, version and payload digest and the admission payload
+digest; this is checked before binding filtering. New event and schedule
+identity-mismatch regression tests are unrun. An invalid or ambiguous winner
+causes event projection to fail before publishing or enqueueing, rather than
+marking a potentially subscribed source dispatched; unrelated events can be
+blocked, and the finite-retry relay eventually moves failures to the DLQ for
+operator recovery. The schedule materializer warns and omits only the affected
+slug; an unseen schedule initializes its cursor at first materialization, so
+omitted slots are not guaranteed to be replayed. New selector permutation,
+SQLite projection, transport, and 10,000/10,001 candidate-boundary tests are
+not yet run. Event enqueue now requires the conflicting delivery to match the
+requesting tenant before replay; a cross-tenant collision in the globally unique
+source/binding identity fails rather than acknowledging another tenant's row,
+including under an RLS-bypassing role. Its SQLite regression test is also unrun;
+PostgreSQL conflict behavior under RLS still needs verification. Both queries now apply a 10,001-row SQL sentinel limit and reject
+overflow before event publication or schedule cursor writes; this bounds row
+transfer but not descriptor bytes or database scan work. Event overflows can
+exhaust relay retries and need DLQ recovery. This is not complete cross-path
+parity: runtime checks the full installed artifact, whereas projections and
+delivery queues now validate only the descriptor and selected identity columns.
+Event and schedule enqueue and schedule claim use the shared identity check;
+event claim repeats it when decoding the work item. Corrupt descriptor/identity
+is treated as a storage error, so claim rollback retains pending work rather
+than cancelling it; a poison row can stall the tenant queue until repair.
+The new SQLite enqueue/claim recovery test is unrun. Projection, queue and
+dispatch do not share a fenced snapshot. Direct cross-path, PostgreSQL/RLS and
+concurrency tests remain needed. Catalog enumeration, artifact-aware server composition, worker
+health inputs, and a transactionally consistent multi-owner snapshot remain open.
 
 On 2026-09-02, caller-selected migration rollback mode was removed from
 `ArtifactRollbackRequest` and `apps/server` GraphQL mutation `rollbackTenantArtifact`,
@@ -963,10 +1125,12 @@ Important intermediate limitations that must not be mistaken for the target:
   command responses map those owner-issued facts directly and never reload
   `tenant_modules` or `module_operations` server models after the command.
   The owner now applies one `module_static_tenant_lifecycle` aggregate to
-static toggles, normalized settings, post-hook retry, and compensation:
-every command is tenant-matched-context/revision bound, claims the
-aggregate before work, advances its revision only in the durable state
-transaction, and releases the claim on all terminal paths. Settings complete
+static toggles and normalized settings, and was also designed for post-hook
+retry and compensation, which are currently disabled without original identity
+and quiescence evidence. Commands are tenant-matched-context/revision bound,
+claim the aggregate before work, and advance its revision only in the durable
+state transaction. Uncertain lifecycle claims remain fenced rather than being
+released on every terminal status. Settings complete
 an exact owner-operation receipt in that same transaction. A replay of a
 terminal settings failure preserves its typed snapshot, disabled-module, or
 revision conflict rather than collapsing into a generic host error, while
@@ -1409,14 +1573,21 @@ lifecycle snapshot as `modules:read` and all tenant lifecycle mutations,
 including enablement, as `modules:manage` before resolver execution. The owner
 facade remains the second authorization boundary. The same guard classifies the
 composition snapshot as read and marketplace registry freshness as manage,
-matching those resolver/owner boundaries. `enabledModules`, the tenant
-availability projection consumed by admin navigation, is read-gated at both
-layers.
+matching those resolver/owner boundaries. The current `enabledModules` tenant
+availability list, also consumed by storefronts, is not read-gated by that module
+permission guard or its resolver; it is capped at 100 without completeness. Next
+Admin can use the existing complete `moduleEffectivePolicy` read at the cap if
+the actor has module-read authority; public storefronts and other actors still
+need a complete appropriately authorized projection. Any future paginated
+projection needs a fence over the actual enabled decisions, not just the durable
+`policyRevision`: executor liveness is intentionally excluded from that digest
+but can change the enabled result.
 
 Focused server verification for this transport slice passed
 `cargo check --locked -p rustok-server`, the six `module_security` library
 tests (covering the lifecycle snapshot, all five lifecycle mutations,
-composition snapshot, registry freshness, and enabled-module availability),
+composition snapshot and registry freshness; the enabled-module availability
+classification assertion instead confirms that `enabledModules` is not guarded),
 and the lifecycle conflict redaction unit test. These are package-scoped checks; no workspace-wide
 compilation or test run is claimed.
 

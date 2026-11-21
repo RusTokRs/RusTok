@@ -103,8 +103,7 @@ pub(super) fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64)
         comments: public_comments,
         comments_page,
     };
-    let serialized_discussion = serde_json::to_string(&discussion)
-        .expect("Blog discussion contains only serializable owner DTO values");
+    let serialized_discussion = serde_json::to_string(&discussion).unwrap_or_default();
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">

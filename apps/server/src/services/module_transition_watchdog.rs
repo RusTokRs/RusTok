@@ -57,6 +57,9 @@ pub fn spawn_module_transition_watchdog_handle(
     let join_handle = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // Keep the last committed page across ticks, including no-op pages.
+        // A restart begins a new cycle; failed pages are retried in place.
+        let mut reaper_cursor = None;
 
         loop {
             tokio::select! {
@@ -76,29 +79,32 @@ pub fn spawn_module_transition_watchdog_handle(
                         "Evaluating module lifecycle watchdogs"
                     );
 
-                    match ModuleOperationJournal::reap_stale(
+                    match ModuleOperationJournal::reap_stale_page(
                         &db,
                         MAX_STALE_MODULE_OPERATIONS_PER_REAP,
+                        reaper_cursor.as_ref(),
                     )
                     .await
                     {
-                        Ok(report) if report.has_changes() => {
-                            info!(
-                                worker = "module_transition_watchdog",
-                                instance_id,
-                                scanned = report.scanned,
-                                orphaned = report.orphaned,
-                                committed_hook_unknown = report.committed_hook_unknown,
-                                released_claims = report.released_claims,
-                                "Reconciled stale module lifecycle operations"
-                            );
+                        Ok((report, next_cursor)) => {
+                            reaper_cursor = next_cursor;
+                            if report.has_changes() {
+                                info!(
+                                    worker = "module_transition_watchdog",
+                                    instance_id,
+                                    scanned = report.scanned,
+                                    orphaned = report.orphaned,
+                                    committed_hook_unknown = report.committed_hook_unknown,
+                                    released_claims = report.released_claims,
+                                    "Reconciled stale module lifecycle operations"
+                                );
+                            }
                         }
-                        Ok(_) => {}
                         Err(err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_operation_reconciliation_failed",
                                 "Stale module lifecycle operation reconciliation failed"
                             );
                         }
@@ -116,11 +122,11 @@ pub fn spawn_module_transition_watchdog_handle(
                             );
                         }
                         Ok(_) => {}
-                        Err(err) => {
+                        Err(_err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_retention_reconciliation_failed",
                                 "Expired module retention hold reconciliation failed"
                             );
                         }
@@ -140,11 +146,11 @@ pub fn spawn_module_transition_watchdog_handle(
                             }
                         }
                         Ok(_) => {}
-                        Err(err) => {
+                        Err(_err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_transition_watchdog_evaluation_failed",
                                 "Transition watchdog evaluation failed"
                             );
                         }

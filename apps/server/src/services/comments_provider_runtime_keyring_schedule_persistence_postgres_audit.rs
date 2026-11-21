@@ -182,8 +182,11 @@ impl PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
             .spawn(move || {
                 let runtime = match Builder::new_current_thread().enable_all().build() {
                     Ok(runtime) => runtime,
-                    Err(_) => {
-                        let _ = startup_sender.send(PostgresAuditWorkerStartup::Failed);
+                    Err(error) => {
+                        tracing::error!(%error, "Failed to initialize Postgres audit worker Tokio runtime");
+                        if startup_sender.send(PostgresAuditWorkerStartup::Failed).is_err() {
+                            tracing::warn!("Failed to notify startup receiver of Postgres audit worker runtime failure");
+                        }
                         return;
                     }
                 };
@@ -282,14 +285,18 @@ fn run_postgres_audit_store_worker(
         match command {
             PostgresAuditStoreCommand::VerifyCurrent { expected, response } => {
                 let result = runtime.block_on(verify_current_on_postgres(&database, &expected));
-                let _ = response.send(result);
+                if response.send(result).is_err() {
+                    tracing::debug!("Caller dropped verify_current response receiver");
+                }
             }
             PostgresAuditStoreCommand::BootstrapEmpty {
                 candidate,
                 response,
             } => {
                 let result = runtime.block_on(bootstrap_empty_on_postgres(&database, &candidate));
-                let _ = response.send(result);
+                if response.send(result).is_err() {
+                    tracing::debug!("Caller dropped bootstrap_empty response receiver");
+                }
             }
             PostgresAuditStoreCommand::CompareAndStoreWithAudit {
                 expected,
@@ -300,7 +307,9 @@ fn run_postgres_audit_store_worker(
                 let result = runtime.block_on(compare_and_store_with_audit_on_postgres(
                     &database, &expected, &candidate, &audit,
                 ));
-                let _ = response.send(result);
+                if response.send(result).is_err() {
+                    tracing::debug!("Caller dropped compare_and_store_with_audit response receiver");
+                }
             }
         }
     }

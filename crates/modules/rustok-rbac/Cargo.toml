@@ -34,6 +34,9 @@ tokio.workspace = true
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
 
+[lints]
+workspace = true
+
 [[test]]
 name = "role_crud_invariants"
 required-features = ["graphql"]

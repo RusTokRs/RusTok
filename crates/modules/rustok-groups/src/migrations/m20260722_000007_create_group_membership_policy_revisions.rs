@@ -10,11 +10,10 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DbBackend::Postgres => postgres_up(manager).await,
             DbBackend::Sqlite => sqlite_up(manager).await,
-            DbBackend::MySql => Err(DbErr::Migration(
+            DbBackend::MySql | _ => Err(DbErr::Migration(
                 "Groups membership policy revision history supports PostgreSQL and SQLite only"
                     .to_string(),
             )),
-            _ => unreachable!("unsupported SeaORM database backend"),
         }
     }
 
@@ -22,8 +21,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DbBackend::Postgres => postgres_down(manager).await,
             DbBackend::Sqlite => sqlite_down(manager).await,
-            DbBackend::MySql => Ok(()),
-            _ => unreachable!("unsupported SeaORM database backend"),
+            DbBackend::MySql | _ => Ok(()),
         }
     }
 }

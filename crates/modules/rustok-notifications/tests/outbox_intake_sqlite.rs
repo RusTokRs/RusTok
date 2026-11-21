@@ -8,7 +8,8 @@ use rustok_notifications::entities::source_inbox;
 use rustok_notifications::{
     MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, NotificationError,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeWorker, NotificationResult,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort,
+    NotificationOutboxIntakeWorker, NotificationResult,
     NotificationsModule,
 };
 use sea_orm::{
@@ -60,6 +61,115 @@ impl NotificationOutboxEnvelopeDecoder for FakeDecoder {
         )
         .map_err(|_| NotificationError::InvalidEvent)
     }
+}
+
+#[derive(Debug)]
+struct TestOutboxReceiptPort {
+    fail: bool,
+}
+
+#[async_trait::async_trait]
+impl NotificationOutboxIntakeReceiptPort for TestOutboxReceiptPort {
+    async fn acknowledge_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        consumer_key: &str,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> NotificationResult<()> {
+        if self.fail {
+            return Err(NotificationError::Database(sea_orm::DbErr::Custom(
+                "simulated outbox acknowledgement failure".to_string(),
+            )));
+        }
+        transaction
+            .execute_unprepared(&format!(
+                "INSERT OR IGNORE INTO test_outbox_consumer_receipts \
+                 (outbox_event_id, consumer_key, event_type) \
+                 VALUES ('{outbox_event_id}', '{consumer_key}', '{event_type}')"
+            ))
+            .await?;
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+    let accepted_id = Uuid::new_v4();
+    let source_event_id = Uuid::new_v4();
+    insert_outbox_event(
+        &db,
+        accepted_id,
+        1,
+        serde_json::json!({
+            "tenant_id": tenant_id,
+            "source_event_id": source_event_id,
+            "source_revision": 1,
+        }),
+        1,
+    )
+    .await;
+    let worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 8)
+        .expect("worker")
+        .with_receipt_port(
+            "test.notifications",
+            Arc::new(TestOutboxReceiptPort { fail: false }),
+        )
+        .expect("receipt port");
+    let accepted = worker
+        .process_outbox_event(accepted_id)
+        .await
+        .expect("accepted receipt and outbox acknowledgement commit together");
+    assert!(matches!(accepted, NotificationOutboxIntakeOutcome::Accepted(_)));
+    let ack_count: i64 = db
+        .query_one(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*) AS count FROM test_outbox_consumer_receipts".to_string(),
+        ))
+        .await
+        .expect("ack query")
+        .expect("ack row")
+        .try_get("", "count")
+        .expect("ack count");
+    assert_eq!(ack_count, 1);
+
+    let rejected_id = Uuid::new_v4();
+    insert_outbox_event(
+        &db,
+        rejected_id,
+        1,
+        serde_json::json!({"permanent_invalid": true}),
+        2,
+    )
+    .await;
+    let failing_worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 8)
+        .expect("worker")
+        .with_receipt_port(
+            "test.notifications",
+            Arc::new(TestOutboxReceiptPort { fail: true }),
+        )
+        .expect("receipt port");
+    let error = failing_worker
+        .process_outbox_event(rejected_id)
+        .await
+        .expect_err("ack failure must roll back the permanent rejection");
+    assert!(error.is_retryable());
+    assert_eq!(
+        db.query_one(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*) AS count FROM notification_outbox_intake_rejections".to_string(),
+        ))
+        .await
+        .expect("rejection query")
+        .expect("rejection row")
+        .try_get::<i64>("", "count")
+        .expect("rejection count"),
+        0,
+        "the notification rejection must not commit without its Outbox acknowledgement"
+    );
 }
 
 #[tokio::test]
@@ -242,6 +352,12 @@ async fn setup() -> DatabaseConnection {
             schema_version INTEGER NOT NULL,
             payload TEXT NOT NULL,
             created_at TEXT NOT NULL
+        );
+        CREATE TABLE test_outbox_consumer_receipts (
+            outbox_event_id TEXT NOT NULL,
+            consumer_key TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            PRIMARY KEY (outbox_event_id, consumer_key)
         );
         "#,
     )

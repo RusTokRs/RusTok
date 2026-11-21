@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -106,12 +107,57 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                adapt_reversal_events(instance_id, &reversal_backfill).await;
-                sweep_reversal_events(instance_id, &reversal_events).await;
-                sweep_paid_events(instance_id, &paid_events).await;
+                // A durable sweep is not cancelled mid-operation, but a stop
+                // signal must prevent admission of subsequent recovery phases.
+                if !run_recovery_phases(
+                    &stop_rx,
+                    || adapt_reversal_events(instance_id, &reversal_backfill),
+                    || sweep_reversal_events(instance_id, &reversal_events),
+                    || sweep_paid_events(instance_id, &paid_events),
+                )
+                .await
+                {
+                    tracing::info!(
+                        worker = "marketplace_financial_recovery",
+                        instance_id,
+                        "Worker stopped between durable recovery phases"
+                    );
+                    return;
+                }
             }
         }
     }
+}
+
+/// Preserve the current durable operation after shutdown, but never start
+/// another external recovery phase once the stop signal has been observed.
+async fn run_recovery_phases<A, AF, R, RF, P, PF>(
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
+    adapt: A,
+    reversal: R,
+    paid: P,
+) -> bool
+where
+    A: FnOnce() -> AF,
+    AF: Future<Output = ()>,
+    R: FnOnce() -> RF,
+    RF: Future<Output = ()>,
+    P: FnOnce() -> PF,
+    PF: Future<Output = ()>,
+{
+    if *stop_rx.borrow() {
+        return false;
+    }
+    adapt().await;
+    if *stop_rx.borrow() {
+        return false;
+    }
+    reversal().await;
+    if *stop_rx.borrow() {
+        return false;
+    }
+    paid().await;
+    !*stop_rx.borrow()
 }
 
 async fn adapt_reversal_events(
@@ -134,11 +180,11 @@ async fn adapt_reversal_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_provider_reversal_adaptation_failed",
                 "Marketplace provider reversal adaptation failed"
             );
         }
@@ -162,11 +208,11 @@ async fn sweep_reversal_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_reversal_recovery_sweep_failed",
                 "Marketplace reversal recovery sweep failed"
             );
         }
@@ -190,11 +236,11 @@ async fn sweep_paid_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_paid_event_recovery_sweep_failed",
                 "Marketplace paid-event recovery sweep failed"
             );
         }
@@ -204,6 +250,53 @@ async fn sweep_paid_events(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn simulated_recovery_cycle(stop_during: Option<u8>) -> (bool, Vec<u8>) {
+        use std::sync::{Arc, Mutex};
+
+        let (stop, stop_rx) = crate::services::stop_handle::StopHandle::new();
+        let phases = Arc::new(Mutex::new(Vec::new()));
+        if stop_during == Some(0) {
+            stop.stop().await;
+        }
+        let make_phase = |phase: u8| {
+            let stop = stop.clone();
+            let phases = Arc::clone(&phases);
+            move || async move {
+                phases.lock().expect("phase recorder lock").push(phase);
+                if stop_during == Some(phase) {
+                    stop.stop().await;
+                }
+            }
+        };
+        let completed = run_recovery_phases(
+            &stop_rx,
+            make_phase(1),
+            make_phase(2),
+            make_phase(3),
+        )
+        .await;
+        let recorded = phases.lock().expect("phase recorder lock").clone();
+        (completed, recorded)
+    }
+
+    #[tokio::test]
+    async fn recovery_finishes_current_operation_but_never_admits_next_after_stop() {
+        for (stop_during, expected_phases, expected_completed) in [
+            (Some(0), vec![], false),
+            (Some(1), vec![1], false),
+            (Some(2), vec![1, 2], false),
+            (Some(3), vec![1, 2, 3], false),
+            (None, vec![1, 2, 3], true),
+        ] {
+            let (completed, phases) = simulated_recovery_cycle(stop_during).await;
+            assert_eq!(phases, expected_phases, "stop during phase {stop_during:?}");
+            assert_eq!(
+                completed, expected_completed,
+                "cycle completion after stop during phase {stop_during:?}"
+            );
+        }
+    }
 
     #[test]
     fn worker_contract_is_bounded() {

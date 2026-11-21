@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 
@@ -52,8 +55,10 @@ leptos-ui-routing.workspace = true
 rustok-seo-panel.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+tracing.workspace = true
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+tracing.workspace = true
 toml.workspace = true

@@ -4,64 +4,21 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
-#[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[cfg(feature = "mod-seo")]
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
-/// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
-#[derive(Clone)]
-pub struct StopHandle {
-    stop_tx: tokio::sync::watch::Sender<bool>,
-}
-
-impl StopHandle {
-    pub fn new() -> (Self, tokio::sync::watch::Receiver<bool>) {
-        let (tx, rx) = tokio::sync::watch::channel(false);
-        (Self { stop_tx: tx }, rx)
-    }
-
-    /// Subscribes a new watch `Receiver` to the host shutdown signal.
-    ///
-    /// The returned receiver immediately sees the current value and will be
-    /// notified when [`StopHandle::stop`] is called. Clone it once per background worker
-    /// so each worker gets its own independent view of the channel.
-    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
-        self.stop_tx.subscribe()
-    }
-
-    pub async fn stop(&self) {
-        let was_stopping = self.stop_tx.send_replace(true);
-        if !was_stopping {
-            // Yield so spawned tasks have a chance to notice the signal.
-            tokio::task::yield_now().await;
-        }
-    }
-
-    pub fn is_stopping(&self) -> bool {
-        *self.stop_tx.borrow()
-    }
-
-    /// Safely retrieves or initializes the shared `StopHandle` from the context without panic.
-    pub fn ensure(ctx: &ServerRuntimeContext) -> Self {
-        if let Some(existing) = ctx.shared_get::<Self>() {
-            existing
-        } else {
-            let (handle, _rx) = Self::new();
-            let _ = ctx.shared_insert_if_absent(handle.clone());
-            ctx.shared_get::<Self>().unwrap_or(handle)
-        }
-    }
-}
+pub use crate::services::stop_handle::StopHandle;
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -261,12 +218,44 @@ impl ModuleWorkSchedulerInitializationLock {
     }
 }
 
+#[cfg(feature = "mod-workflow")]
+#[derive(Clone, Default)]
+pub(crate) struct WorkflowCronSchedulerInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+#[cfg(feature = "mod-workflow")]
+impl WorkflowCronSchedulerInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
 #[derive(Clone, Default)]
 struct ModuleArtifactMaintenanceInitializationLock(std::sync::Arc<tokio::sync::Mutex<()>>);
 
 impl ModuleArtifactMaintenanceInitializationLock {
     fn ensure(ctx: &ServerRuntimeContext) -> Self {
         ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Serializes the complete server bootstrap against competing bootstraps and
+/// the shutdown drain. Several worker starters intentionally use a
+/// check-then-insert sequence; this host-level fence makes that sequence
+/// single-owner for one ServerRuntimeContext.
+#[derive(Clone, Default)]
+pub(crate) struct ServerBootstrapInitializationLock(
+    std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+impl ServerBootstrapInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+
+    pub(crate) async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.0.lock().await
     }
 }
 
@@ -333,12 +322,37 @@ impl WorkflowCronSchedulerHandle {
 }
 
 /// One host-owned worker observation, shared by readiness and Prometheus.
-/// It reports task liveness only, not backlog drainage or recent progress.
+/// It reports local task availability and supervisor health, not backlog drainage or recent progress.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RuntimeWorkerSnapshot {
     pub name: &'static str,
     pub required: bool,
     pub finished: Option<bool>,
+}
+
+pub(crate) fn additional_cache_reconciliation_worker_snapshots(
+    ctx: &ServerRuntimeContext,
+) -> Vec<RuntimeWorkerSnapshot> {
+    let mut snapshots = vec![RuntimeWorkerSnapshot {
+        name: "field_definition_cache_generation",
+        required: true,
+        finished: ctx.shared_map::<
+            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    }];
+
+    #[cfg(feature = "mod-seo")]
+    snapshots.push(RuntimeWorkerSnapshot {
+        name: "seo_redirect_cache_reconciliation",
+        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+        finished: ctx.shared_map::<
+            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    });
+
+    snapshots
 }
 
 pub(crate) fn additional_runtime_worker_snapshots(
@@ -351,12 +365,31 @@ pub(crate) fn additional_runtime_worker_snapshots(
         ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
     };
     use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
+    use crate::services::event_bus::EventForwarderHandle;
     #[cfg(feature = "mod-commerce")]
     use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
     #[cfg(feature = "mod-payment")]
     use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
     #[cfg(feature = "mod-product")]
     use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+    #[cfg(feature = "mod-forum")]
+    use crate::services::forum_search_inbox_worker::{
+        ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
+    };
+    #[cfg(feature = "mod-product")]
+    use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
+    #[cfg(feature = "mod-social_graph")]
+    use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
+    use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
+    use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
+    #[cfg(feature = "mod-notifications")]
+    use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
+    #[cfg(feature = "mod-comments")]
+    use crate::services::comments_provider_runtime::{
+        CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+    };
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -369,7 +402,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         .map(|requirement| requirement.0)
         // Before work registrations have been inspected, fail closed.
         .unwrap_or(true);
-    vec![
+    let mut snapshots = vec![
         RuntimeWorkerSnapshot {
             name: "module_work_scheduler",
             required: local && module_work_required,
@@ -388,6 +421,12 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 .shared_map::<AuthRetentionWorkerHandle, _>(AuthRetentionWorkerHandle::is_finished),
         },
         RuntimeWorkerSnapshot {
+            name: "event_forwarder",
+            required: local
+                && ctx.shared_contains::<crate::services::event_bus::SharedEventBus>(),
+            finished: ctx.shared_map::<EventForwarderHandle, _>(|worker| !worker.is_running()),
+        },
+        RuntimeWorkerSnapshot {
             name: "module_event_dispatcher",
             required: local && listeners_required,
             finished: ctx.shared_map::<ModuleEventDispatcherHandle, _>(
@@ -399,6 +438,84 @@ pub(crate) fn additional_runtime_worker_snapshots(
             required: local,
             finished: ctx.shared_map::<ModuleTransitionWatchdogHandle, _>(
                 ModuleTransitionWatchdogHandle::is_finished,
+            ),
+        },
+        // These durable broker consumers deliberately stop with their source
+        // offset uncommitted on poison/receive failures. Once started, their
+        // liveness is part of readiness so a dead consumer cannot leave the
+        // HTTP host green while its projection queue is stalled.
+        #[cfg(feature = "mod-product")]
+        RuntimeWorkerSnapshot {
+            name: "product_index_refresh",
+            required: local
+                && ctx.shared_contains::<ProductIndexRefreshWorkerHandle>(),
+            finished: ctx.shared_map::<ProductIndexRefreshWorkerHandle, _>(|worker| {
+                !worker.is_ready()
+            }),
+        },
+        #[cfg(feature = "mod-social_graph")]
+        RuntimeWorkerSnapshot {
+            name: "social_graph_index",
+            required: local && ctx.shared_contains::<SocialGraphIndexWorkerHandle>(),
+            finished: ctx.shared_map::<SocialGraphIndexWorkerHandle, _>(
+                SocialGraphIndexWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-forum")]
+        RuntimeWorkerSnapshot {
+            name: "forum_search_inbox",
+            required: local && ctx.shared_contains::<ForumSearchInboxWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchInboxWorkerHandle, _>(
+                ForumSearchInboxWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-forum")]
+        RuntimeWorkerSnapshot {
+            name: "forum_search_contract_consumer",
+            required: local
+                && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
+                |worker| worker.is_finished(),
+            ),
+        },
+        #[cfg(feature = "mod-comments")]
+        RuntimeWorkerSnapshot {
+            name: "comments_tcp_listener",
+            required: local && ctx.shared_contains::<CommentsTcpListenerTask>(),
+            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.0.is_finished()),
+        },
+        #[cfg(feature = "mod-comments")]
+        RuntimeWorkerSnapshot {
+            name: "comments_schedule_audit_handoff",
+            required: local
+                && ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>(),
+            finished: ctx.shared_map::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, _>(
+                CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-notifications")]
+        RuntimeWorkerSnapshot {
+            name: "notification_outbox_intake",
+            required: local
+                && ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationOutboxIntakeWorkerHandle, _>(
+                NotificationOutboxIntakeWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-notifications")]
+        RuntimeWorkerSnapshot {
+            name: "notification_fanout",
+            required: local && ctx.shared_contains::<NotificationFanoutWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationFanoutWorkerHandle, _>(
+                NotificationFanoutWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-notifications")]
+        RuntimeWorkerSnapshot {
+            name: "notification_candidate",
+            required: local && ctx.shared_contains::<NotificationCandidateWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationCandidateWorkerHandle, _>(
+                NotificationCandidateWorkerHandle::is_finished,
             ),
         },
         RuntimeWorkerSnapshot {
@@ -453,7 +570,9 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 WorkflowCronSchedulerHandle::is_finished,
             ),
         },
-    ]
+    ];
+    snapshots.extend(additional_cache_reconciliation_worker_snapshots(ctx));
+    snapshots
 }
 
 /// Start runtime workers from framework-neutral server runtime state.
@@ -596,14 +715,14 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     {
         match runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
             Some(storage) => {
-                runtime_ctx.shared_insert(
-                    crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
-                        runtime_ctx.db_clone(),
-                        storage,
-                        60_000,
-                        stop_rx.clone(),
-                    ),
-                );
+                let worker = crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
+                    runtime_ctx.db_clone(),
+                    storage,
+                    60_000,
+                    stop_rx.clone(),
+                )
+                .map_err(Error::Message)?;
+                runtime_ctx.shared_insert(worker);
             }
             None => {
                 return Err(Error::Message(
@@ -624,6 +743,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let stop = StopHandle::ensure(runtime_ctx);
     tracing::info!("Stopping background workers");
     stop.stop().await;
+
+    // Wait for any in-flight bootstrap to finish registering its workers
+    // before taking the shutdown snapshot. The stop signal above ensures a
+    // bootstrap that was already running will not start long-lived work.
+    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _bootstrap_guard = bootstrap_initialization.lock().await;
 
     let timeout_duration = Duration::from_secs(5);
 
@@ -662,6 +787,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             await_runtime_worker_shutdown("Auth retention worker", Some(worker.into_task())).await;
         }
     };
+
+    // Auth sends are request-spawned, not startup-owned. Their registry retains
+    // task ownership after HTTP callers discard JoinHandles, and closes new
+    // admission while allowing a bounded grace period for accepted sends.
+    let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
@@ -704,9 +834,22 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>() {
-            await_runtime_worker_shutdown("Workflow cron scheduler", Some(worker.into_task()))
-                .await;
+        let initialization = WorkflowCronSchedulerInitializationLock::ensure(runtime_ctx);
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
+            Ok(_guard) => runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>(),
+            Err(_) => {
+                tracing::warn!("Workflow cron scheduler initialization did not stop within 5s");
+                return;
+            }
+        };
+        if let Some(worker) = worker {
+            await_runtime_worker_shutdown_until(
+                "Workflow cron scheduler",
+                worker.into_task(),
+                deadline,
+            )
+            .await;
         }
     };
     #[cfg(not(feature = "mod-workflow"))]
@@ -856,8 +999,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         if let Some(task) =
             crate::services::event_bus::take_forwarder_task_for_shutdown(runtime_ctx)
         {
-            task.abort();
-            await_runtime_worker_shutdown("Event forwarder", Some(task)).await;
+            await_runtime_worker_shutdown_with_timeout(
+                "Event forwarder",
+                Some(task),
+                Duration::from_secs(30),
+            )
+            .await;
         }
     };
 
@@ -1074,6 +1221,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         relay_drain,
         retention_drain,
         auth_retention_drain,
+        auth_email_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -1086,7 +1234,6 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         channel_cache_invalidation_drain,
         rbac_cache_invalidation_drain,
         rbac_generation_watchdog_drain,
-        event_forwarder_drain,
         cache_redis_status_drain,
         field_definition_cache_invalidation_drain,
         field_definition_cache_reconciliation_drain,
@@ -1110,6 +1257,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         forum_search_drain,
         forum_search_contract_consumer_drain,
     );
+
+    // The event forwarder is deliberately last: producers receive the global
+    // stop first and are joined above; only then may the forwarder observe an
+    // empty queue and exit without racing a final in-flight publication.
+    event_forwarder_drain.await;
 }
 
 /// Guard a task handle so cancellation of the shutdown future cannot turn a
@@ -1270,6 +1422,15 @@ fn await_module_worker_shutdown(
     await_module_worker_shutdown_with_timeout(worker, task, Duration::from_secs(5))
 }
 
+#[cfg(any(
+    test,
+    feature = "mod-order",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+    feature = "mod-product",
+    feature = "mod-notifications",
+    feature = "mod-forum"
+))]
 fn await_module_worker_shutdown_with_timeout(
     worker: &'static str,
     task: JoinHandle<()>,
@@ -1602,7 +1763,8 @@ async fn seo_worker_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, connect_runtime_workers_with_runtime,
+        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, ServerBootstrapInitializationLock,
+        connect_runtime_workers_with_runtime, shutdown_runtime_workers,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -1615,6 +1777,72 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        drop(crate::services::email::spawn_auth_email_task(
+            &ctx,
+            "host_shutdown_email",
+            move || async move {
+                started_tx.send(()).expect("signal started");
+                finish_rx.await.expect("finish email");
+                Ok(())
+            },
+        ));
+        started_rx.await.expect("task started");
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown signalled");
+        assert!(!shutdown.is_finished(), "host should await the pending email");
+
+        finish_tx.send(()).expect("release send");
+        shutdown.await.expect("shutdown finishes after email");
+    }
+
+    #[tokio::test]
+    async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = ServerBootstrapInitializationLock::ensure(&ctx);
+        let guard = initialization.lock().await;
+        let (finished_tx, mut finished_rx) = tokio::sync::oneshot::channel();
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+            let _ = finished_tx.send(());
+        });
+
+        tokio::task::yield_now().await;
+        assert!(
+            finished_rx.try_recv().is_err(),
+            "shutdown must not take its worker snapshot during bootstrap"
+        );
+
+        drop(guard);
+        tokio::time::timeout(Duration::from_secs(5), finished_rx)
+            .await
+            .expect("shutdown should continue after bootstrap releases its lock")
+            .expect("shutdown completion signal");
+        shutdown.await.expect("shutdown task joins");
+    }
 
     #[tokio::test]
     async fn background_worker_startup_fails_when_required_durable_storage_is_missing() {
@@ -1654,7 +1882,25 @@ mod tests {
             let ctx = ServerRuntimeContext::new(db.clone(), settings);
             let snapshots = additional_runtime_worker_snapshots(&ctx);
             for worker in &snapshots {
-                assert_eq!(worker.required, expected, "{}", worker.name);
+                let opt_in_consumer = matches!(
+                    worker.name,
+                    "product_index_refresh"
+                        | "social_graph_index"
+                        | "forum_search_inbox"
+                        | "forum_search_contract_consumer"
+                        | "notification_outbox_intake"
+                        | "notification_fanout"
+                        | "notification_candidate"
+                        | "comments_tcp_listener"
+                        | "comments_schedule_audit_handoff"
+                        | "event_forwarder"
+                );
+                assert_eq!(
+                    worker.required,
+                    expected && !opt_in_consumer,
+                    "{}",
+                    worker.name
+                );
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }
@@ -1866,6 +2112,16 @@ mod tests {
             first_retention_instance_id, second_retention_instance_id,
             "the retention worker must not be started twice"
         );
+
+        let snapshots = additional_runtime_worker_snapshots(&runtime_ctx);
+        for name in ["outbox_relay", "outbox_retention"] {
+            let snapshot = snapshots
+                .iter()
+                .find(|snapshot| snapshot.name == name)
+                .expect("started Outbox worker must be visible to readiness");
+            assert!(snapshot.required, "{name} must be required after startup");
+            assert_eq!(snapshot.finished, Some(false), "{name} should be live");
+        }
 
         // Gracefully shut down and drain background workers to avoid hanging tests
         super::shutdown_runtime_workers(&runtime_ctx).await;
@@ -2103,9 +2359,12 @@ mod tests {
         use crate::services::event_bus::EventForwarderHandle;
         use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
         use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
+        use crate::common::settings::RuntimeHostMode;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(db, settings);
         let (channel, mut tasks) = ChannelCacheInvalidationListenerHandle::for_shutdown_test();
         let (rbac, other) = RbacCacheInvalidationListenerHandle::for_shutdown_test();
         tasks.extend(other);
@@ -2118,6 +2377,12 @@ mod tests {
         ctx.shared_insert(rbac.clone());
         ctx.shared_insert(watchdog.clone());
         ctx.shared_insert(forwarder.clone());
+        let forwarder_snapshot = super::additional_runtime_worker_snapshots(&ctx)
+            .into_iter()
+            .find(|snapshot| snapshot.name == "event_forwarder")
+            .expect("started event forwarder must be visible to readiness");
+        assert!(forwarder_snapshot.required);
+        assert_eq!(forwarder_snapshot.finished, Some(false));
         assert!(tasks.iter().all(|task| !task.is_finished()));
 
         super::shutdown_runtime_workers(&ctx).await;
@@ -2136,6 +2401,52 @@ mod tests {
         assert!(!ctx.shared_contains::<RbacCacheInvalidationListenerHandle>());
         assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
         assert!(!ctx.shared_contains::<EventForwarderHandle>());
+    }
+
+    #[cfg(feature = "mod-comments")]
+    #[tokio::test]
+    async fn comments_listener_and_audit_handoff_workers_are_required_when_started() {
+        use crate::common::settings::RuntimeHostMode;
+        use crate::services::comments_provider_runtime::{
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+        };
+        use super::additional_runtime_worker_snapshots;
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+        let stop = super::StopHandle::ensure(&ctx);
+
+        let mut listener_stop = stop.subscribe();
+        let listener_task = tokio::spawn(async move {
+            let _ = listener_stop.changed().await;
+        });
+        ctx.shared_insert(CommentsTcpListenerTask(listener_task));
+
+        let mut handoff_stop = stop.subscribe();
+        let handoff_task = tokio::spawn(async move {
+            let _ = handoff_stop.changed().await;
+        });
+        ctx.shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(
+            handoff_task,
+        ));
+
+        let snapshots = additional_runtime_worker_snapshots(&ctx);
+        for name in ["comments_tcp_listener", "comments_schedule_audit_handoff"] {
+            let snapshot = snapshots
+                .iter()
+                .find(|snapshot| snapshot.name == name)
+                .expect("started Comments worker must be visible to readiness");
+            assert!(snapshot.required, "{name} must be required after startup");
+            assert_eq!(snapshot.finished, Some(false), "{name} should be live");
+        }
+
+        super::shutdown_runtime_workers(&ctx).await;
+        assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
+        assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
     }
 
     #[tokio::test]

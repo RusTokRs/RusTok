@@ -127,6 +127,16 @@ impl CheckoutOrderCreationExecutor {
     /// it consumes operational Cart-line provenance from the frozen input and owner response.
     /// These persisted lineage labels are not a separate business model or disposable history.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(
+        skip(self, lease_owner, input),
+        fields(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            customer_id = ?input.customer_id,
+        ),
+        err
+    )]
     pub async fn create_pending_and_adopt(
         &self,
         tenant_id: Uuid,
@@ -330,6 +340,7 @@ impl CheckoutOrderCreationExecutor {
             snapshot_hash,
             request_hash.as_str(),
         )?;
+        // INVARIANT: cross-module order contract validation ensures foreign order response matches checkout tenant.
         if order.tenant_id != tenant_id {
             return Err(CheckoutOrderCreationError::Conflict(format!(
                 "order {} belongs to another tenant",
@@ -449,6 +460,7 @@ fn validate_identity(
     snapshot_hash: &str,
     request_hash: &str,
 ) -> CheckoutOrderCreationResult<()> {
+    // INVARIANT: database query filtered by tenant_id precedes in-memory order identity validation.
     if identity.tenant_id != tenant_id
         || identity.checkout_operation_id != operation_id
         || identity.source_cart_id.is_some() && identity.source_cart_id != Some(cart_id)

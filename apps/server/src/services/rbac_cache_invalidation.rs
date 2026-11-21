@@ -303,6 +303,7 @@ impl RbacCacheInvalidationListener {
     }
 }
 
+#[tracing::instrument(fields(%tenant_id, %user_id, generation))]
 pub async fn publish_user_rbac_invalidation(
     tenant_id: &Uuid,
     user_id: &Uuid,
@@ -322,6 +323,7 @@ pub async fn publish_user_rbac_invalidation(
     .await
 }
 
+#[tracing::instrument(fields(generation))]
 pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
     tracing::debug!(
         generation,
@@ -580,7 +582,7 @@ pub async fn start_rbac_cache_invalidation_listener(
     cache: CacheService,
 ) -> Result<()> {
     tracing::debug!("Starting RBAC cache invalidation listener");
-    let _ = ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
+    ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;

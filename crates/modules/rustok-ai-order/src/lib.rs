@@ -105,25 +105,66 @@ pub struct GeneratedOrderOpsAssistant {
     pub confidence: u8,
 }
 
-pub fn validate_order_ops_assistant_confidence(confidence: u8) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum OrderAnalyticsPayloadError {
+    #[error("order_analytics summary must not be empty")]
+    EmptySummary,
+    #[error("{task} {field} must contain only non-empty strings")]
+    BlankItem {
+        task: &'static str,
+        field: &'static str,
+    },
+}
+
+impl From<OrderAnalyticsPayloadError> for String {
+    fn from(error: OrderAnalyticsPayloadError) -> Self {
+        error.to_string()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum OrderOpsAssistantPayloadError {
+    #[error("order_ops_assistant recommended_action must not be empty")]
+    EmptyRecommendedAction,
+    #[error("order_ops_assistant rationale must not be empty")]
+    EmptyRationale,
+    #[error("order_ops_assistant prefill must be an object or structured value")]
+    NullPrefill,
+    #[error("order_ops_assistant confidence must be between 0 and 100")]
+    InvalidConfidence,
+}
+
+impl From<OrderOpsAssistantPayloadError> for String {
+    fn from(error: OrderOpsAssistantPayloadError) -> Self {
+        error.to_string()
+    }
+}
+
+pub fn validate_order_ops_assistant_confidence(
+    confidence: u8,
+) -> Result<(), OrderOpsAssistantPayloadError> {
     if confidence > 100 {
-        return Err("order_ops_assistant confidence must be between 0 and 100".to_string());
+        return Err(OrderOpsAssistantPayloadError::InvalidConfidence);
     }
     Ok(())
 }
 
-fn ensure_non_blank_values(task: &str, field: &str, values: &[String]) -> Result<(), String> {
+fn ensure_non_blank_values(
+    task: &'static str,
+    field: &'static str,
+    values: &[String],
+) -> Result<(), OrderAnalyticsPayloadError> {
     if values.iter().any(|value| value.trim().is_empty()) {
-        return Err(format!(
-            "{task} {field} must contain only non-empty strings"
-        ));
+        return Err(OrderAnalyticsPayloadError::BlankItem { task, field });
     }
     Ok(())
 }
 
-pub fn validate_order_analytics_payload(payload: &GeneratedOrderAnalytics) -> Result<(), String> {
+pub fn validate_order_analytics_payload(
+    payload: &GeneratedOrderAnalytics,
+) -> Result<(), OrderAnalyticsPayloadError> {
     if payload.summary.trim().is_empty() {
-        return Err("order_analytics summary must not be empty".to_string());
+        return Err(OrderAnalyticsPayloadError::EmptySummary);
     }
     ensure_non_blank_values("order_analytics", "key_findings", &payload.key_findings)?;
     ensure_non_blank_values("order_analytics", "risk_flags", &payload.risk_flags)?;
@@ -137,17 +178,15 @@ pub fn validate_order_analytics_payload(payload: &GeneratedOrderAnalytics) -> Re
 
 pub fn validate_order_ops_assistant_payload(
     payload: &GeneratedOrderOpsAssistant,
-) -> Result<(), String> {
+) -> Result<(), OrderOpsAssistantPayloadError> {
     if payload.recommended_action.trim().is_empty() {
-        return Err("order_ops_assistant recommended_action must not be empty".to_string());
+        return Err(OrderOpsAssistantPayloadError::EmptyRecommendedAction);
     }
     if payload.rationale.trim().is_empty() {
-        return Err("order_ops_assistant rationale must not be empty".to_string());
+        return Err(OrderOpsAssistantPayloadError::EmptyRationale);
     }
     if payload.prefill.is_null() {
-        return Err(
-            "order_ops_assistant prefill must be an object or structured value".to_string(),
-        );
+        return Err(OrderOpsAssistantPayloadError::NullPrefill);
     }
     validate_order_ops_assistant_confidence(payload.confidence)
 }

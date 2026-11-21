@@ -293,7 +293,10 @@ pub(super) async fn load_catalog_facets(
                 slot,
                 collected
                     .iter()
-                    .filter_map(|(bucket, _)| Uuid::parse_str(bucket).ok())
+                    .filter_map(|(bucket, _)| match Uuid::parse_str(bucket) {
+                        Ok(option_id) => Some(option_id),
+                        Err(_) => None,
+                    })
                     .collect(),
             ));
             values = collected

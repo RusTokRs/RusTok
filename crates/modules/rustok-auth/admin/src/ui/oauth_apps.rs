@@ -672,7 +672,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
     let (modal_state, set_modal_state) = signal(ModalState::None);
 
     Effect::new(move |_| {
-        let _ = refresh_counter.get();
+        refresh_counter.track();
         let token_value = token.get();
         let tenant_value = tenant.get();
 

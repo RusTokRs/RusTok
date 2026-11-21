@@ -144,6 +144,7 @@ impl BlogScheduledPublishWorkAdapter {
         let now = chrono::Utc::now().fixed_offset();
         let due_posts = || {
             blog_post::Entity::find()
+                .filter(blog_post::Column::TenantId.is_not_null())
                 .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
                 .filter(blog_post::Column::ScheduledAt.is_not_null())
                 .filter(blog_post::Column::ScheduledAt.lte(now.to_owned()))
@@ -298,7 +299,9 @@ impl BlogPreviewTokenCleanupWorkAdapter {
         let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
         let expired_tokens = || {
-            blog_preview_token::Entity::find().filter(blog_preview_token::Column::ExpiresAt.lt(now))
+            blog_preview_token::Entity::find()
+                .filter(blog_preview_token::Column::TenantId.is_not_null())
+                .filter(blog_preview_token::Column::ExpiresAt.lt(now))
         };
 
         let next = if let Some(last_tenant) = *last {
@@ -442,7 +445,11 @@ impl BlogRouteReconciliationWorkAdapter {
         // An async mutex is held over discovery to prevent concurrent local
         // claims from advancing the fairness cursor based on the same state.
         let mut last = self.last_claimed_tenant.lock().await;
-        let dangling_routes = || blog_post_route::Entity::find().filter(dangling_route_condition());
+        let dangling_routes = || {
+            blog_post_route::Entity::find()
+                .filter(blog_post_route::Column::TenantId.is_not_null())
+                .filter(dangling_route_condition())
+        };
 
         let next = if let Some(last_tenant) = *last {
             let higher = dangling_routes()

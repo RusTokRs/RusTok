@@ -44,6 +44,7 @@ pub(super) fn line_total(
 }
 
 impl CartService {
+    #[tracing::instrument(skip(self, update, pricing_context))]
     pub async fn update_line_item_pricing(
         &self,
         tenant_id: Uuid,

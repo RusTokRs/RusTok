@@ -26,13 +26,7 @@ mod revisions;
 #[cfg(test)]
 mod tests;
 
-#[allow(unused_imports)]
-pub use entities::{
-    ActiveModel, Column, Entity, Model, component_candidate, component_candidate_build,
-    component_candidate_build_execution, component_candidate_review, draft_purge_receipt,
-    draft_retention_receipt, draft_review, draft_revision, draft_test_run, draft_tombstone,
-    release_import,
-};
+pub use entities::{ActiveModel, Column, Entity, draft_tombstone};
 
 #[derive(Clone)]
 pub struct SeaOrmStorage {

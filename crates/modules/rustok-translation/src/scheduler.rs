@@ -114,18 +114,16 @@ impl TranslationMemoryRetentionWorkAdapter {
             .map_err(|error| ModuleWorkError::Source(error.to_string()))
     }
 
-    #[allow(clippy::expect_used)]
     fn work_item(entry: memory_entry::Model, action: RetentionAction) -> ModuleWorkItem {
         ModuleWorkItem {
             id: entry.id,
             tenant_id: entry.tenant_id,
             worker_slug: TRANSLATION_MEMORY_RETENTION_WORKER.to_string(),
             lease_token: Uuid::new_v4().to_string(),
-            payload: serde_json::to_value(RetentionWorkPayload {
-                action,
-                expected_revision: entry.revision,
-            })
-            .expect("translation retention payload must serialize: RetentionWorkPayload is a simple internal struct with i64+enum"),
+            payload: serde_json::json!({
+                "action": action,
+                "expected_revision": entry.revision,
+            }),
         }
     }
 

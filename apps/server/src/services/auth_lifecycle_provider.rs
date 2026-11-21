@@ -14,7 +14,7 @@ use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    PASSWORD_RESET_TOKEN_TTL_SECS, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
     spawn_email_verification, spawn_password_reset_email,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -335,7 +335,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             }
         };
         let recipient = user.email;
-        let _ = spawn_password_reset_email(&self.runtime_ctx, email_service, recipient, reset_url);
+        let _task = spawn_password_reset_email(&self.runtime_ctx, email_service, recipient, reset_url);
 
         Ok(())
     }

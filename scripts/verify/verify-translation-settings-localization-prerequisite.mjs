@@ -78,8 +78,11 @@ for (const marker of [
 for (const marker of [
   'pub async fn update_static_normalized_settings(',
   'idempotency::admit(',
-  'StaticTenantLifecycleStore::claim(',
-  'StaticTenantLifecycleStore::advance(',
+  'settings_claim::claim(',
+  'settings_claim::lock_receipt(',
+  'settings_transition_fence::lock_and_check(',
+  'StaticTenantLifecycleStore::advance_settings(',
+  'settings_claim::release_in_transaction(',
   'idempotency::complete(',
 ]) requireText(
   sources.lifecycle,
@@ -96,8 +99,11 @@ for (const marker of [
   'pub async fn apply_exact(',
   'expected_owner_revision',
   'expected_target_revision',
-  'StaticTenantLifecycleStore::claim(',
-  'StaticTenantLifecycleStore::advance(',
+  'settings_claim::claim(',
+  'settings_claim::lock_receipt(',
+  'settings_transition_fence::lock_and_check(',
+  'StaticTenantLifecycleStore::advance_settings(',
+  'settings_claim::release_in_transaction(',
   'module_static_localized_settings',
 ]) requireText(
   sources.localizedOwner,

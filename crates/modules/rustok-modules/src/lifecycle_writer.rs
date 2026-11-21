@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -507,6 +507,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let plan = module_operation_recovery_plan(&self.db, operation_id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        // INVARIANT: In-memory verification ensuring the recovered plan belongs to the requesting tenant before returning it.
         if plan.tenant_id != tenant_id {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::OperationNotFound,
@@ -625,6 +626,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 })
                 .await;
         }
+        // A reverse hook is still external execution: matching override
+        // state does not establish the original hook's identity or that its
+        // effects have stopped. Existing idempotent replays above remain
+        // readable; never start a new compensation without that evidence.
+        if !plan.retryable {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::NotRetryable(
+                    crate::recovery::RECOVERY_EVIDENCE_UNAVAILABLE.to_string(),
+                ),
+            ));
+        }
         if current_override_enabled != plan.requested_override_enabled {
             return Err(ModuleLifecycleDbWriterError::Recovery(
                 ModuleOperationRecoveryError::StateMismatch {
@@ -718,42 +730,52 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 return Err(ModuleLifecycleDbWriterError::OperationReceipt(error));
             }
             Admission::Run(lease) => {
-                let claim = StaticTenantLifecycleStore::claim(
+                let claim = crate::settings_claim::claim(
                     &self.db,
                     command.tenant_id,
                     &command.module_slug,
                     command.expected_revision,
-                    command.context.idempotency_key,
+                    lease,
                 )
                 .await
-                .map_err(map_static_lifecycle_settings_error);
+                .map_err(map_settings_claim_error);
                 if let Err(error) = claim {
                     // A database failure can be returned after the claim write
                     // committed. Preserve the processing receipt and request hash
                     // until lease recovery: deleting it would let a different
                     // request reuse the same key and inherit an uncertain claim.
-                    if matches!(error, ModuleLifecycleDbWriterError::Database(_)) {
+                    if matches!(error, ModuleLifecycleDbWriterError::Database(_) | ModuleLifecycleDbWriterError::OperationReceipt(_)
+                        | ModuleLifecycleDbWriterError::Lifecycle(ModuleLifecycleExecutionError::OperationInProgress { .. })) {
                         return Err(error);
                     }
-                    self.fail_static_settings_operation(lease, &error).await?;
+                    self.fail_static_settings_operation(lease, &error)
+                        .await
+                        .map_err(|receipt_error| {
+                            database_error(format!(
+                                "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
+                            ))
+                        })?;
                     return Err(error);
                 }
                 lease
             }
         };
 
-        // Checkpoint identities are not static-release schema evidence. Reject
-        // a detected rollback window instead of inventing a predecessor schema.
-        // Replay is handled above; transition creation still needs an atomic fence.
+        // This early check rejects an already visible transition. The same
+        // check must be repeated under the shared lock in the transaction
+        // below; this read alone cannot fence concurrent checkpoint creation.
         if let Err(error) = self
-            .reject_unverifiable_rollout_settings_write(command.tenant_id, &command.module_slug)
+            .reject_unverifiable_rollout_settings_write(
+                &self.db,
+                command.tenant_id,
+                &command.module_slug,
+            )
             .await
         {
             self.abandon_static_settings_operation(
                 lease,
                 command.tenant_id,
                 &command.module_slug,
-                command.context.idempotency_key,
                 &error,
             )
             .await?;
@@ -769,7 +791,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -784,7 +805,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -808,14 +828,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 lease,
                 command.tenant_id,
                 &command.module_slug,
-                command.context.idempotency_key,
                 &error,
             )
             .await?;
             return Err(error);
         }
 
-        let transaction = match self.db.begin().await {
+        // A PostgreSQL transaction may have read the receipt before waiting
+        // for the shared checkpoint lock. Force a fresh statement snapshot
+        // after that wait even if the database default is REPEATABLE READ.
+        let transaction_result = crate::backend::begin_fenced_transaction(&self.db).await;
+        let transaction = match transaction_result {
             Ok(transaction) => transaction,
             Err(error) => {
                 let error = database_error(error);
@@ -823,7 +846,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -833,11 +855,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         if let Err(error) = crate::backend::set_tenant_scope(&transaction, command.tenant_id).await
         {
             let error = database_error(error);
+            // Never clean up an aggregate or receipt while its transaction is
+            // live, or if rollback itself has an uncertain outcome.
+            transaction.rollback().await.map_err(|rollback_error| {
+                database_error(format!(
+                    "{error}; additionally, rollback of static settings failed: {rollback_error}"
+                ))
+            })?;
             self.abandon_static_settings_operation(
                 lease,
                 command.tenant_id,
                 &command.module_slug,
-                command.context.idempotency_key,
                 &error,
             )
             .await?;
@@ -848,6 +876,14 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             // wins; without intent the platform default applies
             // (Core and default-enabled modules). A settings save itself
             // records no intent (see `persist_settings`).
+            crate::settings_claim::lock_receipt(&transaction, lease).await.map_err(map_settings_claim_error)?;
+            crate::settings_transition_fence::lock_and_check(
+                &transaction,
+                command.tenant_id,
+                &command.module_slug,
+            )
+            .await
+            .map_err(map_settings_transition_fence_error)?;
             let platform_default_enabled = definition.kind == ModuleDefinitionKind::Core
                 || self.default_enabled_modules.contains(&definition.slug);
             let state = TenantModuleStateStore::persist_settings(
@@ -860,23 +896,23 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             )
             .await
             .map_err(ModuleLifecycleDbWriterError::Settings)?;
-            let revision = StaticTenantLifecycleStore::advance(
+            let revision = StaticTenantLifecycleStore::advance_settings(
                 &transaction,
                 command.tenant_id,
                 &command.module_slug,
                 command.expected_revision,
-                command.context.idempotency_key,
+                lease.token,
             )
             .await
             .map_err(map_static_lifecycle_settings_error)?;
-            StaticTenantLifecycleStore::release(
+            crate::settings_claim::release_in_transaction(
                 &transaction,
                 command.tenant_id,
                 &command.module_slug,
-                command.context.idempotency_key,
+                lease,
             )
             .await
-            .map_err(map_static_lifecycle_settings_error)?;
+            .map_err(map_settings_claim_error)?;
             let result = ModuleLifecycleSettingsResult {
                 module_slug: state.module_slug,
                 enabled: state.enabled.unwrap_or(platform_default_enabled),
@@ -910,17 +946,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             }
             Err(error) => {
                 // A failed rollback leaves the transaction outcome uncertain. Keep
-                // both claims intact so the same command can reconcile safely.
-                transaction.rollback().await.map_err(database_error)?;
-                StaticTenantLifecycleStore::release(
-                    &self.db,
+                // both claims intact; expiry-based reclaim is not reconciliation.
+                transaction.rollback().await.map_err(|rollback_error| {
+                    database_error(format!(
+                        "{error}; additionally, rollback of static settings failed: {rollback_error}"
+                    ))
+                })?;
+                self.abandon_static_settings_operation(
+                    lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.context.idempotency_key,
+                    &error,
                 )
-                .await
-                .map_err(map_static_lifecycle_settings_error)?;
-                self.fail_static_settings_operation(lease, &error).await?;
+                .await?;
                 Err(error)
             }
         }
@@ -956,25 +994,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .map_err(|error| map_artifact_settings_error(module_slug, error))
     }
 
-    async fn reject_unverifiable_rollout_settings_write(
+    async fn reject_unverifiable_rollout_settings_write<C: ConnectionTrait>(
         &self,
+        connection: &C,
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
-        let checkpoints = crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
-            &self.db, module_slug, tenant_id,
-        )
-        .await
-        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
-        if checkpoints
-            .iter()
-            .any(|checkpoint| checkpoint.predecessor_digest.is_some())
-        {
-            return Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(
-                "settings cannot be changed during an unresolved transition until both release schemas can be verified".to_string(),
-            ));
-        }
-        Ok(())
+        crate::settings_transition_fence::check(connection, tenant_id, module_slug)
+            .await
+            .map_err(map_settings_transition_fence_error)
     }
 
     async fn fail_static_settings_operation(
@@ -984,9 +1012,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     ) -> Result<(), ModuleLifecycleDbWriterError> {
         let receipt_error = static_settings_receipt_error(error);
         if receipt_error.retryable {
-            idempotency::release_retryable(&self.db, lease, &receipt_error)
-                .await
-                .map_err(ModuleLifecycleDbWriterError::OperationReceipt)
+            // Deleting the receipt would also delete its request fingerprint,
+            // allowing a different command to reuse a previously admitted key.
+            // Keep it processing for a later exact-request lease retry.
+            Ok(())
         } else {
             idempotency::fail(&self.db, lease, &receipt_error)
                 .await
@@ -999,13 +1028,22 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         lease: idempotency::Lease,
         tenant_id: Uuid,
         module_slug: &str,
-        idempotency_key: Uuid,
         error: &ModuleLifecycleDbWriterError,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
-        StaticTenantLifecycleStore::release(&self.db, tenant_id, module_slug, idempotency_key)
+        crate::settings_claim::abandon(&self.db, tenant_id, module_slug, lease)
             .await
-            .map_err(map_static_lifecycle_settings_error)?;
-        self.fail_static_settings_operation(lease, error).await
+            .map_err(|release_error| {
+                database_error(format!(
+                    "{error}; additionally, releasing the lifecycle claim failed: {release_error}"
+                ))
+            })?;
+        self.fail_static_settings_operation(lease, error)
+            .await
+            .map_err(|receipt_error| {
+                database_error(format!(
+                    "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
+                ))
+            })
     }
     /// Confirms that the active owner catalog contains a module before a host
     /// adapter resolves its static-only settings schema.
@@ -1796,6 +1834,27 @@ fn map_idempotency_command_error(error: ModuleOperationStoreError) -> ModuleLife
     }
 }
 
+fn map_settings_transition_fence_error(
+    error: crate::settings_transition_fence::SettingsTransitionFenceError,
+) -> ModuleLifecycleDbWriterError {
+    match error {
+        crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress => {
+            ModuleLifecycleDbWriterError::InvalidSettingsCommand(error.to_string())
+        }
+        crate::settings_transition_fence::SettingsTransitionFenceError::Database(message) => {
+            ModuleLifecycleDbWriterError::Database(message)
+        }
+    }
+}
+
+fn map_settings_claim_error(error: crate::settings_claim::SettingsClaimError) -> ModuleLifecycleDbWriterError {
+    match error {
+        crate::settings_claim::SettingsClaimError::Receipt(error) => ModuleLifecycleDbWriterError::OperationReceipt(error),
+        crate::settings_claim::SettingsClaimError::Owner(error) => map_static_lifecycle_settings_error(error),
+        crate::settings_claim::SettingsClaimError::Database(error) => ModuleLifecycleDbWriterError::Database(error),
+    }
+}
+
 fn map_static_lifecycle_settings_error(
     error: StaticTenantLifecycleStoreError,
 ) -> ModuleLifecycleDbWriterError {
@@ -2182,7 +2241,12 @@ mod tests {
         ] {
             db.execute_unprepared(sql).await.unwrap();
         }
+        db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
         let manager = sea_orm_migration::SchemaManager::new(&db);
+        crate::migrations::m20261117_000093_settings_claim_fences::Migration
+            .up(&manager)
+            .await
+            .unwrap();
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
             .up(&manager)
             .await
@@ -2269,6 +2333,7 @@ mod tests {
         use sea_orm_migration::MigrationTrait;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
         let manager = sea_orm_migration::SchemaManager::new(&db);
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
             .up(&manager)
@@ -2290,6 +2355,8 @@ mod tests {
         )
         .await
         .unwrap();
+        crate::migrations::m20261117_000093_settings_claim_fences::Migration
+            .up(&manager).await.unwrap();
         db.execute_unprepared(
             "CREATE TRIGGER fixture_lifecycle_tenant AFTER INSERT ON module_static_tenant_lifecycle BEGIN \
              INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
@@ -2325,15 +2392,22 @@ mod tests {
         crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
             .await
             .unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(crate::settings_transition_fence::lock_and_check(&tx, tenant, "forum").await.is_ok());
+        assert!(matches!(
+            crate::settings_transition_fence::lock_and_check(&tx, other_tenant, "forum").await,
+            Err(crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress)
+        ));
+        tx.rollback().await.unwrap();
         assert!(
             writer
-                .reject_unverifiable_rollout_settings_write(tenant, "forum")
+                .reject_unverifiable_rollout_settings_write(&db, tenant, "forum")
                 .await
                 .is_ok()
         );
         assert!(matches!(
             writer
-                .reject_unverifiable_rollout_settings_write(other_tenant, "forum")
+                .reject_unverifiable_rollout_settings_write(&db, other_tenant, "forum")
                 .await,
             Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
         ));
@@ -2374,21 +2448,133 @@ mod tests {
 
         checkpoint.operation_id = Uuid::new_v4();
         checkpoint.tenant_id = None;
+        // First-install transitions also fence settings: the candidate schema
+        // is not proven by the absence of a rollback predecessor.
+        checkpoint.predecessor_digest = None;
         crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
             .await
             .unwrap();
+        let tx = crate::backend::begin_fenced_transaction(&db).await.unwrap();
+        assert!(matches!(
+            crate::settings_transition_fence::lock_and_check(&tx, tenant, "forum").await,
+            Err(crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress)
+        ));
+        assert!(crate::settings_transition_fence::lock_and_check(&tx, tenant, "other").await.is_ok());
+        tx.rollback().await.unwrap();
         assert!(matches!(
             writer
-                .reject_unverifiable_rollout_settings_write(tenant, "forum")
+                .reject_unverifiable_rollout_settings_write(&db, tenant, "forum")
                 .await,
             Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
         ));
         assert!(
             writer
-                .reject_unverifiable_rollout_settings_write(tenant, "other")
+                .reject_unverifiable_rollout_settings_write(&db, tenant, "other")
                 .await
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn settings_checkpoint_guard_rechecks_after_the_early_read() {
+        use sea_orm_migration::MigrationTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&sea_orm_migration::SchemaManager::new(&db)).await.unwrap();
+        db.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        let registry = ModuleRegistry::new().register(SettingsTestModule);
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        let tenant = Uuid::new_v4();
+        assert!(writer.reject_unverifiable_rollout_settings_write(&db, tenant, "forum").await.is_ok());
+
+        let now = chrono::Utc::now();
+        let checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: Uuid::new_v4(), revision: 1, module_slug: "forum".into(),
+            tenant_id: None, predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired { failure_reason: "operator".into() },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
+            created_at: now, updated_at: now,
+        };
+        let creator = db.begin().await.unwrap();
+        crate::installation::acquire_artifact_activation_lock(
+            &creator, &crate::ModuleInstallationScope::Platform, "forum",
+        ).await.unwrap();
+        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint).await.unwrap();
+        creator.commit().await.unwrap();
+
+        let settings = db.begin().await.unwrap();
+        crate::installation::acquire_artifact_activation_lock(
+            &settings, &crate::ModuleInstallationScope::Platform, "forum",
+        ).await.unwrap();
+        assert!(matches!(
+            writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await,
+            Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
+        ));
+        settings.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema creation privileges"]
+    async fn postgres_settings_rechecks_checkpoint_after_lock_wait() {
+        use sea_orm_migration::MigrationTrait;
+
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap();
+        let db = sea_orm::Database::connect(url).await.unwrap();
+        let schema = format!("checkpoint_fence_test_{}", Uuid::new_v4().simple());
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
+        let setup = db.begin().await.unwrap();
+        setup.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&sea_orm_migration::SchemaManager::new(&setup)).await.unwrap();
+        setup.execute_unprepared("CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY (scope_kind, scope_tenant_key, slug))").await.unwrap();
+        setup.commit().await.unwrap();
+
+        let creator = db.begin().await.unwrap();
+        creator.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        crate::installation::acquire_artifact_activation_lock(
+            &creator, &crate::ModuleInstallationScope::Platform, "forum",
+        ).await.unwrap();
+        let now = chrono::Utc::now();
+        let checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: Uuid::new_v4(), revision: 1, module_slug: "forum".into(),
+            tenant_id: None, predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired { failure_reason: "operator".into() },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]), recovery_attempt_count: 0,
+            created_at: now, updated_at: now,
+        };
+        crate::TransitionCheckpointStore::save_checkpoint(&creator, &checkpoint).await.unwrap();
+
+        let worker_db = db.clone();
+        let worker_schema = schema.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let mut worker = tokio::spawn(async move {
+            let registry = ModuleRegistry::new().register(SettingsTestModule);
+            let writer = ModuleLifecycleDbWriter::new(worker_db.clone(), &registry, vec![]);
+            let settings = worker_db.begin_with_config(Some(sea_orm::IsolationLevel::ReadCommitted), None).await.unwrap();
+            settings.execute_unprepared(&format!("SET LOCAL search_path TO {worker_schema}")).await.unwrap();
+            let tenant = Uuid::new_v4();
+            assert!(writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await.is_ok());
+            ready_tx.send(()).unwrap();
+            crate::installation::acquire_artifact_activation_lock(
+                &settings, &crate::ModuleInstallationScope::Platform, "forum",
+            ).await.unwrap();
+            let blocked = matches!(
+                writer.reject_unverifiable_rollout_settings_write(&settings, tenant, "forum").await,
+                Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
+            );
+            settings.rollback().await.unwrap();
+            blocked
+        });
+        ready_rx.await.unwrap();
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(150), &mut worker).await.is_err(), "settings lock must wait for creator");
+        creator.commit().await.unwrap();
+        assert!(worker.await.unwrap(), "the post-lock read must see the committed checkpoint");
+        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[tokio::test]
@@ -2433,7 +2619,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retryable_settings_failure_allows_same_receipt_to_run_again() {
+    async fn retryable_settings_failure_retains_fingerprint_until_exact_retry() {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let manager = sea_orm_migration::SchemaManager::new(&db);
         rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
@@ -2466,21 +2652,78 @@ mod tests {
             .unwrap();
         assert!(matches!(
             idempotency::admit(
-                &db,
-                scope,
-                STATIC_LIFECYCLE_OWNER_SLUG,
-                "same-key",
-                STATIC_LIFECYCLE_SETTINGS_OPERATION,
-                &request
-            )
-            .await
-            .unwrap(),
+                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
+            ).await,
+            Err(error) if error.code == "outbox.operation_receipt_in_progress"
+        ));
+        let different_request = serde_json::json!({"module": "other"});
+        assert!(matches!(
+            idempotency::admit(
+                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION, &different_request,
+            ).await,
+            Err(error) if error.code == "outbox.operation_receipt_conflict"
+        ));
+        db.execute_unprepared(
+            "UPDATE owner_operation_receipts SET updated_at = '2000-01-01T00:00:00+00:00'",
+        ).await.unwrap();
+        assert!(matches!(
+            idempotency::admit(
+                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION, &different_request,
+            ).await,
+            Err(error) if error.code == "outbox.operation_receipt_conflict"
+        ));
+        assert!(matches!(
+            idempotency::admit(
+                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
+            ).await.unwrap(),
             Admission::Run(_)
         ));
     }
 
+    #[tokio::test]
+    async fn settings_cleanup_failure_keeps_receipt_and_both_errors() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        ).await.unwrap();
+        let registry = ModuleRegistry::new();
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        let tenant = Uuid::new_v4();
+        let scope = idempotency::OwnerOperationScope::Tenant(tenant);
+        let request = serde_json::json!({"module": "forum"});
+        let lease = match idempotency::admit(
+            &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "cleanup-key",
+            STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
+        ).await.unwrap() {
+            Admission::Run(lease) => lease,
+            _ => panic!("first admission must run"),
+        };
+        // No lifecycle table: releasing the aggregate fails. The original
+        // error and processing receipt must survive the cleanup failure.
+        let error = ModuleLifecycleDbWriterError::SettingsSnapshotConflict;
+        assert!(matches!(
+            writer.abandon_static_settings_operation(
+                lease, tenant, "forum", &error,
+            ).await,
+            Err(ModuleLifecycleDbWriterError::Database(message))
+                if message.contains(&error.to_string())
+                    && message.contains("releasing the lifecycle claim failed")
+        ));
+        assert!(matches!(
+            idempotency::admit(
+                &db, scope, STATIC_LIFECYCLE_OWNER_SLUG, "cleanup-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION, &request,
+            ).await,
+            Err(error) if error.code == "outbox.operation_receipt_in_progress"
+        ));
+    }
+
     #[test]
-    fn settings_receipts_release_infrastructure_failures_but_keep_conflicts_terminal() {
+    fn settings_receipts_treat_infrastructure_failures_as_retryable_and_conflicts_as_terminal() {
         let database = ModuleLifecycleDbWriterError::Database("connection lost".into());
         let storage = ModuleLifecycleDbWriterError::Settings(ModuleOperationStoreError::Database(
             "unavailable".into(),

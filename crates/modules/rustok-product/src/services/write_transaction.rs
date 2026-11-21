@@ -28,6 +28,7 @@ use sea_orm::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -35,7 +36,7 @@ struct ProductOperationReceipt {
     lease: idempotency::Lease,
     // Encoding happens before `commit`, but encoding failure must still cross the transaction
     // boundary so `commit` can await rollback before reporting it to the caller.
-    response_json: Arc<Mutex<Option<Result<Value, String>>>>,
+    response_json: Arc<Mutex<Option<Result<Value, serde_json::Error>>>>,
     // A receipt-bound write that returns early cannot let `DatabaseTransaction::Drop` be the
     // only rollback mechanism. SeaORM queues that rollback for the next connection operation;
     // a separate receipt finalizer could otherwise record a terminal failure before owner writes
@@ -186,8 +187,8 @@ pub(crate) fn current_product_operation_id() -> Option<Uuid> {
 /// error escapes. Returning an encoding or poisoned-slot error here would drop that transaction
 /// asynchronously through SeaORM's `Drop` path.
 pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) {
-    let _ = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
-        let response_json = serde_json::to_value(value).map_err(|error| error.to_string());
+    if let Ok(()) = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
+        let response_json = serde_json::to_value(value);
         let mut slot = match receipt.response_json.lock() {
             Ok(slot) => slot,
             Err(poisoned) => {
@@ -199,7 +200,7 @@ pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) {
             }
         };
         *slot = Some(response_json);
-    });
+    }) {}
 }
 
 /// Owns one product write transaction and its transactional outbox publisher.
@@ -253,8 +254,8 @@ async fn complete_product_receipt_and_commit(
                 "product owner receipt result slot is unavailable".to_string(),
             ))
         })
-        .and_then(|slot| match slot.clone() {
-            Some(Ok(response_json)) => Ok(response_json),
+        .and_then(|slot| match slot.as_ref() {
+            Some(Ok(response_json)) => Ok(response_json.clone()),
             Some(Err(error)) => Err(CommerceError::Database(DbErr::Custom(format!(
                 "product owner receipt result encoding failed: {error}"
             )))),
@@ -304,7 +305,8 @@ impl ProductWriteTransaction {
         })
     }
 
-    pub(crate) async fn publish(
+    #[instrument(skip(self, event), fields(tenant_id = %tenant_id, ?actor_id))]
+    pub(crate) async fn publish_in_tx(
         &self,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
@@ -314,7 +316,8 @@ impl ProductWriteTransaction {
             .await
     }
 
-    pub(crate) async fn publish_product_deleted(
+    #[instrument(skip(self, deleted_image_ids), fields(tenant_id = %tenant_id, ?actor_id, %product_id))]
+    pub(crate) async fn publish_product_deleted_in_tx(
         &self,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
@@ -558,6 +561,7 @@ impl ProductWriteTransaction {
     }
 
     fn active_transaction(&self) -> &DatabaseTransaction {
+        // INVARIANT: ProductWriteTransaction transaction is initialized to Some and only consumed in commit or drop.
         self.transaction
             .as_ref()
             .expect("ProductWriteTransaction used after its transaction was consumed")

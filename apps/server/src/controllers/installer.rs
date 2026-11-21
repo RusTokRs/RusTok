@@ -6,9 +6,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
-use std::panic::AssertUnwindSafe;
 use rustok_installer::{
-    InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    build_install_lock_owner, is_valid_install_lock_ttl_secs, InstallApplyOptions,
+    InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
@@ -17,6 +18,8 @@ use rustok_installer_persistence::{
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -24,6 +27,9 @@ use crate::common::settings::is_production_environment;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+const INSTALLER_JOB_FAILURE_MESSAGE: &str =
+    "installer apply failed; inspect durable installer receipts for recovery details";
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -39,6 +45,7 @@ pub struct InstallPreflightResponse {
 #[derive(Debug, Deserialize)]
 pub struct InstallApplyRequest {
     pub plan: InstallPlan,
+    /// Optional diagnostic label; the host appends unique job/attempt IDs before using it as a lease owner.
     pub lock_owner: Option<String>,
     pub lock_ttl_secs: Option<i64>,
     pub pg_admin_url: Option<String>,
@@ -187,6 +194,77 @@ impl Drop for InstallerJobRuntimeGuard {
     }
 }
 
+/// The HTTP request may be cancelled while the durable running claim is
+/// being written. Give both the claim and its execution to the same spawned
+/// task *before* awaiting the claim result, so disconnects cannot strand a
+/// running row whose installer task was never launched.
+fn spawn_persisted_installer_job<F>(
+    ctx: ServerRuntimeContext,
+    persistence: InstallerPersistenceService,
+    job_id: Uuid,
+    submitted_at: DateTime<Utc>,
+    execute: F,
+) -> tokio::sync::oneshot::Receiver<std::result::Result<(), sea_orm::DbErr>>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        // Own the reservation from the first poll until the job terminates.
+        // Cancellation of the caller does not drop this guard or the task.
+        let stop = crate::services::app_lifecycle::StopHandle::ensure(&ctx);
+        let _guard = InstallerJobRuntimeGuard { ctx };
+        let creation = persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .map(|_| ());
+        let created = creation.is_ok();
+        let _ = ready_tx.send(creation);
+        if !created {
+            return;
+        }
+        if stop.is_stopping() {
+            // The claim may have been committed while shutdown began. No
+            // installer side effects have started yet, so this transition is
+            // safe; never leave a newly admitted but unstarted running job.
+            if let Err(_error) = persistence
+                .finish_http_job_failed(job_id, "server shutdown before installer execution")
+                .await
+            {
+                tracing::error!(%job_id, "Failed to mark unstarted installer job as failed during shutdown");
+            }
+            return;
+        }
+        execute.await;
+    });
+    ready_rx
+}
+
+fn require_installer_not_stopping(ctx: &ServerRuntimeContext) -> Result<()> {
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(http_error(HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "installer_stopping",
+            "Installer is unavailable while the server is stopping",
+        )));
+    }
+    Ok(())
+}
+
+fn validate_http_lock_ttl_secs(requested: Option<i64>) -> Result<i64> {
+    let ttl_secs = requested.unwrap_or(DEFAULT_INSTALL_LOCK_TTL_SECS);
+    if !is_valid_install_lock_ttl_secs(ttl_secs) {
+        return Err(http_error(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_lock_ttl",
+            format!(
+                "lock_ttl_secs must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+            ),
+        )));
+    }
+    Ok(ttl_secs)
+}
+
 async fn apply(
     headers: HeaderMap,
     State(ctx): State<ServerRuntimeContext>,
@@ -195,6 +273,8 @@ async fn apply(
     tracing::debug!(environment = ?request.plan.environment, "Handling installer apply request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
+    require_installer_not_stopping(&ctx)?;
+    let lock_ttl_secs = validate_http_lock_ttl_secs(request.lock_ttl_secs)?;
 
     if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
         tracing::warn!(active_job_id = %active.id(), "Installer job rejected: job already in progress");
@@ -210,23 +290,21 @@ async fn apply(
 
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
-
-    if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
-        return Err(http_error(HttpError::new(
-            StatusCode::CONFLICT,
-            "installer_running",
-            "An installation job is already running",
-        )));
-    }
-
     let submitted_at = Utc::now();
+    let attempt_id = Uuid::new_v4();
+    let lock_owner = build_install_lock_owner(
+        request
+            .lock_owner
+            .as_deref()
+            .filter(|label| !label.trim().is_empty())
+            .or(Some("http")),
+        Some(job_id),
+        attempt_id,
+    );
     let apply_options = InstallApplyOptions {
         session_id: Some(job_id),
-        lock_owner: request
-            .lock_owner
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "http".to_string()),
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
+        lock_owner,
+        lock_ttl_secs,
         pg_admin_url: request.pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
@@ -235,60 +313,48 @@ async fn apply(
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .ok_or_else(|| {
-            ctx.shared_take::<ActiveInstallerJobHandle>();
             Error::Message(
                 "static module registry is unavailable before installer execution".to_string(),
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    if let Err(error) = persistence
-        .create_http_job(job_id, job_id, submitted_at)
-        .await
-    {
-        ctx.shared_take::<ActiveInstallerJobHandle>();
-        if matches!(
-            error.sql_err(),
-            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-        ) {
-            // The database (not a process-local precheck) arbitrates the
-            // single running claim across concurrent installer replicas.
-            return Err(http_error(HttpError::new(
-                StatusCode::CONFLICT,
-                "installer_running",
-                "An installation job is already running",
-            )));
-        }
-        tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
-        return Err(internal_error("failed to create installer job"));
+
+    // All fallible preparation ends before the local reservation. The durable
+    // claim and its execution are then owned by one detached task, never by
+    // the cancelable HTTP request future.
+    require_installer_not_stopping(&ctx)?;
+    if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
+        return Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        )));
     }
 
-    let job_ctx = ctx.clone();
-    tokio::spawn(async move {
-        let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
-        let execution = AssertUnwindSafe(async {
-            executor.apply(plan, apply_options).await
-        })
-        .catch_unwind()
-        .await;
+    let persisted_for_execution = persistence.clone();
+    let execution_task = async move {
+        let persistence = persisted_for_execution;
+        let execution = AssertUnwindSafe(async { executor.apply(plan, apply_options).await })
+            .catch_unwind()
+            .await;
 
         match execution {
             Ok(Ok(output)) => {
-                if let Err(error) = persistence
+                if let Err(_error) = persistence
                     .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
                     .await
                 {
-                    tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
+                    tracing::error!(job_id = %job_id, "Failed to finalize durable installer HTTP job");
                 }
             }
-            Ok(Err(error)) => {
-                let error_message = format!("installer apply failed: {error}");
-                tracing::error!(%error, %job_id, "Installer apply job failed");
-                if let Err(update_error) = persistence
-                    .finish_http_job_failed(job_id, &error_message)
+            Ok(Err(_error)) => {
+                let error_message = INSTALLER_JOB_FAILURE_MESSAGE;
+                tracing::error!(%job_id, "Installer apply job failed; error details redacted");
+                if let Err(_update_error) = persistence
+                    .finish_http_job_failed(job_id, error_message)
                     .await
                 {
                     tracing::error!(
-                        %update_error,
                         %job_id,
                         "Failed to persist installer HTTP job failure state"
                     );
@@ -296,19 +362,39 @@ async fn apply(
             }
             Err(_panic) => {
                 tracing::error!(%job_id, "Installer apply job panicked unexpectedly");
-                if let Err(update_error) = persistence
+                if let Err(_update_error) = persistence
                     .finish_http_job_failed(job_id, "installer apply panicked unexpectedly")
                     .await
                 {
                     tracing::error!(
-                        %update_error,
                         %job_id,
                         "Failed to persist installer HTTP job panic failure state"
                     );
                 }
             }
         }
-    });
+    };
+    let ready =
+        spawn_persisted_installer_job(ctx, persistence, job_id, submitted_at, execution_task);
+    let created = ready.await.map_err(|_| {
+        tracing::error!(%job_id, "Installer claim task exited before acknowledging durable job creation");
+        internal_error("installer job creation did not complete")
+    })?;
+    if let Err(error) = created {
+        if matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            // The database arbitrates the single running claim across replicas.
+            return Err(http_error(HttpError::new(
+                StatusCode::CONFLICT,
+                "installer_running",
+                "An installation job is already running",
+            )));
+        }
+        tracing::error!(%job_id, "Failed to create durable installer HTTP job");
+        return Err(internal_error("failed to create installer job"));
+    }
 
     Ok((
         StatusCode::ACCEPTED,
@@ -333,8 +419,8 @@ fn require_no_running_http_install_job(
             "installer_running",
             "An installation job is already running",
         ))),
-        Err(error) => {
-            tracing::error!(%error, "Unable to inspect durable installer job admission");
+        Err(_error) => {
+            tracing::error!("Unable to inspect durable installer job admission; database details redacted");
             Err(internal_error(
                 "Unable to verify whether an installer job is already running",
             ))
@@ -481,8 +567,8 @@ async fn job_status(
     tracing::debug!(%job_id, "Handling installer job status request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    let Some(job) = persistence.get_http_job(job_id).await.map_err(|error| {
-        tracing::error!(%error, %job_id, "Failed to read durable installer HTTP job");
+    let Some(job) = persistence.get_http_job(job_id).await.map_err(|_error| {
+        tracing::error!(%job_id, "Failed to read durable installer HTTP job; database details redacted");
         internal_error("failed to read installer job")
     })?
     else {
@@ -508,8 +594,8 @@ fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobSta
     let output = match job.output {
         Some(value) => match serde_json::from_value::<InstallApplyOutput>(value) {
             Ok(output) => Some(output),
-            Err(error) => {
-                tracing::error!(%error, %job.id, "Failed to decode persisted installer HTTP job output");
+            Err(_error) => {
+                tracing::error!(%job.id, "Failed to decode persisted installer HTTP job output");
                 return Err(internal_error("installer job output is invalid"));
             }
         },
@@ -525,7 +611,9 @@ fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobSta
         session_id: job.session_id,
         tenant_id: job.tenant_id,
         output,
-        error: job.error_message,
+        error: job
+            .error_message
+            .map(|_| INSTALLER_JOB_FAILURE_MESSAGE.to_string()),
     })
 }
 
@@ -561,6 +649,12 @@ fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
     if auth_count > 1 {
         return Err(forbidden_error("duplicate authorization header"));
     }
+    // Installer authentication has exactly one credential authority per
+    // request. Choosing the custom token while silently ignoring a competing
+    // Authorization header creates an order-dependent identity boundary.
+    if custom_count > 0 && auth_count > 0 {
+        return Err(forbidden_error("conflicting installer setup credentials"));
+    }
 
     if let Some(custom) = headers.get("x-rustok-setup-token") {
         let token_str = custom
@@ -577,13 +671,12 @@ fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
             .to_str()
             .map_err(|_| forbidden_error("invalid authorization header encoding"))?;
         let trimmed = auth_str.trim();
-        if let Some(token) = trimmed
-            .strip_prefix("Bearer ")
-            .or_else(|| trimmed.strip_prefix("bearer "))
-        {
-            let token = token.trim().trim_matches('"');
-            if !token.is_empty() {
-                return Ok(Some(token.to_string()));
+        if let Some((scheme, token)) = trimmed.split_once(' ') {
+            if scheme.eq_ignore_ascii_case("bearer") {
+                let token = token.trim().trim_matches('"');
+                if !token.is_empty() {
+                    return Ok(Some(token.to_string()));
+                }
             }
         }
     }
@@ -622,11 +715,13 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
 }
 
 fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string();
+    let message = error.to_string().to_ascii_lowercase();
     message.contains("install_sessions")
         && (message.contains("does not exist")
             || message.contains("no such table")
-            || message.contains("not found"))
+            || message.contains("not found")
+            || message.contains("doesn't exist")
+            || message.contains("unknown table"))
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
@@ -647,8 +742,8 @@ fn not_found_error(description: impl Into<String>) -> Error {
 
 /// Log operational diagnostics server-side without exposing backend connection
 /// details, filesystem paths or SQL fragments in the public installer response.
-fn installer_storage_failure(operation: &'static str, error: impl std::fmt::Display) -> Error {
-    tracing::error!(%error, operation, "Installer storage/host operation failed");
+fn installer_storage_failure(operation: &'static str, _error: impl std::fmt::Display) -> Error {
+    tracing::error!(operation, "Installer storage/host operation failed; details redacted");
     internal_error("Installer state is temporarily unavailable")
 }
 
@@ -675,6 +770,219 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use uuid::Uuid;
+
+    async fn installer_job_test_db() -> sea_orm::DatabaseConnection {
+        use sea_orm::{ConnectionTrait, Database};
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE install_http_jobs (
+                id TEXT PRIMARY KEY NOT NULL,
+                status TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NULL,
+                session_id TEXT NULL,
+                tenant_id TEXT NULL,
+                output TEXT NULL,
+                error_message TEXT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .await
+        .expect("install_http_jobs table");
+        db
+    }
+
+    #[tokio::test]
+    async fn installer_job_runs_after_http_admission_receiver_is_cancelled() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+
+        let db = installer_job_test_db().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            persistence.clone(),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = started_tx.send(());
+                release_rx.await.expect("release installer task");
+            },
+        );
+        // Simulate HTTP client disconnecting before the claim was acknowledged.
+        drop(ready);
+        tokio::time::timeout(Duration::from_secs(2), started_rx)
+            .await
+            .expect("installer work starts despite disconnect")
+            .expect("background execution started");
+        assert!(ctx.shared_contains::<ActiveInstallerJobHandle>());
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("persisted status readable")
+            .expect("durable job exists");
+        assert_eq!(job.status, "running");
+
+        release_tx.send(()).expect("release executing installer");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("background task releases the reservation");
+    }
+
+    #[tokio::test]
+    async fn installer_shutdown_after_claim_marks_unstarted_job_failed() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+
+        let db = installer_job_test_db().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        let (ran_tx, mut ran_rx) = tokio::sync::mpsc::channel(1);
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            persistence.clone(),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = ran_tx.send(()).await;
+            },
+        );
+        ready.await.expect("claim reply").expect("claim persisted");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown path releases reservation");
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("lookup")
+            .expect("job");
+        assert_eq!(job.status, "failed");
+        assert!(ran_rx.try_recv().is_err(), "installer work must not start");
+    }
+
+    #[tokio::test]
+    async fn installer_claim_failure_clears_local_admission_without_running_job() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        let (ran_tx, mut ran_rx) = tokio::sync::mpsc::channel(1);
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            InstallerPersistenceService::new(ctx.db_clone()),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = ran_tx.send(()).await;
+            },
+        );
+        assert!(ready.await.expect("claim task replies").is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("failed claim releases local owner");
+        assert!(ran_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn installer_does_not_accept_new_jobs_during_shutdown() {
+        use crate::common::settings::RustokSettings;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        assert!(require_installer_not_stopping(&ctx).is_ok());
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        let error = require_installer_not_stopping(&ctx)
+            .expect_err("a stopping host cannot admit another installer task");
+        assert!(matches!(
+            error,
+            Error::Http(ref response) if response.status == StatusCode::SERVICE_UNAVAILABLE
+        ));
+    }
+
+    #[test]
+    fn installer_lock_owner_is_unique_per_attempt_and_bounded() {
+        let job_id = Uuid::from_u128(1);
+        let first_attempt = Uuid::from_u128(2);
+        let second_attempt = Uuid::from_u128(3);
+
+        let first = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(job_id),
+            first_attempt,
+        );
+        let second = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(job_id),
+            second_attempt,
+        );
+
+        assert_ne!(first, second, "each execution attempt needs a unique lease owner");
+        assert!(first.starts_with("operatorworker1:"));
+        assert!(!first.contains('/'));
+        assert!(!first.contains(' '));
+        assert!(first.len() <= 128, "owner must fit install_sessions.lock_owner");
+        assert_eq!(
+            build_install_lock_owner(Some("///"), Some(job_id), first_attempt)
+                .split(':')
+                .next(),
+            Some("installer")
+        );
+    }
+
+    #[test]
+    fn installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values() {
+        assert_eq!(
+            validate_http_lock_ttl_secs(None).expect("default TTL is valid"),
+            DEFAULT_INSTALL_LOCK_TTL_SECS
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(1)).expect("minimum TTL is valid"),
+            1
+        );
+        assert_eq!(
+            validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS))
+                .expect("maximum TTL is valid"),
+            MAX_INSTALL_LOCK_TTL_SECS
+        );
+        assert!(validate_http_lock_ttl_secs(Some(0)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(-1)).is_err());
+        assert!(validate_http_lock_ttl_secs(Some(MAX_INSTALL_LOCK_TTL_SECS + 1)).is_err());
+    }
 
     #[test]
     fn installer_storage_errors_do_not_leak_backend_secrets_in_http_responses() {
@@ -725,6 +1033,11 @@ mod tests {
 
         let sqlite_missing = sea_orm::DbErr::Custom("no such table: install_sessions".to_string());
         assert!(installer_schema_missing(&sqlite_missing));
+
+        let mysql_missing = sea_orm::DbErr::Custom(
+            "Table 'rustok.install_sessions' doesn't exist".to_string(),
+        );
+        assert!(installer_schema_missing(&mysql_missing));
 
         let other_error = sea_orm::DbErr::Custom("connection refused".to_string());
         assert!(!installer_schema_missing(&other_error));
@@ -778,17 +1091,18 @@ mod tests {
             None,
             None,
             None,
-            Some("installer apply failed: invalid topology".to_string()),
+            Some(
+                "installer apply failed: postgres://root:sensitive-password@database/private"
+                    .to_string(),
+            ),
         );
         let job_id = model.id;
 
         let response = install_job_status_response(model).expect("maps failed status");
         assert_eq!(response.job_id, job_id);
         assert!(matches!(response.status, InstallJobState::Failed));
-        assert_eq!(
-            response.error.as_deref(),
-            Some("installer apply failed: invalid topology")
-        );
+        assert_eq!(response.error.as_deref(), Some(INSTALLER_JOB_FAILURE_MESSAGE));
+        assert!(!response.error.as_deref().unwrap().contains("sensitive-password"));
     }
 
     #[test]
@@ -840,6 +1154,14 @@ mod tests {
         );
         let token2 = extract_setup_token(&headers2).expect("should succeed");
         assert_eq!(token2.as_deref(), Some("token-without-quotes"));
+
+        let mut mixed_case_headers = HeaderMap::new();
+        mixed_case_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("bEaReR mixed-case-token"),
+        );
+        let mixed_case_token = extract_setup_token(&mixed_case_headers).expect("should succeed");
+        assert_eq!(mixed_case_token.as_deref(), Some("mixed-case-token"));
     }
 
     #[test]
@@ -867,6 +1189,31 @@ mod tests {
         );
         let auth_err = extract_setup_token(&auth_headers).unwrap_err();
         assert!(matches!(auth_err, Error::Http(ref e) if e.status == StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn extract_setup_token_rejects_conflicting_credential_sources() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-rustok-setup-token",
+            axum::http::HeaderValue::from_static("custom-token"),
+        );
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer other-token"),
+        );
+
+        let error = extract_setup_token(&headers)
+            .expect_err("two installer credential sources must fail closed");
+        assert!(matches!(error, Error::Http(ref err) if err.status == StatusCode::FORBIDDEN));
+
+        // A malformed Authorization header cannot be ignored in favor of
+        // an otherwise valid custom setup credential either.
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Basic unrelated"),
+        );
+        assert!(extract_setup_token(&headers).is_err());
     }
 
     #[test]

@@ -12,10 +12,12 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 
+[lints]
+workspace = true
+
 [features]
 default = ["server"]
 server = [
-  "dep:anyhow",
   "dep:async-trait",
   "dep:axum",
   "dep:csv",
@@ -38,7 +40,6 @@ server = [
 ]
 
 [dependencies]
-anyhow = { workspace = true, optional = true }
 async-graphql.workspace = true
 async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }

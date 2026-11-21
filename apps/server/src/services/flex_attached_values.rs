@@ -2,12 +2,12 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[cfg(feature = "mod-product")]
 use flex::PRODUCT_ENTITY_TYPE;
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "Imports conditionally consumed depending on activated module feature flags")]
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE,
     TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE, delete_attached_localized_values,
@@ -101,6 +101,7 @@ impl FlexAttachedValuesService {
     /// current shared/exact values inside that transaction, persisted only on semantic
     /// change, and then advances the donor aggregate revision in the same commit. This is
     /// the mutation law shared with attached Translation CAS.
+    #[tracing::instrument(skip(db, payload), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id, locale = %locale))]
     pub async fn update_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -386,6 +387,7 @@ impl FlexAttachedValuesService {
         }
     }
 
+    #[tracing::instrument(skip(db), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id))]
     pub async fn delete_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -478,7 +480,7 @@ impl FlexAttachedValuesService {
                         .map_err(map_flex_host_error)?;
                 let changed = !normalized_object(Some(&before_shared))
                     .as_object()
-                    .is_some_and(Map::is_empty)
+                    .is_some_and(|map| map.is_empty())
                     || !before_localized.is_empty();
 
                 // Always clean capability rows, including any legacy-invalid locale rows
@@ -520,6 +522,7 @@ impl FlexAttachedValuesService {
         persist_localized_values(db, tenant_id, entity_type, entity_id, locale, values).await
     }
 
+    #[tracing::instrument(skip(db), fields(tenant_id = %tenant_id, entity_type = %entity_type, entity_id = %entity_id))]
     pub async fn delete_localized_values<C>(
         db: &C,
         tenant_id: Uuid,
@@ -911,6 +914,7 @@ fn normalized_object(value: Option<&Value>) -> Value {
     )
 }
 
+#[cfg(feature = "mod-taxonomy")]
 async fn ensure_registered_owner_exists<C>(
     db: &C,
     tenant_id: Uuid,

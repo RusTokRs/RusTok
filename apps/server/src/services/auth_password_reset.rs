@@ -30,6 +30,7 @@ impl AuthLifecycleService {
     ) -> Result<(), AuthLifecycleError> {
         let claims = decode_password_reset_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidResetToken)?;
+        // INVARIANT: Validate that the reset token was signed for the requested tenant before looking up the user.
         if claims.tenant_id != tenant_id {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
@@ -169,7 +170,7 @@ mod tests {
     ) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-        let config = AuthConfig::new("reset-service-secret".to_string());
+        let config = AuthConfig::new("reset-service-secret-key-for-tests-32b".to_string());
         let tenant = tenants::ActiveModel::new("Reset Tenant", slug)
             .insert(&db)
             .await

@@ -7,7 +7,7 @@ use tokio::time::{Instant, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::{
-    AiError, AiHostRuntime, AiManagementService, AiStructuredTaskAvailability,
+    AiError, AiHostRuntime, AiManagementService, AiResult, AiStructuredTaskAvailability,
     AiStructuredTaskCatalog, AiStructuredTaskDescriptor, AiStructuredTaskEstimate,
     AiStructuredTaskExecution, AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef,
     AiStructuredTaskHealth, AiStructuredTaskHealthRequest, AiStructuredTaskPort,
@@ -34,13 +34,15 @@ const MAX_OUTPUT_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 pub fn structured_task_port_from_context(
     context: &rustok_api::HostRuntimeContext,
     catalog: AiStructuredTaskCatalog,
-) -> Result<Option<Arc<dyn AiStructuredTaskPort>>, String> {
+) -> AiResult<Option<Arc<dyn AiStructuredTaskPort>>> {
     let Some(config) = context.shared_get::<crate::SharedAiStructuredResultKeyringConfig>() else {
         return Ok(None);
     };
     let runtime = crate::ai_host_runtime_from_context(context)?;
     let keyring = StructuredResultKeyring::new(config.0, runtime.secret_registry().clone())
-        .map_err(|error| format!("invalid AI structured result keyring: {}", error.code))?;
+        .map_err(|error| {
+            AiError::InvalidConfig(format!("invalid AI structured result keyring: {}", error.code))
+        })?;
     Ok(Some(Arc::new(DurableAiStructuredTaskPort::new(
         runtime, catalog, keyring,
     ))))
@@ -883,7 +885,7 @@ fn classify_ai_error(error: &AiError) -> AttemptFailure {
             retryable: true,
             retry_after_ms: None,
         },
-        AiError::InvalidConfig(_) | AiError::NotFound(_) => AttemptFailure {
+        AiError::InvalidConfig(_) | AiError::NotFound(_) | AiError::Catalog(_) => AttemptFailure {
             kind: PortErrorKind::Unavailable,
             code: "ai.structured.provider_configuration_invalid".to_string(),
             retryable: false,

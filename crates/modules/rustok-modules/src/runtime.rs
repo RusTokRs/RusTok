@@ -648,7 +648,16 @@ where
                 .effective_policy
                 .resolve(dispatch.tenant_id, &artifact)
                 .await?;
-            if !policy.contains(&artifact.release.slug) {
+            if policy
+                .admit_artifact_execution(
+                    dispatch.tenant_id,
+                    &artifact.release,
+                    crate::ArtifactInstallationTarget::ExactInstallation {
+                        installation_id: artifact.installation_id,
+                    },
+                )
+                .is_none()
+            {
                 return Err(ArtifactBindingDispatchError::DeniedByPolicy {
                     slug: artifact.release.slug.clone(),
                     policy_revision: policy.policy_revision().to_string(),
@@ -873,6 +882,19 @@ mod tests {
         }
     }
 
+    struct FixedEffectivePolicy(ModuleEffectivePolicy);
+
+    #[async_trait]
+    impl ArtifactEffectivePolicyResolver for FixedEffectivePolicy {
+        async fn resolve(
+            &self,
+            _tenant_id: Uuid,
+            _artifact: &InstalledModuleArtifact,
+        ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
+            Ok(self.0.clone())
+        }
+    }
+
     fn package() -> ModuleArtifactPackage {
         let payload = b"artifact runtime payload".to_vec();
         let payload_digest = format!("sha256:{}", hex::encode(Sha256::digest(&payload)));
@@ -1020,6 +1042,60 @@ mod tests {
         let effective = effective_binding_policy(&binding, ExecutionPhase::Http, stricter_policy)
             .expect("HTTP binding has a timeout");
         assert_eq!(effective.limits.wall_clock_ms, 100);
+    }
+
+    #[tokio::test]
+    async fn runtime_revalidation_rejects_enabled_slug_without_artifact_evidence() {
+        let installed = installed(&package());
+        let binding = installed.descriptor.bindings[0].clone();
+        let revision = format!("sha256:{}", "a".repeat(64));
+        // A slug can be enabled without being an artifact definition. That
+        // alone must not authorize this installation at the second gate.
+        let policy: ModuleEffectivePolicy = serde_json::from_value(json!({
+            "policy_revision": revision.clone(),
+            "enabled_modules": [installed.release.slug.clone()],
+            "decisions": {
+                "sample_module": {
+                    "module_slug": "sample_module",
+                    "enabled": true,
+                    "policy_revision": revision,
+                    "facts": [{"kind": "platform_default", "enabled": true}],
+                    "denial_reasons": []
+                }
+            }
+        }))
+        .expect("structurally valid policy fixture");
+        let executor = ArtifactRuntimeLifecycleExecutor::new(
+            ArtifactRuntime::new(
+                InMemoryArtifactBlobStore::default(),
+                SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
+            ),
+            FixedInstallation(installed.clone()),
+            DeniedSandboxPolicy,
+            FixedEffectivePolicy(policy),
+        );
+        let tenant_id = Uuid::new_v4();
+        let error = executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release: &installed.release,
+                binding: &binding,
+                target: crate::ArtifactInstallationTarget::CurrentRelease,
+                tenant_id,
+                admission: crate::ArtifactExecutionAdmission::owner_revalidation(
+                    tenant_id,
+                    &installed.release,
+                    crate::ArtifactInstallationTarget::CurrentRelease,
+                ),
+                input: json!({ "id": 1 }),
+                phase: ExecutionPhase::Event,
+                context: crate::ArtifactBindingExecutionContext::default(),
+            })
+            .await
+            .expect_err("slug-only policy must deny before sandbox resolution");
+        assert!(matches!(
+            error,
+            ArtifactBindingDispatchError::DeniedByPolicy { .. }
+        ));
     }
 
     #[tokio::test]

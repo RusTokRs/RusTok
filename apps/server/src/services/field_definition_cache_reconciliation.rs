@@ -129,7 +129,7 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
     restart_delay: Duration,
 ) {
     let candidate = FieldDefinitionCacheGenerationStartLock::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<FieldDefinitionCacheGenerationStartLock>()
         .unwrap_or(candidate);
@@ -206,8 +206,8 @@ async fn supervise_field_definition_cache_generation(
             Ok(Ok(())) => tracing::error!(
                 "Field-definition cache generation reconciler exited unexpectedly; restarting"
             ),
-            Ok(Err(error)) => tracing::error!(
-                %error,
+            Ok(Err(_error)) => tracing::error!(
+                error_code = "field_definition_cache_reconciler_failed",
                 "Field-definition cache generation reconciler failed; restarting"
             ),
             Err(_) => {

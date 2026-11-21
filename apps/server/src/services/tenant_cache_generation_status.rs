@@ -89,10 +89,6 @@ impl TenantCacheGenerationListenerState {
         state
     }
 
-    pub(crate) fn redis_required(&self) -> bool {
-        self.redis_required
-    }
-
     pub async fn mark_local_healthy(&self) {
         self.local_ready.store(true, Ordering::Release);
         self.local_degraded.store(false, Ordering::Release);

@@ -127,6 +127,11 @@ impl SecurityService {
     }
 
     /// Deletes an IP rule by ID.
+    #[tracing::instrument(
+        skip(self),
+        fields(tenant_id = %tenant_id, rule_id = %rule_id),
+        err
+    )]
     pub async fn delete_ip_rule(&self, tenant_id: Uuid, rule_id: Uuid) -> SecurityResult<()> {
         if let Some(db) = &self.db {
             ip_rule::Entity::delete_many()
@@ -374,6 +379,11 @@ impl SecurityService {
     }
 
     /// Updates security policy for a tenant.
+    #[tracing::instrument(
+        skip(self, input),
+        fields(tenant_id = %tenant_id),
+        err
+    )]
     pub async fn update_policy(
         &self,
         tenant_id: Uuid,
@@ -485,7 +495,7 @@ impl SecurityService {
             .await?;
 
         if decision.is_locked {
-            let _ = self
+            if let Err(err) = self
                 .log_event(
                     tenant_id,
                     LogSecurityEventInput {
@@ -501,7 +511,16 @@ impl SecurityService {
                         }),
                     },
                 )
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    %tenant_id,
+                    %identity,
+                    %ip,
+                    error = %err,
+                    "failed to persist account locked security event"
+                );
+            }
         }
 
         Ok(decision)

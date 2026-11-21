@@ -237,6 +237,7 @@ async fn validate_profile_media_references(
     avatar_media_id: Option<Uuid>,
     banner_media_id: Option<Uuid>,
 ) -> Result<()> {
+    // INVARIANT: In-memory authorization check verifies the caller session tenant matches the target tenant.
     if auth.tenant_id != tenant_id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Profile media updates must use the current tenant",

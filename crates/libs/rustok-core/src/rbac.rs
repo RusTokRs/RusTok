@@ -96,6 +96,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Forms,
         Resource::Conversations,
         Resource::Messages,
+        Resource::Newsletter,
     ])
 });
 
@@ -141,6 +142,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Forms,
         Resource::Conversations,
         Resource::Messages,
+        Resource::Newsletter,
     ]);
 
     permissions.insert(Permission::MODULES_READ);

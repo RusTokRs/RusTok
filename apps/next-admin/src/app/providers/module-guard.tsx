@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@/auth';
 import { fetchEnabledModules } from '@/shared/api/modules';
+import { ModulePolicyError } from './module-policy-error';
 
 export async function ModuleGuard({
   slug,
@@ -14,14 +15,14 @@ export async function ModuleGuard({
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
-  let enabledModules: string[] = [];
+  if (!token || !tenantSlug) return <ModulePolicyError />;
 
-  if (token && tenantSlug) {
-    try {
-      enabledModules = await fetchEnabledModules({ token, tenantSlug });
-    } catch (error) {
-      console.warn(`Failed to verify module '${slug}' availability.`, error);
-    }
+  let enabledModules: string[];
+  try {
+    enabledModules = await fetchEnabledModules({ token, tenantSlug });
+  } catch (error) {
+    console.error('Failed to fetch module availability', error);
+    return <ModulePolicyError />;
   }
 
   if (!enabledModules.includes(slug)) {

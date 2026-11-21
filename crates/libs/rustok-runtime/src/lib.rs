@@ -321,9 +321,18 @@ impl ModuleWorkScheduler {
     pub async fn run_once(&self) -> Result<usize, ModuleWorkError> {
         let workers = self.workers.read().await.clone();
         let mut executed = 0;
+        let mut first_error = None;
         for (slug, worker) in workers {
-            let Some(item) = worker.source.claim(&slug).await? else {
-                continue;
+            let item = match worker.source.claim(&slug).await {
+                Ok(Some(item)) => item,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::error!(worker = %slug, %error, "module work claim failed");
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                    continue;
+                }
             };
             let outcome = match worker.handler.execute(item.clone()).await {
                 Ok(outcome) => outcome,
@@ -331,10 +340,19 @@ impl ModuleWorkScheduler {
                     message: error.to_string(),
                 },
             };
-            worker.source.complete(&item, outcome).await?;
+            if let Err(error) = worker.source.complete(&item, outcome).await {
+                tracing::error!(worker = %slug, %error, "module work completion failed");
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+                continue;
+            }
             executed += 1;
         }
-        Ok(executed)
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(executed),
+        }
     }
 
     /// Runs registered module work until the deployment-owned stop signal is
@@ -475,6 +493,58 @@ mod tests {
         assert_eq!(scheduler.run_once().await.expect("scheduler runs"), 2);
         assert_eq!(first.completed.lock().expect("first outcomes").len(), 1);
         assert_eq!(second.completed.lock().expect("second outcomes").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scheduler_runs_later_workers_after_a_source_error_and_reports_it() {
+        struct BrokenSource;
+        #[async_trait]
+        impl ModuleWorkSource for BrokenSource {
+            async fn claim(&self, _: &str) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
+                Err(rustok_api::ModuleWorkError::Source("needs repair".into()))
+            }
+            async fn complete(&self, _: &ModuleWorkItem, _: ModuleWorkOutcome) -> Result<(), rustok_api::ModuleWorkError> {
+                panic!("broken source cannot claim work")
+            }
+        }
+        let healthy = Arc::new(TestSource {
+            item: Mutex::new(Some(ModuleWorkItem {
+                id: Uuid::new_v4(), tenant_id: Uuid::new_v4(), worker_slug: "second".into(),
+                lease_token: "lease".into(), payload: serde_json::json!({}),
+            })),
+            ..Default::default()
+        });
+        let scheduler = ModuleWorkScheduler::new();
+        scheduler.register(Arc::new(BrokenSource), Arc::new(TestHandler("first"))).await.unwrap();
+        scheduler.register(healthy.clone(), Arc::new(TestHandler("second"))).await.unwrap();
+        assert!(matches!(scheduler.run_once().await,
+            Err(rustok_api::ModuleWorkError::Source(message)) if message == "needs repair"));
+        assert_eq!(healthy.completed.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scheduler_continues_after_completion_failure() {
+        struct FailingCompletion(Mutex<Option<ModuleWorkItem>>);
+        #[async_trait]
+        impl ModuleWorkSource for FailingCompletion {
+            async fn claim(&self, _: &str) -> Result<Option<ModuleWorkItem>, rustok_api::ModuleWorkError> {
+                Ok(self.0.lock().unwrap().take())
+            }
+            async fn complete(&self, _: &ModuleWorkItem, _: ModuleWorkOutcome) -> Result<(), rustok_api::ModuleWorkError> {
+                Err(rustok_api::ModuleWorkError::Source("completion failed".into()))
+            }
+        }
+        let item = |slug: &str| ModuleWorkItem {
+            id: Uuid::new_v4(), tenant_id: Uuid::new_v4(), worker_slug: slug.into(),
+            lease_token: "lease".into(), payload: serde_json::json!({}),
+        };
+        let healthy = Arc::new(TestSource { item: Mutex::new(Some(item("second"))), ..Default::default() });
+        let scheduler = ModuleWorkScheduler::new();
+        scheduler.register(Arc::new(FailingCompletion(Mutex::new(Some(item("first"))))), Arc::new(TestHandler("first"))).await.unwrap();
+        scheduler.register(healthy.clone(), Arc::new(TestHandler("second"))).await.unwrap();
+        assert!(matches!(scheduler.run_once().await,
+            Err(rustok_api::ModuleWorkError::Source(message)) if message == "completion failed"));
+        assert_eq!(healthy.completed.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

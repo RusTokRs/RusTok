@@ -117,26 +117,31 @@ impl RuntimeFingerprint {
                 "engine_build_digest must be a valid sha256 digest".to_string(),
             ));
         }
-        if self.engine_config_revision.trim().is_empty() {
-            return Err(ExecutorReadinessError::InvalidFingerprint(
-                "engine_config_revision must not be empty".to_string(),
-            ));
+        for (field, value) in [
+            ("engine_config_revision", &self.engine_config_revision),
+            ("target_cpu_contract", &self.target_cpu_contract),
+            ("runtime_abi", &self.runtime_abi),
+        ] {
+            if value.trim().is_empty() {
+                return Err(ExecutorReadinessError::InvalidFingerprint(format!(
+                    "{field} must not be empty"
+                )));
+            }
+            // `compute_digest` frames fields as `label:value\n`; a value
+            // containing a control character (above all `\n`) could forge a
+            // field boundary and make two different fingerprints share one
+            // digest, so free-text fields must never contain them.
+            if value.chars().any(char::is_control) {
+                return Err(ExecutorReadinessError::InvalidFingerprint(format!(
+                    "{field} must not contain control characters"
+                )));
+            }
         }
         if let Some(ref image) = self.isolated_worker_image_digest
             && !valid_digest(image)
         {
             return Err(ExecutorReadinessError::InvalidFingerprint(
                 "isolated_worker_image_digest must be a valid sha256 digest".to_string(),
-            ));
-        }
-        if self.target_cpu_contract.trim().is_empty() {
-            return Err(ExecutorReadinessError::InvalidFingerprint(
-                "target_cpu_contract must not be empty".to_string(),
-            ));
-        }
-        if self.runtime_abi.trim().is_empty() {
-            return Err(ExecutorReadinessError::InvalidFingerprint(
-                "runtime_abi must not be empty".to_string(),
             ));
         }
         Ok(())

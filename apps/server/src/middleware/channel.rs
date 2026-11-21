@@ -296,10 +296,17 @@ fn channel_cache_entry_weight(key: &ChannelCacheKey, value: &CachedChannelResolu
 }
 
 fn channel_cache(ctx: &ServerRuntimeContext) -> Arc<ChannelResolutionCache> {
-    let candidate = Arc::new(ChannelResolutionCache::new());
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<Arc<ChannelResolutionCache>>()
-        .unwrap_or(candidate)
+    if let Some(existing) = ctx.shared_get::<Arc<ChannelResolutionCache>>() {
+        existing
+    } else {
+        let candidate = Arc::new(ChannelResolutionCache::new());
+        if ctx.shared_insert_if_absent(candidate.clone()) {
+            candidate
+        } else {
+            ctx.shared_get::<Arc<ChannelResolutionCache>>()
+                .unwrap_or(candidate)
+        }
+    }
 }
 
 pub async fn resolve(
@@ -337,8 +344,11 @@ pub async fn resolve(
                     .resolve(&facts)
                     .await
                     .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-                    .map_err(|error| {
-                        tracing::error!(%error, "channel::resolve failed in cache loader");
+                    .map_err(|_error| {
+                        tracing::error!(
+                            error_code = "channel_resolution_cache_load_failed",
+                            "Channel resolution failed in cache loader"
+                        );
                         axum::http::StatusCode::INTERNAL_SERVER_ERROR
                     })
             })
@@ -349,8 +359,11 @@ pub async fn resolve(
             .resolve(&facts)
             .await
             .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-            .map_err(|error| {
-                tracing::error!(%error, "channel::resolve failed");
+            .map_err(|_error| {
+                tracing::error!(
+                    error_code = "channel_resolution_failed",
+                    "Channel resolution failed"
+                );
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             })?
     };

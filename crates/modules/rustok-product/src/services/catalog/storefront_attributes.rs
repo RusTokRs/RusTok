@@ -70,7 +70,10 @@ struct StorefrontAttributeValueOptionRow {
     value_id: Uuid,
     option_id: Uuid,
     option_code: String,
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "query result projection captures database column position"
+    )]
     option_position: i32,
 }
 
@@ -376,12 +379,9 @@ where
 
     Ok(ranked
         .into_iter()
-        .map(|(attribute_id, by_locale)| {
-            let label = by_locale
-                .into_values()
-                .next()
-                .expect("a ranked label map is never empty");
-            (attribute_id, label)
+        .filter_map(|(attribute_id, by_locale)| {
+            let label = by_locale.into_values().next()?;
+            Some((attribute_id, label))
         })
         .collect())
 }
@@ -447,12 +447,9 @@ where
 
     Ok(ranked
         .into_iter()
-        .map(|(value_id, by_locale)| {
-            let text = by_locale
-                .into_values()
-                .next()
-                .expect("a ranked value map is never empty");
-            (value_id, text)
+        .filter_map(|(value_id, by_locale)| {
+            let text = by_locale.into_values().next()?;
+            Some((value_id, text))
         })
         .collect())
 }
@@ -575,12 +572,9 @@ where
 
     Ok(ranked
         .into_iter()
-        .map(|(option_id, by_locale)| {
-            let label = by_locale
-                .into_values()
-                .next()
-                .expect("a ranked option map is never empty");
-            (option_id, label)
+        .filter_map(|(option_id, by_locale)| {
+            let label = by_locale.into_values().next()?;
+            Some((option_id, label))
         })
         .collect())
 }

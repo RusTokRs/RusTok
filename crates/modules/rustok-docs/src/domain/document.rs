@@ -81,7 +81,7 @@ impl CollaborativeDoc {
         Ok(node_id)
     }
 
-    /// Updates the block kind/type (e.g., converting Paragraph to Heading or toggling a Todo).
+    /// Updates the block kind/type (e.g., converting Paragraph to Heading or toggling a checklist item).
     pub fn update_block_type(&self, node_id: TreeID, block_type: BlockType) -> DocsResult<()> {
         let meta = self.doc.get_map(format!("block_meta_{}", node_id));
         let type_str = serde_json::to_string(&block_type).map_err(DocsError::from)?;

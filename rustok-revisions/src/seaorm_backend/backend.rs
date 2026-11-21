@@ -206,11 +206,9 @@ impl RevisionBackend for SeaOrmBackend {
             .list_revisions(tenant_id, content_id, locale, Some(keep_count), None)
             .await?;
 
-        if revisions.is_empty() {
+        let Some(min_revision_number) = revisions.last().map(|rev| rev.revision_number) else {
             return Ok(0);
-        }
-
-        let min_revision_number = revisions.last().unwrap().revision_number;
+        };
 
         // Delete older revisions (excluding named versions)
         let delete_result = entities::Entity::delete_many()

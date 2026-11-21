@@ -24,13 +24,26 @@ pub struct ReactionsGraphqlRuntimeData {
     service: ReactionsService,
 }
 
+/// Error returned when initializing Reactions GraphQL runtime data fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct ReactionsGraphqlRuntimeError(pub String);
+
+impl From<ReactionsGraphqlRuntimeError> for String {
+    fn from(error: ReactionsGraphqlRuntimeError) -> Self {
+        error.0
+    }
+}
+
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
-) -> std::result::Result<ReactionsGraphqlRuntimeData, String> {
+) -> std::result::Result<ReactionsGraphqlRuntimeData, ReactionsGraphqlRuntimeError> {
     let subjects = inputs
         .shared_get::<Arc<ReactionSubjectRegistry>>()
         .ok_or_else(|| {
-            "Reactions subject registry is not registered in host runtime".to_string()
+            ReactionsGraphqlRuntimeError(
+                "Reactions subject registry is not registered in host runtime".to_string(),
+            )
         })?;
     Ok(ReactionsGraphqlRuntimeData {
         service: ReactionsService::new(inputs.db_clone(), subjects),

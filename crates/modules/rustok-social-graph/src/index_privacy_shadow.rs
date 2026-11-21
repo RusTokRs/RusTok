@@ -469,6 +469,7 @@ fn classify_batch(
         (true, false) => IndexPrivacyShadowOutcome::BatchMissing,
         (false, true) => IndexPrivacyShadowOutcome::BatchExtra,
         (true, true) => IndexPrivacyShadowOutcome::BatchMixed,
+        // INVARIANT: prior equality check guarantees that unequal sets have at least one difference.
         (false, false) => unreachable!("unequal sets must have a missing or extra value"),
     }
 }

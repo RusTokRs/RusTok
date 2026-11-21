@@ -65,6 +65,7 @@ pub type OutboxRetentionRuntimeConfig =
 /// keeping every delivered row forever.
 const MAX_OUTBOX_RETENTION_DAYS: u64 = 3_650;
 const MAX_OUTBOX_RETENTION_BATCH_SIZE: u64 = 100_000;
+const MAX_OUTBOX_RETENTION_INTERVAL_SECONDS: u64 = 86_400;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OutboxRelaySupervisorMetricsSnapshot {
@@ -98,27 +99,36 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
-    // Subscribe before any transport can publish a generation. This also restores shared
-    // generations before middleware and authorization paths construct or read their caches.
-    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
-        ctx,
-        cache.clone(),
-    )
-    .await;
-    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
-    start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
-
+    // Build and validate the complete delivery runtime before starting any
+    // cache/listener workers. In particular, an unavailable configured Iggy
+    // deployment or an invalid artifact projector must not leave detached
+    // listeners running after bootstrap has failed.
+    let mut iggy_transport_handle: Option<Arc<IggyTransport>> = None;
     let runtime = match delivery_profile {
         EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
-            // Keep the application-facing transport concrete so TransactionalEventBus can
-            // downcast to OutboxTransport and write into the caller's database transaction.
+            // Keep the application-facing transport concrete: it advertises
+            // transactional writes, so TransactionalEventBus appends into
+            // the caller's database transaction through the trait method.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
+            // Validate local DB-backed components before connecting/starting the external
+            // Iggy transport. A bad retention policy or artifact projector must not leave
+            // a broker process or connector alive after bootstrap fails.
+            let outbox_retention =
+                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
+                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
+                .map_err(|error| {
+                    Error::BadRequest(format!(
+                        "Failed to initialize durable artifact event projection: {error}"
+                    ))
+                })?;
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
-                    let transport = MemoryTransport::with_capacity(channel_capacity);
-                    let listener_bus = transport.event_bus();
+                    let local = MemoryTransport::with_capacity(channel_capacity);
+                    let listener_bus = local.event_bus();
                     (
-                        Arc::new(transport) as Arc<dyn EventTransport>,
+                        Arc::new(LocalEventDeliveryTransport { local })
+                            as Arc<dyn EventTransport>,
                         listener_bus,
                         None,
                     )
@@ -137,21 +147,15 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     );
                     // Durable inbound consumers must reuse the exact configured connector.
                     // Creating another bundled transport would start a second native broker
-                    // process on the same ports and split lifecycle ownership.
-                    ctx.shared_insert(Arc::clone(&iggy_transport));
+                    // process on the same ports and split lifecycle ownership. Register it only
+                    // after the rest of event-runtime construction succeeds.
+                    iggy_transport_handle = Some(Arc::clone(&iggy_transport));
                     let transport: Arc<dyn EventTransport> = iggy_transport;
                     let (transport, listener_bus) =
                         transport_with_local_delivery(transport, channel_capacity);
                     (transport, listener_bus, Some(iggy_config.mode))
                 }
             };
-            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
-                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
-                .map_err(|error| {
-                    Error::BadRequest(format!(
-                        "Failed to initialize durable artifact event projection: {error}"
-                    ))
-                })?;
             let relay_target: Arc<dyn EventTransport> = Arc::new(
                 ArtifactEventProjectionTransport::new(artifact_projector, relay_target),
             );
@@ -174,12 +178,14 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
                     max_concurrency: settings.events.relay_max_concurrency,
                     claim_ttl: Duration::from_millis(settings.events.relay_claim_ttl_ms),
+                    // A dispatch must finish well inside its claim lease:
+                    // half the lease, capped at the relay default of 30s.
+                    publish_timeout: Duration::from_millis(
+                        (settings.events.relay_claim_ttl_ms / 2).clamp(1, 30_000),
+                    ),
                     ..RelayConfig::default()
                 }),
             };
-
-            let outbox_retention =
-                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
 
             EventRuntime {
                 delivery_profile,
@@ -194,6 +200,37 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         }
     };
 
+    // All fallible transport/projector/configuration work has completed. Start the
+    // generation listeners before returning the runtime, so no relay can publish into
+    // an unobserved cache-generation channel.
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    if let Err(error) = start_rbac_cache_invalidation_listener(ctx, cache.clone()).await {
+        let tasks =
+            crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(ctx).await;
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            if let Err(join_err) = task.await {
+                if !join_err.is_cancelled() {
+                    tracing::warn!(
+                        failure_code = "tenant_cache_generation_listener_join_failed",
+                        "Aborted tenant cache generation task failed unexpectedly"
+                    );
+                }
+            }
+        }
+        return Err(error);
+    }
+    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
+        ctx,
+        cache.clone(),
+    )
+    .await;
+
+    if let Some(iggy_transport) = iggy_transport_handle {
+        ctx.shared_insert(iggy_transport);
+    }
     // Module listeners are started immediately after this function returns, while the historical
     // bootstrap stored EventRuntime only afterwards. Seed the shared runtime here so listener
     // startup always resolves the exact delivery bus paired with the configured transport.
@@ -223,10 +260,23 @@ fn resolve_outbox_retention(
             "events.outbox_retention.batch_size must be between 1 and {MAX_OUTBOX_RETENTION_BATCH_SIZE}"
         )));
     }
-    if settings.interval_seconds == 0 {
-        return Err(Error::BadRequest(
-            "events.outbox_retention.interval_seconds must be greater than zero".to_string(),
-        ));
+    if settings.interval_seconds == 0
+        || settings.interval_seconds > MAX_OUTBOX_RETENTION_INTERVAL_SECONDS
+    {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.interval_seconds must be between 1 and {MAX_OUTBOX_RETENTION_INTERVAL_SECONDS}"
+        )));
+    }
+
+    if settings.failed_retention_days > MAX_OUTBOX_RETENTION_DAYS {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.failed_retention_days must be between 0 (keep forever) and {MAX_OUTBOX_RETENTION_DAYS}"
+        )));
+    }
+    if settings.receipt_retention_days > MAX_OUTBOX_RETENTION_DAYS {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.receipt_retention_days must be between 0 (keep forever) and {MAX_OUTBOX_RETENTION_DAYS}"
+        )));
     }
 
     let retention = rustok_outbox::OutboxRetentionConfig {
@@ -234,6 +284,12 @@ fn resolve_outbox_retention(
             |_| Error::BadRequest("outbox retention window is out of range".to_string()),
         )?),
         batch_size: settings.batch_size,
+        failed_retention: (settings.failed_retention_days > 0).then(|| {
+            chrono::Duration::days(settings.failed_retention_days as i64)
+        }),
+        receipt_retention: (settings.receipt_retention_days > 0).then(|| {
+            chrono::Duration::days(settings.receipt_retention_days as i64)
+        }),
     };
     retention.validate().map_err(|error| {
         Error::BadRequest(format!(
@@ -295,7 +351,6 @@ pub fn spawn_outbox_relay_worker(
                             kind = ?error.kind,
                             code = %error.code,
                             retryable = error.retryable,
-                            message = %error.message,
                             "Relay processing error"
                         );
                     }
@@ -311,9 +366,9 @@ pub fn spawn_outbox_relay_worker(
                     }
                     OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
                     match result {
-                        Some(Err(error)) => tracing::error!(
-                            "Outbox relay worker failed: {:?}. Restarting in 5s.",
-                            error
+                        Some(Err(_error)) => tracing::error!(
+                            failure_code = "outbox_relay_worker_join_failed",
+                            "Outbox relay worker failed; restarting in 5s."
                         ),
                         Some(Ok(())) => tracing::error!(
                             "Outbox relay worker exited unexpectedly. Restarting in 5s."
@@ -351,7 +406,9 @@ fn outbox_relay_worker_context() -> PortContext {
         format!("outbox-relay-worker:{}", uuid::Uuid::new_v4()),
     )
     .with_idempotency_key(format!("outbox-relay-tick:{}", uuid::Uuid::new_v4()))
-    .with_deadline(Duration::from_secs(30))
+    // One relay pass may dispatch a full batch; the deadline bounds the
+    // whole pass, not a single event, so it must cover batch latency.
+    .with_deadline(Duration::from_secs(600))
 }
 
 fn transport_with_local_delivery(
@@ -365,6 +422,67 @@ fn transport_with_local_delivery(
 }
 
 #[derive(Clone)]
+struct LocalEventDeliveryTransport {
+    local: MemoryTransport,
+}
+
+#[async_trait]
+impl EventTransport for LocalEventDeliveryTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+        let event_id = envelope.id;
+        let event_type = envelope.event.event_type();
+        if let Err(error) = self
+            .local
+            .event_bus()
+            .publish_root_envelope_and_wait(envelope)
+            .await
+        {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
+            tracing::error!(
+                event_id = %event_id,
+                event_type,
+                failure_code = "local_root_event_delivery_failed",
+                "Local root-event delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn publish_contract(
+        &self,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        let event_id = envelope.id();
+        let event_type = envelope.event_type().to_owned();
+        if let Err(error) = self.local.publish_contract(envelope).await {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(
+                &event_type,
+                "local_contract_delivery",
+            );
+            tracing::error!(
+                %event_id,
+                %event_type,
+                failure_code = "local_contract_delivery_failed",
+                "Local contract delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::InMemory
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Clone)]
 struct LocalDeliveryFanoutTransport {
     primary: Arc<dyn EventTransport>,
     local: MemoryTransport,
@@ -373,21 +491,27 @@ struct LocalDeliveryFanoutTransport {
 #[async_trait]
 impl EventTransport for LocalDeliveryFanoutTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        // The primary delivery is irreversible. Once it succeeds, returning a local fan-out error
-        // would make the outbox relay publish the same remote event again. Record the local failure
-        // separately and let durable/idempotent consumers recover through their transport path.
+        // Refuse before remote publication if the local listener registry is unavailable.
+        // A projection failure after primary acceptance is still returned so the outbox
+        // retries the same identity; remote consumers must be idempotent.
+        let local_bus = self.local.event_bus();
+        local_bus.ensure_local_listeners_running()?;
         self.primary.publish(envelope.clone()).await?;
         let event_id = envelope.id;
         let event_type = envelope.event.event_type();
-        if let Err(error) = self.local.publish(envelope).await {
+        if let Err(error) = local_bus
+            .publish_root_envelope_and_wait(envelope)
+            .await
+        {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
             rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
             tracing::error!(
                 event_id = %event_id,
                 event_type,
-                error = %error,
-                "Remote event was accepted but local module delivery failed"
+                failure_code = "remote_accepted_local_root_delivery_failed",
+                "Remote event was accepted but acknowledged local module delivery failed"
             );
+            return Err(error);
         }
         Ok(())
     }
@@ -396,8 +520,12 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         let payload = envelope
             .payload()
             .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
-        let deliver_locally = matches!(payload, ContractEventPayload::Root(_))
-            || self.local.event_bus().has_contract_handler(&envelope)?;
+        let local_bus = self.local.event_bus();
+        // Validate the explicit registry before the irreversible primary publish,
+        // including for root envelopes and remote-only sealed families.
+        let has_local_handler = local_bus.has_contract_handler(&envelope)?;
+        let deliver_locally =
+            matches!(payload, ContractEventPayload::Root(_)) || has_local_handler;
         if payload.requires_module_delivery() && !deliver_locally {
             return Err(rustok_core::Error::External(
                 "Required sealed module delivery is unavailable; retain the original outbox identity".to_owned(),
@@ -410,7 +538,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         if deliver_locally {
             let event_id = envelope.id();
             let event_type = envelope.event_type().to_owned();
-            if let Err(error) = self.local.publish_contract(envelope).await {
+            if let Err(error) = local_bus.publish_contract_envelope(envelope).await {
                 EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
                 rustok_telemetry::metrics::record_event_error(
                     &event_type,
@@ -418,7 +546,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
                 );
                 tracing::error!(
                     %event_id, %event_type, code = "events.contract_local_delivery_failed",
-                    "Sealed local delivery failed; retain the same outbox identity for retry"
+                    "Local contract delivery failed; retain the same outbox identity for retry"
                 );
                 return Err(error);
             }
@@ -428,6 +556,32 @@ impl EventTransport for LocalDeliveryFanoutTransport {
 
     async fn acknowledge(&self, event_id: uuid::Uuid) -> rustok_core::Result<()> {
         self.primary.acknowledge(event_id).await
+    }
+
+    // Transactional appends go to the primary only; local fanout is a
+    // publish-time concern.
+    fn supports_transactional_writes(&self) -> bool {
+        self.primary.supports_transactional_writes()
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.primary
+            .write_root_in_transaction(transaction, envelope)
+            .await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.primary
+            .write_contract_in_transaction(transaction, envelope)
+            .await
     }
 
     fn reliability_level(&self) -> ReliabilityLevel {
@@ -442,15 +596,166 @@ impl EventTransport for LocalDeliveryFanoutTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use rustok_core::events::{
+        EventDispatcher, EventHandler, HandlerResult, RunningDispatcher,
+    };
     use rustok_events::{DomainEvent, EventEnvelope};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
     use uuid::Uuid;
 
+    struct RootListener {
+        handled: Arc<Mutex<Vec<EventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl EventHandler for RootListener {
+        fn name(&self) -> &'static str {
+            "root_local_delivery_regression"
+        }
+
+        fn handles(&self, event: &DomainEvent) -> bool {
+            matches!(event, DomainEvent::TenantUpdated { .. })
+        }
+
+        async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
+            self.handled.lock().unwrap().push(envelope.clone());
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(rustok_core::Error::External(
+                    "root projection unavailable".to_owned(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    fn listen_root(
+        bus: EventBus,
+        handled: Arc<Mutex<Vec<EventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    ) -> RunningDispatcher {
+        let mut dispatcher = EventDispatcher::new(bus);
+        dispatcher.register(RootListener { handled, fail });
+        dispatcher.start_with_contract_delivery().unwrap()
+    }
+
     #[tokio::test]
-    async fn fanout_transport_delivers_only_after_primary_accepts_event() {
+    async fn failed_event_runtime_validation_does_not_leave_cache_workers_running() {
+        let db = rustok_test_utils::setup_test_db().await;
+        let mut settings = crate::common::settings::RustokSettings::default();
+        settings.events.delivery_profile = crate::common::settings::EventDeliveryProfile::Outbox;
+        settings.events.outbox_retention.enabled = true;
+        settings.events.outbox_retention.retention_days = 0;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        crate::services::cache_runtime::ensure_cache_service(&ctx);
+
+        let error = match build_event_runtime(&ctx).await {
+            Err(error) => error,
+            Ok(_) => panic!("invalid retention settings must fail event runtime bootstrap"),
+        };
+        assert!(error.to_string().contains("retention_days"));
+        assert!(
+            !ctx.shared_contains::<crate::services::tenant_cache_generation::TenantCacheGenerationListenerHandle>(),
+            "tenant listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle>(),
+            "RBAC listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle>(),
+            "Redis status monitor must not start before runtime validation succeeds"
+        );
+    }
+
+    #[test]
+    fn outbox_retention_rejects_intervals_that_can_disable_pruning() {
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let settings = crate::common::settings::OutboxRetentionSettings {
+            enabled: true,
+            retention_days: 30,
+            batch_size: 100,
+            interval_seconds: MAX_OUTBOX_RETENTION_INTERVAL_SECONDS + 1,
+            ..Default::default()
+        };
+        let error = match resolve_outbox_retention(&ctx, &settings) {
+            Err(error) => error,
+            Ok(_) => panic!("retention polling must remain bounded"),
+        };
+        assert!(error.to_string().contains("interval_seconds must be between"));
+    }
+
+    #[tokio::test]
+    async fn single_node_outbox_target_counts_local_root_projection_failures() {
+        let local = MemoryTransport::with_capacity(8);
+        let listener_bus = local.event_bus();
+        let target = LocalEventDeliveryTransport { local };
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(true)),
+        );
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(11),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(11),
+            },
+        );
+        let failures_before = event_local_delivery_metrics_snapshot().failure_total;
+
+        assert!(target.publish(envelope).await.is_err());
+        assert_eq!(handled.lock().unwrap().len(), 1);
+        assert!(
+            event_local_delivery_metrics_snapshot().failure_total > failures_before,
+            "single-node local delivery failures must be observable"
+        );
+        running.stop().await.expect("root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn single_node_outbox_target_waits_for_root_projection_completion() {
+        let local = MemoryTransport::with_capacity(8);
+        let listener_bus = local.event_bus();
+        let target = LocalEventDeliveryTransport { local };
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(10),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(10),
+            },
+        );
+
+        target.publish(envelope.clone()).await.unwrap();
+        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn fanout_transport_waits_for_local_root_handler_after_primary_acceptance() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
         let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
         let envelope = EventEnvelope::new(
             Uuid::from_u128(1),
             None,
@@ -461,14 +766,20 @@ mod tests {
 
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert_eq!(listener.recv().await.unwrap().id, envelope.id);
+        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("root dispatcher stop");
     }
 
     #[tokio::test]
     async fn fanout_transport_does_not_deliver_locally_when_primary_rejects() {
         let primary = MemoryTransport::with_capacity(8);
         let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
         let envelope = EventEnvelope::new(
             Uuid::from_u128(2),
             None,
@@ -478,19 +789,15 @@ mod tests {
         );
 
         assert!(transport.publish(envelope).await.is_err());
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), listener.recv())
-                .await
-                .is_err()
-        );
+        assert!(handled.lock().unwrap().is_empty());
+        running.stop().await.expect("root dispatcher stop");
     }
 
     #[tokio::test]
-    async fn accepted_remote_delivery_is_not_retried_when_local_bus_has_no_receivers() {
+    async fn missing_local_dispatcher_is_rejected_before_remote_publication() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
-        let (transport, _listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let before = event_local_delivery_metrics_snapshot().failure_total;
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
         let envelope = EventEnvelope::new(
             Uuid::from_u128(3),
             None,
@@ -499,9 +806,53 @@ mod tests {
             },
         );
 
+        assert!(
+            transport.publish(envelope.clone()).await.is_err(),
+            "a missing local dispatcher must refuse before irreversible publication"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), primary_receiver.recv())
+                .await
+                .is_err(),
+            "the primary must not receive an event without a bound local registry"
+        );
+
+        let running = EventDispatcher::new(listener_bus)
+            .start_with_contract_delivery()
+            .unwrap();
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert!(event_local_delivery_metrics_snapshot().failure_total > before);
+        running.stop().await.expect("empty root dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn local_root_projection_failure_is_returned_to_the_outbox_relay() {
+        let primary = MemoryTransport::with_capacity(8);
+        let mut primary_receiver = primary.subscribe();
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
+        let handled = Arc::new(Mutex::new(vec![]));
+        let fail = Arc::new(AtomicBool::new(true));
+        let running = listen_root(listener_bus, handled.clone(), fail.clone());
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(4),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(4),
+            },
+        );
+
+        assert!(transport.publish(envelope.clone()).await.is_err());
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(handled.lock().unwrap().len(), 1);
+
+        fail.store(false, Ordering::SeqCst);
+        transport.publish(envelope.clone()).await.unwrap();
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(
+            *handled.lock().unwrap(),
+            vec![envelope.clone(), envelope]
+        );
+        running.stop().await.expect("root dispatcher stop");
     }
 }
 
@@ -824,6 +1175,34 @@ mod contract_delivery_tests {
         );
         assert_eq!(*handled.lock().unwrap(), vec![frame.clone(), frame]);
         running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn remote_only_family_uses_primary_with_an_explicitly_empty_listener_registry() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = EventDispatcher::new(bus).start_with_contract_delivery().unwrap();
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+
+        target.publish_contract(envelope.clone()).await.unwrap();
+
+        assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("empty listener dispatcher stop");
     }
 
     #[tokio::test]

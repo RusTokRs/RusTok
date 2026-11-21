@@ -1,5 +1,8 @@
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr,
+};
 
 use rustok_core::{Error, Result};
 
@@ -18,6 +21,16 @@ pub struct OutboxRetentionConfig {
     /// How long a delivered event is kept before it may be pruned.
     pub retention: chrono::Duration,
     pub batch_size: u64,
+    /// How long a dead-lettered (`failed`) event is kept before it may be
+    /// pruned, measured from `created_at`. `None` (the default) keeps the
+    /// DLQ forever: pruning it is an explicit operator decision, because a
+    /// failed row is the only record that the event never landed.
+    pub failed_retention: Option<chrono::Duration>,
+    /// How long a terminal (`completed`/`failed`) owner-operation receipt
+    /// is kept before it may be pruned, measured from `completed_at`.
+    /// `None` (the default) keeps receipts forever; once a receipt is
+    /// pruned, a late retry with the same idempotency key runs again.
+    pub receipt_retention: Option<chrono::Duration>,
 }
 
 impl Default for OutboxRetentionConfig {
@@ -25,6 +38,8 @@ impl Default for OutboxRetentionConfig {
         Self {
             retention: chrono::Duration::days(30),
             batch_size: DEFAULT_OUTBOX_RETENTION_BATCH_SIZE,
+            failed_retention: None,
+            receipt_retention: None,
         }
     }
 }
@@ -36,6 +51,20 @@ impl OutboxRetentionConfig {
         if self.retention <= chrono::Duration::zero() {
             return Err(Error::Validation(
                 "outbox retention window must be positive".to_string(),
+            ));
+        }
+        if let Some(failed_retention) = self.failed_retention
+            && failed_retention <= chrono::Duration::zero()
+        {
+            return Err(Error::Validation(
+                "outbox failed-event retention window must be positive".to_string(),
+            ));
+        }
+        if let Some(receipt_retention) = self.receipt_retention
+            && receipt_retention <= chrono::Duration::zero()
+        {
+            return Err(Error::Validation(
+                "outbox operation-receipt retention window must be positive".to_string(),
             ));
         }
         if self.batch_size == 0 {
@@ -52,6 +81,12 @@ impl OutboxRetentionConfig {
 pub struct OutboxPruneReport {
     /// Delivered rows deleted by this run.
     pub pruned: u64,
+    /// Dead-lettered rows deleted by this run (only when a failed-event
+    /// retention window is configured).
+    pub pruned_failed: u64,
+    /// Terminal owner-operation receipts deleted by this run (only when a
+    /// receipt retention window is configured).
+    pub pruned_receipts: u64,
     /// Whether the run filled its batch, i.e. another run has work to do.
     pub batch_exhausted: bool,
 }
@@ -60,7 +95,8 @@ pub struct OutboxPruneReport {
 ///
 /// The outbox is both the delivery queue and the durable record of what was
 /// delivered, so retention only ever deletes rows that reached the transport
-/// (`dispatched` with a non-null `dispatched_at` older than the window).
+/// (`dispatched` with a non-null `dispatched_at` older than the window) and
+/// whose registered durable consumers have all acknowledged the event.
 /// Undelivered (`pending`) and dead-lettered (`failed`) rows are never touched:
 /// the first still owe a delivery, the second are the DLQ an operator works
 /// through. A delivered row that lost its `dispatched_at` is left alone as well,
@@ -91,9 +127,10 @@ impl OutboxRetention {
     /// Deletes up to `batch_size` delivered rows older than the retention
     /// window and reports how much was pruned.
     ///
-    /// The candidate ids are selected first and deleted by id with the same
-    /// status/age predicates, so a row that changed status between the two
-    /// statements (a DLQ replay, for instance) is not deleted.
+    /// Candidate ids are selected first and deleted by id with the same
+    /// status, age, and consumer-acknowledgement predicates. The delete rechecks
+    /// the consumer predicate so a newly registered obligation or changed
+    /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
         let cutoff = Utc::now() - self.config.retention;
@@ -104,6 +141,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
             .order_by_asc(entity::Column::DispatchedAt)
             .limit(self.config.batch_size)
             .into_tuple::<uuid::Uuid>()
@@ -111,8 +149,15 @@ impl OutboxRetention {
             .await?;
 
         if candidate_ids.is_empty() {
+            let (pruned_failed, pruned_receipts, secondary_exhausted) =
+                self.prune_secondary().await?;
             rustok_telemetry::metrics::record_outbox_retention_run();
-            return Ok(OutboxPruneReport::default());
+            return Ok(OutboxPruneReport {
+                pruned: 0,
+                pruned_failed,
+                pruned_receipts,
+                batch_exhausted: secondary_exhausted,
+            });
         }
 
         let batch_exhausted = candidate_ids.len() as u64 >= self.config.batch_size;
@@ -121,6 +166,7 @@ impl OutboxRetention {
             .filter(entity::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(entity::Column::DispatchedAt.is_not_null())
             .filter(entity::Column::DispatchedAt.lte(cutoff))
+            .filter(required_consumers_acknowledged_predicate())
             .exec(&self.db)
             .await?
             .rows_affected;
@@ -134,13 +180,100 @@ impl OutboxRetention {
                 "Pruned delivered outbox events"
             );
         }
+        let (pruned_failed, pruned_receipts, secondary_exhausted) = self.prune_secondary().await?;
         rustok_telemetry::metrics::record_outbox_retention_run();
 
         Ok(OutboxPruneReport {
             pruned: deleted,
-            batch_exhausted,
+            pruned_failed,
+            pruned_receipts,
+            batch_exhausted: batch_exhausted || secondary_exhausted,
         })
     }
+
+    /// Prunes the two bounded histories that are disabled by default:
+    /// dead-lettered events past their configured window and terminal
+    /// owner-operation receipts past theirs.
+    async fn prune_secondary(&self) -> Result<(u64, u64, bool)> {
+        let mut batch_exhausted = false;
+        let mut pruned_failed = 0;
+        if let Some(failed_retention) = self.config.failed_retention {
+            let cutoff = Utc::now() - failed_retention;
+            let candidate_ids: Vec<uuid::Uuid> = entity::Entity::find()
+                .select_only()
+                .column(entity::Column::Id)
+                .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                .filter(entity::Column::CreatedAt.lte(cutoff))
+                .order_by_asc(entity::Column::CreatedAt)
+                .limit(self.config.batch_size)
+                .into_tuple::<uuid::Uuid>()
+                .all(&self.db)
+                .await?;
+            if candidate_ids.len() as u64 >= self.config.batch_size {
+                batch_exhausted = true;
+            }
+            if !candidate_ids.is_empty() {
+                pruned_failed = entity::Entity::delete_many()
+                    .filter(entity::Column::Id.is_in(candidate_ids))
+                    .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                    .filter(entity::Column::CreatedAt.lte(cutoff))
+                    .exec(&self.db)
+                    .await?
+                    .rows_affected;
+                if pruned_failed > 0 {
+                    tracing::info!(
+                        pruned_failed_events = pruned_failed,
+                        retention_seconds = failed_retention.num_seconds(),
+                        "Pruned dead-lettered outbox events"
+                    );
+                }
+            }
+        }
+
+        let mut pruned_receipts = 0;
+        if let Some(receipt_retention) = self.config.receipt_retention {
+            pruned_receipts = rustok_outbox_storage::idempotency::prune_terminal_receipts(
+                &self.db,
+                receipt_retention,
+                self.config.batch_size,
+            )
+            .await
+            .map_err(|error| Error::External(error.to_string()))?;
+            if pruned_receipts > 0 {
+                tracing::info!(
+                    pruned_receipts,
+                    retention_seconds = receipt_retention.num_seconds(),
+                    "Pruned terminal owner-operation receipts"
+                );
+            }
+            if pruned_receipts >= self.config.batch_size {
+                batch_exhausted = true;
+            }
+        }
+
+        Ok((pruned_failed, pruned_receipts, batch_exhausted))
+    }
+}
+
+/// Returns the correlated predicate shared by the retention candidate scan
+/// and the final delete, so a stale candidate cannot bypass a consumer hold.
+fn required_consumers_acknowledged_predicate() -> Expr {
+    Expr::cust(
+        r#"
+NOT EXISTS (
+    SELECT 1
+    FROM sys_event_consumers AS required_consumer
+    WHERE required_consumer.event_type = sys_events.event_type
+      AND NOT EXISTS (
+          SELECT 1
+          FROM sys_event_consumer_receipts AS consumer_receipt
+          WHERE consumer_receipt.outbox_event_id = sys_events.id
+            AND consumer_receipt.consumer_key = required_consumer.consumer_key
+            AND consumer_receipt.event_type = required_consumer.event_type
+      )
+)
+"#,
+    )
 }
 
 #[cfg(test)]
@@ -226,6 +359,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn registered_consumers_hold_old_events_until_every_consumer_acknowledges() {
+        let db = test_db().await;
+        let stale = Utc::now() - chrono::Duration::days(40);
+        let event_id = insert_event(&db, SysEventStatus::Dispatched, Some(stale)).await;
+        let event_type = "test.pruned".to_string();
+        let first = crate::OutboxConsumer::new(db.clone());
+        let second = crate::OutboxConsumer::new(db.clone());
+        first
+            .register_required_event_types("consumer.one", std::slice::from_ref(&event_type))
+            .await
+            .expect("register first consumer");
+        second
+            .register_required_event_types("consumer.two", std::slice::from_ref(&event_type))
+            .await
+            .expect("register second consumer");
+
+        let retention = OutboxRetention::new(db.clone());
+        assert_eq!(retention.prune_once().await.expect("held prune").pruned, 0);
+
+        first
+            .acknowledge_existing("consumer.one", event_id)
+            .await
+            .expect("first consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("partially acknowledged prune").pruned, 0);
+
+        second
+            .acknowledge_existing("consumer.two", event_id)
+            .await
+            .expect("second consumer acknowledgement");
+        assert_eq!(retention.prune_once().await.expect("fully acknowledged prune").pruned, 1);
+        assert!(
+            crate::entity::Entity::find_by_id(event_id)
+                .one(&db)
+                .await
+                .expect("query")
+                .is_none(),
+            "the canonical event becomes eligible only after every required consumer acknowledges"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_rows_are_pruned_only_when_a_failed_window_is_configured() {
+        let db = test_db().await;
+        let stale = Utc::now() - chrono::Duration::days(40);
+
+        // Default configuration never touches the DLQ.
+        let failed = insert_event(&db, SysEventStatus::Failed, Some(stale)).await;
+        // Failed retention is measured from creation; age the row.
+        let mut aged: crate::entity::ActiveModel =
+            crate::entity::Entity::find_by_id(failed)
+                .one(&db)
+                .await
+                .expect("query")
+                .expect("failed event")
+                .into();
+        aged.created_at = Set(stale);
+        aged.update(&db).await.expect("age failed event");
+        let retention = OutboxRetention::new(db.clone());
+        let report = retention.prune_once().await.expect("default prune");
+        assert_eq!(report.pruned_failed, 0);
+        assert!(
+            crate::entity::Entity::find_by_id(failed)
+                .one(&db)
+                .await
+                .expect("query")
+                .is_some()
+        );
+
+        // With an explicit operator window, aged failed rows are pruned.
+        let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
+            failed_retention: Some(chrono::Duration::days(30)),
+            ..Default::default()
+        });
+        let report = retention.prune_once().await.expect("failed prune");
+        assert_eq!(report.pruned_failed, 1);
+        assert!(
+            crate::entity::Entity::find_by_id(failed)
+                .one(&db)
+                .await
+                .expect("query")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
     async fn prune_bounds_each_run_and_reports_the_remaining_batch() {
         let db = test_db().await;
         let stale = Utc::now() - chrono::Duration::days(40);
@@ -236,6 +454,7 @@ mod tests {
         let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
             retention: chrono::Duration::days(30),
             batch_size: 2,
+            ..Default::default()
         });
         let first = retention.prune_once().await.expect("first prune");
         assert_eq!(first.pruned, 2);
@@ -258,6 +477,7 @@ mod tests {
         let retention = OutboxRetention::new(db.clone()).with_config(OutboxRetentionConfig {
             retention: chrono::Duration::zero(),
             batch_size: 10,
+            ..Default::default()
         });
         assert!(retention.prune_once().await.is_err());
         assert!(

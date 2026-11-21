@@ -62,8 +62,10 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG is a valid compile-time slug constant.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND is a valid compile-time resource kind constant.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Product Variant resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Product variants".to_string(),

@@ -313,6 +313,7 @@ impl ChannelCacheInvalidationListener {
     }
 }
 
+#[tracing::instrument(skip(ctx), fields(%tenant_id))]
 pub async fn publish_channel_resolution_invalidation(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     let generation = match rustok_channel::read_resolution_invalidation_generation(ctx.db()).await {
         Ok(generation) => generation,
@@ -547,7 +548,7 @@ pub async fn start_channel_cache_invalidation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
 ) -> Result<()> {
-    let _ = ctx.shared_insert_if_absent(ChannelCacheInvalidationListenerStartLock::default());
+    ctx.shared_insert_if_absent(ChannelCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<ChannelCacheInvalidationListenerStartLock>()
         .ok_or_else(|| {

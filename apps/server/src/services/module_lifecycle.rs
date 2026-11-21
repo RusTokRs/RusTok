@@ -328,6 +328,11 @@ impl ModuleLifecycleService {
         })
     }
 
+    #[tracing::instrument(
+        skip(db, registry, settings, context),
+        fields(tenant_id = %tenant_id, module_slug = %module_slug, expected_revision = %expected_revision),
+        err
+    )]
     pub async fn update_module_settings(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,

@@ -275,6 +275,16 @@ impl PageBuilderStaticPublishPolicyError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct StaticPublishValidationError(pub &'static str);
+
+impl From<&'static str> for StaticPublishValidationError {
+    fn from(msg: &'static str) -> Self {
+        Self(msg)
+    }
+}
+
 /// Validates `document` against the one static publish policy,
 /// [`PageBuilderStaticPublishPolicy::default`], and returns evidence bound to its hash.
 pub fn validate_static_publish_document(
@@ -930,22 +940,22 @@ fn validate_url(
     value: &str,
     kind: UrlKind,
     policy: &PageBuilderStaticPublishPolicy,
-) -> Result<(), &'static str> {
+) -> Result<(), StaticPublishValidationError> {
     let value = value.trim();
     if value.is_empty() {
-        return Err("value is empty");
+        return Err(StaticPublishValidationError("value is empty"));
     }
     if value.len() > policy.max_url_bytes {
-        return Err("value exceeds the URL byte limit");
+        return Err(StaticPublishValidationError("value exceeds the URL byte limit"));
     }
     if value.starts_with("//") {
-        return Err("protocol-relative URLs are forbidden");
+        return Err(StaticPublishValidationError("protocol-relative URLs are forbidden"));
     }
     if value.contains('\\') {
-        return Err("backslashes are forbidden");
+        return Err(StaticPublishValidationError("backslashes are forbidden"));
     }
     if value.chars().any(char::is_control) {
-        return Err("control characters are forbidden");
+        return Err(StaticPublishValidationError("control characters are forbidden"));
     }
 
     let normalized = value.to_ascii_lowercase();
@@ -974,7 +984,7 @@ fn validate_url(
     if allowed {
         Ok(())
     } else {
-        Err("scheme or URL shape is not allowed")
+        Err(StaticPublishValidationError("scheme or URL shape is not allowed"))
     }
 }
 
@@ -995,50 +1005,50 @@ fn relative_url_allowed(value: &str) -> bool {
 fn validate_srcset(
     value: &str,
     policy: &PageBuilderStaticPublishPolicy,
-) -> Result<(), &'static str> {
+) -> Result<(), StaticPublishValidationError> {
     let mut candidates = 0usize;
     let mut descriptors = BTreeSet::new();
     let mut family: Option<&'static str> = None;
     for raw_part in value.split(',') {
         let part = raw_part.trim();
         if part.is_empty() {
-            return Err("value contains an empty candidate");
+            return Err(StaticPublishValidationError("value contains an empty candidate"));
         }
         candidates += 1;
         if candidates > policy.max_srcset_candidates {
-            return Err("value exceeds the candidate limit");
+            return Err(StaticPublishValidationError("value exceeds the candidate limit"));
         }
         let mut tokens = part.split_whitespace();
         let Some(url) = tokens.next() else {
-            return Err("candidate URL is empty");
+            return Err(StaticPublishValidationError("candidate URL is empty"));
         };
         let descriptor = tokens.next();
         if tokens.next().is_some() {
-            return Err("candidate has unexpected trailing tokens");
+            return Err(StaticPublishValidationError("candidate has unexpected trailing tokens"));
         }
         if url.starts_with("data:") {
-            return Err("data: URLs are not allowed in srcset candidates");
+            return Err(StaticPublishValidationError("data: URLs are not allowed in srcset candidates"));
         }
         validate_url(url, UrlKind::ResourceImage, policy)?;
         let (candidate_family, normalized) = match descriptor {
             None => ("x", "1x".to_string()),
             Some(descriptor) => {
                 let family = parse_srcset_descriptor(descriptor)
-                    .ok_or("candidate descriptor must be <N>w or <N>x")?;
+                    .ok_or(StaticPublishValidationError("candidate descriptor must be <N>w or <N>x"))?;
                 (family, descriptor.to_string())
             }
         };
         match family {
             None => family = Some(candidate_family),
             Some(seen) if seen == candidate_family => {}
-            Some(_) => return Err("width and density descriptors must not be mixed"),
+            Some(_) => return Err(StaticPublishValidationError("width and density descriptors must not be mixed")),
         }
         if !descriptors.insert(normalized) {
-            return Err("candidate descriptors must be unique");
+            return Err(StaticPublishValidationError("candidate descriptors must be unique"));
         }
     }
     if candidates == 0 {
-        return Err("value is empty");
+        return Err(StaticPublishValidationError("value is empty"));
     }
     Ok(())
 }
@@ -1081,21 +1091,21 @@ fn parse_srcset_descriptor(descriptor: &str) -> Option<&'static str> {
 fn validate_sizes(
     value: &str,
     policy: &PageBuilderStaticPublishPolicy,
-) -> Result<(), &'static str> {
+) -> Result<(), StaticPublishValidationError> {
     let mut entries = 0usize;
     for raw_part in value.split(',') {
         let part = raw_part.trim();
         if part.is_empty() {
-            return Err("value contains an empty entry");
+            return Err(StaticPublishValidationError("value contains an empty entry"));
         }
         entries += 1;
         if entries > policy.max_sizes_entries {
-            return Err("value exceeds the entry limit");
+            return Err(StaticPublishValidationError("value exceeds the entry limit"));
         }
         validate_sizes_entry(part, policy)?;
     }
     if entries == 0 {
-        return Err("value is empty");
+        return Err(StaticPublishValidationError("value is empty"));
     }
     Ok(())
 }
@@ -1103,17 +1113,17 @@ fn validate_sizes(
 fn validate_sizes_entry(
     entry: &str,
     policy: &PageBuilderStaticPublishPolicy,
-) -> Result<(), &'static str> {
+) -> Result<(), StaticPublishValidationError> {
     let split_at = entry.rfind(char::is_whitespace);
     let (condition, length) = match split_at {
         Some(index) => (entry[..index].trim(), entry[index..].trim()),
         None => ("", entry),
     };
     if length.is_empty() {
-        return Err("entry is missing its source size");
+        return Err(StaticPublishValidationError("entry is missing its source size"));
     }
     if !is_sizes_length(length) {
-        return Err("entry source size must be a number with a length unit");
+        return Err(StaticPublishValidationError("entry source size must be a number with a length unit"));
     }
     validate_sizes_condition(condition, policy)
 }
@@ -1149,26 +1159,26 @@ fn is_sizes_number(value: &str) -> bool {
 fn validate_sizes_condition(
     condition: &str,
     policy: &PageBuilderStaticPublishPolicy,
-) -> Result<(), &'static str> {
+) -> Result<(), StaticPublishValidationError> {
     if condition.is_empty() {
         return Ok(());
     }
     if condition.len() > policy.max_media_query_bytes {
-        return Err("media condition exceeds the byte limit");
+        return Err(StaticPublishValidationError("media condition exceeds the byte limit"));
     }
     let mut rest = condition.trim();
     if let Some(tail) = rest.strip_prefix("not") {
         if !tail.starts_with(|character: char| character.is_whitespace()) {
-            return Err("media condition `not` must be followed by whitespace");
+            return Err(StaticPublishValidationError("media condition `not` must be followed by whitespace"));
         }
         rest = tail.trim_start();
     }
     loop {
         let Some(after_open) = rest.strip_prefix('(') else {
-            return Err("media condition groups must be parenthesized");
+            return Err(StaticPublishValidationError("media condition groups must be parenthesized"));
         };
         let Some(close_offset) = after_open.find(')') else {
-            return Err("media condition has an unbalanced group");
+            return Err(StaticPublishValidationError("media condition has an unbalanced group"));
         };
         validate_sizes_condition_group(&after_open[..close_offset])?;
         let tail = after_open[close_offset + 1..].trim_start();
@@ -1177,11 +1187,11 @@ fn validate_sizes_condition(
         }
         let (word, after_word) = split_leading_word(tail);
         if word != "and" && word != "or" {
-            return Err("media condition groups must be joined by `and` or `or`");
+            return Err(StaticPublishValidationError("media condition groups must be joined by `and` or `or`"));
         }
         rest = after_word.trim_start();
         if rest.is_empty() {
-            return Err("media condition must not end with a joiner");
+            return Err(StaticPublishValidationError("media condition must not end with a joiner"));
         }
     }
 }
@@ -1193,10 +1203,10 @@ fn split_leading_word(value: &str) -> (&str, &str) {
     (&value[..end], &value[end..])
 }
 
-fn validate_sizes_condition_group(inner: &str) -> Result<(), &'static str> {
+fn validate_sizes_condition_group(inner: &str) -> Result<(), StaticPublishValidationError> {
     let inner = inner.trim();
     if inner.is_empty() {
-        return Err("media condition group is empty");
+        return Err(StaticPublishValidationError("media condition group is empty"));
     }
     let (feature, value) = match inner.split_once(':') {
         Some((feature, value)) => (feature.trim(), Some(value.trim())),
@@ -1209,7 +1219,7 @@ fn validate_sizes_condition_group(inner: &str) -> Result<(), &'static str> {
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
-        return Err("media condition feature name is not allowed");
+        return Err(StaticPublishValidationError("media condition feature name is not allowed"));
     }
     if let Some(value) = value {
         validate_sizes_condition_value(value)?;
@@ -1217,17 +1227,17 @@ fn validate_sizes_condition_group(inner: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn validate_sizes_condition_value(value: &str) -> Result<(), &'static str> {
+fn validate_sizes_condition_value(value: &str) -> Result<(), StaticPublishValidationError> {
     const UNITS: &[&str] = &["px", "em", "rem", "%", "vw", "vh", "ch", "dpi"];
     if value.is_empty() {
-        return Err("media condition value is empty");
+        return Err(StaticPublishValidationError("media condition value is empty"));
     }
     for unit in UNITS {
         if let Some(rest) = value.strip_suffix(unit) {
             if is_sizes_number(rest) {
                 return Ok(());
             }
-            return Err("media condition numeric value is invalid");
+            return Err(StaticPublishValidationError("media condition numeric value is invalid"));
         }
     }
     if value
@@ -1237,7 +1247,7 @@ fn validate_sizes_condition_value(value: &str) -> Result<(), &'static str> {
     {
         return Ok(());
     }
-    Err("media condition value must be a keyword or a number with a known unit")
+    Err(StaticPublishValidationError("media condition value must be a keyword or a number with a known unit"))
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {

@@ -296,6 +296,27 @@ fn validate_setting_spec(
             "default does not match declared type",
         ));
     }
+    if spec.min.is_some_and(|value| !value.is_finite())
+        || spec.max.is_some_and(|value| !value.is_finite())
+    {
+        return Err(invalid_schema(module_slug, key, "min/max must be finite"));
+    }
+    // An integer bound arriving as f64 may already have rounded before this
+    // owner receives it. At 2^53, even an apparently exact value could have
+    // originated from a different integer (2^53 + 1). Refuse that ambiguous
+    // schema instead of validating against an unintended boundary.
+    if value_type == "integer"
+        && [spec.min, spec.max]
+            .into_iter()
+            .flatten()
+            .any(|bound| bound.abs() >= 9_007_199_254_740_992.0)
+    {
+        return Err(invalid_schema(
+            module_slug,
+            key,
+            "integer min/max must be strictly within the exact f64 integer range; larger schema boundaries require an exact representation",
+        ));
+    }
     if let (Some(min), Some(max)) = (spec.min, spec.max)
         && min > max
     {
@@ -547,16 +568,22 @@ fn normalize_setting_value(
     }
     match value_type {
         "integer" | "number" => {
+            // Compare JSON integers exactly against the represented f64 bound;
+            // converting the value to f64 first rounds integers above 2^53.
+            let integer = value
+                .as_i64()
+                .map(i128::from)
+                .or_else(|| value.as_u64().map(i128::from));
             let numeric_value = value
                 .as_f64()
                 .ok_or_else(|| invalid_value(module_slug, key, format!("expected {value_type}")))?;
             if let Some(min) = spec.min
-                && numeric_value < min
+                && integer.map_or(numeric_value < min, |value| integer_below_bound(value, min))
             {
                 return Err(invalid_value(module_slug, key, format!("must be >= {min}")));
             }
             if let Some(max) = spec.max
-                && numeric_value > max
+                && integer.map_or(numeric_value > max, |value| integer_above_bound(value, max))
             {
                 return Err(invalid_value(module_slug, key, format!("must be <= {max}")));
             }
@@ -770,6 +797,17 @@ fn path_is_at_or_below(path: &str, ancestor: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('.'))
 }
 
+// JSON integer values fit in i64/u64, hence i128 leaves room for the
+// saturating casts of bounds outside that range. ceil/floor preserve fractional
+// bound semantics without rounding the integer value itself.
+fn integer_below_bound(value: i128, bound: f64) -> bool {
+    value < bound.ceil() as i128
+}
+
+fn integer_above_bound(value: i128, bound: f64) -> bool {
+    value > bound.floor() as i128
+}
+
 fn validate_length(
     module_slug: &str,
     key: &str,
@@ -868,7 +906,11 @@ fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bo
                     // exactly integral and representable as i64/u64; an
                     // approximate epsilon test would also accept values
                     // that later range checks compare imprecisely.
-                    number.fract() == 0.0 && number >= i64::MIN as f64 && number <= u64::MAX as f64
+                    // u64::MAX rounds up to 2^64 as f64, so its upper
+                    // boundary must be exclusive.
+                    number.fract() == 0.0
+                        && number >= i64::MIN as f64
+                        && number < 18_446_744_073_709_552_000.0
                 })
         }
         "number" => value.is_number(),
@@ -1286,6 +1328,93 @@ mod tests {
             normalized,
             serde_json::json!({"hero": {"title": "Hello", "cta": "Shop now"}})
         );
+    }
+
+    #[test]
+    fn numeric_bounds_compare_large_json_integers_without_rounding() {
+        for value_type in ["integer", "number"] {
+            let schema = HashMap::from([(
+                "limit".to_string(),
+                ModuleSettingSpec {
+                    value_type: value_type.to_string(),
+                    min: Some(-9_007_199_254_740_991.0),
+                    max: Some(9_007_199_254_740_991.0),
+                    ..Default::default()
+                },
+            )]);
+            for value in [
+                serde_json::json!(9_007_199_254_740_993_u64),
+                serde_json::json!(-9_007_199_254_740_993_i64),
+            ] {
+                assert!(
+                    normalize_module_settings("test", &schema, serde_json::json!({"limit": value}))
+                        .is_err()
+                );
+            }
+            assert!(
+                normalize_module_settings(
+                    "test",
+                    &schema,
+                    serde_json::json!({"limit": 9_007_199_254_740_991_u64}),
+                )
+                .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn integer_schema_rejects_ambiguous_large_bounds() {
+        for bound in [9_007_199_254_740_992.0, -9_007_199_254_740_992.0] {
+            for is_min in [true, false] {
+                let schema = HashMap::from([(
+                    "limit".to_string(),
+                    ModuleSettingSpec {
+                        value_type: "integer".into(),
+                        min: is_min.then_some(bound),
+                        max: (!is_min).then_some(bound),
+                        ..Default::default()
+                    },
+                )]);
+                assert!(validate_module_settings_schema("test", &schema).is_err());
+            }
+        }
+        let number_schema = HashMap::from([(
+            "limit".to_string(),
+            ModuleSettingSpec {
+                value_type: "number".into(),
+                max: Some(9_007_199_254_740_992.0),
+                ..Default::default()
+            },
+        )]);
+        assert!(normalize_module_settings(
+            "test",
+            &number_schema,
+            serde_json::json!({"limit": 9_007_199_254_740_993_u64}),
+        ).is_err());
+    }
+
+    #[test]
+    fn integer_float_range_and_fractional_bounds_are_exact() {
+        assert!(!setting_value_matches_type(
+            "integer",
+            &serde_json::json!(18_446_744_073_709_551_616.0),
+        ));
+        assert!(setting_value_matches_type("integer", &serde_json::json!(u64::MAX)));
+        assert!(integer_below_bound(-2, -1.5));
+        assert!(!integer_below_bound(-1, -1.5));
+        assert!(integer_above_bound(2, 1.5));
+        assert!(!integer_above_bound(1, 1.5));
+        assert!(!integer_above_bound(i128::from(u64::MAX), f64::MAX));
+        assert!(!integer_below_bound(i128::from(i64::MIN), -f64::MAX));
+        let schema = HashMap::from([(
+            "limit".to_string(),
+            ModuleSettingSpec {
+                value_type: "number".into(),
+                min: Some(f64::NAN),
+                ..Default::default()
+            },
+        )]);
+        assert!(validate_module_settings_schema("test", &schema).is_err());
     }
 
     #[test]

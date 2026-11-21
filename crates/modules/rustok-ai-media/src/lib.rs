@@ -40,7 +40,25 @@ pub fn register_media_ai_vertical_handlers(
     }
 }
 
-pub fn normalize_image_size(size: Option<String>) -> Result<Option<String>, String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ImageSizeError {
+    #[error("image size must be formatted as WIDTHxHEIGHT")]
+    InvalidFormat,
+    #[error("image width must be numeric")]
+    InvalidWidth,
+    #[error("image height must be numeric")]
+    InvalidHeight,
+    #[error("image size must stay within 1..=4096 for both dimensions")]
+    DimensionsOutOfBounds,
+}
+
+impl From<ImageSizeError> for String {
+    fn from(error: ImageSizeError) -> Self {
+        error.to_string()
+    }
+}
+
+pub fn normalize_image_size(size: Option<String>) -> Result<Option<String>, ImageSizeError> {
     let Some(size) = size
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
@@ -49,17 +67,17 @@ pub fn normalize_image_size(size: Option<String>) -> Result<Option<String>, Stri
     };
     let (width, height) = size
         .split_once('x')
-        .ok_or_else(|| "image size must be formatted as WIDTHxHEIGHT".to_string())?;
+        .ok_or(ImageSizeError::InvalidFormat)?;
     let width = width
         .trim()
         .parse::<u32>()
-        .map_err(|_| "image width must be numeric".to_string())?;
+        .map_err(|_| ImageSizeError::InvalidWidth)?;
     let height = height
         .trim()
         .parse::<u32>()
-        .map_err(|_| "image height must be numeric".to_string())?;
+        .map_err(|_| ImageSizeError::InvalidHeight)?;
     if width == 0 || height == 0 || width > 4096 || height > 4096 {
-        return Err("image size must stay within 1..=4096 for both dimensions".to_string());
+        return Err(ImageSizeError::DimensionsOutOfBounds);
     }
     Ok(Some(format!("{width}x{height}")))
 }

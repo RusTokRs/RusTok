@@ -445,9 +445,9 @@ impl ProductCatalogSchemaService {
         }
 
         for patch in patches {
-            let definition = definitions
-                .get(&patch.attribute_id)
-                .expect("validated attribute definition must exist");
+            let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                CommerceError::Validation("validated attribute definition must exist".into())
+            })?;
             write_product_value_patch(
                 txn,
                 tenant_id,
@@ -520,7 +520,7 @@ impl ProductCatalogSchemaService {
         }
         if !patches.is_empty() {
             advance_product_value_revision_in_tx(&txn, &product).await?;
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductAttributeValuesChanged { product_id },
@@ -607,7 +607,7 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
             advance_product_value_revision_in_tx(&txn, &product).await?;
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductAttributeValuesChanged { product_id },

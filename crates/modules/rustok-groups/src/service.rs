@@ -87,25 +87,6 @@ impl GroupsService {
         Ok(result)
     }
 
-    async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
-        if tenant_id.is_nil() {
-            return Err(GroupsError::Validation(
-                "tenant_id cannot be nil UUID".to_string(),
-            ));
-        }
-        if group_id.is_nil() {
-            return Err(GroupsError::Validation(
-                "group_id cannot be nil UUID".to_string(),
-            ));
-        }
-        group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(group_id))
-            .one(&self.db)
-            .await?
-            .ok_or(GroupsError::NotFound)
-    }
-
     async fn membership_model(
         &self,
         tenant_id: Uuid,
@@ -170,7 +151,7 @@ impl GroupsService {
         input.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let owner_user_id = actor_user_id(context)?;
-        let handle = normalize_group_handle(&input.handle).map_err(GroupsError::Validation)?;
+        let handle = normalize_group_handle(&input.handle)?;
         let locale = normalize_locale_tag(&input.locale)
             .ok_or_else(|| GroupsError::Validation("invalid group locale".to_string()))?;
         let title = input.title.trim();
@@ -305,7 +286,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     &locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .ok()
@@ -375,8 +356,7 @@ impl GroupsService {
         query = match (request.group_id, request.handle) {
             (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
             (None, Some(handle)) => query.filter(
-                group::Column::Handle
-                    .eq(normalize_group_handle(&handle).map_err(GroupsError::Validation)?),
+                group::Column::Handle.eq(normalize_group_handle(&handle)?),
             ),
             (None, None) => {
                 return Err(GroupsError::Validation(
@@ -468,7 +448,7 @@ impl GroupsService {
                     tenant_id,
                     &category_ids,
                     &effective_locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .unwrap_or_default()
@@ -549,7 +529,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     effective_locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .ok()

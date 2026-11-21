@@ -9,7 +9,7 @@ use rustok_core::tenant_validation::TenantIdentifierValidator;
 use uuid::Uuid;
 
 use crate::common::{
-    extract_effective_host, forwarded_headers_trusted, peer_ip_from_extensions,
+    extract_effective_host, peer_ip_from_extensions,
     settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
 };
 
@@ -383,19 +383,10 @@ fn effective_host(
     }
 
     let peer_ip = peer_ip_from_extensions(req.extensions());
-    if forwarded_headers_trusted(peer_ip, &settings.runtime.request_trust)
-        && req
-            .headers()
-            .get_all("x-forwarded-host")
-            .iter()
-            .nth(1)
-            .is_some()
-    {
-        return Err(TenantResolutionError::ConflictingHeaderValues {
-            header_name: "x-forwarded-host".to_string(),
-        });
-    }
-
+    // Unlike Host, X-Forwarded-Host is a proxy chain: each trusted hop may
+    // append its own header field. The trust resolver deliberately selects
+    // the rightmost value, so rejecting repeated fields here breaks legitimate
+    // multi-proxy requests and contradicts the canonical trust policy.
     let host = extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
         .ok_or(TenantResolutionError::MissingHost)?;
     let authority = host
@@ -433,10 +424,17 @@ pub(crate) fn subdomain_identifier(
         }
 
         let suffix = format!(".{normalized_base}");
-        if host.len() > suffix.len()
-            && host[host.len() - suffix.len()..].eq_ignore_ascii_case(&suffix)
-        {
-            let candidate = &host[..host.len() - suffix.len()];
+        // Never byte-slice an untrusted host at a potentially invalid UTF-8
+        // boundary. The normal host validator restricts production input,
+        // but this helper must remain safe even for a raw malformed string.
+        let Some(suffix_start) = host.len().checked_sub(suffix.len()) else {
+            continue;
+        };
+        let Some(tail) = host.get(suffix_start..) else {
+            continue;
+        };
+        if suffix_start > 0 && tail.eq_ignore_ascii_case(&suffix) {
+            let candidate = &host[..suffix_start];
             if candidate.is_empty() || candidate.contains('.') {
                 return Err(TenantResolutionError::NestedSubdomain {
                     host: host.to_string(),
@@ -723,6 +721,17 @@ mod tests {
     }
 
     #[test]
+    fn subdomain_matching_never_panics_on_a_non_character_boundary() {
+        // The base-domain suffix starts midway through the multibyte 'é'.
+        // A byte-indexed slice used to panic here instead of rejecting the host.
+        let domains = vec!["x.a.test".to_string()];
+        assert!(matches!(
+            subdomain_identifier("éx.a.test", &domains),
+            Err(TenantResolutionError::NoBaseDomainMatch { .. })
+        ));
+    }
+
+    #[test]
     fn duplicate_host_header_values_are_rejected() {
         let settings = RustokSettings {
             tenant: TenantSettings {
@@ -749,6 +758,61 @@ mod tests {
             error,
             TenantResolutionError::ConflictingHeaderValues { ref header_name } if header_name == "host"
         ));
+    }
+
+    #[test]
+    fn trusted_proxy_chain_uses_last_forwarded_host_field_for_tenant_resolution() {
+        use crate::common::settings::{ForwardedHeadersMode, RequestTrustSettings};
+        use std::net::{IpAddr, SocketAddr};
+
+        let mut settings = RustokSettings {
+            tenant: TenantSettings {
+                profile: TenantRuntimeProfile::MultiTenant,
+                enabled: true,
+                resolution: TenantResolutionMode::Host,
+                header_name: "X-Tenant-ID".to_string(),
+                default_id: Uuid::from_u128(1),
+                fallback_mode: TenantFallbackMode::Disabled,
+                base_domains: vec![],
+            },
+            ..RustokSettings::default()
+        };
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
+        };
+
+        let mut req = request("/api/users");
+        req.headers_mut()
+            .insert("Host", axum::http::HeaderValue::from_static("internal.test"));
+        req.headers_mut().append(
+            "X-Forwarded-Host",
+            axum::http::HeaderValue::from_static("spoofed.example.test"),
+        );
+        req.headers_mut().append(
+            "X-Forwarded-Host",
+            axum::http::HeaderValue::from_static("tenant.example.test"),
+        );
+        req.extensions_mut()
+            .insert(SocketAddr::new(IpAddr::from([10, 0, 0, 7]), 443));
+
+        let resolution = resolve_request(&req, &settings)
+            .expect("last host added by trusted proxy should determine tenant");
+        assert_eq!(
+            resolution.identifier,
+            ResolvedTenantIdentifier::Host("tenant.example.test".to_string())
+        );
+
+        // A client outside the configured proxy network cannot supply a
+        // trusted tenant host, even with the same repeated header values.
+        req.extensions_mut()
+            .insert(SocketAddr::new(IpAddr::from([192, 0, 2, 7]), 443));
+        let untrusted = resolve_request(&req, &settings)
+            .expect("untrusted forwarding should be ignored");
+        assert_eq!(
+            untrusted.identifier,
+            ResolvedTenantIdentifier::Host("internal.test".to_string())
+        );
     }
 
     #[test]

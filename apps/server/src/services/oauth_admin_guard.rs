@@ -10,8 +10,8 @@ use rustok_auth::{
     UpdateOAuthAppCommand, generate_refresh_token,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -36,6 +36,14 @@ where
         "OAuth administration guard operation failed"
     );
     AuthAdminMutationError::Internal("OAuth administration guard operation failed".to_string())
+}
+
+/// A secret prepared without holding a database transaction. Keep it private
+/// and never derive Debug: the plaintext must not enter diagnostics.
+struct PreparedOAuthSecretRotation {
+    client_secret: String,
+    secret_hash: String,
+    prior_secret_hash: Option<String>,
 }
 
 pub struct GuardedOAuthAdminProvider {
@@ -94,14 +102,21 @@ impl GuardedOAuthAdminProvider {
         Ok(())
     }
 
-    async fn rotate_secret_transactionally(
+    /// Preflight is intentionally lock-free: generating and Argon2-hashing a
+    /// new client secret is expensive and must never hold an app mutation lock.
+    /// The commit phase repeats all security checks against the locked row.
+    async fn prepare_oauth_secret_rotation(
         &self,
-        context: &AuthAdminMutationContext,
+        tenant_id: Uuid,
         app_id: Uuid,
         authority: &[Permission],
-    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
-        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
+    ) -> Result<PreparedOAuthSecretRotation, AuthAdminMutationError> {
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(internal_oauth_guard_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         self.validate_permission_strings(authority, &app.granted_permissions_list())?;
         if !app.can_rotate_secret() {
             return Err(AuthAdminMutationError::Validation(
@@ -115,8 +130,39 @@ impl GuardedOAuthAdminProvider {
         let secret_hash = crate::auth::hash_password_async(client_secret.clone())
             .await
             .map_err(internal_oauth_guard_error)?;
+        Ok(PreparedOAuthSecretRotation {
+            client_secret,
+            secret_hash,
+            prior_secret_hash: app.client_secret_hash,
+        })
+    }
+
+    async fn commit_prepared_oauth_secret_rotation(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        authority: &[Permission],
+        prepared: PreparedOAuthSecretRotation,
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
+        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
+        self.validate_permission_strings(authority, &app.granted_permissions_list())?;
+        if !app.can_rotate_secret() {
+            return Err(AuthAdminMutationError::Validation(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
+        }
+        // If a second rotation committed while Argon2 was running, return a
+        // retryable conflict instead of returning a secret that has already
+        // been superseded by the other successful request.
+        if app.client_secret_hash != prepared.prior_secret_hash {
+            return Err(AuthAdminMutationError::Conflict(
+                "OAuth client secret changed during rotation; retry".to_string(),
+            ));
+        }
+
         let mut active: oauth_apps::ActiveModel = app.into();
-        active.client_secret_hash = Set(Some(secret_hash));
+        active.client_secret_hash = Set(Some(prepared.secret_hash));
         active.updated_at = Set(Utc::now().into());
         let updated_app = active
             .update(&tx)
@@ -127,8 +173,21 @@ impl GuardedOAuthAdminProvider {
 
         Ok(OAuthAppSecretResult {
             app: response_record,
-            client_secret,
+            client_secret: prepared.client_secret,
         })
+    }
+
+    async fn rotate_secret_transactionally(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        authority: &[Permission],
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let prepared = self
+            .prepare_oauth_secret_rotation(context.tenant_id, app_id, authority)
+            .await?;
+        self.commit_prepared_oauth_secret_rotation(context, app_id, authority, prepared)
+            .await
     }
 }
 
@@ -150,31 +209,23 @@ where
             .await
             .map_err(internal_oauth_guard_error)?,
         DbBackend::Sqlite => {
-            let app = query().one(db).await.map_err(internal_oauth_guard_error)?;
-            if let Some(app) = app.as_ref() {
-                let result = oauth_apps::Entity::update_many()
-                    .col_expr(
-                        oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt),
-                    )
-                    .filter(oauth_apps::Column::Id.eq(app.id))
-                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(internal_oauth_guard_error)?;
-                if result.rows_affected != 1 {
-                    return Err(AuthAdminMutationError::Internal(
-                        "OAuth app mutation lock fence could not be acquired".to_string(),
-                    ));
-                }
-
-                return query()
-                    .one(db)
-                    .await
-                    .map_err(internal_oauth_guard_error)?
-                    .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()));
+            // app_id and tenant_id are known. Reserve SQLite's writer before
+            // reading the app so a concurrent token issue/revoke cannot race a
+            // deferred read-to-write lock upgrade.
+            let result = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(internal_oauth_guard_error)?;
+            if result.rows_affected != 1 {
+                return Err(AuthAdminMutationError::NotFound("oauth app".to_string()));
             }
-            None
+            query().one(db).await.map_err(internal_oauth_guard_error)?
         }
         _ => {
             return Err(AuthAdminMutationError::Internal(
@@ -283,6 +334,19 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
+        // Consent is the user's own grant decision. A delegated token must
+        // not pre-consent another application on the user's behalf: the REST
+        // authorize/consent flow enforces the same DirectUser invariant, and
+        // this provider is the registered composition, so the check must run
+        // here and not only in the inner provider it bypasses.
+        match context.principal_kind {
+            Some(rustok_api::AuthPrincipalKind::DirectUser) => {}
+            _ => {
+                return Err(AuthAdminMutationError::Forbidden(
+                    "oauth consent operations require a direct user session".to_string(),
+                ));
+            }
+        }
         OAuthAppService::grant_consent_strict(
             &self.db,
             app_id,
@@ -336,6 +400,64 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn guarded_consent_grant_requires_direct_user_principal() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "OAuth consent guard tenant",
+            &format!("oauth-consent-guard-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Consent target".to_string(),
+                slug: "consent-target".to_string(),
+                description: None,
+                app_type: "third_party".to_string(),
+                icon_url: None,
+                redirect_uris: vec!["https://client.example/callback".to_string()],
+                scopes: vec!["profile".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: Vec::new(),
+            },
+        )
+        .await
+        .expect("create OAuth app");
+        let inner = Arc::new(ServerAuthAdminMutationProvider::new(
+            db.clone(),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+        ));
+        let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
+
+        // Neither a delegated token nor an unknown principal kind may grant
+        // consent through the registered (guarded) provider composition.
+        for principal_kind in [
+            Some(rustok_api::AuthPrincipalKind::DelegatedUser),
+            Some(rustok_api::AuthPrincipalKind::Service),
+            None,
+        ] {
+            let context = AuthAdminMutationContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: tenant.id,
+                request_id: None,
+                locale: Some("en".to_string()),
+                principal_kind,
+            };
+            let result = guarded
+                .grant_oauth_app_consent(&context, created.app.id, vec!["profile".to_string()])
+                .await;
+            assert!(
+                matches!(result, Err(AuthAdminMutationError::Forbidden(_))),
+                "principal_kind {principal_kind:?} must not grant consent, got {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new(
@@ -377,7 +499,7 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -489,6 +611,91 @@ mod tests {
             !OAuthAppService::verify_client_secret(&original_secret, persisted_hash)
                 .expect("verify old secret is rejected")
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn prepared_secret_rotation_rejects_a_concurrent_secret_change() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "OAuth rotation race tenant",
+            &format!("oauth-rotation-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let created = scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Rotating client".to_string(),
+                    slug: "rotating-client".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://client.example/callback".to_string()],
+                    scopes: vec!["profile".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![Permission::MODULES_MANAGE.to_string()],
+                },
+            ),
+        )
+        .await
+        .expect("create OAuth app");
+        let app_id = created.app.id;
+        let actor_id = Uuid::new_v4();
+        let context = AuthAdminMutationContext {
+            actor_id,
+            tenant_id: tenant.id,
+            request_id: None,
+            locale: Some("en".to_string()),
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+        };
+        let guard = GuardedOAuthAdminProvider::new(
+            db.clone(),
+            Arc::new(ServerAuthAdminMutationProvider::new(
+                db.clone(),
+                crate::auth::AuthConfig::new("test-secret".to_string()),
+            )),
+        );
+        let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];
+
+        // Password hashing has completed without holding a transaction. The
+        // app can be updated independently before the commit phase starts.
+        let prepared = guard
+            .prepare_oauth_secret_rotation(tenant.id, app_id, &authority)
+            .await
+            .expect("prepare secret outside a SQL transaction");
+        let competing_hash = "secret-hash-set-by-another-rotation".to_string();
+        oauth_apps::ActiveModel {
+            id: sea_orm::Set(app_id),
+            client_secret_hash: sea_orm::Set(Some(competing_hash.clone())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("concurrent secret update must not be blocked by preparation");
+
+        let error = match guard
+            .commit_prepared_oauth_secret_rotation(&context, app_id, &authority, prepared)
+            .await
+        {
+            Ok(_) => panic!("stale prepared secret must never overwrite new secret"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Conflict(message)
+                if message.contains("changed during rotation")
+        ));
+        let current = oauth_apps::Entity::find_by_id(app_id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app still exists");
+        assert_eq!(current.client_secret_hash.as_deref(), Some(competing_hash.as_str()));
     }
 
     #[test]

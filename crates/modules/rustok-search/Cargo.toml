@@ -12,11 +12,13 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-graphql = { workspace = true, optional = true }
 rustok-core.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
-rustok-content.workspace = true
 rustok-events.workspace = true
 rustok-outbox = { workspace = true, optional = true }
 rustok-telemetry.workspace = true
