@@ -1,5 +1,37 @@
 # Server App — Implementation Plan
 
+## OAuth secret rotation lock and concurrent-success fence (2026-11-21)
+
+Branch: `agent/server-oauth-secret-lock-boundary-20261121`, forked from
+`a9431fdefd08693eab7aa0aaab87169b877af239` as a bounded auth-service
+follow-up independent of the pending installer and auth-email PRs.
+
+- Previously the OAuth administration provider acquired a database transaction
+  and exclusive OAuth app lock, then generated two random tokens and awaited
+  Argon2 hashing while holding that lock. This needlessly serialized token
+  issuance, revocation and other app mutations behind expensive CPU work.
+- Rotation now first reads the tenant-scoped app and checks its permissions and
+  `can_rotate_secret()` state, then prepares the new plaintext and Argon2 hash
+  **before** beginning a transaction. The commit stage acquires the existing
+  backend-specific app mutation fence, rechecks every authoritative condition,
+  and writes the secret hash in the same database transaction.
+- A prepared rotation records the previous hash and rejects a commit when the
+  current persisted hash changed during preparation. Two competing rotations
+  against the same old secret can no longer both report successful issuance of
+  their own new secret: the stale candidate must retry.
+- A SQLite regression test prepares a rotation, commits a competing hash
+  update, and verifies the stale rotation is rejected without overwriting the
+  winner. The existing end-to-end guarded rotation test continues to cover
+  tenant, delegated permissions and successful secret validation.
+- **No cargo check, cargo test, formatter, lint, migrations or multi-replica
+  verification were run**, as requested by the maintainer. Check PostgreSQL
+  concurrent rotations against token issuance and revocation in deployment.
+
+Limitations: the changed-hash comparison is a conflict fence only for the
+preparation window. A deliberately **sequential** second rotation remains
+permitted; secret rotation does not automatically revoke existing OAuth token
+families. Database errors and failed commits remain redacted to callers.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
