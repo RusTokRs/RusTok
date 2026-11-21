@@ -26,3 +26,6 @@ subtle = { version = "2", optional = true }
 [build-dependencies]
 protoc-bin-vendored = { workspace = true, optional = true }
 tonic-prost-build = { workspace = true, optional = true }
+
+[lints]
+workspace = true
