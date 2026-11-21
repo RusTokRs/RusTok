@@ -1,5 +1,36 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — direct worker registration and shutdown (2026-11-22)
+
+Several public worker starters can run outside the router's
+`ServerBootstrapInitializationLock`. The Product Search channel projection
+reconciler used a non-atomic `contains → spawn → insert` sequence, so
+competing callers could overwrite a live JoinHandle, and shutdown could
+take its snapshot between the check and publication. Its repeat-start path
+also considered a finished handle to be healthy. Notifications outbox intake,
+candidate and fanout, Forum Search inbox and contract consumers, Product
+Index refresh, and Social Graph Index workers already reserved competing
+startups, but each still left a final `is_stopping → spawn → shared_insert`
+window unprotected from the corresponding shutdown `shared_take`.
+
+The runtime now has a shared, process-local `DirectWorkerRegistrationLock`
+for these eight direct workers. Their synchronous final admission/spawn/handle
+publication is protected by the same lock as each shutdown handle take.
+Blocking mutex guards are never held across async preparation, receipt
+backfill, broker opening, task joins, or other awaits. Shutdown broadcasts
+stop before its drain; a starter waiting for the lock checks the stop flag
+*under* the lock and cannot publish after its handle was taken. Product
+Search channel repair uses the same lock for its whole synchronous starter,
+so concurrent starts have one owner and terminated tasks fail bootstrap
+rather than producing false success.
+
+Source tests cover contention between a held publication gate and a shutdown
+snapshot, plus Product Search shutdown refusal and terminated-handle
+reporting. Tests, compilation, formatting and runtime failure injection
+were not run; verification remains with the maintainer. This process-local
+publication lock does not replace the durable broker/DB recovery contracts.
+
+
 ## Server audit continuation — ambiguous pre-execution installer HTTP claim (2026-11-22)
 
 A committed HTTP `install_http_jobs` INSERT may have lost its DB response.
