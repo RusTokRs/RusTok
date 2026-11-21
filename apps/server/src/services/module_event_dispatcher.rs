@@ -107,6 +107,23 @@ pub fn spawn_module_event_dispatcher(
         None
     };
 
+    // Two parallel composition attempts must not each start a dispatcher and
+    // overwrite the other's shutdown handle. Reserve the lifecycle *before*
+    // any module worker initialization or registration side effects.
+    if event_bus.is_some() {
+        if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+            return Err(Error::Message(
+                "server shutdown started before module dispatcher initialization".to_string(),
+            ));
+        }
+        if ctx.shared_contains::<ModuleEventDispatcherHandle>()
+            || !ctx.shared_insert_if_absent(ModuleEventDispatcherReservation)
+        {
+            tracing::debug!("Module event dispatcher already started or initializing");
+            return Ok(());
+        }
+    }
+
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
@@ -125,11 +142,6 @@ pub fn spawn_module_event_dispatcher(
         );
         return Ok(());
     };
-    if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
-        tracing::debug!("Module event dispatcher already started");
-        return Ok(());
-    }
-
     let db = ctx.db_clone();
     let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
 
@@ -140,7 +152,18 @@ pub fn spawn_module_event_dispatcher(
         );
     }
 
-    start_module_event_dispatcher(ctx, dispatcher, handler_count)
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        ctx.shared_remove::<ModuleEventDispatcherReservation>();
+        return Err(Error::Message(
+            "server shutdown started during module dispatcher initialization".to_string(),
+        ));
+    }
+    let result = start_module_event_dispatcher(ctx, dispatcher, handler_count);
+    if result.is_err() {
+        // Failure must not permanently poison a later initialization retry.
+        ctx.shared_remove::<ModuleEventDispatcherReservation>();
+    }
+    result
 }
 
 fn start_module_event_dispatcher(
@@ -151,8 +174,10 @@ fn start_module_event_dispatcher(
     // The listener registry is part of the transport contract even when it is
     // intentionally empty: remote-only sealed events may proceed, while
     // required local families still fail closed when no handler is registered.
-    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     let running = dispatcher.start_with_contract_delivery()?;
+    // Publish the required-listener flag only after the dispatcher actually
+    // starts; a failed start is not a running/healthy listener registry.
+    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
