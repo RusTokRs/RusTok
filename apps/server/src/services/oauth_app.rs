@@ -565,7 +565,13 @@ impl OAuthAppService {
         Ok(())
     }
 
-    /// Generate and store an authorization code for an app + user
+    /// Atomically admit and store one authorization code under the same app ->
+    /// user lock order used by exchange, consent grants and revocation.
+    ///
+    /// HTTP authorization preflight is advisory: app settings, the user's
+    /// active status and third-party consent may change before this insert.
+    /// Revalidate them inside the transaction to avoid creating a code after
+    /// revocation has already invalidated all previously pending codes.
     pub async fn generate_authorization_code(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -575,37 +581,88 @@ impl OAuthAppService {
         scopes: Vec<String>,
         code_challenge: String,
     ) -> Result<String> {
-        // Generate random 43 character code
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|app| app.is_active())
+            .ok_or(Error::NotFound)?;
+        if !app.supports_grant_type("authorization_code") || app.app_type == "service" {
+            return Err(Error::BadRequest(
+                "OAuth application does not allow authorization-code grants".to_string(),
+            ));
+        }
+        if !app.redirect_uris_list().contains(&redirect_uri) {
+            return Err(Error::BadRequest(
+                "OAuth redirect URI is no longer registered".to_string(),
+            ));
+        }
+        let allowed_scopes = app.scopes_list();
+        if scopes.is_empty()
+            || scopes.iter().any(|scope| {
+                scope.trim().is_empty() || !scope_matches(&allowed_scopes, scope)
+            })
+        {
+            return Err(Error::BadRequest(
+                "OAuth authorization scopes are no longer permitted".to_string(),
+            ));
+        }
+
+        let user = lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth authorization subject is missing or inactive".to_string())
+            })?;
+
+        if app.requires_user_consent() {
+            let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
+                .await
+                .map_err(|_| Error::InternalServerError)?
+                .ok_or_else(|| {
+                    Error::Unauthorized(
+                        "OAuth authorization requires active user consent".to_string(),
+                    )
+                })?;
+            let granted_scopes = consent.scopes_list();
+            if !scopes
+                .iter()
+                .all(|scope| scope_matches(&granted_scopes, scope))
+            {
+                return Err(Error::Unauthorized(
+                    "OAuth authorization scopes exceed current user consent".to_string(),
+                ));
+            }
+        }
+
+        // Generate a fresh code only after the caller has passed authoritative
+        // checks. Hashing an opaque random code does not leak plaintext to DB.
         let random_bytes: [u8; 32] = rand::random();
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-
-        // Hash it for DB storage
         use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(code.as_bytes());
-        let code_hash = hex::encode(hasher.finalize());
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
 
-        // Save to DB
+        let now = Utc::now();
         OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
-            user_id: Set(user_id),
+            user_id: Set(user.id),
             tenant_id: Set(tenant_id),
             code_hash: Set(code_hash),
             redirect_uri: Set(redirect_uri),
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
             code_challenge_method: Set("S256".to_string()),
-            // Code valid for 10 minutes
-            expires_at: Set((Utc::now() + chrono::Duration::minutes(10)).into()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
             used_at: Set(None),
-            created_at: Set(Utc::now().into()),
+            created_at: Set(now.into()),
         }
-        .insert(db)
+        .insert(&tx)
         .await
         .map_err(|_| Error::InternalServerError)?;
-
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(code)
     }
 
