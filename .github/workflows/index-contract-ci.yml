@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - "crates/libs/rustok-events/**"
+      - "crates/libs/rustok-outbox-storage/**"
+      - "crates/modules/rustok-channel/admin/**"
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
@@ -54,8 +56,11 @@ on:
     branches:
       - main
       - "agent/**"
+      - "arena/**"
     paths:
       - "crates/libs/rustok-events/**"
+      - "crates/libs/rustok-outbox-storage/**"
+      - "crates/modules/rustok-channel/admin/**"
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
@@ -189,6 +194,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      # The server migrator composes all module migrations, including the locked Rig graph.
+      RUSTUP_TOOLCHAIN: "1.97.1"
       RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test
     services:
       postgres:
@@ -231,6 +238,8 @@ jobs:
           -- --test-threads=1
       - name: Check Events Product and Index targets
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+      - name: Run Outbox transport storage regressions
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-outbox --test sqlite_transport_regression_test
       - name: Check selected Product distribution bridge
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-distribution --features mod-product --lib
       - name: Check Product current-schema promotion PostgreSQL evidence harness

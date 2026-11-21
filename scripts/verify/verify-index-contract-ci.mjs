@@ -95,6 +95,7 @@ requireInJob('focused-cargo', [
   '--test drift_repair_concrete_execution_postgres_test',
   '--test drift_repair_recovery_postgres_test',
   '--test source_reconciliation_dead_letter_admission_postgres_test',
+  `${runCheck} cargo test --locked -p rustok-outbox --test sqlite_transport_regression_test`,
 ]);
 for (const [path, fixture] of [
   ['services/app_router.rs', 'index_native_json_routes_enforce_request_scope_without_embedded_admin'],
@@ -146,8 +147,14 @@ const [pullRequestPaths, pushPaths] = workflow
   .split('  pull_request:\n')[1]
   .split('\npermissions:')[0]
   .split('  push:\n');
+const pushBranches = pushPaths?.split('    paths:')[0];
+if (!pushBranches?.includes('      - "arena/**"')) {
+  fail(`${workflowPath} must verify Arena development branches on matching pushes`);
+}
 for (const pathMarker of [
   '"crates/libs/rustok-events/**"',
+  '"crates/libs/rustok-outbox-storage/**"',
+  '"crates/modules/rustok-channel/admin/**"',
   '"crates/modules/rustok-product/**"',
   '"crates/modules/rustok-index/**"',
   '"crates/modules/rustok-social-graph/**"',
