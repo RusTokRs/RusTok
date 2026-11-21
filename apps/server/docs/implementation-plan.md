@@ -22,6 +22,14 @@ after consolidated server fix PR #4771 merged as
   removed their reservation only in selected error branches. A panic while
   constructing a dispatcher or a dependent worker could strand the
   reservation and prevent subsequent retry in the same runtime.
+- `connect_runtime_workers_with_runtime` is also exposed directly, outside
+  router bootstrap's `ServerBootstrapInitializationLock`. It holds an
+  independent artifact-maintenance initialization mutex while spawning other
+  host workers. Shutdown previously awaited only router-bootstrap admission
+  before taking its handle snapshot, so a direct initializer already inside
+  that independent mutex could publish a fresh handle *after* shutdown had
+  taken its corresponding slot. The newly spawned task would then have no
+  remaining host-owned `JoinHandle` to drain.
 
 ### Fix and tests
 
@@ -38,11 +46,20 @@ after consolidated server fix PR #4771 merged as
   cancellation/error and panic release a claim, and a handle without its
   required-listener flag is rejected. Existing startup tests cover
   missing EventRuntime and module listener registration.
+- Shutdown now waits for any direct runtime-worker initializer under the
+  existing `ModuleArtifactMaintenanceInitializationLock` after signaling
+  `StopHandle` and taking the router-bootstrap mutex. Both initializers
+  observe consistent lock ordering. The lock is released before `tokio::join!`
+  so artifact-maintenance drain can reacquire it without deadlock. A
+  regression simulates a direct initializer that registers an auth retention
+  task *after* the stop signal and verifies shutdown still removes/drains
+  the resulting handle after the initializer releases its mutex.
 
 **Validation handoff:** The user owns tests. No Cargo checks, tests, formatting,
 linters or live concurrency exercises have been run in this continuation.
-Recommended: `cargo check -p rustok-server --lib` and
-`cargo test -p rustok-server --lib services::module_event_dispatcher`,
+Recommended: `cargo check -p rustok-server --lib`,
+`cargo test -p rustok-server --lib services::module_event_dispatcher`, and
+`cargo test -p rustok-server --lib services::app_lifecycle::tests`,
 plus a multithreaded double-start/shutdown exercise. These guarantees
 remain per-runtime; the patch does not implement process restart,
 distributed leader election or broker exactly-once delivery.
