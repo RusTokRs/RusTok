@@ -29,6 +29,7 @@ without evidence of a failure is recorded separately below.
 | `P-LOCALE-GENERATION-TRANSITION-RACE` | Local, Redis and periodic tenant-locale listeners shared a bounded generation map and readiness flag but could concurrently read, invalidate, acknowledge and update readiness. They now share one async gate across the entire effect/ack/readiness transition. A Tokio contention regression is authored but unrun. | [Tenant locale listener](../../apps/server/src/services/tenant_locale_generation.rs), [Regression](../../apps/server/src/services/tenant_locale_generation_tests.rs) |
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
 | `P-CORS-IMPLICIT-LOOPBACK` | Credentialed production CORS previously trusted a synthesized localhost origin with an empty/invalid allow-list, and mapped a wildcard bind host to the same trusted origin. Production now allows only explicit valid HTTP(S) browser origins; developer bind-host fallback remains local-only. Source/regressions are authored but unrun. | [CORS middleware](../../apps/server/src/middleware/cors.rs), [Router composition](../../apps/server/src/services/app_router.rs), [Server docs](../../apps/server/docs/README.md) |
+| `P-TENANT-ERROR-INPUT-REFLECTION` | Tenant resolution mapped typed errors to public HTTP messages through Display, interpolating raw Host, slug, header names and validator details. Public messages now use fixed bounded text while keeping HTTP status and machine code; a response-level regression is authored but not run. | [Tenant error mapping](../../apps/server/src/middleware/tenant_resolution.rs), [Tenant middleware](../../apps/server/src/middleware/tenant.rs) |
 | `P-HTTP-UNBOUNDED-TRACE-CONTEXT` | The outer HTTP span still logged raw client-supplied request/correlation IDs, traceparent and extension methods after URI path bounding. Root-span diagnostics now validate fixed-size UUID/trace IDs and W3C version-00 traceparent, redact other input and bucket nonstandard methods; headers are unchanged. Regression authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Server docs](../../apps/server/docs/README.md) |
 | `P-HTTP-RAW-PATH-TRACE` | Edge tracing and metrics-auth/rate-limit debug diagnostics emitted user-controlled URI path segments even though HTTP metrics were already route-template bounded. The root HTTP trace, metrics-auth, rate-limit, tenant, auth-context, channel, locale, security-header and registry authorization middleware now use one fixed `trace_path_family` vocabulary; request dispatch and policy matching retain the original URI. Registry method diagnostics also use a fixed method family. Regression is authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Metrics auth](../../apps/server/src/middleware/metrics_auth.rs), [Rate limit](../../apps/server/src/middleware/rate_limit.rs) |
 | `P-QUERYRESULT-DECODE-ORDER` | The poison receipt claim-failure fallback shadowed its raw SQL `QueryResult` with a decoded neutral receipt and then passed the decoded type to an expiry helper requiring the SQL row. Read the derived SQL-only expiry before decoding, retain a narrow source-order regression guard; compile verification remains maintainer-run. | [Receipt store](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Source guard](../../scripts/verify/verify-iggy-consumer-poison-receipts.mjs) |
@@ -103,6 +104,18 @@ without evidence of a failure is recorded separately below.
   available, and same-origin HTTP requests are unaffected.
 - **Verification:** Regression scenarios for missing/invalid origins,
   loopback, explicit valid sites and configured bind-address fallback; unrun.
+
+### P-TENANT-ERROR-INPUT-REFLECTION — do not echo untrusted routing facts
+
+- **Category:** HTTP error confidentiality and bounded response envelopes.
+- **Observed defect:** Public tenant-resolution messages used an internal
+  error Display containing untrusted hostnames, asserted slugs and
+  validation reasons, with no response-size bound.
+- **Remediation:** Preserve typed internal diagnostics and the current
+  HTTP status/error-code mapping; return a fixed public message for
+  every error class. Follow the existing tenant context-load pattern.
+- **Verification:** Response-level Tokio regression checks redaction,
+  bounded size and error-code/status preservation across variants; unrun.
 
 ### P-HTTP-UNBOUNDED-TRACE-CONTEXT — trace metadata is untrusted input
 

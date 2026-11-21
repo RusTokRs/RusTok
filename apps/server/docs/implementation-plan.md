@@ -1,5 +1,23 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — tenant HTTP error redaction (2026-11-21)
+
+`TenantResolutionError::error_message` previously returned
+`to_string()` for every non-policy error. Its Display includes the
+untrusted request Host, asserted tenant slug, configured domain names,
+header names and arbitrary validator reason strings. A malformed or
+oversized request could cause the API's error envelope to echo those
+identifiers verbatim, despite the nearby `TenantContextLoadError`
+already returning only stable public descriptions.
+
+Public tenant resolution errors now use static bounded messages while
+retaining all existing status codes, machine-readable error codes and
+typed internal error structure. This does not change which requests
+are admitted, nor the specific validation rules. A regression exercises
+all data-bearing variants with an overlong credential-like string and
+requires the actual serialized HTTP response to remain short and
+redacted. Tests, builds and formatting were not run.
+
 ## Server audit continuation — middleware raw-path diagnostic closure (2026-11-21)
 
 The previous path-label audit fixed the root HTTP trace span, metrics-auth

@@ -232,6 +232,14 @@ listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 
+Tenant resolution HTTP failures now return bounded static client
+messages. The status and error code still distinguish missing/conflicting
+tenant headers, invalid hosts, invalid identifiers, base-domain slug
+requirements and not-found outcomes, but no request-supplied Host, tenant
+slug, header name or private validator detail is interpolated into the
+response body. This mirrors the already sanitized tenant-context load
+error surface and leaves internal typed errors intact.
+
 The HTTP root trace span now rejects malformed or oversized
 client-supplied `x-request-id`, `x-correlation-id` and W3C
 `traceparent` values. Only canonical UUID/32-hex correlation
