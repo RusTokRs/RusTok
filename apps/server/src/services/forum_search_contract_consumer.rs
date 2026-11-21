@@ -168,7 +168,14 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, ForumSearchContractStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Forum Search contract worker startup is already in progress; retry".to_string(),
+        ));
     };
     if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
         return Ok(());
