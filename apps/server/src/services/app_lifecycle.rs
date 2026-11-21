@@ -788,6 +788,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    // Auth sends are request-spawned, not startup-owned. Their registry retains
+    // task ownership after HTTP callers discard JoinHandles, and closes new
+    // admission while allowing a bounded grace period for accepted sends.
+    let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
+
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
             await_runtime_worker_shutdown(
@@ -1216,6 +1221,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         relay_drain,
         retention_drain,
         auth_retention_drain,
+        auth_email_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -1771,6 +1777,43 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        drop(crate::services::email::spawn_auth_email_task(
+            &ctx,
+            "host_shutdown_email",
+            move || async move {
+                started_tx.send(()).expect("signal started");
+                finish_rx.await.expect("finish email");
+                Ok(())
+            },
+        ));
+        started_rx.await.expect("task started");
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown signalled");
+        assert!(!shutdown.is_finished(), "host should await the pending email");
+
+        finish_tx.send(()).expect("release send");
+        shutdown.await.expect("shutdown finishes after email");
+    }
 
     #[tokio::test]
     async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {

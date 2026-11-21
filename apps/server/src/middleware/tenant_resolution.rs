@@ -424,10 +424,17 @@ pub(crate) fn subdomain_identifier(
         }
 
         let suffix = format!(".{normalized_base}");
-        if host.len() > suffix.len()
-            && host[host.len() - suffix.len()..].eq_ignore_ascii_case(&suffix)
-        {
-            let candidate = &host[..host.len() - suffix.len()];
+        // Never byte-slice an untrusted host at a potentially invalid UTF-8
+        // boundary. The normal host validator restricts production input,
+        // but this helper must remain safe even for a raw malformed string.
+        let Some(suffix_start) = host.len().checked_sub(suffix.len()) else {
+            continue;
+        };
+        let Some(tail) = host.get(suffix_start..) else {
+            continue;
+        };
+        if suffix_start > 0 && tail.eq_ignore_ascii_case(&suffix) {
+            let candidate = &host[..suffix_start];
             if candidate.is_empty() || candidate.contains('.') {
                 return Err(TenantResolutionError::NestedSubdomain {
                     host: host.to_string(),
@@ -710,6 +717,17 @@ mod tests {
         assert!(matches!(
             subdomain_identifier("a.b.example.test", &domains),
             Err(TenantResolutionError::NestedSubdomain { .. })
+        ));
+    }
+
+    #[test]
+    fn subdomain_matching_never_panics_on_a_non_character_boundary() {
+        // The base-domain suffix starts midway through the multibyte 'é'.
+        // A byte-indexed slice used to panic here instead of rejecting the host.
+        let domains = vec!["x.a.test".to_string()];
+        assert!(matches!(
+            subdomain_identifier("éx.a.test", &domains),
+            Err(TenantResolutionError::NoBaseDomainMatch { .. })
         ));
     }
 

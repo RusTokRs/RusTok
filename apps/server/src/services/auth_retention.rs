@@ -10,7 +10,7 @@
 //! `auth sessions-cleanup` CLI remains available for one-off runs.
 
 use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 
 use crate::error::Result;
 use crate::models::{
@@ -42,45 +42,64 @@ pub struct AuthRetentionPurge {
     pub oauth_authorization_codes: u64,
 }
 
-/// Delete sessions and invite bookkeeping whose expiry is older than
-/// the retention window. Returns per-table deletion counts.
+/// Delete expired authentication artifacts in one transaction. A failed purge
+/// must not leave some artifact families deleted while later cleanup fails.
+/// Returns per-table deletion counts only after the transaction commits.
 pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<AuthRetentionPurge> {
-    let cutoff = Utc::now() - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS);
+    let now = Utc::now();
+    let cutoff = now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS);
+    let oauth_cutoff = now - Duration::days(OAUTH_TOKEN_RETENTION_DAYS);
+    let oauth_code_cutoff = now - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
+    let tx = db.begin().await?;
 
-    let sessions = sessions::Entity::delete_many()
-        .filter(sessions::Column::ExpiresAt.lt(cutoff))
-        .exec(db)
-        .await?;
+    let result: Result<AuthRetentionPurge> = async {
+        let sessions = sessions::Entity::delete_many()
+            .filter(sessions::Column::ExpiresAt.lt(cutoff))
+            .exec(&tx)
+            .await?;
 
-    let invite_consumptions = auth_invite_consumptions::Entity::delete_many()
-        .filter(auth_invite_consumptions::Column::ExpiresAt.lt(cutoff))
-        .exec(db)
-        .await?;
+        let invite_consumptions = auth_invite_consumptions::Entity::delete_many()
+            .filter(auth_invite_consumptions::Column::ExpiresAt.lt(cutoff))
+            .exec(&tx)
+            .await?;
 
-    let invites = auth_invites::Entity::delete_many()
-        .filter(auth_invites::Column::ExpiresAt.lt(cutoff))
-        .exec(db)
-        .await?;
+        let invites = auth_invites::Entity::delete_many()
+            .filter(auth_invites::Column::ExpiresAt.lt(cutoff))
+            .exec(&tx)
+            .await?;
 
-    let oauth_cutoff = Utc::now() - Duration::days(OAUTH_TOKEN_RETENTION_DAYS);
-    let oauth_tokens = oauth_tokens::Entity::delete_many()
-        .filter(oauth_tokens::Column::ExpiresAt.lt(oauth_cutoff))
-        .exec(db)
-        .await?;
+        let oauth_tokens = oauth_tokens::Entity::delete_many()
+            .filter(oauth_tokens::Column::ExpiresAt.lt(oauth_cutoff))
+            .exec(&tx)
+            .await?;
 
-    let oauth_code_cutoff = Utc::now() - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
-    let oauth_authorization_codes = oauth_authorization_codes::Entity::delete_many()
-        .filter(oauth_authorization_codes::Column::ExpiresAt.lt(oauth_code_cutoff))
-        .exec(db)
-        .await?;
+        let oauth_authorization_codes = oauth_authorization_codes::Entity::delete_many()
+            .filter(oauth_authorization_codes::Column::ExpiresAt.lt(oauth_code_cutoff))
+            .exec(&tx)
+            .await?;
 
-    Ok(AuthRetentionPurge {
-        sessions: sessions.rows_affected,
-        invite_consumptions: invite_consumptions.rows_affected,
-        invites: invites.rows_affected,
-        oauth_tokens: oauth_tokens.rows_affected,
-        oauth_authorization_codes: oauth_authorization_codes.rows_affected,
-    })
+        Ok(AuthRetentionPurge {
+            sessions: sessions.rows_affected,
+            invite_consumptions: invite_consumptions.rows_affected,
+            invites: invites.rows_affected,
+            oauth_tokens: oauth_tokens.rows_affected,
+            oauth_authorization_codes: oauth_authorization_codes.rows_affected,
+        })
+    }
+    .await;
+
+    match result {
+        Ok(report) => {
+            tx.commit().await?;
+            Ok(report)
+        }
+        Err(error) => {
+            // Explicit rollback keeps the failure visible and prevents later
+            // runs from observing a partially committed retention sweep.
+            tx.rollback().await?;
+            Err(error)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -93,6 +112,48 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn purge_rolls_back_earlier_deletes_when_a_later_table_fails() {
+        use sea_orm::ConnectionTrait;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "Rollback tenant",
+            &format!("retention-rollback-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "rollback@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            format!("expired-{}", Uuid::new_v4()),
+            Utc::now() - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS + 1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("expired session");
+
+        db.execute_unprepared("DROP TABLE auth_invite_consumptions")
+            .await
+            .expect("break second retention delete");
+        assert!(purge_expired_auth_artifacts(&db).await.is_err());
+        assert!(
+            sessions::Entity::find_by_id(session.id)
+                .one(&db)
+                .await
+                .expect("session lookup after rollback")
+                .is_some(),
+            "the first delete must roll back if a later delete fails"
+        );
+    }
 
     #[tokio::test]
     async fn purge_removes_only_oauth_codes_past_the_lineage_retention_window() {
