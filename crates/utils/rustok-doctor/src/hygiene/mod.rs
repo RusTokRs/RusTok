@@ -563,6 +563,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
 
         if scan.migration
+            && !scan.cli_file
             && !scan.test_file
             && test_scopes.is_empty()
             && !pending_test
@@ -1301,7 +1302,7 @@ fn check_rules(
             && !text.contains("hasher")
             && !scan.has_invariant(index, text)
             && re!(r"\b(?:bytes|data|slice|payload|buf)\s*\[\s*\d+\s*\.\.\s*\d+\s*\]").is_match(text)
-            && !scan.lines.iter().take(index).rev().take(6).any(|prev| prev.syntax.contains(".len()"))
+            && !scan.lines.iter().take(index).rev().take(12).any(|prev| prev.syntax.contains(".len()"))
         {
             scan.add(
                 number,
