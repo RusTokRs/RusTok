@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -106,12 +107,57 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                adapt_reversal_events(instance_id, &reversal_backfill).await;
-                sweep_reversal_events(instance_id, &reversal_events).await;
-                sweep_paid_events(instance_id, &paid_events).await;
+                // A durable sweep is not cancelled mid-operation, but a stop
+                // signal must prevent admission of subsequent recovery phases.
+                if !run_recovery_phases(
+                    &stop_rx,
+                    || adapt_reversal_events(instance_id, &reversal_backfill),
+                    || sweep_reversal_events(instance_id, &reversal_events),
+                    || sweep_paid_events(instance_id, &paid_events),
+                )
+                .await
+                {
+                    tracing::info!(
+                        worker = "marketplace_financial_recovery",
+                        instance_id,
+                        "Worker stopped between durable recovery phases"
+                    );
+                    return;
+                }
             }
         }
     }
+}
+
+/// Preserve the current durable operation after shutdown, but never start
+/// another external recovery phase once the stop signal has been observed.
+async fn run_recovery_phases<A, AF, R, RF, P, PF>(
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
+    adapt: A,
+    reversal: R,
+    paid: P,
+) -> bool
+where
+    A: FnOnce() -> AF,
+    AF: Future<Output = ()>,
+    R: FnOnce() -> RF,
+    RF: Future<Output = ()>,
+    P: FnOnce() -> PF,
+    PF: Future<Output = ()>,
+{
+    if *stop_rx.borrow() {
+        return false;
+    }
+    adapt().await;
+    if *stop_rx.borrow() {
+        return false;
+    }
+    reversal().await;
+    if *stop_rx.borrow() {
+        return false;
+    }
+    paid().await;
+    !*stop_rx.borrow()
 }
 
 async fn adapt_reversal_events(
