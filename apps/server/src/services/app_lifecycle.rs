@@ -279,7 +279,8 @@ impl SocialGraphObserverInitializationLock {
 /// their final shutdown check -> task spawn -> JoinHandle publication against
 /// the matching shutdown take. Do not hold this blocking gate across awaits or
 /// while joining tasks. One runtime-local gate covers the Product Search channel
-/// projection repair worker and the three Notifications workers.
+/// projection repair, three Notifications, Forum Search inbox/contract,
+/// Product Index and Social Graph Index workers.
 #[derive(Clone, Default)]
 pub(crate) struct DirectWorkerRegistrationLock(
     pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
@@ -1371,8 +1372,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-product")]
     let product_index_refresh_drain = async {
         #[cfg(feature = "mod-product")]
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>()
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>(runtime_ctx)
         {
             await_runtime_worker_shutdown(
                 "Product index refresh",
@@ -1387,8 +1387,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-social_graph")]
     let social_graph_index_drain = async {
         #[cfg(feature = "mod-social_graph")]
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>()
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>(runtime_ctx)
         {
             await_runtime_worker_shutdown(
                 "Social Graph Index consumer",
@@ -1461,7 +1460,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Forum search inbox", worker.into_task()).await;
         }
     };
@@ -1470,7 +1469,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_contract_consumer_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Forum Search contract consumer", worker.into_task()).await;
         }
     };
