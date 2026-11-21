@@ -815,7 +815,7 @@ impl InstallerJobTaskRegistry {
             let pending = tasks.len();
             tracing::error!(
                 pending,
-                "Installer HTTP job shutdown grace expired; aborting in-flight work and preserving its durable running claim for operator reconciliation"
+                "Installer HTTP job shutdown grace expired; aborting in-flight work and leaving any durable running claim in place for operator reconciliation"
             );
             tasks.abort_all();
             let joined = tokio::time::timeout(abort_join_grace, async {
@@ -2686,8 +2686,11 @@ mod installer_job_task_registry_tests {
 
     #[tokio::test]
     async fn installer_job_tasks_are_drained_and_admission_closes() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
         let ctx = super::ServerRuntimeContext::new(
-            sea_orm::DatabaseConnection::default(),
+            db,
             crate::common::settings::RustokSettings::default(),
         );
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();

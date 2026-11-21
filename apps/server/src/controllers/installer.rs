@@ -228,7 +228,7 @@ async fn create_http_job_with_retry(
     let mut last_error = None;
     for attempt in 1..=INSTALLER_HTTP_JOB_CREATE_MAX_ATTEMPTS {
         match persistence
-            .create_http_job(job_id, job_id, submitted_at)
+            .create_http_job(job_id, job_id, submitted_at.clone())
             .await
         {
             Ok(job) => return Ok(job),
@@ -1409,7 +1409,7 @@ mod tests {
         let submitted_at = Utc::now();
 
         persistence
-            .create_http_job(job_id, job_id, submitted_at)
+            .create_http_job(job_id, job_id, submitted_at.clone())
             .await
             .expect("initial durable claim");
 
@@ -1430,7 +1430,7 @@ mod tests {
         let submitted_at = Utc::now();
 
         persistence
-            .create_http_job(job_id, job_id, submitted_at)
+            .create_http_job(job_id, job_id, submitted_at.clone())
             .await
             .expect("durable claim");
 

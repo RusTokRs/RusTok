@@ -2254,8 +2254,8 @@ corresponding write had committed.
 
 ### Remaining crash-recovery boundary
 
-A hard process crash, or a shutdown timeout after executor entry, can still
-leave the durable HTTP job in running. The patch deliberately does not replay
+A hard process crash, or a shutdown timeout during an ambiguous claim write or
+after executor entry, can still leave the durable HTTP job in running. The patch deliberately does not replay
 an installer automatically: external side effects may have happened even when
 the final receipt or HTTP-job transition was not observed. The session's
 attempt-generation/receipt fence remains authoritative; an operator must

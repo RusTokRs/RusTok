@@ -861,8 +861,8 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   handle and closes admission during shutdown. The HTTP response awaits the
   creation acknowledgement, but disconnecting cannot interrupt the claim-to-run
   handoff or leak the local slot. Shutdown waits up to 60 seconds for accepted
-  installer work, then aborts and joins it while preserving any still-running
-  durable claim for operator reconciliation. Failed claims release the slot and preserve the
+  installer work, then aborts and joins it while leaving any still-running
+  durable claim in place for operator reconciliation. Failed claims release the slot and preserve the
   409 conflict/500 storage-error mapping. New apply requests receive 503 while
   host shutdown is active. Neither this mechanism nor the existing unique
   running-job index recovers a job after process termination: ambiguous effects
