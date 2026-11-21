@@ -460,3 +460,7 @@ Blog-reactions-signIn = Sign in to react.
 Blog-reactions-loading = Loading reactions...
 Blog-reactions-unavailable = Reactions are temporarily unavailable.
 Blog-reactions-updateError = Could not update this reaction.
+
+ModulePolicy-title = Module availability could not be verified
+ModulePolicy-description = The store is temporarily unavailable. Please try again.
+ModulePolicy-retry = Try again

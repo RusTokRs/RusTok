@@ -452,24 +452,6 @@ pub fn setting_shape_options(shape: Option<&serde_json::Value>) -> Vec<serde_jso
         .unwrap_or_default()
 }
 
-pub fn setting_shape_numeric_bound(shape: Option<&serde_json::Value>, key: &str) -> Option<String> {
-    let value = shape.and_then(|shape| shape.get(key))?;
-
-    value
-        .as_i64()
-        .map(|number| number.to_string())
-        .or_else(|| value.as_u64().map(|number| number.to_string()))
-        .or_else(|| {
-            value.as_f64().map(|number| {
-                let mut rendered = number.to_string();
-                if rendered.ends_with(".0") {
-                    rendered.truncate(rendered.len() - 2);
-                }
-                rendered
-            })
-        })
-}
-
 pub fn parse_scalar_input_value(raw: &str, value_type: &str) -> Option<serde_json::Value> {
     match value_type {
         "string" => Some(serde_json::Value::String(raw.to_string())),
@@ -483,11 +465,17 @@ pub fn parse_scalar_input_value(raw: &str, value_type: &str) -> Option<serde_jso
                     .ok()
                     .map(|number| serde_json::Value::Number(number.into()))
             }),
-        "number" => raw
-            .parse::<f64>()
-            .ok()
-            .and_then(serde_json::Number::from_f64)
-            .map(serde_json::Value::Number),
+        "number" => {
+            // serde_json otherwise falls back to f64 for integer literals
+            // outside i64/u64, silently rounding them before validation.
+            let integer_literal = !raw.contains(|ch| matches!(ch, '.' | 'e' | 'E'));
+            if integer_literal && raw.parse::<i64>().is_err() && raw.parse::<u64>().is_err() {
+                return None;
+            }
+            serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .filter(serde_json::Value::is_number)
+        },
         _ => None,
     }
 }
@@ -500,16 +488,7 @@ pub fn setting_option_draft_value(value_type: &str, value: &serde_json::Value) -
             .map(|number| number.to_string())
             .or_else(|| value.as_u64().map(|number| number.to_string()))
             .unwrap_or_else(|| value.to_string()),
-        "number" => value
-            .as_f64()
-            .map(|number| {
-                let mut rendered = number.to_string();
-                if rendered.ends_with(".0") {
-                    rendered.truncate(rendered.len() - 2);
-                }
-                rendered
-            })
-            .unwrap_or_else(|| value.to_string()),
+        "number" => value.to_string(),
         "boolean" => value
             .as_bool()
             .map(|flag| flag.to_string())
@@ -692,8 +671,20 @@ pub fn render_scalar_value_editor(
         .unwrap_or_else(|| json_value_kind(&current_value).to_string());
     let options = setting_shape_options(shape.as_ref());
     let current_raw = setting_option_draft_value(&value_type, &current_value);
-    let min = setting_shape_numeric_bound(shape.as_ref(), "min");
-    let max = setting_shape_numeric_bound(shape.as_ref(), "max");
+
+    // A numeric value may also have an untyped or `any` schema. Do not let
+    // those cases fall through to the text editor and silently change its type.
+    if current_value.is_number() || matches!(value_type.as_str(), "integer" | "number") {
+        return view! {
+            <div class="space-y-1">
+                <code class="block rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">{current_value.to_string()}</code>
+                <p class="text-xs text-muted-foreground">
+                    {crate::i18n::t(Some(locale.as_str()), "modules.settings.nested_number_json_hint", "Edit this number in the JSON editor below.")}
+                </p>
+            </div>
+        }
+        .into_any();
+    }
 
     match value_type.as_str() {
         "boolean" if options.is_empty() => {
@@ -714,7 +705,7 @@ pub fn render_scalar_value_editor(
             }
             .into_any()
         }
-        "string" | "integer" | "number" | "boolean" if !options.is_empty() => {
+        "string" | "boolean" if !options.is_empty() => {
             let options_for_select = options.clone();
             let value_type_for_select = value_type.clone();
             view! {
@@ -739,30 +730,6 @@ pub fn render_scalar_value_editor(
                         }
                     }).collect_view()}
                 </select>
-            }
-            .into_any()
-        }
-        "integer" | "number" => {
-            let step = if value_type == "integer" { "1" } else { "any" };
-            let value_type_for_input = value_type.clone();
-            view! {
-                <input
-                    type="number"
-                    step=step
-                    min=min
-                    max=max
-                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                    value=current_raw
-                    disabled=move || disabled.get()
-                    on:input=move |event| {
-                        if let Some(next_value) = parse_scalar_input_value(
-                            &event_target_value(&event),
-                            &value_type_for_input,
-                        ) {
-                            on_input.run(next_value);
-                        }
-                    }
-                />
             }
             .into_any()
         }
@@ -1848,5 +1815,91 @@ pub fn ComplexSettingEditor(
                 on:input=move |event| on_input.run(event_target_value(&event))
             ></textarea>
         </div>
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    fn scalar_html(
+        value: serde_json::Value,
+        shape: Option<serde_json::Value>,
+        locale: Locale,
+    ) -> String {
+        Owner::new().with(|| {
+            render_scalar_value_editor(
+                value,
+                shape,
+                locale,
+                Signal::derive(|| false),
+                Callback::new(|_: serde_json::Value| {}),
+            )
+            .to_html()
+        })
+    }
+
+    #[test]
+    fn numeric_scalars_and_options_are_read_only_with_json_instructions() {
+        let cases = [
+            (serde_json::json!(u64::MAX), None),
+            (
+                serde_json::json!(3.5),
+                Some(serde_json::json!({"type": "any"})),
+            ),
+            (
+                serde_json::json!(0),
+                Some(serde_json::json!({"type": "integer", "options": [0, 1]})),
+            ),
+            // A mismatched schema must not render a number as an editable string.
+            (
+                serde_json::json!(7),
+                Some(serde_json::json!({"type": "string"})),
+            ),
+        ];
+        for (value, shape) in cases {
+            let expected = value.to_string();
+            let html = scalar_html(value, shape, Locale::En);
+            assert!(html.contains(&expected), "{html}");
+            assert!(
+                html.contains("Edit this number in the JSON editor below."),
+                "{html}"
+            );
+            assert!(!html.contains("<input"), "{html}");
+            assert!(!html.contains("<select"), "{html}");
+        }
+        let localized_html = scalar_html(serde_json::json!(5), None, Locale::Ru);
+        assert!(localized_html.contains("Измените это число в редакторе JSON ниже."));
+    }
+
+    #[test]
+    fn nested_objects_and_arrays_render_numbers_without_numeric_controls() {
+        let html = Owner::new().with(|| {
+            let root = serde_json::json!({"level": [{"limit": 5}, 9]});
+            let context = NestedJsonRenderContext {
+                root_type: "object".to_string(),
+                root_value: Signal::derive(|| "{\"level\":[{\"limit\":5},9]}".to_string()),
+                locale: Locale::En,
+                disabled: Signal::derive(|| false),
+                on_input: Callback::new(|_: String| {}),
+            };
+            render_nested_json_children(&context, Vec::new(), root, None).to_html()
+        });
+        assert_eq!(
+            html.matches("Edit this number in the JSON editor below.").count(),
+            2,
+            "{html}"
+        );
+        assert!(!html.contains("type=\"number\""), "{html}");
+    }
+
+    #[test]
+    fn non_numeric_scalar_remains_editable() {
+        let html = scalar_html(serde_json::json!("value"), None, Locale::En);
+        assert!(html.contains("<input"), "{html}");
+        assert!(
+            !html.contains("Edit this number in the JSON editor below."),
+            "{html}"
+        );
     }
 }

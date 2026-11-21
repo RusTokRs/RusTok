@@ -1201,7 +1201,7 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
 }
 
 #[tokio::test]
-async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
+async fn retry_failed_post_hook_operation_retains_uncertain_hook_fence() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -1232,10 +1232,10 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     .await
     .expect("load recovery plan");
     assert_eq!(plan.issue, ModuleOperationIssue::PostHookFailed);
-    assert!(plan.retryable);
+    assert!(!plan.retryable);
     assert_eq!(
         plan.recommended_action,
-        ModuleOperationRecoveryAction::RetryPostHook
+        ModuleOperationRecoveryAction::None
     );
     assert!(plan.correlation_id.is_some());
 
@@ -1269,67 +1269,35 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     ));
 
     let retry_actor_id = Uuid::new_v4();
-    let retry_idempotency_key = uuid::Uuid::new_v4();
-    let retry_operation = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
-        &db,
-        &registry,
-        tenant_id,
-        failed_operation.id,
-        command_context(tenant_id, retry_actor_id, retry_idempotency_key),
-        1,
-    )
-    .await
-    .expect("post-hook retry should succeed");
-
-    assert_eq!(retry_operation.status, ModuleOperationStatus::Committed);
-    assert_eq!(
-        retry_operation.requested_by,
-        Some(retry_actor_id.to_string())
-    );
-    assert!(retry_operation.requested_enabled);
-    assert!(
-        !retry_operation.previous_effective_enabled,
-        "the retry must preserve the original operation's historical availability",
-    );
-    assert!(retry_operation.error_message.is_none());
-    assert_ne!(retry_operation.operation_id, failed_operation.id);
-    assert_eq!(
-        retry_operation.correlation_id,
-        Some(retry_idempotency_key.to_string())
-    );
-    assert_eq!(
-        retry_operation.trace_id.as_deref(),
-        Some(format!("test:static-lifecycle:{retry_idempotency_key}").as_str())
-    );
-    assert_eq!(
-        post_enable_calls.load(Ordering::SeqCst),
-        2,
-        "explicit post-hook retry should invoke post_enable once more"
-    );
-
+    let retry_idempotency_key = Uuid::new_v4();
+    for remove_claim in [false, true] {
+        if remove_claim {
+            // Fixture only: a legacy missing claim is not proof of quiescence.
+            let update = db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_idempotency_key = NULL, active_claimed_at = NULL WHERE module_slug = 'analytics'").await.unwrap();
+            assert_eq!(update.rows_affected(), 1);
+        }
+        let error = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
+            &db,
+            &registry,
+            tenant_id,
+            failed_operation.id,
+            command_context(tenant_id, retry_actor_id, retry_idempotency_key),
+            1,
+        )
+        .await
+        .expect_err("a possibly running old hook must block retry");
+        assert!(matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
+            if reason == "hook_identity_and_quiescence_unverified"));
+    }
+    assert_eq!(post_enable_calls.load(Ordering::SeqCst), 1);
     let operations = module_operations::Entity::find()
         .filter(module_operations::Column::TenantId.eq(tenant_id))
         .filter(module_operations::Column::ModuleSlug.eq("analytics"))
         .all(&db)
         .await
         .expect("load analytics operations");
-    assert_eq!(operations.len(), 2);
+    assert_eq!(operations.len(), 1, "unclaimed retry must not create a durable attempt");
 
-    let replayed_operation = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
-        &db,
-        &registry,
-        tenant_id,
-        failed_operation.id,
-        command_context(tenant_id, retry_actor_id, retry_idempotency_key),
-        1,
-    )
-    .await
-    .expect("same retry idempotency key should replay the journal operation");
-    assert_eq!(
-        replayed_operation.operation_id,
-        retry_operation.operation_id
-    );
-    assert_eq!(post_enable_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -1364,7 +1332,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
     assert!(!plan.retryable);
     assert_eq!(
         plan.recommended_action,
-        ModuleOperationRecoveryAction::RepeatToggle
+        ModuleOperationRecoveryAction::None
     );
 
     let err = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
@@ -1381,7 +1349,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
 }
 
 #[tokio::test]
-async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key() {
+async fn compensation_is_blocked_by_uncertain_post_hook_fence() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -1423,48 +1391,32 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
     let actor_id = Uuid::new_v4();
     let idempotency_key = uuid::Uuid::new_v4();
 
-    let compensated = OwnerModuleLifecycleService::compensate_failed_operation(
-        &db,
-        &registry,
-        tenant_id,
-        failed_operation.id,
-        command_context(tenant_id, actor_id, idempotency_key),
-        1,
-    )
-    .await
-    .expect("compensation should disable the module");
-    assert_eq!(compensated.module_slug, "billing");
-    assert!(!compensated.enabled);
-
-    let replayed = OwnerModuleLifecycleService::compensate_failed_operation(
-        &db,
-        &registry,
-        tenant_id,
-        failed_operation.id,
-        command_context(tenant_id, actor_id, idempotency_key),
-        1,
-    )
-    .await
-    .expect("same compensation key should replay the reverse operation");
-    assert_eq!(replayed.module_slug, "billing");
-    assert_eq!(replayed.operation_id, compensated.operation_id);
-    assert!(compensated.operation_id.is_some());
-    assert_eq!(post_disable_calls.load(Ordering::SeqCst), 1);
-
+    for remove_claim in [false, true] {
+        if remove_claim {
+            // Fixture only: a legacy missing claim is not proof of quiescence.
+            let update = db.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_idempotency_key = NULL, active_claimed_at = NULL WHERE module_slug = 'billing'").await.unwrap();
+            assert_eq!(update.rows_affected(), 1);
+        }
+        let error = OwnerModuleLifecycleService::compensate_failed_operation(
+            &db,
+            &registry,
+            tenant_id,
+            failed_operation.id,
+            command_context(tenant_id, actor_id, idempotency_key),
+            1,
+        )
+        .await
+        .expect_err("uncertain post-hook fence must block compensation");
+        assert!(matches!(error, ModuleOperationRecoveryError::NotRetryable(reason)
+            if reason == "hook_identity_and_quiescence_unverified"));
+    }
+    assert_eq!(post_disable_calls.load(Ordering::SeqCst), 0);
     let compensation = module_operations::Entity::find()
         .filter(module_operations::Column::TenantId.eq(tenant_id))
         .filter(module_operations::Column::IdempotencyKey.eq(idempotency_key))
         .one(&db)
         .await
-        .expect("query compensation operation")
-        .expect("compensation operation exists");
-    assert_eq!(compensated.operation_id, Some(compensation.id));
-    assert_eq!(
-        compensation.status,
-        ModuleOperationStatus::Committed.as_str()
-    );
-    assert_eq!(
-        compensation.correlation_id,
-        Some(failed_operation.id.to_string())
-    );
+        .expect("query compensation operation");
+    assert!(compensation.is_none(), "an unclaimed compensation must not persist");
+
 }

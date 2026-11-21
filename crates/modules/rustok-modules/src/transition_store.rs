@@ -106,9 +106,12 @@ pub struct TransitionCheckpointStore;
 impl TransitionCheckpointStore {
     /// Inserts a checkpoint or advances it by exactly one owner revision.
     ///
-    /// Existing rows are updated with compare-and-swap semantics. A caller
-    /// cannot overwrite a concurrent transition decision with a stale copy.
-    pub async fn save_checkpoint<C: ConnectionTrait>(
+    /// Production checkpoint creation belongs to the governed transition
+    /// service, which acquires the platform slug lock and validates conflicts
+    /// in the same transaction. This low-level writer is crate-private to
+    /// prevent external callers from bypassing that protocol. Existing rows
+    /// are updated with compare-and-swap semantics.
+    pub(crate) async fn save_checkpoint<C: ConnectionTrait>(
         db: &C,
         checkpoint: &ModuleTransitionCheckpoint,
     ) -> Result<(), TransitionStoreError> {
@@ -225,6 +228,16 @@ impl TransitionCheckpointStore {
         Ok(())
     }
 
+    /// Seeds a checkpoint for integration fixtures. This bypasses the owner
+    /// admission protocol and must never be enabled in production.
+    #[cfg(feature = "test-support")]
+    pub async fn save_checkpoint_for_test<C: ConnectionTrait>(
+        db: &C,
+        checkpoint: &ModuleTransitionCheckpoint,
+    ) -> Result<(), TransitionStoreError> {
+        Self::save_checkpoint(db, checkpoint).await
+    }
+
     /// Loads a transition checkpoint by operation ID.
     pub async fn load_checkpoint<C: ConnectionTrait>(
         db: &C,
@@ -255,6 +268,20 @@ impl TransitionCheckpointStore {
         active_checkpoints_from_models(models)
     }
 
+    /// Lists unresolved checkpoints for a slug in every scope. Platform
+    /// serving changes can affect tenant overlays as well as platform state.
+    pub async fn list_active_checkpoints_for_slug<C: ConnectionTrait>(
+        db: &C,
+        module_slug: &str,
+    ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        ensure_checkpoint_fence_visibility(db).await?;
+        let models = transition_checkpoint_entity::Entity::find()
+            .filter(transition_checkpoint_entity::Column::ModuleSlug.eq(module_slug))
+            .all(db)
+            .await?;
+        active_checkpoints_from_models(models)
+    }
+
     /// Lists unresolved checkpoints from one exact tenant or platform scope,
     /// including checkpoints waiting for operator intervention.
     pub async fn list_active_checkpoints_for_tenant<C: ConnectionTrait>(
@@ -265,7 +292,7 @@ impl TransitionCheckpointStore {
 
         let query = transition_checkpoint_entity::Entity::find();
         let query = match tenant_id {
-            Some(tenant_id) => query.filter(Column::TenantId.eq(tenant_id)),
+            Some(tenant_id) => query.filter(checkpoint_tenant_condition(db, tenant_id)),
             None => query.filter(Column::TenantId.is_null()),
         };
         active_checkpoints_from_models(query.all(db).await?)
@@ -284,14 +311,65 @@ impl TransitionCheckpointStore {
     ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
         use transition_checkpoint_entity::Column;
 
+        ensure_checkpoint_fence_visibility(db).await?;
         let query = transition_checkpoint_entity::Entity::find()
             .filter(Column::ModuleSlug.eq(module_slug))
             .filter(
                 sea_orm::Condition::any()
-                    .add(Column::TenantId.eq(tenant_id))
+                    .add(checkpoint_tenant_condition(db, tenant_id))
                     .add(Column::TenantId.is_null()),
             );
         active_checkpoints_from_models(query.all(db).await?)
+    }
+}
+
+/// A fence query must see every overlapping checkpoint, including platform
+/// rows when the caller is tenant-scoped. A filtered PostgreSQL RLS view
+/// cannot prove absence without an audited cross-scope policy. Reading the
+/// table in this statement also acquires an AccessShareLock before checking
+/// RLS; a fenced caller's transaction retains it until commit, preventing a
+/// concurrent policy/row-security DDL change between the check and query.
+/// Callers making a mutation must use a transaction and retain the slug lock
+/// across this check, the checkpoint query, and the mutation.
+async fn ensure_checkpoint_fence_visibility<C: ConnectionTrait>(
+    db: &C,
+) -> Result<(), TransitionStoreError> {
+    if SupportedBackend::new(db.get_database_backend()).map_err(sea_orm::DbErr::from)?
+        == SupportedBackend::Postgres
+    {
+        let row = db.query_one_raw(Statement::from_string(
+            sea_orm::DbBackend::Postgres,
+            "SELECT row_security_active('module_transition_checkpoints'::regclass) AS enforced \
+             FROM (SELECT count(*) FROM module_transition_checkpoints WHERE FALSE) AS locked".to_string(),
+        )).await?.ok_or_else(|| sea_orm::DbErr::Custom(
+            "could not verify checkpoint row security".to_string(),
+        ))?;
+        if row.try_get::<bool>("", "enforced")? {
+            return Err(sea_orm::DbErr::Custom(
+                "checkpoint RLS visibility cannot be proven for the transition fence".to_string(),
+            ).into());
+        }
+    }
+    Ok(())
+}
+
+// SQLite UUID columns can contain SQLx's native BLOB or historical UUID text.
+// Normalize both for the fence lookup; any selected but undecodable row causes
+// the query to fail rather than being interpreted as an absent checkpoint.
+// PostgreSQL keeps its native indexed UUID comparison.
+fn checkpoint_tenant_condition<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+) -> sea_orm::sea_query::Expr {
+    use sea_orm::sea_query::Expr;
+    use transition_checkpoint_entity::Column;
+
+    match db.get_database_backend() {
+        sea_orm::DbBackend::Sqlite => Expr::cust_with_values(
+            "replace(replace(replace(replace(lower(CASE WHEN typeof(tenant_id) = 'blob' THEN hex(tenant_id) ELSE CAST(tenant_id AS TEXT) END), 'urn:uuid:', ''), '{', ''), '}', ''), '-', '') = ?",
+            [tenant_id.simple().to_string()],
+        ),
+        _ => Column::TenantId.eq(tenant_id),
     }
 }
 
@@ -498,5 +576,79 @@ impl RetentionHoldStore {
             }
         }
         Ok(released_count)
+    }
+}
+
+#[cfg(test)]
+mod fence_visibility_tests {
+    use super::*;
+    use sea_orm::{Database, DbBackend, TransactionTrait};
+    use std::time::Duration;
+
+    // Requires an isolated disposable PostgreSQL database and a role with
+    // CREATE ROLE. The schema/role may remain behind if the test panics.
+    #[tokio::test]
+    #[ignore = "requires disposable RUSTOK_MODULES_TEST_DATABASE_URL, schema and role privileges"]
+    async fn postgres_checkpoint_rls_fails_closed_and_policy_ddl_waits_for_fence() {
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").unwrap();
+        async fn connect(url: &str) -> sea_orm::DatabaseConnection {
+            let mut options = sea_orm::ConnectOptions::new(url);
+            options.min_connections(1).max_connections(1).sqlx_logging(false);
+            Database::connect(options).await.unwrap()
+        }
+        let owner = connect(&url).await;
+        let worker = connect(&url).await;
+        let monitor = connect(&url).await;
+        let suffix = Uuid::new_v4().simple().to_string();
+        let schema = format!("checkpoint_rls_{suffix}");
+        let role = format!("checkpoint_reader_{suffix}");
+        owner.execute_unprepared(&format!(
+            "CREATE ROLE {role} NOLOGIN; CREATE SCHEMA {schema}; \
+             CREATE TABLE {schema}.module_transition_checkpoints (tenant_id UUID, module_slug TEXT); \
+             INSERT INTO {schema}.module_transition_checkpoints VALUES (NULL, 'forum'); \
+             GRANT USAGE ON SCHEMA {schema} TO {role}; \
+             GRANT SELECT ON {schema}.module_transition_checkpoints TO {role}; \
+             ALTER TABLE {schema}.module_transition_checkpoints ENABLE ROW LEVEL SECURITY; \
+             CREATE POLICY tenant_only ON {schema}.module_transition_checkpoints USING (tenant_id IS NOT NULL)"
+        )).await.unwrap();
+        worker.execute_unprepared(&format!("SET search_path TO {schema}; SET ROLE {role}")).await.unwrap();
+        let visible = worker.query_all_raw(Statement::from_string(DbBackend::Postgres,
+            "SELECT * FROM module_transition_checkpoints".to_string())).await.unwrap();
+        assert!(visible.is_empty(), "the fixture must hide the platform checkpoint");
+        assert!(matches!(
+            TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+                &worker, "forum", Uuid::new_v4(),
+            ).await,
+            Err(TransitionStoreError::Database(_))
+        ));
+        assert!(matches!(
+            TransitionCheckpointStore::list_active_checkpoints_for_slug(&worker, "forum").await,
+            Err(TransitionStoreError::Database(_))
+        ));
+        worker.execute_unprepared("RESET ROLE").await.unwrap();
+        owner.execute_unprepared(&format!("ALTER TABLE {schema}.module_transition_checkpoints DISABLE ROW LEVEL SECURITY")).await.unwrap();
+        let tx = owner.begin().await.unwrap();
+        tx.execute_unprepared(&format!("SET LOCAL search_path TO {schema}")).await.unwrap();
+        ensure_checkpoint_fence_visibility(&tx).await.unwrap();
+        let worker_pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
+            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
+        let ddl_schema = schema.clone();
+        let task = tokio::spawn(async move {
+            worker.execute_unprepared(&format!(
+                "ALTER TABLE {ddl_schema}.module_transition_checkpoints ENABLE ROW LEVEL SECURITY"
+            )).await.unwrap();
+        });
+        let mut blocked = false;
+        for _ in 0..200 {
+            let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+                "SELECT cardinality(pg_blocking_pids($1)) > 0 AS blocked", vec![worker_pid.into()]
+            )).await.unwrap().unwrap();
+            if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(blocked, "RLS DDL must wait for the fence transaction");
+        tx.commit().await.unwrap();
+        task.await.unwrap();
+        owner.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE; DROP ROLE {role}")).await.unwrap();
     }
 }

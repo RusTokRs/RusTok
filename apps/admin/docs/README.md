@@ -50,6 +50,44 @@ The host-owned `/modules` control plane also receives only a narrow database sna
 Its update workspace displays every active transition and any distinct transition
 selected by URL. Failed transition and retention reads are shown to the operator,
 and queued composition changes refresh the owner-issued installed-module projection.
+Module availability distinguishes an unresolved or failed policy read from a
+successful empty decision; a read failure is not reported as a disabled module.
+The module guard and module-owned admin route offer a localized retry of the
+owner policy read without exposing the raw transport error as an availability
+decision. Leptos `Resource` retains its previous value while a new fetch is
+pending, so availability accepts only results stamped with the current ready
+client-auth scope generation and refresh generation. The resource result does
+not serialize credentials. Rust, hydration, and scope-switch runtime tests are
+still required to verify this path; server authorization remains authoritative.
+Generated settings forms retain JSON i64/u64 integers instead of converting them
+to f64; floating-point decimals still use `serde_json`'s number representation.
+Top-level numeric controls retain incomplete input as text so it is rejected on
+save instead of being silently sanitized by the browser to an empty field.
+Structured nested numeric values, including numeric options and untyped numbers,
+are displayed read-only with instructions to edit them in the field's raw JSON
+textarea. This avoids showing an unaccepted numeric draft while saving the old
+value. Restoring structured numeric input requires tracking invalid drafts through
+nested editor lifecycles and blocking the parent save. A failed tenant-module read or an ambiguous 100-entry bounded
+projection prevents the management page from loading; it is not treated as a
+missing override. Settings editing is disabled for malformed snapshots or values
+the generated form cannot represent. Generated-form saves merge only changed
+fields into the original object and use that snapshot's revision, preserving
+unknown fields for the owner to validate rather than silently deleting them.
+Unrelated reactive updates do not reset settings drafts; if the same module's
+snapshot or schema changes while a draft is dirty, the editor retains the draft,
+blocks save and offers an explicit discard-and-reload action. A late settings
+response does not overwrite another module's editor or roll back a newer local
+revision. Module-detail requests are fenced by request sequence, selected slug,
+and auth-scope generation; the page and editor also reject stale auth-scope
+results. Dirty drafts survive switching modules or closing and reopening the
+panel while this page remains mounted. They stay in memory only, are bound to
+their original snapshot/schema, and do not survive navigation away, reload or
+an auth-scope change. A late successful response clears a cached draft only if
+it is exactly the submitted draft and has not been superseded. The owner rejects
+unknown settings, so old incompatible data can still require
+repair. Raw JSON parsing is not an arbitrary-precision guarantee. Rust,
+SSR/hydration, auth-scope switch and browser tests for this path must be run with
+the Rust toolchain.
 
 The host-owned OAuth apps feature follows the same boundary: DTOs live in
 `src/features/oauth_apps/model.rs`, list transport is selected through

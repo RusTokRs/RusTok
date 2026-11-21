@@ -208,12 +208,40 @@ fn render_document(
 }
 
 #[cfg(feature = "ssr")]
-async fn enabled_modules_or_empty() -> Vec<String> {
-    match fetch_enabled_modules().await {
-        Ok(modules) => modules,
-        Err(err) => {
-            tracing::warn!("failed to fetch enabled modules for storefront SSR: {err}");
-            Vec::new()
+async fn read_storefront_modules() -> Result<Vec<String>, ()> {
+    fetch_enabled_modules().await.map_err(|err| {
+        tracing::warn!("failed to fetch enabled modules for storefront SSR: {err}");
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn render_policy_error_document(locale: &str, csp_nonce: Option<&CspNonce>) -> String {
+    let owner = Owner::new();
+    let app_html = owner.with(|| {
+        view! {
+            <crate::shared::context::enabled_modules::ModulePolicyReadError locale=locale.to_string() />
+        }
+        .to_html()
+    });
+    render_document(locale, "RusToK Storefront", "", app_html, csp_nonce)
+}
+
+#[cfg(feature = "ssr")]
+fn policy_document_response(
+    result: Result<String, ()>,
+    locale: &str,
+    csp_nonce: Option<&CspNonce>,
+) -> Response {
+    match result {
+        Ok(html) => storefront_html_response(html, csp_nonce.is_some()),
+        Err(()) => {
+            let mut response = Html(render_policy_error_document(locale, csp_nonce)).into_response();
+            *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+            response.headers_mut().insert(
+                CACHE_CONTROL,
+                HeaderValue::from_static(PRIVATE_NO_STORE),
+            );
+            response
         }
     }
 }
@@ -223,7 +251,9 @@ pub async fn render_shell(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
 ) -> String {
-    render_shell_with_nonce(locale, query_params, None).await
+    render_shell_with_nonce(locale, query_params, None)
+        .await
+        .unwrap_or_else(|()| render_policy_error_document(locale, None))
 }
 
 #[cfg(feature = "ssr")]
@@ -231,9 +261,9 @@ async fn render_shell_with_nonce(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
     csp_nonce: Option<&CspNonce>,
-) -> String {
-    let enabled_modules = enabled_modules_or_empty().await;
-    render_shell_with_modules(locale, query_params, enabled_modules, csp_nonce).await
+) -> Result<String, ()> {
+    let enabled_modules = read_storefront_modules().await?;
+    Ok(render_shell_with_modules(locale, query_params, enabled_modules, csp_nonce).await)
 }
 
 #[cfg(feature = "ssr")]
@@ -297,8 +327,8 @@ async fn render_shell_response(
     query_params: std::collections::HashMap<String, String>,
     csp_nonce: Option<&CspNonce>,
 ) -> Response {
-    let html = render_shell_with_nonce(locale, query_params, csp_nonce).await;
-    storefront_html_response(html, csp_nonce.is_some())
+    let result = render_shell_with_nonce(locale, query_params, csp_nonce).await;
+    policy_document_response(result, locale, csp_nonce)
 }
 
 #[cfg(feature = "ssr")]
@@ -310,6 +340,7 @@ pub async fn render_module_page(
 ) -> String {
     render_module_page_with_nonce(locale, route_segment, query_params, seo_context, None, None)
         .await
+        .unwrap_or_else(|()| render_policy_error_document(locale, None))
 }
 
 #[cfg(feature = "ssr")]
@@ -320,9 +351,9 @@ async fn render_module_page_with_nonce(
     seo_context: Option<&ResolvedSeoPageContext>,
     csp_nonce: Option<&CspNonce>,
     navigation_snapshot: Option<StorefrontNavigationSnapshot>,
-) -> String {
-    let enabled_modules = enabled_modules_or_empty().await;
-    render_module_page_with_modules(
+) -> Result<String, ()> {
+    let enabled_modules = read_storefront_modules().await?;
+    Ok(render_module_page_with_modules(
         locale,
         route_segment,
         query_params,
@@ -331,7 +362,7 @@ async fn render_module_page_with_nonce(
         navigation_snapshot,
         enabled_modules,
     )
-    .await
+    .await)
 }
 
 #[cfg(feature = "ssr")]
@@ -552,7 +583,7 @@ async fn render_canonical_pages_response(
         }
     };
     let navigation = fetch_pages_navigation_snapshot(locale).await;
-    let html = render_module_page_with_nonce(
+    let html = match render_module_page_with_nonce(
         locale,
         route_segment,
         query_params,
@@ -560,7 +591,10 @@ async fn render_canonical_pages_response(
         csp_nonce,
         Some(navigation.clone()),
     )
-    .await;
+    .await {
+        Ok(html) => html,
+        Err(()) => return policy_document_response(Err(()), locale, csp_nonce),
+    };
     let etag = if csp_nonce.is_some() {
         None
     } else {
@@ -670,7 +704,7 @@ async fn render_module_page_response(
             if let Some(redirect) = resolved.route.redirect.as_ref() {
                 redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
             } else {
-                storefront_html_response(
+                policy_document_response(
                     render_module_page_with_nonce(
                         locale,
                         route_segment,
@@ -680,11 +714,12 @@ async fn render_module_page_response(
                         None,
                     )
                     .await,
-                    csp_nonce.is_some(),
+                    locale,
+                    csp_nonce,
                 )
             }
         }
-        Ok(None) => storefront_html_response(
+        Ok(None) => policy_document_response(
             render_module_page_with_nonce(
                 locale,
                 route_segment,
@@ -694,7 +729,8 @@ async fn render_module_page_response(
                 None,
             )
             .await,
-            csp_nonce.is_some(),
+            locale,
+            csp_nonce,
         ),
         Err(err) => {
             tracing::warn!("failed to resolve SEO page context for storefront SSR: {err}");
@@ -703,7 +739,7 @@ async fn render_module_page_response(
                     build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
                 )
                 .into_response(),
-                _ => storefront_html_response(
+                _ => policy_document_response(
                     render_module_page_with_nonce(
                         locale,
                         route_segment,
@@ -713,7 +749,8 @@ async fn render_module_page_response(
                         None,
                     )
                     .await,
-                    csp_nonce.is_some(),
+                    locale,
+                    csp_nonce,
                 ),
             }
         }
@@ -1079,8 +1116,8 @@ mod tests {
         ResolvedSeoPageContext, apply_composition_headers, build_seo_head,
         canonical_composition_response, normalize_storefront_locale,
         not_modified_composition_response, pages_route_response_from_decision,
-        render_module_page_with_modules, render_shell_with_modules, resolve_storefront_locale,
-        storefront_html_response,
+        policy_document_response, render_module_page_with_modules, render_shell_with_modules,
+        resolve_storefront_locale, storefront_html_response,
     };
     use axum::http::{
         StatusCode,
@@ -1342,6 +1379,23 @@ mod tests {
         let response = storefront_html_response(html, true);
         assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
         assert!(response.headers().get(ETAG).is_none());
+    }
+
+    #[tokio::test]
+    async fn policy_failure_is_localized_non_cacheable_503_without_fabricated_projection() {
+        let response = policy_document_response(Err(()), "ru", None);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
+        assert!(response.headers().get(ETAG).is_none());
+        let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("policy error document");
+        let html = String::from_utf8(body.to_vec()).expect("UTF-8 document");
+        assert!(html.contains("Не удалось проверить доступность модулей"));
+        assert!(html.contains("Повторить"));
+        assert!(html.contains("href=\"\""));
+        assert!(!html.contains("rustok-enabled-modules"));
+        assert!(!html.contains("is not enabled for the current tenant"));
     }
 
     #[test]

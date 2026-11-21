@@ -399,10 +399,24 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   Authority changes attempt a 4401 close; a blocked or disconnected peer may see
   only a dropped connection. The hub is an
   atomic process-local singleton, not a distributed or durable event stream.
-- Effective-module-policy snapshots carry the owner-produced tenant and exact
-  policy-revision cache identity. Server consumers must match both fields;
-  TTL or process generation alone never makes a cached authorization decision
-  current.
+- Effective-module-policy snapshots carry an owner-produced tenant/revision
+  cache identity, but the server's `get_latest` path does not compare it to an
+  independently read current owner revision. The cache returns only policy;
+  callers needing policy with defaults use an uncached owner resolution, which
+  passes the same manifest defaults into policy construction. The underlying
+  database reads are not a single transactional snapshot. Local observed
+  invalidations fence in-flight fills; missed or delayed events, database races
+  and volatile executor inputs remain freshness gaps. TTL and process generation
+  are not authorization guarantees, and dispatch checks do not cover earlier
+  guard/RBAC decisions.
+- Artifact binding dispatch now requires policy facts for the exact artifact
+  release and installation, both at admission and at non-lifecycle runtime
+  revalidation; a static module sharing its slug is not sufficient. The current
+  server resolver builds a static-only policy, so artifact bindings using this
+  resolver fail closed until an artifact-aware catalog and executor inputs are
+  wired into the owner policy path. Node readiness and dispatch checks do not
+  turn that static policy into artifact evidence. Lifecycle hooks have their
+  separate lifecycle admission path.
 - Production release admission, rollout, activation, recovery, and related
   events are owned by `rustok-modules`; build events contain build facts only.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
@@ -615,8 +629,13 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   resolver-level owner checks remain a second boundary. The same pre-resolver
   guard classifies the immutable composition snapshot as read and the
   operational marketplace registry freshness projection as manage, matching
-  their owner-resolver checks. `enabledModules`, the tenant availability list
-  consumed by admin navigation, is also `modules:read`-gated at both layers.
+  their owner-resolver checks. Unlike `moduleEffectivePolicy`, the current
+  tenant-scoped `enabledModules` resolver is not classified by that module
+  permission guard and does not call `ensure_modules_read_permission`; storefront
+  and admin navigation use it. Its list is capped at 100 without a completeness
+  marker, so it cannot establish a complete policy at the cap. The intended
+  public-versus-admin availability authorization and a complete projection need
+  an explicit contract before widening or replacing this surface.
 - GraphQL build history and active-build reads use the host-composed read-only
   `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
   owner, and the transport does not import build persistence entities.
@@ -642,8 +661,8 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   checksum or server ORM row.
 - Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`. The service returns the owner decision with its deterministic revision, typed facts, and denial reasons; server guards, GraphQL, and installer adapters consume only its enabled projection.
 - Static module manifests and catalog entries are parsed by the server host, but `rustok-modules` owns module metadata, resolved static-catalog topology (defaults, dependencies, conflicts, and version compatibility), static manifest-versus-registry comparison, settings-schema, marketplace metadata, static UI classification, UI i18n semantics, static HTTP provider exclusivity, crate-local runtime binding normalization, deployment build-surface semantics, and settings normalization before lifecycle persistence with the effective-enablement and Core invariants; server filesystem, registry-fact extraction, and ORM code are adapters only.
-- For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope and derives the complete authenticated `ModuleCommandContext`, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals the context tenant-scoped and replays the same semantic command without redispatching its hook; actor, trace, and correlation are retained as audit evidence for lifecycle replay.
-- For server-composed static enable and enable-direction compensation, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this read is not an atomic static-rollout fence. Semantic lifecycle replay preserves the original operation result and binds a recovery to its original operation; actor, trace, and correlation are recorded audit evidence. Post-hook retry requires an exact match of the recorded hook-settings digest and current settings, and fails closed when historical evidence is missing.
+- For uncertain lifecycle hook outcomes see `module-lifecycle-retry-compensation-runbook.md`; committed tenant intent is not rolled back automatically. The owner currently rejects new retry and compensation commands because the journal does not establish the original executor identity or external quiescence, even if the aggregate claim is absent. A matching historical committed retry may still be replayed without dispatch. Plans advertise no automatic action; older writers and ordinary new toggles do not yet comprehensively fence legacy uncertainty.
+- For server-composed static enable, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this does not fence static rollouts. Existing semantic lifecycle replays preserve the original operation result.
 - Schema lookup rejects unknown modules and missing or unmaterialized package manifests, including inline settings declarations without package evidence. Exact lifecycle replays are checked before a schema lookup failure blocks new enable or enable-direction compensation commands. The filesystem lookup is not release-bound; release images without these files reject fresh settings and enable commands until release-owned schema evidence is wired.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
 - Registry publish-request translations are written only through the owner create/publication transactions; the server no longer retains a parallel translation upsert helper.
@@ -674,7 +693,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   client cannot be constructed; it never falls back to an unbounded default
   client.
 - The repo-side surface for the current `module-system` is considered closed for the purpose of Admin-driven install/uninstall/upgrade/deploy with progress feedback; ongoing work is limited to targeted verification and docs/audit, while rollout of `modules.rustok.dev` remains an external infra task.
-- GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
+- GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` route through `ModuleLifecycleService` and `modules:manage`. New recovery actions currently fail closed; the endpoints must not bypass that restriction.
   Recovery plan projection validates both UUIDs and fails the affected field with a sanitized `INTERNAL_ERROR` rather than panicking or silently omitting a malformed plan. The retry command runs before its response is projected: a projection error does not imply that the command was rolled back. Clients should inspect the operation and use the existing idempotency/revision contract when recovering from an ambiguous response.
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
 - `PUT` and `DELETE /api/rbac/artifact-permissions/roles/{role_id}` are the

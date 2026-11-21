@@ -29,5 +29,21 @@ mod tests {
             t(Some("ru"), "modules.build.progress", "fallback"),
             "Прогресс сборки платформы"
         );
+        assert_eq!(
+            t(Some("en"), "modules.policy.error.retry", "fallback"),
+            "Retry availability check"
+        );
+        assert_eq!(
+            t(Some("ru"), "modules.policy.error.retry", "fallback"),
+            "Повторить проверку доступности"
+        );
+        assert_eq!(
+            t(Some("en"), "modules.settings.nested_number_json_hint", "fallback"),
+            "Edit this number in the JSON editor below."
+        );
+        assert_eq!(
+            t(Some("ru"), "modules.settings.nested_number_json_hint", "fallback"),
+            "Измените это число в редакторе JSON ниже."
+        );
     }
 }

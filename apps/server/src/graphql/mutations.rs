@@ -520,7 +520,7 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
                 })
         }
         ToggleModuleError::OperationOrphaned { operation_id } => FieldError::new(
-            "Module lifecycle operation was orphaned; reload the current module state before repeating the command",
+            "Module lifecycle operation was orphaned; external effects require investigation before any new command",
         )
         .extend_with(move |_, ext| {
             ext.set("code", "MODULE_LIFECYCLE_OPERATION_ORPHANED");
@@ -571,7 +571,7 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
             FieldError::new(toggle_err_hook_failed(&err))
                 .extend_with(|_, ext| {
                     ext.set("code", "MODULE_HOOK_FAILED");
-                    ext.set("retryable_issue", true);
+                    ext.set("retryable_issue", false);
                     ext.set("operation_issue", "post_hook_failed");
                 })
         }
@@ -614,8 +614,9 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         ModuleOperationRecoveryError::NotRetryable(reason) => {
             tracing::error!(%reason, "module operation recovery is not retryable");
             let message = match reason.as_str() {
-                "hook_settings_changed" => "Module settings changed after the failed hook; restore the reviewed settings or use compensation",
-                "hook_settings_evidence_unavailable" => "The original hook settings cannot be verified; use the guarded compensation path",
+                "hook_settings_changed" => "Module settings changed after the failed hook; investigate before recovery",
+                "hook_settings_evidence_unavailable" => "The original hook settings cannot be verified; investigate before recovery",
+                "hook_identity_and_quiescence_unverified" => "Automatic recovery is unavailable until the original hook identity and termination of external effects are verified",
                 "release_transition_unresolved" => "A module release transition is unresolved; finish or recover it before retrying the hook",
                 _ => "Module operation is not retryable",
             };
@@ -638,7 +639,7 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             tracing::error!(%err, "module post-hook recovery failed in GraphQL mutation");
             FieldError::new("Module hook failed").extend_with(|_, ext| {
                     ext.set("code", "MODULE_HOOK_FAILED");
-                    ext.set("retryable_issue", true);
+                    ext.set("retryable_issue", false);
                     ext.set("operation_issue", "post_hook_failed");
                 })
         }
@@ -2451,6 +2452,13 @@ mod tests {
                 "hook_settings_evidence_unavailable".to_string(),
             ));
         assert!(missing.message.contains("cannot be verified"));
+        let unverified = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::NotRetryable(
+                "hook_identity_and_quiescence_unverified".to_string(),
+            ),
+        );
+        assert!(unverified.message.contains("Automatic recovery is unavailable"));
+        assert_eq!(extension_bool(&unverified.extend(), "retryable_issue"), Some(false));
         let transition = map_module_operation_recovery_error(
             ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
         );
@@ -2627,14 +2635,14 @@ mod tests {
     }
 
     #[test]
-    fn toggle_hook_failed_post_hook_sets_retryable_issue_extensions() {
+    fn toggle_hook_failed_post_hook_sets_non_retryable_issue_extensions() {
         let mapped = map_toggle_module_error(ToggleModuleError::PostHookFailed(
             "downstream timeout".to_string(),
         ));
         let gql = mapped.extend();
 
         assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
-        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(true));
+        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(false));
         assert_eq!(
             extension_string(&gql, "operation_issue").as_deref(),
             Some("post_hook_failed")

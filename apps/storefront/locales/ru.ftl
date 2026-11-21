@@ -39,3 +39,7 @@ product-city-title = Городская классика
 product-city-description = Минималистичные силуэты для любого сезона.
 product-city-price = от 6 500 ₽
 product-city-badge = Новинка
+module-policy-title = Не удалось проверить доступность модулей
+module-policy-description = Магазин временно недоступен. Повторите попытку.
+module-policy-retry = Повторить
+module-policy-loading = Проверяем доступность модулей…

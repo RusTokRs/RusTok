@@ -1,9 +1,12 @@
 use std::collections::HashSet;
 
 use leptos::prelude::*;
-use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::context::AuthContext;
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 
 use crate::features::modules::transport;
+use crate::shared::ui::Button;
+use crate::use_admin_locale;
 
 /// The module-availability decision, derived from the request that resolved it.
 ///
@@ -19,25 +22,48 @@ pub struct EnabledModulesContext {
     refresh_generation: RwSignal<u64>,
 }
 
+type PolicyResult = (u64, u64, Result<Vec<String>, String>);
+
+// Resource retains its previous value during a refetch. Only publish a result
+// whose credential-free auth and refresh stamps still match the current scope.
+fn current_policy_result(
+    result: Option<PolicyResult>,
+    scope_ready: bool,
+    scope_generation: u64,
+    refresh_generation: u64,
+) -> Option<Result<Vec<String>, String>> {
+    result.and_then(|(result_scope, result_refresh, value)| {
+        (scope_ready && result_scope == scope_generation && result_refresh == refresh_generation)
+            .then_some(value)
+    })
+}
+
 impl EnabledModulesContext {
-    /// Derives the availability signals from the request's resource.
-    ///
-    /// `refresh_generation` is owned by the caller because the resource's source reads it: the
-    /// provider has to create the signal before the resource, so it cannot be created here.
-    pub fn new(
-        resource: Resource<Result<Vec<String>, String>>,
+    /// Derives availability only from a resource resolved for the current scope.
+    fn new(
+        resource: Resource<PolicyResult>,
         refresh_generation: RwSignal<u64>,
+        auth: AuthContext,
     ) -> Self {
+        let decision = Memo::new(move |_| {
+            let scope = auth.client_scope();
+            current_policy_result(
+                resource.get(),
+                scope.is_ready(),
+                scope.generation,
+                refresh_generation.get(),
+            )
+        });
         Self {
             modules: Memo::new(move |_| {
-                resource
+                decision
                     .get()
                     .and_then(|result| result.ok())
                     .map(|modules| modules.into_iter().collect())
                     .unwrap_or_default()
             }),
-            is_loading: Memo::new(move |_| resource.get().is_none()),
-            error: Memo::new(move |_| resource.get().and_then(|result| result.err())),
+            is_loading: Memo::new(move |_| decision.get().is_none()),
+            error: Memo::new(move |_| decision.get().and_then(|result| result.err())),
             refresh_generation,
         }
     }
@@ -54,6 +80,8 @@ impl EnabledModulesContext {
 pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
+    let auth = use_auth();
+    let source_auth = auth.clone();
     let refresh_generation = RwSignal::new(0_u64);
 
     // A `Resource` awaited by the render, not a `LocalResource` fed into an `Effect`. A
@@ -62,24 +90,40 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
     // reading `is_loading`, which is how `ModuleGuard` came to report "module unavailable" for every
     // module on the standalone host.
     let resource = Resource::new(
-        move || (token.get(), tenant.get(), refresh_generation.get()),
-        move |(token_value, tenant_value, _refresh_generation): (
+        move || {
+            let scope = source_auth.client_scope();
+            (
+                token.get(),
+                tenant.get(),
+                scope.generation,
+                scope.is_ready(),
+                refresh_generation.get(),
+            )
+        },
+        move |(token_value, tenant_value, scope_generation, scope_ready, refresh): (
             Option<String>,
             Option<String>,
             u64,
+            bool,
+            u64,
         )| async move {
-            if token_value.is_none() || tenant_value.is_none() {
-                return Ok::<_, String>(Vec::new());
-            }
-
-            transport::fetch_module_effective_policy(token_value, tenant_value)
-                .await
-                .map(|policy| policy.enabled_module_slugs())
-                .map_err(|error| error.to_string())
+            let result = if !scope_ready
+                || token_value.as_deref().is_none_or(str::is_empty)
+                || tenant_value.as_deref().is_none_or(str::is_empty)
+            {
+                Err("module availability scope is missing".to_string())
+            } else {
+                transport::fetch_module_effective_policy(token_value, tenant_value)
+                    .await
+                    .map(|policy| policy.enabled_module_slugs())
+                    .map_err(|error| error.to_string())
+            };
+            // Never serialize the bearer token or tenant input into the resource result.
+            (scope_generation, refresh, result)
         },
     );
 
-    provide_context(EnabledModulesContext::new(resource, refresh_generation));
+    provide_context(EnabledModulesContext::new(resource, refresh_generation, auth));
 
     children()
 }
@@ -93,7 +137,8 @@ impl EnabledModulesResource {
     /// Takes `&self`: the render closure that calls this re-runs on every source change, and a
     /// by-value receiver would make that closure `FnOnce`.
     pub fn modules(&self) -> Option<HashSet<String>> {
-        (!self.0.is_loading.get()).then(|| self.0.modules.get())
+        (!self.0.is_loading.get() && self.0.error.get().is_none())
+            .then(|| self.0.modules.get())
     }
 
     /// The failure the request reported, if it failed.
@@ -128,6 +173,24 @@ pub fn use_is_module_enabled(slug: &'static str) -> Signal<bool> {
     Signal::derive(move || context.modules.get().contains(slug))
 }
 
+/// Retry a failed availability read without disclosing transport errors or
+/// presenting the failure as an owner-issued disabled decision.
+#[component]
+pub fn ModulePolicyReadError() -> impl IntoView {
+    let retry_context = use_enabled_modules_context();
+    let i18n = use_admin_locale();
+    view! {
+        <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive" role="alert">
+            <p>{move || i18n.translate("modules.policy.error.description")}</p>
+            <div class="mt-4">
+                <Button on_click=move |_| retry_context.refresh()>
+                    {move || i18n.translate("modules.policy.error.retry")}
+                </Button>
+            </div>
+        </div>
+    }
+}
+
 #[component]
 pub fn ModuleGuard(slug: &'static str, children: ChildrenFn) -> impl IntoView {
     let enabled_modules = use_enabled_modules_resource();
@@ -143,14 +206,15 @@ pub fn ModuleGuard(slug: &'static str, children: ChildrenFn) -> impl IntoView {
             </div>
         }>
             {move || match enabled_modules.modules() {
+                None if enabled_modules.error().is_some() => view! {
+                    <ModulePolicyReadError />
+                }.into_any(),
                 None => view! {
-                    <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive" role="alert">
-                        {enabled_modules
-                            .error()
-                            .unwrap_or_else(|| "Module availability was not resolved".to_string())}
+                    <div class="rounded-xl border border-border bg-card p-6 shadow-sm" aria-busy="true">
+                        <div class="h-6 w-48 animate-pulse rounded-lg bg-muted"></div>
+                        <div class="mt-3 h-4 w-64 animate-pulse rounded-lg bg-muted"></div>
                     </div>
-                }
-                .into_any(),
+                }.into_any(),
                 Some(modules) if modules.contains(slug) => children().into_any(),
                 Some(_) => view! {
                     <div class="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
@@ -163,5 +227,30 @@ pub fn ModuleGuard(slug: &'static str, children: ChildrenFn) -> impl IntoView {
                 .into_any(),
             }}
         </Suspense>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::current_policy_result;
+
+    #[test]
+    fn availability_requires_matching_ready_scope_and_refresh() {
+        let old = || Some((3, 7, Ok(vec!["forum".to_string()])));
+        assert_eq!(
+            current_policy_result(old(), true, 3, 7),
+            Some(Ok(vec!["forum".to_string()]))
+        );
+        assert_eq!(current_policy_result(old(), false, 3, 7), None);
+        assert_eq!(current_policy_result(old(), true, 4, 7), None);
+        assert_eq!(current_policy_result(old(), true, 3, 8), None);
+        assert_eq!(current_policy_result(None, true, 3, 7), None);
+
+        let error = Some((3, 7, Err("read failed".to_string())));
+        assert_eq!(
+            current_policy_result(error.clone(), true, 3, 7),
+            Some(Err("read failed".to_string()))
+        );
+        assert_eq!(current_policy_result(error, true, 4, 7), None);
     }
 }

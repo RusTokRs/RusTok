@@ -87,6 +87,8 @@ pub enum StaticSettingsSourceLocaleError {
     },
     #[error("static Settings owner operation is already active for `{0}`")]
     OwnerOperationInProgress(String),
+    #[error("static Settings source locale is blocked by an unresolved module transition")]
+    TransitionInProgress,
     #[error("static Settings source-locale owner state is inconsistent: {0}")]
     InconsistentState(String),
     #[error("static Settings source-locale persistence failed: {0}")]
@@ -247,21 +249,25 @@ impl StaticSettingsSourceLocaleService {
             Admission::Run(lease) => lease,
         };
 
-        if let Err(error) = StaticTenantLifecycleStore::claim(
+        if let Err(error) = crate::settings_claim::claim(
             &self.db,
             command.tenant_id,
             registry.module_slug(),
             command.expected_owner_revision,
-            command.context.idempotency_key,
+            lease,
         )
         .await
-        .map_err(map_owner_error)
+        .map_err(map_settings_claim_error)
         {
-            fail_receipt(&self.db, lease, &error).await?;
+            // A transport error can arrive after the claim was committed.
+            // Keep the request fingerprint until ownership is reconciled.
+            if !matches!(error, StaticSettingsSourceLocaleError::Database(_) | StaticSettingsSourceLocaleError::OperationReceipt(_) | StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)) {
+                fail_receipt(&self.db, lease, &error).await?;
+            }
             return Err(error);
         }
 
-        let transaction = match self.db.begin().await {
+        let transaction = match crate::backend::begin_fenced_transaction(&self.db).await {
             Ok(transaction) => transaction,
             Err(error) => {
                 let error = database_error(error);
@@ -275,6 +281,16 @@ impl StaticSettingsSourceLocaleService {
             configure_tenant_scope(&transaction, command.tenant_id)
                 .await
                 .map_err(|error| database_error(error.to_string()))?;
+            crate::settings_claim::lock_receipt(&transaction, lease)
+                .await
+                .map_err(map_settings_claim_error)?;
+            crate::settings_transition_fence::lock_and_check(
+                &transaction,
+                command.tenant_id,
+                registry.module_slug(),
+            )
+            .await
+            .map_err(map_settings_transition_fence_error)?;
             let next_owner_revision =
                 command
                     .expected_owner_revision
@@ -301,12 +317,12 @@ impl StaticSettingsSourceLocaleService {
             )
             .await?;
 
-            let advanced_owner_revision = StaticTenantLifecycleStore::advance(
+            let advanced_owner_revision = StaticTenantLifecycleStore::advance_settings(
                 &transaction,
                 command.tenant_id,
                 registry.module_slug(),
                 command.expected_owner_revision,
-                command.context.idempotency_key,
+                lease.token,
             )
             .await
             .map_err(map_owner_error)?;
@@ -315,14 +331,14 @@ impl StaticSettingsSourceLocaleService {
                     "static Settings owner revision advanced unexpectedly".to_string(),
                 ));
             }
-            StaticTenantLifecycleStore::release(
+            crate::settings_claim::release_in_transaction(
                 &transaction,
                 command.tenant_id,
                 registry.module_slug(),
-                command.context.idempotency_key,
+                lease,
             )
             .await
-            .map_err(map_owner_error)?;
+            .map_err(map_settings_claim_error)?;
 
             let record = StaticSettingsSourceLocaleRecord {
                 tenant_id: command.tenant_id,
@@ -344,7 +360,10 @@ impl StaticSettingsSourceLocaleService {
             }
             Err(error) => {
                 if let Err(rollback_err) = transaction.rollback().await {
-                    tracing::warn!(%rollback_err, "failed to rollback static settings source locale transaction");
+                    // Outcome is unknown: retain both claim and receipt.
+                    return Err(StaticSettingsSourceLocaleError::Database(format!(
+                        "{error}; additionally, rollback of static settings source locale failed: {rollback_err}"
+                    )));
                 }
                 abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
                     .await?;
@@ -500,17 +519,23 @@ async fn abandon_claim_and_fail(
     lease: idempotency::Lease,
     error: &StaticSettingsSourceLocaleError,
 ) -> Result<(), StaticSettingsSourceLocaleError> {
-    let release = StaticTenantLifecycleStore::release(
-        database,
-        command.tenant_id,
-        module_slug,
-        command.context.idempotency_key,
-    )
-    .await
-    .map_err(map_owner_error);
-    let receipt = fail_receipt(database, lease, error).await;
-    release?;
-    receipt
+    if let Err(release_error) = crate::settings_claim::abandon(
+        database, command.tenant_id, module_slug, lease,
+    ).await {
+        // Keep the processing receipt if aggregate cleanup is uncertain.
+        return Err(StaticSettingsSourceLocaleError::Database(format!(
+            "{error}; additionally, releasing the lifecycle claim failed: {release_error}"
+        )));
+    }
+    if matches!(error, StaticSettingsSourceLocaleError::Database(_)) {
+        // Preserve the fingerprint for a later exact-request lease retry.
+        return Ok(());
+    }
+    fail_receipt(database, lease, error).await.map_err(|receipt_error| {
+        StaticSettingsSourceLocaleError::Database(format!(
+            "{error}; additionally, finalizing the operation receipt failed: {receipt_error}"
+        ))
+    })
 }
 
 async fn fail_receipt(
@@ -528,7 +553,8 @@ async fn fail_receipt(
         | StaticSettingsSourceLocaleError::SourceLocaleStale { .. }
         | StaticSettingsSourceLocaleError::SourceSnapshotUnstable
         | StaticSettingsSourceLocaleError::OwnerRevisionConflict { .. }
-        | StaticSettingsSourceLocaleError::OwnerOperationInProgress(_) => PortError::conflict(
+        | StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)
+        | StaticSettingsSourceLocaleError::TransitionInProgress => PortError::conflict(
             "modules.static_settings_source_locale_conflict",
             error.to_string(),
         ),
@@ -601,6 +627,27 @@ fn revision_value(revision: u64) -> Result<sea_orm::Value, StaticSettingsSourceL
     })
 }
 
+fn map_settings_transition_fence_error(
+    error: crate::settings_transition_fence::SettingsTransitionFenceError,
+) -> StaticSettingsSourceLocaleError {
+    match error {
+        crate::settings_transition_fence::SettingsTransitionFenceError::TransitionInProgress => {
+            StaticSettingsSourceLocaleError::TransitionInProgress
+        }
+        crate::settings_transition_fence::SettingsTransitionFenceError::Database(message) => {
+            StaticSettingsSourceLocaleError::Database(message)
+        }
+    }
+}
+
+fn map_settings_claim_error(error: crate::settings_claim::SettingsClaimError) -> StaticSettingsSourceLocaleError {
+    match error {
+        crate::settings_claim::SettingsClaimError::Receipt(error) => StaticSettingsSourceLocaleError::OperationReceipt(error),
+        crate::settings_claim::SettingsClaimError::Owner(error) => map_owner_error(error),
+        crate::settings_claim::SettingsClaimError::Database(error) => StaticSettingsSourceLocaleError::Database(error),
+    }
+}
+
 fn map_owner_error(error: StaticTenantLifecycleStoreError) -> StaticSettingsSourceLocaleError {
     match error {
         StaticTenantLifecycleStoreError::RevisionConflict {
@@ -638,6 +685,63 @@ fn database_error(error: impl std::fmt::Display) -> StaticSettingsSourceLocaleEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn uncertain_claim_preserves_source_locale_receipt_identity() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        ).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let registry = StaticSettingsLocalizationRegistry::new(
+            "storefront", Default::default(), Default::default(), Default::default(),
+        ).unwrap();
+        let mut command = StaticSettingsSourceLocaleAssignCommand {
+            tenant_id: tenant, locale: "en".into(), expected_owner_revision: 0,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+            },
+        };
+        let service = StaticSettingsSourceLocaleService::new(db);
+        // No lifecycle tables: the claim outcome is treated as uncertain.
+        assert!(matches!(service.assign_source_locale(&registry, command.clone()).await,
+            Err(StaticSettingsSourceLocaleError::Database(_))));
+        assert!(matches!(service.assign_source_locale(&registry, command.clone()).await,
+            Err(StaticSettingsSourceLocaleError::OperationReceipt(error))
+            if error.code == "outbox.operation_receipt_in_progress"));
+        command.locale = "fr".into();
+        assert!(matches!(service.assign_source_locale(&registry, command).await,
+            Err(StaticSettingsSourceLocaleError::OperationReceipt(error))
+            if error.code == "outbox.operation_receipt_conflict"));
+    }
+
+    #[tokio::test]
+    async fn source_locale_cleanup_failure_does_not_finalize_receipt() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        ).await.unwrap();
+        let tenant = Uuid::new_v4();
+        let command = StaticSettingsSourceLocaleAssignCommand {
+            tenant_id: tenant, locale: "en".into(), expected_owner_revision: 0,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(), tenant_id: Some(tenant), trace_id: "test".into(),
+                correlation_id: Uuid::new_v4(), idempotency_key: Uuid::new_v4(),
+            },
+        };
+        let request = serde_json::json!({"fixture": true});
+        let scope = idempotency::OwnerOperationScope::Tenant(tenant);
+        let key = command.context.idempotency_key.to_string();
+        let lease = match idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request).await.unwrap() {
+            Admission::Run(lease) => lease, _ => panic!("first admission must run"),
+        };
+        let error = StaticSettingsSourceLocaleError::SourceSnapshotUnstable;
+        assert!(matches!(abandon_claim_and_fail(&db, "storefront", &command, lease, &error).await,
+            Err(StaticSettingsSourceLocaleError::Database(message)) if message.contains("snapshot") && message.contains("releasing the lifecycle claim failed")));
+        assert!(matches!(idempotency::admit(&db, scope, OWNER_SLUG, &key, ASSIGN_OPERATION, &request).await,
+            Err(error) if error.code == "outbox.operation_receipt_in_progress"));
+    }
 
     #[test]
     fn source_locale_requires_exact_canonical_tenant_locale() {

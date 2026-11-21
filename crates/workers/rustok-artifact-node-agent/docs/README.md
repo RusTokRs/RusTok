@@ -22,7 +22,14 @@ process outside application role bundles. It requires an already prepared
 The optional `RUSTOK_ARTIFACT_NODE_AGENT_POLL_INTERVAL_MS` is bounded from 100
 to 60,000 milliseconds and defaults to 1,000 milliseconds. The optional
 `RUSTOK_ARTIFACT_NODE_AGENT_HEARTBEAT_INTERVAL_MS` defaults to 30 seconds and
-is constrained to less than half the owner-issued assignment lease.
+is constrained to less than half the owner-issued assignment lease. An individual
+heartbeat request has a timeout equal to that interval. On heartbeat error or
+timeout the agent waits for the in-flight materializer future before returning
+without starting a report; a report already dispatched is awaited. A stuck
+materializer or report can therefore stall that agent iteration indefinitely and
+needs operator investigation. This is not a durable execution fence:
+materialization may continue, shutdown or process termination may interrupt the
+wait, and already-issued effects need separate reconciliation.
 
 Controller mTLS client material uses the
 `RUSTOK_ARTIFACT_NODE_AGENT_CONTROLLER` prefix:

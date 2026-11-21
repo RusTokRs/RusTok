@@ -916,6 +916,10 @@ fn source_locale_error_to_port_error(error: StaticSettingsSourceLocaleError) -> 
             "settings.translation_owner_revision_conflict",
             error.to_string(),
         ),
+        StaticSettingsSourceLocaleError::TransitionInProgress => PortError::conflict(
+            "settings.translation_transition_in_progress",
+            error.to_string(),
+        ),
         StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)
         | StaticSettingsSourceLocaleError::SourceSnapshotUnstable
         | StaticSettingsSourceLocaleError::Database(_) => {
@@ -945,6 +949,10 @@ fn localization_error_to_port_error(error: StaticSettingsLocalizationError) -> P
         | StaticSettingsLocalizationError::OwnerRevisionConflict { .. } => {
             PortError::conflict("settings.translation_owner_conflict", error.to_string())
         }
+        StaticSettingsLocalizationError::TransitionInProgress => PortError::conflict(
+            "settings.translation_transition_in_progress",
+            error.to_string(),
+        ),
         StaticSettingsLocalizationError::OwnerOperationInProgress(_)
         | StaticSettingsLocalizationError::SourceSnapshotUnstable
         | StaticSettingsLocalizationError::Database(_) => {

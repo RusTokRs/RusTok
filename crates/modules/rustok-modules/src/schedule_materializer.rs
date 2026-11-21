@@ -5,7 +5,7 @@
 //! advances a tenant-RLS cursor, and creates immutable slot records through the
 //! owner queue. It never starts its own timer or accepts a guest clock value.
 
-use std::{collections::BTreeMap, str::FromStr};
+use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Timelike, Utc};
 use chrono_tz::Tz;
@@ -211,6 +211,8 @@ impl ArtifactScheduleMaterializer {
                 backend.db_backend(),
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
+                            installation.version, installation.payload_digest, \
+                            admission.payload_digest AS admission_payload_digest, \
                             CAST(installation.descriptor AS TEXT) AS descriptor \
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission \
@@ -223,51 +225,40 @@ impl ArtifactScheduleMaterializer {
                                        WHERE uninstall.installation_id = installation.installation_id) \
                        AND {enabled} \
                        AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
-                            OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
+                            OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)) \
+                     LIMIT {candidate_limit}",
                     backend.placeholder(1),
                     backend.placeholder(2),
+                    candidate_limit = MAX_SCHEDULE_CANDIDATES_PER_POLL + 1,
                 ),
                 vec![backend.uuid_value(tenant_id), backend.uuid_value(tenant_id)],
             ))
             .await
             .map_err(storage_error)?;
         if rows.len() > MAX_SCHEDULE_CANDIDATES_PER_POLL {
-            // Fail loud instead of loading an unbounded installation set
-            // (with a full descriptor parse per row) into one poll.
+            // The extra SQL row detects overflow without returning a partial
+            // schedule set or loading an unbounded number of rows into Rust.
             return Err(ArtifactScheduleMaterializationError::BacklogLimitExceeded);
         }
-        let mut effective = BTreeMap::<String, ScheduleCandidate>::new();
-        let mut excluded_slugs = std::collections::BTreeSet::new();
-        for row in rows {
-            // Per-installation corruption quarantines only that
-            // installation (see the matching event-projection rule);
-            // storage failures still fail the poll.
+        // Select by identity before parsing descriptors: invalid tenant
+        // metadata must not restore a lower-priority platform installation.
+        let selected = crate::installation_selection::select_projection_rows(rows)
+            .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        if selected.ambiguous_count != 0 {
+            tracing::warn!(%tenant_id, ambiguous_count = selected.ambiguous_count,
+                "artifact schedule selection is ambiguous; affected slugs are omitted");
+        }
+        let mut bindings = Vec::new();
+        for row in selected.rows {
             let candidate = match candidate_from_row(&row, backend) {
                 Ok(candidate) => candidate,
-                Err(ArtifactScheduleMaterializationError::InvalidState) => continue,
+                Err(ArtifactScheduleMaterializationError::InvalidState) => {
+                    tracing::warn!(%tenant_id, "invalid artifact schedule descriptor or release identity; affected slug is omitted");
+                    continue;
+                }
                 Err(error) => return Err(error),
             };
-            if excluded_slugs.contains(&candidate.slug) {
-                continue;
-            }
-            match effective.get(&candidate.slug) {
-                None => {
-                    effective.insert(candidate.slug.clone(), candidate);
-                }
-                Some(existing) if candidate.tenant_scoped && !existing.tenant_scoped => {
-                    effective.insert(candidate.slug.clone(), candidate);
-                }
-                Some(existing) if !candidate.tenant_scoped && existing.tenant_scoped => {}
-                Some(_) => {
-                    // Duplicate active slug: disable only that slug.
-                    effective.remove(&candidate.slug);
-                    excluded_slugs.insert(candidate.slug);
-                }
-            }
-        }
-        transaction.commit().await.map_err(storage_error)?;
-        let mut bindings = Vec::new();
-        for candidate in effective.into_values() {
             for binding in candidate.descriptor.bindings {
                 if binding.kind != ModuleRuntimeBindingKind::Schedule {
                     continue;
@@ -416,8 +407,6 @@ impl ArtifactScheduleMaterializer {
 #[derive(Clone)]
 struct ScheduleCandidate {
     installation_id: Uuid,
-    slug: String,
-    tenant_scoped: bool,
     descriptor: ModuleArtifactDescriptor,
 }
 
@@ -439,31 +428,11 @@ fn candidate_from_row(
     row: &QueryResult,
     backend: SupportedBackend,
 ) -> Result<ScheduleCandidate, ArtifactScheduleMaterializationError> {
-    let slug: String = row.try_get("", "slug").map_err(storage_error)?;
-    let tenant_scoped = match row
-        .try_get::<String>("", "scope_kind")
+    let descriptor = crate::installation_selection::descriptor_with_identity(row)
         .map_err(storage_error)?
-        .as_str()
-    {
-        "tenant" => true,
-        "platform" => false,
-        _ => return Err(ArtifactScheduleMaterializationError::InvalidState),
-    };
-    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-        &row.try_get::<String>("", "descriptor")
-            .map_err(storage_error)?,
-    )
-    .map_err(|_| ArtifactScheduleMaterializationError::InvalidState)?;
-    descriptor
-        .validate()
-        .map_err(|_| ArtifactScheduleMaterializationError::InvalidState)?;
-    if descriptor.slug != slug {
-        return Err(ArtifactScheduleMaterializationError::InvalidState);
-    }
+        .ok_or(ArtifactScheduleMaterializationError::InvalidState)?;
     Ok(ScheduleCandidate {
         installation_id: uuid_from_row(row, "installation_id", backend).map_err(storage_error)?,
-        slug,
-        tenant_scoped,
         descriptor,
     })
 }
@@ -669,6 +638,126 @@ mod due_slot_tests {
         DateTime::parse_from_rfc3339(&format!("2026-10-21T{hour:02}:{minute:02}:00Z"))
             .expect("test timestamp")
             .with_timezone(&Utc)
+    }
+
+    #[tokio::test]
+    async fn schedule_projection_selects_scope_before_decoding_and_quarantines_ambiguity() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use crate::ArtifactScheduleDeliveryConfig;
+        use sea_orm::ConnectionTrait;
+        use std::collections::BTreeSet;
+
+        async fn ids(materializer: &ArtifactScheduleMaterializer, tenant: Uuid) -> BTreeSet<Uuid> {
+            materializer
+                .effective_bindings(tenant)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|binding| binding.installation_id)
+                .collect()
+        }
+
+        let fixture = ProjectionFixture::new().await;
+        let queue = SeaOrmArtifactScheduleDeliveryQueue::new(
+            fixture.db.clone(),
+            ArtifactScheduleDeliveryConfig::default(),
+        )
+        .unwrap();
+        let materializer = ArtifactScheduleMaterializer::new(
+            fixture.db.clone(),
+            queue,
+            ArtifactScheduleMaterializationConfig::default(),
+        )
+        .unwrap();
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other]));
+        fixture.repair_tenant().await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+        fixture.set_active(fixture.tenant_duplicate, true).await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other]));
+        fixture.set_active(fixture.tenant_winner, false).await;
+        fixture.set_active(fixture.tenant_duplicate, false).await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other]));
+        fixture.set_active(fixture.platform_duplicate, false).await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+        fixture.set_active(fixture.tenant_winner, true).await;
+        fixture.set_tenant_enabled(false).await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+        fixture.set_tenant_enabled(true).await;
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+        fixture.db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO module_artifact_uninstall_operations VALUES (?1)",
+            vec![fixture.tenant_winner.to_string().into()],
+        )).await.unwrap();
+        assert_eq!(ids(&materializer, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+    }
+
+    #[tokio::test]
+    async fn schedule_projection_omits_only_identity_mismatched_winner() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use crate::ArtifactScheduleDeliveryConfig;
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        use std::collections::BTreeSet;
+
+        let fixture = ProjectionFixture::new().await;
+        fixture.repair_tenant().await;
+        let queue = SeaOrmArtifactScheduleDeliveryQueue::new(
+            fixture.db.clone(), ArtifactScheduleDeliveryConfig::default(),
+        ).unwrap();
+        let materializer = ArtifactScheduleMaterializer::new(
+            fixture.db.clone(), queue, ArtifactScheduleMaterializationConfig::default(),
+        ).unwrap();
+        let good_digest = format!("sha256:{}", "a".repeat(64));
+        let bad_digest = format!("sha256:{}", "b".repeat(64));
+        for (table, column, bad, good) in [
+            ("module_artifact_installations", "version", "2.0.0".to_string(), "1.0.0".to_string()),
+            ("module_artifact_installations", "payload_digest", bad_digest.clone(), good_digest.clone()),
+            ("module_artifact_admissions", "payload_digest", bad_digest.clone(), good_digest.clone()),
+        ] {
+            let update = format!("UPDATE {table} SET {column} = ?1 WHERE installation_id = ?2");
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update.clone(),
+                vec![bad.into(), fixture.tenant_winner.to_string().into()],
+            )).await.unwrap();
+            let ids: BTreeSet<_> = materializer.effective_bindings(fixture.tenant).await.unwrap()
+                .into_iter().map(|binding| binding.installation_id).collect();
+            assert_eq!(ids, BTreeSet::from([fixture.other]));
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update,
+                vec![good.into(), fixture.tenant_winner.to_string().into()],
+            )).await.unwrap();
+        }
+        let ids: BTreeSet<_> = materializer.effective_bindings(fixture.tenant).await.unwrap()
+            .into_iter().map(|binding| binding.installation_id).collect();
+        assert_eq!(ids, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+    }
+
+    #[tokio::test]
+    async fn schedule_projection_checks_the_sentinel_before_materializing() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use crate::ArtifactScheduleDeliveryConfig;
+        use std::collections::BTreeSet;
+
+        let fixture = ProjectionFixture::new().await;
+        fixture.repair_tenant().await;
+        fixture.add_limit_candidates(MAX_SCHEDULE_CANDIDATES_PER_POLL - 4).await;
+        let queue = SeaOrmArtifactScheduleDeliveryQueue::new(
+            fixture.db.clone(), ArtifactScheduleDeliveryConfig::default(),
+        ).unwrap();
+        let materializer = ArtifactScheduleMaterializer::new(
+            fixture.db.clone(), queue, ArtifactScheduleMaterializationConfig::default(),
+        ).unwrap();
+        // At exactly the limit, unrelated selected bindings are retained.
+        let ids: BTreeSet<_> = materializer.effective_bindings(fixture.tenant).await.unwrap()
+            .into_iter().map(|binding| binding.installation_id).collect();
+        assert_eq!(ids, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+        fixture.set_active(fixture.tenant_duplicate, true).await;
+        assert!(matches!(materializer.materialize_tenant(fixture.tenant, Utc::now()).await,
+            Err(ArtifactScheduleMaterializationError::BacklogLimitExceeded)));
+        fixture.set_active(fixture.tenant_duplicate, false).await;
+        let ids: BTreeSet<_> = materializer.effective_bindings(fixture.tenant).await.unwrap()
+            .into_iter().map(|binding| binding.installation_id).collect();
+        assert_eq!(ids, BTreeSet::from([fixture.other, fixture.tenant_winner]));
     }
 
     #[test]

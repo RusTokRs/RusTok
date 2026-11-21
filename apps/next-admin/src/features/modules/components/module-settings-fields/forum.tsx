@@ -1,6 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
+import { useTranslations } from '@rustok/next-fluent/client';
+import { isLosslessNumber } from 'lossless-json';
+import {
+  mergeSettingsJson,
+  parseSettingsObject,
+  parseSettingsUnsignedInteger
+} from '../module-settings-json';
 
 import { Input } from '@/shared/ui/shadcn/input';
 import { Switch } from '@/shared/ui/shadcn/switch';
@@ -8,164 +15,132 @@ import { Switch } from '@/shared/ui/shadcn/switch';
 interface ForumModuleSettingsFieldsProps {
   settingsText: string;
   onSettingsTextChange: (value: string) => void;
+  onFieldValidityChange: (field: string, valid: boolean) => void;
   disabled?: boolean;
 }
 
-interface ForumFormValues {
-  use_reactions: boolean;
-  allow_downvotes: boolean;
-  allow_user_content_deletion: boolean;
-  pre_moderation_enabled: boolean;
-  topics_per_page: number;
-  replies_per_page: number;
-  min_topic_title_length: number;
-  max_topic_title_length: number;
+type NumericField =
+  | 'topics_per_page'
+  | 'replies_per_page'
+  | 'min_topic_title_length'
+  | 'max_topic_title_length';
+
+/** A draft may be invalid while typing, but can never be silently submitted. */
+function ForumNumberField({
+  field,
+  label,
+  value,
+  disabled,
+  onFieldValidityChange,
+  onValueChange
+}: {
+  field: NumericField;
+  label: string;
+  value: string;
+  disabled: boolean;
+  onFieldValidityChange: (field: string, valid: boolean) => void;
+  onValueChange: (field: NumericField, value: unknown) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const id = useId();
+  const t = useTranslations('modules');
+  return (
+    <div className='space-y-1.5'>
+      <label htmlFor={id} className='text-xs font-medium'>
+        {label}
+      </label>
+      <Input
+        id={id}
+        type='text'
+        inputMode='numeric'
+        value={draft ?? value}
+        disabled={disabled}
+        aria-invalid={draft !== null}
+        aria-describedby={draft !== null ? `${id}-error` : undefined}
+        onChange={(event) => {
+          const text = event.target.value;
+          try {
+            const number = parseSettingsUnsignedInteger(text);
+            onValueChange(field, number);
+            setDraft(null);
+            onFieldValidityChange(field, true);
+          } catch {
+            setDraft(text);
+            onFieldValidityChange(field, false);
+          }
+        }}
+        className='h-8 text-xs'
+      />
+      {draft !== null && (
+        <p id={`${id}-error`} className='text-destructive text-xs'>
+          {t('settings.integer.invalid')}
+        </p>
+      )}
+    </div>
+  );
 }
 
-/**
- * Forum-owned settings UI. Exposes key Discourse/NodeBB-style configuration
- * for posting limits, engagement modes, and moderation policies.
- */
+/** Forum settings controls never coerce JSON numbers through JavaScript number. */
 export function ForumModuleSettingsFields({
   settingsText,
   onSettingsTextChange,
+  onFieldValidityChange,
   disabled = false
 }: ForumModuleSettingsFieldsProps) {
-  const values = useMemo<ForumFormValues>(() => {
+  const settings = useMemo(() => {
     try {
-      const parsed = JSON.parse(settingsText || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {
-          use_reactions: false,
-          allow_downvotes: true,
-          allow_user_content_deletion: false,
-          pre_moderation_enabled: false,
-          topics_per_page: 20,
-          replies_per_page: 20,
-          min_topic_title_length: 1,
-          max_topic_title_length: 255
-        };
-      }
-      return {
-        use_reactions:
-          parsed.use_reactions === true || parsed.useReactions === true,
-        allow_downvotes: parsed.allow_downvotes !== false,
-        allow_user_content_deletion:
-          parsed.allow_user_content_deletion === true,
-        pre_moderation_enabled: parsed.pre_moderation_enabled === true,
-        topics_per_page:
-          typeof parsed.topics_per_page === 'number'
-            ? parsed.topics_per_page
-            : 20,
-        replies_per_page:
-          typeof parsed.replies_per_page === 'number'
-            ? parsed.replies_per_page
-            : 20,
-        min_topic_title_length:
-          typeof parsed.min_topic_title_length === 'number'
-            ? parsed.min_topic_title_length
-            : 1,
-        max_topic_title_length:
-          typeof parsed.max_topic_title_length === 'number'
-            ? parsed.max_topic_title_length
-            : 255
-      };
+      return parseSettingsObject(settingsText);
     } catch {
-      return {
-        use_reactions: false,
-        allow_downvotes: true,
-        allow_user_content_deletion: false,
-        pre_moderation_enabled: false,
-        topics_per_page: 20,
-        replies_per_page: 20,
-        min_topic_title_length: 1,
-        max_topic_title_length: 255
-      };
+      return null;
     }
   }, [settingsText]);
-
-  const updateFields = (updates: Partial<ForumFormValues>) => {
-    try {
-      const parsed = JSON.parse(settingsText || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return;
-      }
-      onSettingsTextChange(JSON.stringify({ ...parsed, ...updates }, null, 2));
-    } catch {
-      // The generic JSON editor remains the authority while the document is invalid.
-    }
+  const fieldDisabled = disabled || settings === null;
+  const integerText = (field: NumericField, fallback: string) => {
+    const value = settings?.[field];
+    return value === undefined
+      ? fallback
+      : isLosslessNumber(value)
+        ? value.toString()
+        : '';
   };
+  const updateFields = (updates: Record<string, unknown>) => {
+    onSettingsTextChange(mergeSettingsJson(settingsText, updates));
+  };
+  const values = {
+    use_reactions:
+      settings?.use_reactions === true || settings?.useReactions === true,
+    allow_downvotes: settings?.allow_downvotes !== false,
+    allow_user_content_deletion: settings?.allow_user_content_deletion === true,
+    pre_moderation_enabled: settings?.pre_moderation_enabled === true
+  };
+  const numberField = (
+    field: NumericField,
+    label: string,
+    fallback: string
+  ) => (
+    <ForumNumberField
+      field={field}
+      label={label}
+      value={integerText(field, fallback)}
+      disabled={fieldDisabled}
+      onFieldValidityChange={onFieldValidityChange}
+      onValueChange={(field, value) => updateFields({ [field]: value })}
+    />
+  );
 
   return (
     <div className='space-y-4'>
       <div className='grid grid-cols-2 gap-3'>
-        <div className='space-y-1.5'>
-          <label className='text-xs font-medium'>Topics per page</label>
-          <Input
-            type='number'
-            min={5}
-            max={100}
-            value={values.topics_per_page}
-            disabled={disabled}
-            onChange={(e) =>
-              updateFields({ topics_per_page: Number(e.target.value) || 20 })
-            }
-            className='h-8 text-xs'
-          />
-        </div>
-        <div className='space-y-1.5'>
-          <label className='text-xs font-medium'>Replies per page</label>
-          <Input
-            type='number'
-            min={5}
-            max={100}
-            value={values.replies_per_page}
-            disabled={disabled}
-            onChange={(e) =>
-              updateFields({ replies_per_page: Number(e.target.value) || 20 })
-            }
-            className='h-8 text-xs'
-          />
-        </div>
+        {numberField('topics_per_page', 'Topics per page', '20')}
+        {numberField('replies_per_page', 'Replies per page', '20')}
       </div>
-
       <div className='grid grid-cols-2 gap-3'>
-        <div className='space-y-1.5'>
-          <label className='text-xs font-medium'>Min title length</label>
-          <Input
-            type='number'
-            min={1}
-            max={50}
-            value={values.min_topic_title_length}
-            disabled={disabled}
-            onChange={(e) =>
-              updateFields({
-                min_topic_title_length: Number(e.target.value) || 1
-              })
-            }
-            className='h-8 text-xs'
-          />
-        </div>
-        <div className='space-y-1.5'>
-          <label className='text-xs font-medium'>
-            Max title length (0 = no limit)
-          </label>
-          <Input
-            type='number'
-            min={0}
-            value={values.max_topic_title_length}
-            disabled={disabled}
-            onChange={(e) =>
-              updateFields({
-                max_topic_title_length:
-                  e.target.value === ''
-                    ? 255
-                    : Math.max(0, Number(e.target.value))
-              })
-            }
-            className='h-8 text-xs'
-          />
-        </div>
+        {numberField('min_topic_title_length', 'Min title length', '1')}
+        {numberField(
+          'max_topic_title_length',
+          'Max title length (0 = no limit)',
+          '255'
+        )}
       </div>
 
       <div className='space-y-2 pt-1'>
@@ -179,7 +154,7 @@ export function ForumModuleSettingsFields({
           </div>
           <Switch
             checked={values.use_reactions}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onCheckedChange={(checked) =>
               updateFields({ use_reactions: checked })
             }
@@ -196,7 +171,7 @@ export function ForumModuleSettingsFields({
           </div>
           <Switch
             checked={values.allow_downvotes}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onCheckedChange={(checked) =>
               updateFields({ allow_downvotes: checked })
             }
@@ -213,7 +188,7 @@ export function ForumModuleSettingsFields({
           </div>
           <Switch
             checked={values.allow_user_content_deletion}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onCheckedChange={(checked) =>
               updateFields({ allow_user_content_deletion: checked })
             }
@@ -231,7 +206,7 @@ export function ForumModuleSettingsFields({
           </div>
           <Switch
             checked={values.pre_moderation_enabled}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onCheckedChange={(checked) =>
               updateFields({ pre_moderation_enabled: checked })
             }

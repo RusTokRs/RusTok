@@ -15,7 +15,7 @@ pub const MODULE_COMPOSITION_SNAPSHOT_QUERY: &str =
     "query ModuleCompositionSnapshot { moduleCompositionSnapshot { revision } }";
 
 pub const TENANT_MODULES_QUERY: &str =
-    "query TenantModules { tenantModules { moduleSlug enabled settings revision } }";
+    "query TenantModules { tenantModules(limit: 100) { moduleSlug enabled settings revision } }";
 
 pub const MARKETPLACE_QUERY: &str = "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } hasAdminUi hasStorefrontUi uiClassification compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 

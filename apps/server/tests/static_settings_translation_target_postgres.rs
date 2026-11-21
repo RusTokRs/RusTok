@@ -12,7 +12,8 @@ use rustok_modules::translation::{
 use rustok_modules::{
     ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
     StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
-    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleService,
+    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleError, StaticSettingsSourceLocaleService,
+    StaticLocalizedSettingApplyCommand, ModuleTransitionState, ConflictFenceSet,
     StaticTenantLifecycleStore,
     static_settings_translation_read::{
         StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
@@ -243,6 +244,85 @@ async fn settings_translation_multi_replica_apply_replay_and_cursor_recovery_pos
     .unwrap_or_else(|error| panic!("Settings Translation PostgreSQL evidence failed: {error}"));
 }
 
+// This checks owner admission, rollback, claim cleanup and receipt replay. The
+// separate lock-wait tests are still required to exercise concurrent staging.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires PostgreSQL admin access"]
+async fn locale_writes_reject_unresolved_checkpoint_and_release_claim_postgres() -> TestResult<()> {
+    with_settings_postgres_database("rustok_settings_locale_fence", |db, _, _| async move {
+        let tenant = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let registry = settings_registry()?;
+        for id in [tenant, other] {
+            seed_tenant(&db, id).await?;
+            seed_source_settings(&db, id).await?;
+        }
+        let checkpoint = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO module_transition_checkpoints \
+             (operation_id, revision, module_slug, tenant_id, predecessor_digest, candidate_digest, state, security_epoch, fences, recovery_attempt_count, created_at, updated_at) \
+             VALUES ($1, 1, $2, $3, NULL, 'candidate', $4, 1, $5, 0, clock_timestamp(), clock_timestamp())",
+            vec![checkpoint.into(), MODULE_SLUG.into(), tenant.into(),
+                serde_json::to_value(ModuleTransitionState::InterventionRequired { failure_reason: "recover".into() })?.into(),
+                serde_json::to_value(ConflictFenceSet::new(vec![]))?.into()],
+        )).await?;
+        let source = StaticSettingsSourceLocaleService::new(db.clone());
+        let blocked = StaticSettingsSourceLocaleAssignCommand {
+            tenant_id: tenant, locale: "en".into(), expected_owner_revision: 1,
+            context: command_context(tenant, Uuid::new_v4()),
+        };
+        assert!(matches!(source.assign_source_locale(&registry, blocked.clone()).await,
+            Err(StaticSettingsSourceLocaleError::TransitionInProgress)));
+        assert!(source.read_source_locale(tenant, &registry).await?.is_none());
+        let owner = StaticTenantLifecycleStore::snapshot(&db, tenant, MODULE_SLUG).await?;
+        assert_eq!(owner.revision, 1);
+        assert!(owner.active_idempotency_key.is_none());
+        // A different tenant does not overlap the tenant-scoped checkpoint.
+        source.assign_source_locale(&registry, StaticSettingsSourceLocaleAssignCommand {
+            tenant_id: other, locale: "en".into(), expected_owner_revision: 1,
+            context: command_context(other, Uuid::new_v4()),
+        }).await?;
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "DELETE FROM module_transition_checkpoints WHERE operation_id = $1", vec![checkpoint.into()])).await?;
+        assert!(matches!(source.assign_source_locale(&registry, blocked.clone()).await,
+            Err(StaticSettingsSourceLocaleError::OperationReceipt(error))
+                if error.code == "modules.static_settings_source_locale_conflict"));
+        let mut fresh = blocked;
+        fresh.context.idempotency_key = Uuid::new_v4();
+        source.assign_source_locale(&registry, fresh).await?;
+
+        // A platform first-install checkpoint blocks localized writes as well.
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "INSERT INTO module_transition_checkpoints \
+             (operation_id, revision, module_slug, tenant_id, predecessor_digest, candidate_digest, state, security_epoch, fences, recovery_attempt_count, created_at, updated_at) \
+             VALUES ($1, 1, $2, NULL, NULL, 'candidate', $3, 1, $4, 0, clock_timestamp(), clock_timestamp())",
+            vec![checkpoint.into(), MODULE_SLUG.into(), serde_json::to_value(ModuleTransitionState::Fenced)?.into(),
+                serde_json::to_value(ConflictFenceSet::new(vec![]))?.into()])).await?;
+        let localized = StaticSettingsLocalizationService::new(db.clone());
+        let blocked_target = StaticLocalizedSettingApplyCommand {
+            tenant_id: tenant, field_id: FIELD_ID.into(), locale: "fr".into(), value: "Bienvenue".into(),
+            expected_owner_revision: 2, expected_target_revision: 0,
+            context: command_context(tenant, Uuid::new_v4()),
+        };
+        assert!(matches!(localized.apply_exact(&registry, blocked_target.clone()).await,
+            Err(StaticSettingsLocalizationError::TransitionInProgress)));
+        assert!(localized.read_exact(tenant, &registry, FIELD_ID, "fr").await?.is_none());
+        let owner = StaticTenantLifecycleStore::snapshot(&db, tenant, MODULE_SLUG).await?;
+        assert_eq!(owner.revision, 2);
+        assert!(owner.active_idempotency_key.is_none());
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "DELETE FROM module_transition_checkpoints WHERE operation_id = $1", vec![checkpoint.into()])).await?;
+        assert!(matches!(localized.apply_exact(&registry, blocked_target.clone()).await,
+            Err(StaticSettingsLocalizationError::OperationReceipt(error))
+                if error.code == "modules.static_settings_localization_conflict"));
+        let mut fresh_target = blocked_target;
+        fresh_target.context.idempotency_key = Uuid::new_v4();
+        assert_eq!(localized.apply_exact(&registry, fresh_target).await?.target_revision, 1);
+        Ok(())
+    }).await
+}
+
 fn settings_registry() -> TestResult<StaticSettingsLocalizationRegistry> {
     Ok(StaticSettingsLocalizationRegistry::new(
         MODULE_SLUG,
@@ -275,7 +355,7 @@ async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) -> TestResu
 
 async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
     let idempotency_key = Uuid::new_v4();
-    StaticTenantLifecycleStore::claim(database, tenant_id, MODULE_SLUG, 0, idempotency_key).await?;
+    StaticTenantLifecycleStore::claim_for_test(database, tenant_id, MODULE_SLUG, 0, idempotency_key).await?;
 
     let write_result = database
         .execute_raw(Statement::from_sql_and_values(
@@ -292,15 +372,15 @@ async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) ->
         .await;
     if let Err(error) = write_result {
         let _ =
-            StaticTenantLifecycleStore::release(database, tenant_id, MODULE_SLUG, idempotency_key)
+            StaticTenantLifecycleStore::release_for_test(database, tenant_id, MODULE_SLUG, idempotency_key)
                 .await;
         return Err(error.into());
     }
 
     let revision =
-        StaticTenantLifecycleStore::advance(database, tenant_id, MODULE_SLUG, 0, idempotency_key)
+        StaticTenantLifecycleStore::advance_for_test(database, tenant_id, MODULE_SLUG, 0, idempotency_key)
             .await?;
-    StaticTenantLifecycleStore::release(database, tenant_id, MODULE_SLUG, idempotency_key).await?;
+    StaticTenantLifecycleStore::release_for_test(database, tenant_id, MODULE_SLUG, idempotency_key).await?;
     if revision != 1 {
         return Err(format!("unexpected seeded Settings owner revision: {revision}").into());
     }

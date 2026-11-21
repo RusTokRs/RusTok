@@ -35,6 +35,11 @@ below wherever they differ.
 
 ## Execution Checkpoint
 
+- Delivery/settings claim fencing changes introduce migrations `000092` and
+  `000093`. Mixed old/new workers and writers are unsafe, legacy active static
+  claims require reconciliation before migration, and automatic downgrade is
+  refused. An approved N/N+1 rollout strategy and Rust, PostgreSQL/RLS and
+  concurrency verification remain release blockers; see the module owner plan.
 - Current phase: `sandbox_worker_and_build_closure`.
 - Last updated: 2026-08-24.
 - Completed foundation:
@@ -888,9 +893,11 @@ plane reads and writes.
 
 ### 2.2 Replace Compile-Time Identity with an Artifact-Aware Definition Catalog
 
-The durable definition catalog now resolves static and admitted artifact
-definitions. `rustok_core::ModuleRegistry` remains only the static implementation
-adapter and must not be used as artifact identity or durable policy state.
+`ModuleDefinitionCatalog` can represent static and admitted artifact definitions,
+but the current server policy resolver constructs it from the static registry;
+a complete durable, tenant-aware catalog reader and production policy composition
+remain open. `rustok_core::ModuleRegistry` is the static implementation adapter
+and must not be used as artifact identity or durable artifact policy state.
 
 - [x] Introduce a transport-neutral `ModuleDefinition` contract populated from:
   - Core/static-promoted implementations through a static adapter;
@@ -1970,9 +1977,11 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   every lifecycle mutation as manage before resolver execution; the owner
   facade repeats the authorization check at the command boundary. The same
   guard classifies the composition snapshot as read and marketplace registry
-  freshness as manage before their resolver/owner checks. The admin-navigation
-  `enabledModules` tenant availability projection is also read-gated at both
-  layers.
+  freshness as manage before their resolver/owner checks. The `enabledModules`
+  tenant availability list, also consumed by storefronts, is not currently
+  classified by the module permission guard or checked by its resolver. Its
+  unpaginated 100-item cap has no completeness marker; the complete projection
+  and its public/admin authorization contract remain open.
 - [x] The current structured artifact-data purge is a separate destructive
   operation whose request accepts only an exact `installation_id`, namespace
   revision, and tenant-matched typed command context. The owner derives slug,
@@ -3825,15 +3834,18 @@ workers, transports, and UI.
   `crates/modules/rustok-modules` implements the canonical `ModuleEffectivePolicyCache`
   with fail-closed validation bound to `EffectivePolicyCacheIdentity::matches`.
   `ServerRuntimeContext` and `EffectiveModulePolicyService` expose cached policy
-  resolution (`resolve_snapshot_cached`, `resolve_cached`) and tenant invalidation.
+  resolution (`resolve_cached`) and tenant invalidation. Consumers requiring
+  manifest defaults use the uncached snapshot resolution instead.
   Outbox transition events (`module.effective_policy_revision_changed`) trigger
-  cache invalidation to prevent stale policy reads across cluster nodes. Verified by
-  `crates/modules/rustok-modules/tests/policy_cache_tests.rs` (5 passed).
+  cache invalidation; delivery delays or missed events can still permit stale
+  reads across nodes. The cache tests exercise the original cache contract, not
+  distributed authorization freshness.
 - [x] Define the first fail-closed cache identity slice. A resolved owner
   decision produces an `EffectivePolicyCacheIdentity` containing the exact
-  tenant and content-addressed policy revision; neither tenant identity, TTL,
-  nor a process generation can authorize a cache hit alone. The server policy
-  snapshot carries this identity for downstream consumers.
+  tenant and durable policy revision. The server snapshot carries this identity,
+  but `get_latest` does not compare it against the current owner revision;
+  volatile executor state is also excluded. Tenant identity, TTL, and process
+  generation do not establish authorization freshness.
 - [x] Quarantine blocks new execution without silently changing tenant intent.
   The effective-policy decision records the still-enabled tenant override as a
   contributing fact while returning `quarantined` and denying new execution.
