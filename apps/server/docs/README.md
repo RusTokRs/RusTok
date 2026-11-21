@@ -338,6 +338,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   later retry; already stopping hosts do not admit new recovery workers.
   These are **process-local** startup fences, not cross-replica singleton
   leases or a replacement for owner-level idempotency and durable recovery.
+  Concurrent module-dispatcher callers now distinguish a **published, live**
+  dispatcher plus its required-listener flag from an in-flight initialization.
+  Contention before publication returns an explicit error to the bootstrap
+  caller rather than a false successful start, and an unexpectedly finished
+  dispatcher is not reported as healthy. Dispatcher and dependent paid-order
+  label, marketplace-financial and payment-event startup claims are managed
+  by cancellation/unwind-safe RAII guards. A failed or panicking preparation
+  releases its claim for retry; a published handle retains ownership for
+  the process lifetime. This is not automatic restart after a worker exits.
 - Event runtime construction completes fallible transport, projector, and relay
   configuration work before it adds tenant-generation or Redis-status listener
   tasks. The RBAC invalidation listener may already be started by early server
