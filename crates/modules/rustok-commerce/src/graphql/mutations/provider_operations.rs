@@ -320,6 +320,7 @@ fn payment_collection_command_context(
     operation: &'static str,
 ) -> Result<PortContext> {
     let auth = ctx.data::<AuthContext>()?;
+    require_payment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
@@ -350,6 +351,7 @@ fn payment_refund_create_context(
     creation_key: &str,
 ) -> Result<PortContext> {
     let auth = ctx.data::<AuthContext>()?;
+    require_payment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
@@ -378,6 +380,7 @@ fn payment_refund_transition_context(
     operation: &'static str,
 ) -> Result<PortContext> {
     let auth = ctx.data::<AuthContext>()?;
+    require_payment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
@@ -415,6 +418,34 @@ fn require_fulfillment_tenant_scope(
         return Err(public_provider_graphql_error(
             "Fulfillment tenant scope does not match the authenticated request",
             "FULFILLMENT_TENANT_SCOPE_INVALID",
+            false,
+        ));
+    }
+    Ok(())
+}
+
+/// Payment and refund commands receive `tenant_id` as a client argument and
+/// execute through tenant-scoped ports, so — exactly like the fulfillment
+/// commands above — the argument must be pinned to the authenticated tenant
+/// before any command context is built from it. Without this check an admin
+/// of one tenant could authorize/capture/refund another tenant's collections
+/// by passing that tenant's id.
+fn require_payment_tenant_scope(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    auth: &AuthContext,
+) -> Result<()> {
+    let tenant = ctx.data::<TenantContext>()?;
+    if tenant_id.is_nil()
+        || tenant_id != tenant.id
+        || auth.tenant_id != tenant.id
+        || ctx
+            .data_opt::<RequestContext>()
+            .is_some_and(|request| request.tenant_id != tenant.id)
+    {
+        return Err(public_provider_graphql_error(
+            "Payment tenant scope does not match the authenticated request",
+            "PAYMENT_TENANT_SCOPE_INVALID",
             false,
         ));
     }

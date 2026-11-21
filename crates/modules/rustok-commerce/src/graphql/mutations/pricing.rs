@@ -15,7 +15,7 @@ use rustok_pricing::{
     in_process_pricing_write_port,
 };
 
-use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
+use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
 
 fn cart_promotion_port_context(
@@ -165,6 +165,7 @@ impl CommercePricingMutation {
             &[Permission::ORDERS_READ],
             "Permission denied: orders:read required",
         )?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "preview_admin_cart_promotion")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
@@ -195,6 +196,7 @@ impl CommercePricingMutation {
             &[Permission::ORDERS_UPDATE],
             "Permission denied: orders:update required",
         )?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "apply_admin_cart_promotion")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
@@ -226,6 +228,8 @@ impl CommercePricingMutation {
             "Permission denied: products:update required",
         )?;
 
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "update_admin_pricing_variant_price")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
@@ -285,6 +289,11 @@ impl CommercePricingMutation {
             "Permission denied: products:read required",
         )?;
 
+        let tenant_id = current_tenant_scope(
+            ctx,
+            Some(tenant_id),
+            "preview_admin_pricing_variant_discount",
+        )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
@@ -339,6 +348,8 @@ impl CommercePricingMutation {
             "Permission denied: products:update required",
         )?;
 
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "apply_admin_pricing_variant_discount")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
@@ -394,6 +405,8 @@ impl CommercePricingMutation {
             "Permission denied: products:update required",
         )?;
 
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "update_admin_pricing_price_list_rule")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
@@ -445,6 +458,8 @@ impl CommercePricingMutation {
             "Permission denied: products:update required",
         )?;
 
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "update_admin_pricing_price_list_scope")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let port_context = pricing_write_port_context(
