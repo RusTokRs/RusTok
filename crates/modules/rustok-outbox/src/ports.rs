@@ -25,6 +25,11 @@ pub struct OutboxRelayRunOnceRequest {
     pub max_batch_hint: Option<u64>,
 }
 
+/// Outcome of one relay pass.
+///
+/// Every counter describes **this run only** (the delta of the relay's
+/// lifetime metrics across the pass), so callers can alert and bill per
+/// invocation without diffing snapshots themselves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutboxRelayRunOnceProjection {
     pub claimed_count: usize,
@@ -53,18 +58,37 @@ impl OutboxRelayPort for crate::OutboxRelay {
         request: OutboxRelayRunOnceRequest,
     ) -> Result<OutboxRelayRunOnceProjection, PortError> {
         require_outbox_relay_policy(&context)?;
-        let claimed_count = self
-            .process_pending_once(request.max_batch_hint)
-            .await
-            .map_err(map_outbox_error)?;
-        let metrics = self.metrics();
+        let before = self.metrics();
+        // The deadline is enforced, not merely required to be present: a
+        // pass that overruns it is aborted and its claimed rows become
+        // eligible again when their claim leases expire.
+        let run = self.process_pending_once(request.max_batch_hint);
+        let claimed_count = match context.deadline_ms {
+            Some(deadline_ms) if deadline_ms > 0 => {
+                match tokio::time::timeout(std::time::Duration::from_millis(deadline_ms), run)
+                    .await
+                {
+                    Ok(result) => result.map_err(map_outbox_error)?,
+                    Err(_elapsed) => {
+                        return Err(PortError::timeout(
+                            "outbox.deadline_exceeded",
+                            "outbox relay pass exceeded its deadline",
+                        ));
+                    }
+                }
+            }
+            _ => run.await.map_err(map_outbox_error)?,
+        };
+        let after = self.metrics();
         Ok(OutboxRelayRunOnceProjection {
             claimed_count,
-            success_total: metrics.success_total,
-            failure_total: metrics.failure_total,
-            retry_total: metrics.retry_total,
-            dlq_total: metrics.dlq_total,
-            processed_total: metrics.processed_total,
+            success_total: after.success_total.saturating_sub(before.success_total),
+            failure_total: after.failure_total.saturating_sub(before.failure_total),
+            retry_total: after.retry_total.saturating_sub(before.retry_total),
+            dlq_total: after.dlq_total.saturating_sub(before.dlq_total),
+            processed_total: after
+                .processed_total
+                .saturating_sub(before.processed_total),
         })
     }
 }

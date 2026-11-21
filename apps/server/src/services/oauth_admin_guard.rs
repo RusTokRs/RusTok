@@ -334,6 +334,19 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
+        // Consent is the user's own grant decision. A delegated token must
+        // not pre-consent another application on the user's behalf: the REST
+        // authorize/consent flow enforces the same DirectUser invariant, and
+        // this provider is the registered composition, so the check must run
+        // here and not only in the inner provider it bypasses.
+        match context.principal_kind {
+            Some(rustok_api::AuthPrincipalKind::DirectUser) => {}
+            _ => {
+                return Err(AuthAdminMutationError::Forbidden(
+                    "oauth consent operations require a direct user session".to_string(),
+                ));
+            }
+        }
         OAuthAppService::grant_consent_strict(
             &self.db,
             app_id,
@@ -387,6 +400,64 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn guarded_consent_grant_requires_direct_user_principal() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "OAuth consent guard tenant",
+            &format!("oauth-consent-guard-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Consent target".to_string(),
+                slug: "consent-target".to_string(),
+                description: None,
+                app_type: "third_party".to_string(),
+                icon_url: None,
+                redirect_uris: vec!["https://client.example/callback".to_string()],
+                scopes: vec!["profile".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: Vec::new(),
+            },
+        )
+        .await
+        .expect("create OAuth app");
+        let inner = Arc::new(ServerAuthAdminMutationProvider::new(
+            db.clone(),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+        ));
+        let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
+
+        // Neither a delegated token nor an unknown principal kind may grant
+        // consent through the registered (guarded) provider composition.
+        for principal_kind in [
+            Some(rustok_api::AuthPrincipalKind::DelegatedUser),
+            Some(rustok_api::AuthPrincipalKind::Service),
+            None,
+        ] {
+            let context = AuthAdminMutationContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: tenant.id,
+                request_id: None,
+                locale: Some("en".to_string()),
+                principal_kind,
+            };
+            let result = guarded
+                .grant_oauth_app_consent(&context, created.app.id, vec!["profile".to_string()])
+                .await;
+            assert!(
+                matches!(result, Err(AuthAdminMutationError::Forbidden(_))),
+                "principal_kind {principal_kind:?} must not grant consent, got {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new(
@@ -428,7 +499,7 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 

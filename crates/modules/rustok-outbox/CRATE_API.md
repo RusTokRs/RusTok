@@ -29,6 +29,8 @@
 - `pub async fn create_sys_events_schema(manager) -> Result<(), DbErr>` / `drop_sys_events_schema` (`migration`)
 - `pub async fn create_sys_events_claim_index(manager)` / `create_sys_events_retention_index(manager)` / `drop_sys_events_claim_index` / `drop_sys_events_retention_index` (`migration`)
 - `pub async fn create_sys_events_superseded_indexes(manager)` / `drop_sys_events_superseded_indexes` (`migration`)
+- `pub async fn add_sys_events_tenant_column(manager)` / `drop_sys_events_tenant_column` / `create_sys_events_tenant_index` / `drop_sys_events_tenant_index` / `add_sys_events_integrity_checks` / `drop_sys_events_integrity_checks` (`migration`)
+- `pub async fn idempotency::renew_lease(database, lease)` / `idempotency::prune_terminal_receipts(database, older_than, batch_size)` (`idempotency`)
 - `pub use entity::{Entity as SysEvents, Model as SysEvent}`
 
 ## Events

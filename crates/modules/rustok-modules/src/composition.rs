@@ -425,11 +425,20 @@ impl SeaOrmModuleCompositionService {
             .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let manifest = serde_json::from_str(&manifest_json)
             .map_err(|error| ModuleCompositionError::Deserialize(error.to_string()))?;
+        let manifest_hash: String = row
+            .try_get("", "manifest_hash")
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        // The stored hash is the build artifact identity for this snapshot
+        // (hosts pass it to the build queue as `artifact_identity`). Writers
+        // canonicalize and hash before storing, so a mismatch means the row
+        // was corrupted or written outside the owner: fail closed instead of
+        // building/serving a manifest under an identity it does not have.
+        if hash_manifest_snapshot(&manifest) != manifest_hash {
+            return Err(ModuleCompositionError::ManifestHashMismatch);
+        }
         Ok(ModuleCompositionSnapshot {
             revision,
-            manifest_hash: row
-                .try_get("", "manifest_hash")
-                .map_err(|error| ModuleCompositionError::Store(error.to_string()))?,
+            manifest_hash,
             manifest,
         })
     }
@@ -480,6 +489,8 @@ impl SeaOrmModuleCompositionService {
 pub enum ModuleCompositionError {
     #[error("active composition revision is invalid")]
     InvalidRevision,
+    #[error("active composition manifest does not match its stored manifest hash")]
+    ManifestHashMismatch,
     #[error("composition operation requires a positive expected revision")]
     InvalidExpectedRevision,
     #[error("composition operation command context is invalid: {0}")]
@@ -542,6 +553,7 @@ fn operation_failure(error: &ModuleCompositionError) -> PortError {
             PortError::validation("modules.composition_invalid_request", error.to_string())
         }
         ModuleCompositionError::RevisionOverflow
+        | ModuleCompositionError::ManifestHashMismatch
         | ModuleCompositionError::MissingActiveComposition
         | ModuleCompositionError::OperationReceipt(_)
         | ModuleCompositionError::OperationReceiptCorrupt(_) => {
@@ -694,6 +706,45 @@ mod tests {
                 .expect("existing snapshot"),
             snapshot
         );
+    }
+
+    #[tokio::test]
+    async fn active_snapshot_rejects_a_manifest_that_does_not_match_its_stored_hash() {
+        let database = setup_database().await;
+        let service = SeaOrmModuleCompositionService::new(database.clone());
+        service
+            .ensure_active_snapshot(&serde_json::json!({ "initial": true }), "bootstrap")
+            .await
+            .expect("bootstrap snapshot");
+
+        // Rewrite the manifest without updating its hash: the stored hash is
+        // the build artifact identity, so the owner must fail closed.
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE platform_state SET manifest_json = '{\"tampered\":true}' WHERE id = 'active'"
+                    .to_string(),
+            ))
+            .await
+            .expect("tamper manifest");
+        assert!(matches!(
+            service.active_snapshot().await,
+            Err(ModuleCompositionError::ManifestHashMismatch)
+        ));
+
+        // Restore the manifest and corrupt only the hash instead.
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE platform_state SET manifest_json = '{\"initial\":true}', manifest_hash = 'deadbeef' WHERE id = 'active'"
+                    .to_string(),
+            ))
+            .await
+            .expect("tamper hash");
+        assert!(matches!(
+            service.active_snapshot().await,
+            Err(ModuleCompositionError::ManifestHashMismatch)
+        ));
     }
 
     #[tokio::test]

@@ -73,6 +73,28 @@ fn sample_isolated_runtime_fingerprint() -> RuntimeFingerprint {
     }
 }
 
+#[test]
+fn runtime_fingerprint_rejects_control_characters_that_forge_digest_fields() {
+    // `compute_digest` frames fields as `label:value\n`. Without validation
+    // these two different fingerprints hash to the same preimage:
+    // `engine_config:x\ntarget_cpu:y\ntarget_cpu:z\nruntime_abi:w\n`.
+    let mut forged = sample_runtime_fingerprint();
+    forged.engine_config_revision = "x\ntarget_cpu:y".to_string();
+    forged.target_cpu_contract = "z".to_string();
+    forged.runtime_abi = "w".to_string();
+    let mut plain = sample_runtime_fingerprint();
+    plain.engine_config_revision = "x".to_string();
+    plain.target_cpu_contract = "y\ntarget_cpu:z".to_string();
+    plain.runtime_abi = "w".to_string();
+    assert_eq!(forged.compute_digest(), plain.compute_digest());
+    assert!(forged.validate().is_err());
+    assert!(plain.validate().is_err());
+
+    // Ordinary values remain valid and digest-stable.
+    let fingerprint = sample_runtime_fingerprint();
+    assert!(fingerprint.validate().is_ok());
+}
+
 fn build_sample_target(
     slug: &str,
     version: &str,

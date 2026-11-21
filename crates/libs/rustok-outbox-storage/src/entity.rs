@@ -19,6 +19,15 @@ pub enum SysEventStatus {
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    /// Denormalised tenant scope copied from the envelope at write time.
+    ///
+    /// The payload remains the canonical envelope; this column is a query
+    /// projection so tenant-scoped operator reads (admin counters, DLQ)
+    /// never extract identity from JSON. Platform-scoped events carry
+    /// `None`. Rows written before the column existed are backfilled by
+    /// the platform migration; until then readers may fall back to the
+    /// payload. New writers must always populate it.
+    pub tenant_id: Option<Uuid>,
     /// Event type string for fast filtering (e.g., "node.created")
     pub event_type: String,
     /// Schema version for this event type

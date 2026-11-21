@@ -1,5 +1,5 @@
 use argon2::{
-    Argon2,
+    Argon2, Params,
     password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use rand_core::{OsRng, RngCore};
@@ -74,6 +74,32 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
+}
+
+/// Whether a stored password hash predates the current Argon2id parameters
+/// and should be transparently rehashed at the next successful login.
+///
+/// Only a *weaker-than-current* hash counts: a future parameter raise then
+/// upgrades every active account on its next login without a mass reset, and
+/// hashes already at (or above) the target parameters are left untouched.
+/// Malformed hashes report `false` — verification rejects them anyway, so
+/// there is nothing to upgrade.
+pub fn password_hash_needs_rehash(password_hash: &str) -> bool {
+    let Ok(parsed) = PasswordHash::new(password_hash) else {
+        return false;
+    };
+    if parsed.algorithm.as_str() != "argon2id" {
+        return true;
+    }
+    if parsed.version != Some(0x13) {
+        return true;
+    }
+    let Ok(params) = Params::try_from(&parsed) else {
+        return true;
+    };
+    params.m_cost() < Params::DEFAULT_M_COST
+        || params.t_cost() < Params::DEFAULT_T_COST
+        || params.p_cost() < Params::DEFAULT_P_COST
 }
 
 /// Generate a cryptographically secure 256-bit refresh token (64 hex chars).
@@ -208,6 +234,32 @@ mod tests {
         // A misconfigured minimum of 0 must not weaken policy below the floor.
         assert!(validate_password_policy("1234567", 0).is_err());
         assert!(validate_password_policy("12345678", 0).is_ok());
+    }
+
+    #[test]
+    fn current_argon2id_hash_needs_no_rehash() {
+        let hash = hash_password("correct horse battery staple").unwrap();
+        assert!(!password_hash_needs_rehash(&hash));
+    }
+
+    #[test]
+    fn weak_parameter_hash_needs_rehash() {
+        use argon2::{Algorithm, Version, password_hash::SaltString};
+
+        let weak_params = Params::new(8, 1, 1, None).expect("weak params");
+        let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, weak_params);
+        let salt = SaltString::encode_b64(b"0123456789abcdef").expect("salt");
+        let hash = argon
+            .hash_password(b"correct horse battery staple", &salt)
+            .expect("weak hash")
+            .to_string();
+        assert!(password_hash_needs_rehash(&hash));
+    }
+
+    #[test]
+    fn malformed_or_foreign_hash_needs_no_rehash() {
+        assert!(!password_hash_needs_rehash("not-a-hash"));
+        assert!(!password_hash_needs_rehash(""));
     }
 
     #[test]

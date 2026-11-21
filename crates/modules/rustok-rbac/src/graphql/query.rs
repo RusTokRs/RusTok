@@ -600,6 +600,17 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
             Resource::Messages,
             vec![Action::Create, Action::Read, Action::Delete, Action::List],
         ),
+        (
+            Resource::Newsletter,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
     ]
 }
 

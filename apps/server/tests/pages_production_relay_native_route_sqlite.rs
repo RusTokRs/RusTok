@@ -697,10 +697,11 @@ fn relay_config() -> RelayConfig {
     RelayConfig {
         batch_size: 1,
         max_attempts: 3,
-        backoff_base: Duration::ZERO,
-        backoff_max: Duration::ZERO,
+        backoff_base: Duration::from_millis(1),
+        backoff_max: Duration::from_millis(1),
         max_concurrency: 1,
         claim_ttl: Duration::from_secs(1),
+        publish_timeout: Duration::from_millis(500),
         worker_id: "pages-production-relay-native-route".to_string(),
     }
 }

@@ -106,8 +106,9 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     let mut iggy_transport_handle: Option<Arc<IggyTransport>> = None;
     let runtime = match delivery_profile {
         EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
-            // Keep the application-facing transport concrete so TransactionalEventBus can
-            // downcast to OutboxTransport and write into the caller's database transaction.
+            // Keep the application-facing transport concrete: it advertises
+            // transactional writes, so TransactionalEventBus appends into
+            // the caller's database transaction through the trait method.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             // Validate local DB-backed components before connecting/starting the external
             // Iggy transport. A bad retention policy or artifact projector must not leave
@@ -177,6 +178,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
                     max_concurrency: settings.events.relay_max_concurrency,
                     claim_ttl: Duration::from_millis(settings.events.relay_claim_ttl_ms),
+                    // A dispatch must finish well inside its claim lease:
+                    // half the lease, capped at the relay default of 30s.
+                    publish_timeout: Duration::from_millis(
+                        (settings.events.relay_claim_ttl_ms / 2).clamp(1, 30_000),
+                    ),
                     ..RelayConfig::default()
                 }),
             };
@@ -262,11 +268,28 @@ fn resolve_outbox_retention(
         )));
     }
 
+    if settings.failed_retention_days > MAX_OUTBOX_RETENTION_DAYS {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.failed_retention_days must be between 0 (keep forever) and {MAX_OUTBOX_RETENTION_DAYS}"
+        )));
+    }
+    if settings.receipt_retention_days > MAX_OUTBOX_RETENTION_DAYS {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.receipt_retention_days must be between 0 (keep forever) and {MAX_OUTBOX_RETENTION_DAYS}"
+        )));
+    }
+
     let retention = rustok_outbox::OutboxRetentionConfig {
         retention: chrono::Duration::days(i64::try_from(settings.retention_days).map_err(
             |_| Error::BadRequest("outbox retention window is out of range".to_string()),
         )?),
         batch_size: settings.batch_size,
+        failed_retention: (settings.failed_retention_days > 0).then(|| {
+            chrono::Duration::days(settings.failed_retention_days as i64)
+        }),
+        receipt_retention: (settings.receipt_retention_days > 0).then(|| {
+            chrono::Duration::days(settings.receipt_retention_days as i64)
+        }),
     };
     retention.validate().map_err(|error| {
         Error::BadRequest(format!(
@@ -383,7 +406,9 @@ fn outbox_relay_worker_context() -> PortContext {
         format!("outbox-relay-worker:{}", uuid::Uuid::new_v4()),
     )
     .with_idempotency_key(format!("outbox-relay-tick:{}", uuid::Uuid::new_v4()))
-    .with_deadline(Duration::from_secs(30))
+    // One relay pass may dispatch a full batch; the deadline bounds the
+    // whole pass, not a single event, so it must cover batch latency.
+    .with_deadline(Duration::from_secs(600))
 }
 
 fn transport_with_local_delivery(
@@ -533,6 +558,32 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         self.primary.acknowledge(event_id).await
     }
 
+    // Transactional appends go to the primary only; local fanout is a
+    // publish-time concern.
+    fn supports_transactional_writes(&self) -> bool {
+        self.primary.supports_transactional_writes()
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.primary
+            .write_root_in_transaction(transaction, envelope)
+            .await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.primary
+            .write_contract_in_transaction(transaction, envelope)
+            .await
+    }
+
     fn reliability_level(&self) -> ReliabilityLevel {
         self.primary.reliability_level()
     }
@@ -632,6 +683,7 @@ mod tests {
             retention_days: 30,
             batch_size: 100,
             interval_seconds: MAX_OUTBOX_RETENTION_INTERVAL_SECONDS + 1,
+            ..Default::default()
         };
         let error = match resolve_outbox_retention(&ctx, &settings) {
             Err(error) => error,

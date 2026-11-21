@@ -301,7 +301,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),
@@ -338,7 +338,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),

@@ -50,7 +50,10 @@ use crate::services::field_definition_registry_bootstrap::build_field_def_regist
 use crate::services::flex_attached_values::FlexAttachedValuesGraphqlAdapter;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::graphql::FlexGraphqlRuntime;
-use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
+use rustok_auth::graphql::{
+    AuthGraphqlRateLimitPolicy, AuthGraphqlRateLimiterHandle, AuthMutation, AuthQuery,
+    OAuthMutation, OAuthQuery,
+};
 #[cfg(feature = "mod-blog")]
 use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
 #[cfg(feature = "mod-commerce")]
@@ -140,6 +143,7 @@ pub struct GraphqlSchemaDependencies {
     pub rbac_role_writer: RbacGraphqlRoleWriterHandle,
     pub rbac_module_availability: Option<RbacModuleAvailabilityHandle>,
     pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
+    pub auth_rate_limiter: Option<AuthGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-blog")]
     pub blog_rate_limiter: Option<BlogGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-alloy")]
@@ -176,6 +180,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         rbac_role_writer,
         rbac_module_availability,
         search_rate_limiter,
+        auth_rate_limiter,
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter,
         #[cfg(feature = "mod-alloy")]
@@ -260,6 +265,8 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
 
     #[cfg(feature = "mod-forum")]
     let builder = builder.extension(ForumGraphqlErrorExtension);
+
+    let builder = builder.extension(AuthGraphqlRateLimitPolicy::new(auth_rate_limiter));
 
     #[cfg(feature = "mod-blog")]
     let builder = builder.extension(BlogGraphqlRateLimitPolicy::new(blog_rate_limiter));

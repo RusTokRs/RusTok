@@ -132,6 +132,89 @@ pub struct BackpressureController {
     events_rejected: Arc<AtomicU64>,
     warning_count: Arc<AtomicU64>,
     critical_count: Arc<AtomicU64>,
+    ownership_state: Arc<AtomicU64>,
+    next_ownership_id: Arc<AtomicU64>,
+}
+
+/// Ownership state encoding: `(level << 32) | unique owner id`. The unique id
+/// prevents an ABA relapse where a preempted guard becomes "current" again
+/// after the preempting owner drops and a new owner of the same level claims.
+const OWNERSHIP_FREE: u64 = 0;
+const OWNERSHIP_FALLBACK: u64 = 1;
+const OWNERSHIP_PRIMARY: u64 = 2;
+
+fn encode_ownership(level: u64, owner_id: u64) -> u64 {
+    (level << 32) | owner_id
+}
+
+fn ownership_level(state: u64) -> u64 {
+    state >> 32
+}
+
+/// Exclusive right to release slots acquired by publishers on one bus.
+///
+/// A broadcast publish acquires exactly one slot, but every subscriber
+/// receives a copy of the envelope. If each consumer released a slot for the
+/// copy it saw, one acquire would be released N times and the depth would be
+/// systematically under-counted, silently disabling backpressure. Exactly one
+/// consumer therefore owns releases for a bus:
+///
+/// - the durable gate (server event forwarder) claims *primary* ownership and
+///   releases a slot only after the event is durably persisted;
+/// - an in-memory dispatcher claims *fallback* ownership when no durable gate
+///   exists, and is preempted the moment a primary owner claims the bus.
+///
+/// Dropping the guard frees the claim so a restarted consumer can take over.
+pub struct BackpressureOwnership {
+    controller: BackpressureController,
+    state: Arc<AtomicU64>,
+    encoded: u64,
+}
+
+impl BackpressureOwnership {
+    /// Whether this guard still holds the claim (a primary claim preempts a
+    /// fallback guard, which must then stop releasing).
+    pub fn is_current(&self) -> bool {
+        self.state.load(Ordering::Acquire) == self.encoded
+    }
+
+    /// Releases one slot if this guard still owns the bus.
+    pub fn release(&self) {
+        if self.is_current() {
+            self.controller.release();
+        }
+    }
+
+    /// Releases `count` slots if this guard still owns the bus.
+    pub fn release_slots(&self, count: usize) {
+        if self.is_current() {
+            for _ in 0..count {
+                self.controller.release();
+            }
+        }
+    }
+}
+
+impl Drop for BackpressureOwnership {
+    fn drop(&mut self) {
+        // Free the claim only if it is still ours; a preempting primary owner
+        // must not lose its claim when the stale fallback guard drops.
+        let _ = self.state.compare_exchange(
+            self.encoded,
+            OWNERSHIP_FREE,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        );
+    }
+}
+
+impl std::fmt::Debug for BackpressureOwnership {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BackpressureOwnership")
+            .field("level", &ownership_level(self.encoded))
+            .field("is_current", &self.is_current())
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for BackpressureController {
@@ -172,6 +255,58 @@ impl BackpressureController {
             events_rejected: Arc::new(AtomicU64::new(0)),
             warning_count: Arc::new(AtomicU64::new(0)),
             critical_count: Arc::new(AtomicU64::new(0)),
+            ownership_state: Arc::new(AtomicU64::new(OWNERSHIP_FREE)),
+            next_ownership_id: Arc::new(AtomicU64::new(1)),
+        }
+    }
+
+    fn next_ownership(&self, level: u64) -> BackpressureOwnership {
+        let owner_id = self.next_ownership_id.fetch_add(1, Ordering::Relaxed);
+        BackpressureOwnership {
+            controller: self.clone(),
+            state: Arc::clone(&self.ownership_state),
+            encoded: encode_ownership(level, owner_id),
+        }
+    }
+
+    /// Claims fallback release ownership: succeeds only while no other owner
+    /// (fallback or primary) holds the bus. Intended for in-memory consumers
+    /// that are the sole drain of a bus without a durable gate.
+    pub fn claim_ownership(&self) -> Option<BackpressureOwnership> {
+        let ownership = self.next_ownership(OWNERSHIP_FALLBACK);
+        self.ownership_state
+            .compare_exchange(
+                OWNERSHIP_FREE,
+                ownership.encoded,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+            .ok()
+            .map(|_| ownership)
+    }
+
+    /// Claims primary release ownership, preempting a fallback owner. The
+    /// durable gate of a bus uses this so release ownership does not depend on
+    /// consumer startup order. Fails only when another primary owner exists.
+    pub fn claim_primary_ownership(&self) -> Option<BackpressureOwnership> {
+        let ownership = self.next_ownership(OWNERSHIP_PRIMARY);
+        loop {
+            let current = self.ownership_state.load(Ordering::Acquire);
+            if ownership_level(current) == OWNERSHIP_PRIMARY {
+                return None;
+            }
+            if self
+                .ownership_state
+                .compare_exchange(
+                    current,
+                    ownership.encoded,
+                    Ordering::AcqRel,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                return Some(ownership);
+            }
         }
     }
 
@@ -300,6 +435,81 @@ impl BackpressureController {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ownership_is_exclusive_and_released_on_drop() {
+        let controller = BackpressureController::new(BackpressureConfig::new(10, 0.7, 0.9));
+        let owner = controller
+            .claim_ownership()
+            .expect("first fallback claim succeeds");
+        assert!(controller.claim_ownership().is_none());
+        drop(owner);
+        assert!(
+            controller.claim_ownership().is_some(),
+            "dropping the guard must free the claim for a restarted consumer"
+        );
+    }
+
+    #[test]
+    fn primary_ownership_preempts_fallback_releases() {
+        let controller = Arc::new(BackpressureController::new(BackpressureConfig::new(
+            10, 0.7, 0.9,
+        )));
+        let fallback = controller.claim_ownership().expect("fallback claim");
+        controller.try_acquire().unwrap();
+        controller.try_acquire().unwrap();
+
+        let primary = controller
+            .claim_primary_ownership()
+            .expect("primary claim preempts the fallback owner");
+        assert!(!fallback.is_current());
+        assert!(controller.claim_primary_ownership().is_none());
+
+        fallback.release();
+        assert_eq!(
+            controller.current_depth(),
+            2,
+            "a preempted fallback owner must not release foreign slots"
+        );
+
+        primary.release_slots(2);
+        assert_eq!(controller.current_depth(), 0);
+
+        drop(primary);
+        drop(fallback);
+        assert!(
+            controller.claim_ownership().is_some(),
+            "dropping the stale fallback guard must not steal a freed claim"
+        );
+    }
+
+    #[test]
+    fn preempted_fallback_guard_stays_stale_after_reclaim() {
+        let controller = Arc::new(BackpressureController::new(BackpressureConfig::new(
+            10, 0.7, 0.9,
+        )));
+        let stale = controller.claim_ownership().expect("first fallback");
+        let primary = controller
+            .claim_primary_ownership()
+            .expect("primary preempts");
+        drop(primary);
+
+        let successor = controller
+            .claim_ownership()
+            .expect("a new fallback owner may claim after the primary drops");
+        assert!(!stale.is_current());
+        assert!(successor.is_current());
+
+        controller.try_acquire().unwrap();
+        stale.release();
+        assert_eq!(
+            controller.current_depth(),
+            1,
+            "a stale guard must not release the successor's slots (ABA)"
+        );
+        successor.release();
+        assert_eq!(controller.current_depth(), 0);
+    }
 
     #[test]
     fn test_backpressure_config_defaults() {

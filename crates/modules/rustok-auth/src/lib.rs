@@ -54,7 +54,7 @@ pub use config::{
 pub use credentials::{
     DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS, MAX_PASSWORD_LENGTH_BYTES,
     MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
-    validate_password_policy, verify_password,
+    password_hash_needs_rehash, validate_password_policy, verify_password,
 };
 pub use error::AuthError;
 pub use jwt::{

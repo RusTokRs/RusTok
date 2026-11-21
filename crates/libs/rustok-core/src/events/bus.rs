@@ -95,6 +95,28 @@ impl EventBus {
         self.backpressure.as_ref().map(Arc::clone)
     }
 
+    /// Claims fallback release ownership of this bus's backpressure slots.
+    ///
+    /// Exactly one consumer may release slots per bus (see
+    /// [`super::BackpressureOwnership`]); in-memory dispatchers use this when
+    /// no durable gate owns the bus.
+    pub fn claim_backpressure_ownership(&self) -> Option<super::BackpressureOwnership> {
+        self.backpressure
+            .as_ref()
+            .and_then(|controller| controller.claim_ownership())
+    }
+
+    /// Claims primary release ownership, preempting a fallback owner. The
+    /// durable event forwarder uses this: slots are released only after the
+    /// event is persisted, regardless of consumer startup order.
+    pub fn claim_primary_backpressure_ownership(
+        &self,
+    ) -> Option<super::BackpressureOwnership> {
+        self.backpressure
+            .as_ref()
+            .and_then(|controller| controller.claim_primary_ownership())
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
         let receiver = self.sender.subscribe();
         self.stats
@@ -164,6 +186,12 @@ impl EventBus {
                 e
             )));
         }
+
+        // Keep the subscriber gauge honest on the publish path as well:
+        // receivers can drop without a matching subscribe() call.
+        self.stats
+            .subscribers
+            .store(self.sender.receiver_count(), Ordering::Relaxed);
 
         if self.sender.receiver_count() == 0 {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");

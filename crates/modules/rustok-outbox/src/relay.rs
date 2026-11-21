@@ -19,6 +19,12 @@ use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use crate::entity;
 use crate::entity::SysEventStatus;
 
+/// Upper bound on rows claimed in one relay pass. Matches the server
+/// runtime cap so a library caller cannot materialise an unbounded batch.
+pub const MAX_RELAY_BATCH_SIZE: u64 = 10_000;
+/// Upper bound on simultaneous dispatches in one relay pass.
+pub const MAX_RELAY_CONCURRENCY: usize = 1_024;
+
 #[derive(Clone, Debug)]
 pub struct RelayConfig {
     pub batch_size: u64,
@@ -27,6 +33,11 @@ pub struct RelayConfig {
     pub backoff_max: Duration,
     pub max_concurrency: usize,
     pub claim_ttl: Duration,
+    /// Hard bound on one transport dispatch. Must stay strictly below
+    /// `claim_ttl`: a dispatch that outlives its claim lease can be
+    /// reclaimed and delivered a second time while the first attempt is
+    /// still running, and its completion update is then rejected.
+    pub publish_timeout: Duration,
     pub worker_id: String,
 }
 
@@ -39,6 +50,7 @@ impl Default for RelayConfig {
             backoff_max: Duration::from_secs(60),
             max_concurrency: 8,
             claim_ttl: Duration::from_secs(60),
+            publish_timeout: Duration::from_secs(30),
             worker_id: format!("relay-{}", Uuid::new_v4()),
         }
     }
@@ -98,6 +110,14 @@ impl RelayEnvelope {
     }
 }
 
+/// Polls `sys_events`, claims due rows, and dispatches them to the target
+/// transport with retry/backoff and DLQ semantics.
+///
+/// Delivery is at-least-once and **unordered**: rows are claimed in
+/// `created_at` order but dispatched with up to
+/// `RelayConfig::max_concurrency` in flight, so events belonging to one
+/// tenant or aggregate may reach the transport out of order. Consumers
+/// must be idempotent and tolerant of reordering and duplicate delivery.
 #[derive(Clone)]
 pub struct OutboxRelay {
     db: DatabaseConnection,
@@ -186,9 +206,25 @@ impl OutboxRelay {
     }
 
     fn validate_config(&self) -> Result<()> {
-        if self.config.batch_size == 0 {
+        if self.config.batch_size == 0 || self.config.batch_size > MAX_RELAY_BATCH_SIZE {
+            return Err(Error::Validation(format!(
+                "outbox relay batch_size must be between 1 and {MAX_RELAY_BATCH_SIZE}"
+            )));
+        }
+        if self.config.max_concurrency > MAX_RELAY_CONCURRENCY {
+            return Err(Error::Validation(format!(
+                "outbox relay max_concurrency must not exceed {MAX_RELAY_CONCURRENCY}"
+            )));
+        }
+        if self.config.publish_timeout.is_zero() {
             return Err(Error::Validation(
-                "outbox relay batch_size must be greater than zero".to_string(),
+                "outbox relay publish_timeout must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.publish_timeout >= self.config.claim_ttl {
+            return Err(Error::Validation(
+                "outbox relay publish_timeout must be less than claim_ttl so a dispatch cannot outlive its claim lease"
+                    .to_string(),
             ));
         }
         if self.config.max_attempts <= 0 {
@@ -206,9 +242,12 @@ impl OutboxRelay {
                 "outbox relay claim_ttl must be greater than zero".to_string(),
             ));
         }
-        if self.config.worker_id.trim().is_empty() || self.config.worker_id.len() > 128 {
+        // `claimed_by` is capped at 128 bytes and also carries a per-claim
+        // fencing nonce (`{worker_id}:{uuid}`), so the worker id itself must
+        // leave room for it.
+        if self.config.worker_id.trim().is_empty() || self.config.worker_id.len() > 64 {
             return Err(Error::Validation(
-                "outbox relay worker_id must contain 1 to 128 characters".to_string(),
+                "outbox relay worker_id must contain 1 to 64 bytes".to_string(),
             ));
         }
         if self.config.backoff_base.is_zero() {
@@ -227,10 +266,15 @@ impl OutboxRelay {
 
     async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
         let now = Utc::now();
-        let stale_before = now
-            - chrono::Duration::from_std(self.config.claim_ttl)
-                .unwrap_or_else(|_| chrono::Duration::seconds(60));
-        let worker_id = self.config.worker_id.clone();
+        let claim_ttl = chrono::Duration::from_std(self.config.claim_ttl).map_err(|_| {
+            Error::Validation("outbox relay claim_ttl is out of range".to_string())
+        })?;
+        let stale_before = now - claim_ttl;
+        // Fencing owner for this claim pass: unique per pass, so two relay
+        // processes configured with the same worker_id (and two passes of
+        // the same process) can never complete each other's claims. The
+        // completion updates match on this exact value.
+        let worker_id = format!("{}:{}", self.config.worker_id, Uuid::new_v4());
 
         let txn = self.db.begin().await?;
         let candidates_query = entity::Entity::find()
@@ -323,20 +367,36 @@ impl OutboxRelay {
         let envelope = match Self::decode_envelope(model) {
             Ok(envelope) => envelope,
             Err(error) => {
-                let elapsed_ms = started.elapsed().as_millis() as u64;
-                self.record_processed(elapsed_ms, false);
+                // A payload that cannot be decoded or no longer matches its
+                // registered schema will never become dispatchable: send it
+                // straight to the DLQ instead of burning the retry budget.
                 tracing::warn!(
                     event_id = %event_id,
                     error = %error,
                     "Outbox event payload is invalid"
                 );
-                return self.mark_failed_attempt(model, error).await;
+                self.mark_failed_attempt(model, error, true).await?;
+                self.record_processed(&model.event_type, started.elapsed().as_millis() as u64, false);
+                return Ok(());
             }
         };
 
+        let publish_timeout = self.config.publish_timeout;
         let publish_result = match envelope {
-            RelayEnvelope::Root(envelope) => self.target.publish(envelope).await,
-            RelayEnvelope::Contract(envelope) => self.target.publish_contract(envelope).await,
+            RelayEnvelope::Root(envelope) => {
+                tokio::time::timeout(publish_timeout, self.target.publish(envelope)).await
+            }
+            RelayEnvelope::Contract(envelope) => {
+                tokio::time::timeout(publish_timeout, self.target.publish_contract(envelope))
+                    .await
+            }
+        };
+        let publish_result = match publish_result {
+            Ok(result) => result,
+            Err(_elapsed) => Err(Error::External(format!(
+                "outbox dispatch timed out after {} ms",
+                publish_timeout.as_millis()
+            ))),
         };
         let elapsed_ms = started.elapsed().as_millis() as u64;
 
@@ -344,15 +404,25 @@ impl OutboxRelay {
             Ok(()) => {
                 tracing::info!(event_id = %event_id, latency_ms = elapsed_ms, "Outbox event dispatched");
                 self.mark_dispatched(model).await?;
-                self.record_processed(elapsed_ms, true);
+                self.record_processed(&model.event_type, elapsed_ms, true);
                 Ok(())
             }
             Err(err) => {
                 tracing::warn!(event_id = %event_id, error = %err, "Outbox event dispatch failed");
-                self.record_processed(elapsed_ms, false);
-                self.mark_failed_attempt(model, err).await
+                let terminal = Self::is_terminal_dispatch_error(&err);
+                self.mark_failed_attempt(model, err, terminal).await?;
+                self.record_processed(&model.event_type, elapsed_ms, false);
+                Ok(())
             }
         }
+    }
+
+    /// Permanent dispatch failures (invalid envelope, unregistered schema,
+    /// undecodable payload) cannot succeed on a later attempt and go to the
+    /// DLQ immediately. Everything else (transport, database, timeouts) is
+    /// treated as transient and follows the retry/backoff policy.
+    fn is_terminal_dispatch_error(error: &Error) -> bool {
+        matches!(error, Error::Validation(_) | Error::Serialization(_))
     }
 
     fn decode_envelope(model: &entity::Model) -> Result<RelayEnvelope> {
@@ -401,7 +471,14 @@ impl OutboxRelay {
         Ok(envelope)
     }
 
-    fn record_processed(&self, elapsed_ms: u64, succeeded: bool) {
+    fn record_processed(&self, event_type: &str, elapsed_ms: u64, succeeded: bool) {
+        // Percentile-capable histogram in telemetry; the cumulative
+        // `latency_ms_total` counter stays for cheap average derivation.
+        rustok_telemetry::metrics::record_event_dispatch_latency_ms(
+            "outbox_relay",
+            event_type,
+            elapsed_ms as f64,
+        );
         self.metrics
             .latency_ms_total
             .fetch_add(elapsed_ms, Ordering::Relaxed);
@@ -433,9 +510,14 @@ impl OutboxRelay {
         self.ensure_claim_owned(model.id, result.rows_affected)
     }
 
-    async fn mark_failed_attempt(&self, model: &entity::Model, error: Error) -> Result<()> {
+    async fn mark_failed_attempt(
+        &self,
+        model: &entity::Model,
+        error: Error,
+        terminal: bool,
+    ) -> Result<()> {
         let retry_count = model.retry_count.saturating_add(1);
-        let (status, next_attempt_at, moved_to_dlq) = if retry_count >= self.config.max_attempts {
+        let (status, next_attempt_at, moved_to_dlq) = if terminal || retry_count >= self.config.max_attempts {
             (SysEventStatus::Failed, None, true)
         } else {
             (
@@ -577,6 +659,37 @@ mod tests {
             .await
             .expect("sys_events migration");
         db
+    }
+
+    #[tokio::test]
+    async fn config_rejects_a_publish_timeout_that_outlives_the_claim_lease() {
+        let relay = OutboxRelay::new(database().await, Arc::new(RejectUnexpectedPublish))
+            .with_config(RelayConfig {
+                claim_ttl: Duration::from_secs(10),
+                publish_timeout: Duration::from_secs(10),
+                ..RelayConfig::default()
+            });
+        assert!(relay.validate_config().is_err());
+
+        let relay = relay.with_config(RelayConfig {
+            claim_ttl: Duration::from_secs(10),
+            publish_timeout: Duration::from_secs(5),
+            ..RelayConfig::default()
+        });
+        assert!(relay.validate_config().is_ok());
+    }
+
+    #[test]
+    fn permanent_dispatch_errors_are_terminal_transient_ones_are_not() {
+        assert!(OutboxRelay::is_terminal_dispatch_error(&Error::Validation(
+            "bad envelope".to_string()
+        )));
+        assert!(OutboxRelay::is_terminal_dispatch_error(
+            &Error::Serialization(serde_json::from_str::<serde_json::Value>("x").unwrap_err())
+        ));
+        assert!(!OutboxRelay::is_terminal_dispatch_error(
+            &Error::External("broker unavailable".to_string())
+        ));
     }
 
     #[tokio::test]

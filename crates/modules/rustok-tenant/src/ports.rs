@@ -299,6 +299,12 @@ fn map_tenant_error(error: crate::TenantError) -> PortError {
             "tenant.domain_already_exists",
             format!("tenant domain `{domain}` is already assigned to another tenant"),
         ),
+        // The same applies to a claimed slug: it is permanently taken, so a
+        // retry with the same input can never succeed.
+        crate::TenantError::SlugAlreadyExists(slug) => PortError::conflict(
+            "tenant.slug_already_exists",
+            format!("tenant slug `{slug}` is already assigned to another tenant"),
+        ),
         crate::TenantError::LocalePolicyInvariant(message) => {
             PortError::invariant_violation("tenant.locale_policy_invariant", message)
         }
@@ -374,6 +380,21 @@ mod tests {
                 .unwrap_err()
                 .code,
             "tenant.domain_empty"
+        );
+    }
+
+    #[test]
+    fn a_claimed_slug_maps_to_a_non_retryable_conflict() {
+        let error = map_tenant_error(crate::TenantError::SlugAlreadyExists(
+            "acme".to_string(),
+        ));
+        assert_eq!(error.kind, PortErrorKind::Conflict, "{error:?}");
+        assert_eq!(error.code, "tenant.slug_already_exists");
+        assert!(!error.retryable, "a claimed slug must not be retryable");
+        assert!(
+            error.message.contains("acme"),
+            "the rejected slug must be identifiable: {}",
+            error.message
         );
     }
 

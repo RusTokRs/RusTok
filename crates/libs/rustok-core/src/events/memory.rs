@@ -55,6 +55,20 @@ impl EventTransport for MemoryTransport {
     }
 
     async fn publish_contract(&self, envelope: ContractEventEnvelope) -> crate::Result<()> {
+        // Root envelopes keep the plain broadcast semantics of `publish`:
+        // routing them through the acknowledged listener path would make an
+        // in-memory transport without bound module listeners reject every
+        // root event. Sealed families keep the acknowledged delivery path,
+        // which fails closed when no listener set is bound to this bus.
+        if matches!(
+            envelope.payload(),
+            Ok(rustok_events::ContractEventPayload::Root(_))
+        ) {
+            let root = envelope
+                .into_root_envelope()
+                .map_err(|error| crate::Error::Validation(error.to_string()))?;
+            return self.publish(root).await;
+        }
         self.bus.publish_contract_envelope(envelope).await
     }
 

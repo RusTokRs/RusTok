@@ -205,6 +205,32 @@ impl EventTransport for TenantCacheGenerationTransport {
         self.inner.acknowledge(event_id).await
     }
 
+    // Transactional appends are storage-only; generation rotation stays a
+    // publish-time concern of the relay path above.
+    fn supports_transactional_writes(&self) -> bool {
+        self.inner.supports_transactional_writes()
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        self.inner
+            .write_root_in_transaction(transaction, envelope)
+            .await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> Result<()> {
+        self.inner
+            .write_contract_in_transaction(transaction, envelope)
+            .await
+    }
+
     fn reliability_level(&self) -> ReliabilityLevel {
         self.inner.reliability_level()
     }
