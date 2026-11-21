@@ -610,7 +610,7 @@ async fn run_redis_listener(listener: TenantLocaleGenerationListener) -> Result<
             },
         )
         .await
-        .map_err(Error::Cache)
+        .map_err(|error| Error::Cache(error.to_string()))
 }
 
 async fn run_periodic_reconciliation(listener: TenantLocaleGenerationListener) {

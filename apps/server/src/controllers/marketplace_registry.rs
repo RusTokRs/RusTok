@@ -1957,7 +1957,7 @@ async fn claim_remote_validation_stage(
         remote_executor.lease_ttl_ms,
     )
     .await
-    .map_err(map_remote_validation_claim_error)?;
+    .map_err(|error| map_module_governance_error(&error))?;
 
     Ok((
         StatusCode::OK,
@@ -3489,10 +3489,6 @@ fn map_module_governance_error(error: &ModuleGovernanceError) -> Error {
             Error::InternalServerError
         }
     }
-}
-
-fn map_remote_validation_claim_error(error: anyhow::Error) -> Error {
-    map_registry_governance_error(error)
 }
 
 fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) -> Error {

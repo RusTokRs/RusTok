@@ -667,16 +667,17 @@ impl McpManagementService {
         let apply_result = match apply_staged_scaffold(&staged_draft, &input.workspace_root) {
             Ok(response) => response,
             Err(error) => {
+                let reason = error.to_string();
                 Self::mark_scaffold_apply_failed(
                     db,
                     tenant_id,
                     &draft,
                     input.applied_by,
                     &input.workspace_root,
-                    &error,
+                    &reason,
                 )
                 .await?;
-                return Err(Error::BadRequest(error));
+                return Err(Error::BadRequest(reason));
             }
         };
 
