@@ -10,7 +10,9 @@ use rustok_telemetry::dlq_duplicate_alert_metrics::{
 };
 use tokio::task::JoinHandle;
 
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::app_lifecycle::{
+    EventDlqObserverInitializationLock, StopHandle,
+};
 use crate::services::event_dlq_duplicate_alert_observer::{
     EventDlqDuplicateAlertObserverHandle, EventDlqDuplicateAlertObserverMode,
 };
@@ -166,7 +168,28 @@ impl EventDlqDuplicateAlertObservabilityHandle {
 /// This does not alter observer configuration, scanning, retry, cursor state, event delivery,
 /// readiness, liveness, or Profiles authorization.
 pub fn start_event_dlq_duplicate_alert_observability(ctx: &ServerRuntimeContext) {
-    if ctx.shared_contains::<EventDlqDuplicateAlertObservabilityHandle>() {
+    let initialization = EventDlqObserverInitializationLock::ensure(ctx);
+    let _initialization_guard = initialization
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        tracing::warn!(
+            error_code = "event_dlq_duplicate_alert_observability_start_stopping",
+            "DLQ alert observability will not start after shutdown"
+        );
+        return;
+    }
+    if let Some(exited) = ctx.shared_map::<EventDlqDuplicateAlertObservabilityHandle, _>(
+        EventDlqDuplicateAlertObservabilityHandle::is_finished,
+    ) {
+        if exited {
+            tracing::error!(
+                error_code = "event_dlq_duplicate_alert_observability_task_exited",
+                "DLQ alert observability task exited; retain its shutdown handle"
+            );
+        }
         return;
     }
 
@@ -188,7 +211,7 @@ pub fn start_event_dlq_duplicate_alert_observability(ctx: &ServerRuntimeContext)
         return;
     }
 
-    let mut stop_rx = StopHandle::ensure(ctx).subscribe();
+    let mut stop_rx = stop.subscribe();
     let runtime_ctx = ctx.clone();
     let task_snapshot = shared.clone();
     let task = tokio::spawn(async move {
@@ -506,6 +529,51 @@ mod tests {
         );
         assert_eq!(unavailable.health.generation(), Some(2));
         assert_eq!(unavailable.health.level(), None);
+    }
+
+    #[tokio::test]
+    async fn exited_observability_task_is_not_overwritten() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        let initial = project_runtime(
+            EventDlqDuplicateAlertObserverMode::Unavailable,
+            None,
+            None,
+            false,
+        );
+        ctx.shared_insert(EventDlqDuplicateAlertObservabilityHandle {
+            snapshot: Arc::new(RwLock::new(initial.health)),
+            task: Some(task),
+        });
+        start_event_dlq_duplicate_alert_observability(&ctx);
+        assert_eq!(
+            ctx.shared_map::<EventDlqDuplicateAlertObservabilityHandle, _>(
+                EventDlqDuplicateAlertObservabilityHandle::is_finished,
+            ),
+            Some(true),
+            "a finished projection task cannot become silently detached"
+        );
+    }
+
+    #[tokio::test]
+    async fn observability_does_not_publish_handle_after_shutdown() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        StopHandle::ensure(&ctx).stop().await;
+        start_event_dlq_duplicate_alert_observability(&ctx);
+        assert!(!ctx.shared_contains::<EventDlqDuplicateAlertObservabilityHandle>());
     }
 
     #[test]

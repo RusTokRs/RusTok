@@ -10,8 +10,12 @@ use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::app_lifecycle::{
+    SocialGraphObserverInitializationLock, StopHandle,
+};
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
+};
 use crate::services::social_graph_index_worker::social_graph_index_consumer_enabled;
 
 const POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_POSITION_POLL_MS";
@@ -20,6 +24,8 @@ const MAX_POLL_MS: u64 = 300_000;
 const METRICS_CONSUMER: &str = "social_graph_index";
 const STAGE_POSITION_SNAPSHOT: &str = "position_snapshot";
 const POSITION_CONFIG_ERROR: &str = "iggy.consumer_position.configuration_invalid";
+
+struct SocialGraphPositionObserverStartupReservation;
 
 pub struct SocialGraphIndexPositionObserverHandle {
     _handle: JoinHandle<()>,
@@ -43,10 +49,51 @@ impl SocialGraphIndexPositionObserverHandle {
 pub async fn start_social_graph_index_position_observer_if_enabled(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<SocialGraphIndexPositionObserverHandle>()
-        || !social_graph_index_consumer_enabled()?
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    // The shutdown drain takes this exact lock before snapshotting both
+    // observers. Hold it across liveness checks and final handle publication,
+    // including direct starters outside router bootstrap.
+    let initialization = SocialGraphObserverInitializationLock::ensure(ctx);
+    let _initialization_guard = initialization.0.lock().await;
+    if published_worker_running::<SocialGraphIndexPositionObserverHandle>(
+        ctx,
+        "Social Graph Index position observer",
+        SocialGraphIndexPositionObserverHandle::is_finished,
+    )? {
+        return Ok(());
+    }
+    if !social_graph_index_consumer_enabled()? {
+        return Ok(());
+    }
+
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Social Graph Index position observer cannot start during shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        ctx,
+        SocialGraphPositionObserverStartupReservation,
+    ) else {
+        if published_worker_running::<SocialGraphIndexPositionObserverHandle>(
+            ctx,
+            "Social Graph Index position observer",
+            SocialGraphIndexPositionObserverHandle::is_finished,
+        )? {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Social Graph Index position observer startup is already in progress; retry".to_string(),
+        ));
+    };
+    if published_worker_running::<SocialGraphIndexPositionObserverHandle>(
+        ctx,
+        "Social Graph Index position observer",
+        SocialGraphIndexPositionObserverHandle::is_finished,
+    )? {
         return Ok(());
     }
 
@@ -83,7 +130,12 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
         }
     };
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Social Graph Index position observer startup interrupted by shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
 
     tracing::info!(
         worker = METRICS_CONSUMER,
@@ -95,6 +147,7 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
     ctx.shared_insert(SocialGraphIndexPositionObserverHandle {
         _handle: tokio::spawn(position_observer_loop(config, poll, stop_rx)),
     });
+    reservation.commit();
     Ok(())
 }
 
@@ -224,6 +277,66 @@ fn duration_millis(duration: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn dead_observer_handle_cannot_report_successful_startup() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        ctx.shared_insert(SocialGraphIndexPositionObserverHandle { _handle: task });
+
+        assert!(
+            published_worker_running::<SocialGraphIndexPositionObserverHandle>(
+                &ctx,
+                "Social Graph Index position observer",
+                SocialGraphIndexPositionObserverHandle::is_finished,
+            )
+            .is_err()
+        );
+        // The failed worker remains registered for host shutdown accounting;
+        // a repeated starter must not publish a replacement behind its back.
+        assert!(ctx.shared_contains::<SocialGraphIndexPositionObserverHandle>());
+        assert!(start_social_graph_index_position_observer_if_enabled(&ctx).await.is_err());
+    }
+
+    #[test]
+    fn observer_reservation_serializes_competing_starters() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let winner = ServerRuntimeStartReservation::try_claim(
+            &ctx,
+            SocialGraphPositionObserverStartupReservation,
+        )
+        .expect("first starter owns observer reservation");
+        assert!(
+            ServerRuntimeStartReservation::try_claim(
+                &ctx,
+                SocialGraphPositionObserverStartupReservation,
+            )
+            .is_none(),
+            "a contending startup must not replace the observer JoinHandle"
+        );
+        drop(winner);
+        assert!(
+            ServerRuntimeStartReservation::try_claim(
+                &ctx,
+                SocialGraphPositionObserverStartupReservation,
+            )
+            .is_some(),
+            "an aborted startup releases the reservation"
+        );
+    }
 
     #[test]
     fn poll_interval_is_bounded() {

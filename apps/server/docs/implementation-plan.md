@@ -1,5 +1,389 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — module dispatcher shutdown ownership (2026-11-22)
+
+The host startup reservation prevented two module dispatchers from
+starting, but not a different race: `spawn_module_event_dispatcher`
+could check the global stop signal, then lose a scheduling race
+against `shutdown_runtime_workers` taking
+`ModuleEventDispatcherHandle`. The direct startup API can be called
+outside `ServerBootstrapInitializationLock`, and shutdown previously
+took the dispatcher handle without an additional registration gate.
+If the direct caller then spawned and published after the snapshot,
+the dispatcher task was left running without a shutdown join owner.
+
+A new process-local `ModuleEventDispatcherRegistrationLock` guards
+the final check-stop → spawn → publish sequence and the shutdown
+snapshot. The same gate now covers the four child recovery worker
+starters that follow successful dispatcher startup: paid-order labels,
+marketplace financial, payment-provider events and product-media release.
+Shutdown obtains their handles under the matching gate. The stop check
+for every worker now occurs inside it, so shutdown either joins a
+published worker or a late starter is rejected. The product-media
+starter also adopts a drop-safe typed startup reservation instead of
+keeping a permanent marker after a failed/abandoned attempt. Existing
+startup reservations still exclude simultaneous publishers. The lock
+is released before any handle's graceful drain, preventing a teardown
+deadlock.
+
+Regression scenarios cover a held registration gate during
+concurrent shutdown and a stop signal arriving while a direct
+dispatcher startup waits for the gate. Additional scenarios exercise
+generic child-worker handle take and a payment recovery worker
+waiting for the gate during shutdown. These tests are authored
+but unrun.
+No build, formatting or runtime verification was executed.
+
+## Server audit continuation — EventBus transport registration race (2026-11-21)
+
+The server had two transport registration paths using
+`ServerRuntimeContext::shared_insert_if_absent`. The EventBus forwarder
+handled a losing insert by fetching the registered winner (with a
+fallback), but `transactional_event_bus_from_context` ignored the
+boolean and returned its locally created `OutboxTransport` even after
+a concurrent publisher had installed another transport. This can split
+transactional writes from the runtime transport selected by the
+forwarder, bypassing configured delivery behavior for one caller.
+
+Both paths now use the already-present
+`shared_get_or_insert_with::<Arc<dyn EventTransport>>` atomic
+singleton contract. It returns the exact published transport regardless
+of whether that caller created it. The event bus lifecycle/stop lock is
+unchanged, as are existing transaction writer contracts. New regression
+tests cover racing resolver calls, transactional construction and
+preinstalled transport ownership. Tests/build/format commands not run.
+
+## Server audit continuation — tenant HTTP error redaction (2026-11-21)
+
+`TenantResolutionError::error_message` previously returned
+`to_string()` for every non-policy error. Its Display includes the
+untrusted request Host, asserted tenant slug, configured domain names,
+header names and arbitrary validator reason strings. A malformed or
+oversized request could cause the API's error envelope to echo those
+identifiers verbatim, despite the nearby `TenantContextLoadError`
+already returning only stable public descriptions.
+
+Public tenant resolution errors now use static bounded messages while
+retaining all existing status codes, machine-readable error codes and
+typed internal error structure. This does not change which requests
+are admitted, nor the specific validation rules. A regression exercises
+all data-bearing variants with an overlong credential-like string and
+requires the actual serialized HTTP response to remain short and
+redacted. Tests, builds and formatting were not run.
+
+## Server audit continuation — middleware raw-path diagnostic closure (2026-11-21)
+
+The previous path-label audit fixed the root HTTP trace span, metrics-auth
+and rate-limit diagnostics, but a follow-up traversal of the middleware
+directory found seven more request entry points logging the original URI
+pathname: `auth_context`, `tenant`, `channel`, `locale`,
+`security_headers`, `registry_artifact_access`, and
+`registry_publish_policy`. These execute within the edge span and
+could still record unknown dynamic URL segments, account identifiers or
+credential-like path material on both success and failure.
+
+All those diagnostic sites now use the existing fixed
+`trace_path_family` rather than retaining separate sanitization
+policies. Registry log entries also bucket extension HTTP methods with
+the fixed `trace_method_family`. The original path and HTTP method are
+preserved for routing, authentication, CSP selection, and authorization.
+Existing middleware behavior tests plus the shared family helper's
+focused regression remain available to the maintainer; none were run.
+
+## Server audit continuation — bounded HTTP trace identifiers (2026-11-21)
+
+The edge `RusTokMakeSpan` already used bounded `path_group` after
+earlier audit changes, but it still copied arbitrary
+`x-request-id`, `x-correlation-id`, `traceparent` headers and
+custom HTTP method names into the root span as-is. Those fields are
+client-controlled and could be unbounded or contain credential-like
+strings even when no route matches.
+
+The trace-span boundary now accepts only canonical UUIDs or
+32-character hex trace IDs for request/correlation identifiers and
+strict W3C version-00 traceparent syntax with nonzero trace/span IDs.
+Missing, malformed and overlong values map to `-`, and extension
+HTTP methods map to `OTHER`. The validated fields retain ordinary
+correlation for UUID-based callers. No HTTP headers are rewritten;
+downstream request/response ID propagation remains unchanged.
+The focused unit test exercises accepted and rejected values and
+the fixed method vocabulary. Tests, build and formatting not run.
+
+## Server audit continuation — tenant cache-generation recovery semantics (2026-11-21)
+
+The tenant cache-generation listener already reconciled the shared backend
+generation on startup, subscription readiness, Pub/Sub gaps and a 30-second
+watchdog. However, its `recover_shared_generation` updated the tracker and
+backend generation without clearing the independent
+`ModuleEffectivePolicyCache`. Missing a tenant or platform invalidation
+therefore left cached effective authorizations in other tenants until TTL
+expiry, even as reconciliation reported a recovered durable offset. The
+ordinary in-order listener also acknowledged its tracker *before* clearing
+the policy and shared backend caches.
+
+The listener now holds one shared async transition gate across local bus,
+Redis handler and periodic recovery. A changed/unverified durable generation
+clears **all** effective policies and shared backends before advancing the
+recovered checkpoint; unchanged generations leave fresh caches intact.
+In-order events apply their local invalidations before acknowledging.
+Unrecognized bounded event keys cause a conservative full policy clear,
+never an acknowledgement with no policy effect. The canonical `*`
+manual-global key is explicitly recognized; nil tenant UUIDs instead
+fail over to the conservative global clear. The inner recovery helper
+avoids recursively acquiring the gate on a gap.
+
+New regressions cover missed generations, subsequent unrelated-tenant
+cache eviction on a gap, no-op unchanged reconciliation, invalid keys,
+and shared-lock ownership across listener clones. The full effect is
+process-local and does not claim distributed exactly-once delivery.
+No tests/build/format commands were run.
+
+## Server audit continuation — tenant locale generation transition ownership (2026-11-21)
+
+The tenant locale-generation listener is cloned into three independent
+local, Redis and periodic reconciliation task owners. All three previously
+ran asynchronous `current_generation`, cache invalidation and tracker
+acknowledgement concurrently, then separately set a single readiness flag.
+The bounded tracker protected individual map operations but did not protect
+the whole observe → invalidate → acknowledge → health sequence. An older
+in-flight recovery could therefore report readiness after a newer failure,
+or classify an event against a checkpoint that was being advanced by a
+different task.
+
+A shared `Arc<tokio::sync::Mutex<()>>` now serializes both
+`recover_if_advanced` and `handle_message` across every cloned listener.
+These entrypoints preserve the existing durable checks, full-cache clear
+fallback, failure reporting and retry behavior. The gate is held through
+the final readiness update; internal helpers do not recursively acquire it.
+A focused Tokio regression verifies both entrypoints wait for a lock
+held by another clone. This does not provide multi-replica serialization.
+No tests/builds/formatting were executed.
+
+## Server audit continuation — registry publish middleware parity (2026-11-21)
+
+The outer `registry_remote_claim::claim_atomic` middleware delegated only
+the exact `POST /v2/catalog/publish` pathname to the host publication
+metadata policy; the owning `registry_publish_policy::is_publish_path`
+explicitly accepted trailing slash variants. A routed alias could therefore
+reach the registry handler without the same ownership, trust-level and
+session-authority checks. Both boundaries now share the policy's canonical
+path recognizer; a focused regression covers exact and trailing slash
+variants and rejects non-publish/mismatched methods.
+
+The metadata policy also previously rewrote the JSON request body while
+retaining the incoming `Transfer-Encoding` header. The normalized-body
+constructor now drops both stale `Content-Length` and
+`Transfer-Encoding`, matching the already-correct MCP body-normalization
+pattern. A regression checks that unrelated headers survive.
+Source/runtime tests, builds and formatting remain maintainer-run.
+
+## Server audit continuation — production CORS authorization (2026-11-21)
+
+Production CORS previously inserted `http://127.0.0.1:5150` whenever
+the allow-list was absent or unusable, even though credentialed
+cross-origin access was enabled. The `RUSTOK_HOST`/`APP_HOST` fallback
+could also silently treat a production bind address (such as
+`0.0.0.0:5150`) as trusted browser-origin configuration. A local page
+could therefore be granted a browser CORS permission which no operator
+explicitly approved.
+
+`build_cors_layer` now leaves the production allow-list empty without
+valid explicit origins; `resolve_cors_allowed_origins_from_env` applies
+bind-host fallback in development only. Configured entries are parsed
+as actual HTTP(S) origins; embedded URL credentials, paths, queries,
+fragments and other schemes are rejected instead of being treated as
+arbitrary header strings. Wildcard listener addresses (`0.0.0.0`,
+`[::]`) are also rejected as explicit browser origins, rather than
+being normalized into localhost authorization. Valid origins are canonicalized before being
+passed to `CorsLayer`. This does not reject same-origin HTTP traffic
+and does not substitute for normal authentication. Focused regression
+tests cover missing/invalid origins, loopback, credentials and
+production-versus-development host fallback. Unrun per maintainer request.
+
+## Server audit continuation — bounded HTTP path diagnostics (2026-11-21)
+
+The edge `RusTokMakeSpan` traced `request.uri().path()` verbatim, and
+metrics-auth and both rate-limit middleware layers repeated this user input
+in debug diagnostics. A path can contain bearer-like reset links, account
+identifiers or arbitrary content even for unmatched routes; the tracing
+fields were not subject to the existing bounded Prometheus route-label
+policy.
+
+The shared `trace_path_family` helper in `middleware/http_stack.rs`
+exposes only fixed route families at the pre-routing boundary: exact public
+health/metrics/GraphQL entry points, generic API/admin buckets and a generic
+fallback. The edge span and middleware diagnostics use this bounded field.
+The original path is still used for policy matching and Axum route dispatch,
+while Prometheus continues to label matched route templates after routing.
+Unit regressions assert secrets in nested paths cannot become trace path
+fields, including lookalike `/apiary` prefixes. No runtime checks executed.
+
+## Server audit continuation — poison receipt SQL fallback type fix (2026-11-21)
+
+A review of the previous ambiguous DLQ publication patch found a Rust type
+error in `ConsumerPoisonReceiptStore::reserve_and_claim_in_transaction`.
+After a lost concurrent claim, the fallback decoded a `QueryResult` into
+a public `ConsumerPoisonReceipt` and then called
+`publishing_claim_expired(&current)` on the decoded receipt. That helper
+expects a raw `QueryResult` containing the SQL-only expiry alias.
+
+The fallback now reads the expiry alias before decoding and branches on the
+saved boolean, keeping the public neutral receipt free of publisher/lease
+metadata. Updated the existing source verifier to enforce the ordering.
+No test, compiler or formatting commands were executed.
+
+## Server audit continuation — global DLQ observer lifecycle (2026-11-21)
+
+The physical Event DLQ duplicate-alert observer and its telemetry companion
+were separate check-then-spawn paths: both called
+`shared_contains::<...Handle>()` before unconditionally publishing a
+`shared_insert`, without fencing shutdown. Concurrent direct invocations
+could orphan one live Tokio task or overwrite the handle, and a late caller
+could publish after shutdown had snapshotted workers. Repeated startup also
+silently treated a retained but exited handle as an active observer.
+
+The two starters now share an `EventDlqObserverInitializationLock`
+(`std::sync::Mutex`; neither startup function suspends while holding it).
+Shutdown takes the same lock after signaling stop and before taking its
+handle snapshot, preserving the bootstrap → runtime-workers → observer lock
+order. After acquisition, starters reject already-stopping hosts and check
+whether any retained task finished. An exited task remains registered for
+shutdown and emits a stable error diagnostic instead of being overwritten.
+Static no-task modes remain idempotent, and startup errors remain
+non-blocking for event delivery. Focused tests exercise completed handles
+and post-stop startup for each companion.
+
+No tests, compiler checks or rustfmt were executed; the maintainer owns
+verification and runtime contention evidence.
+
+## Server audit continuation — Social Graph observer lifecycle (2026-11-21)
+
+Two independent Social Graph Index operational observers (consumer position and
+neutral poison-receipt aggregate) used a check-then-spawn `shared_contains`
+check followed by an unconditional `shared_insert`. Concurrent external
+starters could each spawn a task and overwrite the other's shutdown handle.
+Repeated startup also returned success for a completed observer task, leaving
+health/metrics stale. Neither observer fenced startup during host shutdown.
+
+Both paths now reuse typed `ServerRuntimeStartReservation` and
+`published_worker_running` with initial, contended and post-reservation
+checks, then verify the common `StopHandle` before publishing and committing
+the reservation. A shared `SocialGraphObserverInitializationLock` serializes
+both direct observer starters with shutdown's handle snapshot. The startup
+lock order remains bootstrap → runtime worker initialization → observer;
+an observer never acquires an outer lock while owning its registration lock. A failed/invalid optional poll configuration releases the
+reservation; no broker offset or durable receipt is mutated.
+Unit regressions cover exited Tokio tasks and competing startup reservations.
+
+Also corrected the Social Graph raw-poison publication diagnostic unit test
+to match the previous fail-closed change: an ambiguous external send is
+`reconciliation required`, not a proven failed send.
+
+These tests were authored but not executed; no compilation, formatting or
+integration runs were performed per maintainer instruction.
+
+## Server audit continuation — ambiguous poison DLQ results (2026-11-21)
+
+Confirmed in `ConsumerPoisonReceiptStore` and the Forum Search/Social Graph
+raw-poison consumers: `claim_receipt_sql` reclaimed expired `publishing`
+receipts based only on time, while both consumers released the claim and
+reissued the same external Iggy send after a transport error. A broker send
+may have succeeded despite a missing response; lease expiry/release cannot
+prove non-delivery. This violates the durable-effect recovery decision.
+
+The connector now claims only `reserved` receipts; a still-active
+`publishing` receipt returns `Busy`, and an expired one reports
+`ReconciliationRequired` without updating its existing immutable identity,
+first-error diagnostics or publisher token. The original owner can still
+settle `published` after its lease expiry. The two consumers no longer
+release a `publishing` receipt or perform an automatic second broker send
+after an ambiguous send failure. The source offset remains uncommitted.
+
+Regression coverage includes SQLite expiry and PostgreSQL late-publisher
+reconciliation, and the existing retained execution/evidence contract and
+static guards were updated to assert this safer invariant. Runtime tests
+and format/compile checks remain unexecuted per maintainer instruction.
+
+**Limit:** This deliberately fails closed until an effect owner/operator
+verifies whether the external send committed. Neither generic lease expiry
+nor a deterministic Iggy message ID is enough to authorize replay. An
+authenticated operator reconciliation workflow with auditable evidence is
+still a separate required owner capability, not implemented in this patch.
+
+## Server audit continuation — post-receive broker shutdown fence (2026-11-21)
+
+Forum Search typed contract consumer, Product Index refresh and Social Graph
+Index consumer previously awaited broker delivery and shutdown in the same
+`tokio::select!`. When both futures were ready, Tokio could choose the receive
+branch even after the stop signal was already visible. The worker then started
+projection or raw-poison DLQ publication instead of draining. The durable
+broker cursor is not acknowledged by receive, so a returned-but-unprocessed
+delivery should remain recoverable after process restart.
+
+All three loops now perform a second stop check immediately after receiving,
+before *any* event or decode-failure handling. A shared helper in
+`stop_handle.rs` documents operation admission and has a deterministic
+post-await/stop-signal regression. The existing stop branches and durable
+acknowledgement contracts are unchanged.
+
+The new checks cannot guarantee that shutdown and effect execution are a
+cross-thread atomic operation; effect owners remain responsible for durable
+replay, attempt fencing and idempotency. Tests, cargo compilation and
+formatting were not run per maintainer request.
+
+## Server audit continuation — retry/shutdown operation admission (2026-11-21)
+
+Following the startup-liveness fixes in draft PR #4777, inspected the Comments
+schedule audit source-retry handoff and Notifications candidate/fanout worker
+operation sequences. The host already checked stop at the start of the worker
+cycle and batch item, but async intermediate calls could outlive that check:
+
+- Comments source-retry handoff could claim/publish up to 256 successive
+  canonical audit items in one cycle even after stop was signaled during
+  the first durable publish or failure transition.
+- Notification candidate/fanout workers could finish an async effective
+  policy lookup (or policy deferral) after stop and still begin a new
+  candidate, source materialization, or fanout job operation.
+
+The Comments cycle now accepts a shared stop receiver and checks it before
+the initial dead-letter sweep and every new claim. Existing claimed work is
+settled before checking again. Notifications now check stop at the
+**post-policy admission boundary** before the next effectful owner call.
+A focused deterministic Comments regression tests the per-claim admission
+predicate across a stop during an in-flight operation.
+
+These edits do not cancel a database transaction already started, repair
+cross-process crash side effects, or change owner lease/receipt semantics.
+The maintainer has not run tests, compilation, rustfmt, or runtime contention
+checks for this audit batch.
+
+## Server audit continuation — exited worker startup (2026-11-21)
+
+PR #4772 was merged into `main` at
+`356bffa3c1703b47d8edcaac86547bc120922295`. Its original branch is
+closed, so this follow-up uses `agent/server-recovery-startup-health-20261121`
+from that merge commit, rather than appending to an already merged PR.
+
+Thirteen host-owned durable worker starters returned success when they found a
+published handle, even when the underlying task had already exited. The same
+false-positive existed in the contested-reservation and post-claim checks of
+the seven individually claimed consumers; six other host workers use the
+serialized runtime initializer.
+That can make later bootstrap callers believe an inactive consumer was started,
+while its durable work is still waiting for recovery. A shared runtime helper
+now accepts only a live published handle, rejects a finished handle without
+replacing or orphaning it, and leaves absence available to an exclusive
+startup claim. A source regression tests absent, live, and finished states.
+
+Scope: Notifications intake/candidate/fanout; Forum Search inbox/contract
+consumer; Product Index refresh; Social Graph Index consumer; host Outbox
+relay/retention, Auth retention, remote executor reaper, SEO bulk worker and
+module transition watchdog. Owner-side
+receipt/idempotency handling and external recovery are unchanged. Runtime
+process restart remains necessary after an unexpected worker exit; automatic
+in-process replacement is not implied. No Cargo tests, compilation, rustfmt,
+or live concurrency checks were run, as requested by the maintainer.
+
 ## Server audit continuation — dispatcher readiness and cancellation (2026-11-21)
 
 One accumulating draft PR: `agent/server-audit-continuation-20261121`,

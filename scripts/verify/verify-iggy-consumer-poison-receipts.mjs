@@ -28,6 +28,10 @@ const files = {
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
+  forumWorker: readFileSync(
+    "apps/server/src/services/forum_search_contract_consumer.rs",
+    "utf8",
+  ),
 };
 
 const failures = [];
@@ -95,6 +99,8 @@ for (const marker of [
   "stored_payload != identity.payload",
   "select_receipt_by_delivery_id_sql",
   "lease_expires_at <= CURRENT_TIMESTAMP",
+  "ConsumerPoisonPublishClaim::ReconciliationRequired",
+  "expired_publishing_lease_cannot_authorize_second_broker_send",
   "retained.stable_error_code",
   "retained.first_delivery_attempt_count",
   "identity_is_immutable_and_empty_payload_is_valid",
@@ -104,6 +110,16 @@ for (const marker of [
 }
 
 const productionReceipts = files.receipts.split("#[cfg(test)]")[0];
+requireText(
+  "Iggy poison claim must allow only fresh reservations",
+  productionReceipts,
+  "AND state = 'reserved'",
+);
+forbidText(
+  "Iggy poison claim must never take over expired publishing attempts",
+  productionReceipts,
+  "OR (state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP)",
+);
 for (const forbidden of [
   "pub delivery_id:",
   "pub consumer_group:",
@@ -176,6 +192,19 @@ for (const marker of [
   requireText("Social Graph raw poison worker", files.worker, marker);
 }
 
+for (const marker of [
+  "forum_search_dlq_publication_ambiguous",
+  "forum_search_poison_reconciliation_required",
+  "ConsumerPoisonPublishClaim::ReconciliationRequired",
+]) {
+  requireText("Forum Search raw poison worker", files.forumWorker, marker);
+}
+forbidText(
+  "Forum Search ambiguous DLQ send must retain its publishing claim",
+  files.forumWorker,
+  ".release_claim(",
+);
+
 const deliveryLookup = files.receipts.indexOf(
   "select_receipt_by_delivery_id_sql(backend, true)",
 );
@@ -196,6 +225,32 @@ if (
   );
 }
 
+// Reading a SQL-only derived expiry flag after decoding into the deliberately
+// lease-free public receipt type is a Rust type error. Preserve this ordering
+// for the concurrent failed-claim fallback.
+const fallbackStart = files.receipts.indexOf(
+  "let current = transaction",
+  files.receipts.indexOf("claim_receipt_sql(backend)", sourceSelect),
+);
+const fallbackEnd = files.receipts.indexOf(
+  "pub async fn release_claim(",
+  fallbackStart,
+);
+const fallback = fallbackStart >= 0 && fallbackEnd > fallbackStart
+  ? files.receipts.slice(fallbackStart, fallbackEnd)
+  : "";
+const sqlExpiryRead = fallback.indexOf(
+  "let publishing_expired = publishing_claim_expired(&current)?;",
+);
+const receiptDecode = fallback.indexOf(
+  "let current = decode_and_validate_receipt(&current, identity, backend)?;",
+);
+if (sqlExpiryRead < 0 || receiptDecode <= sqlExpiryRead) {
+  failures.push(
+    "poison claim fallback must read SQL-only expiry before decoding QueryResult into neutral receipt",
+  );
+}
+
 const rawStart = files.worker.indexOf("async fn process_decode_failure(");
 const rawEnd = files.worker.indexOf("async fn acknowledge_terminal_result(", rawStart);
 const rawFlow =
@@ -211,6 +266,16 @@ const rawPublish = rawFlow.indexOf(
   "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
 );
 const rawMarkCall = rawFlow.indexOf("mark_raw_poison_published(", rawPublish);
+forbidText(
+  "Social Graph DLQ ambiguous send must retain its receipt",
+  rawFlow,
+  "poison_receipts.release_claim(&identity, poison_publisher_id)",
+);
+requireText(
+  "Social Graph DLQ ambiguous send must report reconciliation",
+  rawFlow,
+  "social_graph.index.dlq_publish_ambiguous",
+);
 const rawAcknowledgeCall = rawFlow.indexOf(
   "acknowledge_raw_poison_result(",
   rawMarkCall,

@@ -11,7 +11,9 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::app_lifecycle::{
+    EventDlqObserverInitializationLock, StopHandle,
+};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -99,9 +101,33 @@ struct EventDlqDuplicateAlertObserverConfig {
 }
 
 pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext) {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<EventDlqDuplicateAlertObserverHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return;
+    }
+    let initialization = EventDlqObserverInitializationLock::ensure(ctx);
+    let _initialization_guard = initialization
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // No await points are admitted under the mutex; shutdown acquires it
+    // before taking the scanner and companion JoinHandles.
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        tracing::warn!(
+            error_code = "event_dlq_duplicate_alert_start_stopping",
+            "Physical DLQ observer will not start after shutdown"
+        );
+        return;
+    }
+    if let Some(exited) = ctx.shared_map::<EventDlqDuplicateAlertObserverHandle, _>(
+        EventDlqDuplicateAlertObserverHandle::is_finished,
+    ) {
+        if exited {
+            tracing::error!(
+                error_code = "event_dlq_duplicate_alert_task_exited",
+                "Physical DLQ observer exited; keep its task handle for shutdown accounting"
+            );
+        }
         return;
     }
 
@@ -161,7 +187,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
         }
     };
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop_rx = stop.subscribe();
 
     let (publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(config.policy);
     let handle = tokio::spawn(observer_loop(iggy_config, config, publisher, stop_rx));
@@ -504,6 +530,46 @@ mod tests {
             EventDlqDuplicateAlertObserverMode::IggyExternal
         );
         assert!(observer_mode(EventDeliveryProfile::OutboxIggy, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn exited_dlq_scan_task_is_not_replaced_by_repeat_startup() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        ctx.shared_insert(EventDlqDuplicateAlertObserverHandle {
+            mode: EventDlqDuplicateAlertObserverMode::IggyExternal,
+            subscriber: None,
+            handle: Some(task),
+        });
+        start_event_dlq_duplicate_alert_observer(&ctx).await;
+        assert_eq!(
+            ctx.shared_map::<EventDlqDuplicateAlertObserverHandle, _>(
+                EventDlqDuplicateAlertObserverHandle::is_finished,
+            ),
+            Some(true),
+            "a completed task must remain supervised instead of overwritten"
+        );
+    }
+
+    #[tokio::test]
+    async fn dlq_scan_does_not_register_after_shutdown() {
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        StopHandle::ensure(&ctx).stop().await;
+        start_event_dlq_duplicate_alert_observer(&ctx).await;
+        assert!(!ctx.shared_contains::<EventDlqDuplicateAlertObserverHandle>());
     }
 
     #[test]

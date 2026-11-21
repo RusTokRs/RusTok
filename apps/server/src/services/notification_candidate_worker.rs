@@ -16,7 +16,8 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::stop_handle::StopHandle;
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -112,9 +113,14 @@ impl NotificationCandidateWorkerHandle {
 }
 
 pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<NotificationCandidateWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<NotificationCandidateWorkerHandle>(
+        ctx,
+        "Notification candidate worker",
+        NotificationCandidateWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
 
@@ -168,7 +174,11 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<NotificationCandidateWorkerHandle>() {
+        if published_worker_running::<NotificationCandidateWorkerHandle>(
+            ctx,
+            "Notification candidate worker",
+            NotificationCandidateWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
@@ -177,7 +187,11 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
     };
     // Another bootstrap may have committed the worker before this reservation
     // was created by an older caller. Never overwrite an existing JoinHandle.
-    if ctx.shared_contains::<NotificationCandidateWorkerHandle>() {
+    if published_worker_running::<NotificationCandidateWorkerHandle>(
+        ctx,
+        "Notification candidate worker",
+        NotificationCandidateWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let stop_rx = stop.subscribe();
@@ -269,6 +283,16 @@ async fn notification_candidate_worker_loop(
             else {
                 continue;
             };
+
+            // The asynchronous policy lookup (or deferral) may have run
+            // through shutdown. Do not acquire a fresh durable claim afterward.
+            if !may_admit_next_worker_operation(&stop_rx) {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification candidate worker stopped after policy observation"
+                );
+                return;
+            }
 
             match worker
                 .process_candidate_with_policy_revision(

@@ -44,7 +44,11 @@ pub async fn enforce(
 
     let method = request.method().clone();
     let path = request.uri().path();
-    tracing::debug!(path, %method, "registry_artifact_access::enforce entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(path),
+        method_group = super::http_stack::trace_method_family(&method),
+        "registry_artifact_access::enforce entry"
+    );
 
     if method == Method::POST && path == "/v2/catalog/owner-transfer" {
         return validate_owner_transfer(&ctx, request, next).await;

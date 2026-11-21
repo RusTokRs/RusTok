@@ -41,6 +41,38 @@ struct MarketplaceFinancialWorkerReservation;
 struct PaymentProviderEventWorkerReservation;
 struct ModuleEventDispatcherReservation;
 
+/// One synchronous check-stop -> spawn -> publish boundary shared with
+/// shutdown's dispatcher-handle snapshot. A startup reservation alone only
+/// serializes competing starters; it cannot prevent a late shutdown orphan.
+#[derive(Clone, Default)]
+struct ModuleEventDispatcherRegistrationLock(Arc<std::sync::Mutex<()>>);
+
+fn dispatcher_registration_lock(ctx: &ServerRuntimeContext) -> ModuleEventDispatcherRegistrationLock {
+    ctx.shared_get_or_insert_with(ModuleEventDispatcherRegistrationLock::default)
+}
+
+/// Every child launched by module dispatcher startup shares this gate
+/// with shutdown, not only the dispatcher's own handle.
+pub(crate) fn take_dispatcher_started_worker_for_shutdown<T>(
+    ctx: &ServerRuntimeContext,
+) -> Option<T>
+where
+    T: 'static + Send + Sync,
+{
+    let lock = dispatcher_registration_lock(ctx);
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<T>()
+}
+
+pub(crate) fn take_module_dispatcher_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<ModuleEventDispatcherHandle> {
+    take_dispatcher_started_worker_for_shutdown(ctx)
+}
+
 pub struct ModuleEventDispatcherHandle {
     running: rustok_core::RunningDispatcher,
 }
@@ -220,6 +252,19 @@ fn start_module_event_dispatcher(
     dispatcher: EventDispatcher,
     handler_count: usize,
 ) -> Result<()> {
+    let lock = dispatcher_registration_lock(ctx);
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The previous stop check in spawn_module_event_dispatcher does not
+    // fence concurrent shutdown. Recheck while holding the same lock used
+    // to take the handle for the shutdown drain.
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started during module dispatcher registration".to_string(),
+        ));
+    }
     // The listener registry is part of the transport contract even when it is
     // intentionally empty: remote-only sealed events may proceed, while
     // required local families still fail closed when no handler is registered.
@@ -302,6 +347,12 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
     else {
         return;
     };
+    let registration = dispatcher_registration_lock(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This lock also guards shutdown's take of this worker handle.
     if stop.is_stopping() {
         return;
     }
@@ -335,6 +386,12 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
     else {
         return;
     };
+    let registration = dispatcher_registration_lock(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This lock also guards shutdown's take of this worker handle.
     if stop.is_stopping() {
         return;
     }
@@ -366,6 +423,12 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
     else {
         return;
     };
+    let registration = dispatcher_registration_lock(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This lock also guards shutdown's take of this worker handle.
     if stop.is_stopping() {
         return;
     }
@@ -905,14 +968,27 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ProductMediaReleaseWorkerReservation)
+    else {
+        return;
+    };
+    let registration = dispatcher_registration_lock(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if stop.is_stopping() {
         return;
     }
     ctx.shared_insert(spawn_product_media_release_worker(
         ctx.clone(),
-        crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe(),
+        stop.subscribe(),
     ));
+    reservation.commit();
 }
 
 #[cfg(test)]
@@ -1206,6 +1282,77 @@ mod lifecycle_tests {
     use super::*;
     use crate::common::settings::RuntimeHostMode;
 
+    #[tokio::test]
+    async fn child_worker_shutdown_take_waits_for_shared_registration_gate() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        ctx.shared_insert(42_u64);
+        let registration = dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let snapshot_ctx = ctx.clone();
+        let snapshot = tokio::task::spawn_blocking(move || {
+            let _ = ready_tx.send(());
+            take_dispatcher_started_worker_for_shutdown::<u64>(&snapshot_ctx)
+        });
+        ready_rx.await.expect("shutdown take worker is scheduled");
+        tokio::task::yield_now().await;
+        assert!(
+            !snapshot.is_finished(),
+            "child workers cannot be removed while a startup publishes their handle"
+        );
+        drop(registration_guard);
+
+        assert_eq!(snapshot.await.expect("shutdown take joins"), Some(42));
+        assert!(!ctx.shared_contains::<u64>());
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn payment_worker_waiting_for_gate_cannot_publish_after_stop() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let registration = dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let startup_ctx = ctx.clone();
+        let startup = tokio::task::spawn_blocking(move || {
+            let _ = ready_tx.send(());
+            spawn_payment_provider_event_worker_if_enabled(&startup_ctx);
+        });
+        ready_rx.await.expect("worker starter scheduled");
+        tokio::task::yield_now().await;
+        assert!(!startup.is_finished(), "payment worker publication must hold the gate");
+
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        drop(registration_guard);
+        startup.await.expect("worker starter joins");
+
+        assert!(
+            !ctx.shared_contains::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+            >(),
+            "shutdown must prevent payment worker publication after stop"
+        );
+        assert!(
+            !ctx.shared_contains::<PaymentProviderEventWorkerReservation>(),
+            "a rejected start releases the in-progress reservation"
+        );
+    }
+
     #[cfg(feature = "mod-payment")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_payment_recovery_starts_only_one_runtime_worker() {
@@ -1339,6 +1486,86 @@ mod lifecycle_tests {
             .expect("retry after unwind")
             .expect("claim was released by guard drop");
         drop(recovered);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_registration_rechecks_stop_after_waiting_for_shutdown_gate() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let registration = super::dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let startup_ctx = ctx.clone();
+        let startup = tokio::task::spawn_blocking(move || {
+            let _ = entered_tx.send(());
+            super::start_module_event_dispatcher(
+                &startup_ctx,
+                EventDispatcher::new(EventBus::new()),
+                0,
+            )
+        });
+        entered_rx.await.expect("startup attempt entered blocking thread");
+        tokio::task::yield_now().await;
+        assert!(
+            !startup.is_finished(),
+            "registration cannot publish while shutdown holds its snapshot gate"
+        );
+
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        drop(registration_guard);
+
+        assert!(
+            matches!(startup.await.expect("startup thread joins"), Err(Error::Message(message)) if message.contains("shutdown")),
+            "late direct dispatcher start must fail after stop was requested"
+        );
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherRequirement>());
+    }
+
+    #[tokio::test]
+    async fn dispatcher_shutdown_snapshot_waits_for_registration_gate() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let handle = ModuleEventDispatcherHandle::for_test();
+        ctx.shared_insert(handle);
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let snapshot_ctx = ctx.clone();
+        let snapshot = tokio::task::spawn_blocking(move || {
+            let _ = entered_tx.send(());
+            super::take_module_dispatcher_for_shutdown(&snapshot_ctx)
+        });
+        entered_rx.await.expect("shutdown snapshot thread entered");
+        tokio::task::yield_now().await;
+        assert!(
+            !snapshot.is_finished(),
+            "shutdown must not take a dispatcher handle midway through registration"
+        );
+        drop(registration_guard);
+
+        let handle = snapshot
+            .await
+            .expect("shutdown snapshot task joins")
+            .expect("published dispatcher remains owned by shutdown");
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        handle.request_stop();
+        handle.join().await.expect("dispatcher drains after snapshot");
     }
 
     #[tokio::test]

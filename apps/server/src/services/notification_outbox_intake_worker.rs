@@ -19,6 +19,7 @@ use rustok_outbox::OutboxConsumer;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::StopHandle;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -190,9 +191,14 @@ impl NotificationOutboxIntakeWorkerHandle {
 }
 
 pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<NotificationOutboxIntakeWorkerHandle>(
+        ctx,
+        "Notification outbox intake worker",
+        NotificationOutboxIntakeWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !outbox_intake_enabled_from_environment() {
@@ -210,14 +216,22 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>() {
+        if published_worker_running::<NotificationOutboxIntakeWorkerHandle>(
+            ctx,
+            "Notification outbox intake worker",
+            NotificationOutboxIntakeWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Notification outbox intake worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>() {
+    if published_worker_running::<NotificationOutboxIntakeWorkerHandle>(
+        ctx,
+        "Notification outbox intake worker",
+        NotificationOutboxIntakeWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
 

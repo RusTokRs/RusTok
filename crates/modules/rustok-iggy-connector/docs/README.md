@@ -27,6 +27,23 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 - connector metadata includes only low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) and does not define retry/DLQ/replay rules;
 - `ConnectorAckToken` centralizes the Iggy SDK cursor token seam, and subscribers check scope tokens before acknowledgement without adding transport policy.
 
+## Durable poison-delivery publication receipts
+
+The connector's neutral poison receipt records immutable broker delivery
+identity, and fences the external DLQ publication. A claim changes from
+`reserved` to `publishing` before the external send. A lost broker response,
+process exit or expired `publishing` lease does **not** prove no publication
+occurred: expired claims now return `ReconciliationRequired`, never re-claim
+automatically. A late response from the original publisher may still mark
+`published` and allow broker source acknowledgement.
+
+The server leaves the source offset uncommitted and retains the publishing
+receipt on ambiguous DLQ errors. A stable broker message UUID provides
+identification but is not, by itself, durable exactly-once proof. Explicit
+operator/effect-owner reconciliation is still required for interrupted
+publishing attempts; no automatic arbitrary receipt reset is authorized.
+See [the runtime decision](../../../../DECISIONS/2026-11-12-durable-side-effect-recovery.md).
+
 ## Integration
 
 - used by `rustok-iggy` as a low-level connection layer;

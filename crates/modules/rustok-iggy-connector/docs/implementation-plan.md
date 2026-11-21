@@ -26,7 +26,29 @@ drift does not redefine connector identity.
 
 Receipt states are `reserved`, leased `publishing`, terminal `published`, and
 post-source-commit `acknowledged`. The store performs no broker publication, DLQ routing,
-source acknowledgement, authorization, or policy selection.
+source acknowledgement, authorization, or policy selection. A publishing claim
+does **not** become publishable again merely because its lease expired:
+`reserve_and_claim` reports `ReconciliationRequired` for an expired
+`publishing` receipt. This is a read-time outcome, not an added persisted
+state, so no schema change is needed. The original publisher can still commit
+`published` if its broker send eventually succeeds.
+
+An ambiguous DLQ transport failure keeps the `publishing` receipt intact:
+server consumers must not call `release_claim` or immediately retry that
+external side effect. The original broker offset remains unacknowledged.
+After process loss, an unresolved receipt requires explicit reconciliation
+with the effect owner; this change does not implement an operator recovery UI,
+prove broker-level deduplication or promise exactly-once delivery. The
+read-only aggregate inspector already exposes expired-publishing counts.
+
+
+The concurrent claim-failure fallback reads the SQL-derived
+`publishing_claim_expired` column from `QueryResult` **before** decoding the
+public `ConsumerPoisonReceipt`. The neutral receipt intentionally does not
+carry publisher or lease fields, so reading SQL metadata after decoding would
+be a Rust type error. The source guard checks this ordering; the PostgreSQL
+expiry scenario tests the preserved `ReconciliationRequired` behavior.
+The source fix and guard were authored without running compiler or tests.
 
 `ConsumerPoisonReceiptInspector` provides one read-only aggregate snapshot for a
 validated consumer group. It exposes only total, reserved, publishing, expired-
@@ -51,7 +73,7 @@ migration prefix.
 
 An opt-in PostgreSQL integration harness creates a unique schema per scenario and
 applies connector migrations directly. Four source-complete scenarios cover independent
-concurrent claim connections, lease reclaim/fencing, collision rollback,
+concurrent claim connections, expired-lease reconciliation fencing, collision rollback,
 first-diagnostic retention, empty payloads, terminal recognition, and aggregate
 inspection.
 
@@ -86,7 +108,7 @@ maintainer executes the runner; PostgreSQL runtime proof remains open.
 - The receipt contains no tenant, decoded event, actor, claims, locale, credentials,
   acknowledgement token, or authorization state.
 - Aggregate inspection is consumer-group scoped, count-only, and read-only. Alert
-  thresholds, reclaim decisions, repair, and retention remain operator policy outside
+  thresholds, reconciliation decisions, repair, and retention remain operator policy outside
   this crate.
 - Telemetry consumes aggregate values only. It cannot call receipt transition methods or
   derive labels from delivery-level facts.
@@ -139,7 +161,7 @@ maintainer executes the runner; PostgreSQL runtime proof remains open.
    states, snapshot availability, and snapshot time; unavailable inspection clears stale
    gauges and leaves recovery behavior unchanged.
 8. **PostgreSQL evidence harness.** Four opt-in isolated-schema scenarios cover concurrent
-   ownership, lease reclaim/fencing, collision rollback, first-diagnostic retention,
+   ownership, expired-lease reconciliation fencing, collision rollback, first-diagnostic retention,
    empty payloads, terminal redelivery, and aggregate consistency without claiming an
    executed runtime result.
 9. **Retained PostgreSQL execution contract.** An environment metadata test, clean-commit

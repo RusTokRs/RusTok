@@ -19,7 +19,8 @@ use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::stop_handle::StopHandle;
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -125,9 +126,14 @@ pub fn forum_search_contract_consumer_enabled() -> Result<bool> {
 pub async fn start_forum_search_contract_consumer_if_enabled(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+        ctx,
+        "Forum Search contract consumer",
+        ForumSearchContractConsumerWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !forum_search_contract_consumer_enabled()? {
@@ -170,14 +176,22 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+        if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+            ctx,
+            "Forum Search contract consumer",
+            ForumSearchContractConsumerWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Forum Search contract worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+    if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+        ctx,
+        "Forum Search contract consumer",
+        ForumSearchContractConsumerWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
@@ -257,6 +271,15 @@ async fn forum_search_contract_consumer_loop(
             tracing::info!("Forum Search typed invalidation consumer stopped before receive");
             return;
         };
+        // The broker receive and shutdown notification may become ready
+        // simultaneously. Never admit a new projection/DLQ side effect after
+        // stop, even if select returned the delivery branch.
+        if !may_admit_next_worker_operation(&stop_rx) {
+            tracing::info!(
+                "Forum Search typed consumer received a broker delivery during shutdown; source offset remains uncommitted"
+            );
+            return;
+        }
 
         let keep_running = match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {
@@ -586,6 +609,13 @@ async fn establish_poison_result(
                 );
                 return Err(());
             }
+            Ok(ConsumerPoisonPublishClaim::ReconciliationRequired) => {
+                tracing::error!(
+                    error_code = "forum_search_poison_reconciliation_required",
+                    "Forum Search poison DLQ publication outcome is unresolved after its lease; automatic replay is forbidden and source offset remains uncommitted"
+                );
+                return Err(());
+            }
             Ok(ConsumerPoisonPublishClaim::Claimed) => {
                 match transport.move_to_dlq(entry.clone()).await {
                     Ok(()) => {
@@ -598,44 +628,16 @@ async fn establish_poison_result(
                         )
                         .await;
                     }
-                    Err(_error) if attempt < config.max_attempts => {
-                        if let Err(_release_err) = poison_receipts
-                            .release_claim(identity, poison_publisher_id)
-                            .await
-                        {
-                            tracing::warn!(
-                                failure_code = "forum_search_poison_claim_release_failed",
-                                "Failed to release poison claim before retry"
-                            );
-                        }
-                        let delay = retry_delay(config, attempt);
-                        tracing::warn!(
-                            error_code = stable_error_code,
-                            failure_code = "forum_search_dlq_publish_failed",
-                            attempt,
-                            retry_delay_ms = duration_millis(delay),
-                            "Forum Search poison DLQ publication failed; released claim and retained broker offset"
-                        );
-                        if wait_or_stop(delay, stop_rx).await {
-                            return Err(());
-                        }
-                        attempt += 1;
-                    }
                     Err(_error) => {
-                        if let Err(_release_err) = poison_receipts
-                            .release_claim(identity, poison_publisher_id)
-                            .await
-                        {
-                            tracing::warn!(
-                                failure_code = "forum_search_poison_claim_release_failed",
-                                "Failed to release poison claim on final attempt"
-                            );
-                        }
+                        // An external send error can mean the broker accepted
+                        // the message while its response was lost. Never
+                        // release the durable publishing claim or retry that
+                        // side effect without reconciliation evidence.
                         tracing::error!(
                             error_code = stable_error_code,
-                            failure_code = "forum_search_dlq_publish_failed",
-                            attempts = attempt,
-                            "Forum Search poison DLQ publication failed; broker offset remains uncommitted"
+                            failure_code = "forum_search_dlq_publication_ambiguous",
+                            attempt,
+                            "Forum Search DLQ publication outcome is uncertain; retaining the claim and uncommitted source offset for reconciliation"
                         );
                         return Err(());
                     }

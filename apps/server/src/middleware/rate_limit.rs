@@ -67,7 +67,10 @@ pub async fn rate_limit_for_paths(
     mut request: Request,
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
-    tracing::debug!(path = request.uri().path(), "rate_limit_for_paths entry");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(request.uri().path()),
+        "rate_limit_for_paths entry"
+    );
     request.headers_mut().remove(TRUSTED_CLIENT_IP_HEADER);
 
     if let Some(client_ip) = extract_effective_client_ip(

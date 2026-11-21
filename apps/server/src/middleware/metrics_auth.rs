@@ -22,7 +22,10 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 /// no host token is configured.
 pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
-    tracing::debug!(path, "metrics_auth::require_bearer entry");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(path),
+        "metrics_auth::require_bearer entry"
+    );
     let is_production = is_production_environment();
 
     if path == "/health/ready" {
