@@ -1173,7 +1173,7 @@ mod tests {
         // Simulate a committed INSERT whose reply was lost after the final
         // creation retry. The executor has not entered any side-effect path.
         persistence
-            .create_http_job(job_id, job_id, submitted_at)
+            .create_http_job(job_id, job_id, submitted_at.clone())
             .await
             .expect("persist ambiguous claim");
         settle_unstarted_http_job_after_creation_failure(
