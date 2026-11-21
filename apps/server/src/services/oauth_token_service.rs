@@ -270,11 +270,10 @@ fn require_grant(
     app: &oauth_apps::Model,
     grant_type: &'static str,
 ) -> Result<(), OAuthTokenProtocolError> {
-    let incompatible_app_type = match (app.app_type.as_str(), grant_type) {
-        ("service", AUTHORIZATION_CODE_GRANT | REFRESH_TOKEN_GRANT) => true,
-        ("mobile" | "third_party", CLIENT_CREDENTIALS_GRANT) => true,
-        _ => false,
-    };
+    let incompatible_app_type = (app.app_type == "service"
+        && (grant_type == AUTHORIZATION_CODE_GRANT || grant_type == REFRESH_TOKEN_GRANT))
+        || (matches!(app.app_type.as_str(), "mobile" | "third_party")
+            && grant_type == CLIENT_CREDENTIALS_GRANT);
 
     if app.supports_grant_type(grant_type) && !incompatible_app_type {
         Ok(())
@@ -1348,6 +1347,18 @@ mod tests {
         service.app_type = "service".to_string();
         service.grant_types = serde_json::json!(["authorization_code"]);
         assert!(require_grant(&service, "authorization_code").is_err());
+
+        let mut first_party = app(
+            serde_json::json!(["catalog:read"]),
+            serde_json::json!([
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+            ]),
+        );
+        first_party.app_type = "first_party".to_string();
+        assert!(require_grant(&first_party, "authorization_code").is_ok());
+        assert!(require_grant(&first_party, "client_credentials").is_ok());
     }
 
     fn app(scopes: serde_json::Value, grants: serde_json::Value) -> oauth_apps::Model {
