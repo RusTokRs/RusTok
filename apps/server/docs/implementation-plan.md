@@ -1,5 +1,29 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — ambiguous pre-execution installer HTTP claim (2026-11-22)
+
+A committed HTTP `install_http_jobs` INSERT may have lost its DB response.
+The server retries/reconciles its fixed job ID, but after exhausting the retry
+budget it dropped its local admission without trying to settle a matching
+`running` row; an installer executor that never ran could then leave the
+unique active-job fence blocking subsequent installations indefinitely.
+
+The persistence owner now exposes an exact `job_id`/`session_id`/
+`submitted_at` + `status = running` compare-and-set for use only after the
+host has definitively **not entered installer execution**. When claim
+creation exhausts its retries, the runtime-owned task attempts bounded
+cleanup before releasing its local reservation. Lost update acknowledgements
+are reconciled by reading the same job; missing rows require no cleanup,
+while mismatched identity and surprising terminal status fail closed. The
+HTTP caller retains its existing failed-creation error mapping. This does
+not release an installation that may have entered external side effects.
+
+Regressions assert exact-identity state change, unrelated-submission rejection,
+terminal immutability, and host recovery of a previously committed-but-
+unacknowledged claim. The tests and build/format commands were not run by
+the agent; failure injection against PostgreSQL/SQLite and worker termination
+remains with the maintainer.
+
 ## Server audit continuation — module dispatcher shutdown ownership (2026-11-22)
 
 The host startup reservation prevented two module dispatchers from
