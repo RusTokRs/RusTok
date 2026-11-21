@@ -18,7 +18,9 @@ clears **all** effective policies and shared backends before advancing the
 recovered checkpoint; unchanged generations leave fresh caches intact.
 In-order events apply their local invalidations before acknowledging.
 Unrecognized bounded event keys cause a conservative full policy clear,
-never an acknowledgement with no policy effect. The inner recovery helper
+never an acknowledgement with no policy effect. The canonical `*`
+manual-global key is explicitly recognized; nil tenant UUIDs instead
+fail over to the conservative global clear. The inner recovery helper
 avoids recursively acquiring the gate on a gap.
 
 New regressions cover missed generations, subsequent unrelated-tenant

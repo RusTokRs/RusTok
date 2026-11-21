@@ -57,7 +57,8 @@ without evidence of a failure is recorded separately below.
   policies and shared backends on an advanced/unverified recovered
   generation, and move normal acknowledgement after cache invalidation.
   On unexpected invalidation keys use full-cache eviction, not a silent
-  selective-invalidation miss.
+  selective-invalidation miss. Preserve the canonical `*` global key,
+  and reject a nil tenant UUID as an invalid selective-invalidation key.
 - **Verification:** Unit source tests cover gap, changed/unchanged
   reconciliation, unrelated tenant policies and malformed keys; unrun.
 

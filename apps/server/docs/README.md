@@ -445,6 +445,8 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   Missed Pub/Sub generations are not reduced to the single tenant key of
   a later event; unexpected key formats conservatively evict all cached
   policies rather than acknowledging an ineffective invalidation.
+  The canonical `*` key retains its intended global-invalidation
+  meaning; a nil UUID is not accepted as a tenant identity.
 - Tenant locale generation recovery now serializes local invalidation
   messages, Redis Pub/Sub delivery and periodic reconciliation under one
   per-listener asynchronous transition gate. The shared generation tracker

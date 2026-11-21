@@ -415,11 +415,13 @@ impl TenantCacheGenerationListener {
         };
 
         if let Some(policy_cache) = &self.effective_policy_cache {
-            if event.key == PLATFORM_POLICY_INVALIDATION_KEY {
-                // Platform-wide module policy change (e.g. release quarantine):
-                // every tenant's cached policy may be stale.
+            if event.key == PLATFORM_POLICY_INVALIDATION_KEY || event.key == "*" {
+                // Platform-wide policy events and manual global invalidation
+                // both affect every tenant's effective availability.
                 policy_cache.clear();
-            } else if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key) {
+            } else if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key)
+                && !tenant_id.is_nil()
+            {
                 policy_cache.invalidate_tenant(tenant_id);
             } else {
                 // The public invalidation envelope can carry an arbitrary
@@ -1249,6 +1251,44 @@ mod tests {
             listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
             Some(next.generation)
         );
+
+        // The canonical manual global invalidation key is a valid wildcard,
+        // not a malformed tenant identifier. It must still clear every policy.
+        policies.insert(tenant, cached_policy_fixture()).unwrap();
+        let wildcard_generation = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let wildcard_message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            "*",
+            wildcard_generation.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(wildcard_message).await.unwrap();
+        assert!(policies.is_empty(), "manual global invalidation clears policies");
+
+        // Nil UUIDs are not tenant identifiers. They must conservatively
+        // clear, rather than selectively evicting an impossible tenant.
+        policies.insert(tenant, cached_policy_fixture()).unwrap();
+        let nil_generation = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let nil_message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            Uuid::nil().to_string(),
+            nil_generation.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(nil_message).await.unwrap();
+        assert!(policies.is_empty(), "nil tenant key cannot skip invalidation");
     }
 
     #[test]
