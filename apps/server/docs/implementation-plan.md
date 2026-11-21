@@ -27,6 +27,11 @@ pending auth-email, installer, OAuth secret-rotation and worker-startup PRs.
   The scoped unknown-token path still succeeds without an existence oracle.
 - The family-revocation update changes only rows not previously revoked, so
   repeated requests do not rewrite the original `revoked_at` timestamp.
+- The ordinary OAuth client-secret rotation CAS also checks the live
+  `app_type` against the allowed set, so a configuration/manifest change during
+  Argon2 preparation cannot authorize a secret on an unsupported app type.
+  A SQLite regression proves the stale CAS is rejected without changing the
+  stored secret hash.
 - A new SQLite integration regression simulates transfer of a manual app to
   manifest-owned state and ensures manual edit/revocation are rejected without
   altering its active status and redirect configuration. The existing RFC 7009
