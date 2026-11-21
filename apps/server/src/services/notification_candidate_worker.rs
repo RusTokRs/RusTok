@@ -16,6 +16,7 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
+use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
@@ -219,6 +220,14 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         batch_size = worker.batch_size(),
         "Starting notification candidate worker"
     );
+    // The startup reservation fences competing initializers. This separate
+    // registration gate closes the last stop-check -> spawn -> publish race
+    // against shutdown taking the JoinHandle.
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if stop.is_stopping() {
         return Err(Error::Message(
             "notification candidate worker startup interrupted by server shutdown".to_string(),
