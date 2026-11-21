@@ -25,6 +25,30 @@ has been exhaustively verified or that the full-stack audit gates are closed.
   integration, and multi-replica concurrency tests were not run** in the
   GitHub-API-only editing environment, per maintainer request.
 
+### Continuation: retention, tenant parsing, and worker bootstrap
+
+- Auth-artifact retention now deletes sessions, invite consumptions/invites,
+  OAuth tokens, and OAuth authorization codes inside a **single transaction**.
+  An error in any leg rolls back preceding deletes; counts are returned only
+  after commit. A SQLite regression deliberately removes the second table
+  after inserting an expired session and checks that the first delete rolls
+  back. This changes transaction locking behavior, so verify with PostgreSQL
+  under concurrent auth traffic before production rollout.
+- The optional Notifications Outbox intake backfill checks the process stop
+  signal before registration, after registration, before and after each page,
+  and before each receipt. An interrupted bootstrap exits instead of draining
+  an unbounded historical receipt backlog while host shutdown waits for the
+  bootstrap lock. Outbox registration and acknowledgement remain durable and
+  idempotent; no in-flight SQL operation is forcibly cancelled. A watch-signal
+  regression test checks refusal after shutdown. This does not make initial
+  backfill bounded in **normal** startup, and does not replace durable recovery.
+- Tenant subdomain matching now checks UTF-8 slice boundaries before comparing
+  configured base-domain suffixes. Malformed non-ASCII input cannot panic the
+  handler, even when a caller bypasses the ordinary host validator. A test
+  exercises a multibyte boundary.
+- These additional changes were committed to the same existing draft PR;
+  no tests, builds, linters, format checks, or migrations were executed here.
+
 Unclosed owner-level work remains, including durable delivery/retry for
 password-reset and verification email tasks, crash reconciliation of HTTP
 installer jobs, and stronger lifecycle fences across process and replica
