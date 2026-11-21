@@ -374,4 +374,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ Commerce admin order-change native diagnostics use correlation-safe type/shape only; execution evidence remains open");
+console.log("✔ Commerce admin order-change native diagnostics use correlation-safe shape only; execution evidence remains open");

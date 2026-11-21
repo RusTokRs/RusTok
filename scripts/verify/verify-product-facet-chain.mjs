@@ -134,7 +134,6 @@ function tree(directory, extensions) {
 }
 
 const OWNER_PORT = "crates/modules/rustok-product/src/ports/catalog_read.rs";
-const OWNER_PORT_TYPES = "crates/modules/rustok-product/src/ports/types.rs";
 const OWNER_FACETS = "crates/modules/rustok-product/src/services/catalog/facets.rs";
 const OWNER_FILTER_LIMITS = "crates/modules/rustok-product/src/services/catalog/types.rs";
 const COMMERCE_FACETS = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
@@ -171,7 +170,6 @@ const OWNER_FACET_POSTGRES_TEST =
   "crates/modules/rustok-product/tests/postgres_facet_counts.rs";
 
 const ownerPort = read(OWNER_PORT);
-const ownerPortTypes = read(OWNER_PORT_TYPES);
 const ownerFacets = read(OWNER_FACETS);
 const ownerFilterLimits = read(OWNER_FILTER_LIMITS);
 const commerceFacets = read(COMMERCE_FACETS);
@@ -198,6 +196,8 @@ const ownerAttributeFilters = read(OWNER_ATTRIBUTE_FILTERS);
 const ownerTermResolution = read(OWNER_TERM_RESOLUTION);
 const ownerStorefrontList = read(OWNER_STOREFRONT_LIST);
 const ownerAdminList = read(OWNER_ADMIN_LIST);
+const ownerContractsTypes = read("crates/modules/rustok-product/ports/src/types.rs");
+const ownerContractsPorts = read("crates/modules/rustok-product/ports/src/ports.rs");
 const distributionShadow = read(DISTRIBUTION_SHADOW);
 const ownerFacetPostgresTest = read(OWNER_FACET_POSTGRES_TEST);
 
@@ -207,9 +207,13 @@ requireAll(
   [
     'const LOAD_STOREFRONT_CATALOG_FACETS_OPERATION: &str = "load_storefront_catalog_facets";',
     'const LOAD_ADMIN_CATALOG_FACETS_OPERATION: &str = "load_admin_catalog_facets";',
-    '"product.catalog_facets_unavailable",',
-    '"product.admin_catalog_facets_unavailable",',
   ],
+  "owner facet port contract",
+);
+// The scope-specific unavailability codes belong to the published port contract.
+requireAll(
+  ownerContractsPorts,
+  ['"product.catalog_facets_unavailable",', '"product.admin_catalog_facets_unavailable",'],
   "owner facet port contract",
 );
 requireAll(
@@ -258,7 +262,7 @@ requireAll(adminPortImpl, ["request.facet_codes.as_slice(),"], "owner admin face
 
 // ── Requests: codes travel in panel order, facets never paginate ─────────────────────────────────
 requireAll(
-  ownerPortTypes,
+  ownerContractsTypes,
   [
     "pub struct StorefrontCatalogFacetsRequest {",
     "pub struct AdminCatalogFacetsRequest {",
@@ -268,12 +272,12 @@ requireAll(
   "owner facet requests",
 );
 const storefrontFacetRequest = bodyAfter(
-  ownerPortTypes,
+  ownerContractsTypes,
   "pub struct StorefrontCatalogFacetsRequest {",
   "owner storefront facet request",
 );
 const adminFacetRequest = bodyAfter(
-  ownerPortTypes,
+  ownerContractsTypes,
   "pub struct AdminCatalogFacetsRequest {",
   "owner admin facet request",
 );
@@ -308,14 +312,18 @@ requireAll(
 requireAll(
   ownerFacets,
   [
-    "pub struct StorefrontCatalogFacetValue {",
-    "pub struct StorefrontCatalogFacet {",
+    "pub use rustok_product_ports::{StorefrontCatalogFacet, StorefrontCatalogFacetValue};",
     "pub const MAX_CATALOG_FACETS: usize = MAX_ATTRIBUTE_FILTERS;",
     "pub const MAX_CATALOG_FACET_VALUES: usize = ",
   ],
   "owner facet DTO",
 );
-const ownerFacetDto = bodyAfter(ownerFacets, "pub struct StorefrontCatalogFacet {", "owner facet DTO");
+requireAll(
+  ownerContractsTypes,
+  ["pub struct StorefrontCatalogFacetValue {", "pub struct StorefrontCatalogFacet {"],
+  "owner facet DTO",
+);
+const ownerFacetDto = bodyAfter(ownerContractsTypes, "pub struct StorefrontCatalogFacet {", "owner facet DTO");
 requireAll(
   ownerFacetDto,
   [
@@ -526,7 +534,7 @@ requireAll(
     "facet.is_truncated",
     "facet.total_products",
     "value.count",
-    ".storefront_catalog_facets(",
+    ".load_storefront_catalog_facets(",
     "facet_codes: Vec<String>,",
     "pub async fn fetch_catalog_facets(",
   ],

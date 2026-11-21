@@ -39,8 +39,8 @@ Wrapper error and warning events retain only:
 - message presence and character length;
 - retryability.
 
-They do not record the complete `PortError`, debug representation, or human-readable message text. The
-same original `PortError` is returned after the private event, so public code, message, kind, and
+They do not record the complete `PortError`, debug representation, or human-readable message text.
+The same original `PortError` is returned after the private event, so public code, message, kind, and
 retryability are unchanged.
 
 ## Persistent owner diagnostics
@@ -127,8 +127,8 @@ Compile, provider replay, process-exit, restart, contention, mounted transport, 
 workflow, CI, and production evidence remain unexecuted.
 
 The broad ecommerce correlation-safe mapper item remains open for order, fulfillment, inventory,
-customer, tax, promotion, remaining ecommerce adapters, and non-`PortError` public envelopes. No FBA
-or FFA status is promoted from source inspection.
+customer, tax, promotion, remaining ecommerce adapters, and non-`PortError` public envelopes.
+No FBA or FFA status is promoted from source inspection.
 
 ## Suggested maintainer checks
 

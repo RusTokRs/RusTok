@@ -49,6 +49,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::UnknownCollectionLifecycleBeforeCapture,
+                    "payment collection lifecycle must be resolved before capture",
                 ));
             }
         }
@@ -142,6 +143,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::CaptureLocalPersistenceIncomplete,
+                    "payment capture local persistence is incomplete",
                 ))
             }
         }
@@ -247,6 +249,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 context,
                 owner_operation,
                 CheckoutPaymentExecutionReconciliationReason::ProviderOperationInProgressOrReconciliationRequired,
+                "payment provider operation is in progress or requires reconciliation",
             ));
         }
 
@@ -311,6 +314,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                         context,
                         owner_operation,
                         CheckoutPaymentExecutionReconciliationReason::ProviderFailureCheckpointFailed,
+                        "payment provider failure checkpoint failed",
                     ));
                 }
                 return Err(payment_error_to_port_error(context, owner_operation, error));
@@ -339,6 +343,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 context,
                 owner_operation,
                 CheckoutPaymentExecutionReconciliationReason::ProviderResultEncodingFailed,
+                "payment provider result encoding failed",
             )
         })?;
         self.operation_journal
@@ -378,6 +383,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::ProviderSuccessCheckpointFailed,
+                    "payment provider success checkpoint failed",
                 )
             })?;
         Ok(JournaledProviderResult {

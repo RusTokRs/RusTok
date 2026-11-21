@@ -36,7 +36,7 @@ if (failures.length === 0) {
   );
 
   const composeStart = categories.indexOf('fn compose_taxonomy_category_list_records(');
-  const donorStart = categories.indexOf('async fn list_categories_from_product_donor(');
+  const donorStart = categories.indexOf('async fn sync_created_category_to_taxonomy_in_tx(');
   if (composeStart < 0 || donorStart <= composeStart) {
     failures.push('Taxonomy composition and donor-list helper boundaries are required');
   } else {

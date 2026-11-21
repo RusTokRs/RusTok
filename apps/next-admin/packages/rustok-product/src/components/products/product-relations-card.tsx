@@ -8,9 +8,10 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-'use strict';
+'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 import {
   Card,
   CardHeader,
@@ -50,7 +51,10 @@ import Link from 'next/link';
 interface ProductRelationsCardProps {
   productId: string;
   relations: ProductRelation[];
-  onAddRelation?: (input: AddProductRelationInput) => Promise<void>;
+  onAddRelation?: (
+    input: AddProductRelationInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onRemoveRelation?: (id: string) => Promise<void>;
   onReorderRelations?: (
     productId: string,
@@ -128,10 +132,14 @@ export function ProductRelationsCard({
 
   const handleDelete = async (id: string) => {
     if (!onRemoveRelation) return;
-    if (!confirm('Удалить эту связь с товаром?')) return;
+    if (!confirm('Remove this product relation?')) return;
     setDeletingId(id);
     try {
       await onRemoveRelation(id);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to remove relation.'
+      );
     } finally {
       setDeletingId(null);
     }
@@ -158,6 +166,10 @@ export function ProductRelationsCard({
     setIsReordering(true);
     try {
       await onReorderRelations(productId, type, orderedIds);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to reorder relations.'
+      );
     } finally {
       setIsReordering(false);
     }
@@ -171,11 +183,11 @@ export function ProductRelationsCard({
             <div>
               <CardTitle className='flex items-center gap-2 text-sm font-semibold'>
                 <GitFork className='text-primary h-4 w-4' />
-                Связанные товары (Cross-sell, Up-sell, Комплекты)
+                Related Products (Cross-sell, Up-sell, Bundles)
               </CardTitle>
               <CardDescription className='text-xs'>
-                Управление мерчандайзинговыми связями: сопутствующие товары,
-                аксессуары, апселл и замены
+                Manage merchandising relations: cross-sells, accessories,
+                up-sells, and alternatives
               </CardDescription>
             </div>
             {onAddRelation && (
@@ -188,7 +200,7 @@ export function ProductRelationsCard({
                 className='h-8 gap-1.5 self-start rounded-xl text-xs sm:self-auto'
               >
                 <Plus className='h-3.5 w-3.5' />
-                Добавить связь
+                Add Relation
               </Button>
             )}
           </div>
@@ -209,7 +221,7 @@ export function ProductRelationsCard({
               const isActive = activeFilter === ft;
               const label =
                 ft === 'ALL'
-                  ? 'Все'
+                  ? 'All'
                   : RELATION_TYPE_BADGES[ft as ProductRelationType]?.label ||
                     ft;
 
@@ -247,11 +259,11 @@ export function ProductRelationsCard({
                 <GitFork className='h-5 w-5' />
               </div>
               <p className='text-foreground text-xs font-medium'>
-                Нет связанных товаров
+                No related products
               </p>
               <p className='text-muted-foreground mx-auto mt-0.5 max-w-sm text-[11px]'>
-                Добавьте кросс-селл или аксессуары, чтобы повысить средний чек и
-                помочь покупателям найти нужный комплект.
+                Add cross-sells or accessories to raise the average order
+                value and help shoppers find the right set.
               </p>
               {onAddRelation && (
                 <Button
@@ -263,7 +275,7 @@ export function ProductRelationsCard({
                   className='mt-3.5 h-8 gap-1.5 rounded-xl text-xs'
                 >
                   <Plus className='h-3.5 w-3.5' />
-                  Связать товар
+                  Relate a Product
                 </Button>
               )}
             </div>
@@ -272,11 +284,11 @@ export function ProductRelationsCard({
               <Table>
                 <TableHeader>
                   <TableRow className='bg-muted/30 text-[11px]'>
-                    <TableHead className='w-16 text-center'>Порядок</TableHead>
-                    <TableHead>Связанный товар</TableHead>
-                    <TableHead className='w-32'>Тип связи</TableHead>
-                    <TableHead className='w-28'>Добавлено</TableHead>
-                    <TableHead className='w-20 text-right'>Действия</TableHead>
+                    <TableHead className='w-16 text-center'>Order</TableHead>
+                    <TableHead>Related Product</TableHead>
+                    <TableHead className='w-32'>Type</TableHead>
+                    <TableHead className='w-28'>Added</TableHead>
+                    <TableHead className='w-20 text-right'>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,7 +311,7 @@ export function ProductRelationsCard({
                               onClick={() =>
                                 handleMove(idx, 'up', rel.relationType)
                               }
-                              title='Переместить выше'
+                              title='Move up'
                             >
                               <ArrowUp className='h-3 w-3' />
                             </Button>
@@ -319,7 +331,7 @@ export function ProductRelationsCard({
                               onClick={() =>
                                 handleMove(idx, 'down', rel.relationType)
                               }
-                              title='Переместить ниже'
+                              title='Move down'
                             >
                               <ArrowDown className='h-3 w-3' />
                             </Button>
@@ -347,7 +359,7 @@ export function ProductRelationsCard({
                                   className='text-foreground hover:text-primary truncate font-semibold transition'
                                 >
                                   {relProduct?.title ||
-                                    `Товар #${rel.relatedProductId.slice(0, 8)}...`}
+                                    `Product #${rel.relatedProductId.slice(0, 8)}...`}
                                 </Link>
                                 <ExternalLink className='text-muted-foreground h-3 w-3 shrink-0' />
                               </div>
@@ -387,7 +399,7 @@ export function ProductRelationsCard({
                             className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30'
                             disabled={disabled || isDeleting}
                             onClick={() => handleDelete(rel.id)}
-                            title='Удалить связь'
+                            title='Remove relation'
                           >
                             {isDeleting ? (
                               <Loader2 className='h-3.5 w-3.5 animate-spin' />

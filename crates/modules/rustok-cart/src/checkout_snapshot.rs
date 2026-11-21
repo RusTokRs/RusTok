@@ -528,6 +528,28 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                     error,
                 )
             })?;
+        let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
+            map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "parse_cart_status",
+                PortError::validation(
+                    "cart.invalid_status",
+                    format!("invalid cart status `{}`", cart.status),
+                ),
+            )
+        })?;
+        if status != CartStatus::CheckingOut {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "require_checkout_status",
+                PortError::conflict(
+                    "cart.checkout_status_conflict",
+                    format!("cart cannot enter checkout from `{}`", status.as_str()),
+                ),
+            ));
+        }
         snapshot_from_cart(cart).map_err(|error| {
             map_cart_checkout_local_port_error(
                 &context,

@@ -1,31 +1,21 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
 use rustok_api::Permission;
-use rustok_api::locale_tags_match;
 use rustok_api::{
     AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
 };
-use rustok_product::{
-    CatalogService, CommerceError,
-    entities::{product, product_translation},
-};
-use rustok_telemetry::metrics;
+use rustok_product::CommerceError;
 use rustok_web::{HttpError, HttpResult};
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, time::Instant};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{
-    dto::ProductResponse, search::product_translation_title_search_condition,
-    storefront_shipping::product_shipping_profile_slug,
-};
+use crate::dto::ProductResponse;
 
-use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions};
+use super::common::{PaginationParams, ensure_permissions};
 
 const ADMIN_PRODUCT_OWNER: &str = "rustok_product.catalog";
 const ADMIN_PRODUCT_BOUNDARY: &str = "commerce_admin_product_http";
@@ -72,14 +62,6 @@ impl From<&AdminProductErrorContext> for AdminProductDiagnosticContext {
             product_id: optional_uuid_shape(context.product_id),
             operation: context.operation,
         }
-    }
-}
-
-struct AdminProductDiagnosticError;
-
-impl std::fmt::Debug for AdminProductDiagnosticError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
     }
 }
 
@@ -161,6 +143,7 @@ fn product_port_http_policy(
     }
 }
 
+#[cfg(test)]
 fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
     match error {
         CommerceError::Database(_) => (
@@ -218,45 +201,6 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product request conflicts with the current state",
             "conflict",
         ),
-    }
-}
-
-fn adopt_product_error_identity(context: &mut AdminProductErrorContext, error: &CommerceError) {
-    if let CommerceError::ProductNotFound(id) = error {
-        context.product_id = Some(*id);
-    }
-}
-
-pub(crate) fn map_admin_product_error(
-    mut context: AdminProductErrorContext,
-    error: CommerceError,
-) -> HttpError {
-    adopt_product_error_identity(&mut context, &error);
-    let (status, code, message, error_kind) = product_error_policy(&error);
-    let deletion_refusal = matches!(
-        &error,
-        CommerceError::InventoryDeletionBlocked(_) | CommerceError::InventoryQuantityBlocked(_)
-    );
-    let context = AdminProductDiagnosticContext::from(&context);
-    let error = AdminProductDiagnosticError;
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_PRODUCT_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        product_id = ?context.product_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_PRODUCT_BOUNDARY,
-        "commerce admin product operation failed"
-    );
-    let response = HttpError::new(status, code, message);
-    if deletion_refusal {
-        response.with_retryable(false)
-    } else {
-        response
     }
 }
 
@@ -476,271 +420,6 @@ pub(crate) fn map_admin_product_port_error(
     );
 
     HttpError::new(status, code, message).with_retryable(retryable)
-}
-
-/// Shared admin product list handler.
-pub async fn list_products(
-    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Query(params): Query<ListProductsParams>,
-) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
-    ensure_permissions(
-        &auth,
-        &[Permission::PRODUCTS_LIST],
-        "Permission denied: products:list required",
-    )?;
-    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
-    if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
-    }
-    tracing::debug!(
-        boundary = ADMIN_PRODUCT_BOUNDARY,
-        operation = "list_products",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        "handling list_products"
-    );
-
-    let requested_limit = params
-        .pagination
-        .as_ref()
-        .map(|pagination| pagination.per_page);
-    let pagination = params.pagination.unwrap_or_default();
-    let locale = params
-        .locale
-        .as_deref()
-        .unwrap_or(request_context.locale.as_str());
-
-    let mut query = product::Entity::find().filter(product::Column::TenantId.eq(tenant.id));
-
-    if let Some(status) = &params.status {
-        query = query.filter(product::Column::Status.eq(status));
-    }
-    if let Some(vendor) = &params.vendor {
-        query = query.filter(product::Column::Vendor.eq(vendor));
-    }
-    if let Some(product_type) = &params.product_type {
-        query = query.filter(product::Column::ProductType.eq(product_type));
-    }
-    if let Some(search) = &params.search {
-        query = query.filter(product_translation_title_search_condition(
-            runtime.db().get_database_backend(),
-            locale,
-            search,
-        ));
-    }
-
-    let count_started_at = Instant::now();
-    let total = query.clone().count(runtime.db()).await.map_err(|error| {
-        map_admin_product_error(
-            AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products_count"),
-            CommerceError::Database(error),
-        )
-    })?;
-    metrics::record_read_path_query(
-        "http",
-        "commerce.list_products",
-        "count",
-        count_started_at.elapsed().as_secs_f64(),
-        total,
-    );
-
-    let products_started_at = Instant::now();
-    let products = query
-        .order_by_desc(product::Column::CreatedAt)
-        .offset(pagination.offset())
-        .limit(pagination.limit())
-        .all(runtime.db())
-        .await
-        .map_err(|error| {
-            map_admin_product_error(
-                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_products_page"),
-                CommerceError::Database(error),
-            )
-        })?;
-    metrics::record_read_path_query(
-        "http",
-        "commerce.list_products",
-        "products_page",
-        products_started_at.elapsed().as_secs_f64(),
-        products.len() as u64,
-    );
-
-    let product_ids = products
-        .iter()
-        .map(|product| product.id)
-        .collect::<Vec<_>>();
-    let translations = if product_ids.is_empty() {
-        Vec::new()
-    } else {
-        let translations_started_at = Instant::now();
-        let translations = product_translation::Entity::find()
-            .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .filter(product_translation::Column::TenantId.eq(tenant.id))
-            .all(runtime.db())
-            .await
-            .map_err(|error| {
-                map_admin_product_error(
-                    AdminProductErrorContext::new(
-                        tenant.id,
-                        auth.user_id,
-                        None,
-                        "list_product_translations",
-                    ),
-                    CommerceError::Database(error),
-                )
-            })?;
-        metrics::record_read_path_query(
-            "http",
-            "commerce.list_products",
-            "translations",
-            translations_started_at.elapsed().as_secs_f64(),
-            translations.len() as u64,
-        );
-        translations
-    };
-
-    let mut translation_map = HashMap::<Uuid, Vec<product_translation::Model>>::new();
-    for translation in translations {
-        translation_map
-            .entry(translation.product_id)
-            .or_default()
-            .push(translation);
-    }
-    let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product_tags = catalog
-        .load_product_tag_map(
-            tenant.id,
-            &products,
-            locale,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(|error| {
-            map_admin_product_error(
-                AdminProductErrorContext::new(tenant.id, auth.user_id, None, "list_product_tags"),
-                error,
-            )
-        })?;
-
-    let items = products
-        .into_iter()
-        .map(|product| {
-            let translation = translation_map.get(&product.id).and_then(|items| {
-                pick_product_translation(items, locale, tenant.default_locale.as_str())
-            });
-            ProductListItem {
-                id: product.id,
-                status: product.status.to_string(),
-                title: translation
-                    .map(|value| value.title.clone())
-                    .unwrap_or_default(),
-                handle: translation
-                    .map(|value| value.handle.clone())
-                    .unwrap_or_default(),
-                seller_id: product.seller_id,
-                vendor: product.vendor,
-                product_type: product.product_type,
-                shipping_profile_slug: Some(product_shipping_profile_slug(
-                    product.shipping_profile_slug.as_deref(),
-                    &product.metadata,
-                )),
-                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
-                created_at: product.created_at.to_rfc3339(),
-                published_at: product.published_at.map(|value| value.to_rfc3339()),
-            }
-        })
-        .collect::<Vec<_>>();
-
-    metrics::record_read_path_budget(
-        "http",
-        "commerce.list_products",
-        requested_limit,
-        pagination.limit(),
-        items.len(),
-    );
-
-    Ok(Json(PaginatedResponse {
-        data: items,
-        meta: PaginationMeta::new(pagination.page, pagination.limit(), total),
-    }))
-}
-
-fn pick_product_translation<'a>(
-    translations: &'a [product_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a product_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
-}
-
-/// Shared admin product details handler.
-pub async fn show_product(
-    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Path(id): Path<Uuid>,
-) -> HttpResult<Json<ProductResponse>> {
-    ensure_permissions(
-        &auth,
-        &[Permission::PRODUCTS_READ],
-        "Permission denied: products:read required",
-    )?;
-    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
-    if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
-    }
-    if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_product_id",
-            "Product ID must not be nil",
-        ));
-    }
-    tracing::debug!(
-        boundary = ADMIN_PRODUCT_BOUNDARY,
-        operation = "show_product",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        product_id = %id,
-        "handling show_product"
-    );
-
-    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-    let product = service
-        .get_product_with_locale_fallback(
-            tenant.id,
-            id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(|error| {
-            map_admin_product_error(
-                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "show_product"),
-                error,
-            )
-        })?;
-
-    Ok(Json(product))
 }
 
 /// Shared admin product delete handler.

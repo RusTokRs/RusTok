@@ -1,4 +1,4 @@
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind, PortError};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
@@ -154,7 +154,7 @@ impl CheckoutInventoryReservationExecutor {
                 }
             }
 
-            let mut port_context = inventory_port_context(InventoryPortContextInput {
+            let port_context = inventory_port_context(InventoryPortContextInput {
                 tenant_id,
                 actor: actor.clone(),
                 snapshot,
@@ -174,20 +174,22 @@ impl CheckoutInventoryReservationExecutor {
                 {
                     Ok(channel) => resolved_channel = Some(channel),
                     Err(boundary) => {
-                        return Err(self
-                            .record_boundary_failure(
-                                &port_context,
-                                "read_checkout_channel",
-                                tenant_id,
-                                line.id,
-                                planned.reservation_id,
-                                boundary,
-                            )
-                            .await);
+                        // Channel resolution is a commerce-side read; it is not an
+                        // inventory owner boundary and must not touch the reservation journal.
+                        return Err(CheckoutInventoryExecutionError::Boundary {
+                            cart_line_item_id: line.id,
+                            reservation_id: planned.reservation_id,
+                            code: boundary.code,
+                            message: boundary.message,
+                            retryable: boundary.retryable,
+                        });
                     }
                 }
             }
-            port_context.channel = resolved_channel.as_ref().cloned().flatten();
+            let port_context = match resolved_channel.as_ref().cloned().flatten() {
+                Some(channel) => port_context.with_channel(channel),
+                None => port_context,
+            };
             let provider_result = self
                 .reservation_port
                 .reserve_inventory_by_identity(

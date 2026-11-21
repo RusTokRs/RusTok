@@ -21,6 +21,7 @@ export const sourceFiles = {
   productPublic: "crates/modules/rustok-product/src/public_error.rs",
   productCommandPort:
     "crates/modules/rustok-product/src/catalog_command_port.rs",
+  productPorts: "crates/modules/rustok-product/ports/src/ports.rs",
   commands: "crates/modules/rustok-product/src/services/catalog/commands.rs",
   http: "crates/modules/rustok-commerce/src/controllers/products.rs",
   storefront:
@@ -273,18 +274,23 @@ export function verifyInventoryCatalogDeletion({ root = repository } = {}) {
   const removeProduct = body(sources.commands, "delete_product");
   const removeVariant = body(sources.commands, "delete_variant");
   for (const source of [removeProduct, removeVariant]) {
-    require(source, /BootstrapService::delete_records_for_variants_in_tx\(\s*&txn,\s*tenant_id,\s*actor_id,/, "real Product caller tenant");
+    require(source, /\.delete_records_for_variants_in_tx\(\s*&txn,\s*tenant_id,\s*actor_id,/, "real Product caller tenant");
     before(
       source,
-      "BootstrapService::delete_records_for_variants_in_tx",
-      "PricingBootstrapService::delete_prices_for_variants_in_tx",
+      ".delete_records_for_variants_in_tx",
+      ".delete_prices_for_variants_in_tx",
       "Inventory refusal before peer cleanup",
     );
-    require(source, "CatalogDeletionBlocker::ConcurrentChange", "exact final catalog effects");
-  }
+    }
+  require(
+    removeProduct,
+    "crate::ports::ProductInventoryDeletionBlocker::IdentityUnavailable",
+    "exact final catalog effects",
+  );
+  require(removeProduct, "CommerceError::InventoryDeletionBlocked(", "typed owner refusal");
   for (const marker of [
-    "limit((rustok_inventory::MAX_CATALOG_DELETE_VARIANTS + 1) as u64)",
-    "variants.len() > rustok_inventory::MAX_CATALOG_DELETE_VARIANTS",
+    "limit((crate::ports::MAX_CATALOG_DELETE_VARIANTS + 1) as u64)",
+    "variants.len() > crate::ports::MAX_CATALOG_DELETE_VARIANTS",
     "variants.iter().any(|(_, owner)| *owner != tenant_id)",
     "if variants.is_empty()",
     "deleted_variants.rows_affected != variant_ids.len() as u64",
@@ -307,12 +313,18 @@ export function verifyInventoryCatalogDeletion({ root = repository } = {}) {
   );
   require(reverse, "error.kind == kind && error.code == code", "closed code and kind match");
   forbid(reverse, "error.message", "no provider-text classification");
-  require(body(
+  require(
     sources.productCommandPort,
     "product_catalog_command_error_is_terminal",
-  ), "crate::error::inventory_deletion_blocker(error).is_some()", "existing finalized-receipt classification");
+    "finalized-receipt classifier wired",
+  );
+  require(body(
+    sources.productPorts,
+    "product_catalog_command_error_is_terminal",
+  ), "product.inventory_deletion_changed", "existing finalized-receipt classification");
   require(sources.http, "rustok_product::error::inventory_deletion_public_failure", "HTTP safe copy");
-  require(sources.http, "response.with_retryable(false)", "native refusal HTTP metadata");
+  require(sources.http, "(status, code, message, kind, false)", "native refusal forces non-retryable metadata");
+  require(sources.http, "HttpError::new(status, code, message).with_retryable(retryable)", "native refusal HTTP metadata");
   require(sources.graphql, "rustok_product::error::inventory_deletion_public_failure(&error)", "GraphQL safe copy");
   require(sources.graphql, "product_command_error_outcome(&error)", "presentation is not outcome authority");
   forbid(

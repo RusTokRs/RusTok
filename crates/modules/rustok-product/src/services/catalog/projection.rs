@@ -2,7 +2,7 @@ use super::*;
 use crate::ProductFulfillmentRequirement;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_core::{error::Error as CoreError, field_schema::CustomFieldsSchema};
-use sea_orm::FromQueryResult;
+use sea_orm::{DbBackend, FromQueryResult};
 
 struct ProductProjectionRead<'a> {
     locale: &'a str,
@@ -191,16 +191,18 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     tenant_id: Uuid,
     variant_ids: &[Uuid],
     locale: &str,
+    fallback_locale: &str,
     bounded: bool,
 ) -> CommerceResult<HashMap<Uuid, Vec<VariantAxisValueResponse>>> {
     if variant_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
+    let backend = db.get_database_backend();
     let placeholders = variant_ids
         .iter()
         .enumerate()
-        .map(|(i, _)| format!("${}", i + 3))
+        .map(|(index, _)| sql_placeholder(backend, index + 4))
         .collect::<Vec<_>>()
         .join(",");
     let assignment_bound = MAX_STOREFRONT_PRODUCT_VARIANTS as usize * MAX_VARIANT_AXES;
@@ -211,7 +213,8 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     };
     let query = format!(
         r#"
-        SELECT pvav.variant_id, pvav.attribute_id, pvao.option_id, a.code as attribute_code, paot.label
+        SELECT pvav.variant_id, pvav.attribute_id, pvao.option_id, a.code as attribute_code,
+               COALESCE(paot.label, fallback_paot.label, pao.code) AS label
         FROM product_variant_attribute_values pvav
         JOIN product_variants pv
           ON pv.id = pvav.variant_id AND pv.tenant_id = pvav.tenant_id
@@ -223,13 +226,22 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
           ON pvao.tenant_id = pvav.tenant_id AND pvao.value_id = pvav.id
         JOIN product_attributes a ON a.id = pvav.attribute_id AND a.tenant_id = pvav.tenant_id
         JOIN product_attribute_options pao ON pao.id = pvao.option_id AND pao.tenant_id = pvao.tenant_id
-        LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $2
-        WHERE pvav.tenant_id = $1 AND pvav.detached_at IS NULL AND pvav.variant_id IN ({placeholders})
+        LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = {locale_ph}
+        LEFT JOIN product_attribute_option_translations fallback_paot ON fallback_paot.option_id = pao.id AND fallback_paot.locale = {fallback_ph}
+        WHERE pvav.tenant_id = {tenant_ph} AND pvav.detached_at IS NULL AND pvav.variant_id IN ({placeholders})
         ORDER BY pvav.variant_id ASC, pvav.attribute_id ASC, pvao.option_id ASC{assignment_limit}
-        "#
+        "#,
+        locale_ph = sql_placeholder(backend, 2),
+        fallback_ph = sql_placeholder(backend, 3),
+        tenant_ph = sql_placeholder(backend, 1),
     );
 
-    let mut values = vec![tenant_id.into(), locale.into()];
+    // SQLite binds anonymous `?` markers in textual order and the locale joins appear
+    // before the tenant predicate; PostgreSQL binds its numbered placeholders instead.
+    let mut values = match backend {
+        DbBackend::Sqlite => vec![locale.into(), fallback_locale.into(), tenant_id.into()],
+        _ => vec![tenant_id.into(), locale.into(), fallback_locale.into()],
+    };
     for id in variant_ids {
         values.push((*id).into());
     }
@@ -261,6 +273,113 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     }
 
     Ok(result)
+}
+
+#[derive(Debug, FromQueryResult)]
+struct VariantTitlePartRow {
+    variant_id: Uuid,
+    label: String,
+}
+
+/// Loads one display title per variant from the localized option labels of its
+/// axis assignments, ordered by the product's axis positions.
+///
+/// This is the write-side source of the seeded `variant_translations.title` and the
+/// fallback for read-side titles: a human-readable projection of the sparse tuple
+/// (`"Red / M"`), never the machine `combination_identity`. An option without a
+/// translation in the requested or fallback locale falls back to its dictionary
+/// code; a variant without assignments is titled `Default`.
+pub async fn load_variant_display_titles<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_ids: &[Uuid],
+    locale: &str,
+    fallback_locale: &str,
+) -> CommerceResult<HashMap<Uuid, String>> {
+    if variant_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let backend = db.get_database_backend();
+    let variant_placeholders = variant_ids
+        .iter()
+        .enumerate()
+        .map(|(index, _)| sql_placeholder(backend, index + 5))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // SQLite binds anonymous `?` markers in textual order and the locale joins
+    // appear before the tenant predicate; PostgreSQL binds numbered placeholders.
+    let mut values = match backend {
+        DbBackend::Sqlite => vec![
+            locale.into(),
+            fallback_locale.into(),
+            tenant_id.into(),
+            product_id.into(),
+        ],
+        _ => vec![
+            tenant_id.into(),
+            locale.into(),
+            fallback_locale.into(),
+            product_id.into(),
+        ],
+    };
+    for id in variant_ids {
+        values.push((*id).into());
+    }
+    let rows = VariantTitlePartRow::find_by_statement(Statement::from_sql_and_values(
+        backend,
+        format!(
+            r#"
+            SELECT pvav.variant_id,
+                   COALESCE(paot.label, fallback_paot.label, pao.code) AS label
+            FROM product_variant_attribute_values pvav
+            JOIN product_variants pv
+              ON pv.id = pvav.variant_id AND pv.tenant_id = pvav.tenant_id
+            JOIN product_variant_axes axis
+              ON axis.tenant_id = pvav.tenant_id
+             AND axis.product_id = pv.product_id
+             AND axis.attribute_id = pvav.attribute_id
+            JOIN product_variant_attribute_value_options pvao
+              ON pvao.tenant_id = pvav.tenant_id AND pvao.value_id = pvav.id
+            JOIN product_attribute_options pao
+              ON pao.id = pvao.option_id AND pao.tenant_id = pvav.tenant_id
+            LEFT JOIN product_attribute_option_translations paot
+              ON paot.option_id = pao.id AND paot.locale = {locale_ph}
+            LEFT JOIN product_attribute_option_translations fallback_paot
+              ON fallback_paot.option_id = pao.id AND fallback_paot.locale = {fallback_ph}
+            WHERE pvav.tenant_id = {tenant_ph}
+              AND pvav.detached_at IS NULL
+              AND axis.product_id = {product_ph}
+              AND pvav.variant_id IN ({variant_placeholders})
+            ORDER BY pvav.variant_id ASC, axis.position ASC, axis.id ASC, pvao.option_id ASC
+            "#,
+            locale_ph = sql_placeholder(backend, 2),
+            fallback_ph = sql_placeholder(backend, 3),
+            tenant_ph = sql_placeholder(backend, 1),
+            product_ph = sql_placeholder(backend, 4),
+        ),
+        values,
+    ))
+    .all(db)
+    .await?;
+
+    let mut parts_by_variant: HashMap<Uuid, Vec<String>> = HashMap::new();
+    for row in rows {
+        parts_by_variant
+            .entry(row.variant_id)
+            .or_default()
+            .push(row.label);
+    }
+    Ok(parts_by_variant
+        .into_iter()
+        .map(|(variant_id, labels)| {
+            let references = labels.iter().map(String::as_str).collect::<Vec<_>>();
+            (
+                variant_id,
+                generate_variant_title_from_axis_values(references.as_slice()),
+            )
+        })
+        .collect())
 }
 
 pub(crate) fn resolve_image_alt_text(
@@ -479,15 +598,6 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         self.get_product_with_locale_fallback(tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
             .await
-    }
-
-    pub async fn get_product_variant_axes(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: &str,
-    ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
-        load_product_variant_axes(&self.db, tenant_id, product_id, locale, None, false).await
     }
 
     #[instrument(skip(self))]
@@ -756,6 +866,7 @@ impl CatalogService {
                 tenant_id,
                 &variant_ids,
                 locale,
+                fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
                 variant_limit.is_some()
             ),
         )?;
@@ -779,6 +890,7 @@ impl CatalogService {
                 .push(translation);
         }
 
+        let variant_title_fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         let variant_responses: Vec<VariantResponse> = variants
             .into_iter()
             .map(|variant| {
@@ -797,7 +909,18 @@ impl CatalogService {
                     })
                     .collect();
 
-                let title = generate_variant_title(&variant);
+                let translations = variant_translations_by_variant
+                    .remove(&variant.id)
+                    .unwrap_or_default();
+                let axis_values = axis_values_by_variant
+                    .remove(&variant.id)
+                    .unwrap_or_default();
+                let title = variant_display_title(
+                    &translations,
+                    &axis_values,
+                    locale,
+                    variant_title_fallback_locale,
+                );
                 let available_inventory = available_inventory_by_variant
                     .get(&variant.id)
                     .copied()
@@ -810,9 +933,7 @@ impl CatalogService {
                     barcode: variant.barcode,
                     shipping_profile_slug: variant.shipping_profile_slug.clone(),
                     title,
-                    translations: variant_translations_by_variant
-                        .remove(&variant.id)
-                        .unwrap_or_default()
+                    translations: translations
                         .into_iter()
                         .map(|translation| VariantTranslationResponse {
                             locale: translation.locale,
@@ -820,9 +941,7 @@ impl CatalogService {
                         })
                         .collect(),
                     combination_identity: variant.combination_identity,
-                    axis_values: axis_values_by_variant
-                        .remove(&variant.id)
-                        .unwrap_or_default(),
+                    axis_values,
                     prices: price_responses,
                     inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
@@ -948,15 +1067,6 @@ impl CatalogService {
         Ok(response)
     }
 
-    #[instrument(skip(self))]
-    pub async fn get_variant(
-        &self,
-        tenant_id: Uuid,
-        variant_id: Uuid,
-    ) -> CommerceResult<VariantResponse> {
-        self.get_variant_in(&self.db, tenant_id, variant_id).await
-    }
-
     pub(super) async fn get_variant_in<
         C: ConnectionTrait
             + crate::ports::pricing::AsPricingConnection
@@ -1011,6 +1121,7 @@ impl CatalogService {
                 tenant_id,
                 &variant_ids,
                 PLATFORM_FALLBACK_LOCALE,
+                PLATFORM_FALLBACK_LOCALE,
                 false
             ),
         )?;
@@ -1028,7 +1139,15 @@ impl CatalogService {
             })
             .collect();
 
-        let title = generate_variant_title(&variant);
+        let axis_values = axis_values_by_variant
+            .remove(&variant_id)
+            .unwrap_or_default();
+        let title = variant_display_title(
+            &translations,
+            &axis_values,
+            PLATFORM_FALLBACK_LOCALE,
+            PLATFORM_FALLBACK_LOCALE,
+        );
         let available_inventory = available_inventory_by_variant
             .get(&variant.id)
             .copied()
@@ -1049,9 +1168,7 @@ impl CatalogService {
                 })
                 .collect(),
             combination_identity: variant.combination_identity,
-            axis_values: axis_values_by_variant
-                .remove(&variant_id)
-                .unwrap_or_default(),
+            axis_values,
             prices: price_responses,
             inventory_quantity: available_inventory,
             inventory_policy: variant.inventory_policy.clone(),
@@ -1113,6 +1230,327 @@ mod tests {
         assert_eq!(
             resolve_image_alt_text(&translations, "fr", Some("en")),
             None
+        );
+    }
+    async fn variant_projection_db() -> sea_orm::DatabaseConnection {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+        db.execute_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE product_variants (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                sku TEXT,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE product_variant_axes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                attribute_id TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE product_variant_attribute_values (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                variant_id TEXT NOT NULL,
+                attribute_id TEXT NOT NULL,
+                detached_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE product_variant_attribute_value_options (
+                tenant_id TEXT NOT NULL,
+                value_id TEXT NOT NULL,
+                option_id TEXT NOT NULL,
+                PRIMARY KEY (value_id, option_id)
+            );
+            CREATE TABLE product_attributes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                code TEXT NOT NULL
+            );
+            CREATE TABLE product_attribute_options (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                code TEXT NOT NULL
+            );
+            CREATE TABLE product_attribute_option_translations (
+                id TEXT PRIMARY KEY,
+                option_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                label TEXT NOT NULL
+            );
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("create variant projection tables");
+        db
+    }
+
+    async fn seed_variant_projection_fixture(
+        db: &sea_orm::DatabaseConnection,
+    ) -> (Uuid, Uuid, Uuid) {
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let variant_id = Uuid::new_v4();
+        let size_attribute = Uuid::new_v4();
+        let color_attribute = Uuid::new_v4();
+        let size_axis = Uuid::new_v4();
+        let color_axis = Uuid::new_v4();
+        let medium_option = Uuid::new_v4();
+        let red_option = Uuid::new_v4();
+        let size_value = Uuid::new_v4();
+        let color_value = Uuid::new_v4();
+
+        let backend = sea_orm::DatabaseBackend::Sqlite;
+        for (sql, values) in [
+            (
+                "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+                vec![variant_id.into(), tenant_id.into(), product_id.into()],
+            ),
+            (
+                "INSERT INTO product_variant_axes (id, tenant_id, product_id, attribute_id, position) VALUES (?, ?, ?, ?, ?)",
+                vec![
+                    color_axis.into(),
+                    tenant_id.into(),
+                    product_id.into(),
+                    color_attribute.into(),
+                    1_i32.into(),
+                ],
+            ),
+            (
+                "INSERT INTO product_variant_axes (id, tenant_id, product_id, attribute_id, position) VALUES (?, ?, ?, ?, ?)",
+                vec![
+                    size_axis.into(),
+                    tenant_id.into(),
+                    product_id.into(),
+                    size_attribute.into(),
+                    0_i32.into(),
+                ],
+            ),
+            (
+                "INSERT INTO product_attributes (id, tenant_id, code) VALUES (?, ?, ?)",
+                vec![size_attribute.into(), tenant_id.into(), "size".into()],
+            ),
+            (
+                "INSERT INTO product_attributes (id, tenant_id, code) VALUES (?, ?, ?)",
+                vec![color_attribute.into(), tenant_id.into(), "color".into()],
+            ),
+            (
+                "INSERT INTO product_attribute_options (id, tenant_id, code) VALUES (?, ?, ?)",
+                vec![medium_option.into(), tenant_id.into(), "m".into()],
+            ),
+            (
+                "INSERT INTO product_attribute_options (id, tenant_id, code) VALUES (?, ?, ?)",
+                vec![red_option.into(), tenant_id.into(), "red".into()],
+            ),
+            (
+                "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
+                vec![Uuid::new_v4().into(), medium_option.into(), "en".into(), "M".into()],
+            ),
+            (
+                "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
+                vec![Uuid::new_v4().into(), red_option.into(), "en".into(), "Red".into()],
+            ),
+            (
+                "INSERT INTO product_attribute_option_translations (id, option_id, locale, label) VALUES (?, ?, ?, ?)",
+                vec![
+                    Uuid::new_v4().into(),
+                    red_option.into(),
+                    "ru".into(),
+                    "Красный".into(),
+                ],
+            ),
+            (
+                "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?)",
+                vec![color_value.into(), tenant_id.into(), variant_id.into(), color_attribute.into()],
+            ),
+            (
+                "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES (?, ?, ?, ?)",
+                vec![size_value.into(), tenant_id.into(), variant_id.into(), size_attribute.into()],
+            ),
+            (
+                "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES (?, ?, ?)",
+                vec![tenant_id.into(), color_value.into(), red_option.into()],
+            ),
+            (
+                "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES (?, ?, ?)",
+                vec![tenant_id.into(), size_value.into(), medium_option.into()],
+            ),
+        ] {
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(backend, sql, values))
+                .await
+                .expect("seed fixture row");
+        }
+
+        (tenant_id, product_id, variant_id)
+    }
+
+    #[tokio::test]
+    async fn display_titles_order_parts_by_axis_position_and_localize() {
+        let db = variant_projection_db().await;
+        let (tenant_id, product_id, variant_id) = seed_variant_projection_fixture(&db).await;
+
+        let titles = load_variant_display_titles(
+            &db,
+            tenant_id,
+            product_id,
+            &[variant_id],
+            "ru",
+            "en",
+        )
+        .await
+        .expect("load ru titles");
+        assert_eq!(
+            titles.get(&variant_id).map(String::as_str),
+            Some("M / Красный"),
+            "parts follow axis positions, labels resolve in the requested locale"
+        );
+
+        let titles = load_variant_display_titles(
+            &db,
+            tenant_id,
+            product_id,
+            &[variant_id],
+            "de",
+            "en",
+        )
+        .await
+        .expect("load de titles with en fallback");
+        assert_eq!(
+            titles.get(&variant_id).map(String::as_str),
+            Some("M / Red"),
+            "labels resolve through the fallback locale"
+        );
+    }
+
+    #[tokio::test]
+    async fn display_titles_fall_back_to_option_codes_and_default() {
+        let db = variant_projection_db().await;
+        let (tenant_id, product_id, variant_id) = seed_variant_projection_fixture(&db).await;
+        let unassigned_variant = Uuid::new_v4();
+
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+            vec![
+                unassigned_variant.into(),
+                tenant_id.into(),
+                product_id.into(),
+            ],
+        ))
+        .await
+        .expect("insert unassigned variant");
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "DELETE FROM product_attribute_option_translations",
+            vec![],
+        ))
+        .await
+        .expect("remove option translations");
+
+        let titles = load_variant_display_titles(
+            &db,
+            tenant_id,
+            product_id,
+            &[variant_id, unassigned_variant],
+            "en",
+            "en",
+        )
+        .await
+        .expect("load titles without translations");
+        assert_eq!(
+            titles.get(&variant_id).map(String::as_str),
+            Some("m / red"),
+            "dictionary codes back the labels when no locale resolves"
+        );
+        assert!(
+            !titles.contains_key(&unassigned_variant),
+            "a variant without assignments yields no parts; callers title it Default"
+        );
+    }
+
+    #[tokio::test]
+    async fn axis_values_resolve_labels_and_codes_with_fallback() {
+        let db = variant_projection_db().await;
+        let (tenant_id, _product_id, variant_id) = seed_variant_projection_fixture(&db).await;
+
+        let values = load_variant_axis_values(
+            &db,
+            tenant_id,
+            &[variant_id],
+            "ru",
+            "en",
+            false,
+        )
+        .await
+        .expect("load axis values");
+        let mut values = values.get(&variant_id).cloned().unwrap_or_default();
+        values.sort_by_key(|value| value.attribute_id);
+
+        assert_eq!(values.len(), 2);
+        assert!(values.iter().any(|value| {
+            value.code.as_deref() == Some("color") && value.label.as_deref() == Some("Красный")
+        }));
+        assert!(values.iter().any(|value| {
+            value.code.as_deref() == Some("size") && value.label.as_deref() == Some("M")
+        }));
+
+        let values = load_variant_axis_values(
+            &db,
+            tenant_id,
+            &[variant_id],
+            "de",
+            "en",
+            false,
+        )
+        .await
+        .expect("load axis values with fallback");
+        assert!(
+            values
+                .get(&variant_id)
+                .is_some_and(|values| values.iter().all(|value| value
+                    .label
+                    .as_deref()
+                    .is_some_and(|label| label == "Red" || label == "M"))),
+            "labels resolve through the fallback locale"
+        );
+    }
+
+    #[tokio::test]
+    async fn axis_values_exclude_detached_assignments() {
+        let db = variant_projection_db().await;
+        let (tenant_id, _product_id, variant_id) = seed_variant_projection_fixture(&db).await;
+
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "UPDATE product_variant_attribute_values SET detached_at = ? WHERE tenant_id = ? AND variant_id = ?",
+            vec!["detached".into(), tenant_id.into(), variant_id.into()],
+        ))
+        .await
+        .expect("detach assignments");
+
+        let values = load_variant_axis_values(
+            &db,
+            tenant_id,
+            &[variant_id],
+            "en",
+            "en",
+            false,
+        )
+        .await
+        .expect("load axis values");
+        assert!(
+            values.get(&variant_id).is_none_or(|values| values.is_empty()),
+            "detached assignments never surface"
         );
     }
 }

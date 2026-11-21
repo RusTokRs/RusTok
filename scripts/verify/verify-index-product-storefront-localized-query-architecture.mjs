@@ -34,10 +34,14 @@ if (ownerQuery.slice(titleSearchStart).includes('pt.locale')) {
   fail(`${ownerQueryPath} title search became locale-scoped`);
 }
 
-requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
+// The query contract lives in the owner ports package (published contracts);
+// the transport normalization stays owner-internal.
+requireMarkers('crates/modules/rustok-product/ports/src/types.rs', [
   'pub struct StorefrontProductListQuery',
   'pub search: Option<String>',
-  'search: normalize_optional_text(search)',
+]);
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
+  'search: normalize_storefront_product_search(search)?,',
 ]);
 requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
@@ -52,7 +56,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-localized
   'Channel-less visibility',
 ]);
 requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
-  'Status overlay rechecked at `main@',
+  'Status overlay rechecked at main',
   'localized identity fold, cursor v3 and requested -> fallback projection',
   'localized PostgreSQL compiler/decoder/runtime with readiness/admission and repeatable-read page/count snapshot',
   'Channel-less owner semantics are metadata-unrestricted only',

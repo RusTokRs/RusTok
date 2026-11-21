@@ -88,7 +88,7 @@ for (const [value, label] of [
   ['tenant_id_non_nil = !tenant_id.is_nil()', 'payment tenant shape'],
   ['order_id_non_nil = !order_id.is_nil()', 'payment/order shape'],
   ['tenant_id_non_nil = !tenant_id.is_nil()', 'fulfillment tenant shape'],
-  ['commerce_admin_order_detail_http', 'order-detail HTTP boundary'],
+  ['boundary = ADMIN_ORDER_DETAIL_BOUNDARY,', 'order-detail HTTP boundary'],
 ]) requireText(paymentMapper + fulfillmentMapper, value, label);
 
 if (failures.length > 0) {

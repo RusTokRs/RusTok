@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-'use strict';
+'use client';
 
 import * as React from 'react';
 import {
@@ -23,6 +23,7 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Search, Loader2, Package, Check } from 'lucide-react';
+import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
 import type {
   ProductListItem,
   ProductRelationType,
@@ -34,7 +35,10 @@ interface ProductRelationAddDialogProps {
   onOpenChange: (open: boolean) => void;
   productId: string;
   onSearchProducts?: (query: string) => Promise<ProductListItem[]>;
-  onAddRelation: (input: AddProductRelationInput) => Promise<void>;
+  onAddRelation: (
+    input: AddProductRelationInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -46,36 +50,36 @@ const RELATION_TYPE_OPTIONS: Array<{
 }> = [
   {
     value: 'CROSS_SELL',
-    label: 'Cross-sell (Сопутствующий)',
-    description: 'Рекомендуется в корзине или при оформлении заказа',
+    label: 'Cross-sell',
+    description: 'Recommended in the cart or at checkout',
     color:
       'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
   },
   {
     value: 'UP_SELL',
-    label: 'Up-sell (Апселл)',
-    description: 'Более продвинутая или премиальная альтернатива',
+    label: 'Up-sell',
+    description: 'A more advanced or premium alternative',
     color:
       'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
   },
   {
     value: 'RELATED',
-    label: 'Related (Похожий)',
-    description: 'Товары из той же категории или схожего назначения',
+    label: 'Related',
+    description: 'Products from the same category or similar use',
     color:
       'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
   },
   {
     value: 'ACCESSORY',
-    label: 'Accessory (Аксессуар)',
-    description: 'Чехлы, кабели, расходники или совместимые дополнения',
+    label: 'Accessory',
+    description: 'Cases, cables, consumables, or compatible add-ons',
     color:
       'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
   },
   {
     value: 'ALTERNATIVE',
-    label: 'Alternative (Альтернатива)',
-    description: 'Прямая замена, если основной товар временно закончился',
+    label: 'Alternative',
+    description: 'A direct substitute when the main product is out of stock',
     color:
       'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950/40 dark:text-slate-300 dark:border-slate-800'
   }
@@ -98,9 +102,17 @@ export function ProductRelationAddDialog({
     React.useState<ProductListItem | null>(null);
   const [relationType, setRelationType] =
     React.useState<ProductRelationType>('CROSS_SELL');
-  const [position, setPosition] = React.useState<number>(0);
+  const [positionInput, setPositionInput] = React.useState('0');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  // One idempotency key per submitted intent: an ambiguous (network-level)
+  // failure keeps it so a retry replays the owner receipt instead of creating
+  // a duplicate relation; confirmed or definitively refused attempts rotate it.
+  const addAttemptKey = React.useRef<string | null>(null);
+
+  const resetAddAttempt = () => {
+    addAttemptKey.current = null;
+  };
 
   // Debounced search
   React.useEffect(() => {
@@ -109,8 +121,9 @@ export function ProductRelationAddDialog({
       setSearchResults([]);
       setSelectedProduct(null);
       setRelationType('CROSS_SELL');
-      setPosition(0);
+      setPositionInput('0');
       setErrorMessage(null);
+      resetAddAttempt();
       return;
     }
 
@@ -141,18 +154,29 @@ export function ProductRelationAddDialog({
       setErrorMessage('Please select a target product to relate.');
       return;
     }
+    const position = Number.parseInt(positionInput, 10);
+    if (!Number.isInteger(position) || position < 0) {
+      setErrorMessage('Position must be a non-negative whole number.');
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    addAttemptKey.current ??= crypto.randomUUID();
     try {
-      await onAddRelation({
-        productId,
-        relatedProductId: selectedProduct.id,
-        relationType,
-        position
-      });
+      await onAddRelation(
+        {
+          productId,
+          relatedProductId: selectedProduct.id,
+          relationType,
+          position
+        },
+        addAttemptKey.current
+      );
+      resetAddAttempt();
       onOpenChange(false);
     } catch (err: unknown) {
+      if (isDefinitiveProductWriteRefusal(err)) resetAddAttempt();
       setErrorMessage(
         err instanceof Error ? err.message : 'Failed to add relation'
       );
@@ -167,7 +191,7 @@ export function ProductRelationAddDialog({
         <form onSubmit={handleSubmit} className='space-y-4'>
           <DialogHeader>
             <DialogTitle className='text-base font-semibold'>
-              Добавить связь с товаром
+              Add Product Relation
             </DialogTitle>
           </DialogHeader>
 
@@ -180,14 +204,14 @@ export function ProductRelationAddDialog({
           {/* Product Search & Picker */}
           <div className='space-y-2'>
             <Label className='text-xs font-medium'>
-              Целевой товар <span className='text-destructive'>*</span>
+              Target Product <span className='text-destructive'>*</span>
             </Label>
             <div className='relative'>
               <Search className='text-muted-foreground absolute top-2.5 left-3 h-4 w-4' />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder='Поиск по названию или handle...'
+                placeholder='Search by title or handle...'
                 className='h-9 rounded-xl pl-9 text-xs'
                 disabled={disabled || isSubmitting}
               />
@@ -214,7 +238,7 @@ export function ProductRelationAddDialog({
                   </div>
                 </div>
                 <Badge variant='outline' className='text-[10px]'>
-                  Выбран
+                  Selected
                 </Badge>
               </div>
             )}
@@ -227,6 +251,7 @@ export function ProductRelationAddDialog({
                     key={item.id}
                     type='button'
                     onClick={() => {
+                      resetAddAttempt();
                       setSelectedProduct(item);
                       setSearchResults([]);
                     }}
@@ -252,7 +277,7 @@ export function ProductRelationAddDialog({
           {/* Relation Type Picker */}
           <div className='space-y-2'>
             <Label className='text-xs font-medium'>
-              Тип связи <span className='text-destructive'>*</span>
+              Relation Type <span className='text-destructive'>*</span>
             </Label>
             <div className='grid grid-cols-1 gap-2'>
               {RELATION_TYPE_OPTIONS.map((opt) => {
@@ -261,7 +286,10 @@ export function ProductRelationAddDialog({
                   <button
                     key={opt.value}
                     type='button'
-                    onClick={() => setRelationType(opt.value)}
+                    onClick={() => {
+                      resetAddAttempt();
+                      setRelationType(opt.value);
+                    }}
                     className={`flex items-start justify-between rounded-xl border p-2.5 text-left transition ${
                       isSelected
                         ? 'border-primary bg-primary/5 ring-primary ring-1'
@@ -296,13 +324,16 @@ export function ProductRelationAddDialog({
           {/* Position Input */}
           <div className='space-y-1.5'>
             <Label className='text-xs font-medium'>
-              Порядковый номер (Position)
+              Position
             </Label>
             <Input
               type='number'
               min='0'
-              value={position}
-              onChange={(e) => setPosition(parseInt(e.target.value, 10) || 0)}
+              value={positionInput}
+              onChange={(e) => {
+                resetAddAttempt();
+                setPositionInput(e.target.value);
+              }}
               className='h-9 rounded-xl font-mono text-xs'
               disabled={disabled || isSubmitting}
             />
@@ -317,7 +348,7 @@ export function ProductRelationAddDialog({
               disabled={isSubmitting}
               className='rounded-xl'
             >
-              Отмена
+              Cancel
             </Button>
             <Button
               type='submit'
@@ -328,10 +359,10 @@ export function ProductRelationAddDialog({
               {isSubmitting ? (
                 <>
                   <Loader2 className='mr-1.5 h-3.5 w-3.5 animate-spin' />
-                  Сохранение...
+                  Saving...
                 </>
               ) : (
-                'Добавить связь'
+                'Add Relation'
               )}
             </Button>
           </DialogFooter>

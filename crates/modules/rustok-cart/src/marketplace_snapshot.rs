@@ -77,7 +77,11 @@ impl MarketplaceCartSnapshotReadPort for CartMarketplaceSnapshotService {
         request: ListMarketplaceCartLineSnapshotsRequest,
     ) -> Result<Vec<CartMarketplaceLineSnapshot>, PortError> {
         let owner_operation = LIST_MARKETPLACE_LINE_SNAPSHOTS_OPERATION;
-        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::read())?;
+        require_marketplace_snapshot_policy(
+            &context,
+            owner_operation,
+            PortCallPolicy::read(),
+        )?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         if request.cart_id.is_nil() {
             return Err(PortError::validation(
@@ -106,7 +110,11 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         request: AddMarketplaceCartLineRequest,
     ) -> Result<AddMarketplaceCartLineItemResponse, PortError> {
         let owner_operation = ADD_MARKETPLACE_LINE_ITEM_OPERATION;
-        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
+        require_marketplace_snapshot_policy(
+            &context,
+            owner_operation,
+            PortCallPolicy::write(),
+        )?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         if request.cart_id.is_nil() {
             return Err(PortError::validation(
@@ -132,7 +140,11 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         request: BindMarketplaceCartLineSnapshotRequest,
     ) -> Result<CartMarketplaceLineSnapshot, PortError> {
         let owner_operation = BIND_MARKETPLACE_LINE_SNAPSHOT_OPERATION;
-        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
+        require_marketplace_snapshot_policy(
+            &context,
+            owner_operation,
+            PortCallPolicy::write(),
+        )?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         if request.cart_id.is_nil() {
             return Err(PortError::validation(
@@ -293,8 +305,13 @@ fn map_cart_error(
             code,
             retryable,
             ..
-        }
-        | CartError::ShippingBoundary {
+        } => PortError::new(
+            kind,
+            code,
+            "marketplace cart snapshot tax recalculation failed",
+            retryable,
+        ),
+        CartError::ShippingBoundary {
             kind,
             code,
             retryable,

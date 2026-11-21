@@ -42,7 +42,7 @@ const storefrontSliceComplete = [
   complete("crates/modules/rustok-product/storefront/src/ui/leptos.rs", ['name="category_id"', 'name="sort_by"', 'name="sort_direction"']),
   complete("crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs", ["StorefrontProductListQuery::try_from_transport"]),
   complete("crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs", ["category_id: controls.category_id", "sort_by: controls.sort_by", "sort_direction: controls.sort_direction"]),
-  complete("crates/modules/rustok-product/src/services/catalog/queries.rs", ["PrimaryCategoryId.eq(category_id)", "StorefrontProductSortBy::PublishedAt", "StorefrontProductSortBy::CreatedAt"]),
+  complete("crates/modules/rustok-product/src/services/catalog/queries.rs", ["PrimaryCategoryId.is_in(subtree)", "StorefrontProductSortBy::PublishedAt", "StorefrontProductSortBy::CreatedAt"]),
 ].every(Boolean);
 
 const adminSliceComplete = [
@@ -51,8 +51,8 @@ const adminSliceComplete = [
   complete("crates/modules/rustok-product/admin/src/catalog_transport.rs", ["use_context::<ProductAdminListInput>()", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", ["AdminProductListQuery::try_from_transport", "list_admin_products_with_query"]),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection"]),
-  (complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Column::Status.eq(", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"]) ||
-   complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"])),
+  (complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Column::Status.eq(", "PrimaryCategoryId.is_in(subtree)", "order_by_asc", "order_by_desc"]) ||
+   complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.is_in(subtree)", "order_by_asc", "order_by_desc"])),
 ].every(Boolean);
 
 const attributeFiltersComplete = [

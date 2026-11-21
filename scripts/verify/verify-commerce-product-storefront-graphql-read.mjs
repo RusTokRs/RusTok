@@ -44,34 +44,47 @@ function resolverSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
+// The module adapter (src/ports) implements the capabilities; the request/response
+// contracts and scope-specific unavailability codes are published by the ports package.
 const ports = read("crates/modules/rustok-product/src/ports.rs");
+const contractsTypes = read("crates/modules/rustok-product/ports/src/types.rs");
+const contractsPorts = read("crates/modules/rustok-product/ports/src/ports.rs");
 for (const required of [
   "async fn list_filtered_published_products(",
-  "pub struct FilteredPublishedProductsRequest",
-  "pub query: StorefrontProductListQuery",
-  "product.filtered_published_list_unavailable",
-  "filtered product listing is unavailable",
   "LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION",
   "CatalogService::list_published_products_with_query(",
   "async fn read_storefront_product_projection(",
-  "pub enum StorefrontProductProjectionSubject",
-  "pub struct StorefrontProductProjectionRequest",
-  "product.storefront_detail_unavailable",
   "READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION",
   "async fn list_legacy_storefront_products(",
-  "pub struct LegacyStorefrontProductsRequest",
-  "pub struct LegacyStorefrontProductList",
-  "pub struct LegacyStorefrontProductListItem",
-  "product.legacy_storefront_list_unavailable",
   "LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION",
   "list_legacy_storefront_products_with_locale_fallback(",
 ]) {
   requireText(ports, required, `Product storefront read capability must contain ${required}`);
 }
+for (const required of [
+  "pub struct FilteredPublishedProductsRequest",
+  "pub query: StorefrontProductListQuery",
+  "pub enum StorefrontProductProjectionSubject",
+  "pub struct StorefrontProductProjectionRequest",
+  "pub struct LegacyStorefrontProductsRequest",
+  "pub struct LegacyStorefrontProductList",
+  "pub struct LegacyStorefrontProductListItem",
+]) {
+  requireText(contractsTypes, required, `Product storefront read capability must contain ${required}`);
+}
+for (const required of [
+  "product.filtered_published_list_unavailable",
+  "filtered product listing is unavailable",
+  "product.storefront_projection_unavailable",
+  "product.legacy_storefront_list_unavailable",
+]) {
+  requireText(contractsPorts, required, `Product storefront read capability must contain ${required}`);
+}
 
-const publishedStart = ports.indexOf("pub struct PublishedProductsRequest");
-const filteredStart = ports.indexOf("pub struct FilteredPublishedProductsRequest", publishedStart);
-const published = ports.slice(publishedStart, filteredStart);
+// The public-shape freeze slices the published contract declarations.
+const publishedStart = contractsTypes.indexOf("pub struct PublishedProductsRequest");
+const filteredStart = contractsTypes.indexOf("pub struct FilteredPublishedProductsRequest", publishedStart);
+const published = contractsTypes.slice(publishedStart, filteredStart);
 for (const forbidden of ["search", "category_id", "sort_by", "attribute_filters", "query:"]) {
   forbidText(
     published,

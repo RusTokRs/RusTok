@@ -53,7 +53,7 @@ for (const marker of ["product/admin/catalog-list", "AdminProductListQuery::try_
 for (const marker of ["AdminProductListQuery", "status must be `draft`, `active`, or `archived`", "category_id", "sort_by", "sort_direction"]) {
   requireText(files.ownerTypes, marker, `owner input must retain ${marker}`);
 }
-for (const marker of ["TenantId.eq(tenant_id)", "Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc", "Id)"]) {
+for (const marker of ["TenantId.eq(tenant_id)", "Column::Status.eq(", "PrimaryCategoryId.is_in(subtree)", "order_by_asc", "order_by_desc", "Id)"]) {
   requireText(files.ownerQuery, marker, `owner execution must retain ${marker}`);
 }
 // The Commerce root consumes the Product owner read port (`list_admin_products`)

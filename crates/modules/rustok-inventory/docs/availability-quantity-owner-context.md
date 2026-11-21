@@ -38,8 +38,8 @@ validation envelope:
 - message `inventory request context is invalid`.
 
 A parse rejection now records tenant original/trimmed lengths, a static parse-failed fact, bounded
-context shape, stable code, message length, retryability, correlation, and boundary. It no longer
-records the UUID parser cause, tenant text, complete mapped error, or other raw context values.
+context shape, stable code, message length, retryability, correlation, and boundary. It no longer records the UUID parser cause,
+tenant text, complete mapped error, or other raw context values.
 
 No actor validation was added.
 

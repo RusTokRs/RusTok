@@ -30,8 +30,8 @@ function fixture(options = {}) {
   write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", `product/admin/catalog-list AdminProductListQuery::try_from_transport list_admin_products_with_query PRODUCTS_LIST`);
   write(root, "crates/modules/rustok-product/src/services/catalog/types.rs", `AdminProductListQuery status must be \`draft\`, \`active\`, or \`archived\` category_id sort_by sort_direction`);
   write(root, "crates/modules/rustok-product/src/services/catalog/admin_queries.rs", options.omitOwnerCategory
-    ? `TenantId.eq(tenant_id) Status.eq(status) order_by_asc order_by_desc Id)`
-    : `TenantId.eq(tenant_id) Status.eq(status) PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc Id)`);
+    ? `TenantId.eq(tenant_id) Column::Status.eq( order_by_asc order_by_desc Id)`
+    : `TenantId.eq(tenant_id) Column::Status.eq( PrimaryCategoryId.is_in(subtree) order_by_asc order_by_desc Id)`);
   write(root, "crates/modules/rustok-commerce/src/graphql/product_catalog.rs", `async fn admin_product_catalog require_commerce_permission product_query_tenant list_admin_products(`);
   write(root, "crates/modules/rustok-product/docs/implementation-plan.md", `Connect admin search/status/category and deterministic date sorting\nverify-product-admin-category-sort.mjs`);
   return root;

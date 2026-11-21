@@ -31,6 +31,8 @@ import {
 } from '@/shared/ui/shadcn/card';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
+import { SearchableSelect } from '../shared/searchable-select';
+import { SearchableCategorySelect } from '../categories/searchable-category-select';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -194,9 +196,11 @@ export function SchemaAuthoringCard({
     }
   };
 
-  const position = (raw: string) => {
+  // Fail closed: a position that does not parse is an operator error, never a
+  // silent 0 that would reorder the group to the front.
+  const parsePosition = (raw: string): number | null => {
     const parsed = Number.parseInt(raw, 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
+    return Number.isInteger(parsed) ? parsed : null;
   };
 
   return (
@@ -272,19 +276,18 @@ export function SchemaAuthoringCard({
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-mode-category'>Category</Label>
-              <select
+              <SearchableCategorySelect
                 id='schema-mode-category'
-                className={selectClassName}
+                options={categories.map((category) => ({
+                  id: category.id,
+                  label: category.name
+                }))}
                 value={modeCategory}
-                onChange={(event) => setModeCategory(event.target.value)}
-              >
-                <option value=''>Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select a category'
+                searchPlaceholder='Search categories...'
+                onChange={setModeCategory}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-mode-mode'>Mode</Label>
@@ -302,37 +305,35 @@ export function SchemaAuthoringCard({
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-mode-schema'>Schema (use_schema)</Label>
-              <select
+              <SearchableSelect
                 id='schema-mode-schema'
-                className={selectClassName}
+                options={schemas.map((schema) => ({
+                  value: schema.id,
+                  label: schema.name
+                }))}
                 value={modeSchema}
+                emptyValue=''
+                emptyLabel='No schema'
+                searchPlaceholder='Search schemas...'
                 disabled={mode !== 'use_schema'}
-                onChange={(event) => setModeSchema(event.target.value)}
-              >
-                <option value=''>No schema</option>
-                {schemas.map((schema) => (
-                  <option key={schema.id} value={schema.id}>
-                    {schema.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setModeSchema}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-mode-clone'>Clone from category</Label>
-              <select
+              <SearchableCategorySelect
                 id='schema-mode-clone'
-                className={selectClassName}
+                options={categories.map((category) => ({
+                  id: category.id,
+                  label: category.name
+                }))}
                 value={modeCloneFrom}
+                emptyValue=''
+                emptyLabel='No source category'
+                searchPlaceholder='Search categories...'
                 disabled={mode !== 'clone_from_category'}
-                onChange={(event) => setModeCloneFrom(event.target.value)}
-              >
-                <option value=''>No source category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setModeCloneFrom}
+              />
             </div>
           </div>
           <Button
@@ -372,19 +373,18 @@ export function SchemaAuthoringCard({
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-group-schema'>Schema</Label>
-              <select
+              <SearchableSelect
                 id='schema-group-schema'
-                className={selectClassName}
+                options={schemas.map((schema) => ({
+                  value: schema.id,
+                  label: schema.name
+                }))}
                 value={groupSchema}
-                onChange={(event) => setGroupSchema(event.target.value)}
-              >
-                <option value=''>Select a schema</option>
-                {schemas.map((schema) => (
-                  <option key={schema.id} value={schema.id}>
-                    {schema.name}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select a schema'
+                searchPlaceholder='Search schemas...'
+                onChange={setGroupSchema}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-group-code'>Group code</Label>
@@ -423,6 +423,11 @@ export function SchemaAuthoringCard({
                 toast.error('Select a schema and provide the group code');
                 return;
               }
+              const position = parsePosition(groupPosition);
+              if (position === null) {
+                toast.error('Position must be a whole number');
+                return;
+              }
               void run(
                 'schema-group',
                 () =>
@@ -430,7 +435,7 @@ export function SchemaAuthoringCard({
                     schemaId: groupSchema,
                     code: groupCode,
                     label: groupLabel.trim() || groupCode,
-                    position: position(groupPosition)
+                    position
                   }),
                 'Schema attribute group created'
               );
@@ -448,35 +453,33 @@ export function SchemaAuthoringCard({
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-bind-schema'>Schema</Label>
-              <select
+              <SearchableSelect
                 id='schema-bind-schema'
-                className={selectClassName}
+                options={schemas.map((schema) => ({
+                  value: schema.id,
+                  label: schema.name
+                }))}
                 value={bindSchema}
-                onChange={(event) => setBindSchema(event.target.value)}
-              >
-                <option value=''>Select a schema</option>
-                {schemas.map((schema) => (
-                  <option key={schema.id} value={schema.id}>
-                    {schema.name}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select a schema'
+                searchPlaceholder='Search schemas...'
+                onChange={setBindSchema}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-bind-attribute'>Attribute</Label>
-              <select
+              <SearchableSelect
                 id='schema-bind-attribute'
-                className={selectClassName}
+                options={attributes.map((attribute) => ({
+                  value: attribute.id,
+                  label: attribute.label
+                }))}
                 value={bindSchemaAttribute}
-                onChange={(event) => setBindSchemaAttribute(event.target.value)}
-              >
-                <option value=''>Select an attribute</option>
-                {attributes.map((attribute) => (
-                  <option key={attribute.id} value={attribute.id}>
-                    {attribute.label}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select an attribute'
+                searchPlaceholder='Search attributes...'
+                onChange={setBindSchemaAttribute}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='schema-bind-group'>Group code (optional)</Label>
@@ -541,6 +544,11 @@ export function SchemaAuthoringCard({
                 toast.error('Select a schema and an attribute');
                 return;
               }
+              const position = parsePosition(bindSchemaPosition);
+              if (position === null) {
+                toast.error('Position must be a whole number');
+                return;
+              }
               void run(
                 'schema-bind',
                 () =>
@@ -554,7 +562,7 @@ export function SchemaAuthoringCard({
                     groupCode: bindSchemaGroup.trim() || null,
                     isRequired: bindSchemaRequired,
                     isDisabled: bindSchemaDisabled,
-                    position: position(bindSchemaPosition)
+                    position
                   }),
                 'Attribute bound to schema'
               );
@@ -572,21 +580,18 @@ export function SchemaAuthoringCard({
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <div className='grid gap-1.5'>
               <Label htmlFor='category-group-category'>Category</Label>
-              <select
+              <SearchableCategorySelect
                 id='category-group-category'
-                className={selectClassName}
+                options={categories.map((category) => ({
+                  id: category.id,
+                  label: category.name
+                }))}
                 value={categoryGroupCategory}
-                onChange={(event) =>
-                  setCategoryGroupCategory(event.target.value)
-                }
-              >
-                <option value=''>Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select a category'
+                searchPlaceholder='Search categories...'
+                onChange={setCategoryGroupCategory}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='category-group-code'>Group code</Label>
@@ -627,6 +632,11 @@ export function SchemaAuthoringCard({
                 toast.error('Select a category and provide the group code');
                 return;
               }
+              const position = parsePosition(categoryGroupPosition);
+              if (position === null) {
+                toast.error('Position must be a whole number');
+                return;
+              }
               void run(
                 'category-group',
                 () =>
@@ -634,7 +644,7 @@ export function SchemaAuthoringCard({
                     categoryId: categoryGroupCategory,
                     code: categoryGroupCode,
                     label: categoryGroupLabel.trim() || categoryGroupCode,
-                    position: position(categoryGroupPosition)
+                    position
                   }),
                 'Category attribute group created'
               );
@@ -652,37 +662,33 @@ export function SchemaAuthoringCard({
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <div className='grid gap-1.5'>
               <Label htmlFor='category-bind-category'>Category</Label>
-              <select
+              <SearchableCategorySelect
                 id='category-bind-category'
-                className={selectClassName}
+                options={categories.map((category) => ({
+                  id: category.id,
+                  label: category.name
+                }))}
                 value={bindCategory}
-                onChange={(event) => setBindCategory(event.target.value)}
-              >
-                <option value=''>Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select a category'
+                searchPlaceholder='Search categories...'
+                onChange={setBindCategory}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='category-bind-attribute'>Attribute</Label>
-              <select
+              <SearchableSelect
                 id='category-bind-attribute'
-                className={selectClassName}
+                options={attributes.map((attribute) => ({
+                  value: attribute.id,
+                  label: attribute.label
+                }))}
                 value={bindCategoryAttribute}
-                onChange={(event) =>
-                  setBindCategoryAttribute(event.target.value)
-                }
-              >
-                <option value=''>Select an attribute</option>
-                {attributes.map((attribute) => (
-                  <option key={attribute.id} value={attribute.id}>
-                    {attribute.label}
-                  </option>
-                ))}
-              </select>
+                emptyValue=''
+                emptyLabel='Select an attribute'
+                searchPlaceholder='Search attributes...'
+                onChange={setBindCategoryAttribute}
+              />
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='category-bind-group'>Group code (optional)</Label>
@@ -752,6 +758,11 @@ export function SchemaAuthoringCard({
                 toast.error('Select a category and an attribute');
                 return;
               }
+              const position = parsePosition(bindCategoryPosition);
+              if (position === null) {
+                toast.error('Position must be a whole number');
+                return;
+              }
               void run(
                 'category-bind',
                 () =>
@@ -765,7 +776,7 @@ export function SchemaAuthoringCard({
                     groupCode: bindCategoryGroup.trim() || null,
                     bindingKind: bindCategoryKind,
                     isDisabled: bindCategoryDisabled,
-                    position: position(bindCategoryPosition)
+                    position
                   }),
                 'Attribute bound to category'
               );

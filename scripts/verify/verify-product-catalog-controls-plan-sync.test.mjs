@@ -63,7 +63,7 @@ function fixture({
   write(root, "crates/modules/rustok-product/storefront/src/ui/leptos.rs", `name="category_id" name="sort_by" name="sort_direction" read_route_query_value(&route_context, "attribute_filters") name="attribute_filters"`);
   write(root, "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs", `StorefrontProductListQuery::try_from_transport try_from_transport_with_attribute_filters attribute_filters: Vec<String>`);
   write(root, "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs", `category_id: controls.category_id sort_by: controls.sort_by sort_direction: controls.sort_direction attributeFilters attribute_filters: controls.attribute_filters`);
-  write(root, "crates/modules/rustok-product/src/services/catalog/queries.rs", `PrimaryCategoryId.eq(category_id) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt load_catalog_attribute_filter_conditions list_query.attribute_filters`);
+  write(root, "crates/modules/rustok-product/src/services/catalog/queries.rs", `PrimaryCategoryId.is_in(subtree) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt load_catalog_attribute_filter_conditions list_query.attribute_filters`);
 
   write(root, "crates/modules/rustok-product/admin/src/catalog_controls.rs", `ProductAdminListInput pub category_id: Option<String> pub sort_by: Option<String> pub sort_direction: Option<String> pub attribute_filters: Vec<String> serialize_attribute_filters`);
   write(root, "crates/modules/rustok-product/admin/src/ui/catalog_admin.rs", `name="category_id" name="sort_by" name="sort_direction" provide_context(catalog_controls) read_route_query_value(&route_context, "attribute_filters") name="attribute_filters"`);
@@ -71,8 +71,8 @@ function fixture({
   write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", `AdminProductListQuery::try_from_transport try_from_transport_with_attribute_filters list_admin_products_with_query attribute_filters: Vec<String>`);
   write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", `AdminProductCatalogFilter categoryId sortBy sortDirection attributeFilters attribute_filters: controls.attribute_filters`);
   write(root, "crates/modules/rustok-product/src/services/catalog/admin_queries.rs", omitAdminSource
-    ? `PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc load_catalog_attribute_filter_conditions list_query.attribute_filters`
-    : `Status.eq(status) PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc load_catalog_attribute_filter_conditions list_query.attribute_filters`);
+    ? `PrimaryCategoryId.is_in(subtree) order_by_asc order_by_desc load_catalog_attribute_filter_conditions list_query.attribute_filters`
+    : `Status.eq(status) PrimaryCategoryId.is_in(subtree) order_by_asc order_by_desc load_catalog_attribute_filter_conditions list_query.attribute_filters`);
   write(root, "crates/modules/rustok-product/src/services/catalog/types.rs", `pub struct ProductAttributeFilter attribute_filters: Vec<ProductAttributeFilter> MAX_ATTRIBUTE_FILTERS`);
   write(root, "crates/modules/rustok-product/src/services/catalog/attribute_filters.rs", omitAttributeExecution
     ? `is_filterable = TRUE product_attribute_value_translations product_attribute_value_options`

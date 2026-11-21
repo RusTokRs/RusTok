@@ -103,7 +103,7 @@ requireAll(deployment, [
   ".with_authentication(authentication)",
   "let provider = Arc::new(provider);",
   "ProductCatalogReadRuntime::external(provider.clone())",
-  ".with_variant_identity_read_port(provider)",
+  ".with_variant_identity_read_port(provider.clone())",
   "ctx.shared_insert(runtime);",
   "remote Product catalog authentication configuration failed",
   "remote Product catalog provider initialization failed",

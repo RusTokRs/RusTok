@@ -33,31 +33,19 @@ const between = (content, start, end, label) => {
 const policy = between(
   products,
   'fn product_error_policy(',
-  'fn adopt_product_error_identity(',
+  'pub(crate) fn admin_product_command_idempotency_key(',
   'admin product policy',
 );
-const identityAdoption = between(
-  products,
-  'fn adopt_product_error_identity(',
-  'pub(crate) fn map_admin_product_error(',
-  'admin product identity adoption',
-);
-const mapper = between(
-  products,
-  'pub(crate) fn map_admin_product_error(',
-  'pub(crate) fn admin_product_command_idempotency_key(',
-  'admin product mapper',
-);
 const listRoute = between(
-  products,
+  adminProducts,
   'pub async fn list_products(',
-  'fn pick_product_translation',
+  '/// Create admin ecommerce product',
   'admin product list route',
 );
 const showRoute = between(
-  products,
+  adminProducts,
   'pub async fn show_product(',
-  '/// Shared admin product delete handler.',
+  '/// Update admin ecommerce product',
   'admin product show route',
 );
 const deleteRoute = between(
@@ -104,7 +92,6 @@ for (const [value, label] of [
   ['product_id: Option<Uuid>,', 'product identity field'],
   ["operation: &'static str,", 'operation field'],
   ['pub(crate) fn new(', 'shared context constructor'],
-  ['pub(crate) fn map_admin_product_error(', 'shared typed mapper'],
 ]) requireText(products, value, label);
 
 for (const [value, label] of [
@@ -133,46 +120,18 @@ for (const [value, label] of [
 ]) requireText(policy + products.slice(products.indexOf("pub(crate) fn product_core_http_policy("), products.indexOf("fn product_error_policy(")), value, label);
 
 for (const [value, label] of [
-  ['CommerceError::ProductNotFound(id)', 'typed product identity variant'],
-  ['context.product_id = Some(*id)', 'typed product identity adoption'],
-]) requireText(identityAdoption, value, label);
-
-for (const [value, label] of [
-  ['error = ?error', 'typed cause log'],
-  ['owner = ADMIN_PRODUCT_OWNER', 'owner log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['actor_id = %context.actor_id', 'actor log'],
-  ['product_id = ?context.product_id', 'product identity log'],
-  ['operation = %context.operation', 'operation log'],
-  ['error_kind,', 'error-kind log'],
-  ['public_code = code', 'public-code log'],
-  ['status = %status', 'status log'],
-  ['boundary = ADMIN_PRODUCT_BOUNDARY', 'boundary log'],
-  ['HttpError::new(status, code, message)', 'single static envelope constructor'],
-]) requireText(mapper, value, label);
-
-for (const [value, label] of [
   ['Permission::PRODUCTS_LIST', 'list permission'],
   ['let requested_limit = params', 'requested limit capture'],
   ['let pagination = params.pagination.unwrap_or_default();', 'list pagination'],
   ['.unwrap_or(request_context.locale.as_str())', 'locale fallback'],
-  ['product::Column::TenantId.eq(tenant.id)', 'tenant filter'],
-  ['product::Column::Status.eq(status)', 'status filter'],
-  ['product::Column::Vendor.eq(vendor)', 'vendor filter'],
-  ['product::Column::ProductType.eq(product_type)', 'product type filter'],
-  ['product_translation_title_search_condition(', 'localized search filter'],
-  ['"list_products_count"', 'count operation'],
-  ['"list_products_page"', 'page operation'],
-  ['"list_product_translations"', 'translations operation'],
-  ['"list_product_tags"', 'tag operation'],
-  ['CommerceError::Database(error)', 'typed database wrapping'],
-  ['.offset(pagination.offset())', 'page offset'],
-  ['.limit(pagination.limit())', 'page limit'],
-  ['.load_product_tag_map(', 'tag map owner call'],
-  ['pick_product_translation(items, locale, tenant.default_locale.as_str())', 'translation fallback'],
-  ['metrics::record_read_path_query(', 'query metrics'],
+  ['request_context.correlation_id.clone()', 'upstream correlation'],
+  ['port_context.with_channel(channel)', 'channel scoping'],
+  ['.product_catalog_read_port()', 'owner read port'],
+  ['.list_admin_products(', 'owner list operation'],
+  ['rustok_product::AdminProductsRequest {', 'typed owner request'],
+  ['map_admin_product_port_error(', 'owner error mapper'],
   ['metrics::record_read_path_budget(', 'budget metrics'],
-  ['PaginationMeta::new(pagination.page, pagination.limit(), total)', 'pagination response'],
+  ['PaginationMeta::new(products.page, products.per_page, products.total)', 'pagination response'],
 ]) requireText(listRoute, value, label);
 
 for (const [block, permission, operation, serviceCall, response, label] of [
@@ -180,7 +139,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
     showRoute,
     'Permission::PRODUCTS_READ',
     '"show_product"',
-    '.get_product_with_locale_fallback(',
+    '.read_product_projection(',
     'Ok(Json(product))',
     'show route',
   ],
@@ -213,7 +172,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
   requireText(block, operation, `${label} operation`);
   requireText(block, 'Some(id)', `${label} product identity`);
   requireText(block, serviceCall, `${label} service contract`);
-  requireText(block, block === showRoute ? 'map_admin_product_error(' : 'map_admin_product_port_error(', `${label} owner error mapper`);
+  requireText(block, 'map_admin_product_port_error(', `${label} owner error mapper`);
   requireText(block, response, `${label} response contract`);
 }
 
@@ -260,12 +219,8 @@ for (const [value, label] of [
   ]),
 ]) requireText(adminProducts, value, label);
 
-const sharedMapperUses =
-  products.match(/map_admin_product_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
-if (sharedMapperUses.length !== 5) {
-  failures.push(
-    `expected five context-aware shared read mapper callsites, found ${sharedMapperUses.length}`,
-  );
+if (products.includes('map_admin_product_error(')) {
+  failures.push('unmounted shared read mapper must stay removed with its handlers');
 }
 const wrapperMapperUses =
   adminProducts.match(/map_admin_product_port_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
@@ -308,7 +263,7 @@ const scope = between(products, 'pub(crate) fn ensure_admin_product_scope(',
   'pub(crate) fn admin_product_command_context(', 'authenticated scope');
 for (const marker of ['auth.tenant_id != tenant.id', 'request.tenant_id != tenant.id',
   'request.user_id != Some(auth.user_id)', 'HttpError::forbidden(']) requireText(scope, marker, 'scope enforcement');
-for (const [content,names] of [[products,['list_products','show_product','delete_product','publish_product','unpublish_product','archive_product']],
+for (const [content,names] of [[products,['delete_product','publish_product','unpublish_product','archive_product']],
   [adminProducts,['list_products','show_product','create_product','update_product']]]) {
   for (const name of names) {
     const start = content.indexOf(`pub async fn ${name}(`);

@@ -252,8 +252,8 @@ requireAll(
 requireAll(
   leptosPagination,
   [
-    'aria-label="Load more rows"',
-    '"Load more"',
+    'aria-label=messages.get_value().text("grid.loadMore")',
+    '{messages.get_value().text("grid.loadMore")}',
     "node_ref=sentinel_ref",
     "observer_on_load_more.run(())",
   ],
@@ -261,7 +261,12 @@ requireAll(
 );
 requireAll(
   dioxusPagination,
-  ["\"Load more\"", "onvisible:", "on_load_more.call(())"],
+  [
+    '"aria-label": messages.text("grid.loadMore")',
+    '{messages.text("grid.loadMore")}',
+    "onvisible:",
+    "on_load_more.call(())",
+  ],
   "Dioxus infinite pagination must support keyboard and observer loading",
 );
 

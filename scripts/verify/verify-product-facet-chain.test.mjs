@@ -30,7 +30,8 @@ const gatePath = path.join(scriptDir, "verify-product-facet-chain.mjs");
 const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), "utf8");
 
 const OWNER_PORT = "crates/modules/rustok-product/src/ports/catalog_read.rs";
-const OWNER_PORT_TYPES = "crates/modules/rustok-product/src/ports/types.rs";
+const OWNER_PORT_TYPES = "crates/modules/rustok-product/ports/src/types.rs";
+const OWNER_PORT_CONTRACTS = "crates/modules/rustok-product/ports/src/ports.rs";
 const OWNER_FACETS = "crates/modules/rustok-product/src/services/catalog/facets.rs";
 const COMMERCE_FACETS = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
 const STOREFRONT_MODEL = "crates/modules/rustok-product/storefront/src/model.rs";
@@ -241,18 +242,6 @@ pub struct AdminCatalogFacetsRequest {
     pub facet_codes: Vec<String>,
     ${options.adminRequestPaginates ? "pub per_page: u64," : ""}
 }
-`;
-
-const FACET_POPULATION_SOURCE = `async fn facet_population(filters: &[ProductAttributeFilter]) -> CommerceResult<Condition> {
-    // The facet counter resolves the panel selection through the same helper as both lists.
-    let other_conditions = load_catalog_attribute_filter_conditions(filters).await?;
-    Ok(Condition::all())
-}
-`;
-
-const OWNER_FACETS_SOURCE = (options) => `
-pub const MAX_CATALOG_FACETS: usize = MAX_ATTRIBUTE_FILTERS;
-pub const MAX_CATALOG_FACET_VALUES: usize = 20;
 pub struct StorefrontCatalogFacetValue {
     pub value: String,
     pub label: String,
@@ -268,6 +257,46 @@ pub struct StorefrontCatalogFacet {
     pub values: Vec<StorefrontCatalogFacetValue>,
     pub total_products: u64,
 }
+`;
+
+const OWNER_PORT_CONTRACTS_SOURCE = `pub trait ProductCatalogFacetReadPort: Send + Sync {
+    async fn storefront_catalog_facets(
+        &self,
+        context: PortContext,
+        request: StorefrontCatalogFacetsRequest,
+    ) -> Result<StorefrontCatalogFacetProjection, PortError> {
+        let _ = (context, request);
+        Err(PortError::unavailable(
+            "product.catalog_facets_unavailable",
+            "product storefront facets are unavailable",
+        ))
+    }
+
+    async fn admin_catalog_facets(
+        &self,
+        context: PortContext,
+        request: AdminCatalogFacetsRequest,
+    ) -> Result<AdminCatalogFacetProjection, PortError> {
+        let _ = (context, request);
+        Err(PortError::unavailable(
+            "product.admin_catalog_facets_unavailable",
+            "product admin facets are unavailable",
+        ))
+    }
+}
+`;
+
+const FACET_POPULATION_SOURCE = `async fn facet_population(filters: &[ProductAttributeFilter]) -> CommerceResult<Condition> {
+    // The facet counter resolves the panel selection through the same helper as both lists.
+    let other_conditions = load_catalog_attribute_filter_conditions(filters).await?;
+    Ok(Condition::all())
+}
+`;
+
+const OWNER_FACETS_SOURCE = (options) => `
+pub use rustok_product_ports::{StorefrontCatalogFacet, StorefrontCatalogFacetValue};
+pub const MAX_CATALOG_FACETS: usize = MAX_ATTRIBUTE_FILTERS;
+pub const MAX_CATALOG_FACET_VALUES: usize = 20;
 ${options.facetPathSkipsSelection ? "" : FACET_POPULATION_SOURCE}`;
 
 const COMMERCE_FACETS_SOURCE = (options) => `
@@ -471,8 +500,17 @@ async fn storefront_catalog_facets_native(
     attribute_filters: Vec<String>,
     facet_codes: Vec<String>,
 ) -> Result<Vec<ProductCatalogFacet>, ServerFnError> {
-    let facets = CatalogService::new(db, bus)
-        .storefront_catalog_facets(tenant.id, locale, fallback, channel, &query, facet_codes)
+    let facets = super::native_server_adapter::product_read_port(&scope)
+        .load_storefront_catalog_facets(
+            port_context,
+            StorefrontCatalogFacetsRequest {
+                locale,
+                fallback_locale,
+                public_channel_slug,
+                query,
+                facet_codes,
+            },
+        )
         .await?;
     Ok(map_owner_catalog_facets(facets))
 }
@@ -1001,6 +1039,7 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-facet-chain-"));
   write(root, OWNER_PORT, OWNER_PORT_SOURCE(options));
   write(root, OWNER_PORT_TYPES, OWNER_PORT_TYPES_SOURCE(options));
+  write(root, OWNER_PORT_CONTRACTS, OWNER_PORT_CONTRACTS_SOURCE);
   write(root, OWNER_FACETS, OWNER_FACETS_SOURCE(options));
   write(root, OWNER_FILTER_LIMITS, OWNER_FILTER_LIMITS_SOURCE(options));
   write(root, OWNER_ATTRIBUTE_FILTERS, OWNER_ATTRIBUTE_FILTERS_SOURCE(options));

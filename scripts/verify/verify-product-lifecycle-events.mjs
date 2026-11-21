@@ -42,6 +42,8 @@ const commandsPath =
   'crates/modules/rustok-product/src/services/catalog/commands.rs';
 const commandPortPath =
   'crates/modules/rustok-product/src/catalog_command_port.rs';
+const commandPortContractPath =
+  'crates/modules/rustok-product/ports/src/ports.rs';
 const commandRuntimePath = 'crates/modules/rustok-product/src/runtime.rs';
 const graphqlPath =
   'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs';
@@ -68,6 +70,7 @@ for (const relative of [
   canonicalTestPath,
   commandsPath,
   commandPortPath,
+  commandPortContractPath,
   commandRuntimePath,
   graphqlPath,
   restSharedPath,
@@ -96,6 +99,7 @@ const registry = read(schemaPath);
 const canonicalTest = read(canonicalTestPath);
 const commands = read(commandsPath);
 const commandPort = read(commandPortPath);
+const commandPortContract = read(commandPortContractPath);
 const commandRuntime = read(commandRuntimePath);
 const graphql = read(graphqlPath);
 const restShared = read(restSharedPath);
@@ -222,7 +226,7 @@ const update = slice(
 );
 need(
   update,
-  'let will_archive = match input.status.as_ref() {',
+  'let will_archive = match input_status.as_ref() {',
   'update owner command'
 );
 need(
@@ -244,8 +248,10 @@ need(
 );
 
 // ── Owner ports and surfaces ─────────────────────────────────────────────────────────────────
+// The port trait lives in the published contracts package; the module adapter
+// keeps the operation framing and scope extraction.
 need(
-  commandPort,
+  commandPortContract,
   '    async fn archive_product(\n        &self,\n        context: PortContext,\n        product_id: Uuid,\n    ) -> Result<ProductResponse, PortError>;',
   'command port trait'
 );

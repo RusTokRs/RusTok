@@ -30,6 +30,18 @@ The column-filtered update-trigger heuristic inspects migration SQL literals.
 It cannot establish which migrations are active, whether a BEFORE trigger
 changes a watched column, or whether a rollback definition is currently in use.
 Review the owner migration chain and database dialect before classifying a match.
+The literal-include rule (`P-ZERO-INCLUDE`) reports every direct
+`include!("file.rs")` outside test and build contexts, including the contracted
+mounted-facade family (`graphql/mutations/safe_cart.rs`,
+`graphql/mutations/safe_legacy_helpers.rs`,
+`graphql/mutations/safe_checkout.rs`, `graphql/safe_query/source.rs`,
+`storefront_checkout_runtime_mounted.rs`,
+`services/checkout_compensation_error_safe.rs`, and `rustok-payment`'s
+`checkout_execution.rs`). In that family a verify contract pins the include as
+the terminal state of a mounted-copy cutover, so the finding is a known false
+positive; see the mounted-facade exemption boundary under `P-ZERO-INCLUDE` and
+`P-COPY-DRIFT-MOUNT` in the hygiene catalog. The scanner does not yet model
+that boundary, and no path-based exemption is hardcoded.
 Discarding a success value after `?` does not by itself discard the error;
 the ignored-result heuristic excludes that syntactic form.
 Files named `test_support.rs` or ending in `_test_support.rs` follow the same

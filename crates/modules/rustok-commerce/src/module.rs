@@ -33,18 +33,7 @@ impl RusToKModule for CommerceModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &[
-            "tenant",
-            "cart",
-            "customer",
-            "product",
-            "region",
-            "pricing",
-            "inventory",
-            "order",
-            "payment",
-            "fulfillment",
-        ]
+        crate::RUNTIME_DEPENDENCIES
     }
 
     fn register_event_listeners(

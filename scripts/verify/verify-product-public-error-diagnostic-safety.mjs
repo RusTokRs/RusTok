@@ -132,7 +132,7 @@ for (const marker of [
   '"Published products must be archived before removal"',
   '"CANNOT_DELETE_PUBLISHED"',
   'CommerceError::Core(error) => core_public_error_policy(error)',
-  'CommerceError::Conflict(_) =>',
+  'CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) =>',
   '"Product operation could not be completed safely"',
   '"PRODUCT_OPERATION_FAILED"',
   'let correlation_id = Uuid::new_v4();',

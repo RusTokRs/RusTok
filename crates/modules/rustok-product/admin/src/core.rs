@@ -1996,8 +1996,19 @@ pub(crate) fn text_or_none(value: String) -> Option<String> {
     normalize_ui_text(value.as_str())
 }
 
-pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
-    value.trim().parse().unwrap_or(0)
+/// Parses a quantity typed into an admin form (inventory, image position).
+///
+/// A typo must never silently become `0`, which would zero live stock or jump an
+/// image to the front of its ordering: callers keep the raw text and refuse the
+/// submission while it does not parse.
+pub(crate) fn parse_product_admin_quantity_input(value: &str) -> Result<i32, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || !trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Must be a non-negative 32-bit integer.".to_string());
+    }
+    trimmed
+        .parse::<i32>()
+        .map_err(|_| "Must be a non-negative 32-bit integer.".to_string())
 }
 
 pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'static str {
@@ -3749,13 +3760,14 @@ mod tests {
     }
 
     #[test]
-    fn inventory_quantity_parsing_is_core_owned() {
-        assert_eq!(parse_product_admin_inventory_quantity_input(" 42 "), 42);
-        assert_eq!(parse_product_admin_inventory_quantity_input(""), 0);
-        assert_eq!(
-            parse_product_admin_inventory_quantity_input("not-a-number"),
-            0
-        );
+    fn quantity_input_parsing_is_core_owned() {
+        assert_eq!(parse_product_admin_quantity_input(" 42 "), Ok(42));
+        assert_eq!(parse_product_admin_quantity_input("0"), Ok(0));
+        assert!(parse_product_admin_quantity_input("").is_err());
+        assert!(parse_product_admin_quantity_input("not-a-number").is_err());
+        assert!(parse_product_admin_quantity_input("-3").is_err());
+        assert!(parse_product_admin_quantity_input("12a").is_err());
+        assert!(parse_product_admin_quantity_input("9999999999").is_err());
     }
 
     #[test]

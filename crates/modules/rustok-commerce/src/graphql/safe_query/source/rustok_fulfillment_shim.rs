@@ -8,6 +8,7 @@ pub(crate) mod error {
     #[derive(Clone, Debug)]
     pub enum FulfillmentError {
         FulfillmentNotFound(Uuid),
+        ShippingOptionNotFound(Uuid),
         Public(BoundaryError),
     }
 
@@ -20,6 +21,14 @@ pub(crate) mod error {
                     BoundaryError::Public {
                         message: "Fulfillment resource was not found",
                         code: "FULFILLMENT_RESOURCE_NOT_FOUND",
+                        retryable: false,
+                    }
+                }
+                Self::ShippingOptionNotFound(id) => {
+                    tracing::debug!(shipping_option_id = %id, "shipping option not found");
+                    BoundaryError::Public {
+                        message: "Shipping option resource was not found",
+                        code: "SHIPPING_OPTION_RESOURCE_NOT_FOUND",
                         retryable: false,
                     }
                 }

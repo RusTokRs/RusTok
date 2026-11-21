@@ -115,7 +115,7 @@ for (const marker of [
   "DeleteResultViewModel",
   "ProductAdminSeoPanelCopy",
   "ProductAdminSummaryPanelCopy",
-  "parse_product_admin_inventory_quantity_input",
+  "parse_product_admin_quantity_input",
   "ProductAdminOpenProductViewModel",
   "pricing_preview_state_from_result",
   "ProductAdminRouteQueryIntent",
