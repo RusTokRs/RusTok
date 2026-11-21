@@ -27,7 +27,7 @@ use crate::core::{
     build_product_media_panel_copy, build_product_variants_panel_copy, build_save_command,
     build_selected_product_summary_view_model, build_status_command,
     build_status_result_view_model, build_variant_row_view_models,
-    empty_product_admin_editor_form_state, parse_product_admin_inventory_quantity_input,
+    empty_product_admin_editor_form_state, parse_product_admin_quantity_input,
     pricing_preview_request_from_product, pricing_preview_state_from_result,
     product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
     product_admin_open_product_query_intent, product_admin_products_load_view_from_result,
@@ -256,7 +256,9 @@ fn ProductCatalogReference() -> impl IntoView {
     let (currency_code, set_currency_code) = signal("USD".to_string());
     let (amount, set_amount) = signal("0.00".to_string());
     let (compare_at_amount, set_compare_at_amount) = signal(String::new());
-    let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
+    // Holds the raw text so a typo stays visible and is refused at submit
+    // instead of being silently coerced to a wrong quantity.
+    let (inventory_quantity, set_inventory_quantity) = signal("0".to_string());
     let (publish_now, set_publish_now) = signal(false);
     let (search, set_search) = signal(String::new());
     let (status_filter, set_status_filter) = signal(String::new());
@@ -529,6 +531,14 @@ fn ProductCatalogReference() -> impl IntoView {
         let submit_query_writer = submit_query_writer.clone();
         let submit_locale = submit_ui_locale.clone();
         let submit_revision = selected.get_untracked().map(|product| product.revision);
+        let submit_inventory_quantity =
+            match parse_product_admin_quantity_input(&inventory_quantity.get_untracked()) {
+                Ok(quantity) => quantity,
+                Err(message) => {
+                    set_error.set(Some(message));
+                    return;
+                }
+            };
         let command = build_save_command(
             DraftForm {
                 locale: submit_locale.clone(),
@@ -545,7 +555,7 @@ fn ProductCatalogReference() -> impl IntoView {
                 currency_code: currency_code.get_untracked(),
                 amount: amount.get_untracked(),
                 compare_at_amount: compare_at_amount.get_untracked(),
-                inventory_quantity: inventory_quantity.get_untracked(),
+                inventory_quantity: submit_inventory_quantity,
                 publish_now: publish_now.get_untracked(),
                 revision: submit_revision,
             },
@@ -1169,9 +1179,7 @@ fn ProductCatalogReference() -> impl IntoView {
                                         .collect_view()
                                     }
                                 </select>
-                                <input type="number" class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.inventory_quantity_placeholder.clone() prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(parse_product_admin_inventory_quantity_input(
-                                    &event_target_value(&ev),
-                                )) />
+                                <input type="number" class=move || if parse_product_admin_quantity_input(&inventory_quantity.get()).is_ok() { "rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" } else { "rounded-xl border border-rose-400 bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-rose-400" } placeholder=editor_copy.inventory_quantity_placeholder.clone() prop:value=move || inventory_quantity.get() on:input=move |ev| set_inventory_quantity.set(event_target_value(&ev)) />
                             </div>
                             <label class="flex items-center gap-2 text-sm text-muted-foreground">
                                 <input type="checkbox" prop:checked=move || publish_now.get() on:change=move |ev| set_publish_now.set(event_target_checked(&ev)) />
@@ -1298,7 +1306,7 @@ fn open_product_for_edit(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_compare_at_amount: WriteSignal<String>,
-    set_inventory_quantity: WriteSignal<i32>,
+    set_inventory_quantity: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
 ) {
     set_busy.set(true);
@@ -1390,7 +1398,7 @@ fn clear_product_form(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_compare_at_amount: WriteSignal<String>,
-    set_inventory_quantity: WriteSignal<i32>,
+    set_inventory_quantity: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
 ) {
     set_selected.set(None);
@@ -1433,7 +1441,7 @@ fn apply_product(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_compare_at_amount: WriteSignal<String>,
-    set_inventory_quantity: WriteSignal<i32>,
+    set_inventory_quantity: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
 ) {
     set_selected.set(Some(product.clone()));
@@ -1474,7 +1482,7 @@ fn apply_product_editor_form_state(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_compare_at_amount: WriteSignal<String>,
-    set_inventory_quantity: WriteSignal<i32>,
+    set_inventory_quantity: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
 ) {
     set_editing_id.set(state.editing_id);
@@ -1491,7 +1499,7 @@ fn apply_product_editor_form_state(
     set_currency_code.set(state.currency_code);
     set_amount.set(state.amount);
     set_compare_at_amount.set(state.compare_at_amount);
-    set_inventory_quantity.set(state.inventory_quantity);
+    set_inventory_quantity.set(state.inventory_quantity.to_string());
     set_publish_now.set(state.publish_now);
 }
 
@@ -1566,7 +1574,7 @@ fn mutate_delete(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_compare_at_amount: WriteSignal<String>,
-    set_inventory_quantity: WriteSignal<i32>,
+    set_inventory_quantity: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -1977,7 +1985,9 @@ fn ProductMediaPanel(
     let (show_add, set_show_add) = signal(false);
     let (media_id, set_media_id) = signal(String::new());
     let (alt_text, set_alt_text) = signal(String::new());
-    let (position, set_position) = signal(0_i32);
+    // Holds the raw text so a typo stays visible and is refused at submit
+    // instead of being silently coerced to a wrong position.
+    let (position, set_position) = signal("0".to_string());
     let (editing_image_id, set_editing_image_id) = signal(Option::<String>::None);
     let (edit_alt_text, set_edit_alt_text) = signal(String::new());
 
@@ -2008,9 +2018,18 @@ fn ProductMediaPanel(
                 return;
             }
 
+            let position_val = match parse_product_admin_quantity_input(&position.get_untracked())
+            {
+                Ok(value) => Some(value),
+                Err(message) => {
+                    set_error.set(Some(message));
+                    return;
+                }
+            };
+
             let draft = ProductImageDraft {
                 media_id: media_id_val,
-                position: Some(position.get_untracked()),
+                position: position_val,
                 alt_text: text_or_none(alt_text.get_untracked()),
                 locale: locale_for_add.clone(),
             };
@@ -2031,7 +2050,7 @@ fn ProductMediaPanel(
                     Ok(_) => {
                         set_media_id.set(String::new());
                         set_alt_text.set(String::new());
-                        set_position.set(0);
+                        set_position.set("0".to_string());
                         set_show_add.set(false);
                         on_mutated.run(product_id_val);
                     }
@@ -2079,10 +2098,10 @@ fn ProductMediaPanel(
                         />
                         <input
                             type="number"
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            class=move || if parse_product_admin_quantity_input(&position.get()).is_ok() { "rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" } else { "rounded-xl border border-rose-400 bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-rose-400" }
                             placeholder="Position"
-                            prop:value=move || position.get().to_string()
-                            on:input=move |ev| set_position.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                            prop:value=move || position.get()
+                            on:input=move |ev| set_position.set(event_target_value(&ev))
                         />
                     </div>
                     <div class="flex justify-end gap-2 pt-2">
@@ -2096,7 +2115,7 @@ fn ProductMediaPanel(
                         <button
                             type="submit"
                             class="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled=move || busy.get()
+                            disabled=move || busy.get() || parse_product_admin_quantity_input(&position.get()).is_err()
                         >
                             "Add image"
                         </button>

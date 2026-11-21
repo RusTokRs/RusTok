@@ -160,6 +160,7 @@ export default async function DashboardPage() {
   const renderContext: AdminRenderContext = {
     token,
     tenantSlug,
+    tenantId: session.user?.tenantId ?? null,
     enabledModules
   };
 

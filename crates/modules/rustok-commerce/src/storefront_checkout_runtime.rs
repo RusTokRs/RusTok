@@ -418,7 +418,7 @@ pub async fn select_storefront_shipping_option(
                 .as_deref()
                 .or(Some(request.locale.as_str())),
             Some(tenant.default_locale.as_str()),
-            &context,
+            context.clone(),
             runtime.shipping_option_read_port(),
         )
         .await

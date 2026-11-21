@@ -177,35 +177,44 @@ fn map_shipping_profile_error(error: CommerceError) -> HttpError {
 }
 
 fn require_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
-    let value = headers
-        .get("Idempotency-Key")
-        .ok_or_else(|| {
-            HttpError::new(
-                StatusCode::BAD_REQUEST,
-                "commerce_admin_idempotency_key_required",
-                "Idempotency-Key header is required for this write operation",
-            )
-        })?
-        .to_str()
-        .map_err(|_| {
-            HttpError::new(
-                StatusCode::BAD_REQUEST,
-                "commerce_admin_idempotency_key_invalid",
-                "Idempotency-Key header is invalid",
-            )
-        })?
-        .trim()
-        .to_string();
-
-    if value.is_empty() || value.len() > 191 {
-        return Err(HttpError::new(
-            StatusCode::BAD_REQUEST,
+    let admission = match headers.get("Idempotency-Key").map(|header| header.to_str()) {
+        None => Err((
+            "absent",
+            "commerce_admin_idempotency_key_required",
+            "Idempotency-Key header is required for this write operation",
+        )),
+        Some(Err(_)) => Err((
+            "invalid_encoding",
             "commerce_admin_idempotency_key_invalid",
-            "Idempotency-Key header must contain 1 to 191 bytes",
-        ));
-    }
+            "Idempotency-Key header is invalid",
+        )),
+        Some(Ok(raw)) => {
+            let value = raw.trim();
+            if value.is_empty() || value.len() > 191 {
+                Err((
+                    "invalid_length",
+                    "commerce_admin_idempotency_key_invalid",
+                    "Idempotency-Key header must contain 1 to 191 bytes",
+                ))
+            } else {
+                Ok(value.to_string())
+            }
+        }
+    };
 
-    Ok(value)
+    match admission {
+        Ok(value) => Ok(value),
+        Err((key_state, code, message)) => {
+            tracing::error!(
+                boundary = ADMIN_SHIPPING_BOUNDARY,
+                admission = "idempotency_key",
+                key_state,
+                public_code = code,
+                "commerce admin shipping write admission rejected"
+            );
+            Err(HttpError::new(StatusCode::BAD_REQUEST, code, message))
+        }
+    }
 }
 
 fn admin_shipping_option_read_port_context(
@@ -247,49 +256,73 @@ fn admin_shipping_option_command_port_context(
     .with_idempotency_key(idempotency_key)
 }
 
+/// Typed HTTP policy for a shipping-option owner failure.
+///
+/// `retryable` is captured so the typed policy is the complete owner-failure contract; the
+/// bounded event and the HTTP envelope forward the owner-reported flag directly.
+struct AdminShippingOptionHttpPolicy {
+    status: StatusCode,
+    code: &'static str,
+    message: &'static str,
+    error_kind: &'static str,
+    retryable: bool,
+}
+
 fn map_admin_shipping_option_port_error(
     context: AdminShippingOptionErrorContext,
     port_context: &PortContext,
     owner_operation: &'static str,
     error: PortError,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error.kind {
-        PortErrorKind::Validation => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_fulfillment_invalid",
-            "Fulfillment request is invalid",
-            "validation",
-        ),
-        PortErrorKind::NotFound => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PortErrorKind::Conflict => (
-            StatusCode::CONFLICT,
-            "commerce_admin_fulfillment_state_conflict",
-            "Fulfillment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        PortErrorKind::Forbidden => (
-            StatusCode::FORBIDDEN,
-            "commerce_permission_denied",
-            "Permission denied",
-            "forbidden",
-        ),
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_fulfillment_storage_unavailable",
-            "Fulfillment storage is temporarily unavailable",
-            "unavailable",
-        ),
-        PortErrorKind::InvariantViolation => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_fulfillment_failed",
-            "Fulfillment operation could not be completed safely",
-            "invariant_violation",
-        ),
+    let AdminShippingOptionHttpPolicy {
+        status,
+        code,
+        message,
+        error_kind,
+        ..
+    } = match &error.kind {
+        PortErrorKind::Validation => AdminShippingOptionHttpPolicy {
+            status: StatusCode::BAD_REQUEST,
+            code: "commerce_admin_fulfillment_invalid",
+            message: "Fulfillment request is invalid",
+            error_kind: "validation",
+            retryable: error.retryable,
+        },
+        PortErrorKind::NotFound => AdminShippingOptionHttpPolicy {
+            status: StatusCode::NOT_FOUND,
+            code: "commerce_admin_not_found",
+            message: "Commerce resource not found",
+            error_kind: "not_found",
+            retryable: error.retryable,
+        },
+        PortErrorKind::Conflict => AdminShippingOptionHttpPolicy {
+            status: StatusCode::CONFLICT,
+            code: "commerce_admin_fulfillment_state_conflict",
+            message: "Fulfillment operation conflicts with the current state",
+            error_kind: "state_conflict",
+            retryable: error.retryable,
+        },
+        PortErrorKind::Forbidden => AdminShippingOptionHttpPolicy {
+            status: StatusCode::UNAUTHORIZED,
+            code: "commerce_permission_denied",
+            message: "Permission denied",
+            error_kind: "forbidden",
+            retryable: error.retryable,
+        },
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => AdminShippingOptionHttpPolicy {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "commerce_admin_fulfillment_storage_unavailable",
+            message: "Fulfillment storage is temporarily unavailable",
+            error_kind: "unavailable",
+            retryable: error.retryable,
+        },
+        PortErrorKind::InvariantViolation => AdminShippingOptionHttpPolicy {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: "commerce_admin_fulfillment_failed",
+            message: "Fulfillment operation could not be completed safely",
+            error_kind: "invariant_violation",
+            retryable: error.retryable,
+        },
     };
     let context = AdminShippingOptionDiagnosticContext::from(&context);
     let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);
@@ -791,6 +824,7 @@ pub async fn create_shipping_option(
     .await?;
 
     let request = CreateAdminShippingOptionRequest { input };
+    // Caller-owned Idempotency-Key admission; the OpenAPI route documents the same header.
     let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
@@ -953,6 +987,7 @@ pub async fn update_shipping_option(
         shipping_option_id: id,
         input,
     };
+    // Caller-owned Idempotency-Key admission; the OpenAPI route documents the same header.
     let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
@@ -1030,6 +1065,7 @@ pub async fn deactivate_shipping_option(
     let request = DeactivateAdminShippingOptionRequest {
         shipping_option_id: id,
     };
+    // Caller-owned Idempotency-Key admission; the OpenAPI route documents the same header.
     let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
@@ -1111,6 +1147,7 @@ pub async fn reactivate_shipping_option(
     let request = ReactivateAdminShippingOptionRequest {
         shipping_option_id: id,
     };
+    // Caller-owned Idempotency-Key admission; the OpenAPI route documents the same header.
     let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,

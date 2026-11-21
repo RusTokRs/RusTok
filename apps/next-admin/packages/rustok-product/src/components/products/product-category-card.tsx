@@ -22,15 +22,9 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
 import { Switch } from '@/shared/ui/shadcn/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/shared/ui/shadcn/select';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Loader2, FolderTree, AlertCircle, Layers } from 'lucide-react';
+import { SearchableCategorySelect } from '../categories/searchable-category-select';
 import type {
   CatalogCategorySummary,
   ProductEffectiveForm,
@@ -61,14 +55,28 @@ export function ProductCategoryCard({
   onAttributeValueChange,
   disabled = false
 }: ProductCategoryCardProps) {
-  // Build category display items with path or tree indent
+  // Primary category is structural-only by owner contract: collections and
+  // rule-driven virtual categories are refused by the server, so they must not
+  // be selectable. A legacy non-structural selection stays visible, flagged,
+  // so operators can see why the document no longer satisfies the contract.
   const categoryOptions = React.useMemo(() => {
-    return categories.map((cat) => ({
-      id: cat.id,
-      label: cat.path || cat.name || cat.code,
-      kind: cat.kind
-    }));
-  }, [categories]);
+    const structural = categories
+      .filter((cat) => cat.kind === 'structural')
+      .map((cat) => ({
+        id: cat.id,
+        label: cat.path || cat.name || cat.code
+      }));
+    if (selectedCategoryId && !structural.some((opt) => opt.id === selectedCategoryId)) {
+      const legacy = categories.find((cat) => cat.id === selectedCategoryId);
+      if (legacy) {
+        structural.push({
+          id: legacy.id,
+          label: `${legacy.path || legacy.name || legacy.code} (${legacy.kind} — not selectable as primary)`
+        });
+      }
+    }
+    return structural;
+  }, [categories, selectedCategoryId]);
 
   // Group attributes by groupCode / groupLabel
   const groupedAttributes = React.useMemo(() => {
@@ -112,34 +120,16 @@ export function ProductCategoryCard({
           <Label htmlFor='category-select' className='text-xs font-medium'>
             Primary Category
           </Label>
-          <Select
+          <SearchableCategorySelect
+            id='category-select'
+            options={categoryOptions}
             value={selectedCategoryId || 'none'}
-            onValueChange={(val) => onSelectCategory(val === 'none' ? '' : val)}
+            emptyValue='none'
+            emptyLabel='No category assigned'
+            searchPlaceholder='Search categories...'
             disabled={disabled}
-          >
-            <SelectTrigger
-              id='category-select'
-              className='h-9 rounded-xl text-xs'
-            >
-              <SelectValue placeholder='Select a category...' />
-            </SelectTrigger>
-            <SelectContent className='max-h-64'>
-              <SelectItem
-                value='none'
-                className='text-muted-foreground text-xs'
-              >
-                No category assigned
-              </SelectItem>
-              {categoryOptions.map((opt) => (
-                <SelectItem key={opt.id} value={opt.id} className='text-xs'>
-                  <span className='font-medium'>{opt.label}</span>
-                  <span className='text-muted-foreground ml-2 text-[10px]'>
-                    ({opt.kind})
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(val) => onSelectCategory(val === 'none' ? '' : val)}
+          />
         </div>
 
         {/* Dynamic Effective Form */}

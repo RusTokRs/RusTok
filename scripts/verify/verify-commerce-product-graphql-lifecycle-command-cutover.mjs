@@ -11,6 +11,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "u
 const mutations = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
 const graphqlRuntime = read("crates/modules/rustok-commerce/src/graphql_runtime.rs");
 const ownerPort = read("crates/modules/rustok-product/src/catalog_command_port.rs");
+const ownerTrait = read("crates/modules/rustok-product/ports/src/ports.rs");
 const hostComposition = read("apps/server/src/services/commerce_provider_runtime.rs");
 const catalogFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
 const shippingFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs");
@@ -38,8 +39,13 @@ function functionSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-for (const required of [
+requireText(
+  ownerTrait,
   "pub trait ProductCatalogCommandPort",
+  "Product owner command port",
+);
+
+for (const required of [
   "async fn create_product(",
   "async fn update_product(",
   "async fn publish_product(",
@@ -56,7 +62,7 @@ for (const required of [
 for (const required of [
   "ProductCatalogCommandRuntime",
   ".shared_get::<rustok_product::ProductCatalogCommandRuntime>()",
-  "ProductCatalogCommandRuntime::in_process_with_pricing(",
+  "ProductCatalogCommandRuntime::in_process_with_collaborators(",
   "rustok_pricing::in_process_product_pricing_port(",
   "host.with_shared_value(runtime)",
 ]) {

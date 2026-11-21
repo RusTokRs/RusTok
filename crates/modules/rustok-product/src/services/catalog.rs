@@ -107,7 +107,14 @@ fn map_product_unique_violation(
 
     let constraint = &details;
     if constraint.contains("product_variants_tenant_sku") {
-        return CommerceError::DuplicateSku(sku.unwrap_or_default().to_owned());
+        // Never surface an empty SKU: a caller whose failing statement cannot
+        // know the offending value still yields a readable conflict instead of
+        // "Duplicate SKU: ".
+        let sku = sku
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unknown");
+        return CommerceError::DuplicateSku(sku.to_owned());
     }
     if constraint.contains("product_translations_tenant_locale_handle") {
         return CommerceError::DuplicateHandle {
@@ -203,13 +210,6 @@ impl CatalogService {
     ) -> Self {
         self.taxonomy_port = Some(port);
         self
-    }
-
-    pub fn with_inventory_bootstrap_port(
-        self,
-        port: std::sync::Arc<dyn crate::ports::ProductInventoryPort>,
-    ) -> Self {
-        self.with_inventory_port(port)
     }
 
     pub(crate) fn inventory(&self) -> std::sync::Arc<dyn crate::ports::ProductInventoryPort> {

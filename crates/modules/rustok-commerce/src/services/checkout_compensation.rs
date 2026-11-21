@@ -562,10 +562,12 @@ fn order_identity_context(
 }
 
 fn manual_reconciliation(message: &'static str) -> CheckoutCompensationError {
+    let message: &'static str = message;
     CheckoutCompensationError::ManualReconciliation(message.to_string())
 }
 
 fn compensation_conflict(message: &'static str) -> CheckoutCompensationError {
+    let message: &'static str = message;
     CheckoutCompensationError::Conflict(message.to_string())
 }
 

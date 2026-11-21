@@ -2251,10 +2251,7 @@ impl FulfillmentService {
         // SQLite adapter does not support those two configuration knobs, but the
         // transaction itself still keeps every read on one SQLite snapshot.
         self.db
-            .begin_with_config(
-                Some(IsolationLevel::RepeatableRead),
-                Some(AccessMode::ReadOnly),
-            )
+            .begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))
             .await
             .map_err(Into::into)
     }
@@ -2344,7 +2341,23 @@ impl FulfillmentService {
     where
         C: ConnectionTrait,
     {
-        let items = self.load_stock_items(db, tenant_id, fulfillment.id).await?;
+        let items = entities::fulfillment_item::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                entities::fulfillment_item::Relation::Fulfillment.def(),
+            )
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id),
+            )
+            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment_item::Column::Id)
+            .limit((crate::MAX_SHIPMENT_STOCK_ITEMS + 1) as u64)
+            .all(db)
+            .await?;
+        if items.len() > crate::MAX_SHIPMENT_STOCK_ITEMS {
+            return Err(stock::item_limit_refusal());
+        }
 
         Ok(map_fulfillment(fulfillment, items))
     }
@@ -2376,7 +2389,24 @@ impl FulfillmentService {
         C: ConnectionTrait,
     {
         validate_fulfillment_id(fulfillment_id)?;
-        self.load_stock_items(db, tenant_id, fulfillment_id).await
+        let items = entities::fulfillment_item::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                entities::fulfillment_item::Relation::Fulfillment.def(),
+            )
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id),
+            )
+            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment_item::Column::Id)
+            .limit((crate::MAX_SHIPMENT_STOCK_ITEMS + 1) as u64)
+            .all(db)
+            .await?;
+        if items.len() > crate::MAX_SHIPMENT_STOCK_ITEMS {
+            return Err(stock::item_limit_refusal());
+        }
+        Ok(items)
     }
 
     async fn set_shipping_option_active(
@@ -3472,10 +3502,8 @@ async fn synchronize_translations(
                         Expr::value(name),
                     )
                     .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
-                    .filter(
-                        entities::shipping_option_translation::Column::ShippingOptionId
-                            .eq(shipping_option_id),
-                    )
+                    .filter(entities::shipping_option_translation::Column::ShippingOptionId
+                        .eq(shipping_option_id))
                     .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;
@@ -3487,10 +3515,8 @@ async fn synchronize_translations(
             None => {
                 let delete_result = entities::shipping_option_translation::Entity::delete_many()
                     .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
-                    .filter(
-                        entities::shipping_option_translation::Column::ShippingOptionId
-                            .eq(shipping_option_id),
-                    )
+                    .filter(entities::shipping_option_translation::Column::ShippingOptionId
+                        .eq(shipping_option_id))
                     .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;

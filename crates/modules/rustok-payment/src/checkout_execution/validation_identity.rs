@@ -159,7 +159,7 @@ pub(super) fn provider_id_for_collection(collection: &PaymentCollectionResponse)
 }
 
 #[cfg(test)]
-mod tests {
+mod validation_identity_tests {
     use super::*;
 
     fn valid_identity() -> CheckoutPaymentIdentity {

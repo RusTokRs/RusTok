@@ -523,7 +523,10 @@ impl CatalogService {
         self.media_reference_port.clone().ok_or_else(storage_error)
     }
     /// Called only after receipt admission, before the Product transaction. A
-    /// rollback/ambiguous commit deliberately never compensates a retained hold.
+    /// definite rollback of that transaction compensates through
+    /// [`Self::compensate_retained_media_hold`]; an ambiguous commit failure
+    /// deliberately does not, because releasing the hold of a landed image is
+    /// unrecoverable.
     pub(crate) async fn retain_product_image(
         &self,
         tenant_id: Uuid,
@@ -559,6 +562,62 @@ impl CatalogService {
         .insert(txn)
         .await?;
         Ok(())
+    }
+    /// Compensates a Media hold whose owner transaction definitely rolled back.
+    ///
+    /// The release row is inserted outside the failed transaction so the
+    /// at-least-once worker releases the hold. Failures are logged, never
+    /// surfaced: the original command error must remain the caller's answer. A
+    /// commit that returned an error is ambiguous and must never reach this
+    /// path — releasing then could drop the hold of an image that landed.
+    pub(crate) async fn compensate_retained_media_hold(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        image_id: Uuid,
+        media_id: Uuid,
+    ) {
+        let context = match operation_context(tenant_id, actor_id, image_id) {
+            Ok(context) => context,
+            Err(error) => {
+                tracing::warn!(
+                    code = %error,
+                    image_id = %image_id,
+                    "failed to build Media hold release compensation context"
+                );
+                return;
+            }
+        };
+        let context = match serde_json::to_value(context) {
+            Ok(context) => context,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    image_id = %image_id,
+                    "failed to encode Media hold release compensation context"
+                );
+                return;
+            }
+        };
+        let enqueued = product_media_release::ActiveModel {
+            image_id: Set(image_id),
+            tenant_id: Set(tenant_id),
+            media_id: Set(media_id),
+            context: Set(context),
+            attempts: Set(0),
+            next_attempt_at: Set(Utc::now()),
+            last_error_code: Set(None),
+        }
+        .insert(&self.db)
+        .await;
+        if let Err(error) = enqueued {
+            tracing::warn!(
+                %error,
+                image_id = %image_id,
+                media_id = %media_id,
+                "failed to enqueue Media hold release compensation after rollback"
+            );
+        }
     }
     /// Crash-safe at-least-once delivery of committed removals. Multi-replica
     /// duplicate delivery is safe: Media receives the exact stored actor/request

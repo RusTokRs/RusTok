@@ -42,6 +42,10 @@ const createApiModule = (mockGraphqlRequest) => {
       APPLY_ORDER_CHANGE_MUTATION,
       CANCEL_ORDER_CHANGE_MUTATION,
       ORDERS_QUERY,
+      ORDER_QUERY,
+      PAYMENT_COLLECTIONS_QUERY,
+      REFUNDS_QUERY,
+      FULFILLMENTS_QUERY,
       listShippingProfiles,
       getShippingProfile,
       createShippingProfile,
@@ -55,7 +59,11 @@ const createApiModule = (mockGraphqlRequest) => {
       applyOrderChange,
       cancelOrderChange,
       createOrderReturnDecision,
-      listOrders
+      listOrders,
+      getOrderDetail,
+      listPaymentCollections,
+      listRefunds,
+      listFulfillments
     });`,
     ['graphqlRequest', 'exports']
   )(mockGraphqlRequest, exports);
@@ -85,10 +93,13 @@ test('commerceNavItems specifies manager role, plugin group, and all 5 sub-route
   assert.equal(root.group, 'modulePlugins');
   assert.deepEqual(root.access, { role: 'manager' });
 
-  assert.equal(root.items.length, 5);
+  assert.equal(root.items.length, 8);
   const items = root.items.map((i) => ({ title: i.title, url: i.url }));
   assert.deepEqual(items, [
     { title: 'Orders', url: '/dashboard/commerce/orders' },
+    { title: 'Payments', url: '/dashboard/commerce/payments' },
+    { title: 'Refunds', url: '/dashboard/commerce/refunds' },
+    { title: 'Fulfillments', url: '/dashboard/commerce/fulfillments' },
     {
       title: 'Shipping Profiles',
       url: '/dashboard/commerce/shipping-profiles'
@@ -106,6 +117,26 @@ test('API functions enforce fail-closed credential checks', async () => {
   await assert.rejects(
     () => api.listOrders(emptyOpts),
     /Sign in again to view orders\./
+  );
+
+  await assert.rejects(
+    () => api.getOrderDetail(emptyOpts, 'ord-1'),
+    /Sign in again to view orders\./
+  );
+
+  await assert.rejects(
+    () => api.listPaymentCollections(emptyOpts),
+    /Sign in again to manage payments\./
+  );
+
+  await assert.rejects(
+    () => api.listRefunds(emptyOpts),
+    /Sign in again to manage refunds\./
+  );
+
+  await assert.rejects(
+    () => api.listFulfillments(emptyOpts),
+    /Sign in again to manage fulfillments\./
   );
 
   await assert.rejects(
@@ -179,6 +210,126 @@ test('listOrders correctly passes variables, headers, and extracts orders list',
   );
 
   assert.deepEqual(res, mockOrders);
+});
+
+test('getOrderDetail requests the admin order detail projection and passes null through', async () => {
+  const mockDetail = {
+    order: {
+      id: 'ord-123',
+      customerId: 'cust-456',
+      status: 'SHIPPED',
+      currencyCode: 'USD',
+      subtotalAmount: '40.00',
+      adjustmentTotal: '0.00',
+      shippingTotal: '5.00',
+      totalAmount: '49.99',
+      taxTotal: '4.99',
+      taxIncluded: true,
+      lineItems: [],
+      adjustments: [],
+      taxLines: []
+    },
+    paymentCollection: {
+      id: 'pc-1',
+      status: 'captured',
+      currencyCode: 'USD',
+      amount: '49.99',
+      payments: [],
+      refunds: []
+    },
+    fulfillment: null
+  };
+
+  const api = createApiModule(async (query, vars, token, tenant) => {
+    assert.match(query, /CommerceAdminOrder/);
+    assert.match(query, /order\(tenantId: \$tenantId, id: \$id\)/);
+    assert.match(query, /paymentCollection/);
+    assert.match(query, /fulfillment/);
+    assert.equal(vars.tenantId, 'ten-uuid-1');
+    assert.equal(vars.id, 'ord-123');
+    assert.equal(token, 'jwt-token');
+    assert.equal(tenant, 'store-slug');
+    return { order: mockDetail };
+  });
+
+  const res = await api.getOrderDetail(
+    { token: 'jwt-token', tenantSlug: 'store-slug', tenantId: 'ten-uuid-1' },
+    'ord-123'
+  );
+
+  assert.deepEqual(res, mockDetail);
+
+  const nullApi = createApiModule(async () => ({ order: null }));
+  const missing = await nullApi.getOrderDetail(
+    { token: 'jwt-token', tenantSlug: 'store-slug', tenantId: 'ten-uuid-1' },
+    'ord-404'
+  );
+  assert.equal(missing, null);
+});
+
+test('listPaymentCollections, listRefunds, and listFulfillments dispatch typed list queries', async () => {
+  const opts = { token: 'jwt-token', tenantSlug: 'store-slug', tenantId: 'ten-uuid-1' };
+  const calls = [];
+
+  const api = createApiModule(async (query, vars, token, tenant) => {
+    calls.push(query);
+    assert.equal(vars.tenantId, 'ten-uuid-1');
+    assert.equal(token, 'jwt-token');
+    assert.equal(tenant, 'store-slug');
+    if (query.includes('CommerceAdminPaymentCollections')) {
+      assert.deepEqual(vars.filter, { status: 'captured', orderId: 'ord-1' });
+      return {
+        paymentCollections: {
+          items: [{ id: 'pc-1', status: 'captured', payments: [], refunds: [] }],
+          total: 1,
+          page: 1,
+          perPage: 20,
+          hasNext: false
+        }
+      };
+    }
+    if (query.includes('CommerceAdminRefunds')) {
+      assert.deepEqual(vars.filter, { status: 'refunded' });
+      return {
+        refunds: {
+          items: [{ id: 'ref-1', status: 'refunded', amount: '9.99' }],
+          total: 1,
+          page: 1,
+          perPage: 20,
+          hasNext: false
+        }
+      };
+    }
+    assert.match(query, /CommerceAdminFulfillments/);
+    assert.deepEqual(vars.filter, { orderId: 'ord-1' });
+    return {
+      fulfillments: {
+        items: [{ id: 'ff-1', orderId: 'ord-1', status: 'shipped', items: [] }],
+        total: 1,
+        page: 1,
+        perPage: 20,
+        hasNext: false
+      }
+    };
+  });
+
+  const collections = await api.listPaymentCollections(opts, {
+    status: 'captured',
+    orderId: 'ord-1'
+  });
+  assert.equal(collections.total, 1);
+  assert.equal(collections.items[0].id, 'pc-1');
+
+  const refunds = await api.listRefunds(opts, { status: 'refunded' });
+  assert.equal(refunds.items[0].id, 'ref-1');
+
+  const fulfillments = await api.listFulfillments(opts, { orderId: 'ord-1' });
+  assert.equal(fulfillments.items[0].orderId, 'ord-1');
+
+  assert.equal(calls.length, 3);
+  assert.match(calls[0], /paymentCollections\(tenantId: \$tenantId, filter: \$filter\)/);
+  assert.match(calls[1], /refunds\(tenantId: \$tenantId, filter: \$filter\)/);
+  assert.match(calls[2], /fulfillments\(tenantId: \$tenantId, filter: \$filter\)/);
 });
 
 test('listShippingProfiles and createShippingProfile pass correct payload and headers', async () => {

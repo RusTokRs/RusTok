@@ -533,7 +533,7 @@ for (const marker of [
   // Zero-legacy policy: the legacy product_options subsystem was dropped
   // (m20250130_000013); variant option axes now live in the attribute tables.
   'INSERT INTO product_variant_attribute_values (',
-  'INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)',
+  'INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ({tenant_ph}, {value_ph}, {option_ph})',
   'variant_translation::Entity::insert_many(variant_translation_models)',
   'port.create_initial_prices_in_tx(&txn, initial_prices)',
 ]) {

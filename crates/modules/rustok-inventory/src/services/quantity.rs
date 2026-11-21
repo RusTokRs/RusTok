@@ -294,19 +294,15 @@ impl QuantityPlan {
         variant_id: Uuid,
         change: Change,
     ) -> WriteResult<Self> {
-        let (product_id, inventory_policy) = current_read(
+        let variant = current_read(
             txn,
             product_variant::Entity::find_by_id(variant_id)
-                .filter(product_variant::Column::TenantId.eq(tenant_id))
-                .select_only()
-                .column(product_variant::Column::ProductId)
-                .column(product_variant::Column::InventoryPolicy),
+                .filter(product_variant::Column::TenantId.eq(tenant_id)),
         )
-        .into_tuple::<(Uuid, String)>()
         .one(txn)
         .await?
         .ok_or(QuantityWriteError::VariantNotFound(variant_id))?;
-        if product_id.is_nil() {
+        if variant.product_id.is_nil() {
             return Err(QuantityWriteBlocker::IdentityUnavailable.into());
         }
         // A nonlocking parent proof preserves Product's parent-before-variant lock order.
@@ -390,8 +386,8 @@ impl QuantityPlan {
             tenant_id,
             actor_id,
             variant_id,
-            product_id,
-            inventory_policy,
+            product_id: variant.product_id,
+            inventory_policy: variant.inventory_policy,
             before,
             after,
             target: None,

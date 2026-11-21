@@ -307,6 +307,64 @@ impl PostService {
         Ok(items)
     }
 
+    /// Aggregate counters for the admin dashboard. The keyset list never counts
+    /// rows, so this snapshot is the module's only COUNT surface. Authors with
+    /// Own scope only count their own posts; every other caller needs the
+    /// non-public read authority the listing itself relies on.
+    #[instrument(skip(self, security))]
+    pub async fn count_posts_by_status(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+    ) -> BlogResult<PostStatusCounts> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        enforce_scope(&security, Resource::BlogPosts, Action::List)?;
+        let can_read_non_public = can_read_non_public_posts(&security);
+        let can_read_own = security.user_id.is_some()
+            && matches!(
+                security.get_scope(Resource::BlogPosts, Action::Read),
+                PermissionScope::Own
+            );
+        if !can_read_non_public && !can_read_own {
+            return Err(BlogError::forbidden(
+                "Blog post statistics require blog_posts read authority",
+            ));
+        }
+        let author_filter = if can_read_non_public {
+            None
+        } else {
+            security.user_id
+        };
+        let mut counts = PostStatusCounts {
+            total: 0,
+            draft: 0,
+            published: 0,
+            archived: 0,
+        };
+        for status in [
+            BlogPostStatus::Draft,
+            BlogPostStatus::Published,
+            BlogPostStatus::Archived,
+        ] {
+            let mut select = blog_post::Entity::find()
+                .filter(blog_post::Column::TenantId.eq(tenant_id))
+                .filter(blog_post::Column::Status.eq(status_to_storage(status)));
+            if let Some(author_id) = author_filter {
+                select = select.filter(blog_post::Column::AuthorId.eq(author_id));
+            }
+            let count = select.count(&self.db).await.map_err(BlogError::from)?;
+            match status {
+                BlogPostStatus::Draft => counts.draft = count,
+                BlogPostStatus::Published => counts.published = count,
+                BlogPostStatus::Archived => counts.archived = count,
+            }
+            counts.total = counts.total.saturating_add(count);
+        }
+        Ok(counts)
+    }
+
     /// Public keyset page of published posts, ordered `(is_pinned DESC, pinned_at DESC
     /// NULLS LAST, published_at DESC, id DESC)` — see `order_public_post_list`. Fetches
     /// one extra row to learn whether another page exists, so the list never counts rows.

@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 // Selected Product -> Pricing source contracts, not compilation, tests or remote execution.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Reads a single source file, or concatenates a split module directory.
+export function readSource(root, relative) {
+  const absolute = path.join(root, relative);
+  if (statSync(absolute).isDirectory()) {
+    return readdirSync(absolute)
+      .filter((file) => file.endsWith(".rs"))
+      .map((file) => readFileSync(path.join(absolute, file), "utf8"))
+      .join("\n");
+  }
+  return readFileSync(absolute, "utf8");
+}
 
 export const sourcePaths = {
   productRuntime: "crates/modules/rustok-product/src/runtime.rs",
   identities: "crates/modules/rustok-product/src/variant_identity_read_port.rs",
-  service: "crates/modules/rustok-pricing/src/services/pricing.rs",
-  ports: "crates/modules/rustok-pricing/src/ports.rs",
-  read: "crates/modules/rustok-pricing/src/read_context.rs",
-  write: "crates/modules/rustok-pricing/src/write_context.rs",
-  publicError: "crates/modules/rustok-pricing/src/public_error.rs",
+  identityTypes: "crates/modules/rustok-product/ports/src/types.rs",
+  service: "crates/modules/rustok-pricing/src/services/pricing",
+  ports: "crates/modules/rustok-pricing/src/ports",
+  read: "crates/modules/rustok-pricing/src/integrations/read_context.rs",
+  write: "crates/modules/rustok-pricing/src/integrations/write_context.rs",
+  publicError: "crates/modules/rustok-pricing/src/error.rs",
   http: "crates/modules/rustok-commerce/src/controllers/mod.rs",
   restCart: "crates/modules/rustok-commerce/src/controllers/store/carts.rs",
   restReprice: "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
@@ -40,7 +53,7 @@ export const sourcePaths = {
   nativePricing:
     "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
   nativeAdmin:
-    "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter",
   nativeOrder:
     "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
   nativePayment:
@@ -130,13 +143,13 @@ export function verifyPricingProductIdentityContext(sources) {
   require(sources.productRuntime, "variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>", "explicit Product capability");
   require(functionBody(
     sources.productRuntime,
-    "in_process",
-  ), ".with_variant_identity_read_port(catalog)", "shared embedded Product owner");
+    "in_process_with_flex_schema",
+  ), ".with_variant_identity_read_port(catalog.clone())", "shared embedded Product owner");
   require(functionBody(
     sources.productRuntime,
     "external",
   ), "Self::new(read_port, ProductCatalogReadProfile::External)", "external selection");
-  require(sources.identities, "pub tenant_id: Uuid", "required response tenant scope");
+  require(sources.identityTypes, "pub tenant_id: Uuid", "required response tenant scope");
   for (const marker of [
     "response.len() != request.variant_ids.len()",
     "identity.tenant_id != tenant_id",
@@ -165,7 +178,7 @@ export function verifyPricingProductIdentityContext(sources) {
   );
   require(identity, ".read_variant_identities(context.clone(), request.clone())", "original delegated identity context");
   require(identity, "validate_variant_identities_response(context, request, &identities)", "verified exact response");
-  require(identity, ".map_err(pricing_identity_port_error)", "static Pricing identity dependency envelope");
+  require(identity, ".map_err(projections::pricing_identity_port_error)", "static Pricing identity dependency envelope");
   const getter = functionBody(sources.service, "variant_identity_read_port");
   require(getter, "self.product_catalog_read_runtime .variant_identity_read_port() .ok_or_else", "selected capability only");
   require(getter, '"pricing.product_identity_capability_unavailable"', "missing capability is an explicit refusal");
@@ -191,7 +204,7 @@ export function verifyPricingProductIdentityContext(sources) {
   before(
     page,
     "validate_product_variant_identity_list_response",
-    "entities::price::Entity::find",
+    "price::Entity::find()",
     "page proof before price rows",
   );
   require(page, ".map_err(pricing_catalog_port_error)", "static catalog dependency envelope");
@@ -240,7 +253,7 @@ export function verifyPricingProductIdentityContext(sources) {
       "canonical Cart locale admission",
     ],
     [
-      "context.channel = cart.channel_slug.clone()",
+      "context.channel = cart.channel_slug.clone();",
       "Cart channel replaces page context",
     ],
     ["channel_id: cart.channel_id", "saved Cart channel ID only"],
@@ -315,7 +328,7 @@ export function verifyPricingProductIdentityContext(sources) {
   before(
     admin,
     "validate_pricing_product_projection",
-    "entities::price::Entity::find",
+    "price::Entity::find()",
     "admin inspection proof before price rows",
   );
   require(admin, ".read_product_projection( context.clone()", "admin caller context");
@@ -326,10 +339,11 @@ export function verifyPricingProductIdentityContext(sources) {
   ]) {
     require(wrapper, "product_runtime: rustok_product::ProductCatalogReadRuntime", `mandatory ${kind} composition dependency`);
     require(wrapper, ".with_product_catalog_read_runtime(product_runtime)", `selected ${kind} service dependency`);
-    require(functionBody(
-      sources.ports,
-      `in_process_pricing_${kind}_port`,
-    ), `crate::${kind}_context::in_process_pricing_${kind}_port(db, event_bus, product_runtime)`, `canonical module-path ${kind} facade`);
+    require(
+      wrapper,
+      `pub fn in_process_pricing_${kind}_port(`,
+      `canonical in-process ${kind} provider constructor`,
+    );
   }
   const budgets =
     sources.read.match(/crate::ports::read_with_deadline\(/g) ?? [];
@@ -474,7 +488,7 @@ if (
   const sources = Object.fromEntries(
     Object.entries(sourcePaths).map(([name, relative]) => [
       name,
-      readFileSync(path.join(root, relative), "utf8"),
+      readSource(root, relative),
     ]),
   );
   const failures = verifyPricingProductIdentityContext(sources);

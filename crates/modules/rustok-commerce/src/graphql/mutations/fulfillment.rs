@@ -307,6 +307,22 @@ fn order_change_owner_graphql_error(
     public_fulfillment_graphql_error(message, code, retryable)
 }
 
+fn order_mutation_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    operation: &'static str,
+    error: &OrderError,
+) -> (&'static str, &'static str, bool) {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        resource_id = %resource_id,
+        operation,
+        "commerce GraphQL order mutation failed"
+    );
+    order_error_envelope(error)
+}
+
 fn post_order_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
@@ -322,7 +338,9 @@ fn post_order_graphql_error(
     );
 
     let (message, code, retryable) = match &error {
-        PostOrderOrchestrationError::Order(source) => order_error_envelope(source),
+        PostOrderOrchestrationError::Order(source) => {
+            order_mutation_graphql_error(tenant_id, resource_id, operation, source)
+        }
         PostOrderOrchestrationError::Payment(source) => payment_error_envelope(source),
         PostOrderOrchestrationError::PaymentOrchestration(source) => {
             payment_orchestration_error_envelope(source)

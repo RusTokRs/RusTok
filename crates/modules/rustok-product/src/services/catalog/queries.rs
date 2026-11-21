@@ -95,7 +95,18 @@ impl CatalogService {
                 public_channel_slug,
             ));
         if let Some(category_id) = list_query.category_id {
-            query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
+            // A storefront category filter selects the category and its live
+            // descendant subtree, mirroring the storefront navigation tree.
+            let subtree = load_category_filter_subtree(&self.db, tenant_id, category_id).await?;
+            query = if subtree.is_empty() {
+                // Unknown or deleted category: the filter matches no products.
+                query.filter(
+                    sea_orm::Condition::all()
+                        .add(sea_orm::sea_query::Expr::cust("1 = 0")),
+                )
+            } else {
+                query.filter(entities::product::Column::PrimaryCategoryId.is_in(subtree))
+            };
         }
         if let Some(search) = list_query
             .search
@@ -409,47 +420,10 @@ impl CatalogService {
             return Ok(None);
         }
 
-        let axes = product
-            .variant_axes
-            .iter()
-            .map(|axis| VariantAxisInput {
-                attribute_id: axis.attribute_id,
-                position: axis.position,
-                allowed_option_ids: axis
-                    .allowed_values
-                    .iter()
-                    .map(|value| value.option_id)
-                    .collect(),
-            })
-            .collect::<Vec<_>>();
-        let tuples = product
-            .variants
-            .iter()
-            .map(|variant| {
-                variant
-                    .axis_values
-                    .iter()
-                    .map(|value| VariantAxisValueInput {
-                        attribute_id: value.attribute_id,
-                        option_id: value.option_id,
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        super::commands::validate_variant_axis_tuples(&axes, &tuples)?;
-        for variant in &product.variants {
-            let mut values = variant
-                .axis_values
-                .iter()
-                .map(|value| format!("{}:{}", value.attribute_id, value.option_id))
-                .collect::<Vec<_>>();
-            values.sort();
-            let identity = (!values.is_empty()).then(|| values.join(";"));
-            if variant.combination_identity != identity {
-                return Err(CommerceError::Validation("public SKU identity projection is inconsistent; repair the catalog before publishing".into()));
-            }
-        }
-
+        // Axis/tuple consistency and combination identity are enforced by the
+        // write side (create/update variant validation plus the identity update in
+        // `assign_variant_axis_values_in_tx`); public reads stay pure projections
+        // and never re-derive or refuse catalog state.
         apply_public_channel_inventory_to_product(
             self.inventory_port.as_ref(),
             &self.db,

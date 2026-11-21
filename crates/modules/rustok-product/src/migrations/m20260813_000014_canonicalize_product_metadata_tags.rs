@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{Duration, Utc};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
+use rustok_taxonomy::dto::TaxonomyScopeType;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
     FromQueryResult, QueryFilter, Statement, TransactionTrait,
@@ -264,7 +265,10 @@ async fn find_existing_term(
     locale: &str,
     route_key: &str,
 ) -> Result<Option<Uuid>, DbErr> {
-    for (scope_type, scope_value) in [("module", PRODUCT_SCOPE_VALUE), ("global", "")] {
+    for (scope_type, scope_value) in [
+        (TaxonomyScopeType::Module, PRODUCT_SCOPE_VALUE),
+        (TaxonomyScopeType::Global, ""),
+    ] {
         for candidate_locale in locale_candidates(locale) {
             let row = RouteKeyTermIdRow::find_by_statement(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -281,7 +285,7 @@ async fn find_existing_term(
                 "#,
                 vec![
                     tenant_id.into(),
-                    scope_type.into(),
+                    scope_type.to_string().into(),
                     scope_value.into(),
                     candidate_locale.into(),
                     route_key.into(),
@@ -308,7 +312,7 @@ async fn find_existing_term(
             "#,
             vec![
                 tenant_id.into(),
-                scope_type.into(),
+                scope_type.to_string().into(),
                 scope_value.into(),
                 route_key.into(),
             ],

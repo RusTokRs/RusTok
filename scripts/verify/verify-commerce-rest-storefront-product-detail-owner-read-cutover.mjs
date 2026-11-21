@@ -26,6 +26,8 @@ const controller = read('crates/modules/rustok-commerce/src/controllers/store/pr
 const storeRouter = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const productPorts = read('crates/modules/rustok-product/src/ports.rs');
+// The read-port trait is published by the owner contracts package.
+const productContractsPorts = read('crates/modules/rustok-product/ports/src/ports.rs');
 const productQueries = read('crates/modules/rustok-product/src/services/catalog/queries.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 
@@ -124,8 +126,8 @@ for (const [value, label] of [
   ['shared_get::<rustok_product::ProductCatalogReadRuntime>()', 'host-selected Product runtime'],
 ]) requireText(httpRuntime, value, label);
 
+requireText(productContractsPorts, 'pub trait ProductCatalogReadPort', 'Product owner read port');
 for (const [value, label] of [
-  ['pub trait ProductCatalogReadPort', 'Product owner read port'],
   ['async fn read_storefront_product_projection(', 'Product owner storefront detail capability'],
   ['.require_policy(PortCallPolicy::read())', 'Product read admission'],
   ['StorefrontProductProjectionSubject::ProductId { product_id }', 'Product owner product-id dispatch'],

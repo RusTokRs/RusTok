@@ -15,7 +15,7 @@ use rustok_fulfillment::{
     ShippingOptionReadPort,
 };
 
-const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
+pub(crate) const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
 const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str = "commerce_storefront_shipping_enrichment";
 
 struct StorefrontShippingDiagnosticError;
@@ -33,7 +33,7 @@ fn uuid_shape(value: Uuid) -> &'static str {
 fn optional_text_shape(value: Option<&str>) -> &'static str {
     match value {
         None => "absent",
-        Some("") => "empty",
+        Some(value) if value.is_empty() => "empty",
         Some(_) => "present",
     }
 }
@@ -133,7 +133,7 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
     public_channel_slug: Option<&str>,
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
-    owner_context: &PortContext,
+    owner_context: PortContext,
     shipping_option_read_port: &dyn ShippingOptionReadPort,
 ) -> Result<ShippingOptionResponse, StorefrontShippingSelectionValidationError> {
     let Some(shipping_option_id) = selection.selected_shipping_option_id else {
@@ -162,7 +162,7 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
 
     let option = shipping_option_read_port
         .read_shipping_option_projection(
-            owner_context.clone(),
+            owner_context,
             ReadShippingOptionProjectionRequest {
                 shipping_option_id,
                 requested_locale: requested_locale.map(str::to_owned),

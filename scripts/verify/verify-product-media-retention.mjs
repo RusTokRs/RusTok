@@ -73,11 +73,21 @@ export function verify(s) {
     'find_product_for_update_in_tx',
     'parent must be rechecked under the transaction lock'
   );
+  // The image transaction is staged by `stage_product_image_addition_in_tx`
+  // (which writes the coverage marker inside the open transaction) and committed
+  // by the admitting flow, so a definite rollback can compensate the Media hold.
+  const stagedAddition = add.slice(add.indexOf('async fn stage_product_image_addition_in_tx('));
+  ordered(
+    stagedAddition,
+    'mark_image_media_provisioned',
+    'Ok((txn, result))',
+    'coverage marker must be staged inside the image transaction'
+  );
   ordered(
     add,
-    'mark_image_media_provisioned',
+    'stage_product_image_addition_in_tx',
     'txn.commit()',
-    'coverage marker must commit with the image'
+    'the staged image and its coverage marker must commit with the image'
   );
   for (const [name, next] of [
     ['delete_product', 'create_variant'],

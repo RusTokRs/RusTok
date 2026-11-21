@@ -1,4 +1,6 @@
-use crate::dto::{ProductResponse, ProductTranslationInput, ProductTranslationResponse};
+use crate::dto::{
+    ProductResponse, ProductTranslationInput, ProductTranslationResponse, VariantAxisValueResponse,
+};
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
@@ -65,7 +67,7 @@ pub fn is_metadata_visible_for_public_channel(
 }
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
+    FromQueryResult, QueryFilter, QueryOrder, Statement, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
 use std::collections::HashSet;
@@ -74,10 +76,6 @@ use uuid::Uuid;
 
 pub mod product_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("product_field_definitions");
-}
-
-pub fn map_flex_cleanup_error(error: rustok_core::field_schema::FlexError) -> CommerceError {
-    error.into()
 }
 
 pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
@@ -121,19 +119,119 @@ pub fn slugify(text: &str) -> String {
     }
 }
 
-pub fn generate_variant_title(variant: &entities::product_variant::Model) -> String {
-    match &variant.combination_identity {
-        Some(identity) if !identity.is_empty() => identity.clone(),
-        _ => "Default".to_string(),
-    }
-}
-
 pub fn generate_variant_title_from_axis_values(values: &[&str]) -> String {
     if values.is_empty() {
         "Default".to_string()
     } else {
         values.join(" / ")
     }
+}
+
+/// Display title of one variant: authored Translation copy first, then the readable
+/// projection of its axis assignments.
+///
+/// The machine `combination_identity` (pairs of UUIDs) is never shown to a person:
+/// an authored title wins, otherwise the localized option labels of the sparse
+/// tuple are joined (`"Red / M"`), and a variant without assignments is `Default`.
+pub fn variant_display_title(
+    translations: &[entities::variant_translation::Model],
+    axis_values: &[VariantAxisValueResponse],
+    locale: &str,
+    fallback_locale: &str,
+) -> String {
+    let authored = translations
+        .iter()
+        .find(|translation| {
+            locale_tags_match(&translation.locale, locale)
+                && translation
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| !title.trim().is_empty())
+        })
+        .or_else(|| {
+            translations.iter().find(|translation| {
+                locale_tags_match(&translation.locale, fallback_locale)
+                    && translation
+                        .title
+                        .as_deref()
+                        .is_some_and(|title| !title.trim().is_empty())
+            })
+        })
+        .and_then(|translation| translation.title.clone());
+    if let Some(title) = authored {
+        return title;
+    }
+    let labels = axis_values
+        .iter()
+        .map(|value| {
+            value
+                .label
+                .clone()
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or_else(|| value.option_id.to_string())
+        })
+        .collect::<Vec<_>>();
+    let references = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    generate_variant_title_from_axis_values(references.as_slice())
+}
+
+/// Bound for one category filter's subtree resolution: lists and facets refuse a
+/// filter whose live subtree exceeds this size instead of silently truncating it.
+pub const MAX_CATEGORY_FILTER_SUBTREE: usize = 1024;
+
+#[derive(Debug, sea_orm::FromQueryResult)]
+struct CategoryFilterSubtreeRow {
+    id: Uuid,
+}
+
+/// Resolves a category filter to the category itself plus all of its live
+/// descendant categories.
+///
+/// Lists and facets aggregate by primary-category subtree, matching the tree the
+/// category selector presents: choosing a parent includes products filed under
+/// its children. The walk is tenant-scoped over live rows and bounded; a missing
+/// or deleted root resolves to an empty set (the filter matches no products).
+pub async fn load_category_filter_subtree<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> CommerceResult<Vec<Uuid>> {
+    let backend = conn.get_database_backend();
+    let rows = CategoryFilterSubtreeRow::find_by_statement(Statement::from_sql_and_values(
+        backend,
+        format!(
+            r#"
+            WITH RECURSIVE category_subtree(id) AS (
+                SELECT id
+                FROM catalog_categories
+                WHERE tenant_id = {tenant} AND id = {root} AND deleted_at IS NULL
+                UNION ALL
+                SELECT c.id
+                FROM catalog_categories c
+                JOIN category_subtree s ON c.parent_id = s.id
+                WHERE c.tenant_id = {tenant_again} AND c.deleted_at IS NULL
+            )
+            SELECT id FROM category_subtree LIMIT {limit}
+            "#,
+            tenant = sql_placeholder(backend, 1),
+            root = sql_placeholder(backend, 2),
+            tenant_again = sql_placeholder(backend, 3),
+            limit = MAX_CATEGORY_FILTER_SUBTREE + 1,
+        ),
+        vec![
+            tenant_id.into(),
+            category_id.into(),
+            tenant_id.into(),
+        ],
+    ))
+    .all(conn)
+    .await?;
+    if rows.len() > MAX_CATEGORY_FILTER_SUBTREE {
+        return Err(CommerceError::Validation(format!(
+            "category filter subtree exceeds its bound of {MAX_CATEGORY_FILTER_SUBTREE} live categories"
+        )));
+    }
+    Ok(rows.into_iter().map(|row| row.id).collect())
 }
 
 pub fn format_product_media_url(media_id: Uuid) -> String {
@@ -335,30 +433,6 @@ pub fn product_field_definition_from_row(
     rustok_core::field_schema::field_definition_from_source(&row)
 }
 
-pub fn split_product_metadata_payload(
-    schema: &CustomFieldsSchema,
-    metadata: &Value,
-) -> (
-    serde_json::Map<String, Value>,
-    serde_json::Map<String, Value>,
-) {
-    field_values::split_donor_metadata(schema, metadata)
-}
-
-pub fn merge_product_metadata_patch(
-    existing: serde_json::Map<String, Value>,
-    patch: serde_json::Map<String, Value>,
-) -> serde_json::Map<String, Value> {
-    field_values::merge_reserved_donor_patch(existing, patch)
-}
-
-pub fn merge_reserved_product_metadata(
-    reserved: serde_json::Map<String, Value>,
-    custom_fields: Option<Value>,
-) -> Value {
-    field_values::merge_reserved_donor_metadata(reserved, custom_fields)
-}
-
 pub fn pick_product_translation<'a>(
     translations: &'a [entities::product_translation::Model],
     locale: &str,
@@ -413,26 +487,6 @@ pub fn localize_product_response(
     product
 }
 
-pub async fn prepare_product_custom_fields_for_create<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    locale: &str,
-    payload: Value,
-) -> CommerceResult<field_values::PreparedAttachedValuesWrite>
-where
-    C: ConnectionTrait,
-{
-    prepare_product_custom_fields_and_schema_for_create(
-        conn,
-        ProductFlexSchemaSource::Shared,
-        tenant_id,
-        locale,
-        payload,
-    )
-    .await
-    .map(|(prepared, _)| prepared)
-}
-
 pub(super) async fn prepare_product_custom_fields_and_schema_for_create(
     conn: &impl ConnectionTrait,
     source: ProductFlexSchemaSource,
@@ -448,30 +502,6 @@ pub(super) async fn prepare_product_custom_fields_and_schema_for_create(
     let prepared =
         field_values::prepare_donor_attached_values_create(schema.clone(), &payload, locale)?;
     Ok((prepared, schema))
-}
-
-pub async fn prepare_product_custom_fields_for_update<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    product_id: Uuid,
-    locale: &str,
-    existing_metadata: &Value,
-    payload: Value,
-) -> CommerceResult<field_values::PreparedAttachedValuesWrite>
-where
-    C: ConnectionTrait,
-{
-    prepare_product_custom_fields_and_schema_for_update(
-        conn,
-        ProductFlexSchemaSource::Shared,
-        tenant_id,
-        product_id,
-        locale,
-        existing_metadata,
-        payload,
-    )
-    .await
-    .map(|(prepared, _)| prepared)
 }
 
 pub(super) async fn prepare_product_custom_fields_and_schema_for_update(
@@ -550,30 +580,6 @@ where
     )
     .await
     .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
-}
-
-pub async fn resolve_product_metadata<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    product_id: Uuid,
-    metadata: &Value,
-    locale: &str,
-    fallback_locale: &str,
-) -> CommerceResult<Value>
-where
-    C: ConnectionTrait,
-{
-    let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    resolve_product_metadata_with_schema(
-        conn,
-        tenant_id,
-        product_id,
-        metadata,
-        locale,
-        fallback_locale,
-        &schema,
-    )
-    .await
 }
 
 /// Positional placeholder for one bound value in a hand-written SQL fragment.
@@ -778,11 +784,7 @@ where
 
 #[cfg(test)]
 mod product_metadata_tests {
-    use super::{
-        merge_product_metadata_patch, merge_reserved_product_metadata,
-        reject_reserved_tag_metadata, resolve_product_metadata_with_schema,
-        split_product_metadata_payload,
-    };
+    use super::{reject_reserved_tag_metadata, resolve_product_metadata_with_schema};
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
     use serde_json::json;
     use std::collections::HashMap;
@@ -801,29 +803,6 @@ mod product_metadata_tests {
             position: 0,
             is_active: true,
         }
-    }
-
-    #[test]
-    fn split_product_metadata_payload_routes_only_known_flex_keys() {
-        let schema = CustomFieldsSchema::new(vec![definition("fit"), definition("material")]);
-
-        let (reserved, flex) = split_product_metadata_payload(
-            &schema,
-            &json!({
-                "fit": "regular",
-                "material": "linen",
-                "source": "erp",
-                "shipping_profile": { "slug": "standard" }
-            }),
-        );
-
-        assert_eq!(reserved.get("source"), Some(&json!("erp")));
-        assert_eq!(
-            reserved.get("shipping_profile"),
-            Some(&json!({ "slug": "standard" }))
-        );
-        assert_eq!(flex.get("fit"), Some(&json!("regular")));
-        assert_eq!(flex.get("material"), Some(&json!("linen")));
     }
 
     #[test]
@@ -846,51 +825,6 @@ mod product_metadata_tests {
         assert_eq!(cleared.get("source"), Some(&json!("erp")));
         assert!(cleared.get("shipping_profile").is_none());
         assert!(cleared.get("shipping_profile_slug").is_none());
-    }
-
-    #[test]
-    fn merge_product_metadata_patch_preserves_reserved_existing_keys() {
-        let existing = json!({
-            "source": "erp",
-            "shipping_profile": { "slug": "standard" }
-        })
-        .as_object()
-        .cloned()
-        .expect("existing object");
-        let patch = json!({ "source": "manual" })
-            .as_object()
-            .cloned()
-            .expect("patch object");
-
-        let merged = merge_product_metadata_patch(existing, patch);
-
-        assert_eq!(merged.get("source"), Some(&json!("manual")));
-        assert_eq!(
-            merged.get("shipping_profile"),
-            Some(&json!({ "slug": "standard" }))
-        );
-    }
-
-    #[test]
-    fn merge_reserved_product_metadata_keeps_reserved_and_writes_shared_flex_values() {
-        let reserved = json!({ "source": "erp" })
-            .as_object()
-            .cloned()
-            .expect("reserved object");
-
-        let merged = merge_reserved_product_metadata(
-            reserved,
-            Some(json!({ "fit": "regular", "material": "linen" })),
-        );
-
-        assert_eq!(
-            merged,
-            json!({
-                "source": "erp",
-                "fit": "regular",
-                "material": "linen"
-            })
-        );
     }
 
     #[tokio::test]
@@ -938,5 +872,240 @@ mod product_metadata_tests {
         assert_eq!(resolved.get("source"), Some(&json!("erp")));
         assert_eq!(resolved.get("fit"), Some(&json!("oversized")));
         assert_eq!(resolved.get("material"), Some(&json!("cotton")));
+    }
+}
+
+#[cfg(test)]
+mod variant_title_tests {
+    use super::*;
+    use rustok_api::PLATFORM_FALLBACK_LOCALE;
+
+    fn translation(locale: &str, title: Option<&str>) -> entities::variant_translation::Model {
+        entities::variant_translation::Model {
+            id: Uuid::new_v4(),
+            variant_id: Uuid::new_v4(),
+            locale: locale.to_owned(),
+            title: title.map(str::to_owned),
+        }
+    }
+
+    fn axis_value(
+        attribute_id: Uuid,
+        option_id: Uuid,
+        code: Option<&str>,
+        label: Option<&str>,
+    ) -> VariantAxisValueResponse {
+        VariantAxisValueResponse {
+            attribute_id,
+            option_id,
+            code: code.map(str::to_owned),
+            label: label.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn axis_value_labels_join_into_a_display_title() {
+        assert_eq!(
+            generate_variant_title_from_axis_values(&["Red", "M"]),
+            "Red / M"
+        );
+        assert_eq!(
+            generate_variant_title_from_axis_values(&["Relaxed"]),
+            "Relaxed"
+        );
+        assert_eq!(
+            generate_variant_title_from_axis_values(&[]),
+            "Default",
+            "a variant without assignments is titled Default"
+        );
+    }
+
+    #[test]
+    fn display_title_prefers_the_authored_title_of_the_requested_locale() {
+        let translations = vec![
+            translation("en", Some("Authored EN")),
+            translation("ru", Some("Оригинальное название")),
+        ];
+        let values = vec![axis_value(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Some("color"),
+            Some("Red"),
+        )];
+
+        assert_eq!(
+            variant_display_title(&translations, &values, "ru", PLATFORM_FALLBACK_LOCALE),
+            "Оригинальное название"
+        );
+        assert_eq!(
+            variant_display_title(&translations, &values, "en", PLATFORM_FALLBACK_LOCALE),
+            "Authored EN"
+        );
+    }
+
+    #[test]
+    fn display_title_falls_back_to_fallback_locale_title_then_axis_labels() {
+        let translations = vec![translation("en", Some("Authored EN"))];
+        let values = vec![
+            axis_value(Uuid::new_v4(), Uuid::new_v4(), Some("color"), Some("Red")),
+            axis_value(Uuid::new_v4(), Uuid::new_v4(), Some("size"), Some("M")),
+        ];
+
+        assert_eq!(
+            variant_display_title(&translations, &values, "de", "en"),
+            "Authored EN",
+            "the fallback locale's authored title wins before axis labels"
+        );
+        assert_eq!(
+            variant_display_title(&translations, &values, "de", "fr"),
+            "Red / M",
+            "without any authored title the tuple labels become the title"
+        );
+    }
+
+    #[test]
+    fn display_title_treats_blank_authored_titles_as_absent() {
+        let translations = vec![
+            translation("de", Some("   ")),
+            translation("fr", Some("")),
+        ];
+        let values = vec![axis_value(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Some("color"),
+            Some("Red"),
+        )];
+
+        assert_eq!(
+            variant_display_title(&translations, &values, "de", "fr"),
+            "Red"
+        );
+    }
+
+    #[test]
+    fn display_title_renders_the_option_id_when_no_label_exists() {
+        let option_id = Uuid::new_v4();
+        let values = vec![axis_value(
+            Uuid::new_v4(),
+            option_id,
+            Some("color"),
+            None,
+        )];
+
+        assert_eq!(
+            variant_display_title(&[], &values, "de", "en"),
+            option_id.to_string()
+        );
+    }
+
+    #[test]
+    fn display_title_defaults_without_translations_or_assignments() {
+        assert_eq!(
+            variant_display_title(&[], &[], "de", "en"),
+            "Default"
+        );
+    }
+
+}
+
+#[cfg(test)]
+mod category_filter_subtree_tests {
+    use super::*;
+
+    async fn subtree_db() -> sea_orm::DatabaseConnection {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+        db.execute_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE catalog_categories (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                parent_id TEXT,
+                deleted_at TEXT
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("create catalog_categories");
+        db
+    }
+
+    async fn insert_category(
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        id: Uuid,
+        parent_id: Option<Uuid>,
+        deleted: bool,
+    ) {
+        let deleted_at: Option<String> = deleted.then(|| "deleted".to_string());
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO catalog_categories (id, tenant_id, parent_id, deleted_at) VALUES (?, ?, ?, ?)",
+            [
+                id.into(),
+                tenant_id.into(),
+                parent_id.into(),
+                deleted_at.into(),
+            ],
+        ))
+        .await
+        .expect("insert category");
+    }
+
+    #[tokio::test]
+    async fn subtree_walks_live_descendants_of_the_requested_tenant() {
+        let db = subtree_db().await;
+        let tenant_id = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let grandchild = Uuid::new_v4();
+        let deleted_child = Uuid::new_v4();
+        let child_of_deleted = Uuid::new_v4();
+        let foreign_root = Uuid::new_v4();
+
+        insert_category(&db, tenant_id, root, None, false).await;
+        insert_category(&db, tenant_id, child, Some(root), false).await;
+        insert_category(&db, tenant_id, grandchild, Some(child), false).await;
+        insert_category(&db, tenant_id, deleted_child, Some(root), true).await;
+        insert_category(&db, tenant_id, child_of_deleted, Some(deleted_child), false).await;
+        insert_category(&db, other_tenant, foreign_root, None, false).await;
+
+        let mut subtree = load_category_filter_subtree(&db, tenant_id, root)
+            .await
+            .expect("resolve subtree");
+        subtree.sort();
+        let mut expected = vec![root, child, grandchild];
+        expected.sort();
+        assert_eq!(subtree, expected);
+
+        assert!(
+            load_category_filter_subtree(&db, tenant_id, Uuid::new_v4())
+                .await
+                .expect("unknown root resolves")
+                .is_empty(),
+            "an unknown or deleted root matches no products"
+        );
+    }
+
+    #[tokio::test]
+    async fn subtree_refuses_filters_whose_live_tree_exceeds_the_bound() {
+        let db = subtree_db().await;
+        let tenant_id = Uuid::new_v4();
+        let mut parent = Uuid::new_v4();
+        insert_category(&db, tenant_id, parent, None, false).await;
+        for _ in 0..MAX_CATEGORY_FILTER_SUBTREE {
+            let next = Uuid::new_v4();
+            insert_category(&db, tenant_id, next, Some(parent), false).await;
+            parent = next;
+        }
+
+        let error = load_category_filter_subtree(&db, tenant_id, parent)
+            .await
+            .expect_err("an oversized subtree must be refused");
+        assert!(matches!(error, CommerceError::Validation(_)));
     }
 }

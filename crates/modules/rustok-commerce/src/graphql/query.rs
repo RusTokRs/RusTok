@@ -1,11 +1,8 @@
-use super::{
-    async_graphql_shim as async_graphql, rustok_api_shim as rustok_api,
-    rustok_cart_shim as rustok_cart, rustok_channel_shim as rustok_channel,
-    rustok_customer_shim as rustok_customer, rustok_fulfillment_shim as rustok_fulfillment,
-    rustok_order_shim as rustok_order, rustok_payment_shim as rustok_payment,
-    rustok_pricing_shim as rustok_pricing,
+use self::{
+    rustok_fulfillment_shim as rustok_fulfillment, rustok_pricing_shim as rustok_pricing,
 };
 use async_graphql::{Context, FieldError, Json, Object, Result};
+use super::query_error_boundary::BoundaryError;
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
 use rustok_api::{
@@ -26,7 +23,9 @@ use rustok_pricing::{
     ResolveProductPricesRequest, StorefrontProductPricingListRequest,
     StorefrontProductPricingProjectionRequest, in_process_pricing_read_port,
 };
-use rustok_region::{RegionListRequest, in_process_region_read_port};
+use rustok_region::{
+    RegionListRequest, RegionReadPort, RegionService, in_process_region_read_port,
+};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -549,8 +548,7 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let requested_locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
-        let region_read_port = in_process_region_read_port(db.clone());
-        let regions = region_read_port
+        let regions = RegionService::new(db.clone())
             .list_regions_for_tenant(
                 rustok_api::PortContext::new(
                     tenant_id.to_string(),
@@ -566,9 +564,9 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                async_graphql::Error::new(
-                    super::super::query_error_boundary::RegionGraphqlMessage::new(error),
-                )
+                // Compatibility format: the source boundary intercepts this exact shape and
+                // forwards the typed owner error to the region boundary message.
+                async_graphql::Error::new(format!("{}: {}", error.code, error.message))
             })?;
 
         Ok(regions
@@ -681,7 +679,7 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                super::super::query_error_boundary::shipping_option_port_error(
+                super::query_error_boundary::shipping_option_port_error(
                     &owner_context,
                     error,
                 )
@@ -980,20 +978,9 @@ impl CommerceQuery {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let customer = in_process_customer_read_port(db.clone())
-            .read_customer_projection_by_user(
-                graphql_customer_port_context(tenant_id, auth.user_id),
-                CustomerUserProjectionRequest {
-                    user_id: auth.user_id,
-                },
-            )
-            .await
-            .map_err(|error| match error.code.as_str() {
-                "customer.customer_by_user_not_found" => {
-                    <FieldError as GraphQLError>::unauthenticated()
-                }
-                _ => async_graphql::Error::new(error.message),
-            })?;
+        let customer_id = resolve_optional_storefront_customer_id(&db, tenant_id, Some(&auth))
+            .await?
+            .ok_or_else(<FieldError as GraphQLError>::unauthenticated)?;
 
         let page = page.unwrap_or(1).max(1);
         let per_page = per_page.unwrap_or(20).clamp(1, 100);
@@ -1005,7 +992,7 @@ impl CommerceQuery {
                     page,
                     per_page,
                     status,
-                    customer_id: Some(customer.id),
+                    customer_id: Some(customer_id),
                 },
                 locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -1539,7 +1526,7 @@ impl CommerceQuery {
             Ok(option) => Ok(Some(option.into())),
             Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => Ok(None),
             Err(error) => Err(
-                super::super::query_error_boundary::shipping_option_port_error(
+                super::query_error_boundary::shipping_option_port_error(
                     &owner_context,
                     error,
                 ),
@@ -1603,7 +1590,7 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                super::super::query_error_boundary::shipping_option_port_error(
+                super::query_error_boundary::shipping_option_port_error(
                     &owner_context,
                     error,
                 )
@@ -2206,7 +2193,7 @@ impl CommerceQuery {
                 rustok_product::ProductEffectiveFormSubject::Category { category_id }
             }
             (None, None) => {
-                return Err(async_graphql::Error::new(
+                return Err(BoundaryError::new(
                     "Either product_id or category_id is required",
                 ));
             }
@@ -2328,7 +2315,7 @@ impl CommerceQuery {
         super::require_storefront_channel_enabled(ctx).await?;
         let locale = locale.trim();
         if locale.is_empty() {
-            return Err(async_graphql::Error::new("locale is required"));
+            return Err(BoundaryError::new("locale is required"));
         }
 
         let db = ctx.data::<DatabaseConnection>()?;
@@ -2427,7 +2414,7 @@ impl CommerceQuery {
                 }
             }
             _ => {
-                return Err(async_graphql::Error::new(
+                return Err(BoundaryError::new(
                     "Either `id` or non-empty `handle` is required",
                 ));
             }
@@ -2503,7 +2490,7 @@ impl CommerceQuery {
         let page = filter.page.unwrap_or(1);
         let per_page = filter.per_page.unwrap_or(12);
         if page == 0 || per_page == 0 || per_page > 48 {
-            return Err(async_graphql::Error::new(
+            return Err(BoundaryError::new(
                 "page must be at least 1 and per_page must be between 1 and 48",
             ));
         }
@@ -2658,12 +2645,12 @@ fn build_pricing_resolution_context(
             value
         }
         Some(_) => {
-            return Err(async_graphql::Error::new(
+            return Err(BoundaryError::new(
                 "currency_code must be a 3-letter code",
             ));
         }
         None if region_id.is_some() || price_list_id.is_some() || quantity.is_some() => {
-            return Err(async_graphql::Error::new(
+            return Err(BoundaryError::new(
                 "currency_code is required for pricing resolution context",
             ));
         }
@@ -2671,7 +2658,7 @@ fn build_pricing_resolution_context(
     };
     let quantity = match quantity {
         Some(value) if value < 1 => {
-            return Err(async_graphql::Error::new("quantity must be at least 1"));
+            return Err(BoundaryError::new("quantity must be at least 1"));
         }
         Some(value) => value,
         None => 1,
@@ -2695,7 +2682,7 @@ async fn attach_effective_prices(
 ) -> Result<()> {
     // An empty Product has no quotable SKU; do not turn an invalid empty batch into success.
     if detail.variants.is_empty() {
-        return Err(async_graphql::Error::new("Product has no SKU to quote"));
+        return Err(BoundaryError::new("Product has no SKU to quote"));
     }
     let snapshot = pricing_read_port
         .resolve_product_prices(
@@ -2716,7 +2703,7 @@ async fn attach_effective_prices(
     for variant in &mut detail.variants {
         variant.effective_price = quotes
             .remove(&variant.id)
-            .ok_or_else(|| async_graphql::Error::new("SKU pricing projection is incomplete"))?
+            .ok_or_else(|| BoundaryError::new("SKU pricing projection is incomplete"))?
             .map(Into::into);
     }
     detail.resolution_context = Some(snapshot.context.into());

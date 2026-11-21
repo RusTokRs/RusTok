@@ -27,8 +27,12 @@ use crate::dto::{
     CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 
+/// Legacy mutation/OpenAPI compatibility re-export: the pre-cutover concrete-service handlers
+/// stay in source (see `payments.rs`), while this module owns the mounted owner-port surface.
+pub use super::payments_legacy::*;
+
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
-const MAX_REFUND_CREATION_KEY_LENGTH: usize = MAX_IDEMPOTENCY_KEY_LENGTH;
+const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
 const ADMIN_PAYMENT_READ_OWNER: &str = "rustok_payment.admin_read";
 const ADMIN_PAYMENT_READ_BOUNDARY: &str = "commerce_admin_payment_read_http";
 const ADMIN_PAYMENT_COMMAND_OWNER: &str = "rustok_payment.admin_collection_command";
@@ -104,7 +108,7 @@ fn admin_payment_collection_command_context(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!("commerce-admin-payment-command:{operation}:{collection_id}"),
+        format!("admin-payment-collection:{collection_id}:{operation}"),
     )
     .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
@@ -1110,9 +1114,7 @@ pub async fn cancel_refund(
 }
 
 fn refund_creation_key(headers: &HeaderMap) -> HttpResult<String> {
-    let value = headers
-        .get("idempotency-key")
-        .and_then(|value| value.to_str().ok())
+    let value = headers.get("idempotency-key").and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {

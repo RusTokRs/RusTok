@@ -242,7 +242,7 @@ export function verifyInventoryQuantityWrites({ root = repository } = {}) {
   ordered(
     body(source.commands, "update_variant"),
     [
-      "BootstrapService::update_initial_quantity_in_tx",
+      ".update_initial_quantity_in_tx(",
       "DomainEvent::VariantUpdated",
       "self.get_variant_in(&txn, tenant_id, variant_id)",
       "record_product_operation_result(&result)",
@@ -251,7 +251,7 @@ export function verifyInventoryQuantityWrites({ root = repository } = {}) {
     "Product response is read and sealed on the caller transaction",
   );
   for (const marker of [
-    "BootstrapService::load_available_quantities(conn, &variant_ids)",
+    "port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)",
     "inventory_quantity: available_inventory",
   ])
     require(body(
@@ -262,15 +262,20 @@ export function verifyInventoryQuantityWrites({ root = repository } = {}) {
     require(text, "super::quantity::available_by_variant", "shared exact Product/visible projection arithmetic");
     forbid(text, "saturating_", "no order-dependent projection saturation");
   }
-  require(source.commandPort, "inventory_quantity_blocker(error).is_some()", "finite receipt classification");
-  require(source.commandPort, "PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict", "unknown invariant/storage outcome remains nonterminal");
+  require(source.commandPort, "crate::error::inventory_quantity_port_error(&blocker)", "finite receipt classification");
+  require(source.productError, "inventory_quantity_blocker(error).as_ref().map(inventory_quantity_public_policy)", "finite failure classification");
+  require(source.transaction, "PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict", "unknown invariant/storage outcome remains nonterminal");
   for (const marker of [
     "InventoryQuantityBlocked",
-    "QuantityWriteError::Publication(CoreError::Database(error))",
-    "QuantityWriteBlocker::PublicationUnverified",
     "error.kind == kind && error.code == code",
   ])
     require(source.productError, marker, "finite owner error preservation");
+  for (const marker of [
+    "QuantityWriteError::Publication",
+    "Self::Publication(CoreError::Database(_))",
+    "QuantityWriteBlocker::PublicationUnverified.port_error()",
+  ])
+    require(source.plan, marker, "finite owner error preservation");
   for (const adapter of adapters)
     require(read(
       adapter,

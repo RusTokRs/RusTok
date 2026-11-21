@@ -20,7 +20,10 @@
     "source_version_max": "9223372036854775807",
     "baseline_variants_per_page": 128,
     "complete_levels_per_page": 4096,
-    "context_budget_ms": [1, 30000]
+    "context_budget_ms": [
+      1,
+      30000
+    ]
   },
   "source_wiring": {
     "canonical_versioned_publication_wired": true,
@@ -105,12 +108,12 @@
     "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
     "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
     "crates/modules/rustok-inventory/src/migrations/shared.rs": "80e89f26200fa065163621b62c73068cf73fdac7be4fc1ee2966a0c03a872d28",
-    "crates/libs/rustok-events/contracts/event-contract-digests.json": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121",
+    "crates/libs/rustok-events/contracts/event-contract-digests.json": "ffac583414ce80ce8a229f18f6ebc2399bd729fe5488c6c61f71ab6a88e367f0",
     "crates/modules/rustok-inventory/src/migrations/m20261101_000027_create_inventory_source_history.rs": "4898e0ff5db9691241f75494acba7f551f987ff89711f057167939f48e70a00e",
     "crates/libs/rustok-events/src/types/mod.rs": "a53133c0dd6267922e87ebaaff8425c7d23452f10babbddb9c1e2d2907a6a9ed",
     "crates/libs/rustok-events/src/types/domain_event.rs": "c919cd9200a729dadc0ccd579b592b51df6fb239149787ef1587dafae7805a04",
     "crates/libs/rustok-events/src/types/envelope.rs": "0533c3dca9b6e6610d20872c2f66bf304d9a6071eed584b6c3ae08b1ba323eb9",
-    "crates/libs/rustok-events/src/types/validation.rs": "59d2e0967d42d4e86955e2e6fac7467bc7fceec87e5bcb632178331e6f42885c",
+    "crates/libs/rustok-events/src/types/validation.rs": "d3d40c419defa6fe1e65f0f0408d924eb849cf2398669c346c33766195fa7d60",
     "crates/libs/rustok-events/src/schema.rs": "fe97948d6246015593455b1d0d2f3c06edbf9925b6736869a69ca8c1c01877f5",
     "crates/libs/rustok-events/src/inventory_reservation.rs": "5cd7ee0dfaaf63889a246215bd0c9c5865a43f5fb1a92b81c198eff75c06b865"
   },

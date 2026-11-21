@@ -154,15 +154,6 @@ impl ProductCatalogSchemaService {
             .collect()
     }
 
-    pub async fn validate_product_publish_requirements(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-    ) -> CommerceResult<()> {
-        self.validate_product_publish_requirements_in(&self.db, tenant_id, product_id)
-            .await
-    }
-
     pub(crate) async fn validate_product_publish_requirements_in<C>(
         &self,
         conn: &C,

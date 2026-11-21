@@ -40,7 +40,7 @@ if (implStart < 0) failures.push("missing ProductCatalogSchemaWritePort implemen
 const portImpl = implStart < 0 ? "" : port.slice(implStart);
 
 for (const required of [
-  "rustok_outbox::idempotency",
+  "rustok_outbox_storage::idempotency",
   "admit_schema_operation(",
   "with_product_operation_receipt(",
   "decode_schema_receipt(",

@@ -43,7 +43,7 @@ pub(crate) enum ProductAdminProductsLoadViewModel { State, Ready }
 pub(crate) struct ProductAdminShippingProfilesLoadViewModel;
 pub(crate) struct ProductAttributeEditorState;
 pub(crate) struct ProductAdminListItemViewModel { pub show_shipping_profile: bool }
-pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 { 0 }
+pub(crate) fn parse_product_admin_quantity_input(value: &str) -> Result<i32, String> { Ok(0) }
 ${omitOpenProduct ? "" : "pub(crate) enum ProductAdminOpenProductViewModel { Ready, Empty }"}
 pub(crate) fn product_admin_pricing_preview_state_from_result() {}
 pub(crate) fn product_admin_selected_product_query_state() -> ProductAdminSelectedProductQueryState { ProductAdminSelectedProductQueryState::Clear }

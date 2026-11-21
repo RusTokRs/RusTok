@@ -9,6 +9,7 @@
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -52,6 +53,7 @@ import type {
   UpdateBundleInput,
   AddBundleItemInput
 } from '../../api/types';
+import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
 import { ProductBundleItemDialog } from './product-bundle-item-dialog';
 
 interface ProductBundleCardProps {
@@ -59,12 +61,18 @@ interface ProductBundleCardProps {
   productTitle: string;
   productHandle?: string;
   bundle?: ProductBundle | null;
-  onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
+  onCreateBundle?: (
+    input: CreateBundleInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onUpdateBundle?: (
     bundleId: string,
     input: UpdateBundleInput
   ) => Promise<void>;
-  onAddBundleItem?: (input: AddBundleItemInput) => Promise<void>;
+  onAddBundleItem?: (
+    input: AddBundleItemInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
   onSearchProducts?: (query: string) => Promise<
     {
@@ -133,15 +141,23 @@ export function ProductBundleCard({
         discountValue
       });
     } catch (err) {
-      console.error('Failed to update bundle settings:', err);
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update bundle settings.'
+      );
     } finally {
       setIsUpdating(false);
     }
   };
 
+  // One idempotency key per submitted intent: an ambiguous (network-level)
+  // failure keeps it so a retry replays the owner receipt instead of creating
+  // a duplicate bundle; confirmed or definitively refused attempts rotate it.
+  const initBundleAttemptKey = React.useRef<string | null>(null);
+
   const handleInitBundle = async () => {
     if (!onCreateBundle) return;
     setIsUpdating(true);
+    initBundleAttemptKey.current ??= crypto.randomUUID();
     try {
       const slug =
         productHandle ||
@@ -150,17 +166,41 @@ export function ProductBundleCard({
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '') ||
         `bundle-${productId.slice(0, 8)}`;
-      await onCreateBundle({
-        bundleProductId: productId,
-        slug,
-        name: productTitle || 'Product Bundle',
-        bundleType: 'fixed',
-        status: 'active',
-        discountType: 'none',
-        discountValue: '0'
-      });
+      await onCreateBundle(
+        {
+          bundleProductId: productId,
+          slug,
+          name: productTitle || 'Product Bundle',
+          bundleType: 'fixed',
+          status: 'active',
+          discountType: 'none',
+          discountValue: '0'
+        },
+        initBundleAttemptKey.current
+      );
+      initBundleAttemptKey.current = null;
     } catch (err) {
-      console.error('Failed to create bundle:', err);
+      if (isDefinitiveProductWriteRefusal(err)) {
+        initBundleAttemptKey.current = null;
+      }
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create bundle.'
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRemoveItem = async (bundleId: string, itemId: string) => {
+    if (!onRemoveBundleItem) return;
+    if (!window.confirm('Remove this item from the bundle?')) return;
+    setIsUpdating(true);
+    try {
+      await onRemoveBundleItem(bundleId, itemId);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to remove bundle item.'
+      );
     } finally {
       setIsUpdating(false);
     }
@@ -439,8 +479,7 @@ export function ProductBundleCard({
                               size='icon'
                               className='text-destructive hover:bg-destructive/10 h-8 w-8'
                               onClick={() =>
-                                onRemoveBundleItem &&
-                                onRemoveBundleItem(bundle.id, item.id)
+                                handleRemoveItem(bundle.id, item.id)
                               }
                               disabled={isUpdating || disabled}
                             >
@@ -500,9 +539,9 @@ export function ProductBundleCard({
             bundleId={bundle.id}
             open={isItemDialogOpen}
             onOpenChange={setIsItemDialogOpen}
-            onAdd={async (input) => {
+            onAdd={async (input, idempotencyKey) => {
               if (onAddBundleItem) {
-                await onAddBundleItem(input);
+                await onAddBundleItem(input, idempotencyKey);
               }
             }}
             onSearchProducts={onSearchProducts}

@@ -44,21 +44,37 @@ function functionSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
+// The module adapter implements the capability; the request contract and the
+// scope-specific unavailability code are published by the ports package.
 const ports = read("crates/modules/rustok-product/src/ports.rs");
+const contractsTypes = read("crates/modules/rustok-product/ports/src/types.rs");
+const contractsPorts = read("crates/modules/rustok-product/ports/src/ports.rs");
 for (const required of [
   "async fn list_admin_products(",
-  "pub struct AdminProductsRequest",
-  "pub raw_status: Option<String>",
-  "pub vendor: Option<String>",
-  "pub product_type: Option<String>",
-  "pub empty_missing_title: bool",
-  "product.admin_list_unavailable",
-  "product admin listing is unavailable",
   "list_admin_products_with_compatibility_query(",
   "require_policy(PortCallPolicy::read())",
   "let page = page.max(1);",
 ]) {
   requireText(ports, required, `Product admin list port contract must contain ${required}`);
+}
+for (const required of [
+  "pub struct AdminProductsRequest",
+  "pub raw_status: Option<String>",
+  "pub empty_missing_title: bool",
+]) {
+  requireText(contractsTypes, required, `Product admin list port contract must contain ${required}`);
+}
+for (const required of [
+  "pub vendor: Option<String>",
+  "pub product_type: Option<String>",
+]) {
+  requireText(read("crates/modules/rustok-product/ports/src/dto/product.rs"), required, `Product admin list port contract must contain ${required}`);
+}
+for (const required of [
+  "product.admin_list_unavailable",
+  "admin product listing is unavailable",
+]) {
+  requireText(contractsPorts, required, `Product admin list port contract must contain ${required}`);
 }
 
 const queryTypes = read("crates/modules/rustok-product/src/services/catalog/types.rs");
@@ -121,11 +137,12 @@ for (const forbidden of [
 }
 
 const sharedProducts = read("crates/modules/rustok-commerce/src/controllers/products.rs");
-requireText(
-  sharedProducts,
-  "pub async fn list_products(",
-  "unmounted compatibility list source must remain explicit until removal evidence exists",
-);
+for (const removed of ["pub async fn list_products(", "pub async fn show_product(", "map_admin_product_error("])
+  forbidText(
+    sharedProducts,
+    removed,
+    "unmounted compatibility read source was removed in the 2026-11-17 product audit; it must not return without a read-port cutover",
+  );
 
 if (!process.exitCode) {
   console.log("commerce product admin-list read guard: source contract OK");

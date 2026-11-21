@@ -31,6 +31,8 @@ without evidence of a failure is recorded separately below.
 | `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
 | `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
+| `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
+| `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 
 For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
 characters in `1c5a07dc8b`; this does not establish that a collision occurred.
@@ -222,6 +224,7 @@ flowchart TD
   2. Break circular dependencies by defining narrow traits (e.g. `LockProvider`, `AncestorLoader`) implemented by the caller or foundation crate, rather than text-including source files.
   3. Keep handwritten Rust source in modules. Build output loaded through `concat!(env!("OUT_DIR"), ...)` is a separate use case. The scanner gates direct literal `include!("file.rs")` outside recognized test, example, and build contexts.
   4. When replacing a file-stitching macro, register the existing source file as a module and move child declarations to their owner as needed. Pasting the file body at the call site can leave a second copy and a stray statement delimiter. Retarget source guards to the compiled modules and verify the resulting tree with a scoped build.
+* **Mounted-facade exemption boundary:** A small, contracted family of mounted facades is the sanctioned inverse case, and the doctor's literal-include finding is a known false positive there. In these facades a verify contract pins the composition `mod legacy { include!("owner_file.rs"); }` (or a flat include list) as the terminal state of a `P-COPY-DRIFT-MOUNT` cutover: the included file remains the single owner of that source and the wrapper only adds sanitizing adapters and public policies. Current members: `graphql/mutations/safe_cart.rs`, `graphql/mutations/safe_legacy_helpers.rs`, `graphql/mutations/safe_checkout.rs`, `graphql/safe_query/source.rs`, `storefront_checkout_runtime_mounted.rs`, `services/checkout_compensation_error_safe.rs`, and `rustok-payment`'s `checkout_execution.rs`. The slop in this family is the drifting hand-inlined copy it replaced, not the include that removed the copy. Review a literal-include finding by asking which of the two states it protects: a second copy that can drift (defect), or the single-owner include that prevents one (contracted).
 
 ---
 
@@ -572,6 +575,30 @@ flowchart TD
 
 ---
 
+### Pattern 29: Mounted-Copy Drift (`P-COPY-DRIFT-MOUNT`)
+* **Category:** Compilation Hygiene & Zero AI Slop. **Dimension:** Single source of truth.
+* **Problem:** A wrapper module hand-inlines the body of a sibling source file — typically as `mod legacy { /* full copy of owner_file.rs */ }` under a mounted facade — instead of mounting that file. The copy is usually rustfmt-reformatted, so a textual diff against the original shows only line-wrapping noise while the two bodies silently drift apart as independent sources. Any fix applied to the original file (a bounded diagnostic, a new error variant, a signature change) does not reach the mounted copy, and the copy's stale behavior is what actually serves the mounted path. This is the mechanical-slop form of `P-DEAD-TWIN`: the twin is not dead, it is live and diverging.
+* **Pattern Solution:**
+  1. Mount the single owner of the source instead of pasting it: `mod legacy { include!("owner_file.rs"); }` for the contracted facade family (see the `P-ZERO-INCLUDE` mounted-facade boundary), or a normal `mod owner_file;` with explicit re-exports elsewhere.
+  2. When auditing a suspected copy, normalize both bodies (strip indentation, collapse whitespace) before diffing; a raw diff hides semantic equivalence under reformatting noise. The storefront checkout audit found a 611-line copy whose raw diff exceeded a thousand lines while the normalized diff was zero.
+  3. Keep wrapper-only concerns (sanitizing adapters, public policies, bounded mappers) in the wrapper file, and keep the owner file free of wrapper imports so it can be mounted textually without shim indirection. Where the owner file must reference crate items through shims, keep the `use super::..._shim as ...;` lines in the wrapper immediately before the include.
+  4. A copy that exists only to rename an import (a "facade copy" instead of a facade) is the same defect: fix the import path or the module wiring instead of duplicating the body.
+* **Detection:** Manual today. Candidate heuristic: a file containing a `mod` block whose whitespace-normalized content matches another file in the same crate at ≥90% (after stripping the wrapper's own items), reported as a duplicate-source finding with the matched path.
+
+---
+
+### Pattern 30: Bounded Owner Facts at Boundaries (`P-BOUNDED-OWNER-FACTS`)
+* **Category:** Observability & Diagnostic Safety. **Dimension:** Data minimization at owner boundaries.
+* **Problem:** Adapter and guard code at owner boundaries logs raw owner values — `error = ?error`, `internal_message = %error.message`, `tenant_id = %context.tenant_id`, `scope = ?request.scope`, or raw UUID request fields (`checkout_operation_id = %request.checkout_operation_id`). Raw `Debug`/`Display` of owner errors and request payloads forwards owner-internal text (validation messages, provider payloads, PII-shaped identifiers) into consumer-facing logs, and it makes log shape depend on owner internals that change without notice. The recurring verified form of this defect is a raw field appearing in one log site while sibling logs in the same file already use the bounded shape — the file itself proves the intended contract.
+* **Pattern Solution:**
+  1. Log bounded facts instead of values: presence flags (`channel_present`), non-nil checks (`checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), lengths (`tenant_id_length`, `owner_message_len`), and closed enum labels (`scope_kind = request_facts.scope_kind`, `error_kind`).
+  2. Derive the bounded facts once per call (`let request_facts = cart_promotion_request_facts(&request);`) and reuse the same facts structure in validation, logging, and mapping so the shapes cannot diverge.
+  3. Owner-internal service files may log their own values; the boundary is the mounted/sanitizing adapter. When a facade mounts an owner file that still carries raw logging (contracted `P-COPY-DRIFT-MOUNT` cutovers), the raw lines live in the owner file where the owner's diagnostic contract governs them, not in the wrapper.
+  4. Keep the public error path and the diagnostic path separate: the public envelope carries a stable code and static message; the correlated log carries the bounded facts. Never satisfy a bounded-diagnostics requirement by logging the raw value through a different macro level.
+* **Detection:** Manual today. Candidate heuristic: inside `tracing` macros, field values of the forms `?error`, `%error.message`, `%context.tenant_id`, or `%request.<uuid field>` in files that also define sanitizing adapters or `mod legacy` facades, when sibling logs in the same file already use the bounded shape.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -624,6 +651,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-LOG-RAW-PRINT` | Observability | Production code uses tracing macros instead of raw stdout/stderr prints | High: direct println!, eprintln!, or dbg! in non-CLI/non-test code |
 | `P-TYPED-DOMAIN-ERROR` | Error handling | Library and domain modules propagate strongly-typed domain errors with thiserror | High: Result with bare String, &str, or anyhow in domain/library signatures |
 | `P-CHECK-THEN-UNWRAP` | Reliability | Atomic pattern matching (if let / match) used instead of check-then-unwrap | High: if .is_some()/.is_ok() followed by .unwrap()/.expect() |
+| `P-COPY-DRIFT-MOUNT` | Module structure | The mounted path compiles the single owner file, not a hand-inlined copy | Manual: normalized duplicate-content match |
+| `P-BOUNDED-OWNER-FACTS` | Observability | Boundary adapters log bounded facts (presence, length, kind), not raw owner values | Manual: raw owner field in tracing macro beside bounded sibling shapes |
 
 ---
 

@@ -1,5 +1,11 @@
+//! Typed error boundary for the Commerce GraphQL query surface.
+//!
+//! Module identity: the safe-query facade mounts this file as
+//! `mod query_error_boundary;`, and the textually included query source forwards
+//! typed owner errors through `super::query_error_boundary`.
 use async_graphql::{Error, ErrorExtensions};
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::PortContext;
+use ::rustok_api::{PortError, PortErrorKind};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;

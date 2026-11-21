@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  readSource,
   sourcePaths,
   verifyPricingProductIdentityContext,
 } from "./verify-pricing-product-identity-context.mjs";
@@ -13,7 +14,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const baseline = Object.fromEntries(
   Object.entries(sourcePaths).map(([name, relative]) => [
     name,
-    readFileSync(path.join(root, relative), "utf8"),
+    readSource(root, relative),
   ]),
 );
 
@@ -31,7 +32,7 @@ test("current selected Product/Pricing source contract", () => {
 
 test("missing explicit identity tenant scope is rejected", () => {
   const sources = changed(
-    "identities",
+    "identityTypes",
     "pub tenant_id: Uuid",
     "pub unscoped_id: Uuid",
   );
@@ -97,23 +98,25 @@ test("durable checkout cannot silently rebuild embedded Product for repricing", 
 
 test("module-path factory cannot bypass the admitted Pricing facade", () => {
   const sources = changed(
-    "ports",
-    "crate::read_context::in_process_pricing_read_port(db, event_bus, product_runtime)",
-    "Arc::new(PricingService::new(db, event_bus))",
+    "read",
+    "PricingService::new(db, event_bus)\n                .with_product_catalog_read_runtime(product_runtime),",
+    "PricingService::new(db, event_bus),",
   );
   assert.ok(
     verifyPricingProductIdentityContext(sources).some((failure) =>
-      failure.includes("module-path read facade"),
+      failure.includes("selected read service dependency"),
     ),
   );
 });
 
 test("presentation cannot promote an unsupported capability to a retry hint", () => {
-  const sources = changed(
-    "publicError",
-    "retryable: owner_retryable",
-    "retryable: true",
-  );
+  assert.ok(baseline.publicError.includes("retryable: owner_retryable"));
+  const sources = {
+    ...baseline,
+    publicError: baseline.publicError
+      .split("retryable: owner_retryable")
+      .join("retryable: true"),
+  };
   assert.ok(
     verifyPricingProductIdentityContext(sources).some((failure) =>
       failure.includes("retryability"),

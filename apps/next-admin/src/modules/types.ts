@@ -10,6 +10,7 @@ export type AdminSlot =
 export type AdminRenderContext = {
   token: string | null;
   tenantSlug: string | null;
+  tenantId: string | null;
   enabledModules: string[];
 };
 

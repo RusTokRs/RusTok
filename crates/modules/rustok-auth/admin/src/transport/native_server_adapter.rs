@@ -55,7 +55,7 @@ fn require_auth_admin_tenant_scope(
     auth_tenant_id: Uuid,
     resolved_tenant_id: Uuid,
 ) -> Result<(), ServerFnError> {
-    if !auth_tenant_id.is_nil() && auth_tenant_id == resolved_tenant_id {
+    if auth_tenant_id == resolved_tenant_id && !auth_tenant_id.is_nil() {
         return Ok(());
     }
 
