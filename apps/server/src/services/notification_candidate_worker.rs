@@ -18,7 +18,7 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const CANDIDATE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
@@ -81,6 +81,11 @@ impl NotificationTenantCapabilityCommitGuard for ServerNotificationTenantCapabil
         Ok(NotificationTenantCapabilityCommitDecision::Allow)
     }
 }
+
+// Marker owns the entire local bootstrap window, not just the JoinHandle slot.
+// It is distinct from the published worker handle so callers cannot race
+// while dependencies are being materialized.
+struct NotificationCandidateWorkerStartupReservation;
 
 pub struct NotificationCandidateWorkerHandle {
     instance_id: u64,
@@ -152,7 +157,23 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         .shared_get::<ModuleRegistry>()
         .ok_or_else(|| Error::Message("module registry is unavailable".to_string()))?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification candidate worker cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, NotificationCandidateWorkerStartupReservation)
+    else {
+        return Ok(());
+    };
+    // Another bootstrap may have committed the worker before this reservation
+    // was created by an older caller. Never overwrite an existing JoinHandle.
+    if ctx.shared_contains::<NotificationCandidateWorkerHandle>() {
+        return Ok(());
+    }
+    let stop_rx = stop.subscribe();
 
     let instance_id = NOTIFICATION_CANDIDATE_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let worker_id = notification_candidate_worker_id(instance_id);
@@ -177,6 +198,11 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         batch_size = worker.batch_size(),
         "Starting notification candidate worker"
     );
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification candidate worker startup interrupted by server shutdown".to_string(),
+        ));
+    }
     ctx.shared_insert(NotificationCandidateWorkerHandle {
         instance_id,
         _handle: tokio::spawn(notification_candidate_worker_loop(
@@ -186,6 +212,7 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
 }
 
