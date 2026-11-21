@@ -32,9 +32,12 @@ or renewed consent could make that code unexpectedly redeemable.
 - Focused SQLite regressions exercise missing/revoked/regranted consent,
   app revocation, cross-tenant request, stale redirect/scopes and inactive
   subject, including no-code-insert assertions.
-- Service failures currently retain the existing controller's coarse
-  `server_error` mapping; this continuation does not silently claim an
-  improved HTTP error taxonomy or a full transport contract parity audit.
+- The controller now maps an authoritative admission miss to
+  `invalid_client`, a stale policy/redirect/scope to `invalid_request`, and a
+  missing active subject/consent to `access_denied` rather than conflating
+  every failed admission with a 500. Unexpected persistence errors still map
+  to redacted `server_error` and are logged. A transport regression checks
+  both OAuth error kinds and HTTP status codes, including detail redaction.
 
 **Verification left to maintainer:** no compile, format, Cargo tests, lints
 or live PostgreSQL multi-replica interleaving tests were executed. Run
