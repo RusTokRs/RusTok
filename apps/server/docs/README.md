@@ -345,6 +345,21 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Social Graph Index raw-poison DLQ publication keeps the source offset
+  **uncommitted** after all transport retries fail; its worker reports a stable
+  failure diagnostic without embedding untrusted broker error text. The
+  durable poison receipt claim is released on a failed publish (or expires by
+  lease after a failed release) so a restarted worker can retry the same
+  source identity. A successful DLQ publication is recorded durably before
+  broker source acknowledgement; a crash between these steps retries the
+  receipt/offset path rather than dropping the source message.
+- Marketplace financial recovery runs provider-reversal adaptation, reversal
+  event reconciliation and paid-order event reconciliation in that order.
+  During cooperative shutdown it finishes the currently running durable
+  operation but **does not start a subsequent phase** after the stop signal
+  becomes visible; the next startup resumes outstanding durable work.
+  Individual operations can still block until their own completion or the
+  bounded host shutdown deadline.
 - Notification intake registers its supported event types in the Outbox-owned
   consumer ledger before runtime retention starts. Accepted receipts and
   permanent rejections acknowledge the original event in the same transaction;
