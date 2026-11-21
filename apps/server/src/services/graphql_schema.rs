@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::error::{Error, Result};
 
 #[cfg(feature = "mod-blog")]
+use crate::graphql::auth_rate_limit::auth_graphql_rate_limiter_from_context;
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
@@ -119,6 +120,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         rbac_module_availability:
             crate::services::rbac_module_availability::rbac_module_availability_handle(ctx),
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
+        auth_rate_limiter: auth_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter: blog_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]

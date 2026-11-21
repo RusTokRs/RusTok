@@ -30,6 +30,7 @@ pub(crate) fn selected_operations<'a>(
 }
 
 mod artifact_lifecycle;
+pub mod auth_rate_limit;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;
 pub mod dashboard_security;

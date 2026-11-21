@@ -75,9 +75,9 @@ export default async function ProductBundlesRoute({ searchParams }: PageProps) {
         total={bundlesData.total}
         page={bundlesData.page}
         perPage={bundlesData.perPage}
-        onCreateBundle={async (input) => {
+        onCreateBundle={async (input, idempotencyKey) => {
           'use server';
-          await createBundleAction(input);
+          await createBundleAction(input, undefined, idempotencyKey);
         }}
         onDeleteBundle={async (id) => {
           'use server';

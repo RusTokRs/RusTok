@@ -32,6 +32,8 @@ export type ProductSavePayload = {
   shippingProfileSlug?: string;
   primaryCategoryId?: string | null;
   tags: string[];
+  /** Full brand-binding replacement for existing products; omit to keep. */
+  brands?: import('./api/types').ProductBrandItem[];
   status?: string;
   revision?: number | null;
   /** Persisted pre-axis editor requests remain replayable without changing their payload. */

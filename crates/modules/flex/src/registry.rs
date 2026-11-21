@@ -12,7 +12,7 @@ use rustok_core::field_schema::{FieldType, FlexError, ValidationRule, is_valid_f
 use rustok_events::{DomainEvent, EventEnvelope};
 
 pub use flex_ports::{FieldDefinitionView, FieldDefinitionViewSource};
-
+pub use rustok_api::impl_field_definition_source;
 pub use rustok_core::field_schema::{FieldDefinitionSource, field_definition_from_source};
 
 /// Transport-agnostic input for creating a field definition.

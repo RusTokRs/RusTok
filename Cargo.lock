@@ -16687,6 +16687,7 @@ dependencies = [
  "sha2 0.11.1",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
+ "tracing",
  "uuid",
 ]
 

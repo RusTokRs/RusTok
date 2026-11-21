@@ -30,6 +30,7 @@ import {
   addProductImage,
   deleteProductImage,
   reorderProductImages,
+  updateProductImage,
   setVariantAxes,
   previewVariantAxes,
   getCategoryEffectiveForm,
@@ -63,6 +64,7 @@ import {
   type VariantAxesPreview,
   type SetVariantAxesInput
 } from '@rustok/product-admin';
+import { listMedia } from '@rustok/media-admin';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -187,6 +189,12 @@ export async function saveProductAction(
         shippingProfileSlug: payload.shippingProfileSlug || null,
         primaryCategoryId: payload.primaryCategoryId,
         tags: payload.tags,
+        brands: payload.brands?.map((brand) => ({
+          brandId: brand.brandId,
+          isPrimary: brand.isPrimary,
+          role: brand.role,
+          position: brand.position
+        })),
         status: payload.status || null,
         // The document revision the editor loaded; the owner refuses a save that would
         // overwrite a concurrent edit instead of silently losing it.
@@ -351,14 +359,20 @@ export async function setVariantAxesAction(
 
 export async function addImageAction(
   productId: string,
-  input: { mediaId: string; altText?: string; locale?: string }
+  input: { mediaId: string; altText?: string; locale?: string },
+  idempotencyKey?: string
 ) {
   const opts = await getAuthOpts();
-  const res = await addProductImage(opts, productId, {
-    mediaId: input.mediaId,
-    altText: input.altText,
-    locale: input.locale
-  });
+  const res = await addProductImage(
+    opts,
+    productId,
+    {
+      mediaId: input.mediaId,
+      altText: input.altText,
+      locale: input.locale
+    },
+    idempotencyKey
+  );
   revalidatePath(`/dashboard/product/${productId}`);
   return res;
 }
@@ -366,6 +380,18 @@ export async function addImageAction(
 export async function deleteImageAction(productId: string, id: string) {
   const opts = await getAuthOpts();
   const res = await deleteProductImage(opts, productId, id);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return res;
+}
+
+export async function updateImageAction(
+  productId: string,
+  id: string,
+  input: { position?: number; altText?: string; locale?: string },
+  idempotencyKey: string
+) {
+  const opts = await getAuthOpts();
+  const res = await updateProductImage(opts, productId, id, input, idempotencyKey);
   revalidatePath(`/dashboard/product/${productId}`);
   return res;
 }
@@ -388,9 +414,12 @@ export async function fetchEffectiveFormAction(
   return getCategoryEffectiveForm(opts, categoryId, locale);
 }
 
-export async function addProductRelationAction(input: AddProductRelationInput) {
+export async function addProductRelationAction(
+  input: AddProductRelationInput,
+  idempotencyKey?: string
+) {
   const opts = await getAuthOpts();
-  const res = await addProductRelation(opts, input);
+  const res = await addProductRelation(opts, input, idempotencyKey);
   revalidatePath(`/dashboard/product/${input.productId}`);
   return res;
 }
@@ -425,6 +454,22 @@ export async function searchProductsAction(query: string) {
   const opts = await getAuthOpts();
   const res = await listProducts(opts, { search: query, perPage: 20 });
   return res.items || [];
+}
+
+/**
+ * First page of the tenant media library for the product media picker.
+ * The picker filters locally; the media list query itself has no search yet.
+ */
+export async function listProductMediaAction() {
+  const opts = await getAuthOpts();
+  const res = await listMedia(opts, { page: 1, perPage: 100 });
+  return (
+    res.items?.map((item) => ({
+      id: item.id,
+      name: item.originalName || item.filename,
+      url: item.publicUrl ?? null
+    })) ?? []
+  );
 }
 
 export async function fetchActivePriceListsAction(
@@ -489,10 +534,11 @@ export async function fetchBundlesAction(
 
 export async function createBundleAction(
   input: CreateBundleInput,
-  locale?: string
+  locale?: string,
+  idempotencyKey?: string
 ) {
   const opts = await getAuthOpts();
-  const res = await createBundle(opts, input, locale);
+  const res = await createBundle(opts, input, locale, idempotencyKey);
   if (input.bundleProductId) {
     revalidatePath(`/dashboard/product/${input.bundleProductId}`);
   }
@@ -522,10 +568,11 @@ export async function deleteBundleAction(id: string) {
 
 export async function addBundleItemAction(
   productId: string,
-  input: AddBundleItemInput
+  input: AddBundleItemInput,
+  idempotencyKey?: string
 ) {
   const opts = await getAuthOpts();
-  const res = await addBundleItem(opts, input);
+  const res = await addBundleItem(opts, input, idempotencyKey);
   revalidatePath(`/dashboard/product/${productId}`);
   revalidatePath('/dashboard/product/bundles');
   return res;

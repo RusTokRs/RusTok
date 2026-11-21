@@ -155,7 +155,7 @@ for (const [value, label] of [
   ['MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100', 'REST page-size compatibility'],
   ['product::Column::Status.eq(product::ProductStatus::Active)', 'owner active filter'],
   ['product::Column::PublishedAt.is_not_null()', 'owner published filter'],
-  ['rustok_inventory::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
+  ['crate::services::catalog::helpers::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
   ['let total = visible_products.len() as u64;', 'owner visible total'],
   ['usize::try_from(offset)', 'owner checked pagination offset conversion'],
   ['.skip(offset_usize)', 'owner pagination offset'],

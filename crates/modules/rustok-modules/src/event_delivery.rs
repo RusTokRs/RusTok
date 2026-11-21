@@ -424,6 +424,32 @@ impl EventTransport for ArtifactEventProjectionTransport {
         self.downstream.acknowledge(event_id).await
     }
 
+    // Transactional appends bypass delivery-time projection (projection
+    // happens when the relay publishes), so they forward verbatim.
+    fn supports_transactional_writes(&self) -> bool {
+        self.downstream.supports_transactional_writes()
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.downstream
+            .write_root_in_transaction(transaction, envelope)
+            .await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        self.downstream
+            .write_contract_in_transaction(transaction, envelope)
+            .await
+    }
+
     fn reliability_level(&self) -> ReliabilityLevel {
         self.downstream.reliability_level()
     }

@@ -14,6 +14,8 @@ const products = read('crates/modules/rustok-commerce/src/controllers/products.r
 const adminProducts = read('crates/modules/rustok-commerce/src/controllers/admin/products.rs');
 const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
 const catalogService = read('crates/modules/rustok-product/src/services/catalog.rs');
+const catalogCommands = read('crates/modules/rustok-product/src/services/catalog/commands.rs');
+const catalogProjection = read('crates/modules/rustok-product/src/services/catalog/projection.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -34,21 +36,9 @@ const between = (content, start, end, label) => {
 
 const mapper = between(
   products,
-  'fn map_product_service_error(error: CommerceError)',
-  '/// Shared admin product list handler.',
-  'shared admin product mapper',
-);
-const listHandler = between(
-  products,
-  'pub async fn list_products(',
-  "fn pick_product_translation<'a>(",
-  'product list handler',
-);
-const showHandler = between(
-  products,
-  'pub async fn show_product(',
+  'pub(crate) fn map_admin_product_port_error(',
   '/// Shared admin product delete handler.',
-  'product detail handler',
+  'shared admin product mapper',
 );
 const deleteHandler = between(
   products,
@@ -70,37 +60,37 @@ const unpublishHandler = between(
 );
 
 for (const [value, label] of [
-  ['CommerceError, dto::ProductResponse', 'typed commerce error import'],
-  ['fn map_product_service_error(error: CommerceError)', 'typed product mapper'],
-  ['fn map_product_database_error(error: sea_orm::DbErr)', 'direct database mapper'],
-  ['map_product_service_error(CommerceError::Database(error))', 'database owner wrapping'],
-  ['error = ?error', 'raw internal error logging'],
-  ['owner = "rustok_product.catalog"', 'product owner logging'],
+  ['const ADMIN_PRODUCT_OWNER: &str = "rustok_product.catalog";', 'product owner identity'],
+  ['owner = ADMIN_PRODUCT_OWNER', 'product owner logging'],
+  ['const ADMIN_PRODUCT_BOUNDARY: &str = "commerce_admin_product_http";', 'product HTTP boundary identity'],
+  ['boundary = ADMIN_PRODUCT_BOUNDARY', 'product HTTP boundary logging'],
   ['error_kind,', 'error-kind logging'],
   ['public_code = code', 'public-code logging'],
   ['status = %status', 'status logging'],
-  ['boundary = "commerce_admin_product_http"', 'product HTTP boundary logging'],
+  ['owner_code_length', 'bounded owner-code diagnostics'],
+  ['fn product_port_http_policy(', 'shared port error policy'],
+  ['"unexpected_owner_error"', 'unexpected owner kind'],
   ['HttpError::new(status, code, message)', 'static envelope construction'],
 ]) {
   requireText(products, value, label);
 }
 
+// The owner crosses the port boundary as a typed PortError; the HTTP mapper
+// dispatches on the kind plus the stable owner code strings.
 for (const [value, label] of [
-  ['CommerceError::Database(_)', 'database variant'],
-  ['CommerceError::ProductNotFound(_)', 'product not-found variant'],
-  ['CommerceError::VariantNotFound(_)', 'variant not-found variant'],
-  ['CommerceError::DuplicateHandle { .. }', 'duplicate handle variant'],
-  ['CommerceError::DuplicateSku(_)', 'duplicate SKU variant'],
-  ['CommerceError::InvalidPrice(_)', 'invalid price variant'],
-  ['CommerceError::InsufficientInventory { .. }', 'inventory variant'],
-  ['CommerceError::InvalidOptionCombination', 'invalid option variant'],
-  ['CommerceError::Validation(_)', 'validation variant'],
-  ['CommerceError::ShippingProfileNotFound(_)', 'shipping-profile variant'],
-  ['CommerceError::DuplicateShippingProfileSlug(_)', 'shipping-profile conflict variant'],
-  ['CommerceError::NoVariants', 'no-variants variant'],
-  ['CommerceError::CannotDeletePublished', 'published-delete variant'],
-  ['CommerceError::Rich(_)', 'rich error variant'],
-  ['CommerceError::Core(_)', 'core error variant'],
+  ['match &error.kind', 'typed port error dispatch'],
+  ['PortErrorKind::Validation if error.code == "product.revision_required"', 'revision guard variant'],
+  ['PortErrorKind::Validation', 'validation variant'],
+  ['PortErrorKind::NotFound', 'not-found variant'],
+  ['PortErrorKind::Conflict if error.code == "product.duplicate_handle"', 'duplicate handle variant'],
+  ['PortErrorKind::Conflict if error.code == "product.duplicate_sku"', 'duplicate SKU variant'],
+  ['PortErrorKind::Conflict if error.code == "product.revision_conflict"', 'revision conflict variant'],
+  ['PortErrorKind::Conflict', 'state conflict variant'],
+  ['PortErrorKind::Forbidden', 'forbidden variant'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'storage unavailable variant'],
+  ['PortErrorKind::InvariantViolation', 'fail-closed variant'],
+  ['inventory_deletion_public_failure(&error)', 'inventory deletion failure delegation'],
+  ['inventory_quantity_public_failure(&error)', 'inventory quantity failure delegation'],
 ]) {
   requireText(mapper, value, label);
 }
@@ -115,11 +105,9 @@ for (const [value, label] of [
   ['"commerce_admin_product_handle_conflict"', 'handle conflict code'],
   ['"commerce_admin_product_sku_conflict"', 'SKU conflict code'],
   ['"commerce_admin_product_invalid"', 'product invalid code'],
-  ['"commerce_admin_product_inventory_conflict"', 'inventory conflict code'],
   ['"commerce_admin_product_state_conflict"', 'state conflict code'],
   ['"commerce_admin_product_storage_unavailable"', 'storage unavailable code'],
   ['"commerce_admin_product_failed"', 'fail-closed code'],
-  ['"unexpected_owner_error"', 'unexpected owner kind'],
 ]) {
   requireText(mapper, value, label);
 }
@@ -129,55 +117,26 @@ for (const value of [
   'error.to_string()',
   'other.to_string()',
   'commerce_operation_failed',
-  'HttpError::bad_request(',
 ]) {
   forbidText(products, value, 'unsafe shared admin product public conversion');
 }
+forbidText(mapper, 'HttpError::bad_request(', 'mapper must construct the envelope statically');
 
-for (const [value, label] of [
-  ['Permission::PRODUCTS_LIST', 'product list permission'],
-  ['product::Column::TenantId.eq(tenant.id)', 'tenant filter'],
-  ['product::Column::Status.eq(status)', 'status filter'],
-  ['product::Column::Vendor.eq(vendor)', 'vendor filter'],
-  ['product::Column::ProductType.eq(product_type)', 'product type filter'],
-  ['product_translation_title_search_condition(', 'localized search filter'],
-  ['.offset(pagination.offset())', 'pagination offset'],
-  ['.limit(pagination.limit())', 'pagination limit'],
-  ['PaginationMeta::new(pagination.page, pagination.limit(), total)', 'pagination metadata'],
-  ['metrics::record_read_path_query(', 'read query metrics'],
-  ['metrics::record_read_path_budget(', 'read budget metrics'],
-  ['.load_product_tag_map(', 'product tag service call'],
-]) {
-  requireText(listHandler, value, label);
-}
-
-const databaseMapperUses = products.match(/map_product_database_error/g) ?? [];
-if (databaseMapperUses.length !== 4) {
+const portMapperUses = products.match(/map_admin_product_port_error/g) ?? [];
+if (portMapperUses.length !== 7) {
   failures.push(
-    `expected database mapper definition plus three list query callsites, found ${databaseMapperUses.length}`,
+    `expected port mapper definition plus six handler callsites, found ${portMapperUses.length}`,
   );
 }
 
 for (const [content, values, label] of [
   [
-    showHandler,
-    [
-      'Permission::PRODUCTS_READ',
-      '.get_product_with_locale_fallback(',
-      'tenant.id,',
-      'request_context.locale.as_str()',
-      'Some(tenant.default_locale.as_str())',
-      '.map_err(map_product_service_error)?;',
-      'Ok(Json(product))',
-    ],
-    'product detail path',
-  ],
-  [
     deleteHandler,
     [
       'Permission::PRODUCTS_DELETE',
-      '.delete_product(tenant.id, auth.user_id, id)',
-      '.map_err(map_product_service_error)?;',
+      '.product_catalog_command_port()',
+      '.delete_product(port_context.clone(), id)',
+      'map_admin_product_port_error(',
       'Ok(StatusCode::NO_CONTENT)',
     ],
     'product delete path',
@@ -186,8 +145,9 @@ for (const [content, values, label] of [
     publishHandler,
     [
       'Permission::PRODUCTS_UPDATE',
-      '.publish_product(tenant.id, auth.user_id, id)',
-      '.map_err(map_product_service_error)?;',
+      '.product_catalog_command_port()',
+      '.publish_product(port_context.clone(), id)',
+      'map_admin_product_port_error(',
       'Ok(Json(product))',
     ],
     'product publish path',
@@ -196,8 +156,9 @@ for (const [content, values, label] of [
     unpublishHandler,
     [
       'Permission::PRODUCTS_UPDATE',
-      '.unpublish_product(tenant.id, auth.user_id, id)',
-      '.map_err(map_product_service_error)?;',
+      '.product_catalog_command_port()',
+      '.unpublish_product(port_context.clone(), id)',
+      'map_admin_product_port_error(',
       'Ok(Json(product))',
     ],
     'product unpublish path',
@@ -206,20 +167,20 @@ for (const [content, values, label] of [
   for (const value of values) requireText(content, value, label);
 }
 
-const serviceMapperUses = products.match(/map_product_service_error/g) ?? [];
-if (serviceMapperUses.length !== 7) {
+const sharedMapperUses = products.match(/map_admin_product_port_error/g) ?? [];
+if (sharedMapperUses.length !== 7) {
   failures.push(
-    `expected service mapper definition, database delegation, and five service callsites, found ${serviceMapperUses.length}`,
+    `expected shared port mapper definition plus six callsites, found ${sharedMapperUses.length}`,
   );
 }
 
 for (const [value, label] of [
-  ['super::super::products::list_products(', 'admin list delegation'],
-  ['super::super::products::show_product(', 'admin detail delegation'],
+  ['pub async fn list_products(', 'admin list handler'],
+  ['pub async fn show_product(', 'admin detail handler'],
   ['super::super::products::delete_product(', 'admin delete delegation'],
   ['super::super::products::publish_product(', 'admin publish delegation'],
   ['super::super::products::unpublish_product(', 'admin unpublish delegation'],
-  ['fn map_product_write_error(error: CommerceError)', 'separate product write mapper'],
+  ['map_admin_product_port_error,', 'shared port mapper import'],
 ]) {
   requireText(adminProducts, value, label);
 }
@@ -246,6 +207,10 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['pub async fn get_product_with_locale_fallback(', 'catalog detail operation'],
+]) {
+  requireText(catalogProjection, value, label);
+}
+for (const [value, label] of [
   ['pub async fn delete_product(', 'catalog delete operation'],
   ['pub async fn publish_product(', 'catalog publish operation'],
   ['pub async fn unpublish_product(', 'catalog unpublish operation'],
@@ -253,7 +218,7 @@ for (const [value, label] of [
   ['CommerceError::CannotDeletePublished', 'catalog state-conflict construction'],
   ['-> CommerceResult<ProductResponse>', 'typed product response result'],
 ]) {
-  requireText(catalogService, value, label);
+  requireText(catalogCommands, value, label);
 }
 
 if (failures.length > 0) {

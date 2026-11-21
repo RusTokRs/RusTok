@@ -67,6 +67,7 @@ mod composition {
     mod m20261101_000001_add_user_password_changed_at;
     mod m20261118_000001_add_sys_event_consumer_retention;
     mod m20261118_000002_add_installer_attempt_fencing;
+    mod m20261121_000001_add_sys_events_tenant_projection;
 
     #[cfg(test)]
     mod contract_tests;
@@ -366,6 +367,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261118_000002_add_installer_attempt_fencing::Migration,
+        ));
+        all.push(Box::new(
+            m20261121_000001_add_sys_events_tenant_projection::Migration,
         ));
         all
     }

@@ -25,11 +25,13 @@ function forbidText(source, text, message) {
 }
 
 function functionSlice(source, name, nextName) {
-  const start = source.indexOf(`pub async fn ${name}(`);
-  if (start < 0) {
+  const fnStart = source.indexOf(`pub async fn ${name}(`);
+  if (fnStart < 0) {
     fail(`missing function ${name}`);
     return "";
   }
+  const attrStart = source.lastIndexOf("#[utoipa::path(", fnStart);
+  const start = attrStart < 0 ? fnStart : attrStart;
   const end = nextName ? source.indexOf(`pub async fn ${nextName}(`, start + 1) : source.length;
   return source.slice(start, end < 0 ? source.length : end);
 }
@@ -37,7 +39,7 @@ function functionSlice(source, name, nextName) {
 const productLib = read("crates/modules/rustok-product/src/lib.rs");
 requireText(
   productLib,
-  "pub use catalog_command_port::ProductCatalogCommandPort;",
+  "pub use catalog_command_port::{\n    ProductCatalogCommandPort,",
   "rustok-product must publish ProductCatalogCommandPort",
 );
 requireText(
@@ -49,7 +51,7 @@ requireText(
 const commandPort = read("crates/modules/rustok-product/src/catalog_command_port.rs");
 requireText(
   commandPort,
-  "require_policy(PortCallPolicy::write())",
+  "catalog_scope(context, operation, PortCallPolicy::write())",
   "Product command port must enforce deadline and idempotency write semantics",
 );
 
@@ -131,7 +133,7 @@ requireText(
 );
 requireText(
   sharedProducts,
-  'headers.get("Idempotency-Key")',
+  '.get("Idempotency-Key")',
   "shared Product command identity helper must read Idempotency-Key",
 );
 requireText(
@@ -144,11 +146,9 @@ requireText(
   ".with_idempotency_key(idempotency_key)",
   "mounted Product create/update command context must carry an idempotency key",
 );
-requireText(
-  sharedProducts,
-  "CatalogService::new(runtime.db_clone(), runtime.event_bus())",
-  "remaining Product read/lifecycle direct construction must stay visible as follow-up source debt",
-);
+if (sharedProducts.includes("CatalogService::new(")) {
+  fail("unmounted Product read/lifecycle direct construction must stay removed after the 2026-11-17 audit");
+}
 
 if (!process.exitCode) {
   console.log("commerce product command-port guard: source contract OK");

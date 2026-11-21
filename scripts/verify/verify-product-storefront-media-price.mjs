@@ -86,6 +86,15 @@ const hostCompositionPath =
   'apps/server/src/services/commerce_provider_runtime.rs';
 
 const ownerTypes = readRepo(ownerTypesPath);
+const ownerPortTypes = readRepo(
+  'crates/modules/rustok-product/ports/src/types.rs',
+);
+const pricingPort = readRepo(
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs',
+);
+const leptosListNative = readRepo(
+  'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs',
+);
 const ownerQueries = readRepo(ownerQueriesPath);
 const commerceTypes = readRepo(commerceTypesPath);
 const commerceCatalog = readRepo(commerceCatalogPath);
@@ -108,34 +117,34 @@ const hostComposition = readRepo(hostCompositionPath);
 
 // 1. Owner contract exposes media and price snapshots on list items.
 assertContains(
-  ownerTypes,
+  ownerPortTypes,
   'pub struct StorefrontProductListImage {',
-  `${ownerTypesPath}: storefront list must own a media summary type`
+  'crates/modules/rustok-product/ports/src/types.rs: storefront list must own a media summary type'
 );
 assertContains(
-  ownerTypes,
+  ownerPortTypes,
   'pub struct StorefrontProductListPrice {',
-  `${ownerTypesPath}: storefront list must own a price summary type`
+  'crates/modules/rustok-product/ports/src/types.rs: storefront list must own a price summary type'
 );
 assertContains(
-  ownerTypes,
+  ownerPortTypes,
   'pub primary_image: Option<StorefrontProductListImage>,',
-  `${ownerTypesPath}: list item must expose primary_image`
+  'crates/modules/rustok-product/ports/src/types.rs: list item must expose primary_image'
 );
 assertContains(
-  ownerTypes,
+  ownerPortTypes,
   'pub price_from: Option<StorefrontProductListPrice>,',
-  `${ownerTypesPath}: list item must expose price_from`
+  'crates/modules/rustok-product/ports/src/types.rs: list item must expose price_from'
 );
 assertContains(
-  ownerTypes,
+  ownerPortTypes,
   'pub currency_code: Option<String>,',
-  `${ownerTypesPath}: list query must accept a display currency`
+  'crates/modules/rustok-product/ports/src/types.rs: list query must accept a display currency'
 );
 assertContains(
-  ownerTypes,
-  'pub fn with_currency_code(',
-  `${ownerTypesPath}: list query currency must be validated by a builder`
+  pricingPort,
+  'price.currency_code.eq_ignore_ascii_case(code)',
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: list query display currency must be matched by the pricing port'
 );
 
 // 2. Owner query batches media and base prices for the page.
@@ -146,18 +155,23 @@ assertContains(
 );
 assertContains(
   ownerQueries,
-  'fn build_storefront_list_price_from_map(',
-  `${ownerQueriesPath}: published list must derive the "from" price`
+  'port.load_storefront_list_prices(',
+  `${ownerQueriesPath}: published list must derive the "from" price through the pricing port`
 );
 assertContains(
-  ownerQueries,
+  pricingPort,
   'price.min_quantity.is_some()',
-  `${ownerQueriesPath}: quantity tiers must stay out of the catalog-card snapshot`
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: quantity tiers must stay out of the catalog-card snapshot'
 );
 assertContains(
-  ownerQueries,
+  pricingPort,
   'price_list_id.is_some()',
-  `${ownerQueriesPath}: price-list rows must stay out of the catalog-card snapshot`
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: price-list rows must stay out of the catalog-card snapshot'
+);
+assertContains(
+  pricingPort,
+  '.min_by(|left, right| left.amount.cmp(&right.amount))',
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: from price must be the minimum storefront candidate'
 );
 assertContains(
   ownerQueries,
@@ -254,9 +268,14 @@ assertContains(
   `${leptosGraphqlPath}: storefront detail query must request images`
 );
 assertContains(
-  leptosNative,
+  leptosListNative,
   'map_owner_product_image',
-  `${leptosNativePath}: native storefront path must map the owner media summary`
+  'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs: native storefront path must map the owner media summary'
+);
+assertContains(
+  leptosListNative,
+  'map_owner_product_list_price',
+  'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs: native storefront path must map the owner price summary'
 );
 assertContains(
   leptosNative,

@@ -28,8 +28,8 @@ use serde_json::Value;
 
 use crate::dto::{
     AdminPostCursor, BulkOperationResult, CreatePostInput, PostListQuery, PostListResponse,
-    PostResponse, PostSortField, PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery,
-    PublishedPostScanPage, PublishedSeoPost, UpdatePostInput,
+    PostResponse, PostSortField, PostSortOrder, PostStatusCounts, PostSummary, PublicPostPage,
+    PublicPostsPageQuery, PublishedPostScanPage, PublishedSeoPost, UpdatePostInput,
 };
 use crate::entities::{
     blog_comment_projection_delivery, blog_post, blog_post_channel_visibility, blog_post_tag,

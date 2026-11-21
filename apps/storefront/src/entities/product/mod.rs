@@ -23,12 +23,11 @@ pub struct ProductCardData {
 #[component]
 pub fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String) -> impl IntoView {
     let badge = product.badge.clone().unwrap_or(badge_new);
-    let category = product
-        .category
-        .clone()
-        .unwrap_or_else(|| "Hardware".to_string());
-    let rating = product.rating.unwrap_or(4.9);
-    let review_count = product.review_count.unwrap_or(36);
+    // Category and social proof render only when the owner actually provided
+    // them: a missing value must never be replaced with fabricated data.
+    let category = product.category.clone();
+    let rating = product.rating;
+    let review_count = product.review_count;
     let image_url = product.image_url.clone();
     let original_price = product.original_price.clone();
 
@@ -60,9 +59,13 @@ pub fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String
 
                 // Floating Top Badges
                 <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-                    <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/85 px-2.5 py-0.5 text-[11px] font-semibold text-primary backdrop-blur-md shadow-xs">
-                        {category}
-                    </span>
+                    {category.map(|category| {
+                        view! {
+                            <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/85 px-2.5 py-0.5 text-[11px] font-semibold text-primary backdrop-blur-md shadow-xs">
+                                {category}
+                            </span>
+                        }
+                    })}
                     <span class="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
                         {badge}
                     </span>
@@ -72,12 +75,24 @@ pub fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String
             // Card Body
             <div class="flex flex-col flex-1 justify-between p-5 space-y-4">
                 <div class="space-y-2">
-                    // Star Rating
-                    <div class="flex items-center gap-1.5 text-xs text-amber-500 font-medium">
-                        <span class="tracking-widest">"★★★★★"</span>
-                        <span class="text-xs text-foreground font-semibold">{format!("{:.1}", rating)}</span>
-                        <span class="text-[11px] text-muted-foreground">{format!("({review_count})")}</span>
-                    </div>
+                    // Star Rating — rendered only when the owner provided it
+                    {rating.map(|rating| {
+                        view! {
+                            <div class="flex items-center gap-1.5 text-xs text-amber-500 font-medium">
+                                <span class="tracking-widest">"★★★★★"</span>
+                                <span class="text-xs text-foreground font-semibold">
+                                    {format!("{:.1}", rating)}
+                                </span>
+                                {review_count.map(|review_count| {
+                                    view! {
+                                        <span class="text-[11px] text-muted-foreground">
+                                            {format!("({review_count})")}
+                                        </span>
+                                    }
+                                })}
+                            </div>
+                        }
+                    })}
 
                     // Title
                     <h3 class="text-base font-bold text-card-foreground group-hover:text-primary transition-colors line-clamp-1">

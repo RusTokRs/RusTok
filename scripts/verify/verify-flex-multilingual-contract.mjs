@@ -60,7 +60,7 @@ for (const snippet of [
   "struct PreparedAttachedValuesWrite",
 ]) {
   expectContains(
-    "crates/modules/flex/src/attached.rs",
+    "crates/libs/rustok-core/src/field_schema/attached_values.rs",
     snippet,
     "owner-owned attached Flex payload helper",
   );
@@ -72,16 +72,21 @@ for (const snippet of [
 }
 expectContains(
   "crates/modules/flex/src/attached.rs",
+  "PreparedAttachedValuesWrite",
+  "flex attached re-export of PreparedAttachedValuesWrite",
+);
+expectContains(
+  "crates/libs/rustok-core/src/field_schema/attached_values.rs",
   "or_else(|| localized_by_locale.values().next().cloned())",
   "attached payload resolution to fall back only to existing localized rows",
 );
 expectNotContains(
-  "crates/modules/flex/src/attached.rs",
+  "crates/libs/rustok-core/src/field_schema/attached_values.rs",
   "first_available_localized_values",
   "first-available attached locale fallback in authoring",
 );
 expectContains(
-  "crates/modules/flex/src/attached.rs",
+  "crates/libs/rustok-core/src/field_schema/attached_values.rs",
   "FlexError::InvalidLocale(locale.to_string())",
   "attached authoring to reject an invalid locale instead of using a fallback",
 );

@@ -386,6 +386,7 @@ async fn create_postgres_test_tables(db: &DatabaseConnection) -> TestResult<()> 
         r#"
         CREATE TABLE sys_events (
             id UUID PRIMARY KEY,
+            tenant_id UUID,
             event_type VARCHAR(255) NOT NULL,
             schema_version SMALLINT NOT NULL,
             payload JSONB NOT NULL,

@@ -187,6 +187,62 @@ async fn upgrade_application_retries_by_plan_id_before_checkpointing() {
     );
 }
 
+#[tokio::test]
+async fn upgrade_application_rejects_a_plan_larger_than_one_page() {
+    let tenant_id = Uuid::new_v4();
+    let source = test_scope(tenant_id, "sample_module");
+    let target = ArtifactDataScope {
+        namespace_instance_id: Uuid::new_v4(),
+        data_contract_revision: 2,
+        policy_revision: 2,
+        ..source.clone()
+    };
+    // One record more than a bounded page can ever produce.
+    let records = (0..=MAX_ARTIFACT_DATA_PAGE_SIZE)
+        .map(|index| ArtifactDataUpgradeRecord {
+            key: format!("state/{index}"),
+            value: json!({ "version": 2 }),
+            source_revision: 7,
+        })
+        .collect();
+    let plan = ArtifactDataUpgradePlan {
+        plan_id: Uuid::new_v4(),
+        target_installation_id: Uuid::new_v4(),
+        source,
+        target,
+        hook_binding_id: "upgrade.v2".to_string(),
+        records,
+        next_after_key: None,
+    };
+    let data = UpgradeApplyBroker {
+        source: ArtifactDataRecord {
+            key: "state/current".to_string(),
+            value: json!({ "version": 1 }),
+            revision: 7,
+        },
+        target: Arc::new(Mutex::new(HashMap::new())),
+    };
+    let applier = ArtifactDataUpgradeApplier::new(data, RecordingCheckpointStore::default());
+    let request = ArtifactDataUpgradeApplyRequest {
+        plan,
+        installation_scope: ModuleInstallationScope::Tenant { tenant_id },
+        expected_installation_revision: 4,
+        has_irreversible_migration: false,
+        context: ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(tenant_id),
+            trace_id: "test:data-upgrade".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        },
+        reason: "apply oversized upgrade plan".to_string(),
+    };
+    assert!(matches!(
+        applier.apply(request).await,
+        Err(ArtifactDataError::InvalidUpgrade)
+    ));
+}
+
 #[test]
 fn object_metadata_never_accepts_a_physical_or_unbounded_identity() {
     let object = ArtifactDataObject {

@@ -91,7 +91,7 @@ impl CartPromotionPort for GuardedCartPromotionPort {
             tenant_id = %tenant_id,
             cart_id = %request.cart_id,
             line_item_id = ?request.line_item_id,
-            scope = ?request.scope,
+            scope_kind = request_facts.scope_kind,
             kind = ?request.kind,
             "reading cart promotion preview"
         );
@@ -161,7 +161,7 @@ impl CartPromotionPort for GuardedCartPromotionPort {
             tenant_id = %tenant_id,
             cart_id = %request.cart_id,
             line_item_id = ?request.line_item_id,
-            scope = ?request.scope,
+            scope_kind = request_facts.scope_kind,
             kind = ?request.kind,
             "applying cart promotion"
         );

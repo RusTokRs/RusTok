@@ -370,6 +370,8 @@ fn sharded_digest_path(root: &Path, digest: &str) -> Result<PathBuf, InstanceLay
 fn path_segment<'a>(name: &'static str, value: &'a str) -> Result<&'a str, InstanceLayoutError> {
     if value.is_empty()
         || value.len() > 128
+        || value == "."
+        || value == ".."
         || !value.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
@@ -788,6 +790,13 @@ mod tests {
         );
         assert!(layout.platform_role(&digest, "../foreign").is_err());
         assert!(layout.deployment_slot("api", "../foreign").is_err());
+        // Bare dot segments pass the character allowlist but `Path::join`
+        // would treat them as traversal, so they must be rejected explicitly.
+        assert!(layout.platform_role(&digest, "..").is_err());
+        assert!(layout.platform_role(&digest, ".").is_err());
+        assert!(layout.deployment_slot("..", "blue").is_err());
+        assert!(layout.deployment_operation_journal("..").is_err());
+        assert!(layout.operations_release(&digest, "..").is_err());
         assert!(layout.source_object(&"AB".repeat(32)).is_err());
     }
 

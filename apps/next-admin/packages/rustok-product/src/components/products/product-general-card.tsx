@@ -31,13 +31,36 @@ import {
   SelectValue
 } from '@/shared/ui/shadcn/select';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/shadcn/tabs';
-import { Sparkles, X } from 'lucide-react';
-import type { ProductTranslation } from '../../api/types';
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/shadcn/popover';
+import { Sparkles, X, Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import type {
+  ProductTranslation,
+  ProductBrandItem,
+  BrandSummary
+} from '../../api/types';
+import { SearchableSelect } from '../shared/searchable-select';
+
+/** Friendly labels for the well-known locale tabs; unknown tags fall back to upper case. */
+const LOCALE_LABELS: Record<string, string> = {
+  en: 'English (EN)',
+  ru: 'Русский (RU)',
+  fr: 'Français (FR)',
+  de: 'Deutsch (DE)',
+  es: 'Español (ES)',
+  it: 'Italiano (IT)',
+  pt: 'Português (PT)',
+  'pt-BR': 'Português (BR)',
+  uk: 'Українська (UK)',
+  pl: 'Polski (PL)'
+};
 
 interface ProductGeneralCardProps {
   translations: Record<string, ProductTranslation>;
   activeLocale: string;
   onActiveLocaleChange: (locale: string) => void;
+  /** Adds an empty translation entry for a new locale and activates it. */
+  onAddLocale?: (locale: string) => void;
   onTranslationChange: (
     locale: string,
     field: keyof ProductTranslation,
@@ -53,6 +76,13 @@ interface ProductGeneralCardProps {
   onShippingProfileSlugChange: (val: string) => void;
   tags: string[];
   onTagsChange: (tags: string[]) => void;
+  /** Brand directory for the picker. */
+  brands?: BrandSummary[];
+  /** Current product brand bindings. */
+  productBrands?: ProductBrandItem[];
+  onProductBrandsChange?: (brands: ProductBrandItem[]) => void;
+  /** Brand editing is only offered for persisted products (update path). */
+  canManageBrands?: boolean;
   disabled?: boolean;
 }
 
@@ -60,6 +90,7 @@ export function ProductGeneralCard({
   translations,
   activeLocale,
   onActiveLocaleChange,
+  onAddLocale,
   onTranslationChange,
   vendor,
   onVendorChange,
@@ -71,9 +102,85 @@ export function ProductGeneralCard({
   onShippingProfileSlugChange,
   tags,
   onTagsChange,
+  brands = [],
+  productBrands = [],
+  onProductBrandsChange,
+  canManageBrands = false,
   disabled = false
 }: ProductGeneralCardProps) {
   const [tagInput, setTagInput] = React.useState('');
+
+  const [addLocaleOpen, setAddLocaleOpen] = React.useState(false);
+  const [newLocale, setNewLocale] = React.useState('');
+
+  // Locale tabs follow the translations map instead of a fixed en/ru pair;
+  // the backend accepts arbitrary canonical locale tags.
+  const localeKeys = React.useMemo(() => {
+    const priority = (locale: string) =>
+      locale === 'en' ? 0 : locale === 'ru' ? 1 : 2;
+    return Object.keys(translations).sort(
+      (a, b) => priority(a) - priority(b) || a.localeCompare(b)
+    );
+  }, [translations]);
+
+  const handleAddLocale = () => {
+    const tag = newLocale.trim().toLowerCase();
+    if (!/^[a-z]{2}(-[a-z0-9]{2,8})?$/i.test(tag)) {
+      toast.error('Locale must look like a BCP-47 tag, e.g. fr or pt-BR.');
+      return;
+    }
+    if (translations[tag]) {
+      toast.error('That locale already has a tab.');
+      return;
+    }
+    onAddLocale?.(tag);
+    setNewLocale('');
+    setAddLocaleOpen(false);
+  };
+
+  const brandById = React.useMemo(() => {
+    const map = new Map<string, BrandSummary>();
+    for (const brand of brands) map.set(brand.id, brand);
+    return map;
+  }, [brands]);
+
+  const unboundBrands = React.useMemo(
+    () =>
+      brands.filter(
+        (brand) => !productBrands.some((bound) => bound.brandId === brand.id)
+      ),
+    [brands, productBrands]
+  );
+
+  // Owner rule: multiple brands require exactly one primary. Keep the
+  // invariant locally so the server never has to refuse the save.
+  const assignBrand = (brandId: string) => {
+    if (!onProductBrandsChange) return;
+    if (productBrands.some((bound) => bound.brandId === brandId)) return;
+    onProductBrandsChange([
+      ...productBrands,
+      {
+        brandId,
+        isPrimary: productBrands.length === 0,
+        role: 'manufacturer',
+        position: productBrands.length
+      }
+    ]);
+  };
+
+  const removeBrand = (brandId: string) => {
+    if (!onProductBrandsChange) return;
+    const remaining = productBrands.filter(
+      (bound) => bound.brandId !== brandId
+    );
+    if (
+      remaining.length > 0 &&
+      !remaining.some((bound) => bound.isPrimary)
+    ) {
+      remaining[0] = { ...remaining[0], isPrimary: true };
+    }
+    onProductBrandsChange(remaining);
+  };
   const currentTranslation = translations[activeLocale] || {
     locale: activeLocale,
     title: '',
@@ -121,26 +228,70 @@ export function ProductGeneralCard({
               tagging.
             </CardDescription>
           </div>
-          <Tabs
-            value={activeLocale}
-            onValueChange={onActiveLocaleChange}
-            className='w-auto'
-          >
-            <TabsList className='bg-muted/60 h-8 rounded-lg p-0.5'>
-              <TabsTrigger
-                value='en'
-                className='rounded-md px-2.5 py-1 text-xs'
-              >
-                English (EN)
-              </TabsTrigger>
-              <TabsTrigger
-                value='ru'
-                className='rounded-md px-2.5 py-1 text-xs'
-              >
-                Русский (RU)
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className='flex items-center gap-1.5'>
+            <Tabs
+              value={activeLocale}
+              onValueChange={onActiveLocaleChange}
+              className='w-auto'
+            >
+              <TabsList className='bg-muted/60 h-8 rounded-lg p-0.5'>
+                {localeKeys.map((locale) => (
+                  <TabsTrigger
+                    key={locale}
+                    value={locale}
+                    className='rounded-md px-2.5 py-1 text-xs'
+                  >
+                    {LOCALE_LABELS[locale] ?? locale.toUpperCase()}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            {onAddLocale && (
+              <Popover open={addLocaleOpen} onOpenChange={setAddLocaleOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    aria-label='Add locale'
+                    className='h-8 w-8 rounded-lg'
+                  >
+                    <Plus className='h-3.5 w-3.5' />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-56 p-3' align='end'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='new-locale-tag'>New locale tag</Label>
+                    <Input
+                      id='new-locale-tag'
+                      value={newLocale}
+                      onChange={(e) => setNewLocale(e.target.value)}
+                      placeholder='fr, de, pt-BR…'
+                      className='h-8 text-xs'
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddLocale();
+                        }
+                      }}
+                    />
+                    <Button
+                      type='button'
+                      size='sm'
+                      className='w-full rounded-lg text-xs'
+                      onClick={handleAddLocale}
+                    >
+                      Add locale
+                    </Button>
+                    <p className='text-muted-foreground text-[10px]'>
+                      Only translations with a title are saved; an empty locale
+                      tab is dropped on save.
+                    </p>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className='space-y-4 pt-5'>
@@ -326,6 +477,63 @@ export function ProductGeneralCard({
             />
           </div>
         </div>
+
+        {/* Brands */}
+        {canManageBrands && onProductBrandsChange && (
+          <div className='space-y-2 pt-2'>
+            <Label htmlFor='product-brand' className='text-xs font-medium'>
+              Brands
+            </Label>
+            {productBrands.length > 0 && (
+              <div className='flex flex-wrap gap-1.5'>
+                {productBrands.map((bound) => {
+                  const brand = brandById.get(bound.brandId);
+                  return (
+                    <Badge
+                      key={bound.brandId}
+                      variant='secondary'
+                      className='bg-muted gap-1 rounded-md px-2 py-0.5 text-xs'
+                    >
+                      <span>
+                        {brand?.name ?? bound.brandId}
+                        {bound.isPrimary ? ' ★' : ''}
+                      </span>
+                      <button
+                        type='button'
+                        aria-label={`Remove brand ${brand?.name ?? bound.brandId}`}
+                        onClick={() => removeBrand(bound.brandId)}
+                        className='text-muted-foreground hover:text-foreground'
+                      >
+                        <X className='h-3 w-3' />
+                      </button>
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+            {unboundBrands.length > 0 ? (
+              <SearchableSelect
+                id='product-brand'
+                options={unboundBrands.map((brand) => ({
+                  value: brand.id,
+                  label: brand.name
+                }))}
+                value=''
+                emptyValue=''
+                emptyLabel='Add a brand...'
+                searchPlaceholder='Search brands...'
+                disabled={disabled}
+                onChange={assignBrand}
+              />
+            ) : (
+              <p className='text-muted-foreground text-xs'>
+                {brands.length === 0
+                  ? 'No brands available. Create brands first.'
+                  : 'All brands are already assigned.'}
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -46,10 +46,18 @@ pub fn try_from_transport() {}
     );
     write(
       root,
+      "crates/modules/rustok-product/ports/src/types.rs",
+      `
+pub struct StorefrontProductListQuery
+pub category_id: Option<Uuid>
+`,
+    );
+    write(
+      root,
       "crates/modules/rustok-product/src/services/catalog/queries.rs",
       options.omitOwnerCategory
         ? `StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt StorefrontProductSortDirection::Asc StorefrontProductSortDirection::Desc`
-        : `PrimaryCategoryId.eq(category_id) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt StorefrontProductSortDirection::Asc StorefrontProductSortDirection::Desc`,
+        : `PrimaryCategoryId.is_in(subtree) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt StorefrontProductSortDirection::Asc StorefrontProductSortDirection::Desc`,
     );
     write(
       root,
@@ -75,7 +83,7 @@ StorefrontProductListQuery::try_from_transport
 pub struct StorefrontProductCatalogFilter
 pub category_id: Option<Uuid>
 StorefrontProductListQuery::try_new
-.list_published_products_with_query(
+.list_filtered_published_products(
 `,
     );
     write(

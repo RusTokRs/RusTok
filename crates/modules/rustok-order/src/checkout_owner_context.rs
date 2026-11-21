@@ -112,8 +112,8 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
             operation = COMPENSATE_OPERATION,
             tenant_id = %tenant_id,
             actor_id = %actor_id,
-            checkout_operation_id = %request.checkout_operation_id,
-            cart_id = %request.cart_id,
+            checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+            cart_id_non_nil = !request.cart_id.is_nil(),
             expected_order_id = ?request.expected_order_id,
             "checkout compensation entered owner context"
         );
@@ -196,8 +196,8 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             operation = SETTLE_PAYMENT_OPERATION,
             tenant_id = %tenant_id,
             actor_id = %actor_id,
-            checkout_operation_id = %request.checkout_operation_id,
-            order_id = %request.order_id,
+            checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+            order_id_non_nil = !request.order_id.is_nil(),
             "checkout payment settlement entered owner context"
         );
         let diagnostic_context = context.clone();

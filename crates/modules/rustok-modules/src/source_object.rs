@@ -668,10 +668,21 @@ impl SourceObjectStore {
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
         let mut hasher = Sha256::new();
         let mut buffer = vec![0u8; STREAM_CHUNK_BYTES];
+        let mut total = 0u64;
         loop {
             let read = file.read(&mut buffer).await.map_err(io_error)?;
             if read == 0 {
                 break;
+            }
+            // The metadata check above is only a pre-flight: a blob replaced
+            // or grown after it must not let this read buffer past the same
+            // ceiling the streaming publish paths enforce chunk by chunk.
+            total += read as u64;
+            if total > MAX_SOURCE_OBJECT_BYTES {
+                return Err(SourceObjectError::TooLarge {
+                    actual: total,
+                    limit: MAX_SOURCE_OBJECT_BYTES,
+                });
             }
             hasher.update(&buffer[..read]);
             bytes.extend_from_slice(&buffer[..read]);

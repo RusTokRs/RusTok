@@ -90,11 +90,11 @@ impl TenantService {
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
-        let model = TenantActiveModel {
+        let model = match TenantActiveModel {
             id: Set(id),
             name: Set(name),
-            slug: Set(slug),
-            domain: Set(domain),
+            slug: Set(slug.clone()),
+            domain: Set(domain.clone()),
             settings: Set(serde_json::json!({})),
             default_locale: Set("en".to_string()),
             is_active: Set(true),
@@ -102,7 +102,33 @@ impl TenantService {
             updated_at: Set(now),
         }
         .insert(&txn)
-        .await?;
+        .await
+        {
+            Ok(model) => model,
+            Err(error) => {
+                if !is_unique_violation(&error) {
+                    return Err(error.into());
+                }
+                // The probes above run in this transaction, so a concurrent
+                // creator can still win the unique index between probe and
+                // insert. The index is the authority: name the actual
+                // conflict (probed outside the aborted transaction) instead
+                // of leaking a raw constraint violation.
+                drop(txn);
+                if tenant::Entity::find()
+                    .filter(tenant::Column::Slug.eq(&slug))
+                    .one(&self.db)
+                    .await?
+                    .is_some()
+                {
+                    return Err(TenantError::SlugAlreadyExists(slug));
+                }
+                if let Some(domain) = domain.as_deref() {
+                    ensure_domain_available(&self.db, domain, None).await?;
+                }
+                return Err(error.into());
+            }
+        };
 
         TenantLocaleActiveModel {
             id: Set(generate_id()),
@@ -139,8 +165,9 @@ impl TenantService {
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
+        let slug = input.slug.trim().to_string();
         let slug =
-            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&slug)
                 .map_err(|e| TenantError::Validation(e.to_string()))?;
         tracing::debug!(slug = %slug, "ensuring tenant");
 
@@ -188,7 +215,10 @@ impl TenantService {
 
     #[instrument(skip(self), fields(slug = %slug))]
     pub async fn get_tenant_by_slug(&self, slug: &str) -> TenantResult<TenantResponse> {
-        let slug = slug.trim();
+        // Slugs are stored canonicalized (trimmed, lowercased) by the write
+        // boundary, so the read boundary canonicalizes identically; otherwise
+        // a caller passing raw route input would miss an existing tenant.
+        let slug = slug.trim().to_lowercase();
         if slug.is_empty() {
             return Err(TenantError::NotFound);
         }
@@ -203,7 +233,11 @@ impl TenantService {
 
     #[instrument(skip(self), fields(domain = %domain))]
     pub async fn get_tenant_by_domain(&self, domain: &str) -> TenantResult<TenantResponse> {
-        let domain = domain.trim();
+        // Domains are stored canonicalized (trimmed, lowercased, no trailing
+        // dot) by the write boundary and by host resolution, so canonicalize
+        // identically here instead of exact-matching raw caller input.
+        let domain = domain.trim().strip_suffix('.').unwrap_or(domain.trim());
+        let domain = domain.to_lowercase();
         if domain.is_empty() {
             return Err(TenantError::NotFound);
         }
@@ -263,6 +297,7 @@ impl TenantService {
             }
             active.name = Set(name);
         }
+        let mut requested_domain: Option<String> = None;
         if let Some(domain) = input.domain {
             let trimmed = domain.trim();
             if trimmed.is_empty() {
@@ -278,6 +313,7 @@ impl TenantService {
                 // that guards creation applies here, ignoring this tenant's own
                 // current row.
                 ensure_domain_available(&txn, &valid, Some(tenant_id)).await?;
+                requested_domain = Some(valid.clone());
                 active.domain = Set(Some(valid));
             }
         }
@@ -290,7 +326,23 @@ impl TenantService {
         }
         active.updated_at = Set(now);
 
-        let model = active.update(&txn).await?;
+        let model = match active.update(&txn).await {
+            Ok(model) => model,
+            Err(error) => {
+                if !is_unique_violation(&error) {
+                    return Err(error.into());
+                }
+                // Same race as creation: a concurrent writer can claim the
+                // domain between the probe above and this update. Name the
+                // conflict via a fresh probe instead of leaking the raw
+                // constraint violation.
+                drop(txn);
+                if let Some(domain) = requested_domain.as_deref() {
+                    ensure_domain_available(&self.db, domain, Some(tenant_id)).await?;
+                }
+                return Err(error.into());
+            }
+        };
 
         self.publish_event_in_tx(&txn, tenant_id, DomainEvent::TenantUpdated { tenant_id })
             .await?;
@@ -672,6 +724,15 @@ impl TenantService {
             .await
             .map_err(|error| TenantError::EventPublish(error.to_string()))
     }
+}
+
+/// Backend-portable unique-constraint detection, following the precedent in
+/// `rustok-rbac` GraphQL mutations: SQLx surfaces constraint failures in the
+/// error text on every supported backend ("UNIQUE constraint failed",
+/// "duplicate key value violates unique constraint", "Duplicate entry").
+fn is_unique_violation(error: &sea_orm::DbErr) -> bool {
+    let message = error.to_string().to_lowercase();
+    message.contains("unique") || message.contains("duplicate")
 }
 
 /// Reject a host name that another tenant already claims.
@@ -1068,5 +1129,70 @@ mod tests {
             .await
             .expect_err("invalid characters in slug must be rejected");
         assert!(matches!(invalid_chars_err, TenantError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn identifier_reads_canonicalize_like_the_write_boundary() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE tenants (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
+                domain TEXT,
+                default_locale TEXT NOT NULL DEFAULT 'en',
+                settings JSON NOT NULL DEFAULT '{}',
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            "#,
+        )
+        .await
+        .expect("create tenants table");
+
+        let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
+        tenant::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            name: Set("Acme".to_string()),
+            slug: Set("acme".to_string()),
+            domain: Set(Some("shop.example.com".to_string())),
+            settings: Set(serde_json::json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .expect("seed tenant");
+
+        let service = TenantService::new(db);
+        // Write/resolution boundaries store and resolve canonical (trimmed,
+        // lowercased, dot-stripped) identifiers, so reads must accept the
+        // raw forms callers actually supply.
+        assert_eq!(
+            service
+                .get_tenant_by_slug("  ACME ")
+                .await
+                .expect("mixed-case slug resolves")
+                .slug,
+            "acme"
+        );
+        assert_eq!(
+            service
+                .get_tenant_by_domain("Shop.Example.COM.")
+                .await
+                .expect("mixed-case dotted domain resolves")
+                .slug,
+            "acme"
+        );
+        assert!(matches!(
+            service.get_tenant_by_slug("missing").await,
+            Err(TenantError::NotFound)
+        ));
     }
 }

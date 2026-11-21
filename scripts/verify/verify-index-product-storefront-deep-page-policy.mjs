@@ -21,7 +21,11 @@ const requireMarkers = (relative, markers) => {
 const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 const owner = requireMarkers(ownerPath, [
   'if page == 0 || per_page == 0 || per_page > 48',
-  'let offset = (page.saturating_sub(1)) * per_page;',
+  // Overflow-checked offset derivation: a too-deep page fails closed with a
+  // typed Validation error instead of saturating into a wrong page.
+  '.checked_sub(1)',
+  '.and_then(|page| page.checked_mul(per_page))',
+  '"page and per_page are too large"',
   'query.offset(offset).limit(per_page).all(&self.db).await?',
 ]);
 const modernList = owner.slice(

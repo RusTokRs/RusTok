@@ -60,18 +60,25 @@ fn security(auth: &AuthContext) -> SecurityContext {
     )
 }
 
+/// Header carrying the client IP after the server's request-trust evaluation.
+/// The server middleware strips any client-supplied value and re-inserts the
+/// effective IP, so this is the only forwarding header a module may trust.
+const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
+
 fn request_identity(headers: &HeaderMap) -> String {
-    for name in ["x-forwarded-for", "x-real-ip"] {
-        if let Some(value) = headers
-            .get(name)
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            return value.split(',').next().unwrap_or(value).trim().to_string();
-        }
-    }
-    "unknown".to_string()
+    // The submit rate limit is keyed by this identity, so it must not come
+    // from client-controlled forwarding headers: rotating `X-Forwarded-For`
+    // per request would mint a fresh rate-limit bucket every time and allow
+    // unbounded submission spam. Only the server-injected trusted IP counts;
+    // without it all anonymous callers share the single "unknown" bucket
+    // (fail-closed) instead of trusting spoofable headers.
+    headers
+        .get(TRUSTED_CLIENT_IP_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn request_user_agent(headers: &HeaderMap) -> Option<String> {
@@ -319,4 +326,32 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, FormsEr
             axum::routing::patch(update_form_submission_state),
         )
         .with_state(state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TRUSTED_CLIENT_IP_HEADER, request_identity};
+    use axum::http::HeaderMap;
+
+    #[test]
+    fn request_identity_uses_only_the_server_trusted_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert(TRUSTED_CLIENT_IP_HEADER, "203.0.113.7".parse().unwrap());
+        headers.insert("x-forwarded-for", "198.51.100.9".parse().unwrap());
+        assert_eq!(request_identity(&headers), "203.0.113.7");
+    }
+
+    #[test]
+    fn request_identity_ignores_spoofable_forwarding_headers() {
+        // Rotating client-supplied forwarding headers must not mint fresh
+        // rate-limit buckets: without the server-trusted IP every anonymous
+        // caller shares the fail-closed "unknown" identity.
+        for value in ["198.51.100.9", "192.0.2.44, 198.51.100.9"] {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-forwarded-for", value.parse().unwrap());
+            headers.insert("x-real-ip", "192.0.2.44".parse().unwrap());
+            assert_eq!(request_identity(&headers), "unknown");
+        }
+        assert_eq!(request_identity(&HeaderMap::new()), "unknown");
+    }
 }

@@ -118,6 +118,12 @@ fn identity_from_model(
                 "stored runtime fingerprint is invalid: {error}"
             ))
         })?;
+    fingerprint.validate().map_err(|error| {
+        ExecutorPoolRegistryError::CorruptData(format!(
+            "stored runtime fingerprint for pool `{}` is invalid: {error}",
+            model.pool_id
+        ))
+    })?;
     if fingerprint.compute_digest() != model.fingerprint_digest {
         return Err(ExecutorPoolRegistryError::CorruptData(format!(
             "stored fingerprint digest for pool `{}` does not match its components",

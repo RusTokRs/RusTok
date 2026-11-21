@@ -78,6 +78,7 @@ pub use ports::{
     CartPromotionScopeRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
     CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
+    in_process_cart_storefront_port,
 };
 pub use promotion_guard::guarded_cart_promotion_port as in_process_cart_promotion_port;
 pub use services::cart::{

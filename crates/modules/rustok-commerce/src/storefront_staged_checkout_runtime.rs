@@ -616,54 +616,25 @@ mod tests {
     }
 
     #[test]
-    fn owner_mapping_never_promotes_permanent_unavailability() {
-        let request = request_context();
-        let context = cart_context(
-            request.tenant_id,
-            Uuid::from_u128(4),
-            &request,
-            None,
-            "original-key",
-        );
-        for kind in [PortErrorKind::Unavailable, PortErrorKind::Timeout] {
-            for retryable in [false, true] {
-                let error = PortError::new(
-                    kind.clone(),
-                    "pricing.product_identity_capability_unavailable",
-                    "private-owner-details",
-                    retryable,
-                );
-                let public = map_owner_port_error(
-                    &context,
-                    "rustok_pricing",
-                    "resolve_product_price",
-                    error,
-                    StorefrontStagedCheckoutRuntimeError::CartAccess,
-                );
-                assert_eq!(public.retryable(), retryable);
-                assert!(!public.public_message().contains("private-owner-details"));
-            }
-        }
-    }
-
-    #[test]
     fn staged_cart_pricing_retains_owner_retryability_at_final_boundary() {
         let request = request_context();
         let cart_id = Uuid::from_u128(4);
         let context = cart_context(request.tenant_id, cart_id, &request, None, "original-key");
-        for retryable in [false, true] {
-            let error = crate::RecoveringStagedCheckoutError::Staged(
-                crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
-                    stage: "cart_prepare_checkout",
-                    kind: PortErrorKind::Unavailable,
-                    code: "pricing.checkout_resolution_unavailable".into(),
-                    message: "private-owner-details".into(),
-                    retryable,
-                }),
-            );
-            let public = map_checkout_error(&context, cart_id, Uuid::nil(), error);
-            assert_eq!(public.retryable(), retryable);
-            assert!(!public.public_message().contains("private-owner-details"));
+        for kind in [PortErrorKind::Unavailable, PortErrorKind::Timeout] {
+            for retryable in [false, true] {
+                let error = crate::RecoveringStagedCheckoutError::Staged(
+                    crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+                        stage: "cart_prepare_checkout",
+                        kind: kind.clone(),
+                        code: "pricing.checkout_resolution_unavailable".into(),
+                        message: "private-owner-details".into(),
+                        retryable,
+                    }),
+                );
+                let public = map_checkout_error(&context, cart_id, Uuid::nil(), error);
+                assert_eq!(public.retryable(), retryable);
+                assert!(!public.public_message().contains("private-owner-details"));
+            }
         }
     }
 

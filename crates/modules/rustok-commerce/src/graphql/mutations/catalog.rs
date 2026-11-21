@@ -498,7 +498,9 @@ impl CommerceCatalogMutation {
             primary_category_id: graphql_patch(input.primary_category_id),
             tags: input.tags,
             metadata: input.custom_fields.map(|cf| cf.0),
-            brands: None,
+            brands: input
+                .brands
+                .map(|brands| convert_product_brand_inputs(Some(brands))),
             status: input.status.map(Into::into),
             expected_revision: input.revision,
         };

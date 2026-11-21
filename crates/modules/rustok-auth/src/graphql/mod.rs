@@ -3,6 +3,7 @@ pub mod auth_query;
 pub mod auth_types;
 pub mod mutation;
 pub mod query;
+pub mod rate_limit;
 pub mod types;
 
 use std::sync::Arc;
@@ -21,6 +22,10 @@ pub use auth_query::AuthQuery;
 pub use auth_types::*;
 pub use mutation::OAuthMutation;
 pub use query::OAuthQuery;
+pub use rate_limit::{
+    AuthGraphqlRateLimitError, AuthGraphqlRateLimitExceeded, AuthGraphqlRateLimitPolicy,
+    AuthGraphqlRateLimiter, AuthGraphqlRateLimiterHandle,
+};
 pub use types::*;
 
 fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {

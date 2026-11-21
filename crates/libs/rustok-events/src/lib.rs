@@ -145,6 +145,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
         .chain(CHECKOUT_OPERATION_EVENT_SCHEMAS.iter())
         .chain(FORUM_MENTION_EVENT_SCHEMAS.iter())
         .chain(FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS.iter())
+        .chain(FORMS_SUBMISSION_EVENT_SCHEMAS.iter())
         .chain(INVENTORY_RESERVATION_EVENT_SCHEMAS.iter())
         .chain(INVENTORY_SOURCE_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())

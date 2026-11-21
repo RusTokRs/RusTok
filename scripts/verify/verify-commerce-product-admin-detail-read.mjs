@@ -53,8 +53,13 @@ for (const forbidden of [
 const listStart = source.indexOf("pub async fn list_products(");
 const createStart = source.indexOf("pub async fn create_product(", listStart + 1);
 const list = source.slice(listStart, createStart);
-if (!list.includes("super::super::products::list_products")) {
-  fail("admin list must remain explicit follow-up debt in this slice");
+if (list.includes("super::super::products::list_products")) {
+  fail("admin list must not delegate to the removed unmounted shared list handler");
+}
+for (const required of [".product_catalog_read_port()", ".list_admin_products("]) {
+  if (!list.includes(required)) {
+    fail(`list_products must contain ${required}`);
+  }
 }
 
 if (!process.exitCode) {

@@ -64,15 +64,27 @@ mod rustok_payment_shim;
 #[path = "source/rustok_pricing_shim.rs"]
 mod rustok_pricing_shim;
 
-// Query implementation dependencies are re-exported from this source boundary so the
-// implementation module can consume the same scoped aliases without textual inclusion.
-pub(crate) use super::{
-    MODULE_SLUG, PRODUCT_MODULE_SLUG, current_tenant_scope, product_query_tenant,
-    require_commerce_permission, require_storefront_cart_enabled,
-    require_storefront_channel_enabled, types,
-};
+// Scoped facade aliases: the textually included query implementation resolves each
+// owner crate name against this boundary's shim instead of the concrete crate. The
+// fulfillment and pricing facades are aliased by the included query source itself.
+use self::async_graphql_shim as async_graphql;
+use self::rustok_api_shim as rustok_api;
+use self::rustok_cart_shim as rustok_cart;
+use self::rustok_channel_shim as rustok_channel;
+use self::rustok_customer_shim as rustok_customer;
+use self::rustok_order_shim as rustok_order;
+use self::rustok_payment_shim as rustok_payment;
 
-#[path = "../query.rs"]
-mod query_impl;
+// The legacy region compatibility format is intercepted inside this boundary so the
+// typed region message owns the public payload; every other format! invocation keeps
+// the standard library behavior through the generic fallback arm.
+macro_rules! format {
+    ("{}: {}", error.code, error.message) => {
+        super::query_error_boundary::RegionGraphqlMessage::new(error)
+    };
+    ($($tokens:tt)*) => {
+        ::std::format!($($tokens)*)
+    };
+}
 
-pub(crate) use query_impl::CommerceQuery;
+include!("../query.rs");

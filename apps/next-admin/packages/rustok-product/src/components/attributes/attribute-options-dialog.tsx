@@ -37,7 +37,7 @@ export function AttributeOptionsDialog({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [label, setLabel] = React.useState('');
   const [code, setCode] = React.useState('');
-  const [position, setPosition] = React.useState<number>(0);
+  const [positionInput, setPositionInput] = React.useState('0');
 
   const handleLabelChange = (val: string) => {
     setLabel(val);
@@ -69,6 +69,11 @@ export function AttributeOptionsDialog({
       toast.error('Option code is required');
       return;
     }
+    const position = Number.parseInt(positionInput, 10);
+    if (!Number.isInteger(position) || position < 0) {
+      toast.error('Position must be a non-negative whole number');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -81,7 +86,7 @@ export function AttributeOptionsDialog({
       toast.success(`Option "${label}" added to ${attribute.label}`);
       setLabel('');
       setCode('');
-      setPosition((prev) => prev + 1);
+      setPositionInput((prev) => `${Number.parseInt(prev, 10) + 1 || 1}`);
       onOpenChange(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add option');
@@ -138,8 +143,8 @@ export function AttributeOptionsDialog({
                 <Input
                   id='opt-pos'
                   type='number'
-                  value={position}
-                  onChange={(e) => setPosition(Number(e.target.value) || 0)}
+                  value={positionInput}
+                  onChange={(e) => setPositionInput(e.target.value)}
                   disabled={isSubmitting}
                 />
               </div>

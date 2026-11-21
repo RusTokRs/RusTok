@@ -324,10 +324,10 @@ export function ProductVariantsCard({
             <Box className='text-primary h-4 w-4' />
             <div>
               <CardTitle className='text-sm font-semibold'>
-                Цены и варианты (Pricing & Variants Matrix)
+                Pricing & Variants Matrix
               </CardTitle>
               <CardDescription className='text-xs'>
-                SKU, штрихкоды, мультивалютная сетка цен, скидки и остатки
+                SKUs, barcodes, the multi-currency price grid, discounts, and stock
               </CardDescription>
             </div>
           </div>
@@ -344,7 +344,7 @@ export function ProductVariantsCard({
               }
             >
               <Plus className='h-3.5 w-3.5' />
-              Добавить вариант
+              Add Variant
             </Button>
           )}
         </div>
@@ -352,20 +352,20 @@ export function ProductVariantsCard({
       <CardContent className='pt-4'>
         {variants.length === 0 ? (
           <div className='text-muted-foreground bg-muted/20 rounded-xl py-8 text-center text-xs italic'>
-            Нет вариантов для этого товара. Нажмите «Добавить вариант».
+            No variants for this product yet. Click "Add Variant".
           </div>
         ) : (
           <div className='border-border overflow-hidden rounded-xl border'>
             <Table>
               <TableHeader className='bg-muted/50'>
                 <TableRow className='text-[11px]'>
-                  <TableHead>SKU / Штрихкод</TableHead>
+                  <TableHead>SKU / Barcode</TableHead>
                   <TableHead>{combinationsCopy('assignments')}</TableHead>
-                  <TableHead>Основная цена</TableHead>
-                  <TableHead>Валютная сетка</TableHead>
-                  <TableHead>Остаток</TableHead>
-                  <TableHead>Политика</TableHead>
-                  <TableHead className='text-right'>Действия</TableHead>
+                  <TableHead>Base Price</TableHead>
+                  <TableHead>Currency Grid</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Policy</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className='text-xs'>
@@ -453,7 +453,7 @@ export function ProductVariantsCard({
                           </div>
                         ) : (
                           <span className='text-muted-foreground text-[11px]'>
-                            Одна валюта
+                            Single currency
                           </span>
                         )}
                       </TableCell>
@@ -471,11 +471,11 @@ export function ProductVariantsCard({
                                   : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                             }`}
                           >
-                            {v.inventoryQuantity} шт.
+                            {v.inventoryQuantity} pcs
                             {v.inventoryQuantity <= 0
                               ? ' (0)'
                               : v.inventoryQuantity <= 5
-                                ? ' (Мало)'
+                                ? ' (Low)'
                                 : ''}
                           </Badge>
                           {onUpdateVariant && (
@@ -492,7 +492,7 @@ export function ProductVariantsCard({
                                 }
                                 disabled={disabled || v.inventoryQuantity <= 0}
                                 className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
-                                title='Уменьшить остаток на 1'
+                                title='Decrease stock by 1'
                               >
                                 -
                               </button>
@@ -505,7 +505,7 @@ export function ProductVariantsCard({
                                 }
                                 disabled={disabled}
                                 className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
-                                title='Увеличить остаток на 1'
+                                title='Increase stock by 1'
                               >
                                 +
                               </button>
@@ -530,7 +530,7 @@ export function ProductVariantsCard({
                               onClick={() => openEditDialog(v)}
                               className='text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg'
                               disabled={disabled}
-                              title='Редактировать вариант и цены'
+                              title='Edit variant and prices'
                             >
                               <Edit2 className='h-3.5 w-3.5' />
                             </Button>
@@ -543,7 +543,7 @@ export function ProductVariantsCard({
                               onClick={() => onDeleteVariant(v.id)}
                               className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
                               disabled={disabled}
-                              title='Удалить вариант'
+                              title='Delete variant'
                             >
                               <Trash2 className='h-3.5 w-3.5' />
                             </Button>
@@ -570,12 +570,12 @@ export function ProductVariantsCard({
           <DialogHeader>
             <DialogTitle className='text-sm font-semibold'>
               {editingVariant
-                ? 'Редактировать вариант'
-                : 'Новый вариант товара'}
+                ? 'Edit Variant'
+                : 'New Product Variant'}
             </DialogTitle>
             <DialogDescription className='text-xs'>
-              Настройте SKU, штрихкод, мультивалютную сетку цен и правила
-              скидок.
+              Set the SKU, barcode, multi-currency price grid, and discount
+              rules.
             </DialogDescription>
           </DialogHeader>
 
@@ -595,7 +595,7 @@ export function ProductVariantsCard({
               {/* SKU and Barcode */}
               <div className='grid grid-cols-2 gap-3'>
                 <div className='space-y-1.5'>
-                  <Label htmlFor='var-sku'>SKU (Артикул)</Label>
+                  <Label htmlFor='var-sku'>SKU</Label>
                   <Input
                     id='var-sku'
                     value={formSku}
@@ -605,7 +605,7 @@ export function ProductVariantsCard({
                   />
                 </div>
                 <div className='space-y-1.5'>
-                  <Label htmlFor='var-barcode'>Штрихкод (Barcode / EAN)</Label>
+                  <Label htmlFor='var-barcode'>Barcode (EAN)</Label>
                   <Input
                     id='var-barcode'
                     value={formBarcode}
@@ -652,7 +652,7 @@ export function ProductVariantsCard({
                 <div className='flex items-center justify-between'>
                   <div className='text-foreground flex items-center gap-1.5 text-xs font-semibold'>
                     <Coins className='text-primary h-3.5 w-3.5' />
-                    <span>Валютная сетка и цены</span>
+                    <span>Currency Grid & Prices</span>
                   </div>
                   <Button
                     type='button'
@@ -662,7 +662,7 @@ export function ProductVariantsCard({
                     className='h-7 gap-1 rounded-lg px-2 text-[11px]'
                   >
                     <Plus className='h-3 w-3' />
-                    Добавить валюту
+                    Add Currency
                   </Button>
                 </div>
 
@@ -694,7 +694,7 @@ export function ProductVariantsCard({
                           {/* Currency */}
                           <div className='space-y-1'>
                             <Label className='text-muted-foreground text-[10px]'>
-                              Валюта
+                              Currency
                             </Label>
                             <Select
                               disabled={disabled || isBusy}
@@ -731,7 +731,7 @@ export function ProductVariantsCard({
                           {/* Price */}
                           <div className='space-y-1'>
                             <Label className='text-muted-foreground text-[10px]'>
-                              Цена продажи *
+                              Sale Price *
                             </Label>
                             <Input
                               type='number'
@@ -748,7 +748,7 @@ export function ProductVariantsCard({
                           <div className='space-y-1'>
                             <div className='flex items-center justify-between'>
                               <Label className='text-muted-foreground text-[10px]'>
-                                Старая цена
+                                Compare-at Price
                               </Label>
                               {(!editingVariant || formPrices.length > 1) && (
                                 <Button
@@ -784,7 +784,7 @@ export function ProductVariantsCard({
                         <div className='border-border/40 flex items-center justify-between border-t pt-1 text-[10px]'>
                           <div className='flex items-center gap-1'>
                             <span className='text-muted-foreground'>
-                              Скидка:
+                              Discount:
                             </span>
                             {[10, 15, 20, 30].map((pct) => (
                               <button
@@ -804,7 +804,7 @@ export function ProductVariantsCard({
                               variant='outline'
                               className='border-rose-200 bg-rose-50 px-1.5 py-0 text-[9px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                             >
-                              Скидка {discountPct}% (ON SALE)
+                              {discountPct}% OFF (ON SALE)
                             </Badge>
                           )}
                         </div>
@@ -818,7 +818,7 @@ export function ProductVariantsCard({
               <div className='grid grid-cols-2 gap-3'>
                 <div className='space-y-1.5'>
                   <div className='flex items-center justify-between'>
-                    <Label htmlFor='var-stock'>Остаток на складе</Label>
+                    <Label htmlFor='var-stock'>Stock on Hand</Label>
                     <div className='flex items-center gap-1'>
                       <button
                         type='button'
@@ -831,7 +831,7 @@ export function ProductVariantsCard({
                           )
                         }
                         className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
-                        title='-1 шт.'
+                        title='-1 pc'
                       >
                         -1
                       </button>
@@ -843,7 +843,7 @@ export function ProductVariantsCard({
                           )
                         }
                         className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
-                        title='+1 шт.'
+                        title='+1 pc'
                       >
                         +1
                       </button>
@@ -855,7 +855,7 @@ export function ProductVariantsCard({
                           )
                         }
                         className='bg-muted hover:bg-muted/80 h-5 rounded px-1 text-[10px] font-medium'
-                        title='+10 шт.'
+                        title='+10 pcs'
                       >
                         +10
                       </button>
@@ -870,7 +870,7 @@ export function ProductVariantsCard({
                   />
                 </div>
                 <div className='space-y-1.5'>
-                  <Label htmlFor='var-policy'>Политика списания</Label>
+                  <Label htmlFor='var-policy'>Inventory Policy</Label>
                   <Select value={formPolicy} onValueChange={setFormPolicy}>
                     <SelectTrigger
                       id='var-policy'
@@ -880,10 +880,10 @@ export function ProductVariantsCard({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value='deny' className='text-xs'>
-                        Блокировать при 0 остатке (Deny)
+                        Deny when out of stock (Deny)
                       </SelectItem>
                       <SelectItem value='continue' className='text-xs'>
-                        Разрешить предзаказ (Backorder / Continue)
+                        Allow backorders (Continue)
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -944,7 +944,7 @@ export function ProductVariantsCard({
                 onClick={() => setDialogOpen(false)}
                 className='h-9 rounded-xl text-xs'
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type='button'
@@ -953,10 +953,10 @@ export function ProductVariantsCard({
                 className='h-9 rounded-xl text-xs font-semibold'
               >
                 {isBusy
-                  ? 'Сохранение...'
+                  ? 'Saving...'
                   : editingVariant
-                    ? 'Сохранить вариант'
-                    : 'Создать вариант'}
+                    ? 'Save Variant'
+                    : 'Create Variant'}
               </Button>
             </DialogFooter>
           </fieldset>

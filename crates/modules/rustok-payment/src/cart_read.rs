@@ -68,11 +68,10 @@ impl PaymentCartReadPort for InProcessPaymentCartReadPort {
         request: ReusablePaymentCollectionByCartRequest,
     ) -> Result<Option<PaymentCollectionResponse>, PortError> {
         const OPERATION: &str = "find_reusable_collection_by_cart";
-        context
-            .require_policy(PortCallPolicy::read())
-            .inspect_err(|error| {
-                log_context_rejection(&context, OPERATION, "policy", error);
-            })?;
+        if let Err(error) = context.require_policy(PortCallPolicy::read()) {
+            log_context_rejection(&context, OPERATION, "policy", &error);
+            return Err(error);
+        }
         let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
             let error = PortError::validation(
                 "payment.cart_read_context_invalid",

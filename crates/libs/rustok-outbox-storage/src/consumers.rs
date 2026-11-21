@@ -143,8 +143,15 @@ impl OutboxConsumer {
             .one(&txn)
             .await?;
         if registered.is_none() {
-            txn.commit().await?;
-            return Ok(());
+            // Unlike a missing event row (already outside retention), an
+            // unregistered consumer has no retention obligation to satisfy:
+            // reporting success would let the caller believe the event is
+            // held when nothing records that fact.
+            txn.rollback().await?;
+            return Err(Error::Validation(format!(
+                "outbox consumer {consumer_key} is not registered for event type {}",
+                event.event_type
+            )));
         }
 
         Self::acknowledge_in_transaction(
@@ -361,7 +368,7 @@ mod tests {
         }
 
         let count = db
-            .query_one(sea_orm::Statement::from_string(
+            .query_one_raw(sea_orm::Statement::from_string(
                 db.get_database_backend(),
                 "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts".to_string(),
             ))

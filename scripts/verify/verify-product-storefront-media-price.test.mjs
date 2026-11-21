@@ -35,12 +35,49 @@ impl StorefrontProductListQuery {
 `;
 }
 
+function ownerPortTypesSource({ includePriceField = true } = {}) {
+  return `
+pub struct StorefrontProductListImage { pub media_id: String }
+pub struct StorefrontProductListPrice { pub amount: String }
+pub struct StorefrontProductListItem {
+    pub id: String,
+    pub primary_image: Option<StorefrontProductListImage>,
+    ${includePriceField ? 'pub price_from: Option<StorefrontProductListPrice>,' : ''}
+}
+pub struct StorefrontProductListQuery {
+    pub currency_code: Option<String>,
+}
+`;
+}
+
+function pricingPortSource() {
+  return `
+async fn load_storefront_list_prices() {
+    for price in &prices {
+        if price.price_list_id.is_some() || price.min_quantity.is_some() { continue; }
+        if let Some(code) = currency_code
+            && !price.currency_code.eq_ignore_ascii_case(code)
+        { continue; }
+    }
+    let selected = candidates.into_iter()
+        .min_by(|left, right| left.amount.cmp(&right.amount));
+}
+`;
+}
+
+function leptosListNativeSource() {
+  return `
+pub(crate) fn map_owner_product_image(value: StorefrontProductListImage) -> ProductImage { ProductImage { media_id: value.media_id } }
+pub(crate) fn map_owner_product_list_price(value: StorefrontProductListPrice) -> ProductListPrice { ProductListPrice { currency_code: value.currency_code } }
+`;
+}
+
 function ownerQueriesSource({ includeMediaBatch = true } = {}) {
   return `
 fn build_storefront_list_price_from_map() -> Vec<()> { Vec::new() }
 async fn published_list(&self) {
     ${includeMediaBatch ? 'let media_summaries = self.load_storefront_product_list_media();' : ''}
-    let price_from_by_product = build_storefront_list_price_from_map();
+    let price_from_by_product = port.load_storefront_list_prices();
     if price_list_id.is_some() {}
     if price.min_quantity.is_some() {}
     let item = StorefrontProductListItem {
@@ -241,6 +278,21 @@ function withFixture(options = {}) {
     root,
     'crates/modules/rustok-product/src/services/catalog/types.rs',
     ownerTypesSource(options)
+  );
+  writeFixtureFile(
+    root,
+    'crates/modules/rustok-product/ports/src/types.rs',
+    ownerPortTypesSource(options)
+  );
+  writeFixtureFile(
+    root,
+    'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs',
+    pricingPortSource()
+  );
+  writeFixtureFile(
+    root,
+    'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs',
+    leptosListNativeSource()
   );
   writeFixtureFile(
     root,

@@ -60,3 +60,6 @@ reqwest.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 rustok-modules = { path = ".", features = ["test-support"] }
+
+[lints]
+workspace = true

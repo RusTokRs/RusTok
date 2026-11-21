@@ -548,8 +548,10 @@ pub async fn rollback_tenant_artifact_native(
             operation_id: result.operation_id.to_string(),
             source_installation_id: result.source_installation_id.to_string(),
             target_installation_id: result.target_installation_id.to_string(),
-            source_revision: i64::try_from(result.source_revision).unwrap_or(0),
-            target_revision: i64::try_from(result.target_revision).unwrap_or(0),
+            // Saturate instead of collapsing to 0: this codebase rejects
+            // revisions <= 0 as invalid, so an overflow must not render as one.
+            source_revision: i64::try_from(result.source_revision).unwrap_or(i64::MAX),
+            target_revision: i64::try_from(result.target_revision).unwrap_or(i64::MAX),
         })
     }
     #[cfg(not(feature = "ssr"))]
@@ -619,8 +621,10 @@ pub async fn rollback_module_transition_native(
             operation_id: result.operation_id.to_string(),
             source_installation_id: result.source_installation_id.to_string(),
             target_installation_id: result.target_installation_id.to_string(),
-            source_revision: i64::try_from(result.source_revision).unwrap_or(0),
-            target_revision: i64::try_from(result.target_revision).unwrap_or(0),
+            // Saturate instead of collapsing to 0: this codebase rejects
+            // revisions <= 0 as invalid, so an overflow must not render as one.
+            source_revision: i64::try_from(result.source_revision).unwrap_or(i64::MAX),
+            target_revision: i64::try_from(result.target_revision).unwrap_or(i64::MAX),
         })
     }
     #[cfg(not(feature = "ssr"))]

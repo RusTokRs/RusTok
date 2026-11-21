@@ -25,7 +25,13 @@ use the storage library with its own database and compose delivery separately.
   operation. Owners coordinating another aggregate may use `lock_current` at
   the start of their owner transaction before acquiring aggregate locks; this
   verifies the receipt token and holds its row lock, but does not renew the
-  lease or fence external side effects.
+  lease or fence external side effects. An operation that may run longer
+  than the five-minute processing lease must call `idempotency::renew_lease`
+  periodically; renewal is fenced by the lease token, so a worker that lost
+  its lease fails fast instead of after its side effects escaped. The
+  generic receipt primitive acknowledges a consumer event only for a
+  registered consumer: `acknowledge_existing` errors on an unregistered
+  consumer key instead of silently reporting success.
 - Expose the runtime services used by `apps/server` event bootstrap and background delivery.
 - Ship the module-owned Leptos admin UI package for relay visibility with a `core/transport/ui` FFA split.
 
@@ -52,6 +58,13 @@ The relay checks storage and the broker before claiming events. It uses the same
 claim, retry, and dead-letter rules as the embedded relay. Shutdown lets the
 current batch finish. Interrupted claims become eligible again after the claim
 lease expires. Delivery is at least once and retains the durable envelope ID.
+Relay tuning mirrors the embedded `rustok.events.*` policy through optional
+environment variables over the `RelayConfig` defaults:
+`RUSTOK_OUTBOX_RELAY_BATCH_SIZE`, `RUSTOK_OUTBOX_RELAY_MAX_ATTEMPTS`,
+`RUSTOK_OUTBOX_RELAY_BACKOFF_BASE_MS`, `RUSTOK_OUTBOX_RELAY_BACKOFF_MAX_MS`,
+`RUSTOK_OUTBOX_RELAY_MAX_CONCURRENCY`, `RUSTOK_OUTBOX_RELAY_CLAIM_TTL_MS`,
+`RUSTOK_OUTBOX_RELAY_PUBLISH_TIMEOUT_MS`, and
+`RUSTOK_OUTBOX_RELAY_WORKER_ID`.
 
 ## Interactions
 
@@ -73,6 +86,22 @@ lease expires. Delivery is at least once and retains the durable envelope ID.
 - Integrates with target transports such as `rustok-iggy` instead of owning transport-specific adapters inline.
 - The Leptos admin UI lives in `crates/modules/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.
 
+## Tenant projection and integrity
+
+- `sys_events.tenant_id` is a denormalised projection of the envelope
+  tenant, populated by every canonical writer and backfilled by the
+  platform migration `m20261121_000001_add_sys_events_tenant_projection`.
+  Tenant-scoped operator reads (module admin counters, server DLQ API)
+  filter on the column through `idx_sys_events_tenant_status_created_at`
+  and only fall back to payload extraction for rows whose column is still
+  `NULL`. The payload remains the canonical envelope.
+- PostgreSQL deployments additionally carry CHECK constraints (added
+  `NOT VALID`, so historical drift cannot break the upgrade): a closed
+  status set, a non-negative retry counter, `claimed_by`/`claimed_at`
+  always set as a pair, and a dispatched row always carrying
+  `dispatched_at`. Operators can `VALIDATE CONSTRAINT` after cleaning
+  any pre-existing drift.
+
 ## Relay policy
 
 - Claims are owned by a relay worker through `claimed_by` / `claimed_at`; PostgreSQL uses `FOR UPDATE SKIP LOCKED`, while SQLite/test runs use the guarded update fallback.
@@ -83,7 +112,19 @@ lease expires. Delivery is at least once and retains the durable envelope ID.
   query on their own, and are dropped by the append-only migration
   `m20261007_000016_drop_sys_events_superseded_indexes`.
 - `claim_ttl` defines when a stuck claim can be reclaimed by a later iteration.
+  Each claim pass fences its rows with a unique `{worker_id}:{uuid}` owner
+  value, so two relays sharing a configured `worker_id` cannot complete each
+  other's claims.
 - Dispatch concurrency is bounded by `RelayConfig.max_concurrency`.
+- A single dispatch is bounded by `RelayConfig.publish_timeout`, which must
+  stay below `claim_ttl` (validated): a dispatch that outlives its lease can
+  be reclaimed and delivered twice while still running.
+- Delivery is at-least-once and unordered across concurrent dispatches;
+  consumers must be idempotent and tolerant of reordering.
+- Permanent dispatch failures (undecodable payload, envelope/row metadata
+  mismatch, unregistered schema, transport-side validation) move the event
+  straight to `failed` (DLQ) without burning the retry budget. Transient
+  failures follow the retry policy below.
 - Retry uses exponential backoff from `backoff_base` up to `backoff_max`.
 - `max_attempts` is resolved by the server runtime from `rustok.events.dlq.max_attempts` when DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.
 - A retryable failure keeps the event in `pending`, increments `retry_count`, stores `last_error`, clears the claim and sets `next_attempt_at`.
@@ -100,6 +141,15 @@ lease expires. Delivery is at least once and retains the durable envelope ID.
   status/age predicates, and reports `OutboxPruneReport { pruned, batch_exhausted }` — a full batch
   means another run has work to do, so the table is trimmed over several bounded runs instead of one
   long delete.
+- Dead-lettered rows are kept forever by default. An operator may opt into
+  `failed_retention` (server: `events.outbox_retention.failed_retention_days`,
+  0 = keep forever): rows whose `created_at` is older than the window are
+  then pruned in the same bounded batches. Enabling it accepts that the
+  only record of an undelivered event is discarded.
+- Terminal owner-operation receipts are pruned under `receipt_retention`
+  (server: `events.outbox_retention.receipt_retention_days`, default 90
+  days, 0 = keep forever). A retry that arrives after its receipt was
+  pruned runs the operation again; processing receipts are never pruned.
 - Runtime wiring: `events.outbox_retention.{enabled,retention_days,batch_size,interval_seconds}`
   (defaults `true`, 30 days, 500, hourly), resolved by `apps/server` into the `outbox_retention`
   worker, guarded by the `worker:outbox_retention` readiness check, and reported through

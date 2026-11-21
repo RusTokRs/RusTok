@@ -10,6 +10,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Boxes, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BundlesTable } from '../components/bundles/bundles-table';
@@ -21,7 +22,10 @@ interface BundlesPageProps {
   total: number;
   page: number;
   perPage: number;
-  onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
+  onCreateBundle?: (
+    input: CreateBundleInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onDeleteBundle?: (id: string) => Promise<void>;
   onFilterChange?: (filters: {
     search?: string;
@@ -48,16 +52,33 @@ export function BundlesPage({
     setBundles(initialBundles);
   }, [initialBundles]);
 
-  const handleCreate = async (input: CreateBundleInput) => {
+  const handleCreate = async (
+    input: CreateBundleInput,
+    idempotencyKey: string
+  ) => {
     if (!onCreateBundle) return;
-    await onCreateBundle(input);
+    try {
+      await onCreateBundle(input, idempotencyKey);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create bundle.'
+      );
+      return;
+    }
     router.refresh();
   };
 
   const handleDelete = async (id: string) => {
     if (!onDeleteBundle) return;
     if (!confirm('Are you sure you want to delete this bundle?')) return;
-    await onDeleteBundle(id);
+    try {
+      await onDeleteBundle(id);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to delete bundle.'
+      );
+      return;
+    }
     setBundles((prev) => prev.filter((b) => b.id !== id));
     router.refresh();
   };

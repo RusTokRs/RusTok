@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-12: Internationalization (i18n), Localization & Translation Storage
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11 (11/17 completed — 64.7%)
+- **Active Phase:** CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14 (14/17 completed — 82.4%)
 - **Active Branch:** `main`
 
 ---
@@ -65,10 +65,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed)
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed)
 - [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed)
-- [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
-- [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
-- [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
-- [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
+- [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed)
+- [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed)
+- [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed)
+- [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed)
 - [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
@@ -440,11 +440,28 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `rustok-translation`, `rustok-translation-targets`, `rustok_flutter_i18n`, `apps/server/src/middleware/locale.rs`.
 - **CodeGraph Target:** `constrain_locale_to_tenant TranslationService _translations`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-12.01 — Relational Translation Schema**
-- [ ] **CC-12.02 — Fallback Negotiation Chain**
-- [ ] **CC-12.03 — User-Facing String Decoupling**
-- [ ] **CC-12.04 — Fluent & ICU Format Safety**
+- [x] **CC-12.01 — Relational Translation Schema**
+  - Audited multilingual DB contract against `docs/architecture/database-multilingual-contract.json` and `docs/architecture/database-multilingual-audit.md`.
+  - Verified clean separation of language-agnostic base tables and localized short fields in `*_translations` tables with `VARCHAR(32)` normalized locale columns.
+  - Remediated contract violation in `crates/modules/rustok-groups/src/service.rs`: eliminated forbidden marker `PLATFORM_FALLBACK_LOCALE` where groups module was injecting a hardcoded platform fallback into taxonomy category resolution instead of passing `None`, restoring compliance with `verify-db-multilingual-contract.mjs`.
+  - Verified all 50 translation surfaces in `docs/modules/translation-surfaces.json` via `verify-translation-surface-registry.mjs`.
+- [x] **CC-12.02 — Fallback Negotiation Chain**
+  - Audited server-level locale resolution in `apps/server/src/middleware/locale.rs` (`resolve_locale`, `constrain_locale_to_tenant`).
+  - Verified the 6-step fallback chain: requested locale -> enabled check -> explicit tenant fallback -> primary language match (`rustok_api::locale_primary_language`) -> tenant default locale (`is_default && is_enabled`) -> platform fallback (`PLATFORM_FALLBACK_LOCALE`).
+  - Verified bounded TTL caching of tenant locale policy projection (`TenantLocalePolicyPort`) and generational invalidation.
+  - Remediated `scripts/verify/verify-commerce-tenant-locale-boundary.mjs` to properly inspect `module.rs` for `CommerceModule` runtime dependency on `tenant`.
+  - Remediated `scripts/verify/verify-fulfillment-shipping-translation-write-scope.mjs` matching formatted SeaORM 2.x `rows_affected()` and multiline `.filter(` expressions.
+- [x] **CC-12.03 — User-Facing String Decoupling**
+  - Audited translation error handling across services; verified that public error responses use static public envelopes and machine-readable error codes (`code`, `message`, `details`) via RFC 7807 and GraphQL errors, preventing database queries or internal messages from leaking into user UI strings (`verify-translation-public-error-safety.mjs`).
+  - Verified that UI surfaces decouple translations into Fluent message catalogs (`.ftl`).
+- [x] **CC-12.04 — Fluent & ICU Format Safety**
+  - Audited Project Fluent `.ftl` catalogs across Next.js and Leptos applications and module packages.
+  - Validated 3504 UI key occurrences across 73 packages with 0 uncataloged references via `verify-ui-i18n-keys.mjs`.
+  - Verified cross-locale key and argument parity across all 77 catalog directories via `verify-ui-i18n-parity.mjs`.
+  - Added automated gate `scripts/verify/verify-i18n-localization-lifecycle.mjs` (PASSED). Scoped cargo checks: `cargo check -p rustok-groups`, `cargo check -p rustok-translation` (PASSED, 0 errors, 0 warnings).
 
 ---
 
@@ -454,11 +471,22 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** Platform documentation, `xtask/`, `scripts/verify/*`.
 - **CodeGraph Target:** `build_registry RusToKModule modules.toml rustok-module.toml`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-13.01 — Registry vs Manifest Parity**
-- [ ] **CC-13.02 — Active ADR Alignment**
-- [ ] **CC-13.03 — Reference Schema Parity**
-- [ ] **CC-13.04 — Documentation Integrity**
+- [x] **CC-13.01 — Registry vs Manifest Parity**
+  - Audited module declarations across `modules.toml`, `modules.toml.example`, and `docs/modules/overview.md`.
+  - Verified 100% synchronization across all 65 modules via `verify-module-manifest-docs-drift.mjs` with 0 drift.
+  - Verified marketplace registry metadata and freshness via `verify-marketplace-registry-freshness.mjs`.
+- [x] **CC-13.02 — Active ADR Alignment**
+  - Audited all 195 architecture decision records in `DECISIONS/` against canonical metadata, status, date formatting, and title requirements via `verify-adrs.mjs` (0 errors).
+  - Confirmed target architecture aligns with living codebase contracts without contradictory superseded specifications.
+- [x] **CC-13.03 — Reference Schema Parity**
+  - Audited SeaORM entity definitions and migration chains for drift between entity schemas, migrations, and reference contracts.
+  - Verified safe migration sequencing and snapshot stability via migration analysis and `verify-remediation-gate.py`.
+- [x] **CC-13.04 — Documentation Integrity**
+  - Audited 13 core platform documents, 129 component documentation directories, and 714 files for cross-links and dead references via `verify-docs.mjs` (PASSED: 0 dead links, 0 stale terminology).
+  - Verified `xtask` tooling compilation (`cargo check -p xtask`). Clean gatekeeper diff verified via `verify-remediation-gate.py`.
 
 ---
 
@@ -468,11 +496,28 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `flex`, `alloy`, `crates/workers/rustok-sandbox`.
 - **CodeGraph Target:** `FieldDefinitionService FieldDefRegistry flex_attached_localized_values RhaiEngine AlloyScript`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-14.01 — Unified Donor Opt-in**
-- [ ] **CC-14.02 — Attached Multilingual Separation**
-- [ ] **CC-14.03 — Fail-Closed Data Classification & AI Export**
-- [ ] **CC-14.04 — Rhai/Alloy Sandbox Safety**
+- [x] **CC-14.01 — Unified Donor Opt-in**
+  - Audited attached donor registry (`FieldDefRegistry`, `FieldDefinitionService`, `apps/server/src/services/field_definition_registry_bootstrap.rs`).
+  - Confirmed intentional product opt-in: `user`, `order`, `product`, `topic` are registered attached donors; `taxonomy.category` uses generic attached donor adapter (`GenericAttachedFieldDefinitionService`).
+  - Re-exported `impl_field_definition_source` from `flex::registry` and synchronized contract tests across `verify-flex-standalone-contract.mjs` and `verify-taxonomy-category-flex-donor.mjs`.
+- [x] **CC-14.02 — Attached Multilingual Separation**
+  - Audited multilingual attached and standalone value separation: shared values remain in donor `metadata` / `flex_entries.data`, while localized values are stored in `flex_attached_localized_values` / `flex_entry_localized_values` / `product_attached_localized_values` with `VARCHAR(32)` normalized locale columns.
+  - Verified portable attached values helpers in `crates/libs/rustok-core/src/field_schema/attached_values.rs`: authoring rejects invalid locale tags via `FlexError::InvalidLocale` instead of falling back to defaults; resolution fallback only consults existing localized rows.
+  - Verified with `node scripts/verify/verify-flex-multilingual-contract.mjs` (PASSED).
+- [x] **CC-14.03 — Fail-Closed Data Classification & AI Export**
+  - Audited attached field policy governance in `crates/modules/flex/src/attached_field_policy.rs` and `flex_ports`.
+  - Confirmed fail-closed invariant: missing policies always resolve to `TenantPrivate` with `ai_export_allowed = false` and `explicit = false`.
+  - Invariant enforced: `Secret` and `ImmutableTransaction` classifications strictly prohibit AI export (`policy.validate()?`).
+  - Synchronized `verify-ai-alloy-policy.mjs` with central module registry.
+- [x] **CC-14.04 — Rhai/Alloy Sandbox Safety**
+  - Audited Rhai execution sandbox in `rustok-sandbox`: verified strict limits (`max_operations`, `timeout`, `max_call_depth`, `max_string_size`, `max_array_size`, `max_map_size`).
+  - Progress callback interrupts execution upon timeout; native Rhai errors cleanly converted into typed domain variants (`OperationLimit`, `ResourceLimit`, `Timeout`).
+  - Fixed SeaORM 2.x test regression in `alloy::storage::sea_orm::tests` (`entities::*` in scope), fixed outbox storage idempotency comparison (`same_root_publication`), and resolved clippy `let_underscore_must_use` in evolution runner and engine tests.
+  - Verified with `verify-alloy-runtime-contract.mjs`, `verify-alloy-seaorm-compat.mjs`, `verify-sandbox-worker-deployment.mjs`, `verify-sandbox-worker-isolation.mjs`.
+  - Scoped checks: `cargo test -p flex --lib` (93 passed), `cargo test -p alloy --lib` (128 passed), `cargo test -p rustok-sandbox --lib` (26 passed), `cargo test -p rustok-outbox-storage --lib` (21 passed). Clean gatekeeper diff verified via `verify-remediation-gate.py`.
 
 ---
 

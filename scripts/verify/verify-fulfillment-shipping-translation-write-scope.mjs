@@ -48,7 +48,7 @@ for (const marker of [
   'WHERE shipping_options.id = $4',
   'FROM shipping_options',
   'shipping_options.tenant_id = $5',
-  'result.rows_affected != 1',
+  'rows_affected() != 1',
 ]) {
   requireText(
     translationChangeJournal,
@@ -147,7 +147,7 @@ for (const [value, label] of [
   ['Entity::update_many()', 'scoped translation update query'],
   ['Entity::delete_many()', 'scoped translation delete query'],
   ['.filter(entities::shipping_option_translation::Column::Id.eq(current.id))', 'update/delete row identity'],
-  ['.filter(entities::shipping_option_translation::Column::ShippingOptionId', 'parent identity filter'],
+  ['entities::shipping_option_translation::Column::ShippingOptionId', 'parent identity filter'],
   ['shipping_option_tenant_exists(tenant_id, shipping_option_id)', 'tenant parent scope'],
   ['if update_result.rows_affected != 1', 'update cardinality guard'],
   ['if delete_result.rows_affected != 1', 'delete cardinality guard'],

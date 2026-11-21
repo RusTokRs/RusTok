@@ -385,9 +385,23 @@ fn jwt_algorithm(config: &AuthConfig) -> Algorithm {
     }
 }
 
+/// HS256 signs with a symmetric secret, so a short secret is a forgeable
+/// key. `build_auth_config` validates this at startup, but `AuthConfig` can
+/// also be constructed directly; fail closed at key materialization so no
+/// construction path can sign or verify with a weak secret.
+fn hs256_secret_bytes(config: &AuthConfig) -> Result<&[u8]> {
+    if !crate::config::hs256_secret_has_min_length(&config.secret) {
+        return Err(AuthError::Internal(format!(
+            "HS256 secret must contain at least {} non-whitespace bytes",
+            crate::config::MIN_HS256_SECRET_BYTES
+        )));
+    }
+    Ok(config.secret.as_bytes())
+}
+
 fn encoding_key(config: &AuthConfig) -> Result<EncodingKey> {
     match config.algorithm {
-        JwtAlgorithm::HS256 => Ok(EncodingKey::from_secret(config.secret.as_bytes())),
+        JwtAlgorithm::HS256 => Ok(EncodingKey::from_secret(hs256_secret_bytes(config)?)),
         JwtAlgorithm::RS256 => {
             let pem = config.rsa_private_key_pem.as_deref().ok_or_else(|| {
                 AuthError::Internal("RS256 requires rsa_private_key_pem".to_string())
@@ -401,7 +415,7 @@ fn encoding_key(config: &AuthConfig) -> Result<EncodingKey> {
 /// Build the decoding key for the configured algorithm.
 fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
     match config.algorithm {
-        JwtAlgorithm::HS256 => Ok(DecodingKey::from_secret(config.secret.as_bytes())),
+        JwtAlgorithm::HS256 => Ok(DecodingKey::from_secret(hs256_secret_bytes(config)?)),
         JwtAlgorithm::RS256 => {
             let pem = config.rsa_public_key_pem.as_deref().ok_or_else(|| {
                 AuthError::Internal("RS256 requires rsa_public_key_pem".to_string())
@@ -490,6 +504,51 @@ mod tests {
 
     fn rs256_test_config() -> AuthConfig {
         test_config().with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY)
+    }
+
+    #[test]
+    fn hs256_weak_secret_fails_closed_at_key_materialization() {
+        // AuthConfig can be built without build_auth_config; signing or
+        // verifying with a sub-32-byte secret must still be impossible.
+        let weak = AuthConfig::new("short-secret".to_string());
+        let encode = encode_access_token(
+            &weak,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        );
+        assert!(encode.is_err());
+
+        let strong = test_config();
+        let token = encode_access_token(
+            &strong,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+        assert!(decode_access_token(&weak, &token).is_err());
+    }
+
+    #[test]
+    fn hs256_whitespace_padded_secret_fails_closed() {
+        // 31 real bytes with an interior space: `trim().len()` counts 32 and
+        // would pass, but whitespace must not credit toward the minimum.
+        let padded = AuthConfig::new(format!("{} {}", "a".repeat(16), "b".repeat(15)));
+        let encode = encode_access_token(
+            &padded,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        );
+        assert!(encode.is_err());
+        assert!(!crate::config::hs256_secret_has_min_length(&padded.secret));
+        assert!(crate::config::hs256_secret_has_min_length(
+            &"a".repeat(32)
+        ));
     }
 
     #[test]

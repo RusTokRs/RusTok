@@ -41,9 +41,12 @@ pub fn compute_canonical_authorization_fingerprint(
     let mut sorted_keys: Vec<&str> = permissions.iter().map(|p| p.key.as_str()).collect();
     sorted_keys.sort_unstable();
     let mut hasher = Sha256::new();
+    hasher.update(b"rustok.artifact-permission-authorization.v2");
     for key in sorted_keys {
+        // Length-prefix every key: joining with a separator byte alone would
+        // let one key containing that byte alias a pair of shorter keys.
+        hasher.update((key.len() as u64).to_be_bytes());
         hasher.update(key.as_bytes());
-        hasher.update(b"\n");
     }
     format!("sha256:{}", hasher.finalize().encode_hex::<String>())
 }
@@ -180,6 +183,22 @@ mod tests {
         assert_eq!(
             fingerprint_en, fingerprint_ru,
             "localization changes must never alter authorization fingerprint"
+        );
+    }
+
+    #[test]
+    fn authorization_fingerprint_frames_keys_without_separator_aliasing() {
+        let registration = |key: &str| ArtifactPermissionRegistration {
+            key: key.to_string(),
+            localizations: Vec::new(),
+        };
+        assert_ne!(
+            compute_canonical_authorization_fingerprint(&[registration("a\nb")]),
+            compute_canonical_authorization_fingerprint(&[
+                registration("a"),
+                registration("b")
+            ]),
+            "one key containing the separator must not alias two separate keys"
         );
     }
 

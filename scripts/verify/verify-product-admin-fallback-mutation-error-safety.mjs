@@ -83,15 +83,22 @@ const operationNames = [
 ];
 
 for (const marker of [
-  '#[path = "transport/graphql_fallback_mutation_error_safety.rs"]',
-  "mod graphql_fallback_mutation_error_safety;",
-  '#[path = "transport/graphql_fallback_mutations.rs"]',
-  "mod graphql_fallback_mutations;",
-  "pub(crate) use graphql_fallback_mutations::{",
+  "pub mod graphql_fallback_mutation_error_safety;",
+  "pub mod graphql_fallback_mutations;",
 ]) {
-  requireText(facade, marker, `${paths.facade}: explicit sanitized fallback exports`);
+  requireText(legacy, marker, `${paths.legacy}: explicit sanitized fallback modules`);
 }
-for (const name of operationNames) {
+requireText(
+  facade,
+  "pub(crate) use crate::transport::graphql_fallback_mutations::{",
+  `${paths.facade}: explicit sanitized fallback exports`,
+);
+// save_product_attribute_values keeps its sanitized wrapper (pinned below) but is not
+// facade-mounted: no admin surface calls it, so the facade re-export list omits it.
+const facadeExportNames = operationNames.filter(
+  (name) => name !== "save_product_attribute_values",
+);
+for (const name of facadeExportNames) {
   requireText(facade, name, `${paths.facade}: explicit export ${name}`);
 }
 
@@ -276,7 +283,7 @@ for (const name of [
   "bind_category_attribute",
   "save_product_attribute_values",
   "clear_detached_product_attribute_values",
-  "TenantUserScopedVariables",
+  "TenantScopedVariables<T>",
 ]) {
   requireText(graphql, name, `${paths.graphql}: preserved mutation re-export`);
 }

@@ -1,5 +1,9 @@
 # rustok-modules documentation
 
+New to the crate? Start with the [architecture guide](./architecture.md) for
+the subsystem map, the main command flows, and the invariants to respect
+before changing durable behavior.
+
 ## Purpose
 
 This Core module owns the module platform control plane and artifact lifecycle.

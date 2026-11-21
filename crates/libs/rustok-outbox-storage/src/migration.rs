@@ -1,3 +1,4 @@
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -9,6 +10,9 @@ impl MigrationTrait for SysEventsMigration {
         create_sys_events_schema(manager).await?;
         create_sys_events_claim_index(manager).await?;
         create_sys_events_retention_index(manager).await?;
+        add_sys_events_tenant_column(manager).await?;
+        create_sys_events_tenant_index(manager).await?;
+        add_sys_events_integrity_checks(manager).await?;
         create_owner_operation_receipts_table(manager).await?;
         create_sys_event_consumer_tables(manager).await
     }
@@ -43,6 +47,7 @@ pub async fn create_sys_events_schema(manager: &SchemaManager<'_>) -> Result<(),
                         .not_null()
                         .primary_key(),
                 )
+                .col(ColumnDef::new(SysEvents::TenantId).uuid())
                 .col(
                     ColumnDef::new(SysEvents::EventType)
                         .string_len(255)
@@ -169,6 +174,171 @@ pub async fn drop_sys_events_retention_index(manager: &SchemaManager<'_>) -> Res
                 .to_owned(),
         )
         .await?;
+    Ok(())
+}
+
+/// Adds the denormalised `tenant_id` projection column to `sys_events` and
+/// backfills it from the canonical payload.
+///
+/// The column exists in the fresh table shape, so this helper is a no-op
+/// there; deployments created before it gain the column through the
+/// append-only platform migration. The backfill prefers the canonical
+/// top-level tenant and falls back to the legacy nested shape; only
+/// well-formed UUID strings are copied, anything else stays `NULL` and is
+/// reported by the operator queries as platform scope. The backfill is
+/// PostgreSQL SQL: the platform runs PostgreSQL, while SQLite schemas are
+/// always created fresh through [`create_sys_events_schema`].
+pub async fn add_sys_events_tenant_column(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if !manager.has_column("sys_events", "tenant_id").await? {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(SysEvents::Table)
+                    .add_column(ColumnDef::new(SysEvents::TenantId).uuid())
+                    .to_owned(),
+            )
+            .await?;
+    }
+
+    if manager.get_database_backend() == DbBackend::Postgres {
+        let db = manager.get_connection();
+        db.execute_raw(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+UPDATE sys_events
+SET tenant_id = (
+    CASE
+        WHEN payload->>'tenant_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+            THEN payload->>'tenant_id'
+        WHEN payload->'event'->>'tenant_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+            THEN payload->'event'->>'tenant_id'
+    END
+)::uuid
+WHERE tenant_id IS NULL
+  AND (
+      payload->>'tenant_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+      OR payload->'event'->>'tenant_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+  )
+"#
+            .to_string(),
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+/// Drops the `tenant_id` projection column during an append-only rollback.
+pub async fn drop_sys_events_tenant_column(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    drop_sys_events_tenant_index(manager).await?;
+    if manager.has_column("sys_events", "tenant_id").await? {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(SysEvents::Table)
+                    .drop_column(SysEvents::TenantId)
+                    .to_owned(),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+/// Creates the index tenant-scoped operator reads (`admin_events`, module
+/// admin counters) run against: tenant first, then the status filter they
+/// always carry, in claim order.
+pub async fn create_sys_events_tenant_index(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_index(
+            Index::create()
+                .if_not_exists()
+                .name("idx_sys_events_tenant_status_created_at")
+                .table(SysEvents::Table)
+                .col(SysEvents::TenantId)
+                .col(SysEvents::Status)
+                .col(SysEvents::CreatedAt)
+                .to_owned(),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Drops the tenant operator-read index.
+pub async fn drop_sys_events_tenant_index(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .drop_index(
+            Index::drop()
+                .if_exists()
+                .name("idx_sys_events_tenant_status_created_at")
+                .table(SysEvents::Table)
+                .to_owned(),
+        )
+        .await
+}
+
+/// Integrity constraints the entity model assumes but a bare column list
+/// cannot express: a closed status set, a non-negative retry counter, a
+/// claim that is always a (worker, timestamp) pair, and a dispatched row
+/// that always knows when it was delivered.
+///
+/// PostgreSQL only: SQLite cannot add CHECK constraints to an existing
+/// table, and its schemas are test fixtures created fresh. Constraints are
+/// added `NOT VALID` so a deployment with pre-existing drift is not broken
+/// mid-upgrade; they bind every new write immediately, and operators can
+/// `VALIDATE CONSTRAINT` after cleaning historical rows.
+pub async fn add_sys_events_integrity_checks(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.get_database_backend() != DbBackend::Postgres {
+        return Ok(());
+    }
+    let db = manager.get_connection();
+    for (name, check) in [
+        (
+            "chk_sys_events_status",
+            "status IN ('pending', 'dispatched', 'failed')",
+        ),
+        ("chk_sys_events_retry_count", "retry_count >= 0"),
+        (
+            "chk_sys_events_claim_pair",
+            "(claimed_by IS NULL) = (claimed_at IS NULL)",
+        ),
+        (
+            "chk_sys_events_dispatched_at",
+            "status <> 'dispatched' OR dispatched_at IS NOT NULL",
+        ),
+    ] {
+        // Re-running the helper against a schema that already carries the
+        // constraint is success, not drift.
+        if let Err(error) = db
+            .execute_raw(Statement::from_string(
+                DbBackend::Postgres,
+                format!("ALTER TABLE sys_events ADD CONSTRAINT {name} CHECK ({check}) NOT VALID"),
+            ))
+            .await
+            && !error.to_string().contains("already exists")
+        {
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+/// Drops the integrity constraints added by [`add_sys_events_integrity_checks`].
+pub async fn drop_sys_events_integrity_checks(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    if manager.get_database_backend() != DbBackend::Postgres {
+        return Ok(());
+    }
+    let db = manager.get_connection();
+    for name in [
+        "chk_sys_events_status",
+        "chk_sys_events_retry_count",
+        "chk_sys_events_claim_pair",
+        "chk_sys_events_dispatched_at",
+    ] {
+        db.execute_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!("ALTER TABLE sys_events DROP CONSTRAINT IF EXISTS {name}"),
+        ))
+        .await?;
+    }
     Ok(())
 }
 
@@ -459,6 +629,7 @@ pub async fn drop_owner_operation_receipts_table(manager: &SchemaManager<'_>) ->
 enum SysEvents {
     Table,
     Id,
+    TenantId,
     EventType,
     SchemaVersion,
     Payload,

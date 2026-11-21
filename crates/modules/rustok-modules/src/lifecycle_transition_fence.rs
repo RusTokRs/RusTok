@@ -5,7 +5,7 @@
 //! lease expiry and orphan recovery still need an external-effect fence.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
 };
 use thiserror::Error;
 use uuid::Uuid;

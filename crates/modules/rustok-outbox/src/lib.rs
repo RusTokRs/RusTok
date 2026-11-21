@@ -39,7 +39,9 @@ pub use ports::{
     OutboxRelayPort, OutboxRelayRunOnceProjection, OutboxRelayRunOnceRequest,
     TransactionalEventWriter, require_outbox_relay_policy,
 };
-pub use relay::{OutboxRelay, RelayConfig, RelayMetricsSnapshot};
+pub use relay::{
+    MAX_RELAY_BATCH_SIZE, MAX_RELAY_CONCURRENCY, OutboxRelay, RelayConfig, RelayMetricsSnapshot,
+};
 pub use retention::{
     DEFAULT_OUTBOX_RETENTION_BATCH_SIZE, OutboxPruneReport, OutboxRetention, OutboxRetentionConfig,
 };

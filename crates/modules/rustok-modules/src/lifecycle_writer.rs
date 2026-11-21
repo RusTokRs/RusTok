@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},

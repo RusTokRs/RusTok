@@ -18,6 +18,7 @@ import {
   fetchProductRelations,
   fetchProductBundles,
   listCatalogCategories,
+  listBrands,
   getCategoryEffectiveForm,
   ProductEditorPage,
   isProductEditorIntent,
@@ -35,6 +36,12 @@ import {
   addImageAction,
   deleteImageAction,
   reorderImagesAction,
+  updateImageAction,
+  fetchActivePriceListsAction,
+  upsertVariantPriceAction,
+  previewVariantDiscountAction,
+  applyVariantDiscountAction,
+  listProductMediaAction,
   fetchEffectiveFormAction,
   addProductRelationAction,
   removeProductRelationAction,
@@ -91,6 +98,14 @@ export default async function ProductDetailPage({
     console.error('Failed to load catalog categories for product editor:', err);
   }
 
+  // Load the brand directory for the product's brand picker
+  let brands: Awaited<ReturnType<typeof listBrands>> = [];
+  try {
+    brands = await listBrands(opts);
+  } catch (err) {
+    console.error('Failed to load brands for product editor:', err);
+  }
+
   if (isNew) {
     return (
       <PageContainer
@@ -103,6 +118,7 @@ export default async function ProductDetailPage({
           writeScope={writeScope}
           isNew={true}
           categories={categories}
+          brands={brands}
           onSaveProduct={saveProductAction}
           onChangeStatus={changeProductStatusAction}
           fetchEffectiveForm={fetchEffectiveFormAction}
@@ -191,6 +207,7 @@ export default async function ProductDetailPage({
         isNew={false}
         initialProduct={product}
         categories={categories}
+        brands={brands}
         initialEffectiveForm={effectiveForm}
         initialAttributeValues={attributeValues}
         initialRelations={relations}
@@ -207,8 +224,8 @@ export default async function ProductDetailPage({
         onDeleteVariant={async (id) => {
           await deleteVariantAction(id);
         }}
-        onAddImage={async (pid, img) => {
-          await addImageAction(pid, img);
+        onAddImage={async (pid, img, idempotencyKey) => {
+          await addImageAction(pid, img, idempotencyKey);
         }}
         onDeleteImage={async (pid, id) => {
           await deleteImageAction(pid, id);
@@ -216,8 +233,22 @@ export default async function ProductDetailPage({
         onReorderImages={async (pid, ids) => {
           await reorderImagesAction(pid, ids);
         }}
-        onAddRelation={async (input) => {
-          await addProductRelationAction(input);
+        onUpdateImage={async (pid, imageId, input, idempotencyKey) => {
+          await updateImageAction(pid, imageId, input, idempotencyKey);
+        }}
+        onFetchPriceLists={fetchActivePriceListsAction}
+        onUpsertVariantPrice={async (pid, variantId, input) => {
+          await upsertVariantPriceAction(pid, variantId, input);
+        }}
+        onPreviewVariantDiscount={async (variantId, input) => {
+          return previewVariantDiscountAction(variantId, input);
+        }}
+        onApplyVariantDiscount={async (pid, variantId, input) => {
+          await applyVariantDiscountAction(pid, variantId, input);
+        }}
+        onListMedia={listProductMediaAction}
+        onAddRelation={async (input, idempotencyKey) => {
+          await addProductRelationAction(input, idempotencyKey);
         }}
         onRemoveRelation={async (id) => {
           await removeProductRelationAction(id, productId);
@@ -225,14 +256,14 @@ export default async function ProductDetailPage({
         onReorderRelations={async (pid, type, orderedIds) => {
           await reorderProductRelationsAction(pid, type, orderedIds);
         }}
-        onCreateBundle={async (input) => {
-          await createBundleAction(input);
+        onCreateBundle={async (input, idempotencyKey) => {
+          await createBundleAction(input, undefined, idempotencyKey);
         }}
         onUpdateBundle={async (bundleId, input) => {
           await updateBundleAction(productId, bundleId, input);
         }}
-        onAddBundleItem={async (input) => {
-          await addBundleItemAction(productId, input);
+        onAddBundleItem={async (input, idempotencyKey) => {
+          await addBundleItemAction(productId, input, idempotencyKey);
         }}
         onRemoveBundleItem={async (bundleId, itemId) => {
           await removeBundleItemAction(productId, bundleId, itemId);

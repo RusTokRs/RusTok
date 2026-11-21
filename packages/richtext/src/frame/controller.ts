@@ -51,6 +51,7 @@ export class RichTextFrameController {
   private editable: boolean;
   private authoringContext: RichTextAuthoringContext;
   private readonly maxMessageBytes: number;
+  private readySettled = false;
   private resolveReady!: () => void;
   private rejectReady!: (reason: Error) => void;
   private cleanupHandshake?: () => void;
@@ -59,7 +60,22 @@ export class RichTextFrameController {
     this.session = crypto.randomUUID();
     if (options.draftKey) {
       const draft = localStorageDraftStorage.loadDraft(options.draftKey);
-      this.document = draft ?? options.document;
+      // A stale or corrupted draft must not brick the editor: the frame would
+      // reject initialization with these same rules, so an invalid draft is
+      // dropped here and the host document is used instead.
+      if (
+        draft !== undefined &&
+        validateRichTextDocument(draft, getRichTextProfile(options.profile), {
+          allowEmpty: true
+        }).valid
+      ) {
+        this.document = draft;
+      } else {
+        if (draft !== undefined) {
+          localStorageDraftStorage.clearDraft(options.draftKey);
+        }
+        this.document = options.document;
+      }
     } else {
       this.document = options.document;
     }
@@ -73,8 +89,16 @@ export class RichTextFrameController {
       getRichTextProfile(options.profile).limits.max_json_bytes +
       MAX_PROTOCOL_OVERHEAD_BYTES;
     this.ready = new Promise<void>((resolve, reject) => {
-      this.resolveReady = resolve;
-      this.rejectReady = reject;
+      this.resolveReady = () => {
+        if (this.readySettled) return;
+        this.readySettled = true;
+        resolve();
+      };
+      this.rejectReady = (reason: Error) => {
+        if (this.readySettled) return;
+        this.readySettled = true;
+        reject(reason);
+      };
     });
     this.connect();
   }
@@ -256,6 +280,11 @@ export class RichTextFrameController {
           return;
         }
         this.options.onError?.(message.payload.code, message.payload.message);
+        if (!this.readySettled) {
+          this.rejectReady(
+            new Error(message.payload.message || message.payload.code)
+          );
+        }
         break;
       }
       default:

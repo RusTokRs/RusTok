@@ -82,6 +82,12 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
       altText
       position
     }
+    brands {
+      brandId
+      isPrimary
+      role
+      position
+    }
   }
 }`;
 
@@ -274,6 +280,13 @@ export type UpdateProductInput = {
   shippingProfileSlug?: string | null;
   primaryCategoryId?: string | null;
   tags?: string[];
+  /** Full brand-binding replacement; omit to keep the stored bindings. */
+  brands?: Array<{
+    brandId: string;
+    isPrimary: boolean;
+    role?: string;
+    position?: number;
+  }>;
   status?: string | null;
   revision?: number | null;
 };
@@ -560,13 +573,13 @@ export async function deleteVariant(
 export async function addProductImage(
   opts: GqlOpts,
   productId: string,
-  input: AddProductImageInput
+  input: AddProductImageInput,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<ProductImage> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage images.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; productId: string; input: AddProductImageInput },
@@ -627,6 +640,31 @@ export async function reorderProductImages(
   );
 
   return data.reorderProductImages;
+}
+
+export async function updateProductImage(
+  opts: GqlOpts,
+  productId: string,
+  id: string,
+  input: { position?: number; altText?: string; locale?: string },
+  idempotencyKey: string = crypto.randomUUID()
+): Promise<ProductImage> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage images.');
+  }
+
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    { idempotencyKey: string; productId: string; id: string; input: typeof input },
+    { updateProductImage: ProductImage }
+  >(
+    UPDATE_PRODUCT_IMAGE_MUTATION,
+    { idempotencyKey, productId, id, input },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.updateProductImage;
 }
 
 export async function saveProductAttributeValues(

@@ -1896,10 +1896,32 @@ impl ValidateEvent for DomainEvent {
                 Ok(())
             }
             Self::ModuleGuestEventEmitted {
-                module_slug, topic, ..
+                module_slug,
+                topic,
+                payload,
             } => {
                 validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
                 validators::validate_not_empty("topic", topic)?;
+                validators::validate_max_length("topic", topic, 256)?;
+                // Guest payloads are arbitrary JSON crossing a durable
+                // boundary; bound the serialized size so one sandbox call
+                // cannot write unbounded bytes into the outbox.
+                const MAX_GUEST_PAYLOAD_BYTES: usize = 64 * 1024;
+                let payload_bytes = serde_json::to_vec(payload).map_err(|error| {
+                    EventValidationError::InvalidValue(
+                        "payload",
+                        format!("guest payload is not serializable: {error}"),
+                    )
+                })?;
+                if payload_bytes.len() > MAX_GUEST_PAYLOAD_BYTES {
+                    return Err(EventValidationError::InvalidValue(
+                        "payload",
+                        format!(
+                            "guest payload exceeds the {MAX_GUEST_PAYLOAD_BYTES}-byte limit"
+                        ),
+                    ));
+                }
                 Ok(())
             }
             Self::LocaleEnabled { tenant_id, locale }

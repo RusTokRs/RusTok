@@ -50,4 +50,22 @@ pub(crate) async fn require_storefront_cart_enabled(
 #[path = "safe_query/source.rs"]
 mod source;
 
-pub(crate) use source::CommerceQuery;
+pub use source::CommerceQuery;
+
+/// Typed GraphQL product error mapper owned by the query boundary, mirroring the
+/// root GraphQL facade mapper: the public envelope stays static and bounded.
+pub(crate) fn map_product_service_error(
+    error: rustok_product::CommerceError,
+    operation: &'static str,
+) -> ::async_graphql::Error {
+    use ::async_graphql::ErrorExtensions;
+
+    let public =
+        rustok_product::map_product_public_error(&error, operation, "commerce_graphql_product");
+
+    ::async_graphql::Error::new(public.message).extend_with(|_, extensions| {
+        extensions.set("code", public.code);
+        extensions.set("retryable", public.retryable);
+        extensions.set("correlation_id", public.correlation_id.to_string());
+    })
+}

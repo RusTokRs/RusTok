@@ -41,20 +41,26 @@ pub struct FilteredPublishedProductsRequest {
     pub query: StorefrontProductListQuery,
 }
 
+/// Facet counts describe the whole filtered catalog, so the pagination fields of `query` are
+/// ignored by the owner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorefrontCatalogFacetsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
     pub public_channel_slug: Option<String>,
     pub query: StorefrontProductListQuery,
+    /// Attribute codes to count, in display order; empty means "no facets".
     pub facet_codes: Vec<String>,
 }
 
+/// Facet counts describe the whole filtered catalog, so the pagination fields of `query` are
+/// ignored by the owner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdminCatalogFacetsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
     pub query: AdminProductListQuery,
+    /// Attribute codes to count, in display order; empty means "no facets".
     pub facet_codes: Vec<String>,
 }
 

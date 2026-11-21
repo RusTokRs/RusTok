@@ -130,7 +130,7 @@ fn is_shipping_selection_validation_message(message: &str) -> bool {
         || message.contains(CART_ID_UUID_VALIDATION)
         || message.contains(SELECTED_SHIPPING_OPTION_ID_UUID_VALIDATION)
         || message.contains(INVALID_SHIPPING_SELECTION)
-        || (message.contains("delivery group `")
+        || (message.starts_with("delivery group `")
             && message.contains(" is not present in the checkout cart"))
         || (message.contains("shipping option ")
             && message.contains(" is not available for shipping profile "))
