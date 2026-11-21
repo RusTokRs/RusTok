@@ -345,6 +345,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification candidate, fanout and Outbox intake worker startup now have
+  distinct, process-local atomic lifecycle claims in `ServerRuntimeContext`.
+  A second starter cannot spawn a duplicate worker while the first is still
+  resolving dependencies or registering/backfilling durable Outbox receipts.
+  The claim is released on error or cancellation of startup, allowing a later
+  retry; after successful handle publication it persists for that runtime
+  lifetime. Candidate/fanout also reject starts during cooperative host stop.
+  This does not implement distributed leases; durable queue claim/receipt
+  semantics remain owned by the notification/Outbox workers.
 - Notification intake registers its supported event types in the Outbox-owned
   consumer ledger before runtime retention starts. Accepted receipts and
   permanent rejections acknowledge the original event in the same transaction;
