@@ -14096,6 +14096,7 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
+ "http 1.5.0",
  "jsonwebtoken 11.1.0",
  "password-hash 0.6.1",
  "rand 0.10.3",
