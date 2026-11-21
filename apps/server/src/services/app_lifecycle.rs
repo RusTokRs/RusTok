@@ -1779,6 +1779,43 @@ mod tests {
     };
 
     #[tokio::test]
+    async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        drop(crate::services::email::spawn_auth_email_task(
+            &ctx,
+            "host_shutdown_email",
+            move || async move {
+                started_tx.send(()).expect("signal started");
+                finish_rx.await.expect("finish email");
+                Ok(())
+            },
+        ));
+        started_rx.await.expect("task started");
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown signalled");
+        assert!(!shutdown.is_finished(), "host should await the pending email");
+
+        finish_tx.send(()).expect("release send");
+        shutdown.await.expect("shutdown finishes after email");
+    }
+
+    #[tokio::test]
     async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
         let ctx = ServerRuntimeContext::new(
             sea_orm::DatabaseConnection::default(),
