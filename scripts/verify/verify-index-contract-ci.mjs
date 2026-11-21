@@ -95,7 +95,11 @@ requireInJob('focused-cargo', [
   '--test drift_repair_concrete_execution_postgres_test',
   '--test drift_repair_recovery_postgres_test',
   '--test source_reconciliation_dead_letter_admission_postgres_test',
+  'name: Run Outbox transport storage regressions\n        if: ${{ !cancelled() }}',
   `${runCheck} cargo test --locked -p rustok-outbox --test sqlite_transport_regression_test`,
+  'name: Check selected Product distribution bridge\n        id: product_distribution\n        if: ${{ !cancelled() }}',
+  'name: Check Product refresh host consumer composition\n        id: product_server\n        if: ${{ !cancelled() }}',
+  'name: Verify canonical event contract test\n        if: ${{ !cancelled() }}',
 ]);
 for (const [path, fixture] of [
   ['services/app_router.rs', 'index_native_json_routes_enforce_request_scope_without_embedded_admin'],

@@ -136,6 +136,9 @@ Run locally with the repository toolchain and a disposable PostgreSQL database. 
 PostgreSQL URL the real-engine tests skip. Keep the tests serial on a shared test database:
 the test schemas are separate, but PostgreSQL advisory lock keys are database-wide. The three
 integration targets still run if one fails; Cargo returns a failing status for the combined step.
+CI also runs the independent Outbox, Distribution, server and event contract checks after a
+failure in another package. Tests that require a failed compilation are skipped, and every
+failed step still fails the aggregate gate.
 
 ```sh
 RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... cargo test --locked -p rustok-index --lib -- --test-threads=1
