@@ -46,8 +46,44 @@ has been exhaustively verified or that the full-stack audit gates are closed.
   configured base-domain suffixes. Malformed non-ASCII input cannot panic the
   handler, even when a caller bypasses the ordinary host validator. A test
   exercises a multibyte boundary.
-- These additional changes were committed to the same existing draft PR;
-  no tests, builds, linters, format checks, or migrations were executed here.
+- These changes were committed to PR #4760 (subsequently merged into
+  `main`); no tests, builds, linters, format checks, or migrations were
+  executed in that GitHub-only pass.
+
+### Auth email task shutdown and locale follow-up (after merge of #4760)
+
+The original host ran password-reset and verification email tasks as detached
+Tokio tasks whose JoinHandles were dropped by HTTP callers. A best-effort stop
+check before spawning did not make accepted sends part of the host drain.
+
+- `AuthEmailTaskRegistry` now tracks active sends independently of returned
+  JoinHandles. Task admission and registry closure use the same mutex, preventing
+  a spawn racing with shutdown from escaping the task snapshot. Completion is
+  tracked through a drop guard that also runs when cancellation occurs before
+  the first poll. The host waits up to five seconds for sends and then aborts
+  and observes remaining tasks within another bounded second.
+- The panic boundary encloses future construction as well as its subsequent
+  polling; a synchronous factory panic cannot escape as an unobserved join
+  error. Added focused regressions for dropped caller handles, cancellation,
+  panics, and the host shutdown integration point.
+- Shared SMTP transport caching now keeps the first inserted pool under
+  concurrent sender construction instead of overwriting a valid connection
+  pool. Shutdown-skipped sends contribute to the existing skipped metric.
+- Locale selection now matches the first language subtag (including uppercase
+  and region variants), so arbitrary prefixes such as `ruby` or `russian`
+  no longer select Russian templates.
+- The code additions that preceded the merge are in #4760. The new locale,
+  shutdown-skip telemetry and live documentation reconciliation are in
+  `agent/server-auth-mail-lifecycle-followup-20261121`, based on main
+  `c5000ee004c65e07f78083da242ed9c5be6e79b2`.
+- **No tests, lint, formatter, builds, or integration suites were run here.**
+  Maintainer should run focused auth-email unit/integration coverage, server
+  compilation and format checks, and real SMTP shutdown scenarios.
+
+This is only process-local graceful draining. Durable email delivery requires
+an owner-level persisted request/outbox and replay contract; a hard process
+kill, transport failure, or host timeout can still lose an email. It is not
+safe to claim at-least-once delivery from this in-memory registry alone.
 
 Unclosed owner-level work remains, including durable delivery/retry for
 password-reset and verification email tasks, crash reconciliation of HTTP
