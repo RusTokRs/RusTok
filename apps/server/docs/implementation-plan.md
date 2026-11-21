@@ -2372,3 +2372,24 @@ reported a one-second retry delay forever.
 Not run at the user's request. Verify with `cargo fmt --all -- --check`,
 `cargo check -p rustok-server --lib`, and
 `cargo test -p rustok-server --lib middleware::rate_limit_base::diagnostic_tests::redis_rate_limit_script_repairs_counters_without_expiry`.
+
+
+## P34 — Preserve verified runner access across artifact download dispatch (2026-11-21)
+
+The composed router validates the host-only runner token in
+`registry_artifact_access` and strips the secret header before controllers run.
+The artifact-download controller then attempted to validate the removed header
+again, so a correctly authenticated remote runner received 401 instead of the
+private artifact.
+
+- Added an internal `VerifiedRegistryRunnerAccess` request extension only for
+  artifact downloads whose runner token passed constant-time validation.
+- The controller trusts that marker, while retaining its user-authority check
+  and direct-handler fallback. The shared secret remains absent from controller
+  headers and downstream request processing.
+- Added an Axum middleware regression test proving that the verified marker
+  reaches the download handler while the token header does not.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.
