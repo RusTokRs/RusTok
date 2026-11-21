@@ -6,6 +6,7 @@ use super::super::keyring_schedule_audit_source_retry_postgres::{
     PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
 };
 use super::*;
+use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::ServerRuntimeStartReservation;
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS_ENV: &str =
@@ -261,6 +262,14 @@ fn start_source_retry_handoff_worker(
     )
     .map_err(Error::BadRequest)?;
 
+    // The public starter can run outside router bootstrap. Keep shutdown's
+    // handle snapshot and this final admission/spawn/publication atomic.
+    // Database/worker operations are run only after the gate is released.
+    let registration = DirectWorkerRegistrationLock::ensure(runtime_ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     ensure_comments_schedule_audit_handoff_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
     let instance_id = HANDOFF_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
