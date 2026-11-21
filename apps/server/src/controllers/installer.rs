@@ -236,7 +236,7 @@ async fn create_http_job_with_retry(
                 Ok(Some(existing))
                     if existing.status == "running"
                         && existing.session_id == Some(job_id)
-                        && existing.submitted_at == submitted_at =>
+                        && existing.submitted_at.timestamp_micros() == submitted_at.timestamp_micros() =>
                 {
                     return Ok(existing);
                 }
@@ -1419,7 +1419,10 @@ mod tests {
         assert_eq!(recovered.id, job_id);
         assert_eq!(recovered.session_id, Some(job_id));
         assert_eq!(recovered.status, "running");
-        assert_eq!(recovered.submitted_at, submitted_at);
+        assert_eq!(
+            recovered.submitted_at.timestamp_micros(),
+            submitted_at.timestamp_micros()
+        );
     }
 
     #[tokio::test]
