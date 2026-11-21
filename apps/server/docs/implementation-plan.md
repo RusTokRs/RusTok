@@ -1,6 +1,6 @@
 # Server App — Implementation Plan
 
-## Notification background worker single-owner admission (2026-11-21)
+## Background worker single-owner admission — Notifications, Search and Index (2026-11-21)
 
 Branch: `agent/server-notification-worker-startup-ownership-20261121`,
 forked from main `a9431fdefd08693eab7aa0aaab87169b877af239`;
@@ -19,6 +19,16 @@ independent of the module dispatcher and OAuth draft branches.
 - Candidate and fanout worker startup had no admission-time check of the
   shared `StopHandle`. A late caller could spawn a worker while the server
   already had its shutdown signal set.
+- Forum Search inbox, Forum Search typed contract consumer, Product Index
+  refresh, and Social Graph Index consumer showed the same check-then-publish
+  race. The three broker-backed consumers also opened persistent Iggy
+  consumer groups asynchronously **before** publishing handles; concurrent
+  starters could open two groups and lose a JoinHandle. All four also needed
+  a stop check between preparation and task admission.
+- A second caller observing an in-progress reservation initially returned
+  `Ok(())`, even if the first caller had not yet finished and could still
+  fail. That was a false startup-success signal for external bootstrap
+  callers not coordinated by `ServerBootstrapInitializationLock`.
 
 ### Changes
 
@@ -35,6 +45,22 @@ independent of the module dispatcher and OAuth draft branches.
   receipt backfill; an aborted backfill cannot strand its local startup
   reservation. Successful backfill followed by handle publication retains
   the claim. Existing durable receipt idempotence remains unchanged.
+- Forum Search inbox reserves immediately before worker admission. Its
+  unsupported-backend and missing-source early exits remain no-ops without a
+  claim, while a shutdown before publication aborts startup.
+- Forum Search contract, Product Index refresh and Social Graph Index now
+  reserve their distinct worker marker **before** the async persistent
+  consumer open. This prevents duplicate group open and ensures cancellation
+  during broker I/O automatically releases the reservation. Validate
+  configuration and check shared `StopHandle` before/after broker open, before
+  recording worker-start telemetry and publishing the task.
+- Each of the seven callers now distinguishes a completed worker (idempotent
+  success) from another starter still working (retryable `Error::Message`).
+  The latter cannot be reported as success until the winner actually
+  publishes a handle, and never overrides an existing one.
+- The reservation constructor is deliberately lazy (`bool::then`, not
+  `then_some`), because a losing contender must **not** construct a temporary
+  drop guard capable of deleting the winning claim.
 - Tests cover failed-start claim release, retained successful ownership,
   concurrent contention by 12 threads and cancellation by dropping an
   in-flight async startup future before it completes.
@@ -44,10 +70,13 @@ multi-process checks were run per maintainer preference. Run
 `cargo check -p rustok-server --lib` and targeted
 `services::server_runtime_context::tests`,
 `services::notification_candidate_worker`,
-`services::notification_fanout_worker` and
-`services::notification_outbox_intake_worker` tests. Validate lifecycle
-shutdown/backfill interleavings with a real DB and two concurrent starter
-calls. This reserves **one worker per runtime context**, not one per
+`services::notification_fanout_worker`,
+`services::notification_outbox_intake_worker`,
+`services::forum_search_inbox_worker`,
+`services::product_index_refresh_worker`, and
+`services::social_graph_index_worker` tests. Validate lifecycle
+shutdown/backfill interleavings and network consumer-open cancellation with a
+real DB, Iggy broker and two concurrent starter calls. This reserves **one worker per runtime context**, not one per
 deployment. It does not add durable cross-replica worker leader election.
 
 ## Server runtime follow-up (2026-11-21)
