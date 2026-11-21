@@ -352,7 +352,8 @@ impl RateLimiter {
         .map_err(RateLimitCheckError::BackendUnavailable)?;
 
         let current = current.max(0) as usize;
-        let retry_after = (ttl.max(1) as u64).saturating_add(999) / 1_000;
+        let reset_after = (ttl.max(0) as u64).saturating_add(999) / 1_000;
+        let retry_after = reset_after.max(1);
 
         if current > self.config.max_requests {
             warn!(
@@ -371,7 +372,7 @@ impl RateLimiter {
         Ok(RateLimitInfo {
             limit: self.config.max_requests,
             remaining: self.config.max_requests.saturating_sub(current),
-            reset: retry_after,
+            reset: reset_after,
         })
     }
 
@@ -708,11 +709,14 @@ fn bounded_redis_window_seconds(window: Duration) -> i64 {
     window.as_secs().clamp(1, i64::MAX as u64) as i64
 }
 
-fn rate_limit_retry_after(remaining: Duration) -> u64 {
+fn rate_limit_reset_after(remaining: Duration) -> u64 {
     remaining
         .as_secs()
         .saturating_add(u64::from(remaining.subsec_nanos() > 0))
-        .max(1)
+}
+
+fn rate_limit_retry_after(remaining: Duration) -> u64 {
+    rate_limit_reset_after(remaining).max(1)
 }
 
 fn rate_limit_key_fingerprint(key: &str) -> String {
@@ -1008,7 +1012,9 @@ mod diagnostic_tests {
 
     #[test]
     fn rate_limit_retry_after_rounds_up_instead_of_inviting_early_retries() {
+        assert_eq!(rate_limit_reset_after(Duration::ZERO), 0);
         assert_eq!(rate_limit_retry_after(Duration::ZERO), 1);
+        assert_eq!(rate_limit_reset_after(Duration::from_secs(1)), 1);
         assert_eq!(rate_limit_retry_after(Duration::from_secs(1)), 1);
         assert_eq!(rate_limit_retry_after(Duration::from_millis(1_001)), 2);
         assert_eq!(rate_limit_retry_after(Duration::from_millis(1_999)), 2);
