@@ -12,6 +12,15 @@ use leptos::server_fn::{
 /// Authentication remains transport metadata: the bearer token and tenant are
 /// read from the canonical browser auth storage and are never serialized into
 /// a server-function input or exposed in rendered HTML.
+#[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
+pub enum AuthorizedBrowserClientError {
+    #[error("Authentication metadata could not be applied")]
+    AuthMetadataFailed,
+    #[error("Tenant metadata could not be applied")]
+    TenantMetadataFailed,
+}
+
 pub struct AuthorizedBrowserClient;
 
 impl<Error, InputStreamError, OutputStreamError> Client<Error, InputStreamError, OutputStreamError>
@@ -26,7 +35,7 @@ where
 
     fn send(request: Self::Request) -> impl Future<Output = Result<Self::Response, Error>> + Send {
         #[cfg(target_arch = "wasm32")]
-        let failure = (|| -> Result<(), &'static str> {
+        let failure = (|| -> Result<(), AuthorizedBrowserClientError> {
             // gloo's convenience setter throws and returns (). The underlying
             // web-sys API preserves the error so malformed auth metadata fails
             // before BrowserClient sends the request.
@@ -34,21 +43,21 @@ where
             if let Some(token) = super::storage::get_token() {
                 headers
                     .set("Authorization", format!("Bearer {token}").as_str())
-                    .map_err(|_| "Authentication metadata could not be applied")?;
+                    .map_err(|_| AuthorizedBrowserClientError::AuthMetadataFailed)?;
             }
             if let Some(tenant) = super::storage::get_tenant() {
                 headers
                     .set("X-Tenant-ID", tenant.as_str())
-                    .map_err(|_| "Tenant metadata could not be applied")?;
+                    .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
                 headers
                     .set("X-Tenant-Slug", tenant.as_str())
-                    .map_err(|_| "Tenant metadata could not be applied")?;
+                    .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
             }
             Ok(())
         })()
         .err();
         #[cfg(not(target_arch = "wasm32"))]
-        let failure: Option<&'static str> = None;
+        let failure: Option<AuthorizedBrowserClientError> = None;
         async move {
             if let Some(message) = failure {
                 return Err(Error::from_server_fn_error(ServerFnErrorErr::Request(

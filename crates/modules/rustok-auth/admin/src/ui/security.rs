@@ -157,7 +157,7 @@ pub fn Security() -> impl IntoView {
             "Sign-out could not be confirmed. Check active sessions or retry from the account menu.",
         );
         let Some(fence) = SessionRevocationFence::capture(&auth) else {
-            let _ = set_session_action_error.try_set(Some(failure));
+            set_session_action_error.set(Some(failure));
             return;
         };
         if set_session_action_busy.try_update(|busy| {
@@ -171,7 +171,7 @@ pub fn Security() -> impl IntoView {
         {
             return;
         }
-        let _ = set_session_action_error.try_set(None);
+        set_session_action_error.set(None);
         let auth = auth.clone();
         spawn_local(async move {
             // The scheduled task can start after a route or auth transition.
@@ -191,9 +191,9 @@ pub fn Security() -> impl IntoView {
                 false
             };
             if !signed_out {
-                let _ = set_session_action_error.try_set(Some(failure));
+                set_session_action_error.set(Some(failure));
             }
-            let _ = set_session_action_busy.try_set(false);
+            set_session_action_busy.set(false);
         });
     });
 

@@ -34,7 +34,13 @@ impl RealmTransition {
                 || js_sys::Reflect::get(window.as_ref(), &key).ok().as_ref() != Some(&value)
             {
                 // No request was sent. A malformed slot must not be treated as an idle lease.
-                let _ = js_sys::Reflect::set(window.as_ref(), &key, &JsValue::from_str("poisoned"));
+                if let Err(error) = js_sys::Reflect::set(
+                    window.as_ref(),
+                    &key,
+                    &JsValue::from_str("poisoned"),
+                ) {
+                    tracing::debug!(?error, "failed to mark transition key poisoned");
+                }
                 return Err(AuthError::Network);
             }
             Ok(Self {
@@ -51,11 +57,11 @@ impl RealmTransition {
     }
 
     pub(crate) fn is_current(&self) -> bool {
-        if self.released {
-            return false;
-        }
         #[cfg(target_arch = "wasm32")]
         {
+            if self.released {
+                return false;
+            }
             use leptos::wasm_bindgen::JsValue;
             web_sys::window()
                 .and_then(|window| {
@@ -68,7 +74,7 @@ impl RealmTransition {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            true
+            !self.released
         }
     }
 
@@ -100,11 +106,13 @@ impl RealmTransition {
         {
             use leptos::wasm_bindgen::JsValue;
             if let Some(window) = web_sys::window() {
-                let _ = js_sys::Reflect::set(
+                if let Err(error) = js_sys::Reflect::set(
                     window.as_ref(),
                     &JsValue::from_str(REALM_TRANSITION_KEY),
                     &JsValue::from_str("poisoned"),
-                );
+                ) {
+                    tracing::debug!(?error, "failed to poison transition key");
+                }
             }
         }
         self.released = true;

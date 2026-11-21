@@ -102,10 +102,10 @@ where
     C: ConnectionTrait,
 {
     ensure_supported_backend(db.get_database_backend())?;
-    if let Some(tenant_id) = options.tenant_id {
-        if tenant_id.is_nil() {
-            return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
-        }
+    if let Some(tenant_id) = options.tenant_id
+        && tenant_id.is_nil()
+    {
+        return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
     }
     let tenant_ids = load_tenant_ids(db, options.tenant_id).await?;
     if let Some(tenant_id) = options.tenant_id

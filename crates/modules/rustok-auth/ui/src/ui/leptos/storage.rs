@@ -82,7 +82,9 @@ pub(crate) fn save_session(session: &AuthSession) -> Result<(), AuthError> {
     purge_legacy_persisted_credentials();
     // The tenant slug is not a credential; persisting it lets a page
     // reload attempt a silent cookie refresh for the right tenant.
-    let _ = LocalStorage::set(ADMIN_TENANT_KEY, &session.tenant);
+    if let Err(error) = LocalStorage::set(ADMIN_TENANT_KEY, &session.tenant) {
+        tracing::debug!(?error, "failed to persist admin tenant key in LocalStorage");
+    }
     memory::save_session(session.clone());
     Ok(())
 }

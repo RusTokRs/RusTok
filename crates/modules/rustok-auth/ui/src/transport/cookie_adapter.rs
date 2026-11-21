@@ -104,6 +104,9 @@ fn cookie_session_endpoint(api_url: &str, path: &str) -> Result<reqwest::Url, Au
     Ok(endpoint)
 }
 
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(reqwest::Client::new);
+
 async fn post_session(
     path: &str,
     tenant: &str,
@@ -112,8 +115,7 @@ async fn post_session(
     is_login: bool,
 ) -> Result<CookieSessionResponse, AuthError> {
     let endpoint = cookie_session_endpoint(&get_api_url(), path)?;
-    let client = reqwest::Client::new();
-    let mut request = client.post(endpoint.clone()).header("X-Tenant-ID", tenant);
+    let mut request = HTTP_CLIENT.post(endpoint.clone()).header("X-Tenant-ID", tenant);
     #[cfg(target_arch = "wasm32")]
     {
         request = request.fetch_credentials_same_origin();
@@ -199,8 +201,7 @@ pub(super) async fn accept_invite_direct(
     name: Option<String>,
     tenant: String,
 ) -> Result<String, AuthError> {
-    let client = reqwest::Client::new();
-    let response = client
+    let response = HTTP_CLIENT
         .post(format!("{}/api/auth/invite/accept", get_api_url()))
         .header("X-Tenant-ID", tenant)
         .json(&json!({
@@ -227,8 +228,7 @@ pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
 
 async fn sign_out_cookie_at(api_url: &str, tenant: String) -> Result<(), AuthError> {
     let endpoint = cookie_session_endpoint(api_url, "/api/auth/session/logout")?;
-    let client = reqwest::Client::new();
-    let request = client
+    let request = HTTP_CLIENT
         .post(endpoint.clone())
         .header("X-Tenant-ID", tenant)
         .header("x-rustok-session-request", "1");

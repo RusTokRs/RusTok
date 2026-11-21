@@ -79,12 +79,12 @@ impl RbacCommandProvider {
                 })
             })
             .transpose()?;
-        if let Some(tid) = tenant_id {
-            if tid.is_nil() {
-                return Err(CliCoreError::InvalidInput {
-                    message: "--tenant-id must not be nil".to_string(),
-                });
-            }
+        if let Some(tid) = tenant_id
+            && tid.is_nil()
+        {
+            return Err(CliCoreError::InvalidInput {
+                message: "--tenant-id must not be nil".to_string(),
+            });
         }
         let apply = option_bool(options, "apply")?;
         let all_tenants = option_bool(options, "all_tenants")?;
