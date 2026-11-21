@@ -17,7 +17,7 @@ use crate::models::{
     oauth_tokens::{self, Entity as OAuthTokens},
     users::{self, Entity as Users},
 };
-use crate::services::oauth_app::OAuthAppService;
+use crate::services::oauth_app::{OAuthAppService, lock_oauth_app_for_mutation};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -596,7 +596,7 @@ async fn detect_oauth_refresh_reuse(
         tracing::error!(%error, %app_id, %tenant_id, "Failed to start OAuth refresh reuse transaction");
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token reuse revocation")
     })?;
-    let _locked_app = OAuthAppService::lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+    let _locked_app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
         .await
         .map_err(|error| {
             tracing::error!(%error, %app_id, %tenant_id, "Failed to lock OAuth app for refresh reuse");
@@ -700,7 +700,7 @@ async fn revoke_authorization_code_family(
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code replay revocation")
     })?;
     let _locked_app =
-        OAuthAppService::lock_oauth_app_for_mutation(&tx, code.app_id, code.tenant_id)
+        lock_oauth_app_for_mutation(&tx, code.app_id, code.tenant_id)
             .await
             .map_err(|_| {
                 OAuthTokenProtocolError::server_error("Failed to lock OAuth client for code replay")
