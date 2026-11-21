@@ -215,7 +215,7 @@ fn validate_cursor(
     registry.validate_localized_entity_query(query)?;
     let requested_locale = query
         .requested_locale()
-        .expect("validated localized queries always carry a requested locale");
+        .ok_or(LocalizedCursorValidationError::InvalidFormat)?;
     if cursor.tenant_id != query.query.scope.tenant_id {
         return Err(LocalizedCursorValidationError::TenantMismatch);
     }

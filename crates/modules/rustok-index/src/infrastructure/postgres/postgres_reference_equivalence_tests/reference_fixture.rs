@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use std::{cmp::Ordering, collections::BTreeMap};
 
 use crate::{

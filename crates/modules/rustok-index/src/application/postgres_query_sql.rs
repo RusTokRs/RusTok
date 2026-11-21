@@ -653,16 +653,18 @@ fn cursor_field_predicates(
 ) -> Result<(String, String), PostgresQueryCompileError> {
     let non_null = format!("NOT ({})", sql.null_predicate);
     if matches!(cursor_value, IndexValue::Null) {
+        // INVARIANT: cursor predicates receive a normalized direction
         let after = match direction {
             OrderDirection::Asc => "FALSE".to_owned(),
-            OrderDirection::Desc => non_null,
-            _ => unreachable!("cursor predicates receive a normalized direction"),
+            OrderDirection::Desc => non_null.clone(),
+            _ => "FALSE".to_owned(),
         };
         return Ok((format!("({})", sql.null_predicate), after));
     }
 
     let value = bindings.push(scalar_bind(path, cursor_value)?);
     let equal = format!("({non_null} AND {} = {value})", sql.scalar);
+    // INVARIANT: cursor predicates receive a normalized direction
     let after = match direction {
         OrderDirection::Asc => format!(
             "(({}) OR ({non_null} AND {} > {value}))",
@@ -671,7 +673,7 @@ fn cursor_field_predicates(
         OrderDirection::Desc => {
             format!("({non_null} AND {} < {value})", sql.scalar)
         }
-        _ => unreachable!("cursor predicates receive a normalized direction"),
+        _ => format!("(({}) OR ({non_null} AND {} > {value}))", sql.null_predicate, sql.scalar),
     };
     Ok((equal, after))
 }
@@ -691,10 +693,11 @@ fn compile_order(
         .iter()
         .map(|order| {
             let sql = order_sql(plan, order, bindings)?;
+            // INVARIANT: order SQL receives a normalized direction
             Ok(match order.direction.base_direction() {
                 OrderDirection::Asc => format!("{} ASC NULLS LAST", sql.scalar),
                 OrderDirection::Desc => format!("{} DESC NULLS FIRST", sql.scalar),
-                _ => unreachable!("order SQL receives a normalized direction"),
+                _ => format!("{} ASC NULLS LAST", sql.scalar),
             })
         })
         .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;

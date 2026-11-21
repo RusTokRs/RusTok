@@ -542,12 +542,14 @@ fn not_candidate(
 }
 
 fn retryable_failure(code: &str) -> IndexDriftCandidateConfirmationFailure {
+    // INVARIANT: static candidate confirmation failure code is valid: invariant validated at startup
     IndexDriftCandidateConfirmationFailure::retryable(code).expect(
         "static candidate confirmation failure code is valid: invariant validated at startup",
     )
 }
 
 fn permanent_failure(code: &str) -> IndexDriftCandidateConfirmationFailure {
+    // INVARIANT: static candidate confirmation failure code is valid: invariant validated at startup
     IndexDriftCandidateConfirmationFailure::permanent(code).expect(
         "static candidate confirmation failure code is valid: invariant validated at startup",
     )

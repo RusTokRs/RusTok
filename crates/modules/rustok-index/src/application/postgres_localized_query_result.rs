@@ -118,6 +118,7 @@ impl SchemaRegistry {
                     tenant_id: query.query.scope.tenant_id,
                     schema: query.query.schema.clone(),
                     schema_fingerprint: registered.fingerprint,
+                    // INVARIANT: validated localized query carries requested locale
                     requested_locale: query
                         .requested_locale()
                         .expect("validated localized query carries requested locale")

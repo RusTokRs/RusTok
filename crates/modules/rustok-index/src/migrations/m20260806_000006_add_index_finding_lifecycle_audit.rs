@@ -175,7 +175,7 @@ async fn install_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
                 .await?;
             Ok(())
         }
-        _ => unreachable!("unsupported backend was rejected before lifecycle DDL"),
+        _ => Err(DbErr::Custom("unsupported backend was rejected before lifecycle DDL".to_string())),
     }
 }
 
@@ -201,7 +201,7 @@ async fn remove_update_guard(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 .await?;
             Ok(())
         }
-        _ => unreachable!("unsupported backend was rejected before lifecycle DDL"),
+        _ => Err(DbErr::Custom("unsupported backend was rejected before lifecycle DDL".to_string())),
     }
 }
 
