@@ -1157,7 +1157,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-commerce")]
     let paid_order_label_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Paid-order label", worker.into_task()).await;
         }
     };
@@ -1166,7 +1166,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "commerce-marketplace-financial")]
     let marketplace_financial_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Marketplace financial", worker.into_task()).await;
         }
     };
@@ -1175,7 +1175,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-payment")]
     let payment_provider_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Payment provider event", worker.into_task()).await;
         }
     };
@@ -1184,7 +1184,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-product")]
     let product_media_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Product media release", worker.into_task()).await;
         }
     };

@@ -14,16 +14,24 @@ the dispatcher task was left running without a shutdown join owner.
 
 A new process-local `ModuleEventDispatcherRegistrationLock` guards
 the final check-stop → spawn → publish sequence and the shutdown
-snapshot. The stop check now occurs within that gate, so either
-shutdown takes and joins an already-published dispatcher, or a late
-starter fails before publishing. The existing startup reservation
-continues to exclude simultaneous publishers. The lock is released
-before awaiting the handle's graceful drain, so it cannot deadlock
-with handler teardown.
+snapshot. The same gate now covers the four child recovery worker
+starters that follow successful dispatcher startup: paid-order labels,
+marketplace financial, payment-provider events and product-media release.
+Shutdown obtains their handles under the matching gate. The stop check
+for every worker now occurs inside it, so shutdown either joins a
+published worker or a late starter is rejected. The product-media
+starter also adopts a drop-safe typed startup reservation instead of
+keeping a permanent marker after a failed/abandoned attempt. Existing
+startup reservations still exclude simultaneous publishers. The lock
+is released before any handle's graceful drain, preventing a teardown
+deadlock.
 
-Two regression scenarios cover a held registration gate during
+Regression scenarios cover a held registration gate during
 concurrent shutdown and a stop signal arriving while a direct
-startup waits for the gate. These tests are authored but unrun.
+dispatcher startup waits for the gate. Additional scenarios exercise
+generic child-worker handle take and a payment recovery worker
+waiting for the gate during shutdown. These tests are authored
+but unrun.
 No build, formatting or runtime verification was executed.
 
 ## Server audit continuation — EventBus transport registration race (2026-11-21)
