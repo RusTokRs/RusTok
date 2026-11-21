@@ -318,16 +318,26 @@ fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
         detail,
     } = error;
     match category {
-        ModuleGovernanceErrorCategory::InvalidInput => {
-            response(StatusCode::BAD_REQUEST, code, &detail)
-        }
-        ModuleGovernanceErrorCategory::PermissionDenied => {
-            response(StatusCode::FORBIDDEN, code, &detail)
-        }
-        ModuleGovernanceErrorCategory::NotFound => {
-            response(StatusCode::NOT_FOUND, code, "Not found")
-        }
-        ModuleGovernanceErrorCategory::Conflict => response(StatusCode::CONFLICT, code, &detail),
+        ModuleGovernanceErrorCategory::InvalidInput => response(
+            StatusCode::BAD_REQUEST,
+            code,
+            "Runner transition request is invalid",
+        ),
+        ModuleGovernanceErrorCategory::PermissionDenied => response(
+            StatusCode::FORBIDDEN,
+            code,
+            "Runner transition is not authorized",
+        ),
+        ModuleGovernanceErrorCategory::NotFound => response(
+            StatusCode::NOT_FOUND,
+            code,
+            "Runner transition target was not found",
+        ),
+        ModuleGovernanceErrorCategory::Conflict => response(
+            StatusCode::CONFLICT,
+            code,
+            "Runner transition conflicts with the current state",
+        ),
         ModuleGovernanceErrorCategory::Internal => {
             tracing::error!(
                 error_code = code,
@@ -393,9 +403,31 @@ mod tests {
     use rustok_modules::ModuleGovernanceError;
 
     use super::{
-        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RunnerRoute, claim_error_response,
-        runner_route,
+        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RegistryRemoteTransitionError,
+        RunnerRoute, claim_error_response, runner_route, transition_error_response,
     };
+    use rustok_modules::ModuleGovernanceErrorCategory;
+
+    #[tokio::test]
+    async fn transition_error_response_redacts_untrusted_details() {
+        let response = transition_error_response(RegistryRemoteTransitionError {
+            category: ModuleGovernanceErrorCategory::InvalidInput,
+            code: "module_governance_invalid_input",
+            detail: "unsupported validation stage: private-stage-value".to_string(),
+        });
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("transition error response should fit its bounded envelope");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("transition error response should be valid JSON");
+        assert_eq!(payload["message"], "Runner transition request is invalid");
+        assert_ne!(
+            payload["message"].as_str(),
+            Some("unsupported validation stage: private-stage-value")
+        );
+    }
 
     #[tokio::test]
     async fn invalid_claim_stage_is_a_redacted_bad_request() {
