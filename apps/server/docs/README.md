@@ -479,8 +479,21 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fence used by token issuance and consent before their security-sensitive configuration changes.
   Reactivation also revokes dependent credentials left live by older versions. The all-tenants bootstrap
   sweep is sequential and does not provide one global cross-tenant transaction.
-- Explicit OAuth app revocation deactivates the app and revokes its active access/refresh tokens, user
-  consents, and pending authorization codes in the same transaction.
+- Manual OAuth app configuration edits and explicit app revocation now acquire the
+  same tenant-scoped app mutation row fence as token issuance/consent and manifest
+  reconciliation before testing whether an app can still be changed manually.
+  The edit keeps validation, base-row mutation, presentation translations and
+  their change records inside one transaction; revocation deactivates the app
+  and revokes its active access/refresh tokens, user consents and pending
+  authorization codes in one transaction. A concurrent manifest ownership
+  transfer cannot slip between a stale manual-edit/revoke permission check and
+  the subsequent write. The SQLite branch reserves the write lock before its
+  first security-state read; PostgreSQL/MySQL use FOR UPDATE.
+- RFC 7009 family revocation takes the app lock before looking up and updating
+  the token family, sharing the token-issuance/refresh lock order. This prevents
+  a new refresh successor being issued after a stale revocation read. Repeated
+  revocations preserve the first `revoked_at` timestamp of every family member;
+  unknown scoped tokens retain the standard success response.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
