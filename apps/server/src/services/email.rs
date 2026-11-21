@@ -1,8 +1,14 @@
 // Re-export from rustok-email for backward compatibility.
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use tokio::sync::watch;
+use tokio::task::AbortHandle;
+use uuid::Uuid;
 
 /// Cached SMTP transport stored in `shared_store` to reuse the connection pool.
 #[derive(Clone)]
@@ -276,8 +282,114 @@ pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 /// Password-reset token lifetime shared by REST and GraphQL flows.
 pub const PASSWORD_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
-/// Dispatches a background email sending task with panic containment, error reporting,
-/// and graceful shutdown lifecycle awareness.
+/// Tracks best-effort authentication email sends in the host runtime. The
+/// registry remains installed after shutdown so a concurrent request cannot
+/// create a fresh, unobserved registry while the drain is in progress.
+struct AuthEmailTaskRegistry {
+    state: Mutex<AuthEmailTaskState>,
+    active_tasks: watch::Sender<usize>,
+}
+
+#[derive(Default)]
+struct AuthEmailTaskState {
+    closed: bool,
+    handles: HashMap<Uuid, AbortHandle>,
+}
+
+impl AuthEmailTaskRegistry {
+    fn new() -> Self {
+        let (active_tasks, _receiver) = watch::channel(0);
+        Self {
+            state: Mutex::new(AuthEmailTaskState::default()),
+            active_tasks,
+        }
+    }
+
+    fn finish(&self, task_id: Uuid) {
+        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.handles.remove(&task_id).is_some() {
+            self.active_tasks.send_replace(state.handles.len());
+        }
+    }
+
+    fn close(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .closed = true;
+    }
+
+    fn abort_remaining(&self) -> usize {
+        let state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        for handle in state.handles.values() {
+            handle.abort();
+        }
+        state.handles.len()
+    }
+}
+
+/// Runs even when a task is cancelled before its first poll. Otherwise a
+/// pre-poll abort would strand the registry's active count indefinitely.
+struct AuthEmailTaskCompletion {
+    registry: Arc<AuthEmailTaskRegistry>,
+    task_id: Uuid,
+}
+
+impl Drop for AuthEmailTaskCompletion {
+    fn drop(&mut self) {
+        self.registry.finish(self.task_id);
+    }
+}
+
+async fn wait_for_auth_email_idle(active: &mut watch::Receiver<usize>) {
+    loop {
+        if *active.borrow_and_update() == 0 {
+            return;
+        }
+        if active.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
+/// Cooperatively waits for accepted auth sends after host shutdown. A bounded
+/// timeout aborts blocked sends; this is not durable delivery across crashes.
+pub(crate) async fn drain_auth_email_tasks(ctx: &ServerRuntimeContext) {
+    let registry = ctx.shared_get_or_insert_with(|| Arc::new(AuthEmailTaskRegistry::new()));
+    let mut active = registry.active_tasks.subscribe();
+    registry.close();
+    let pending = *active.borrow();
+    if pending == 0 {
+        return;
+    }
+
+    tracing::info!(pending, "Waiting for in-flight auth email deliveries");
+    if tokio::time::timeout(Duration::from_secs(5), wait_for_auth_email_idle(&mut active))
+        .await
+        .is_err()
+    {
+        let aborted = registry.abort_remaining();
+        tracing::warn!(
+            aborted,
+            error_code = "auth_email_shutdown_timeout",
+            "Timed out draining auth email deliveries; cancelling remaining tasks"
+        );
+        if tokio::time::timeout(Duration::from_secs(1), wait_for_auth_email_idle(&mut active))
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                error_code = "auth_email_shutdown_cancellation_timeout",
+                "Some cancelled auth email tasks did not finish during shutdown"
+            );
+        }
+    }
+}
+
+/// Dispatches a tracked best-effort email task. Return a normal Tokio join
+/// handle for existing callers, but retain independent cancellation ownership
+/// even if those callers drop their handles. The shutdown fence is serialized
+/// with task registration by the same registry mutex.
 pub fn spawn_auth_email_task<F, Fut>(
     ctx: &ServerRuntimeContext,
     task_name: &'static str,
@@ -288,7 +400,13 @@ where
     Fut: std::future::Future<Output = std::result::Result<(), EmailError>> + Send + 'static,
 {
     let stop_handle = crate::services::app_lifecycle::StopHandle::ensure(ctx);
-    if stop_handle.is_stopping() {
+    let registry = ctx.shared_get_or_insert_with(|| Arc::new(AuthEmailTaskRegistry::new()));
+    let mut state = registry
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if stop_handle.is_stopping() || state.closed {
+        drop(state);
         tracing::warn!(
             task = task_name,
             "Server runtime is stopping; skipping background email delivery"
@@ -296,11 +414,21 @@ where
         return tokio::spawn(std::future::ready(()));
     }
 
-    tokio::spawn(async move {
+    let task_id = Uuid::new_v4();
+    let completion = AuthEmailTaskCompletion {
+        registry: Arc::clone(&registry),
+        task_id,
+    };
+    let handle = tokio::spawn(async move {
         use futures_util::FutureExt;
         use std::panic::AssertUnwindSafe;
+        let _completion = completion;
 
-        let result = AssertUnwindSafe(future_factory()).catch_unwind().await;
+        // Include future construction in the panic boundary: FnOnce itself
+        // can panic before returning the asynchronous operation.
+        let result = AssertUnwindSafe(async move { future_factory().await })
+            .catch_unwind()
+            .await;
         match result {
             Ok(Ok(())) => {
                 tracing::debug!(task = task_name, "Background email delivered successfully");
@@ -319,7 +447,10 @@ where
                 );
             }
         }
-    })
+    });
+    state.handles.insert(task_id, handle.abort_handle());
+    registry.active_tasks.send_replace(state.handles.len());
+    handle
 }
 
 /// Spawns a monitored background task to deliver a password reset email.
@@ -585,6 +716,67 @@ mod tests {
 
         handle.await.unwrap();
         assert!(called_rx.recv().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn shutdown_drains_detached_email_and_blocks_new_work() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+        use sea_orm::DatabaseConnection;
+
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        // Explicitly discard the returned handle, as real HTTP callers do.
+        drop(spawn_auth_email_task(&ctx, "detached_send", move || async move {
+            started_tx.send(()).expect("notify send started");
+            release_rx.await.expect("release email");
+            Ok(())
+        }));
+        started_rx.await.expect("email started");
+
+        StopHandle::ensure(&ctx).stop().await;
+        let shutdown_ctx = ctx.clone();
+        let drain = tokio::spawn(async move {
+            drain_auth_email_tasks(&shutdown_ctx).await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!drain.is_finished(), "drain must await the detached send");
+
+        let (late_tx, late_rx) = tokio::sync::oneshot::channel::<()>();
+        spawn_auth_email_task(&ctx, "late_send", move || async move {
+            let _ = late_tx.send(());
+            Ok(())
+        })
+        .await
+        .expect("late spawn returns a completed handle");
+        assert!(late_rx.await.is_err(), "a stopped host must reject new sends");
+
+        release_tx.send(()).expect("complete existing send");
+        drain.await.expect("drain completes");
+        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
+        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn email_factory_panics_are_contained_and_registry_is_released() {
+        use crate::common::settings::RustokSettings;
+        use sea_orm::DatabaseConnection;
+
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let handle = spawn_auth_email_task(
+            &ctx,
+            "factory_panic",
+            || -> std::future::Ready<std::result::Result<(), EmailError>> {
+                panic!("deliberate factory panic");
+            },
+        );
+        handle.await.expect("factory panic must be caught by the task");
+        drain_auth_email_tasks(&ctx).await;
+        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
+        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
     }
 
     #[tokio::test]
