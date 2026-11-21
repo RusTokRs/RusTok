@@ -622,10 +622,16 @@ fn validate_field_value(
         // ── Integer ───────────────────────────────────────────────────────────
         FieldType::Integer => {
             // Accept i64 directly, or f64 with no fractional part
-            let n: f64 = match value.as_i64() {
-                Some(n) => n as f64,
+            let n: i64 = match value.as_i64() {
+                Some(n) => n,
                 None => match value.as_f64() {
-                    Some(f) if f.fract() == 0.0 => f,
+                    Some(f)
+                        if f.fract() == 0.0
+                            && f >= (i64::MIN as f64)
+                            && f < 9223372036854775808.0 =>
+                    {
+                        f as i64
+                    }
                     _ => {
                         errors.push(make_invalid_type(key, "integer"));
                         return errors;
@@ -634,23 +640,41 @@ fn validate_field_value(
             };
 
             if let Some(r) = rule {
-                if let Some(min) = r.min
-                    && n < min
-                {
-                    errors.push(FieldValidationError {
-                        field_key: key.clone(),
-                        message: format!("Field '{}' must be at least {}", key, min as i64),
-                        error_code: FieldErrorCode::BelowMinimum,
-                    });
+                if let Some(min) = r.min {
+                    let below_min = if min.is_nan() {
+                        false
+                    } else if min >= 9223372036854775808.0 {
+                        true
+                    } else if min <= (i64::MIN as f64) {
+                        false
+                    } else {
+                        n < min.ceil() as i64
+                    };
+                    if below_min {
+                        errors.push(FieldValidationError {
+                            field_key: key.clone(),
+                            message: format!("Field '{}' must be at least {}", key, min as i64),
+                            error_code: FieldErrorCode::BelowMinimum,
+                        });
+                    }
                 }
-                if let Some(max) = r.max
-                    && n > max
-                {
-                    errors.push(FieldValidationError {
-                        field_key: key.clone(),
-                        message: format!("Field '{}' must be at most {}", key, max as i64),
-                        error_code: FieldErrorCode::AboveMaximum,
-                    });
+                if let Some(max) = r.max {
+                    let above_max = if max.is_nan() {
+                        false
+                    } else if max < (i64::MIN as f64) {
+                        true
+                    } else if max >= 9223372036854775808.0 {
+                        false
+                    } else {
+                        n > max.floor() as i64
+                    };
+                    if above_max {
+                        errors.push(FieldValidationError {
+                            field_key: key.clone(),
+                            message: format!("Field '{}' must be at most {}", key, max as i64),
+                            error_code: FieldErrorCode::AboveMaximum,
+                        });
+                    }
                 }
             }
         }
