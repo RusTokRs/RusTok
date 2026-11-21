@@ -398,6 +398,76 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_worker_start_reservations_have_one_local_owner() {
+        use std::sync::{
+            Arc, Barrier,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        const STARTERS: usize = 12;
+        let enter = Arc::new(Barrier::new(STARTERS));
+        let leave = Arc::new(Barrier::new(STARTERS));
+        let winners = Arc::new(AtomicUsize::new(0));
+
+        std::thread::scope(|scope| {
+            for _ in 0..STARTERS {
+                let ctx = ctx.clone();
+                let enter = enter.clone();
+                let leave = leave.clone();
+                let winners = winners.clone();
+                scope.spawn(move || {
+                    enter.wait();
+                    let claim =
+                        super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u16);
+                    if claim.is_some() {
+                        winners.fetch_add(1, Ordering::Relaxed);
+                    }
+                    // Keep the unique claim alive until every competing
+                    // starter has attempted the same atomic reservation.
+                    leave.wait();
+                    if let Some(claim) = claim {
+                        claim.commit();
+                    }
+                });
+            }
+        });
+        assert_eq!(winners.load(Ordering::Relaxed), 1);
+        assert!(ctx.shared_contains::<u16>());
+    }
+
+    #[test]
+    fn cancelled_async_start_releases_reservation_before_retry() {
+        use std::future::Future;
+        use std::task::{Context, Waker};
+
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let pending_bootstrap = async {
+            let _reservation =
+                super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u32)
+                    .expect("startup claims marker");
+            std::future::pending::<()>().await;
+        };
+        let mut pending_bootstrap = Box::pin(pending_bootstrap);
+        let mut task = Context::from_waker(Waker::noop());
+        assert!(Future::poll(pending_bootstrap.as_mut(), &mut task).is_pending());
+        assert!(ctx.shared_contains::<u32>(), "async startup holds marker");
+        // Cancellation is a drop of the in-flight future, not an Err
+        // returned from its body. The marker must still be released.
+        drop(pending_bootstrap);
+        assert!(!ctx.shared_contains::<u32>());
+        super::ServerRuntimeStartReservation::try_claim(&ctx, 2_u32)
+            .expect("retry can claim after cancellation")
+            .commit();
+    }
+
+    #[test]
     fn shared_insert_if_absent_has_one_owner_and_preserves_the_first_value() {
         let values = ServerSharedValues::default();
 
