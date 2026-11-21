@@ -542,7 +542,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   follow-up cycle; failed sweeps retain the configured error backoff. An
   already acquired claim completes its canonical outbox transaction and
   failure-state update before the next shutdown check; receipt identity,
-  lease expiry, and PostgreSQL row fences remain authoritative.
+  lease expiry, and PostgreSQL row fences remain authoritative. Both public
+  and worker-specific failure transitions now require an unexpired matching
+  claim token and attempt, so an expired worker cannot reschedule a row
+  merely because no replacement has claimed it yet.
 - Notification candidate and fanout workers recheck shutdown **after**
   asynchronous tenant capability/policy evaluation (including deferrals),
   immediately before starting their next candidate processing, source
