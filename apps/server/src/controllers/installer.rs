@@ -18,8 +18,8 @@ use rustok_installer_persistence::{
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
-use std::panic::AssertUnwindSafe;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -360,7 +360,8 @@ async fn apply(
             }
         }
     };
-    let ready = spawn_persisted_installer_job(ctx, persistence, job_id, submitted_at, execution_task);
+    let ready =
+        spawn_persisted_installer_job(ctx, persistence, job_id, submitted_at, execution_task);
     let created = ready.await.map_err(|_| {
         tracing::error!(%job_id, "Installer claim task exited before acknowledging durable job creation");
         internal_error("installer job creation did not complete")
