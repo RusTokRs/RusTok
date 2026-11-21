@@ -15,8 +15,9 @@ use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -1306,15 +1307,12 @@ fn ensure_manifest_app_ownership(
 }
 
 /// Upsert an embedded app (no credentials needed)
-async fn upsert_embedded_app<C>(
-    db: &C,
+async fn upsert_embedded_app(
+    db: &DatabaseTransaction,
     tenant_id: Uuid,
     slug: &str,
     scopes: &[&str],
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
+) -> Result<()> {
     let existing = OAuthApps::find()
         .filter(
             sea_orm::Condition::all()
@@ -1410,7 +1408,7 @@ where
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         }
-        .insert(db)
+        .insert_in_transaction(db)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -1428,8 +1426,8 @@ where
 
 /// Upsert a first-party app (creates credentials on first creation)
 #[allow(clippy::too_many_arguments)]
-async fn upsert_first_party_app<C>(
-    db: &C,
+async fn upsert_first_party_app(
+    db: &DatabaseTransaction,
     tenant_id: Uuid,
     slug: &str,
     name: &str,
@@ -1438,10 +1436,7 @@ async fn upsert_first_party_app<C>(
     scopes: &[&str],
     grant_types: &[&str],
     granted_permissions: &[String],
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
+) -> Result<()> {
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
@@ -1534,7 +1529,7 @@ where
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         }
-        .insert(db)
+        .insert_in_transaction(db)
         .await
         .map_err(|error| {
             tracing::error!(
