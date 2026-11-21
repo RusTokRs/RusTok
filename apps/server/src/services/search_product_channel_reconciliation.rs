@@ -136,3 +136,46 @@ async fn product_channel_projection_reconciliation_loop(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::settings::{RuntimeHostMode, RustokSettings};
+
+    fn worker_context() -> ServerRuntimeContext {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings)
+    }
+
+    #[tokio::test]
+    async fn direct_projection_repair_start_rejects_stopping_runtime() {
+        let ctx = worker_context();
+        StopHandle::ensure(&ctx).stop().await;
+
+        let err = start_product_channel_projection_reconciliation_if_ready(&ctx)
+            .expect_err("a stopped runtime cannot publish a new worker");
+        assert!(err.to_string().contains("shutdown"));
+        assert!(!ctx.shared_contains::<ProductChannelProjectionWorkerHandle>());
+    }
+
+    #[tokio::test]
+    async fn a_dead_projection_repair_worker_is_not_reported_as_running() {
+        let ctx = worker_context();
+        // An exited handle is still preserved in the runtime registry until
+        // shutdown; a repeated initializer must not silently return success.
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        ctx.shared_insert(ProductChannelProjectionWorkerHandle {
+            instance_id: 1,
+            _handle: task,
+        });
+
+        let err = start_product_channel_projection_reconciliation_if_ready(&ctx)
+            .expect_err("dead durable worker is not successful bootstrap");
+        assert!(err.to_string().contains("has terminated"));
+        assert!(ctx.shared_contains::<ProductChannelProjectionWorkerHandle>());
+    }
+}
