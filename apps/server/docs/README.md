@@ -87,6 +87,24 @@ app edits mark lifecycle, credential, identity, and runtime-owned columns
 `NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
 `last_used_at` value.
 
+## Durable worker bootstrap liveness
+
+A registered runtime handle is not evidence that its task is running. The
+notification outbox intake, notification candidate/fanout, Forum Search inbox
+and contract consumer, Product Index refresh, and Social Graph Index consumer
+start paths reject a retained handle whose Tokio task has terminated. Their
+initial check, contested startup-reservation check, and post-claim check must
+all make the same live/dead distinction. A live handle permits idempotent
+startup; a missing handle can be claimed once; a finished handle is an explicit
+startup error rather than a successful no-op. The retained handle remains
+available for shutdown joining and failure accounting.
+
+These are process-local bootstrap/readiness protections, not an automatic
+restart loop, a cross-replica leader lease, or proof of exactly-once external
+effects. After an unexpected exit, restart the process under its supervisor;
+owner-side durable receipts, uncommitted broker offsets, and reconciliation
+rules still control which effects may be resumed safely.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.

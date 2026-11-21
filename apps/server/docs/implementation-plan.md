@@ -1,5 +1,28 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — exited worker startup (2026-11-21)
+
+PR #4772 was merged into `main` at
+`356bffa3c1703b47d8edcaac86547bc120922295`. Its original branch is
+closed, so this follow-up uses `agent/server-recovery-startup-health-20261121`
+from that merge commit, rather than appending to an already merged PR.
+
+Seven host-owned durable worker starters returned success when they found a
+published handle, even when the underlying task had already exited. The same
+false-positive existed in the contested-reservation and post-claim checks.
+That can make later bootstrap callers believe an inactive consumer was started,
+while its durable work is still waiting for recovery. A shared runtime helper
+now accepts only a live published handle, rejects a finished handle without
+replacing or orphaning it, and leaves absence available to an exclusive
+startup claim. A source regression tests absent, live, and finished states.
+
+Scope: Notifications intake/candidate/fanout; Forum Search inbox/contract
+consumer; Product Index refresh; Social Graph Index consumer. Owner-side
+receipt/idempotency handling and external recovery are unchanged. Runtime
+process restart remains necessary after an unexpected worker exit; automatic
+in-process replacement is not implied. No Cargo tests, compilation, rustfmt,
+or live concurrency checks were run, as requested by the maintainer.
+
 ## Server audit continuation — dispatcher readiness and cancellation (2026-11-21)
 
 One accumulating draft PR: `agent/server-audit-continuation-20261121`,

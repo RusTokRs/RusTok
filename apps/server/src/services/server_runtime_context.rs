@@ -168,6 +168,28 @@ impl<T: 'static + Send + Sync> Drop for ServerRuntimeStartReservation<'_, T> {
     }
 }
 
+/// A retained JoinHandle is not evidence of a live durable worker. Never
+/// acknowledge a repeated bootstrap after the task exited: its owner may have
+/// stopped at an unacknowledged delivery or left work awaiting recovery.
+/// Keep the handle for shutdown accounting; process restart is required to
+/// reconstruct this runtime's worker graph safely.
+pub(crate) fn published_worker_running<T>(
+    ctx: &ServerRuntimeContext,
+    worker_name: &'static str,
+    is_finished: impl FnOnce(&T) -> bool,
+) -> crate::error::Result<bool>
+where
+    T: 'static + Send + Sync,
+{
+    match ctx.shared_map::<T, _>(is_finished) {
+        Some(true) => Err(crate::error::Error::Message(format!(
+            "{worker_name} has terminated; restart the runtime before claiming startup success"
+        ))),
+        Some(false) => Ok(true),
+        None => Ok(false),
+    }
+}
+
 impl ServerRuntimeContext {
     pub fn new(db: DatabaseConnection, settings: RustokSettings) -> Self {
         Self {
@@ -352,6 +374,29 @@ mod tests {
     use super::{ServerRuntimeContext, ServerSharedValues};
     use crate::common::settings::RustokSettings;
     use sea_orm::DatabaseConnection;
+
+    #[test]
+    fn worker_published_but_finished_is_not_successful_bootstrap() {
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let inspect = || super::published_worker_running::<bool>(
+            &ctx,
+            "sample worker",
+            |finished| *finished,
+        );
+        assert!(!inspect().expect("missing handle permits bootstrap"));
+
+        ctx.shared_insert(false);
+        assert!(inspect().expect("running handle is idempotently reusable"));
+
+        ctx.shared_insert(true);
+        let error = inspect().expect_err("exited worker cannot be reported as healthy");
+        assert!(format!("{error}").contains("sample worker has terminated"));
+        // The published handle stays owned until shutdown drains the task.
+        assert!(ctx.shared_contains::<bool>());
+    }
 
     #[test]
     fn shared_take_returns_and_removes_the_typed_value() {

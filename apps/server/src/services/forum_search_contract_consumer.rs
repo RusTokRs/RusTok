@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
@@ -125,9 +126,14 @@ pub fn forum_search_contract_consumer_enabled() -> Result<bool> {
 pub async fn start_forum_search_contract_consumer_if_enabled(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+        ctx,
+        "Forum Search contract consumer",
+        ForumSearchContractConsumerWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !forum_search_contract_consumer_enabled()? {
@@ -170,14 +176,22 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+        if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+            ctx,
+            "Forum Search contract consumer",
+            ForumSearchContractConsumerWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Forum Search contract worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+    if published_worker_running::<ForumSearchContractConsumerWorkerHandle>(
+        ctx,
+        "Forum Search contract consumer",
+        ForumSearchContractConsumerWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let config = ForumSearchContractWorkerConfig::from_context(ctx)?;

@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
@@ -132,9 +133,14 @@ pub fn social_graph_index_consumer_enabled() -> Result<bool> {
 }
 
 pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<SocialGraphIndexWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<SocialGraphIndexWorkerHandle>(
+        ctx,
+        "Social Graph Index consumer",
+        SocialGraphIndexWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !social_graph_index_consumer_enabled()? {
@@ -178,14 +184,22 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+        if published_worker_running::<SocialGraphIndexWorkerHandle>(
+            ctx,
+            "Social Graph Index consumer",
+            SocialGraphIndexWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Social Graph Index worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+    if published_worker_running::<SocialGraphIndexWorkerHandle>(
+        ctx,
+        "Social Graph Index consumer",
+        SocialGraphIndexWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;

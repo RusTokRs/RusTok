@@ -19,6 +19,7 @@ use rustok_search::{
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::published_worker_running;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 use crate::services::stop_handle::StopHandle;
 
@@ -53,9 +54,14 @@ impl ForumSearchInboxWorkerHandle {
 }
 
 pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<ForumSearchInboxWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<ForumSearchInboxWorkerHandle>(
+        ctx,
+        "Forum Search inbox worker",
+        ForumSearchInboxWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
 
@@ -114,14 +120,22 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
+        if published_worker_running::<ForumSearchInboxWorkerHandle>(
+            ctx,
+            "Forum Search inbox worker",
+            ForumSearchInboxWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Forum Search inbox worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
+    if published_worker_running::<ForumSearchInboxWorkerHandle>(
+        ctx,
+        "Forum Search inbox worker",
+        ForumSearchInboxWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let stop_rx = stop.subscribe();
@@ -200,5 +214,38 @@ async fn forum_search_inbox_worker_loop(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::settings::RustokSettings;
+
+    #[tokio::test]
+    async fn previously_exited_worker_cannot_pass_bootstrap_as_running() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        assert!(ctx.settings().runtime.runs_background_workers());
+
+        let handle = tokio::spawn(async {});
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !handle.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("fake worker exits");
+
+        ctx.shared_insert(ForumSearchInboxWorkerHandle {
+            instance_id: 1,
+            _handle: handle,
+        });
+        let error = start_forum_search_inbox_worker_if_ready(&ctx)
+            .expect_err("exited Forum worker must not be treated as running");
+        assert!(format!("{error}").contains("Forum Search inbox worker has terminated"));
+        assert!(ctx.shared_contains::<ForumSearchInboxWorkerHandle>());
     }
 }
