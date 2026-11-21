@@ -467,9 +467,17 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   locks the app and subject and rechecks the client-secret hash, refresh grant,
   current scopes, subject status, and password-change epoch before consuming the
   refresh token. Client-credentials issuance locks and rechecks its app before
-  persisting the access row. App, consent, password, and user-status revocation also
-  invalidate outstanding authorization codes, preventing pending credentials from
-  surviving a later reactivation.
+  persisting the access row. The OAuth authorization-code **creation**
+  service independently reserves the same app-then-user mutation fences,
+  revalidates active app/subject, authorization-code grant, registered redirect,
+  scope ceiling and (for third-party clients) active scope-covering consent,
+  then inserts the pending code and commits in that transaction. Browser,
+  consent-form and JSON authorization paths share this service; their earlier
+  presentation/consent checks are only preflight decisions. This prevents a
+  code from being inserted after a competing app/consent revocation already
+  invalidated the then-pending codes. App, consent, password, and user-status
+  revocation also invalidate outstanding authorization codes, preventing
+  pending credentials from surviving a later reactivation.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
