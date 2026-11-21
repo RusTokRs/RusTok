@@ -155,8 +155,8 @@ async fn forum_search_inbox_worker_loop(
                 )
             }
             Ok(_) => {}
-            Err(error) => tracing::warn!(
-                error = %error,
+            Err(_error) => tracing::warn!(
+                error_code = "forum_search_inbox_sweep_failed",
                 "Forum Search inbox sweep failed during owner checkpoint cycle"
             ),
         }
