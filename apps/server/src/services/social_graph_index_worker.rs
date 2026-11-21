@@ -740,8 +740,14 @@ async fn process_decode_failure(
                             "social_graph.index.transport_unavailable",
                         );
                         runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
+                        // Transport failures are not necessarily safe to display:
+                        // broker errors can include remote payloads or credentials.
+                        // The claimed receipt was released (or its lease will
+                        // expire), and the source offset stays uncommitted for
+                        // recovery. Report a stable diagnostic without relying
+                        // on a deliberately discarded transport error binding.
                         return Err(format!(
-                            "exact-byte raw poison publication failed after {attempt} attempt(s): {error}"
+                            "exact-byte raw poison publication failed after {attempt} attempt(s); source offset remains uncommitted"
                         ));
                     }
                 }
