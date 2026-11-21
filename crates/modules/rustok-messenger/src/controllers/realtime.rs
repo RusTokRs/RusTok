@@ -116,7 +116,9 @@ impl MessengerRoomHub {
         let key = (tenant_id, conversation_id);
         let read_guard = self.rooms.read().unwrap_or_else(|e| e.into_inner());
         if let Some(sender) = read_guard.get(&key) {
-            let _ = sender.send(msg);
+            if let Err(err) = sender.send(msg) {
+                tracing::trace!(%tenant_id, %conversation_id, "no active listeners for broadcast: {err}");
+            }
         }
     }
 }
@@ -242,7 +244,9 @@ async fn handle_socket(
                     let client_msg: Result<MessengerClientMessage, _> = serde_json::from_str(&text);
                     match client_msg {
                         Ok(MessengerClientMessage::Ping) => {
-                            let _ = client_tx.send(MessengerServerMessage::Pong).await;
+                            if client_tx.send(MessengerServerMessage::Pong).await.is_err() {
+                                break;
+                            }
                         }
                         Ok(MessengerClientMessage::FastSync { since_seq }) => {
                             match service_for_recv
@@ -258,17 +262,25 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(sync_res) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::SyncResponse(sync_res))
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                                 Err(err) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Error {
                                             code: "SYNC_FAILED".to_string(),
                                             message: err.to_string(),
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -282,13 +294,17 @@ async fn handle_socket(
                                 &permissions,
                                 &[Permission::MESSAGES_CREATE],
                             ) {
-                                let _ = client_tx
+                                if client_tx
                                     .send(MessengerServerMessage::Error {
                                         code: "FORBIDDEN".to_string(),
                                         message: "Permission denied: messages:create required"
                                             .to_string(),
                                     })
-                                    .await;
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
                                 continue;
                             }
 
@@ -310,23 +326,34 @@ async fn handle_socket(
                             {
                                 Ok(output) => {
                                     // Acknowledge back directly to the sender (unicast)
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Ack {
                                             client_msg_id,
                                             message_id: output.id,
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                     // Broadcast new message to all peers in the room
-                                    let _ = room_sender_for_recv
-                                        .send(MessengerServerMessage::NewMessage(output));
+                                    if let Err(err) = room_sender_for_recv
+                                        .send(MessengerServerMessage::NewMessage(output))
+                                    {
+                                        tracing::trace!(%conversation_id, "room broadcast delivered with no peers: {err}");
+                                    }
                                 }
                                 Err(err) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Error {
                                             code: "SEND_FAILED".to_string(),
                                             message: err.to_string(),
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -346,27 +373,35 @@ async fn handle_socket(
                             {
                                 Ok(cursor_output) => {
                                     // Broadcast cursor progress to room peers
-                                    let _ = room_sender_for_recv.send(
+                                    if let Err(err) = room_sender_for_recv.send(
                                         MessengerServerMessage::CursorAdvanced(cursor_output),
-                                    );
+                                    ) {
+                                        tracing::trace!(%conversation_id, "room broadcast delivered with no peers: {err}");
+                                    }
                                 }
                                 Err(err) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Error {
                                             code: "CURSOR_UPDATE_FAILED".to_string(),
                                             message: err.to_string(),
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
                         Ok(MessengerClientMessage::Typing { is_typing }) => {
-                            let _ = room_sender_for_recv.send(
+                            if let Err(err) = room_sender_for_recv.send(
                                 MessengerServerMessage::TypingIndicator {
                                     user_id: actor_id,
                                     is_typing,
                                 },
-                            );
+                            ) {
+                                tracing::trace!(%conversation_id, "typing indicator broadcast delivered with no peers: {err}");
+                            }
                         }
                         Ok(MessengerClientMessage::EditMessage {
                             message_id,
@@ -382,16 +417,23 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(updated) => {
-                                    let _ = room_sender_for_recv
-                                        .send(MessengerServerMessage::MessageEdited(updated));
+                                    if let Err(err) = room_sender_for_recv
+                                        .send(MessengerServerMessage::MessageEdited(updated))
+                                    {
+                                        tracing::trace!(%conversation_id, "edit message broadcast delivered with no peers: {err}");
+                                    }
                                 }
                                 Err(err) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Error {
                                             code: "EDIT_FAILED".to_string(),
                                             message: err.to_string(),
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -401,33 +443,45 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(_) => {
-                                    let _ = room_sender_for_recv.send(
+                                    if let Err(err) = room_sender_for_recv.send(
                                         MessengerServerMessage::MessageDeleted { message_id },
-                                    );
+                                    ) {
+                                        tracing::trace!(%conversation_id, "delete message broadcast delivered with no peers: {err}");
+                                    }
                                 }
                                 Err(err) => {
-                                    let _ = client_tx
+                                    if client_tx
                                         .send(MessengerServerMessage::Error {
                                             code: "DELETE_FAILED".to_string(),
                                             message: err.to_string(),
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
                         Err(parse_err) => {
                             warn!("Invalid messenger client message payload: {parse_err}");
-                            let _ = client_tx
+                            if client_tx
                                 .send(MessengerServerMessage::Error {
                                     code: "INVALID_PAYLOAD".to_string(),
                                     message: parse_err.to_string(),
                                 })
-                                .await;
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                     }
                 }
                 Message::Ping(_) => {
-                    let _ = client_tx.send(MessengerServerMessage::Pong).await;
+                    if client_tx.send(MessengerServerMessage::Pong).await.is_err() {
+                        break;
+                    }
                 }
                 Message::Close(_) => break,
                 _ => {}

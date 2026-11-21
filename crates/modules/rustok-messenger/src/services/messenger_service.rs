@@ -144,6 +144,7 @@ impl MessengerService {
     }
 
     /// Create a new conversation, channel, or direct message dialogue atomically.
+    #[tracing::instrument(skip(self, input), fields(%tenant_id, %actor_id))]
     pub async fn create_conversation(
         &self,
         tenant_id: Uuid,
@@ -405,6 +406,7 @@ impl MessengerService {
     }
 
     /// Update or create localized channel translation (title, description).
+    #[tracing::instrument(skip(self, input), fields(%tenant_id, %actor_id))]
     pub async fn update_channel_translation(
         &self,
         tenant_id: Uuid,
@@ -820,6 +822,7 @@ impl MessengerService {
 
     /// Soft-delete a message, preserving sequence monotonicity.
     /// Returns the conversation_id of the deleted message.
+    #[tracing::instrument(skip(self), fields(%tenant_id, %actor_id, message_id))]
     pub async fn delete_message(
         &self,
         tenant_id: Uuid,
@@ -1131,6 +1134,7 @@ impl MessengerService {
     }
 
     /// Internal transactional helper for monotonic cursor progression.
+    #[tracing::instrument(skip(txn), fields(%conversation_id, %actor_id, last_read_message_id))]
     pub async fn update_cursor_in_tx<C>(
         txn: &C,
         conversation_id: Uuid,
@@ -1189,6 +1193,7 @@ impl MessengerService {
     }
 
     /// Monotonically advance user read cursor.
+    #[tracing::instrument(skip(self, input), fields(%tenant_id, %actor_id))]
     pub async fn update_cursor(
         &self,
         tenant_id: Uuid,
