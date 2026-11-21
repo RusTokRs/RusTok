@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-16: CQRS Read Projections, Search & Index Synchronization
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15 (15/17 completed — 88.2%)
+- **Active Phase:** CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15, CC-16 (16/17 completed — 94.1%)
 - **Active Branch:** `main`
 
 ---
@@ -70,7 +70,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed)
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed)
 - [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed)
-- [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
+- [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (4/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
 ---
@@ -556,11 +556,26 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `rustok-index`, `rustok-search`.
 - **CodeGraph Target:** `IndexService SearchService index_products index_content ReindexHandler`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-16.01 — CQRS-Lite Separation**
-- [ ] **CC-16.02 — Event-Driven Reindexing Consistency**
-- [ ] **CC-16.03 — Search Tenant Scoping**
-- [ ] **CC-16.04 — Reindex Idempotency & Batching**
+- [x] **CC-16.01 — CQRS-Lite Separation**
+  - Audited write model (domain entities) and read projection (`index_entities`, `index_links`, `search_documents`, `search_projection_inbox`) separation.
+  - Confirmed read-only query purity: `pg_engine.rs`, `query_runtime.rs`, and GraphQL search resolvers contain zero mutation paths (`INSERT`/`UPDATE`/`DELETE`).
+  - Source modules maintain sole write authority and publish domain lifecycle events; projections ingest asynchronously without direct cross-module table coupling.
+- [x] **CC-16.02 — Event-Driven Reindexing Consistency**
+  - Audited ingestion pipelines in `SearchIngestionHandler`, `SearchProjector`, `ForumProjectionInbox`, and `rustok-index` mutation store.
+  - Enforced monotonic version fencing: `if incoming_version <= current_version { return Ok(ApplyOutcome::StaleIgnored); }` in Index; stale forum revisions are marked terminal (`skipped: stale_revision`); checkpoint sequence enforces sequential continuity (`ck_search_projection_owner_checkpoint_revision CHECK (owner_revision > 0)`).
+  - Fixed compilation defect in `rustok-index/src/application/reference.rs`: replaced missing `QueryValidationError::UnknownSchema` with typed `SchemaRegistryError::SchemaNotFound(query.schema.clone())`.
+- [x] **CC-16.03 — Search Tenant Scoping**
+  - Audited tenant isolation across `pg_engine.rs`, `SearchAudienceRegistry`, and `StorefrontSuggestionAudience`.
+  - Confirmed fail-closed policy: `resolve_surface_tenant_scope` rejects nil tenant context IDs and cross-tenant overrides (`allows_tenant_override: false` on storefront search); every PostgreSQL query strictly binds `$1 = tenant_id` (`WHERE sd.tenant_id = $1`).
+  - Hardened `SearchSettingsService::save`: pre-validates `tenant_id.is_some_and(|id| id.is_nil())` before database access.
+- [x] **CC-16.04 — Reindex Idempotency & Batching**
+  - Audited deduplication and batching in `search_projection_inbox` and `index_inbox`: inserts use `ON CONFLICT (event_id) DO NOTHING`.
+  - Claim processing uses tenant-level advisory locks (`try_acquire_tenant_lock`), sequential FIFO consumption (`ORDER BY ingest_sequence ASC LIMIT 1 FOR UPDATE`), and bounded retry backoffs.
+  - Harmonized verification contracts: updated forum search audience and causation JSON references to live owners (`crates/libs/rustok-outbox-storage/src/transactional.rs`), retired `include!` file stitching requirement in `verify-search-canonical-url-contract.mjs`.
+  - Scoped checks: `cargo test -p rustok-index --lib` (321 passed), `cargo test -p rustok-search --lib` (102 passed), `cargo check -p rustok-search-admin` (passed), JS verification suite passed (`verify-search-fba.mjs`, `verify-search-audience-classes.mjs`, `verify-search-blog-projection.mjs`, `verify-search-canonical-url-contract.mjs`). Clean remediation gatekeeper diff approved.
 
 ---
 

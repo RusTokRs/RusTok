@@ -215,7 +215,8 @@ impl NotificationOutboxIntakeWorker {
     pub fn batch_size(&self) -> usize {
         self.batch_size
     }
-\n    pub fn with_receipt_port(
+
+    pub fn with_receipt_port(
         mut self,
         consumer_key: impl Into<String>,
         port: Arc<dyn NotificationOutboxIntakeReceiptPort>,
