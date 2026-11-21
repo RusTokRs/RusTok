@@ -171,7 +171,7 @@ sameArray(evidence.cases.find(c => c.name === 'release_oci_publication_and_admis
 const dto = read('crates/modules/alloy/src/api/dto.rs');
 hasAll(dto, [
   'ScriptStatus::parse(status)',
-  'Unsupported script status filter: {status}',
+  'Unsupported script status filter: {0}',
   'self.page.max(1)',
   'self.per_page.clamp(1, 100) as u64',
   'fn list_scripts_query_rejects_unknown_status_filter()',

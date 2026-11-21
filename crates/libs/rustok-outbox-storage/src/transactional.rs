@@ -257,10 +257,8 @@ impl TransactionalEventBus {
         let envelope = self.build_envelope(tenant_id, actor_id, event)?;
         let envelope_id = envelope.id;
 
-        if self.transport.supports_transactional_writes() {
-            self.transport
-                .write_root_in_transaction(txn, envelope)
-                .await?;
+        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
+            outbox.write_to_outbox(txn, envelope).await?;
         } else {
             #[cfg(feature = "test-transport-fallback")]
             {
@@ -403,10 +401,8 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
     {
         let envelope_id = envelope.id();
-        if self.transport.supports_transactional_writes() {
-            self.transport
-                .write_contract_in_transaction(txn, envelope)
-                .await?;
+        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
+            outbox.write_contract_to_outbox(txn, envelope).await?;
         } else {
             #[cfg(feature = "test-transport-fallback")]
             {

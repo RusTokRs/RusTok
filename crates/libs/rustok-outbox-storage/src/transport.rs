@@ -239,6 +239,17 @@ fn require_inserted_event(affected: u64) -> Result<()> {
     Ok(())
 }
 
+fn same_root_publication(stored: &EventEnvelope, expected: &EventEnvelope) -> bool {
+    stored.id == expected.id
+        && stored.correlation_id == expected.correlation_id
+        && stored.causation_id == expected.causation_id
+        && stored.tenant_id == expected.tenant_id
+        && stored.actor_id == expected.actor_id
+        && stored.event_type == expected.event_type
+        && stored.schema_version == expected.schema_version
+        && stored.event == expected.event
+}
+
 fn same_contract_publication(
     stored: &ContractEventEnvelope,
     expected: &ContractEventEnvelope,
@@ -414,7 +425,9 @@ mod tests {
     };
     use uuid::Uuid;
 
-    use super::{OutboxTransport, require_inserted_event, same_contract_publication};
+    use super::{
+        OutboxTransport, require_inserted_event, same_contract_publication, same_root_publication,
+    };
 
     #[test]
     fn unconditional_publication_rejects_zero_or_multiple_inserted_rows() {

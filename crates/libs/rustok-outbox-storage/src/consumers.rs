@@ -368,7 +368,7 @@ mod tests {
         }
 
         let count = db
-            .query_one(sea_orm::Statement::from_string(
+            .query_one_raw(sea_orm::Statement::from_string(
                 db.get_database_backend(),
                 "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts".to_string(),
             ))
