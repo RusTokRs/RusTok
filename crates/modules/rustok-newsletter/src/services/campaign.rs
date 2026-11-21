@@ -26,7 +26,7 @@ impl CampaignService {
     }
 
     /// Create a new draft campaign.
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, title = %input.title))]
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, campaign_id))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -74,6 +74,7 @@ impl CampaignService {
         };
 
         let result = model.insert(&self.db).await?;
+        tracing::Span::current().record("campaign_id", tracing::field::display(result.id));
         self.to_response(result)
     }
 

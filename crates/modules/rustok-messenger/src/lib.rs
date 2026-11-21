@@ -59,8 +59,8 @@ pub mod graphql;
 #[cfg(feature = "graphql")]
 pub use graphql::{
     CreateMessengerChannelGqlInput, DeviceKeyGql, MessengerChannelListItemGql,
-    MessengerE2eeDeviceAuditGql, MessengerGraphqlRuntimeData, MessengerMutation,
-    MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
+    MessengerE2eeDeviceAuditGql, MessengerGraphqlRuntimeData, MessengerGraphqlRuntimeError,
+    MessengerMutation, MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
     UploadDeviceKeysGqlInput, attach_schema_data,
 };
 

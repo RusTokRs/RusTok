@@ -431,7 +431,7 @@ impl TenantCacheMetricsStore {
             .await;
             if let Ok(mut conn) = result {
                 let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
-                if let Err(error) = tenant_cache_redis_timeout(
+                if let Err(_error) = tenant_cache_redis_timeout(
                     "metrics INCR",
                     redis::cmd("INCR")
                         .arg(redis_key)
@@ -439,7 +439,10 @@ impl TenantCacheMetricsStore {
                 )
                 .await
                 {
-                    tracing::debug!(%error, "Best-effort Redis tenant metrics INCR failed");
+                    tracing::debug!(
+                        error_code = "tenant_cache_metrics_incr_failed",
+                        "Best-effort Redis tenant metrics INCR failed"
+                    );
                 }
             }
         }
@@ -888,7 +891,7 @@ pub async fn resolve(
         Err(error) => {
             tracing::warn!(
                 path = req.uri().path(),
-                error = %error,
+                failure_code = "tenant_resolution_failed",
                 "Tenant resolution failed"
             );
             return error.to_response();
@@ -915,7 +918,7 @@ pub async fn resolve(
         Err(error) => {
             tracing::warn!(
                 path = req.uri().path(),
-                error = %error,
+                failure_code = "tenant_context_load_failed",
                 "Tenant context loading failed"
             );
             return error.to_response();

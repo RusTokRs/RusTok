@@ -253,9 +253,9 @@ async fn forum_search_contract_consumer_loop(
                 .await
             }
             Ok(None) => !wait_or_stop(config.idle_poll, &mut stop_rx).await,
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
-                    error = %error,
+                    error_code = "forum_search_contract_receive_failed",
                     "Forum Search typed invalidation receive failed; broker offset remains uncommitted"
                 );
                 false
@@ -367,10 +367,10 @@ async fn terminalize_semantic_poison(
         stable_error_code,
         observed_attempts,
     )
-    .map_err(|error| {
+    .map_err(|_error| {
         tracing::error!(
             typed_envelope_id = %consumed.envelope.id(),
-            error = %error,
+            error_code = "forum_search_semantic_poison_identity_failed",
             "Forum Search semantic poison identity failed; broker offset remains uncommitted"
         );
     })
@@ -565,20 +565,20 @@ async fn establish_poison_result(
                         )
                         .await;
                     }
-                    Err(error) if attempt < config.max_attempts => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) if attempt < config.max_attempts => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "forum_search_poison_claim_release_failed",
                                 "Failed to release poison claim before retry"
                             );
                         }
                         let delay = retry_delay(config, attempt);
                         tracing::warn!(
-                            error = %error,
                             error_code = stable_error_code,
+                            failure_code = "forum_search_dlq_publish_failed",
                             attempt,
                             retry_delay_ms = duration_millis(delay),
                             "Forum Search poison DLQ publication failed; released claim and retained broker offset"
@@ -588,19 +588,19 @@ async fn establish_poison_result(
                         }
                         attempt += 1;
                     }
-                    Err(error) => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "forum_search_poison_claim_release_failed",
                                 "Failed to release poison claim on final attempt"
                             );
                         }
                         tracing::error!(
-                            error = %error,
                             error_code = stable_error_code,
+                            failure_code = "forum_search_dlq_publish_failed",
                             attempts = attempt,
                             "Forum Search poison DLQ publication failed; broker offset remains uncommitted"
                         );
@@ -717,11 +717,11 @@ async fn acknowledge_event(
     loop {
         match group.acknowledge(consumed).await {
             Ok(()) => return true,
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 tracing::warn!(
                     typed_envelope_id = %consumed.envelope.id(),
-                    error = %error,
+                    failure_code = "forum_search_broker_ack_failed",
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search durable result exists but broker acknowledgement failed"
@@ -731,10 +731,10 @@ async fn acknowledge_event(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
                     typed_envelope_id = %consumed.envelope.id(),
-                    error = %error,
+                    failure_code = "forum_search_broker_ack_failed",
                     attempts = attempt,
                     "Forum Search broker acknowledgement failed; redelivery will recognize the durable inbox row"
                 );
@@ -784,11 +784,11 @@ async fn acknowledge_decode_failure_with_receipt(
                 }
                 return true;
             }
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 tracing::warn!(
-                    error = %error,
                     error_code = failure.stable_error_code(),
+                    failure_code = "forum_search_decode_ack_failed",
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search raw poison result exists but broker acknowledgement failed"
@@ -798,10 +798,10 @@ async fn acknowledge_decode_failure_with_receipt(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
-                    error = %error,
                     error_code = failure.stable_error_code(),
+                    failure_code = "forum_search_decode_ack_failed",
                     attempts = attempt,
                     "Forum Search raw poison acknowledgement failed; redelivery will recognize the durable receipt"
                 );

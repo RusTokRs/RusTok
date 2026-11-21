@@ -9,6 +9,9 @@ description = "Storefront FFA package for full-page workstation and contextual f
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 
@@ -21,6 +24,7 @@ ssr = [
   "dep:leptos_axum",
   "dep:rustok-core",
   "dep:rustok-messenger",
+  "dep:rustok-api",
   "rustok-api/server",
 ]
 
@@ -28,14 +32,12 @@ ssr = [
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 rustok-ui-i18n.workspace = true
-rustok-ui-leptos.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
-leptos-ui-routing.workspace = true
 leptos_router.workspace = true
-rustok-api = { workspace = true, default-features = false }
+rustok-api = { workspace = true, default-features = false, optional = true }
 
 rustok-core = { workspace = true, optional = true }
 rustok-messenger = { path = "..", default-features = false, optional = true }
@@ -47,4 +49,4 @@ uuid = { workspace = true, features = ["serde"] }
 tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["rustok-ui-leptos", "leptos-ui-routing", "leptos_axum", "rustok-core", "rustok-messenger"]
+normal = ["leptos_axum", "rustok-core", "rustok-messenger", "rustok-api"]

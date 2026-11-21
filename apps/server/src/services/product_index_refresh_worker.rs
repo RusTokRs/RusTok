@@ -159,9 +159,9 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         return Ok(());
     }
 
-    if let Err(error) = runtime_consumer_metrics::ensure_registered() {
+    if let Err(_error) = runtime_consumer_metrics::ensure_registered() {
         tracing::debug!(
-            error = %error,
+            error_code = "runtime_consumer_metrics_unavailable",
             worker = METRICS_CONSUMER,
             "Runtime consumer metrics are unavailable; continuing without registration"
         );
@@ -315,7 +315,7 @@ async fn product_index_refresh_worker_loop(
                     return;
                 }
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_RECEIVE,
@@ -324,7 +324,7 @@ async fn product_index_refresh_worker_loop(
                 record_worker_termination("receive_failure");
                 tracing::error!(
                     worker = METRICS_CONSUMER,
-                    error = %error,
+                    error_code = "product_index.refresh.receive_failed",
                     "Product Index refresh broker receive failed; source offset remains uncommitted"
                 );
                 return;
@@ -350,7 +350,7 @@ async fn process_consumed_delivery(
         },
     ) {
         Ok(delivery) => delivery,
-        Err(error) => {
+        Err(_error) => {
             runtime_consumer_metrics::record_failure(
                 METRICS_CONSUMER,
                 STAGE_DECODE,
@@ -360,7 +360,7 @@ async fn process_consumed_delivery(
             tracing::error!(
                 worker = METRICS_CONSUMER,
                 event_id = %consumed.envelope.id(),
-                error = %error,
+                error_code = DECODE_FAILURE_CODE,
                 "Product Index refresh envelope projection failed; source offset remains uncommitted"
             );
             return false;
@@ -395,7 +395,7 @@ async fn process_consumed_delivery(
                 );
                 return true;
             }
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
@@ -406,7 +406,7 @@ async fn process_consumed_delivery(
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = PROCESS_FAILURE_CODE,
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Product Index refresh processing failed; retrying without committing the broker offset"
@@ -417,7 +417,7 @@ async fn process_consumed_delivery(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_PROCESS,
@@ -427,7 +427,7 @@ async fn process_consumed_delivery(
                 tracing::error!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = PROCESS_FAILURE_CODE,
                     attempt,
                     "Product Index refresh processing exhausted bounded retries; source offset remains uncommitted for broker redelivery"
                 );
@@ -506,7 +506,7 @@ async fn acknowledge_unrelated(
     loop {
         match runtime.group.acknowledge(consumed).await {
             Ok(()) => return true,
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
@@ -517,7 +517,7 @@ async fn acknowledge_unrelated(
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = ACK_FAILURE_CODE,
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Unrelated sealed domain event acknowledgement failed; retrying acknowledgement only"
@@ -528,7 +528,7 @@ async fn acknowledge_unrelated(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 runtime_consumer_metrics::record_failure(
                     METRICS_CONSUMER,
                     STAGE_ACKNOWLEDGEMENT,
@@ -538,7 +538,7 @@ async fn acknowledge_unrelated(
                 tracing::error!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),
-                    error = %error,
+                    error_code = ACK_FAILURE_CODE,
                     attempt,
                     "Unrelated sealed domain event acknowledgement exhausted bounded retries; source offset remains uncommitted"
                 );

@@ -142,9 +142,9 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
         return Ok(());
     }
 
-    if let Err(error) = runtime_consumer_metrics::ensure_registered() {
+    if let Err(_error) = runtime_consumer_metrics::ensure_registered() {
         tracing::debug!(
-            error = %error,
+            error_code = "runtime_consumer_metrics_unavailable",
             worker = METRICS_CONSUMER,
             "Runtime consumer metrics are unavailable; continuing without registration"
         );
@@ -324,12 +324,12 @@ async fn handle_event_delivery(
             );
             false
         }
-        Err(error) => {
+        Err(_error) => {
             record_worker_termination("delivery_failure");
             tracing::error!(
                 worker = METRICS_CONSUMER,
                 event_id = %consumed.envelope.id(),
-                error = %error,
+                error_code = "social_graph_index_delivery_failed",
                 "Social Graph Index worker terminated with broker offset uncommitted"
             );
             false
@@ -387,12 +387,12 @@ async fn handle_decode_failure(
             );
             false
         }
-        Err(error) => {
+        Err(_error) => {
             record_worker_termination("decode_failure_terminalization_failed");
             tracing::error!(
                 worker = METRICS_CONSUMER,
                 error_code = failure.stable_error_code(),
-                error = %error,
+                failure_code = "social_graph_index_decode_terminalization_failed",
                 "Social Graph Index worker terminated with undecodable broker offset uncommitted"
             );
             false
@@ -694,13 +694,13 @@ async fn process_decode_failure(
                         .await?;
                         break false;
                     }
-                    Err(error) if attempt < config.max_attempts => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) if attempt < config.max_attempts => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(&identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "social_graph_index_poison_claim_release_failed",
                                 "Failed to release poison claim before retry"
                             );
                         }
@@ -714,9 +714,9 @@ async fn process_decode_failure(
                         tracing::warn!(
                             worker = METRICS_CONSUMER,
                             error_code = failure.stable_error_code(),
+                            failure_code = "social_graph_index_dlq_publish_failed",
                             attempt,
                             retry_delay_ms = duration_millis(delay),
-                            error = %error,
                             "Exact-byte raw poison publication failed; released claim and retained source offset"
                         );
                         if wait_or_stop(delay, stop_rx).await {
@@ -724,13 +724,13 @@ async fn process_decode_failure(
                         }
                         attempt += 1;
                     }
-                    Err(error) => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(&identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "social_graph_index_poison_claim_release_failed",
                                 "Failed to release poison claim on final attempt"
                             );
                         }

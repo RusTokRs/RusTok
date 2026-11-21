@@ -18,9 +18,13 @@ const MODULE_SETTINGS_SNAPSHOT_CONFLICT: &str = "MODULE_SETTINGS_SNAPSHOT_CONFLI
 
 fn graphql_module_settings_internal_error(
     message: &'static str,
-    error: impl Display,
+    _error: impl Display,
 ) -> FieldError {
-    tracing::error!(%error, message, "GraphQL module settings CAS failed");
+    tracing::error!(
+        error_code = "graphql_module_settings_cas_failed",
+        operation = message,
+        "GraphQL module settings CAS failed"
+    );
     <FieldError as GraphQLError>::internal_error(message)
 }
 

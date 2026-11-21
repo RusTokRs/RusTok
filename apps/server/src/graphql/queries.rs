@@ -78,8 +78,12 @@ async fn require_reporting_permission(
     Ok(())
 }
 
-fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldError {
-    tracing::error!(%error, message, "GraphQL root query failed");
+fn graphql_internal_error(message: &'static str, _error: impl Display) -> FieldError {
+    tracing::error!(
+        error_code = "graphql_root_query_failed",
+        operation = message,
+        "GraphQL root query failed"
+    );
     <FieldError as GraphQLError>::internal_error(message)
 }
 
@@ -267,11 +271,11 @@ async fn effective_module_policy_view(
         EffectiveModulePolicyService::resolve_view(db, registry, tenant_id).await
     };
 
-    result.map_err(|error| {
+    result.map_err(|_error| {
         tracing::error!(
             tenant_id = %tenant_id,
-            error = %error,
-            "effective module policy GraphQL read failed"
+            error_code = "effective_module_policy_graphql_read_failed",
+            "Effective module policy GraphQL read failed"
         );
         <FieldError as GraphQLError>::internal_error("effective module policy is unavailable")
     })
@@ -282,8 +286,11 @@ fn map_artifact_ui_contribution_error(error: ServerError) -> FieldError {
         ServerError::NotFound => {
             <FieldError as GraphQLError>::not_found("Artifact installation is unavailable")
         }
-        error => {
-            tracing::error!(%error, "artifact UI contribution GraphQL read failed");
+        _error => {
+            tracing::error!(
+                error_code = "artifact_ui_contribution_graphql_read_failed",
+                "Artifact UI contribution GraphQL read failed"
+            );
             <FieldError as GraphQLError>::internal_error(
                 "Artifact UI contributions are unavailable",
             )
@@ -301,8 +308,11 @@ fn map_artifact_ui_action_audit_error(error: ServerError) -> FieldError {
                 "Permission denied for artifact UI action",
             )
         }
-        error => {
-            tracing::error!(%error, "artifact UI action audit GraphQL read failed");
+        _error => {
+            tracing::error!(
+                error_code = "artifact_ui_action_audit_graphql_read_failed",
+                "Artifact UI action audit GraphQL read failed"
+            );
             <FieldError as GraphQLError>::internal_error("Artifact UI action audit is unavailable")
         }
     }

@@ -105,7 +105,7 @@ const eventHandler = fs.readFileSync(
 );
 requirePattern(
   eventHandler,
-  /let semaphore = Arc::new\(Semaphore::new\(max_concurrent\)\);[\s\S]*?let queue = Arc::new\(Semaphore::new\(queue_capacity\)\);/,
+  /Arc::new\(Semaphore::new\(max_concurrent\)\)[\s\S]*?Arc::new\(Semaphore::new\(queue_capacity\)\)/,
   "CC-09.03: rustok-core event handler must bound listener concurrency and queue capacity using semaphores",
 );
 

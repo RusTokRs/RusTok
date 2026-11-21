@@ -93,9 +93,9 @@ async fn product_channel_projection_reconciliation_loop(
                 );
                 PRODUCT_CHANNEL_REPAIR_BATCH_INTERVAL
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::warn!(
-                    error = %error,
+                    error_code = "product_search_channel_reconciliation_failed",
                     "Product Search channel projection reconciliation failed"
                 );
                 PRODUCT_CHANNEL_REPAIR_RETRY_INTERVAL

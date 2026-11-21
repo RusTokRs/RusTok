@@ -344,8 +344,11 @@ pub async fn resolve(
                     .resolve(&facts)
                     .await
                     .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-                    .map_err(|error| {
-                        tracing::error!(%error, "channel::resolve failed in cache loader");
+                    .map_err(|_error| {
+                        tracing::error!(
+                            error_code = "channel_resolution_cache_load_failed",
+                            "Channel resolution failed in cache loader"
+                        );
                         axum::http::StatusCode::INTERNAL_SERVER_ERROR
                     })
             })
@@ -356,8 +359,11 @@ pub async fn resolve(
             .resolve(&facts)
             .await
             .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-            .map_err(|error| {
-                tracing::error!(%error, "channel::resolve failed");
+            .map_err(|_error| {
+                tracing::error!(
+                    error_code = "channel_resolution_failed",
+                    "Channel resolution failed"
+                );
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             })?
     };

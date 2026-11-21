@@ -322,12 +322,37 @@ impl WorkflowCronSchedulerHandle {
 }
 
 /// One host-owned worker observation, shared by readiness and Prometheus.
-/// It reports task liveness only, not backlog drainage or recent progress.
+/// It reports local task availability and supervisor health, not backlog drainage or recent progress.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RuntimeWorkerSnapshot {
     pub name: &'static str,
     pub required: bool,
     pub finished: Option<bool>,
+}
+
+pub(crate) fn additional_cache_reconciliation_worker_snapshots(
+    ctx: &ServerRuntimeContext,
+) -> Vec<RuntimeWorkerSnapshot> {
+    let mut snapshots = vec![RuntimeWorkerSnapshot {
+        name: "field_definition_cache_generation",
+        required: true,
+        finished: ctx.shared_map::<
+            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    }];
+
+    #[cfg(feature = "mod-seo")]
+    snapshots.push(RuntimeWorkerSnapshot {
+        name: "seo_redirect_cache_reconciliation",
+        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+        finished: ctx.shared_map::<
+            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    });
+
+    snapshots
 }
 
 pub(crate) fn additional_runtime_worker_snapshots(
@@ -377,7 +402,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         .map(|requirement| requirement.0)
         // Before work registrations have been inspected, fail closed.
         .unwrap_or(true);
-    vec![
+    let mut snapshots = vec![
         RuntimeWorkerSnapshot {
             name: "module_work_scheduler",
             required: local && module_work_required,
@@ -397,7 +422,8 @@ pub(crate) fn additional_runtime_worker_snapshots(
         },
         RuntimeWorkerSnapshot {
             name: "event_forwarder",
-            required: local && ctx.shared_contains::<EventForwarderHandle>(),
+            required: local
+                && ctx.shared_contains::<crate::services::event_bus::SharedEventBus>(),
             finished: ctx.shared_map::<EventForwarderHandle, _>(|worker| !worker.is_running()),
         },
         RuntimeWorkerSnapshot {
@@ -544,7 +570,9 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 WorkflowCronSchedulerHandle::is_finished,
             ),
         },
-    ]
+    ];
+    snapshots.extend(additional_cache_reconciliation_worker_snapshots(ctx));
+    snapshots
 }
 
 /// Start runtime workers from framework-neutral server runtime state.
@@ -759,6 +787,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             await_runtime_worker_shutdown("Auth retention worker", Some(worker.into_task())).await;
         }
     };
+
+    // Auth sends are request-spawned, not startup-owned. Their registry retains
+    // task ownership after HTTP callers discard JoinHandles, and closes new
+    // admission while allowing a bounded grace period for accepted sends.
+    let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
@@ -1188,6 +1221,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         relay_drain,
         retention_drain,
         auth_retention_drain,
+        auth_email_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -1743,6 +1777,43 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        drop(crate::services::email::spawn_auth_email_task(
+            &ctx,
+            "host_shutdown_email",
+            move || async move {
+                started_tx.send(()).expect("signal started");
+                finish_rx.await.expect("finish email");
+                Ok(())
+            },
+        ));
+        started_rx.await.expect("task started");
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown signalled");
+        assert!(!shutdown.is_finished(), "host should await the pending email");
+
+        finish_tx.send(()).expect("release send");
+        shutdown.await.expect("shutdown finishes after email");
+    }
 
     #[tokio::test]
     async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {

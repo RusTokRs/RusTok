@@ -26,7 +26,7 @@ impl SubscriberService {
     }
 
     /// Subscribe a new email address. Creates a pending subscriber.
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, email = %input.email))]
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, subscriber_id))]
     pub async fn subscribe(
         &self,
         tenant_id: Uuid,
@@ -84,6 +84,7 @@ impl SubscriberService {
         };
 
         let result = model.insert(&self.db).await?;
+        tracing::Span::current().record("subscriber_id", tracing::field::display(result.id));
 
         Ok(SubscriberResponse {
             id: result.id,

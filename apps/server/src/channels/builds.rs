@@ -226,8 +226,11 @@ async fn handle_socket(
                                     break;
                                 }
                             }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "Failed to serialise build event");
+                            Err(_error) => {
+                                tracing::warn!(
+                                    failure_code = "build_event_serialization_failed",
+                                    "Failed to serialize build event"
+                                );
                             }
                         }
                     }

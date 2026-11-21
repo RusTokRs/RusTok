@@ -104,7 +104,7 @@ pub fn spawn_module_transition_watchdog_handle(
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_operation_reconciliation_failed",
                                 "Stale module lifecycle operation reconciliation failed"
                             );
                         }
@@ -122,11 +122,11 @@ pub fn spawn_module_transition_watchdog_handle(
                             );
                         }
                         Ok(_) => {}
-                        Err(err) => {
+                        Err(_err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_retention_reconciliation_failed",
                                 "Expired module retention hold reconciliation failed"
                             );
                         }
@@ -146,11 +146,11 @@ pub fn spawn_module_transition_watchdog_handle(
                             }
                         }
                         Ok(_) => {}
-                        Err(err) => {
+                        Err(_err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,
-                                error = %err,
+                                error_code = "module_transition_watchdog_evaluation_failed",
                                 "Transition watchdog evaluation failed"
                             );
                         }

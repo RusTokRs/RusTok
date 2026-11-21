@@ -256,7 +256,7 @@ pub struct GroupMembershipConnection {
 impl CreateGroupInput {
     pub fn validate(&self) -> Result<(), PortError> {
         normalize_group_handle(&self.handle)
-            .map_err(|msg| PortError::validation("groups.invalid_handle", msg))?;
+            .map_err(|err| PortError::validation("groups.invalid_handle", err.to_string()))?;
         normalize_locale_tag(&self.locale).ok_or_else(|| {
             PortError::validation("groups.invalid_locale", "invalid group locale")
         })?;
@@ -315,7 +315,7 @@ impl ReadGroupRequest {
         }
         if let Some(handle) = &self.handle {
             normalize_group_handle(handle)
-                .map_err(|msg| PortError::validation("groups.invalid_handle", msg))?;
+                .map_err(|err| PortError::validation("groups.invalid_handle", err.to_string()))?;
         }
         Ok(())
     }
@@ -382,7 +382,7 @@ impl SetGroupFeatureRequest {
             ));
         }
         normalize_feature_key(&self.feature_key)
-            .map_err(|msg| PortError::validation("groups.invalid_feature_key", msg))?;
+            .map_err(|err| PortError::validation("groups.invalid_feature_key", err.to_string()))?;
         let version = self.contract_version.trim();
         if version.is_empty() || version.len() > 64 {
             return Err(PortError::validation(

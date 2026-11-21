@@ -40,7 +40,10 @@ impl SnowflakeGenerator {
 
     /// Generate next 64-bit monotonically increasing sequence ID.
     pub fn next_id(&self) -> i64 {
-        let mut state = self.state.lock().expect("Snowflake mutex lock poisoned");
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut now = current_time_ms();
 
         if now < state.last_timestamp {
@@ -74,8 +77,8 @@ impl SnowflakeGenerator {
 fn current_time_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("System time before UNIX EPOCH")
-        .as_millis() as i64
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

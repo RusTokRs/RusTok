@@ -350,6 +350,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   permanent rejections acknowledge the original event in the same transaction;
   unacknowledged events remain retained through intake outages. Registration is
   durable, so disabling the worker does not release an existing retention hold.
+  Its initial legacy-receipt backfill checks the host stop signal before every
+  page and receipt and aborts startup if shutdown begins; already acknowledged
+  receipts are safe for replay during a later startup. In-flight DB operations
+  still run to completion before the next stop check.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
@@ -433,7 +437,9 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   default is fail-closed; deployments that expose an authorization server must opt in explicitly.
 - Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
   token families, so a used code remains available as the replay anchor for the delegated lineage it
-  issued while still bounding storage.
+  issued while still bounding storage. Session, invite, token, and code cleanup now share one
+  database transaction: a later deletion failure rolls back the earlier deletions, and the purge
+  counts describe only a committed sweep.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
   goes through `rustok_web::json_response`.

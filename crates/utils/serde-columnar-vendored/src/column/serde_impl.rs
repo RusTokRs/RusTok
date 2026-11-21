@@ -75,7 +75,7 @@ impl<'de> Deserialize<'de> for BoolRleColumn {
                 E: serde::de::Error,
             {
                 BoolRleColumn::decode(v).map_err(|e| {
-                    eprintln!("Column Deserialize Error: {:?}", e);
+                    // eprintln!("Column Deserialize Error: {:?}", e);
                     serde::de::Error::custom(e.to_string())
                 })
             }
@@ -100,7 +100,7 @@ impl<'de, T: DeltaRleable> Deserialize<'de> for DeltaRleColumn<T> {
                 E: serde::de::Error,
             {
                 DeltaRleColumn::decode(v).map_err(|e| {
-                    eprintln!("Column Deserialize Error: {:?}", e);
+                    // eprintln!("Column Deserialize Error: {:?}", e);
                     serde::de::Error::custom(e.to_string())
                 })
             }
@@ -125,7 +125,7 @@ impl<'de, T: DeltaOfDeltable> Deserialize<'de> for DeltaOfDeltaColumn<T> {
                 E: serde::de::Error,
             {
                 DeltaOfDeltaColumn::decode(v).map_err(|e| {
-                    eprintln!("Column Deserialize Error: {:?}", e);
+                    // eprintln!("Column Deserialize Error: {:?}", e);
                     serde::de::Error::custom(e.to_string())
                 })
             }
@@ -153,7 +153,7 @@ impl<'de, T: Rleable> Deserialize<'de> for RleColumn<T> {
                 E: serde::de::Error,
             {
                 RleColumn::decode(v).map_err(|e| {
-                    eprintln!("Column Deserialize Error: {:?}", e);
+                    // eprintln!("Column Deserialize Error: {:?}", e);
                     serde::de::Error::custom(e.to_string())
                 })
             }
@@ -200,7 +200,7 @@ where
                 E: serde::de::Error,
             {
                 GenericColumn::decode(v).map_err(|e| {
-                    eprintln!("Column Deserialize Error: {:?}", e);
+                    // eprintln!("Column Deserialize Error: {:?}", e);
                     serde::de::Error::custom(e.to_string())
                 })
             }

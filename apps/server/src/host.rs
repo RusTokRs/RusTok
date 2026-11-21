@@ -166,8 +166,8 @@ impl Drop for RuntimeShutdownOnDrop {
                     shutdown_runtime_workers(&ctx).await;
                 });
             }
-            Err(error) => tracing::error!(
-                %error,
+            Err(_error) => tracing::error!(
+                failure_code = "host_shutdown_without_runtime",
                 "Host lifecycle was cancelled outside a Tokio runtime; runtime worker shutdown could not be scheduled"
             ),
         }
@@ -494,8 +494,11 @@ async fn wait_for_shutdown_signal() {
             Ok(mut terminate) => {
                 tokio::select! {
                     result = tokio::signal::ctrl_c() => {
-                        if let Err(error) = result {
-                            tracing::warn!(error = %error, "failed to receive Ctrl-C shutdown signal");
+                        if let Err(_error) = result {
+                            tracing::warn!(
+                                failure_code = "host_ctrl_c_signal_failed",
+                                "Failed to receive Ctrl-C shutdown signal"
+                            );
                         } else {
                             tracing::info!("RusTok Axum host received Ctrl-C");
                         }
@@ -505,13 +508,16 @@ async fn wait_for_shutdown_signal() {
                     }
                 }
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::warn!(
-                    error = %error,
-                    "failed to register SIGTERM handler; falling back to Ctrl-C shutdown handling"
+                    failure_code = "host_sigterm_handler_registration_failed",
+                    "Failed to register SIGTERM handler; falling back to Ctrl-C shutdown handling"
                 );
-                if let Err(error) = tokio::signal::ctrl_c().await {
-                    tracing::warn!(error = %error, "failed to receive shutdown signal");
+                if let Err(_error) = tokio::signal::ctrl_c().await {
+                    tracing::warn!(
+                        failure_code = "host_shutdown_signal_failed",
+                        "Failed to receive shutdown signal"
+                    );
                 } else {
                     tracing::info!("RusTok Axum host received Ctrl-C");
                 }
@@ -520,8 +526,11 @@ async fn wait_for_shutdown_signal() {
     }
 
     #[cfg(not(unix))]
-    if let Err(error) = tokio::signal::ctrl_c().await {
-        tracing::warn!(error = %error, "failed to receive shutdown signal");
+    if let Err(_error) = tokio::signal::ctrl_c().await {
+        tracing::warn!(
+            failure_code = "host_shutdown_signal_failed",
+            "Failed to receive shutdown signal"
+        );
     } else {
         tracing::info!("RusTok Axum host received Ctrl-C");
     }

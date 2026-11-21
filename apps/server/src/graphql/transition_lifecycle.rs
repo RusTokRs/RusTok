@@ -96,8 +96,11 @@ impl TryFrom<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
 /// malformed value is reported as an internal consistency failure; the offending
 /// value never reaches the client or a panic hook.
 fn parse_owner_identity(value: &str, message: &str) -> Result<Uuid, FieldError> {
-    Uuid::parse_str(value).map_err(|error| {
-        tracing::error!(%error, "owner read contract carried a malformed UUID identity");
+    Uuid::parse_str(value).map_err(|_error| {
+        tracing::error!(
+            error_code = "module_transition_owner_identity_invalid",
+            "Owner read contract carried a malformed UUID identity"
+        );
         <FieldError as GraphQLError>::internal_error(message)
     })
 }
@@ -294,8 +297,11 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
             extensions.set("code", "INVALID_STATE_TRANSITION");
             extensions.set("retryable_issue", false);
         }),
-        TransitionCoordinatorError::SecurityEpochStale(error) => {
-            tracing::warn!(%error, "module transition security epoch is stale");
+        TransitionCoordinatorError::SecurityEpochStale(_error) => {
+            tracing::warn!(
+                error_code = "module_transition_security_epoch_stale",
+                "Module transition security epoch is stale"
+            );
             FieldError::new("Transition security epoch is stale; reload the current state")
                 .extend_with(|_, extensions| {
                     extensions.set("code", "SECURITY_EPOCH_STALE");

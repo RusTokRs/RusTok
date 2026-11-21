@@ -195,7 +195,7 @@ pub struct OAuthAppService;
 
 impl OAuthAppService {
     /// Registers a manual OAuth client application with generated credentials and tenant association.
-    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, name = %input.name, slug = %input.slug))]
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, slug = %input.slug, client_id))]
     pub async fn create_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -275,6 +275,8 @@ impl OAuthAppService {
                 return Err(Error::InternalServerError);
             }
         };
+
+        tracing::Span::current().record("client_id", tracing::field::display(app.client_id));
 
         Ok(CreateOAuthAppResult {
             app,
@@ -427,9 +429,9 @@ impl OAuthAppService {
             ));
         }
 
-        let expected_hash = app.client_secret_hash.clone().ok_or_else(|| {
-            Error::BadRequest("This OAuth app has no rotatable secret".to_string())
-        })?;
+        // A first-party app may start as a public PKCE client with no secret.
+        // The first rotation uses NULL as the compare-and-swap precondition.
+        let expected_hash = app.client_secret_hash.clone();
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
         let updated_at = Utc::now();
@@ -440,7 +442,7 @@ impl OAuthAppService {
             db,
             tenant_id,
             app_id,
-            &expected_hash,
+            expected_hash.as_deref(),
             &new_hash,
             updated_at.clone(),
         )
@@ -1425,9 +1427,6 @@ where
         )
         .await?;
     } else {
-        let client_secret_plain = generate_client_secret()?;
-        let client_secret_hash = auth::hash_password(&client_secret_plain)?;
-
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -1437,7 +1436,7 @@ where
             app_type: Set("first_party".to_string()),
             icon_url: Set(None),
             client_id: Set(Uuid::new_v4()),
-            client_secret_hash: Set(Some(client_secret_hash)),
+            client_secret_hash: Set(None),
             redirect_uris: Set(
                 serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?
             ),
@@ -1467,11 +1466,10 @@ where
             Error::InternalServerError
         })?;
 
-        // Log the credentials (in production, these should go to a secure channel)
         tracing::info!(
             client_id = %app.client_id,
             slug = slug,
-            "First-party OAuth app created. Client secret was generated (store securely)."
+            "First-party OAuth app created as a public PKCE client; rotate a secret to enable SSR client_credentials"
         );
     }
 
@@ -1598,7 +1596,7 @@ async fn replace_oauth_secret_if_current(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     app_id: Uuid,
-    expected_hash: &str,
+    expected_hash: Option<&str>,
     new_hash: &str,
     updated_at: chrono::DateTime<Utc>,
 ) -> Result<bool> {
@@ -1610,7 +1608,12 @@ async fn replace_oauth_secret_if_current(
         .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(updated_at))
         .filter(oauth_apps::Column::Id.eq(app_id))
         .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-        .filter(oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string())))
+        .filter(match expected_hash {
+            Some(expected_hash) => {
+                oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string()))
+            }
+            None => oauth_apps::Column::ClientSecretHash.is_null(),
+        })
         .exec(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -1787,6 +1790,29 @@ fn validate_app_configuration(
     if app_type == "service" && grant_types.iter().any(|item| item == "authorization_code") {
         return Err(Error::BadRequest(
             "Service apps cannot use authorization_code grant".to_string(),
+        ));
+    }
+
+    let supports_authorization_code = grant_types
+        .iter()
+        .any(|item| item == "authorization_code");
+    let supports_client_credentials = grant_types
+        .iter()
+        .any(|item| item == "client_credentials");
+
+    if matches!(app_type, "mobile" | "third_party") && supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps cannot use client_credentials grant".to_string(),
+        ));
+    }
+    if matches!(app_type, "mobile" | "third_party") && !supports_authorization_code {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps must use authorization_code grant".to_string(),
+        ));
+    }
+    if app_type == "service" && !supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Service apps must use client_credentials grant".to_string(),
         ));
     }
 
@@ -2341,6 +2367,63 @@ mod tests {
                 &scopes,
                 &authorization_and_refresh,
                 &[],
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn public_client_types_cannot_use_client_credentials() {
+        for app_type in ["mobile", "third_party"] {
+            let result = validate_manual_app_configuration(
+                app_type,
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            );
+            assert!(
+                result.is_err(),
+                "{app_type} apps must not receive userless client-credentials grants"
+            );
+        }
+    }
+
+    #[test]
+    fn service_apps_require_client_credentials_and_first_party_apps_can_be_hybrid() {
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &["https://service.example/callback".to_string()],
+                &["catalog:read".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            )
+            .is_err()
+        );
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &["https://shop.example/callback".to_string()],
+                &["storefront:read".to_string()],
+                &[
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                    "client_credentials".to_string(),
+                ],
+                &["storefront:read".to_string()],
+                false,
             )
             .is_ok()
         );
@@ -3266,7 +3349,7 @@ mod tests {
                 &db,
                 tenant.id,
                 created.app.id,
-                &stale_secret_hash,
+                Some(&stale_secret_hash),
                 "stale-hash",
                 Utc::now(),
             )
@@ -3863,6 +3946,14 @@ mod tests {
             .find(|app| app.slug == "next-admin")
             .expect("next-admin app");
         assert_eq!(next_admin.app_type, "first_party");
+        assert!(
+            next_admin.client_secret_hash.is_none(),
+            "manifest-created first-party apps must be usable as public PKCE clients"
+        );
+        assert!(
+            next_admin.can_rotate_secret(),
+            "operators must be able to provision the optional SSR credential"
+        );
         assert_eq!(
             next_admin.redirect_uris_list(),
             vec!["https://admin.example.com/auth/callback".to_string()]

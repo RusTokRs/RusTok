@@ -826,8 +826,7 @@ fn map_forum_error(error: crate::ForumError) -> Error {
 /// Batch counterpart to `TopicService::load_topic_tags` — single DB round-trip
 /// for `N` topics instead of `N` sequential `SELECT … WHERE topic_id = $1`.
 /// Keeps Search ingestion bounded for the tenant-wide reindex path (Finding 9.2).
-#[allow(dead_code)]
-pub(crate) async fn load_topic_tags_for_topics(
+pub async fn load_topic_tags_for_topics(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     topic_ids: &[Uuid],
@@ -845,8 +844,7 @@ pub(crate) async fn load_topic_tags_for_topics(
     .await
 }
 
-#[allow(dead_code)]
-pub(crate) async fn load_topic_tags_for_topics_with_port(
+pub async fn load_topic_tags_for_topics_with_port(
     port: &dyn ForumTaxonomyPort,
     db: &DatabaseConnection,
     tenant_id: Uuid,

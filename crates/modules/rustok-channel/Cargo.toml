@@ -22,6 +22,9 @@ required-features = ["service"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 service = ["dep:anyhow", "dep:tonic", "dep:url", "rustok-channel-ports/grpc-server"]

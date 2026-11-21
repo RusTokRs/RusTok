@@ -156,7 +156,10 @@ impl From<rustok_commerce::CommerceError> for ApiErrorResponse {
         // error variants can contain database URLs, connection details or
         // third-party provider diagnostics and must never cross HTTP.
         let message = if status.is_server_error() {
-            tracing::error!(error = %err, "Commerce request failed");
+            tracing::error!(
+                error_code = "commerce_request_failed",
+                "Commerce request failed"
+            );
             "Internal server error".to_string()
         } else if let rustok_commerce::CommerceError::Rich(rich) = &err {
             // RichError::Display contains internal context and metadata even

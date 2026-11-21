@@ -10,7 +10,7 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     CategoryFormSnapshot, ForumAdminActionButtonKind, ForumAdminBusyAction, ForumAdminBusySurface,
-    ForumAdminCategoryRenderLabels, ForumAdminCollectionState, ForumAdminFormError,
+    ForumAdminCategoryRenderLabels, ForumAdminCollectionState,
     ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminMetricSurface,
     ForumAdminQuerySurface, ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels,
     ForumAdminTopicRenderLabels, ReplyFormSnapshot, TopicFormSnapshot, category_card_view_model,
@@ -763,15 +763,12 @@ pub fn ForumAdmin() -> impl IntoView {
         };
         let draft = match form.to_draft() {
             Ok(draft) => draft,
-            Err(ForumAdminFormError::CategoryRequired) => {
+            Err(err) => {
                 set_error.set(Some(forum_admin_form_error_message(
-                    ForumAdminFormError::CategoryRequired,
+                    err,
                     &category_form_error_labels,
                 )));
                 return;
-            }
-            Err(ForumAdminFormError::TopicRequired) => {
-                unreachable!("category form cannot produce topic validation errors")
             }
         };
         let token_value = token.get_untracked();
@@ -844,15 +841,12 @@ pub fn ForumAdmin() -> impl IntoView {
         };
         let draft = match form.to_draft() {
             Ok(draft) => draft,
-            Err(ForumAdminFormError::TopicRequired) => {
+            Err(err) => {
                 set_error.set(Some(forum_admin_form_error_message(
-                    ForumAdminFormError::TopicRequired,
+                    err,
                     &topic_form_error_labels,
                 )));
                 return;
-            }
-            Err(ForumAdminFormError::CategoryRequired) => {
-                unreachable!("topic form cannot produce category validation errors")
             }
         };
         let token_value = token.get_untracked();

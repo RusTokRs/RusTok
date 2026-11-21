@@ -76,6 +76,53 @@ fn direct_user_required_error() -> TokenErrorResponse {
 const CONSENT_CSRF_TTL_SECS: i64 = 10 * 60;
 
 #[allow(clippy::too_many_arguments)]
+fn append_csrf_mac_field(payload: &mut Vec<u8>, value: &str) {
+    payload.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    payload.extend_from_slice(value.as_bytes());
+}
+
+fn append_optional_csrf_mac_field(payload: &mut Vec<u8>, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            payload.push(1);
+            append_csrf_mac_field(payload, value);
+        }
+        None => payload.push(0),
+    }
+}
+
+/// RFC 2104 HMAC-SHA256. Keeping this small primitive local avoids introducing
+/// a second crypto dependency for one fixed-size authentication use.
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+
+    const BLOCK_SIZE: usize = 64;
+    let mut normalized_key = [0_u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        let digest = Sha256::digest(key);
+        normalized_key[..digest.len()].copy_from_slice(&digest);
+    } else {
+        normalized_key[..key.len()].copy_from_slice(key);
+    }
+
+    let mut inner_pad = [0_u8; BLOCK_SIZE];
+    let mut outer_pad = [0_u8; BLOCK_SIZE];
+    for index in 0..BLOCK_SIZE {
+        inner_pad[index] = normalized_key[index] ^ 0x36;
+        outer_pad[index] = normalized_key[index] ^ 0x5c;
+    }
+
+    let mut inner = Sha256::new();
+    inner.update(inner_pad);
+    inner.update(message);
+    let inner_digest = inner.finalize();
+
+    let mut outer = Sha256::new();
+    outer.update(outer_pad);
+    outer.update(inner_digest);
+    outer.finalize().into()
+}
+
 fn consent_csrf_mac(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
@@ -87,26 +134,18 @@ fn consent_csrf_mac(
     code_challenge: &str,
     expires_at: i64,
 ) -> String {
-    use sha2::{Digest, Sha256};
+    let mut payload = Vec::new();
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v2");
+    append_csrf_mac_field(&mut payload, &tenant_id.to_string());
+    append_csrf_mac_field(&mut payload, &user_id.to_string());
+    append_csrf_mac_field(&mut payload, client_id);
+    append_csrf_mac_field(&mut payload, redirect_uri);
+    append_optional_csrf_mac_field(&mut payload, scope);
+    append_optional_csrf_mac_field(&mut payload, state);
+    append_csrf_mac_field(&mut payload, code_challenge);
+    append_csrf_mac_field(&mut payload, &expires_at.to_string());
 
-    let mut hasher = Sha256::new();
-    hasher.update(config.secret.as_bytes());
-    hasher.update([0]);
-    hasher.update(b"oauth-consent-csrf");
-    for part in [
-        tenant_id.to_string(),
-        user_id.to_string(),
-        client_id.to_string(),
-        redirect_uri.to_string(),
-        scope.unwrap_or_default().to_string(),
-        state.unwrap_or_default().to_string(),
-        code_challenge.to_string(),
-        expires_at.to_string(),
-    ] {
-        hasher.update([0]);
-        hasher.update(part.as_bytes());
-    }
-    hex::encode(hasher.finalize())
+    hex::encode(hmac_sha256(config.secret.as_bytes(), &payload))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -160,7 +199,7 @@ fn verify_consent_csrf(
     let Ok(expires_at) = expires_at.parse::<i64>() else {
         return false;
     };
-    if chrono::Utc::now().timestamp() > expires_at {
+    if chrono::Utc::now().timestamp() >= expires_at {
         return false;
     }
     let expected = consent_csrf_mac(
@@ -1007,7 +1046,11 @@ fn redirect_with_code(
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
         Err(err) => {
-            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_code");
+            tracing::error!(
+                error_code = "oauth.redirect_with_code.invalid_uri",
+                redirect_uri_length = redirect_uri.len(),
+                "Failed to parse redirect URI in redirect_with_code"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 [
@@ -1051,7 +1094,11 @@ fn redirect_with_error(
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
         Err(err) => {
-            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_error");
+            tracing::error!(
+                error_code = "oauth.redirect_with_error.invalid_uri",
+                redirect_uri_length = redirect_uri.len(),
+                "Failed to parse redirect URI in redirect_with_error"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 [
@@ -1428,6 +1475,33 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_csrf_hmac_matches_rfc_4231_sha256_vector() {
+        let key = [0x0b_u8; 20];
+        let actual = super::hmac_sha256(&key, b"Hi There");
+        assert_eq!(
+            hex::encode(actual),
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
+    }
+
+    #[test]
+    fn consent_csrf_mac_fields_are_unambiguous() {
+        let key = b"test-consent-key";
+        let mut first = Vec::new();
+        super::append_optional_csrf_mac_field(&mut first, Some("scope\0state"));
+        super::append_optional_csrf_mac_field(&mut first, None);
+
+        let mut second = Vec::new();
+        super::append_optional_csrf_mac_field(&mut second, Some("scope"));
+        super::append_optional_csrf_mac_field(&mut second, Some("state"));
+
+        assert_ne!(
+            super::hmac_sha256(key, &first),
+            super::hmac_sha256(key, &second)
+        );
+    }
 
     #[test]
     fn authorization_scope_defaults_only_when_scope_is_omitted() {

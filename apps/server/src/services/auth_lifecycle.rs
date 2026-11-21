@@ -214,7 +214,7 @@ impl AuthLifecycleService {
     /// Publish a user audit event inside the caller's transaction so
     /// the event is durably recorded exactly when the state change it
     /// describes commits (transactional outbox).
-    #[instrument(skip(db, tx))]
+    #[instrument(skip(db, tx, event))]
     pub(crate) async fn publish_user_event_in_tx(
         db: DatabaseConnection,
         tx: &DatabaseTransaction,
@@ -239,7 +239,7 @@ impl AuthLifecycleService {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.store(0, Ordering::Relaxed);
     }
 
-    #[instrument(skip(ctx, password))]
+    #[instrument(skip(ctx, password, email, name))]
     pub async fn create_user_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -263,7 +263,7 @@ impl AuthLifecycleService {
         .await
     }
 
-    #[instrument(skip(db, password))]
+    #[instrument(skip(db, password, email, name))]
     pub(crate) async fn create_user_db(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -318,7 +318,7 @@ impl AuthLifecycleService {
         })
     }
 
-    #[instrument(skip(db))]
+    #[instrument(skip(db, prepared))]
     pub(crate) async fn create_user_in_tx<C>(
         db: &C,
         tenant_id: uuid::Uuid,
@@ -395,7 +395,7 @@ impl AuthLifecycleService {
         Ok(())
     }
 
-    #[instrument(skip(ctx))]
+    #[instrument(skip(ctx, name))]
     pub async fn update_profile_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
