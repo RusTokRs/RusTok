@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const NOTIFICATION_FANOUT_WORKER_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED";
@@ -28,6 +28,11 @@ enum TenantNotificationPolicy {
     Disabled,
     Unavailable,
 }
+
+// Marker owns the entire local bootstrap window, not just the JoinHandle slot.
+// It is distinct from the published worker handle so callers cannot race
+// while dependencies are being materialized.
+struct NotificationFanoutWorkerStartupReservation;
 
 pub struct NotificationFanoutWorkerHandle {
     instance_id: u64,
@@ -86,7 +91,30 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
         .shared_get::<ModuleRegistry>()
         .ok_or_else(|| Error::Message("module registry is unavailable".to_string()))?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification fanout worker cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, NotificationFanoutWorkerStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<NotificationFanoutWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Notification fanout worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    // Another bootstrap may have committed the worker before this reservation
+    // was created by an older caller. Never overwrite an existing JoinHandle.
+    if ctx.shared_contains::<NotificationFanoutWorkerHandle>() {
+        return Ok(());
+    }
+    let stop_rx = stop.subscribe();
 
     let instance_id = NOTIFICATION_FANOUT_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let worker_id = notification_fanout_worker_id(instance_id);
@@ -105,6 +133,11 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
         page_size = worker.page_size(),
         "Starting notification fanout worker"
     );
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "notification fanout worker startup interrupted by server shutdown".to_string(),
+        ));
+    }
     ctx.shared_insert(NotificationFanoutWorkerHandle {
         instance_id,
         _handle: tokio::spawn(notification_fanout_worker_loop(
@@ -114,6 +147,7 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
 }
 
