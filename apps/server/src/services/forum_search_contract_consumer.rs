@@ -21,7 +21,7 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const ENABLE_ENV: &str = "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_IDLE_POLL_MS";
@@ -85,6 +85,9 @@ impl ForumSearchContractWorkerConfig {
         })
     }
 }
+
+// Guards broker group opening and worker publication as one local lifecycle.
+struct ForumSearchContractStartupReservation;
 
 pub struct ForumSearchContractConsumerWorkerHandle {
     instance_id: u64,
@@ -154,6 +157,24 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             "Forum Search typed invalidation consumer requires PostgreSQL".to_string(),
         ));
     }
+    // Group opening can await network I/O. Claim before the await so another
+    // request cannot open the same group and later overwrite our JoinHandle.
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search contract consumer cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ForumSearchContractStartupReservation)
+    else {
+        return Ok(());
+    };
+    if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+        return Ok(());
+    }
+    let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
+
     let group = transport
         .open_persistent_contract_consumer_group(
             FORUM_SEARCH_CONTRACT_CONSUMER_GROUP,
@@ -166,8 +187,12 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             ))
         })?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
-    let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search contract consumer startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();
 
@@ -192,6 +217,7 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
 }
 
