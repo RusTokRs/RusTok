@@ -492,7 +492,7 @@ async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
             .finish_unstarted_http_job_failed(
                 job_id,
                 Uuid::new_v4(),
-                submitted_at,
+                submitted_at.clone(),
             )
             .await
             .expect("wrong session is a no-op"),
@@ -521,7 +521,7 @@ async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
 
     assert!(
         service
-            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at)
+            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at.clone())
             .await
             .expect("exact claim may be safely closed before execution")
     );
