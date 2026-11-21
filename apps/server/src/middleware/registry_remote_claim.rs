@@ -383,12 +383,21 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RunnerRoute, runner_route};
+    use axum::{
+        body::to_bytes,
+        http::StatusCode,
+    };
+    use rustok_modules::ModuleGovernanceError;
+
+    use super::{
+        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RunnerRoute, claim_error_response,
+        runner_route,
+    };
 
     #[tokio::test]
     async fn invalid_claim_stage_is_a_redacted_bad_request() {
         let untrusted_stage = "unsupported-stage-".repeat(256);
-        let response = super::claim_error_response(
+        let response = claim_error_response(
             ModuleGovernanceError::InvalidRemoteValidationClaimStage(untrusted_stage.clone()),
         );
 
@@ -400,7 +409,7 @@ mod tests {
             serde_json::from_slice(&body).expect("claim error response should be valid JSON");
         assert_eq!(payload["error"], "module_governance_invalid_input");
         assert_eq!(payload["message"], "Runner claim request is invalid");
-        assert!(!payload["message"].as_str().unwrap().contains(&untrusted_stage));
+        assert_ne!(payload["message"].as_str(), Some(untrusted_stage.as_str()));
     }
 
     #[tokio::test]
