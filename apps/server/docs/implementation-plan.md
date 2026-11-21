@@ -1,5 +1,56 @@
 # Server App — Implementation Plan
 
+## OAuth replay revocation transaction fences (2026-11-21)
+
+Branch: `agent/server-oauth-reuse-revocation-fencing-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. This is a
+standalone `apps/server` OAuth token-service continuation and intentionally
+does not depend on pending app mutation and rotation PRs.
+
+### Confirmed interleaving defects
+
+- The OAuth refresh-token reuse detector previously read a revoked token and
+  calculated its grace age without holding the app-row mutation fence. Its
+  family-wide update then ran without a transaction. A concurrent refresh
+  operation could issue a replacement after the replay detector had already
+  marked the then-current family revoked, leaving a live descendant from a
+  lineage the server considered compromised.
+- A used OAuth authorization code observed by the preflight path similarly
+  revoked its issued access/refresh token lineage using a standalone update
+  instead of an app-locked transaction. A concurrent code/refresh exchange
+  could therefore pass the same unprotected window before the replay result.
+
+### Remediation and coverage
+
+- The refresh reuse detector first looks up an exact revoked, client/tenant
+  scoped token without locking the app, avoiding a database write-fence per
+  unknown token. A positive candidate opens a transaction, takes the canonical
+  tenant/app mutation lock (including for inactive apps), and **re-reads** the
+  candidate with all scoped predicates inside the transaction. The replay-age
+  decision and family update are based solely on this authoritative read;
+  the transaction commits before the protocol returns `invalid_grant`. Grace
+  and missing-record no-op paths explicitly roll back to release SQLite's
+  reserved writer. Persistence and commit failures return `server_error`.
+- The authorization-code replay wrapper now starts a transaction, reserves the
+  same app-row fence used by code exchange and refresh rotation, revokes the
+  code-bound lineage via the existing shared in-transaction service, and
+  commits the security effect. The CAS-miss path that already held the app
+  lock is unchanged, avoiding a nested transaction.
+- Existing SQLite refresh-reuse failure/retry and code-family scope tests now
+  persist an OAuth app and tenant, exercising the actual row-lock path rather
+  than a token table in isolation. The code replay test checks revocation when
+  the app is already inactive, injects a database update failure and verifies
+  that the failure surfaces and does not mutate tokens, then retries and
+  verifies the scoped successful revocation.
+
+**Verification outstanding:** No tests, compilation, formatting, lint, or
+multi-replica PostgreSQL interleaving tests were run (maintainer runs tests).
+Run the targeted `services::oauth_token_service::tests`, crate-level check,
+and deployment concurrency tests before integration. This still does not
+provide recoverable refresh-token response replay after a lost successful
+response, nor distributed exclusivity for unrelated writers outside the
+canonical app mutation lock.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
