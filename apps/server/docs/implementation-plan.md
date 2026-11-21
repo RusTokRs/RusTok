@@ -20,8 +20,12 @@ block all later installation attempts.
   releases the process-local slot when claim creation fails or the task exits.
 - Durable unique-constraint losers still return HTTP 409; other database errors
   return redacted HTTP 500; a stopping host rejects new apply requests with 503.
+- If shutdown is observed after the job claim commits but before executor
+  entry, its background owner marks the still-unstarted job `failed` with the
+  existing redacted error mapping, rather than launching new side effects.
 - Regression tests cover early receiver cancellation, claim failure cleanup,
-  and stop-signal admission refusal.
+  shutdown after a durable claim but before execution, and stop-signal admission
+  refusal.
 - **No compilation, formatting, unit/integration tests, or migrations were run**;
   the maintainer will verify them. Check request disconnects during claim
   persistence, concurrent replica requests, and shutdown during apply.
