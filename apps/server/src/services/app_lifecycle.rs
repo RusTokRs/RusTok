@@ -750,6 +750,20 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _bootstrap_guard = bootstrap_initialization.lock().await;
 
+    // Router bootstrap holds the lock above, but this public startup function
+    // can also be invoked directly. It uses the artifact maintenance lock
+    // across *all* additional worker registration. Wait for that caller to
+    // finish before the shutdown snapshot, or a late worker could publish its
+    // handle after the drain already took the old value.
+    //
+    // Lock order matches router bootstrap: bootstrap -> runtime workers.
+    // Release the workers lock before join! (the artifact worker's own drain
+    // acquires it again). New callers see the stop flag after acquiring it
+    // and do not start more workers.
+    let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
+    let _worker_initialization_guard = worker_initialization.0.lock().await;
+    drop(_worker_initialization_guard);
+
     let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
@@ -1842,6 +1856,60 @@ mod tests {
             .expect("shutdown should continue after bootstrap releases its lock")
             .expect("shutdown completion signal");
         shutdown.await.expect("shutdown task joins");
+    }
+
+    #[tokio::test]
+    async fn shutdown_drains_handles_published_by_an_in_flight_direct_worker_initializer() {
+        // Direct calls to connect_runtime_workers_with_runtime use this lock
+        // without taking the router bootstrap lock. Simulate one such caller
+        // that already passed its stop check but has not yet published a handle.
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = super::ModuleArtifactMaintenanceInitializationLock::ensure(&ctx);
+        let guard = initialization.0.lock().await;
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown must broadcast the stop signal");
+
+        assert!(
+            !shutdown.is_finished(),
+            "shutdown cannot snapshot handles until direct startup releases its lock"
+        );
+
+        // The old implementation could take its snapshot here, then lose this
+        // newly registered handle forever. Use a trivially stoppable task so
+        // the test does not spend the full five-second forced-abort deadline.
+        let (task_finished_tx, task_finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _ = task_finished_tx.send(());
+        });
+        ctx.shared_insert(super::AuthRetentionWorkerHandle {
+            instance_id: 1,
+            _handle: task,
+        });
+        drop(guard);
+
+        tokio::time::timeout(Duration::from_secs(5), shutdown)
+            .await
+            .expect("shutdown should drain after initializer exits")
+            .expect("shutdown task should complete");
+        task_finished_rx.await.expect("late task should have run");
+        assert!(
+            !ctx.shared_contains::<super::AuthRetentionWorkerHandle>(),
+            "late-registered handle must be removed and joined by the drain"
+        );
     }
 
     #[tokio::test]

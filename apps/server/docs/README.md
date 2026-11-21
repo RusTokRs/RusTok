@@ -338,6 +338,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   later retry; already stopping hosts do not admit new recovery workers.
   These are **process-local** startup fences, not cross-replica singleton
   leases or a replacement for owner-level idempotency and durable recovery.
+  Concurrent module-dispatcher callers now distinguish a **published, live**
+  dispatcher plus its required-listener flag from an in-flight initialization.
+  Contention before publication returns an explicit error to the bootstrap
+  caller rather than a false successful start, and an unexpectedly finished
+  dispatcher is not reported as healthy. Dispatcher and dependent paid-order
+  label, marketplace-financial and payment-event startup claims are managed
+  by cancellation/unwind-safe RAII guards. A failed or panicking preparation
+  releases its claim for retry; a published handle retains ownership for
+  the process lifetime. This is not automatic restart after a worker exits.
 - Event runtime construction completes fallible transport, projector, and relay
   configuration work before it adds tenant-generation or Redis-status listener
   tasks. The RBAC invalidation listener may already be started by early server
@@ -347,6 +356,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+  `connect_runtime_workers_with_runtime` can also be called directly, without
+  this router-bootstrap mutex. Its separate artifact/runtime-worker startup
+  mutex now fences shutdown's handle snapshot too: shutdown waits for the
+  direct initializer to finish before taking any worker handle. The mutex is
+  released *before* concurrent task drains, preventing a lock cycle with
+  artifact maintenance's own shutdown drain. New startup calls recheck the
+  signaled stop channel after acquiring the mutex and cannot admit more work.
+  The barrier prevents a live but detached late `JoinHandle`; it does not
+  provide a process-crash shutdown guarantee.
 - Once started, the opt-in Product Index, Social Graph Index, and Forum Search
   contract consumers are required readiness workers. Their durable broker
   offsets remain uncommitted on terminal delivery failure; the readiness probe
