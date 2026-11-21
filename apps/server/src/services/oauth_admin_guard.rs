@@ -38,6 +38,14 @@ where
     AuthAdminMutationError::Internal("OAuth administration guard operation failed".to_string())
 }
 
+/// A secret prepared without holding a database transaction. Keep it private
+/// and never derive Debug: the plaintext must not enter diagnostics.
+struct PreparedOAuthSecretRotation {
+    client_secret: String,
+    secret_hash: String,
+    prior_secret_hash: Option<String>,
+}
+
 pub struct GuardedOAuthAdminProvider {
     db: DatabaseConnection,
     inner: Arc<dyn OAuthAdminPort>,
@@ -94,14 +102,21 @@ impl GuardedOAuthAdminProvider {
         Ok(())
     }
 
-    async fn rotate_secret_transactionally(
+    /// Preflight is intentionally lock-free: generating and Argon2-hashing a
+    /// new client secret is expensive and must never hold an app mutation lock.
+    /// The commit phase repeats all security checks against the locked row.
+    async fn prepare_oauth_secret_rotation(
         &self,
-        context: &AuthAdminMutationContext,
+        tenant_id: Uuid,
         app_id: Uuid,
         authority: &[Permission],
-    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
-        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
+    ) -> Result<PreparedOAuthSecretRotation, AuthAdminMutationError> {
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(internal_oauth_guard_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         self.validate_permission_strings(authority, &app.granted_permissions_list())?;
         if !app.can_rotate_secret() {
             return Err(AuthAdminMutationError::Validation(
@@ -115,8 +130,39 @@ impl GuardedOAuthAdminProvider {
         let secret_hash = crate::auth::hash_password_async(client_secret.clone())
             .await
             .map_err(internal_oauth_guard_error)?;
+        Ok(PreparedOAuthSecretRotation {
+            client_secret,
+            secret_hash,
+            prior_secret_hash: app.client_secret_hash,
+        })
+    }
+
+    async fn commit_prepared_oauth_secret_rotation(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        authority: &[Permission],
+        prepared: PreparedOAuthSecretRotation,
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
+        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
+        self.validate_permission_strings(authority, &app.granted_permissions_list())?;
+        if !app.can_rotate_secret() {
+            return Err(AuthAdminMutationError::Validation(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
+        }
+        // If a second rotation committed while Argon2 was running, return a
+        // retryable conflict instead of returning a secret that has already
+        // been superseded by the other successful request.
+        if app.client_secret_hash != prepared.prior_secret_hash {
+            return Err(AuthAdminMutationError::Validation(
+                "OAuth client secret changed during rotation; retry".to_string(),
+            ));
+        }
+
         let mut active: oauth_apps::ActiveModel = app.into();
-        active.client_secret_hash = Set(Some(secret_hash));
+        active.client_secret_hash = Set(Some(prepared.secret_hash));
         active.updated_at = Set(Utc::now().into());
         let updated_app = active
             .update(&tx)
@@ -127,8 +173,21 @@ impl GuardedOAuthAdminProvider {
 
         Ok(OAuthAppSecretResult {
             app: response_record,
-            client_secret,
+            client_secret: prepared.client_secret,
         })
+    }
+
+    async fn rotate_secret_transactionally(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        authority: &[Permission],
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let prepared = self
+            .prepare_oauth_secret_rotation(context.tenant_id, app_id, authority)
+            .await?;
+        self.commit_prepared_oauth_secret_rotation(context, app_id, authority, prepared)
+            .await
     }
 }
 
