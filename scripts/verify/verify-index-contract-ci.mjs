@@ -98,15 +98,23 @@ requireInJob('focused-cargo', [
   'name: Run Outbox transport storage regressions\n        if: ${{ !cancelled() }}',
   `${runCheck} cargo test --locked -p rustok-outbox --test sqlite_transport_regression_test`,
   'name: Check selected Product distribution bridge\n        id: product_distribution\n        if: ${{ !cancelled() }}',
-  'name: Check Product refresh host consumer composition\n        id: product_server\n        if: ${{ !cancelled() }}',
   'name: Verify canonical event contract test\n        if: ${{ !cancelled() }}',
+]);
+const serverCheck = `${runCheck} cargo check --locked -p rustok-server --no-default-features --features mod-product`;
+requireInJob('product-host', [
+  'RUSTUP_TOOLCHAIN: "1.97.1"',
+  'name: Check Product refresh host consumer composition\n        id: product_server',
+  `${serverCheck} --lib`,
+  `${serverCheck} --test product_index_refresh_redelivery_postgres_iggy`,
+  "!cancelled() && steps.product_server.outcome == 'success'",
+  `${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib`,
 ]);
 for (const [path, fixture] of [
   ['services/app_router.rs', 'index_native_json_routes_enforce_request_scope_without_embedded_admin'],
   ['services/app_router.rs', 'index_standalone_relay_preserves_scope_and_exact_recovery_kind'],
   ['graphql/index_replay.rs', 'index_admin_csr_commands_validate_against_the_operator_schema'],
 ]) {
-  requireInJob('focused-cargo', [`cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
+  requireInJob('product-host', [`${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
   if (!read(`apps/server/src/${path}`).includes(`async fn ${fixture}()`)) fail(`${fixture} is not a server test`);
 }
 const installWasmTarget = 'rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown';

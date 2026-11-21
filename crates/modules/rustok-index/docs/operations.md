@@ -121,12 +121,13 @@ owner contracts and are not established by Index tests.
 ## Maintainer validation
 
 [Index Contract CI](../../../../.github/workflows/index-contract-ci.yml) provides an isolated
-PostgreSQL 16 service for tests. Its focused Cargo job (including the non-embedded operator
-fixtures) and standalone SSR profile use Rust 1.97.1: both host graphs reach the locked Rig
-dependencies, with the server doing so through migration composition even without default features.
-The focused job also tests Outbox replay and transactional transport delegation on SQLite. The
-canonical digest job and the hydrate and CSR profiles use Rust 1.96. Hydrate and CSR compile the
-Index admin crate separately and reject Leptos SSR features in the browser host graph.
+PostgreSQL 16 service for the focused Cargo tests, which also cover Outbox replay and transactional
+transport delegation on SQLite. Product host composition and non-embedded Index operator tests run
+in a separate required job, in parallel with the PostgreSQL tests. The native Cargo jobs and
+standalone SSR use Rust 1.97.1: the host graphs reach the locked Rig dependencies, with the server
+doing so through migration composition even without default features. The canonical digest job
+and the hydrate and CSR profiles use Rust 1.96. Hydrate and CSR compile the Index admin crate
+separately and reject Leptos SSR features in the browser host graph.
 Matching pushes to `main`, `agent/**` and `arena/**` trigger the same checks as a manual dispatch.
 For failed Cargo checks or event digest comparisons, see the `Index CI diagnostics` annotation
 and the full job log. These checks do not replace retained deployment evidence or an authenticated

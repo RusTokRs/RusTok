@@ -24,8 +24,11 @@ if [[ "$1" == cargo ]]; then
   detail=$(awk '
     /^test .* \.\.\. FAILED$/ && ++failed_tests <= 32 { print substr($0, 1, 240); next }
     /^test result: FAILED\./ { print substr($0, 1, 240); next }
+    /^error: could not compile / && blocks > 0 { remaining = 0; next }
     /^error(\[|:)/ || /^---- .* stdout ----$/ {
-      remaining = ++blocks <= 3 ? 8 : 0
+      # Include context for the first failures, then headlines and locations.
+      ++blocks
+      remaining = blocks <= 3 ? 8 : blocks <= 15 ? 2 : 0
     }
     remaining > 0 { print substr($0, 1, 400); --remaining }
   ' "$log")
