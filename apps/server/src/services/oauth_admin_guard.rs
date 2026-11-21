@@ -369,7 +369,7 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret".to_string()),
+            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 

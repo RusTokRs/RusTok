@@ -9,7 +9,7 @@ use crate::error::{AuthError, Result};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
-const MIN_HS256_SECRET_BYTES: usize = 32;
+pub(crate) const MIN_HS256_SECRET_BYTES: usize = 32;
 const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
 const MAX_ACCESS_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;
 const MIN_REFRESH_EXPIRATION_SECS: u64 = 60 * 5;

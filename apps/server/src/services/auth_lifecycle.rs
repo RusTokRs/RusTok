@@ -1539,7 +1539,9 @@ mod tests {
         access_expiration: u64,
         refresh_expiration: u64,
     ) -> AuthConfig {
-        AuthConfig::new(secret.to_string())
+        // Token keys fail closed below 32 bytes; pad the per-test label so
+        // each test keeps a distinct secret without repeating a full key.
+        AuthConfig::new(format!("{secret}:test-only-secret-padding-for-length"))
             .with_expiration(access_expiration, refresh_expiration)
             .with_issuer("rustok-test")
             .with_audience("rustok-test")
@@ -2196,7 +2198,7 @@ mod tests {
             db.clone(),
             crate::common::settings::RustokSettings::default(),
         );
-        let config = AuthConfig::new("register-atomic-secret".to_string())
+        let config = AuthConfig::new("register-atomic-secret-key-for-tests!".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
         let result = AuthLifecycleService::register_runtime(
@@ -2240,7 +2242,7 @@ mod tests {
             .await
             .expect("failed to create user");
 
-        let config = AuthConfig::new("login-atomic-secret".to_string())
+        let config = AuthConfig::new("login-atomic-secret-key-for-tests-32b!".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
         let result = AuthLifecycleService::login_with_config(
