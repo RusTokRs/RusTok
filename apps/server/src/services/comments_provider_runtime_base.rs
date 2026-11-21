@@ -32,7 +32,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::event_bus::transactional_event_bus_from_context;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";
 pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";
@@ -302,20 +302,57 @@ pub async fn start_comments_tcp_listener_if_enabled(
         ));
     }
 
-    if !runtime_ctx.shared_insert_if_absent(CommentsTcpListenerLifecycleReservation) {
+    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_tcp_listener_start_not_stopping(&stop_handle)?;
+    if existing_comments_tcp_listener(runtime_ctx)? {
         return Ok(());
     }
 
-    let result = start_comments_tcp_listener(runtime_ctx, config).await;
-    if result.is_err() {
-        let _ = runtime_ctx.shared_take::<CommentsTcpListenerLifecycleReservation>();
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        runtime_ctx,
+        CommentsTcpListenerLifecycleReservation,
+    ) else {
+        if existing_comments_tcp_listener(runtime_ctx)? {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Comments TCP listener startup is already in progress; retry".to_string(),
+        ));
+    };
+
+    if existing_comments_tcp_listener(runtime_ctx)? {
+        return Ok(());
     }
-    result
+
+    start_comments_tcp_listener(runtime_ctx, config, &stop_handle).await?;
+    reservation.commit();
+    Ok(())
+}
+
+fn existing_comments_tcp_listener(runtime_ctx: &ServerRuntimeContext) -> Result<bool> {
+    match runtime_ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.task.is_finished()) {
+        Some(false) => Ok(true),
+        Some(true) => Err(Error::Message(
+            "Comments TCP listener task has exited; automatic restart is not configured"
+                .to_string(),
+        )),
+        None => Ok(false),
+    }
+}
+
+fn ensure_comments_tcp_listener_start_not_stopping(stop_handle: &StopHandle) -> Result<()> {
+    if stop_handle.is_stopping() {
+        return Err(Error::Message(
+            "Comments TCP listener startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 async fn start_comments_tcp_listener(
     runtime_ctx: &ServerRuntimeContext,
     config: CommentsTcpListenerConfig,
+    stop_handle: &StopHandle,
 ) -> Result<()> {
     let extensions = runtime_ctx.shared_get::<Arc<ModuleRuntimeExtensions>>();
     let authority = runtime_ctx
@@ -381,7 +418,7 @@ async fn start_comments_tcp_listener(
         ))
     })?;
 
-    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_tcp_listener_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
     let shutdown_timeout = comments_tcp_listener_shutdown_timeout(config.shutdown_grace);
     let instance_id = COMMENTS_TCP_LISTENER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
@@ -866,7 +903,10 @@ mod tests {
         assert!(parse_positive_usize_value("limit", "0").is_err());
         assert!(parse_positive_u64_value("timeout", "0").is_err());
         assert_eq!(validate_max_connections(1), Ok(1));
-        assert_eq!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS), Ok(4_096));
+        assert_eq!(
+            validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS),
+            Ok(MAX_COMMENTS_TCP_MAX_CONNECTIONS)
+        );
         assert!(validate_max_connections(0).is_err());
         assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
         assert_eq!(validate_pre_request_timeout_ms(1), Ok(1));
@@ -908,6 +948,32 @@ mod tests {
         );
         assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_listener_start_rejects_a_signaled_shutdown() {
+        let (stop, _receiver) = StopHandle::new();
+        stop.stop().await;
+        assert!(ensure_comments_tcp_listener_start_not_stopping(&stop).is_err());
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_listener_does_not_report_a_finished_task_as_live() {
+        use crate::common::settings::RustokSettings;
+
+        let runtime_ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        runtime_ctx.shared_insert(CommentsTcpListenerTask {
+            task,
+            shutdown_timeout: Duration::from_secs(1),
+        });
+        assert!(existing_comments_tcp_listener(&runtime_ctx).is_err());
     }
 
     #[tokio::test]

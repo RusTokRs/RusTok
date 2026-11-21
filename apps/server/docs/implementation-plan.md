@@ -2315,3 +2315,37 @@ a CPU and logging hot loop for conditions such as descriptor exhaustion.
 
 Not run at the user's request. Verify with cargo fmt --all -- --check and
 cargo check -p rustok-server --lib before merge.
+
+
+## P32 — Make Comments worker startup cancellation-safe and truthful (2026-11-21)
+
+A lifecycle pass found two opt-in Comments workers that did not follow the
+server's shared startup-reservation contract. The TCP listener manually removed
+its marker only after a returned error, so cancellation while awaiting bind
+could strand the marker permanently. Both the listener and source-retry handoff
+worker returned `Ok(())` to a competing starter while the first startup was
+still in progress. They also admitted a task after shutdown had already been
+signalled, and an already-finished task handle was treated as an idempotently
+running worker.
+
+- Replaced manual marker cleanup with `ServerRuntimeStartReservation`; failed
+  or cancelled preparation releases only its own claim, while successful
+  publication retains the process-local owner marker.
+- Concurrent callers now return an explicit retryable startup-in-progress
+  error unless a live handle has already been published.
+- Both workers reject startup after the shared stop signal and recheck it
+  immediately before spawning.
+- A finished published task is reported as exited, not as a successful
+  running worker; automatic restart remains intentionally unsupported and
+  readiness continues to report the failed required worker.
+- Corrected the Comments TCP max-connections regression assertion: the bound
+  is 128, not the unrelated value 4096.
+- Added focused lifecycle regressions for shutdown admission and finished
+  task handles. Existing `ServerRuntimeStartReservation` tests cover
+  cancellation cleanup and single-owner contention.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and the focused
+`comments_provider_runtime_base::tests` and
+`comments_provider_runtime_keyring_schedule_audit_handoff_worker::source_retry::source_retry_worker_tests`
+suites.
