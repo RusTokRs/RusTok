@@ -143,7 +143,6 @@ async fn notification_fanout_worker_loop(
                     worker_id = worker.worker_id(),
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification fanout worker failed to select source inbox records"
                 );
                 Vec::new()
@@ -182,7 +181,6 @@ async fn notification_fanout_worker_loop(
                     inbox_id = %work.inbox_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification source materialization returned a durable service error"
                 ),
             }
@@ -195,7 +193,6 @@ async fn notification_fanout_worker_loop(
                     worker_id = worker.worker_id(),
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification fanout worker failed to select fanout jobs"
                 );
                 Vec::new()
@@ -234,7 +231,6 @@ async fn notification_fanout_worker_loop(
                     job_id = %work.job_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification fanout page returned a durable service error"
                 ),
             }
@@ -334,7 +330,6 @@ async fn defer_source_work(
             tenant_id = %work.tenant_id,
             inbox_id = %work.inbox_id,
             error_code = error.stable_code(),
-            error = %error,
             "Notification source tenant-policy deferral failed"
         ),
     }
@@ -364,7 +359,6 @@ async fn defer_job_work(
             tenant_id = %work.tenant_id,
             job_id = %work.job_id,
             error_code = error.stable_code(),
-            error = %error,
             "Notification job tenant-policy deferral failed"
         ),
     }
@@ -392,11 +386,11 @@ async fn tenant_notification_policy(
             );
             TenantNotificationPolicy::Disabled
         }
-        Err(error) => {
+        Err(_error) => {
             tracing::warn!(
                 tenant_id = %tenant_id,
                 module_slug = NOTIFICATIONS_MODULE_SLUG,
-                error = %error,
+                error_code = "notification_tenant_policy_lookup_failed",
                 "Notification fanout policy lookup failed closed"
             );
             TenantNotificationPolicy::Unavailable
@@ -422,7 +416,6 @@ fn fanout_worker_enabled_from_environment() -> bool {
         Err(error) => {
             tracing::warn!(
                 variable = NOTIFICATION_FANOUT_WORKER_ENABLED_ENV,
-                error = %error,
                 "Notification fanout worker flag is unreadable; keeping worker disabled"
             );
             false

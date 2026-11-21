@@ -122,11 +122,11 @@ async fn sweep_tenants(
         }
         let items = match next_recovery_tenant_batch(tenants, after_tenant_id).await {
             Ok(result) => result,
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
                     worker = "payment_provider_event_recovery",
                     instance_id,
-                    error = %error,
+                    error_code = "payment_provider_event_tenant_batch_failed",
                     "Failed to list tenants for payment provider event recovery"
                 );
                 return;
@@ -174,13 +174,13 @@ async fn sweep_tenants(
                     );
                 }
                 Ok(_) => {}
-                Err(error) => {
+                Err(_error) => {
                     tracing::error!(
                         worker = "payment_provider_event_recovery",
                         instance_id,
                         tenant_id = %tenant.id,
                         tenant_active = tenant.is_active,
-                        error = %error,
+                        error_code = "payment_provider_event_tenant_sweep_failed",
                         "Payment provider event recovery sweep failed"
                     );
                 }
