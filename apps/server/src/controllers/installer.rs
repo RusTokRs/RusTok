@@ -324,6 +324,68 @@ async fn finish_http_job_failed_with_retry(
     }))
 }
 
+/// On a failed INSERT acknowledgement, the host has not entered any installer
+/// side effects. A previously committed `running` row may still exist, so
+/// settle only this exact HTTP submission before releasing the local slot.
+/// A missing row is safe; a different identity or terminal state is not.
+async fn settle_unstarted_http_job_after_creation_failure(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+    submitted_at: DateTime<Utc>,
+) -> std::result::Result<(), sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+        let transition = persistence
+            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at.clone())
+            .await;
+        if matches!(transition, Ok(true)) {
+            return Ok(());
+        }
+
+        match persistence.get_http_job(job_id).await {
+            Ok(None) => return Ok(()),
+            Ok(Some(job))
+                if job.session_id == Some(job_id)
+                    && job.submitted_at.timestamp_micros() == submitted_at.timestamp_micros() =>
+            {
+                match job.status.as_str() {
+                    "failed" => return Ok(()),
+                    "running" => {
+                        last_error = Some(transition.err().unwrap_or_else(|| {
+                            sea_orm::DbErr::Custom(
+                                "unstarted installer HTTP job failed its conditional cleanup"
+                                    .to_string(),
+                            )
+                        }));
+                    }
+                    _ => {
+                        return Err(sea_orm::DbErr::Custom(
+                            "unstarted installer HTTP job has an unexpected terminal state"
+                                .to_string(),
+                        ));
+                    }
+                }
+            }
+            Ok(Some(_)) => {
+                return Err(sea_orm::DbErr::Custom(
+                    "unstarted installer HTTP job identity changed before cleanup".to_string(),
+                ));
+            }
+            Err(error) => last_error = Some(error),
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "unstarted installer HTTP job cleanup exhausted its retry budget".to_string(),
+        )
+    }))
+}
+
 /// The request may be cancelled after admission. The runtime JoinSet owns the
 /// claim-to-execution task and the shutdown drain joins it before the event
 /// forwarder is stopped.
@@ -350,12 +412,26 @@ where
     let task = async move {
         let _guard = guard;
         let task_result = AssertUnwindSafe(async move {
-            let creation = create_http_job_with_retry(&persistence, job_id, submitted_at)
+            let creation = create_http_job_with_retry(&persistence, job_id, submitted_at.clone())
                 .await
                 .map(|_| ());
             let created = creation.is_ok();
             let _ = ready_tx.send(creation);
             if !created {
+                // No executor work has begun. Reconcile any INSERT whose
+                // acknowledgement was lost before dropping local admission.
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence,
+                    job_id,
+                    submitted_at,
+                )
+                .await
+                {
+                    tracing::error!(
+                        %job_id,
+                        "Unstarted installer HTTP job may need operator reconciliation after claim failure"
+                    );
+                }
                 return;
             }
 
