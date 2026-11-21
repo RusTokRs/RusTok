@@ -345,15 +345,21 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
-- Notification candidate, fanout and Outbox intake worker startup now have
-  distinct, process-local atomic lifecycle claims in `ServerRuntimeContext`.
-  A second starter cannot spawn a duplicate worker while the first is still
-  resolving dependencies or registering/backfilling durable Outbox receipts.
-  The claim is released on error or cancellation of startup, allowing a later
-  retry; after successful handle publication it persists for that runtime
-  lifetime. Candidate/fanout also reject starts during cooperative host stop.
-  This does not implement distributed leases; durable queue claim/receipt
-  semantics remain owned by the notification/Outbox workers.
+- Notification candidate, fanout, Outbox intake, Forum Search inbox,
+  Forum Search contract, Product Index refresh and Social Graph Index worker
+  startup have distinct process-local atomic lifecycle claims in
+  `ServerRuntimeContext`. A second caller cannot spawn a duplicate worker,
+  overwrite the only shutdown `JoinHandle`, open a duplicate Iggy consumer
+  group, or run concurrent Outbox registration/backfill while the first
+  startup is still in progress. A contending starter sees a retryable
+  startup-in-progress error, never a false `Ok` while no worker exists yet;
+  a caller that observes the already-published worker handle succeeds
+  idempotently. Claims are released on preparation error and async cancellation,
+  and retained after successful handle publication. All seven starters check
+  the shared stop signal before publishing a worker. This is an
+  in-process guarantee, not distributed leader election; durable queue
+  ownership/receipt correctness remains with the Outbox, Search, Index,
+  and Notifications domain workers.
 - Notification intake registers its supported event types in the Outbox-owned
   consumer ledger before runtime retention starts. Accepted receipts and
   permanent rejections acknowledge the original event in the same transaction;
