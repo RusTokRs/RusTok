@@ -904,6 +904,34 @@ fn validate_authorization_scopes(
     Ok(requested_scopes)
 }
 
+/// A stale OAuth authorization preflight is a protocol rejection, not an
+/// internal server outage. Keep DB/persistence failures distinguishable and
+/// never return raw database details to the client.
+fn map_code_issuance_error(error: crate::error::Error) -> TokenErrorResponse {
+    let (code, description) = match error {
+        crate::error::Error::NotFound => (
+            "invalid_client",
+            "OAuth client is unavailable; restart the authorization flow",
+        ),
+        crate::error::Error::BadRequest(_) => (
+            "invalid_request",
+            "OAuth client policy changed; restart the authorization flow",
+        ),
+        crate::error::Error::Unauthorized(_) => (
+            "access_denied",
+            "OAuth subject or consent is no longer authorized",
+        ),
+        other => {
+            tracing::error!(error = %other, "Failed to issue OAuth authorization code");
+            ("server_error", "Failed to generate authorization code")
+        }
+    };
+    TokenErrorResponse {
+        error: code.to_string(),
+        error_description: description.to_string(),
+    }
+}
+
 async fn issue_authorization_code(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
@@ -920,10 +948,7 @@ async fn issue_authorization_code(
         validated.code_challenge.clone(),
     )
     .await
-    .map_err(|_| TokenErrorResponse {
-        error: "server_error".to_string(),
-        error_description: "Failed to generate authorization code".to_string(),
-    })
+    .map_err(map_code_issuance_error)
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
@@ -1916,6 +1941,34 @@ mod tests {
                 .expect("OAuth response");
             assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
             assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
+        }
+    }
+
+    #[test]
+    fn oauth_code_issuance_maps_stale_security_decisions_without_leaking_details() {
+        let cases = [
+            (crate::error::Error::NotFound, "invalid_client", StatusCode::UNAUTHORIZED),
+            (
+                crate::error::Error::BadRequest("secret internal reason".to_string()),
+                "invalid_request",
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                crate::error::Error::Unauthorized("secret internal reason".to_string()),
+                "access_denied",
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                crate::error::Error::InternalServerError,
+                "server_error",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ];
+        for (error, expected_code, expected_status) in cases {
+            let protocol = map_code_issuance_error(error);
+            assert_eq!(protocol.error, expected_code);
+            assert!(!protocol.error_description.contains("secret internal reason"));
+            assert_eq!(oauth_error_response(protocol).status(), expected_status);
         }
     }
 
