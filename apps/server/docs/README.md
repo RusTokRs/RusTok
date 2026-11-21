@@ -470,6 +470,16 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   persisting the access row. App, consent, password, and user-status revocation also
   invalidate outstanding authorization codes, preventing pending credentials from
   surviving a later reactivation.
+  OAuth refresh-token **reuse** handling performs an advisory preflight lookup
+  without locking the app for random unknown tokens, then locks the tenant-scoped
+  app and re-reads the revoked token under that lock before any live-family
+  revocation. The checked replay timestamp and family update share a transaction
+  and use the same app-first mutation fence as refresh issuance; failures propagate
+  instead of reporting a successful revocation. No-op/grace checks explicitly
+  release the transaction. An already-used authorization code similarly revokes
+  its scoped access/refresh lineage in an app-locked transaction and commits
+  before returning `invalid_grant`. These guarantees depend on cooperating
+  writers using the canonical app-row lock, not on distributed process leases.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
