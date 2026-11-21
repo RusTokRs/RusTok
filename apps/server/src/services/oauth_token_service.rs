@@ -2298,9 +2298,36 @@ mod tests {
             created_at: now.into(),
         };
 
+        // A persistence error must be observable: replay revocation must not
+        // silently report a security effect that the database did not commit.
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_code_replay_revocation BEFORE UPDATE ON oauth_tokens
+             BEGIN SELECT RAISE(FAIL, 'simulated code replay persistence failure'); END;",
+        )
+        .await
+        .expect("create revocation fault injection");
+        let error = super::revoke_authorization_code_family(&db, &code)
+            .await
+            .expect_err("a failed code replay revocation must propagate");
+        assert_eq!(error.error, "server_error");
+        for id in &ids[0..2] {
+            assert!(
+                oauth_tokens::Entity::find_by_id(*id)
+                    .one(&db)
+                    .await
+                    .expect("lookup after failed replay")
+                    .expect("token still present")
+                    .revoked_at
+                    .is_none(),
+                "failed replay revocation must not claim a committed effect"
+            );
+        }
+        db.execute_unprepared("DROP TRIGGER fail_code_replay_revocation")
+            .await
+            .expect("remove revocation fault injection");
         super::revoke_authorization_code_family(&db, &code)
             .await
-            .expect("replay revocation succeeds");
+            .expect("replay revocation succeeds after retry");
 
         for (index, id) in ids.into_iter().enumerate() {
             let stored = oauth_tokens::Entity::find_by_id(id)
