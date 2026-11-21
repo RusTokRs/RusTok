@@ -276,8 +276,15 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(PaidOrderLabelWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, PaidOrderLabelWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -288,11 +295,10 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         )
     {
         ctx.shared_insert(handle);
-    } else {
-        // The dependent fulfillment registry is not ready. Do not permanently
-        // reserve a worker that never started: a later composition may retry.
-        ctx.shared_remove::<PaidOrderLabelWorkerReservation>();
+        reservation.commit();
     }
+    // A missing registry or an unwinding/cancelled start releases the claim
+    // through Drop; a later composition may retry.
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
@@ -303,8 +309,15 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(MarketplaceFinancialWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, MarketplaceFinancialWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -315,8 +328,7 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
         )
     {
         ctx.shared_insert(handle);
-    } else {
-        ctx.shared_remove::<MarketplaceFinancialWorkerReservation>();
+        reservation.commit();
     }
 }
 
@@ -328,8 +340,15 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(PaymentProviderEventWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, PaymentProviderEventWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -339,6 +358,7 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
             stop.subscribe(),
         ),
     );
+    reservation.commit();
 }
 
 pub fn build_shared_runtime_extensions(
