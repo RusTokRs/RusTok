@@ -4,6 +4,17 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+Direct worker starters for Product Search channel repair, Notifications
+outbox intake/candidate/fanout, Forum Search inbox/contract, Product Index
+refresh and Social Graph Index now serialize their final stop-check → task
+spawn → JoinHandle publication with the corresponding shutdown handle take,
+via a process-local runtime registration lock. Durable broker opening, receipt
+backfill and shutdown joins remain outside that lock. Product Search channel
+repair also rejects stale/finished published workers and concurrent duplicate
+starts; this fence prevents leaked local JoinHandles, not cross-process
+duplicate delivery or automatic durable job recovery.
+
+
 `apps/server` is the main backend composition root. The application:
 
 - assembles platform modules, shared foundation crates, and host-level capabilities into a single runtime;
