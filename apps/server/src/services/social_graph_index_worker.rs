@@ -22,7 +22,7 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const ENABLE_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_CONSUMER_IDLE_POLL_MS";
@@ -95,6 +95,9 @@ impl SocialGraphIndexWorkerConfig {
     }
 }
 
+// Exclusive process-local consumer admission, including asynchronous open.
+struct SocialGraphIndexStartupReservation;
+
 pub struct SocialGraphIndexWorkerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -164,8 +167,20 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
         )
     })?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
-
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Social Graph Index consumer cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, SocialGraphIndexStartupReservation)
+    else {
+        return Ok(());
+    };
+    if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+        return Ok(());
+    }
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
     let consumer =
         match SocialGraphIndexConsumer::open(Arc::clone(&transport), ctx.db_clone()).await {
@@ -185,6 +200,12 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();
 
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Social Graph Index startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
     let instance_id = SOCIAL_GRAPH_INDEX_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);
     tracing::info!(
@@ -206,6 +227,7 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
 }
 
