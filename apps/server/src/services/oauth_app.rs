@@ -1631,6 +1631,16 @@ async fn replace_oauth_secret_if_current(
         .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(updated_at))
         .filter(oauth_apps::Column::Id.eq(app_id))
         .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        // Rotation eligibility was checked before Argon2 hashing. Require
+        // the same eligible app-type set at the atomic write: a concurrent
+        // manifest reconciliation must not turn an embedded/unsupported app
+        // into an accidental confidential client through a stale preflight.
+        .filter(oauth_apps::Column::AppType.is_in([
+            "first_party",
+            "third_party",
+            "mobile",
+            "service",
+        ]))
         .filter(match expected_hash {
             Some(expected_hash) => {
                 oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string()))
@@ -3537,6 +3547,46 @@ mod tests {
         .await
         .expect_err("revoked app must not receive new consent");
         assert!(matches!(grant_after_revoke, Error::NotFound));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn oauth_secret_rotation_cas_rechecks_allowed_app_type() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rotation-type-change").await;
+        assert!(app.can_rotate_secret());
+        assert!(app.client_secret_hash.is_none());
+
+        // The app type changes after a secret-rotation preflight but before
+        // its hash CAS. The database, not the earlier snapshot, arbitrates
+        // whether the rotation remains permitted.
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AppType, Expr::value("embedded"))
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&db)
+            .await
+            .expect("change OAuth app type concurrently");
+        assert!(
+            !replace_oauth_secret_if_current(
+                &db,
+                tenant.id,
+                app.id,
+                app.client_secret_hash.as_deref(),
+                "new-secret-hash-that-must-not-be-persisted",
+                Utc::now(),
+            )
+            .await
+            .expect("atomic rotation predicate"),
+            "stale rotation must not set a secret for an unsupported app type"
+        );
+        let stored = OAuthApps::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app exists");
+        assert_eq!(stored.app_type, "embedded");
+        assert!(stored.client_secret_hash.is_none());
     }
 
     #[tokio::test]
