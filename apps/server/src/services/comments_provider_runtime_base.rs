@@ -56,6 +56,8 @@ const COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY: Duration = Duration::from_millis(100
 const COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 5_000;
+const MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 60_000;
+const COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const COMMENTS_TCP_SERVICE_ROLE: &str = "admin";
 const COMMENTS_TCP_SERVICE_PERMISSION: &str = "comments:manage";
@@ -156,10 +158,10 @@ impl CommentsTcpListenerConfig {
             COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV,
             DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS,
         )?;
-        let shutdown_grace_ms = parse_optional_positive_u64(
+        let shutdown_grace_ms = validate_shutdown_grace_ms(parse_optional_positive_u64(
             COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV,
             DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS,
-        )?;
+        )?)?;
         let max_frame_bytes = parse_optional_positive_usize(
             COMMENTS_TCP_MAX_FRAME_BYTES_ENV,
             DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES,
@@ -186,7 +188,10 @@ pub struct CommentsTcpListenerHandle {
     pub local_addr: SocketAddr,
 }
 
-pub(crate) struct CommentsTcpListenerTask(pub(crate) JoinHandle<()>);
+pub(crate) struct CommentsTcpListenerTask {
+    pub(crate) task: JoinHandle<()>,
+    pub(crate) shutdown_timeout: Duration,
+}
 
 struct CommentsTcpListenerLifecycleReservation;
 
@@ -381,6 +386,7 @@ async fn start_comments_tcp_listener(
 
     let stop_handle = ensure_stop_handle(runtime_ctx);
     let stop_rx = stop_handle.subscribe();
+    let shutdown_timeout = comments_tcp_listener_shutdown_timeout(config.shutdown_grace);
     let instance_id = COMMENTS_TCP_LISTENER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let task = tokio::spawn(run_comments_tcp_listener(
         listener,
@@ -394,7 +400,10 @@ async fn start_comments_tcp_listener(
         instance_id,
         local_addr,
     });
-    runtime_ctx.shared_insert(CommentsTcpListenerTask(task));
+    runtime_ctx.shared_insert(CommentsTcpListenerTask {
+        task,
+        shutdown_timeout,
+    });
 
     tracing::info!(
         instance_id,
@@ -662,6 +671,20 @@ async fn run_comments_tcp_listener(
 }
 
 
+
+fn validate_shutdown_grace_ms(shutdown_grace_ms: u64) -> std::result::Result<u64, String> {
+    if !(1..=MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS).contains(&shutdown_grace_ms) {
+        return Err(format!(
+            "{COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV} must be within 1..={MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS}"
+        ));
+    }
+    Ok(shutdown_grace_ms)
+}
+
+fn comments_tcp_listener_shutdown_timeout(shutdown_grace: Duration) -> Duration {
+    shutdown_grace.saturating_add(COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN)
+}
+
 fn validate_max_connections(max_connections: usize) -> std::result::Result<usize, String> {
     if !(1..=MAX_COMMENTS_TCP_MAX_CONNECTIONS).contains(&max_connections) {
         return Err(format!(
@@ -814,6 +837,8 @@ mod tests {
         assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 5_000);
+        assert_eq!(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 60_000);
+        assert_eq!(COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES, 8 * 1024 * 1024);
         assert_eq!(DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, 5_000);
         assert_eq!(MAX_COMMENTS_TCP_DELEGATION_TTL_MS, 30_000);
@@ -826,6 +851,14 @@ mod tests {
         assert_eq!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS), Ok(4_096));
         assert!(validate_max_connections(0).is_err());
         assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
+        assert_eq!(validate_shutdown_grace_ms(1), Ok(1));
+        assert_eq!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS), Ok(60_000));
+        assert!(validate_shutdown_grace_ms(0).is_err());
+        assert!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS + 1).is_err());
+        assert_eq!(
+            comments_tcp_listener_shutdown_timeout(Duration::from_secs(5)),
+            Duration::from_secs(10)
+        );
     }
 
     #[test]

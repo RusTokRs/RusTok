@@ -484,7 +484,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         RuntimeWorkerSnapshot {
             name: "comments_tcp_listener",
             required: local && ctx.shared_contains::<CommentsTcpListenerTask>(),
-            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.0.is_finished()),
+            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.task.is_finished()),
         },
         #[cfg(feature = "mod-comments")]
         RuntimeWorkerSnapshot {
@@ -1048,7 +1048,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
                 .shared_take::<crate::services::comments_provider_runtime::CommentsTcpListenerTask>(
                 )
         {
-            await_runtime_worker_shutdown("Comments TCP listener", Some(listener_task.0)).await;
+            await_runtime_worker_shutdown_with_timeout(
+                "Comments TCP listener",
+                Some(listener_task.task),
+                listener_task.shutdown_timeout,
+            )
+            .await;
         }
         runtime_ctx
             .shared_remove::<crate::services::comments_provider_runtime::CommentsTcpListenerHandle>(
@@ -2200,7 +2205,10 @@ mod tests {
             instance_id: 1,
             local_addr: std::net::SocketAddr::from(([127, 0, 0, 1], 9000)),
         });
-        ctx.shared_insert(CommentsTcpListenerTask(task));
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task,
+            shutdown_timeout: Duration::from_secs(6),
+        });
 
         super::shutdown_runtime_workers(&ctx).await;
 
@@ -2626,7 +2634,10 @@ mod tests {
         let listener_task = tokio::spawn(async move {
             let _ = listener_stop.changed().await;
         });
-        ctx.shared_insert(CommentsTcpListenerTask(listener_task));
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task: listener_task,
+            shutdown_timeout: Duration::from_secs(6),
+        });
 
         let mut handoff_stop = stop.subscribe();
         let handoff_task = tokio::spawn(async move {
