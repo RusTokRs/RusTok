@@ -449,7 +449,16 @@ async fn handle_graphql_ws(
         }
     }
 
-    forward_incoming.abort();
+    abort_and_join_incoming_forwarder(forward_incoming).await;
+}
+
+async fn abort_and_join_incoming_forwarder(task: tokio::task::JoinHandle<()>) {
+    task.abort();
+    if let Err(error) = task.await
+        && !error.is_cancelled()
+    {
+        tracing::warn!(?error, "GraphQL WebSocket inbound forwarding task failed");
+    }
 }
 
 async fn bounded_ws_connection_init<F>(
@@ -1745,5 +1754,36 @@ mod tests {
                 .count(),
             1
         );
+    }
+}
+
+
+#[cfg(test)]
+mod incoming_forwarder_shutdown_tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    struct SetOnDrop(Arc<AtomicBool>);
+
+    impl Drop for SetOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn aborting_incoming_forwarder_waits_for_task_drop() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let task_dropped = Arc::clone(&dropped);
+        let task = tokio::spawn(async move {
+            let _drop_signal = SetOnDrop(task_dropped);
+            std::future::pending::<()>().await;
+        });
+
+        super::abort_and_join_incoming_forwarder(task).await;
+
+        assert!(dropped.load(Ordering::SeqCst));
     }
 }

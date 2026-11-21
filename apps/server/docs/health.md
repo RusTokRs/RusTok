@@ -48,7 +48,7 @@ their selected surface.
   `tenants`, `users`, `sys_events` when the active delivery profile is
   `outbox` or `outbox_iggy`, and
   `search_documents` when `rustok.features.search_indexing = true`;
-- `cache_backend` — basic check of tenant cache path;
+- `cache_backend` — basic check of tenant cache path. Its public readiness reason includes the pending-generation count but never echoes raw Redis/recovery error text;
 - `marketplace_providers` — non-critical snapshot of configured catalog
   providers. Local-only operation composes no synthetic remote provider; every
   registry in `RUSTOK_MARKETPLACE_REGISTRIES` is unknown until its first

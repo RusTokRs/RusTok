@@ -26,6 +26,9 @@ use crate::common::settings::is_production_environment;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+const INSTALLER_JOB_FAILURE_MESSAGE: &str =
+    "installer apply failed; inspect durable installer receipts for recovery details";
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -283,7 +286,7 @@ async fn apply(
                 "An installation job is already running",
             )));
         }
-        tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
+        tracing::error!(job_id = %job_id, "Failed to create durable installer HTTP job");
         return Err(internal_error("failed to create installer job"));
     }
 
@@ -300,18 +303,17 @@ async fn apply(
                     .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
                     .await
                 {
-                    tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
+                    tracing::error!(job_id = %job_id, "Failed to finalize durable installer HTTP job");
                 }
             }
-            Ok(Err(error)) => {
-                let error_message = format!("installer apply failed: {error}");
-                tracing::error!(%error, %job_id, "Installer apply job failed");
-                if let Err(update_error) = persistence
-                    .finish_http_job_failed(job_id, &error_message)
+            Ok(Err(_error)) => {
+                let error_message = INSTALLER_JOB_FAILURE_MESSAGE;
+                tracing::error!(%job_id, "Installer apply job failed; error details redacted");
+                if let Err(_update_error) = persistence
+                    .finish_http_job_failed(job_id, error_message)
                     .await
                 {
                     tracing::error!(
-                        %update_error,
                         %job_id,
                         "Failed to persist installer HTTP job failure state"
                     );
@@ -319,12 +321,11 @@ async fn apply(
             }
             Err(_panic) => {
                 tracing::error!(%job_id, "Installer apply job panicked unexpectedly");
-                if let Err(update_error) = persistence
+                if let Err(_update_error) = persistence
                     .finish_http_job_failed(job_id, "installer apply panicked unexpectedly")
                     .await
                 {
                     tracing::error!(
-                        %update_error,
                         %job_id,
                         "Failed to persist installer HTTP job panic failure state"
                     );
@@ -356,8 +357,8 @@ fn require_no_running_http_install_job(
             "installer_running",
             "An installation job is already running",
         ))),
-        Err(error) => {
-            tracing::error!(%error, "Unable to inspect durable installer job admission");
+        Err(_error) => {
+            tracing::error!("Unable to inspect durable installer job admission; database details redacted");
             Err(internal_error(
                 "Unable to verify whether an installer job is already running",
             ))
@@ -504,8 +505,8 @@ async fn job_status(
     tracing::debug!(%job_id, "Handling installer job status request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    let Some(job) = persistence.get_http_job(job_id).await.map_err(|error| {
-        tracing::error!(%error, %job_id, "Failed to read durable installer HTTP job");
+    let Some(job) = persistence.get_http_job(job_id).await.map_err(|_error| {
+        tracing::error!(%job_id, "Failed to read durable installer HTTP job; database details redacted");
         internal_error("failed to read installer job")
     })?
     else {
@@ -531,8 +532,8 @@ fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobSta
     let output = match job.output {
         Some(value) => match serde_json::from_value::<InstallApplyOutput>(value) {
             Ok(output) => Some(output),
-            Err(error) => {
-                tracing::error!(%error, %job.id, "Failed to decode persisted installer HTTP job output");
+            Err(_error) => {
+                tracing::error!(%job.id, "Failed to decode persisted installer HTTP job output");
                 return Err(internal_error("installer job output is invalid"));
             }
         },
@@ -548,7 +549,9 @@ fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobSta
         session_id: job.session_id,
         tenant_id: job.tenant_id,
         output,
-        error: job.error_message,
+        error: job
+            .error_message
+            .map(|_| INSTALLER_JOB_FAILURE_MESSAGE.to_string()),
     })
 }
 
@@ -606,13 +609,12 @@ fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
             .to_str()
             .map_err(|_| forbidden_error("invalid authorization header encoding"))?;
         let trimmed = auth_str.trim();
-        if let Some(token) = trimmed
-            .strip_prefix("Bearer ")
-            .or_else(|| trimmed.strip_prefix("bearer "))
-        {
-            let token = token.trim().trim_matches('"');
-            if !token.is_empty() {
-                return Ok(Some(token.to_string()));
+        if let Some((scheme, token)) = trimmed.split_once(' ') {
+            if scheme.eq_ignore_ascii_case("bearer") {
+                let token = token.trim().trim_matches('"');
+                if !token.is_empty() {
+                    return Ok(Some(token.to_string()));
+                }
             }
         }
     }
@@ -651,11 +653,13 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
 }
 
 fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string();
+    let message = error.to_string().to_ascii_lowercase();
     message.contains("install_sessions")
         && (message.contains("does not exist")
             || message.contains("no such table")
-            || message.contains("not found"))
+            || message.contains("not found")
+            || message.contains("doesn't exist")
+            || message.contains("unknown table"))
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
@@ -676,8 +680,8 @@ fn not_found_error(description: impl Into<String>) -> Error {
 
 /// Log operational diagnostics server-side without exposing backend connection
 /// details, filesystem paths or SQL fragments in the public installer response.
-fn installer_storage_failure(operation: &'static str, error: impl std::fmt::Display) -> Error {
-    tracing::error!(%error, operation, "Installer storage/host operation failed");
+fn installer_storage_failure(operation: &'static str, _error: impl std::fmt::Display) -> Error {
+    tracing::error!(operation, "Installer storage/host operation failed; details redacted");
     internal_error("Installer state is temporarily unavailable")
 }
 
@@ -805,6 +809,11 @@ mod tests {
         let sqlite_missing = sea_orm::DbErr::Custom("no such table: install_sessions".to_string());
         assert!(installer_schema_missing(&sqlite_missing));
 
+        let mysql_missing = sea_orm::DbErr::Custom(
+            "Table 'rustok.install_sessions' doesn't exist".to_string(),
+        );
+        assert!(installer_schema_missing(&mysql_missing));
+
         let other_error = sea_orm::DbErr::Custom("connection refused".to_string());
         assert!(!installer_schema_missing(&other_error));
     }
@@ -857,17 +866,15 @@ mod tests {
             None,
             None,
             None,
-            Some("installer apply failed: invalid topology".to_string()),
+            Some("installer apply failed: postgres://root:sensitive-password@database/private".to_string()),
         );
         let job_id = model.id;
 
         let response = install_job_status_response(model).expect("maps failed status");
         assert_eq!(response.job_id, job_id);
         assert!(matches!(response.status, InstallJobState::Failed));
-        assert_eq!(
-            response.error.as_deref(),
-            Some("installer apply failed: invalid topology")
-        );
+        assert_eq!(response.error.as_deref(), Some(INSTALLER_JOB_FAILURE_MESSAGE));
+        assert!(!response.error.as_deref().unwrap().contains("sensitive-password"));
     }
 
     #[test]
@@ -919,6 +926,14 @@ mod tests {
         );
         let token2 = extract_setup_token(&headers2).expect("should succeed");
         assert_eq!(token2.as_deref(), Some("token-without-quotes"));
+
+        let mut mixed_case_headers = HeaderMap::new();
+        mixed_case_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("bEaReR mixed-case-token"),
+        );
+        let mixed_case_token = extract_setup_token(&mixed_case_headers).expect("should succeed");
+        assert_eq!(mixed_case_token.as_deref(), Some("mixed-case-token"));
     }
 
     #[test]

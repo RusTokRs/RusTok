@@ -682,6 +682,10 @@ fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static st
     required_tables
 }
 
+fn cache_recovery_readiness_reason(pending_generations: usize) -> String {
+    format!("cache recovery is incomplete ({pending_generations} generations pending)")
+}
+
 async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use rustok_cache::CacheService;
 
@@ -694,15 +698,7 @@ async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<
     } else if report.is_connected() {
         // Redis answered but recovery is incomplete. The two causes lead to different operator
         // actions, so the readiness payload must not report a transport outage.
-        Err(format!(
-            "cache recovery is incomplete ({} generations pending{})",
-            report.redis_recovery_pending,
-            report
-                .redis_recovery_error
-                .as_deref()
-                .map(|error| format!(": {error}"))
-                .unwrap_or_default()
-        ))
+        Err(cache_recovery_readiness_reason(report.redis_recovery_pending))
     } else {
         Err("cache backend is unhealthy".to_string())
     }
@@ -1994,6 +1990,14 @@ mod tests {
         assert_eq!(
             super::readiness_http_status(ReadinessStatus::Unhealthy),
             StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn cache_readiness_reason_does_not_echo_backend_diagnostics() {
+        assert_eq!(
+            super::cache_recovery_readiness_reason(3),
+            "cache recovery is incomplete (3 generations pending)"
         );
     }
 
