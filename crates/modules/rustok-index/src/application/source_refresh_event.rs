@@ -235,7 +235,8 @@ where
             );
         }
     };
-    let refresh_revision = batch
+    // The registry reports the owner-visible revision for this key as the source version.
+    let source_version = batch
         .refresh_revision_at(0)
         .ok_or_else(|| {
             IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
@@ -243,11 +244,11 @@ where
                 actual: 0,
             }
         })?;
-    if refresh_revision < minimum_source_version {
+    if source_version < minimum_source_version {
         return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
             event_domain,
             minimum: minimum_source_version,
-            actual: refresh_revision,
+            actual: source_version,
         });
     }
 

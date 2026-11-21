@@ -71,3 +71,8 @@ Media control-plane descriptor selection may be embedded or remote because both 
 - [Implementation plan](./implementation-plan.md)
 - [Storefront package](../storefront/README.md)
 - [Platform documentation map](../../../../docs/index.md)
+- [poison-dedup-recovery-window-checkpoint.md](./poison-dedup-recovery-window-checkpoint.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [poison-duplicate-dlq-operations-checkpoint.md](./poison-duplicate-dlq-operations-checkpoint.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [poison-duplicate-moving-window-external-observer-runtime-checkpoint.md](./poison-duplicate-moving-window-external-observer-runtime-checkpoint.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [poison-duplicate-moving-window-scan-checkpoint.md](./poison-duplicate-moving-window-scan-checkpoint.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [poison-duplicate-rolling-window-checkpoint.md](./poison-duplicate-rolling-window-checkpoint.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.

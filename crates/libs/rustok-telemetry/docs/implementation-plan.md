@@ -129,8 +129,8 @@ duration, one delivered offset, a local cursor counter or Redis state.
    missed publication and multi-replica semantics before promoting operational gates.
 4. **Align module instrumentation with operations.** Validate representative modules and
    `/metrics` against a small correlation/service-health convention without moving
-   domain semantics or runbooks into this crate. RBAC still needs one retained incident
-   chain connecting evaluator decision, relation state, cache snapshot, durable
+   domain semantics or runbooks into this crate. RBAC still needs one retained incident chain
+   connecting evaluator decision, relation state, cache snapshot, durable
    generation and recovery action.
 
 ## Verification

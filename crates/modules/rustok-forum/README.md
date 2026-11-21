@@ -567,3 +567,26 @@ into README files, issues, or additional planning documents.
 - [Canonical implementation plan](./docs/implementation-plan.md)
 - [Accepted Forum slug/locale decision](../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
 - [Platform docs index](../../../docs/index.md)
+- Canonical merged-topic resolution and HTTP redirect
+- publish_contract_in_tx_with_causation<C, E>
+- MAX_FORUM_TOPIC_FORK_REPLIES: usize = 500
+- # FORUM-21H topic merge accepted-solution policy
+- FORUM-21L
+- ## Explicit competing-solution resolution
+- ## Append-only resolution audit
+- schema version 1
+- No command above was run by the implementation agent
+- # FORUM-21L competing accepted-solution resolution
+- Resolution audit ledger
+- `source_ready_maintainer_execution_pending`
+- forum.topic.merged / schema version 1
+- FORUM_TOPIC_MERGE_OPERATION_CONFLICT
+- FORUM-21` entry remains `planned`
+- [FORUM-21L competing solution resolution]
+- pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12
+- # FORUM-24F topic slug rename GraphQL transport
+- renameForumTopicSlug
+- TopicService::rename_slug
+- owner-defined
+- # FORUM-24D topic slug rename owner
+- Topic slug changed

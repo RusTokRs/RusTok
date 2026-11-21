@@ -346,6 +346,18 @@ close the component.
   `06554657c50535204cdca7f7baf87c7b8d55ba65`, then confirm the merged revision with
   push-to-main run `32004633206` at `67ed475549598720486188f175fcfce0ab826a3b`.
 
+### P1. Invalidation observability and incident operations
+
+Status: `in_progress`
+
+- [x] Export metrics for database generation
+- [x] Define alert thresholds
+- [x] Add an operator runbook
+- [ ] Make one policy incident traceable
+
+The canonical watchdog and bounded metric registry are wired; one retained policy
+incident trace still requires owner execution evidence.
+
 ### P1 — operator parity and lifecycle
 
 - [ ] Decide whether remote/headless role management is required.

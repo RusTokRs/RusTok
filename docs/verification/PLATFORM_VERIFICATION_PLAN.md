@@ -32,6 +32,7 @@ that component's local `docs/implementation-plan.md`.
 - Cycle status: `active`
 - Current item: `core/rbac`
 - Next item: `core/rbac`
+- Active handoff: dedicated invalidation observability remains the current RBAC cursor item.
 - Started at (UTC): `2026-07-20`
 - Last handoff at (UTC): `2026-08-17`
 - Release readiness: `not_assessed`

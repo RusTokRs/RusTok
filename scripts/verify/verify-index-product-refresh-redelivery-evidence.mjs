@@ -136,10 +136,12 @@ if (persistPosition === -1 || acknowledgePosition <= persistPosition
     || genericWorker.indexOf('.apply_replay_mutation(', persistImplementation) === -1) {
   fail('generic source refresh worker no longer preserves durable apply-before-ack ordering');
 }
+// The local variable is canonically `source_version`; `refresh_revision_at` is only the
+// source-registry accessor that supplies it. Keep this in sync with the generic refresh guard.
 for (const marker of [
   'MissingSourceMutation',
   'SourceVersionBehind',
-  'if refresh_revision < minimum_source_version',
+  'if source_version < minimum_source_version',
   '.apply_replay_mutation(',
   '.acknowledge(',
 ]) {

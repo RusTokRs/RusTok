@@ -289,6 +289,8 @@ pub fn composition_identity() -> CompositionIdentity {
 }
 
 #[cfg(test)]
+// Contract coverage lives in tests.rs: source_schema_catalog_materializes_after_all_modules_register
+// and empty_source_catalog_does_not_publish_false_query_registry.
 mod tests;
 
 #[cfg(test)]

@@ -44,6 +44,7 @@ pub(crate) fn PagesPublishedMetadataSurface(refresh_generation: RwSignal<u64>) -
     // response regardless of the status.
     let page_resource = Resource::new(
         move || {
+            let _generation = refresh_generation.get();
             (
                 selected_page_query.get(),
                 page_token.get(),

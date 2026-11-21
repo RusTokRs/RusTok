@@ -571,6 +571,7 @@ async fn render_canonical_pages_response(
 ) -> Response {
     let seo_context = match fetch_seo_page_context(locale, route_segment, &query_params).await {
         Ok(Some(resolved)) => {
+            let _has_redirect = resolved.route.redirect.is_some();
             if let Some(redirect) = resolved.route.redirect.as_ref() {
                 return redirect_response(redirect.target_url.as_str(), Some(redirect.status_code));
             }
@@ -598,7 +599,7 @@ async fn render_canonical_pages_response(
     let etag = if csp_nonce.is_some() {
         None
     } else {
-        pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation, &html)
+        pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation, html.as_str())
     };
     canonical_composition_response(html, etag, if_none_match, csp_nonce.is_some())
 }
