@@ -275,6 +275,37 @@ impl SocialGraphObserverInitializationLock {
     }
 }
 
+/// Direct, synchronous worker starters can bypass router bootstrap. Guard
+/// their final shutdown check -> task spawn -> JoinHandle publication against
+/// the matching shutdown take. Do not hold this blocking gate across awaits or
+/// while joining tasks. One runtime-local gate covers the Product Search channel
+/// projection repair worker and the three Notifications workers.
+#[derive(Clone, Default)]
+pub(crate) struct DirectWorkerRegistrationLock(
+    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
+);
+
+impl DirectWorkerRegistrationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Take a directly registered worker under the same gate as its final spawn.
+/// Shutdown publishes stop before entering the drain, so a starter that loses
+/// this gate will observe stop and refuse to publish a new task.
+fn take_direct_worker_for_shutdown<T>(ctx: &ServerRuntimeContext) -> Option<T>
+where
+    T: 'static + Send + Sync,
+{
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<T>()
+}
+
 /// Serializes the complete server bootstrap against competing bootstraps and
 /// the shutdown drain. Several worker starters intentionally use a
 /// check-then-insert sequence; this host-level fence makes that sequence
@@ -1326,9 +1357,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let product_channel_reconciliation_drain = async {
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::search_product_channel_reconciliation::ProductChannelProjectionWorkerHandle>()
-        {
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::search_product_channel_reconciliation::ProductChannelProjectionWorkerHandle,
+        >(runtime_ctx) {
             await_runtime_worker_shutdown(
                 "Product channel projection reconciliation",
                 Some(worker.into_task()),
@@ -1403,7 +1434,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_outbox_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification outbox intake", worker.into_task()).await;
         }
     };
@@ -1412,7 +1443,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_candidate_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification candidate", worker.into_task()).await;
         }
     };
@@ -1421,7 +1452,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_fanout_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification fanout", worker.into_task()).await;
         }
     };
