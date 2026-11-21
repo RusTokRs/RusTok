@@ -91,6 +91,17 @@ struct SourceRetryHandoffWorkerCycleOutcome {
 }
 
 impl SourceRetryHandoffWorkerCycleOutcome {
+    /// Recheck admission before every new claim, not only once per cycle.
+    /// A claim already acquired is completed by the caller before this check
+    /// runs again, retaining its receipt/retry bookkeeping during shutdown.
+    fn can_claim_next(
+        self,
+        max_claims_per_cycle: usize,
+        stop_rx: &tokio::sync::watch::Receiver<bool>,
+    ) -> bool {
+        self.calls < max_claims_per_cycle && !*stop_rx.borrow()
+    }
+
     fn had_error(self) -> bool {
         self.conflicts > 0
             || self.unavailable > 0
@@ -288,6 +299,7 @@ async fn run_source_retry_handoff_worker(
             &retry_policy,
             config.source_max_attempts,
             config.handoff.max_claims_per_cycle,
+            &stop_rx,
         )
         .await;
         if outcome.made_progress() {
@@ -320,6 +332,14 @@ async fn run_source_retry_handoff_worker(
             );
         }
 
+        if *stop_rx.borrow() {
+            tracing::info!(
+                instance_id,
+                "Comments schedule audit source-retry handoff worker stopped after its current durable operation"
+            );
+            return;
+        }
+
         let delay = outcome.next_delay(config);
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
@@ -341,8 +361,16 @@ async fn run_source_retry_handoff_cycle(
     retry_policy: &PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
     source_max_attempts: u32,
     max_claims_per_cycle: usize,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> SourceRetryHandoffWorkerCycleOutcome {
     let mut outcome = SourceRetryHandoffWorkerCycleOutcome::default();
+
+    // No new durable side-effect phase may be admitted after shutdown.
+    // Once an individual claim was acquired we still finish its publication
+    // and failure transition, preserving the owner's attempt receipt.
+    if *stop_rx.borrow() {
+        return outcome;
+    }
 
     match retry_policy.dead_letter_next_expired_exhausted().await {
         Ok(Some(_)) => outcome.swept_dead_letters += 1,
@@ -355,7 +383,9 @@ async fn run_source_retry_handoff_cycle(
         }
     }
 
-    while outcome.calls < max_claims_per_cycle {
+    // The preceding publish or source-failure transition may have awaited
+    // shutdown. Finish that attempt, but never claim its successor.
+    while outcome.can_claim_next(max_claims_per_cycle, stop_rx) {
         outcome.calls += 1;
         let claim = match handoff.claim_next_retry_ready(source_max_attempts).await {
             Ok(Some(claim)) => {
@@ -444,6 +474,45 @@ mod source_retry_worker_tests {
             CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task),
         );
         assert!(existing_comments_schedule_audit_handoff_worker(&runtime_ctx).is_err());
+    }
+
+    #[tokio::test]
+    async fn source_retry_shutdown_signal_is_visible_between_durable_phases() {
+        let (stop, mut receiver) = StopHandle::new();
+        let outcome = SourceRetryHandoffWorkerCycleOutcome {
+            calls: 1,
+            ..Default::default()
+        };
+        assert!(
+            outcome.can_claim_next(32, &receiver),
+            "next claim is allowed before stop"
+        );
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let prior_operation = tokio::spawn(async move {
+            started_tx.send(()).expect("operation started");
+            release_rx.await.expect("prior durable operation completed");
+        });
+        started_rx.await.expect("operation entered");
+
+        stop.stop().await;
+        // The in-flight operation is finished before checking for a successor.
+        release_tx.send(()).expect("release previous operation");
+        prior_operation.await.expect("previous operation joins");
+        assert!(
+            !outcome.can_claim_next(32, &receiver),
+            "no more claims after shutdown"
+        );
+        let exhausted = SourceRetryHandoffWorkerCycleOutcome {
+            calls: 32,
+            ..Default::default()
+        };
+        assert!(
+            !exhausted.can_claim_next(32, &receiver),
+            "cycle claim budget also applies"
+        );
+        receiver.changed().await.expect("stop update remains observable");
     }
 
     #[test]

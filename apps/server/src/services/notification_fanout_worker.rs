@@ -12,7 +12,8 @@ use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::stop_handle::StopHandle;
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -59,9 +60,14 @@ impl NotificationFanoutWorkerHandle {
 }
 
 pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<NotificationFanoutWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<NotificationFanoutWorkerHandle>(
+        ctx,
+        "Notification fanout worker",
+        NotificationFanoutWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !fanout_worker_enabled_from_environment() {
@@ -102,7 +108,11 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<NotificationFanoutWorkerHandle>() {
+        if published_worker_running::<NotificationFanoutWorkerHandle>(
+            ctx,
+            "Notification fanout worker",
+            NotificationFanoutWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
@@ -111,7 +121,11 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
     };
     // Another bootstrap may have committed the worker before this reservation
     // was created by an older caller. Never overwrite an existing JoinHandle.
-    if ctx.shared_contains::<NotificationFanoutWorkerHandle>() {
+    if published_worker_running::<NotificationFanoutWorkerHandle>(
+        ctx,
+        "Notification fanout worker",
+        NotificationFanoutWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let stop_rx = stop.subscribe();
@@ -193,6 +207,15 @@ async fn notification_fanout_worker_loop(
             if !source_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
             }
+            // Source policy evaluation can await storage after shutdown
+            // starts. A new materialization is not an in-flight operation.
+            if !may_admit_next_worker_operation(&stop_rx) {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification fanout worker stopped after source policy evaluation"
+                );
+                return;
+            }
             match worker.materialize_source_inbox(work.inbox_id).await {
                 Ok(receipt) => tracing::debug!(
                     worker_id = worker.worker_id(),
@@ -242,6 +265,15 @@ async fn notification_fanout_worker_loop(
             }
             if !job_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
+            }
+            // Respect shutdown even when a delayed tenant-policy lookup
+            // completed after the preceding loop-entry stop check.
+            if !may_admit_next_worker_operation(&stop_rx) {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification fanout worker stopped after job policy evaluation"
+                );
+                return;
             }
             match worker.process_fanout_job(work.job_id).await {
                 Ok(page) => tracing::debug!(

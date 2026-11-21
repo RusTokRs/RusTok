@@ -90,6 +90,24 @@ for (const marker of [
   requireText("poison observer", files.observer, marker);
 }
 
+for (const marker of [
+  "SocialGraphPoisonObserverStartupReservation",
+  "ServerRuntimeStartReservation::try_claim(",
+  "SocialGraphObserverInitializationLock::ensure(ctx)",
+  "published_worker_running::<SocialGraphIndexPoisonObserverHandle>",
+  "reservation.commit();",
+  "if stop.is_stopping()",
+  "dead_observer_handle_cannot_report_successful_startup",
+  "observer_reservation_serializes_competing_starters",
+]) {
+  requireText("poison observer lifecycle", files.observer, marker);
+}
+forbidText(
+  "poison observer check-then-spawn must be absent",
+  files.observer.split("#[cfg(test)]")[0],
+  "ctx.shared_contains::<SocialGraphIndexPoisonObserverHandle>()",
+);
+
 const observerProduction = files.observer.split("#[cfg(test)]")[0];
 for (const forbidden of [
   ".reserve_and_claim(",

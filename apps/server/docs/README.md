@@ -87,6 +87,27 @@ app edits mark lifecycle, credential, identity, and runtime-owned columns
 `NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
 `last_used_at` value.
 
+## Durable worker bootstrap liveness
+
+A registered runtime handle is not evidence that its task is running. The
+notification outbox intake, notification candidate/fanout, Forum Search inbox
+and contract consumer, Product Index refresh, and Social Graph Index consumer,
+plus the host's Outbox relay/retention, Auth retention, remote executor reaper,
+SEO bulk worker and module transition watchdog start paths reject a retained
+handle whose Tokio task has terminated. The seven individually claimed consumers
+apply this distinction in their initial, contested-reservation, and post-claim
+checks. The other six host workers check liveness under the serialized runtime
+initializer. A live handle permits idempotent
+startup; a missing handle can be claimed once; a finished handle is an explicit
+startup error rather than a successful no-op. The retained handle remains
+available for shutdown joining and failure accounting.
+
+These are process-local bootstrap/readiness protections, not an automatic
+restart loop, a cross-replica leader lease, or proof of exactly-once external
+effects. After an unexpected exit, restart the process under its supervisor;
+owner-side durable receipts, uncommitted broker offsets, and reconciliation
+rules still control which effects may be resumed safely.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.
@@ -196,6 +217,73 @@ issuing an oversized OFFSET query.
 REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
+
+Production CORS authorization has no implicit loopback fallback.
+`RUSTOK_HOST` and `APP_HOST` are bind-host hints, not browser-origin grants,
+and are used as a fallback only in development. Without a valid
+`RUSTOK_CORS_ALLOWED_ORIGINS` or `/rustok/cors/allowed_origins` list,
+the production CORS layer emits no `Access-Control-Allow-Origin` header,
+including for `http://127.0.0.1:5150`. Explicit origins must be valid
+HTTP(S) origins without URL credentials, paths, queries or fragments;
+invalid configuration entries are ignored with a bounded error code.
+Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
+rejected even when supplied as explicit CORS entries: they are network
+listeners, not browser-authorized origins.
+This changes only cross-origin browser permission; it is not an HTTP
+authorization or same-origin request gate.
+
+The module event dispatcher and its four startup-owned recovery workers
+(paid-order labels, marketplace financial, payment-provider events and
+product-media release) now share one per-runtime synchronous registration
+lock with their corresponding shutdown handle snapshots. A direct
+`spawn_module_event_dispatcher` caller can no longer publish a new
+dispatcher after the stop signal has been issued and shutdown has
+already inspected its handles. The stop condition is checked under
+the same lock that guards dispatcher start, publication and take.
+Concurrently started dispatchers and child workers remain protected by
+typed startup reservations. The product-media starter now also uses a
+drop-safe reservation, releasing a rejected attempt instead of leaving
+a permanent no-handle marker. No worker restarts or event-delivery
+contracts are changed.
+
+The in-process `EventBus` forwarder and `TransactionalEventBus`
+now obtain their `Arc<dyn EventTransport>` from one atomic,
+process-local runtime singleton resolver. A caller that loses a
+first-insert race cannot continue writing through its discarded
+default `OutboxTransport` while other publishers use the winning
+configured transport. Explicitly preinstalled transports remain
+authoritative; the change does not add retries or alter the selected
+delivery profile.
+
+Tenant resolution HTTP failures now return bounded static client
+messages. The status and error code still distinguish missing/conflicting
+tenant headers, invalid hosts, invalid identifiers, base-domain slug
+requirements and not-found outcomes, but no request-supplied Host, tenant
+slug, header name or private validator detail is interpolated into the
+response body. This mirrors the already sanitized tenant-context load
+error surface and leaves internal typed errors intact.
+
+The HTTP root trace span now rejects malformed or oversized
+client-supplied `x-request-id`, `x-correlation-id` and W3C
+`traceparent` values. Only canonical UUID/32-hex correlation
+identifiers and valid fixed-format W3C version-00 trace context appear
+in logs; all others render as `-`. Unrecognized HTTP extension
+methods are reported as `OTHER`, preventing user-controlled method
+bytes from entering traces. This does not rewrite the original
+headers or change downstream request-ID propagation.
+
+HTTP edge tracing and middleware diagnostics now emit only a fixed
+`path_group` (for example `/api/:request`, `/admin/:request`,
+`/graphql`, or `/health/ready`) rather than the raw URI pathname. URL
+segments can contain user and token identifiers, so route-specific metrics
+continue to use Axum's matched template separately after routing; the
+trace layer cannot see the matched template before routing. The change also
+covers metrics auth, both rate-limit entry points, tenant resolution,
+auth-context, channel, locale, security headers and registry artifact/publish
+authorization. All those middleware use the shared bounded path vocabulary;
+custom methods in registry diagnostics use the bounded method vocabulary.
+The original request pathname still drives routing, security-header
+selection, request authorization, tenant/locale policy and rate-limit matching.
 
 HTTP edge settings are bounded before reaching Tokio and Tower:
 `RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
@@ -393,14 +481,68 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
-- Social Graph Index raw-poison DLQ publication keeps the source offset
-  **uncommitted** after all transport retries fail; its worker reports a stable
-  failure diagnostic without embedding untrusted broker error text. The
-  durable poison receipt claim is released on a failed publish (or expires by
-  lease after a failed release) so a restarted worker can retry the same
-  source identity. A successful DLQ publication is recorded durably before
-  broker source acknowledgement; a crash between these steps retries the
-  receipt/offset path rather than dropping the source message.
+- Tenant cache-generation recovery also invalidates the entire
+  `ModuleEffectivePolicyCache` when its durable generation advances or an
+  unverified generation is first observed. The local/Redis/periodic listener
+  paths now serialize checkpoint and cache effects; an in-order event
+  acknowledges only after its local policy and backend invalidations.
+  Missed Pub/Sub generations are not reduced to the single tenant key of
+  a later event; unexpected key formats conservatively evict all cached
+  policies rather than acknowledging an ineffective invalidation.
+  The canonical `*` key retains its intended global-invalidation
+  meaning; a nil UUID is not accepted as a tenant identity.
+- Tenant locale generation recovery now serializes local invalidation
+  messages, Redis Pub/Sub delivery and periodic reconciliation under one
+  per-listener asynchronous transition gate. The shared generation tracker
+  and readiness bit cannot be updated by interleaved older recovery results.
+  Cloned listener task owners reuse the same gate; this is process-local and
+  does not replace durable namespace generation checks.
+- The global Event DLQ physical duplicate-alert scanner and identifier-free
+  telemetry companion share a shutdown-aware registration lock. Their
+  `shared_contains` / `shared_insert` race could spawn duplicate tasks,
+  overwrite the only shutdown `JoinHandle`, or publish a new task after the
+  shutdown snapshot. Repeated startup of a terminated task now emits a stable
+  error diagnostic and retains the old handle for shutdown accounting; modes
+  without tasks (`Disabled`, `Unavailable`, `NotApplicableOutbox`) remain
+  idempotent and do not impede event delivery.
+- Social Graph Index position and poison-receipt observers have independent
+  single-owner startup reservations and a shared admission lock that the
+  shutdown drain also acquires before snapshotting observer JoinHandles.
+  Concurrent direct/bootstrap callers cannot spawn duplicate observers,
+  publish after shutdown's snapshot, or overwrite their only shutdown handle.
+  A retained handle whose task exited is an explicit repeated-start failure,
+  not a false `Ok(())`; a contending caller receives an in-progress error
+  until publication. Both observers reject startup after shutdown begins,
+  and optional invalid poll configuration still leaves projection active.
+- Product Index refresh, Social Graph Index and Forum Search typed broker
+  consumers check shutdown again **after** broker receive completes but before
+  invoking projection, semantic decode handling or poison DLQ publication.
+  `tokio::select!` can choose a delivery when the stop signal becomes ready at
+  the same time; the recheck prevents a new durable effect from being admitted.
+  A delivery returned during shutdown is not acknowledged, so its persistent
+  broker offset remains available for redelivery after restart.
+- Social Graph Index and Forum Search poison DLQ publishers treat an external
+  send error as **ambiguous**: the broker may already have accepted it.
+  The workers retain the durable `publishing` receipt and leave the source
+  offset uncommitted. Connector receipt storage prohibits automatic reclaim
+  of a `publishing` receipt after its lease expires, reporting
+  `ReconciliationRequired`. Redelivery of a previously confirmed `published`
+  result can acknowledge its source without a second DLQ send. A late
+  confirmation from the original claim owner can still mark it published.
+  Unresolved sends after a crash require an explicit, evidence-based operator
+  reconciliation; this patch does not supply a recovery API or guarantee
+  exactly-once broker effects. The stable Iggy message ID alone is not proof
+  of suppression of all duplicates.
+- The Comments schedule audit source-retry handoff checks the shared stop
+  signal before its expired-attempt sweep and before **each** new claim, not
+  only at the outer polling boundary. An already acquired claim is allowed to
+  complete its canonical outbox transaction and failure-state update before the
+  next shutdown check; this preserves attempt/receipt integrity.
+- Notification candidate and fanout workers recheck shutdown **after**
+  asynchronous tenant capability/policy evaluation (including deferrals),
+  immediately before starting their next candidate processing, source
+  materialization or fanout job. A policy lookup begun before shutdown is not
+  permission to admit a new durable effect afterward.
 - Marketplace financial recovery runs provider-reversal adaptation, reversal
   event reconciliation and paid-order event reconciliation in that order.
   During cooperative shutdown it finishes the currently running durable
@@ -789,6 +931,14 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
 - For server-composed static enable, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this does not fence static rollouts. Existing semantic lifecycle replays preserve the original operation result.
 - Schema lookup rejects unknown modules and missing or unmaterialized package manifests, including inline settings declarations without package evidence. Exact lifecycle replays are checked before a schema lookup failure blocks new enable or enable-direction compensation commands. The filesystem lookup is not release-bound; release images without these files reject fresh settings and enable commands until release-owned schema evidence is wired.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
+- Registry publication request classification now has one canonical path
+  recognizer shared by the outer atomic-claim middleware and the inner
+  metadata/authorization policy. Trailing-slash variants of
+  `POST /v2/catalog/publish` cannot bypass the ownership/trust-level
+  validation and `modules:manage` session requirement just because the
+  middleware layers disagree on the URL shape. Rewritten JSON bodies also
+  discard their obsolete `Content-Length` and `Transfer-Encoding` headers,
+  preserving the verified principal and non-framing headers.
 - Registry publish-request translations are written only through the owner create/publication transactions; the server no longer retains a parallel translation upsert helper.
 - Registry audit payload no longer holds historical runtime fallback: `registry_governance_events.details` is normalized to a typed shape (`stage_key`, nested `owner_transition`, structured principal objects), and the controller maps lifecycle failures from typed `RegistryGovernanceError`, not from substring matching.
 - Final registry publication at `POST /v2/catalog/publish/{request_id}/approve` requires a non-nil UUID `Idempotency-Key` header when `dry_run=false`. The session-backed transport derives one platform-scoped `ModuleCommandContext`; the owner binds its actor UUID to the structured approval principal and persists actor, trace, correlation, idempotency, and approval facts with the resulting release. It replays only an identical retry and rejects changed context, changed approval data, or a published row without a receipt.

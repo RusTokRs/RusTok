@@ -873,12 +873,12 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    tracing::debug!(path = req.uri().path(), "tenant::resolve entry");
+    tracing::debug!(path_group = super::http_stack::trace_path_family(req.uri().path()), "tenant::resolve entry");
     match tenant_route_scope(req.uri().path()) {
         TenantRouteScope::TenantBound => {}
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {
             tracing::debug!(
-                path = req.uri().path(),
+                path_group = super::http_stack::trace_path_family(req.uri().path()),
                 "tenant::resolve bypassed (global/handshake)"
             );
             return next.run(req).await;
@@ -890,7 +890,7 @@ pub async fn resolve(
         Ok(res) => res,
         Err(error) => {
             tracing::warn!(
-                path = req.uri().path(),
+                path_group = super::http_stack::trace_path_family(req.uri().path()),
                 failure_code = "tenant_resolution_failed",
                 "Tenant resolution failed"
             );
@@ -900,7 +900,7 @@ pub async fn resolve(
 
     if resolution.source == TenantResolutionSource::DevelopmentFallback {
         tracing::warn!(
-            path = req.uri().path(),
+            path_group = super::http_stack::trace_path_family(req.uri().path()),
             header_name = %settings.tenant.header_name,
             tenant_id = %settings.tenant.default_id,
             "Using explicitly configured development default-tenant fallback"
@@ -917,7 +917,7 @@ pub async fn resolve(
         Ok(context) => context,
         Err(error) => {
             tracing::warn!(
-                path = req.uri().path(),
+                path_group = super::http_stack::trace_path_family(req.uri().path()),
                 failure_code = "tenant_context_load_failed",
                 "Tenant context loading failed"
             );
@@ -926,7 +926,7 @@ pub async fn resolve(
     };
 
     tracing::debug!(
-        path = req.uri().path(),
+        path_group = super::http_stack::trace_path_family(req.uri().path()),
         tenant_slug = %context.slug,
         "tenant::resolve successful, inserting context and calling next"
     );

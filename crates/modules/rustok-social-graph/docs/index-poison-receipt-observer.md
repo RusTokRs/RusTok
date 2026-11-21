@@ -12,7 +12,18 @@ The observer starts only when all of the following are true:
 
 - the server host runs background workers;
 - the Social Graph Index durable consumer is explicitly enabled;
-- an observer handle is not already registered in `ServerRuntimeContext`.
+- no live observer has already been published in `ServerRuntimeContext`;
+- an atomic process-local startup reservation can be acquired, with no
+  competing observer startup already in progress;
+- the shared observer initialization mutex is held, serializing direct
+  observation startup against the shutdown handle snapshot;
+- the host shutdown signal has not been set.
+
+A published live handle permits idempotent startup. A finished handle is not
+readiness and returns an error instead of silently spawning an unowned
+replacement. The reservation is released on preparation errors; the original
+observer remains available for shutdown joining. These are in-process
+guarantees and do not replace operational health checks.
 
 The poll interval is controlled by `RUSTOK_SOCIAL_GRAPH_INDEX_POISON_POLL_MS`.
 

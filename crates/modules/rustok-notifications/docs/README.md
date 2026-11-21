@@ -101,7 +101,8 @@ The loop is default-off behind `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`. Whe
 `NotificationFanoutWorker` selects tenant-scoped source/job work without acquiring
 leases; the default/hard batch is 32/64 and one audience page is capped at 256.
 Before each source or job call, the server resolves effective `notifications`
-capability.
+capability and checks the worker stop signal again after the asynchronous
+policy evaluation, before admitting a new materialization or fanout page.
 
 Disabled tenant work is moved to `retryable_error` for 300 seconds; temporary policy
 lookup failure is deferred for 30 seconds. Owner CAS transitions increment attempt
@@ -120,7 +121,8 @@ cursors fail closed.
 a lease. Before canonical claim, the server calls
 `EffectiveModulePolicyService::resolve_snapshot`, requires `notifications`, and
 captures the deterministic policy revision plus the manifest default-enabled module
-set. Disabled or unresolved work receives the 300/30-second owner CAS backoff
+set. The server rechecks the stop signal after that async observation, before
+starting the next candidate claim; an operation already begun is left to finish. Disabled or unresolved work receives the 300/30-second owner CAS backoff
 without invoking recipient privacy or source providers.
 
 Enabled work is processed in this order:

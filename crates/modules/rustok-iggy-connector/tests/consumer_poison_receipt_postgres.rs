@@ -148,8 +148,8 @@ async fn concurrent_publishers_have_one_claim_owner() -> TestResult<()> {
 }
 
 #[tokio::test]
-async fn expired_lease_is_reclaimed_and_fences_the_previous_publisher() -> TestResult<()> {
-    let Some(test_db) = PostgresPoisonReceiptTestDb::setup("lease_reclaim").await? else {
+async fn expired_lease_requires_reconciliation_and_preserves_original_publisher() -> TestResult<()> {
+    let Some(test_db) = PostgresPoisonReceiptTestDb::setup("lease_reconciliation").await? else {
         return Ok(());
     };
 
@@ -170,6 +170,9 @@ async fn expired_lease_is_reclaimed_and_fences_the_previous_publisher() -> TestR
             .await?,
         ConsumerPoisonPublishClaim::Claimed
     );
+    // The external broker may have accepted the first publication before
+    // its response or durable terminal receipt was lost. Expiration is not
+    // evidence of failure and cannot authorize a second publication.
     expire_publishing_lease(&test_db.db, identity.delivery_id()).await?;
     assert_eq!(
         store
@@ -181,18 +184,28 @@ async fn expired_lease_is_reclaimed_and_fences_the_previous_publisher() -> TestR
                 Duration::from_secs(30),
             )
             .await?,
-        ConsumerPoisonPublishClaim::Claimed
+        ConsumerPoisonPublishClaim::ReconciliationRequired
     );
-    assert!(matches!(
-        store.mark_published(&identity, first_publisher).await,
-        Err(ConsumerPoisonReceiptError::ClaimLost)
-    ));
 
-    store.mark_published(&identity, second_publisher).await?;
+    // A late acknowledgement from the original fenced publisher remains
+    // authoritative, even after its lease expired.
+    store.mark_published(&identity, first_publisher).await?;
+    assert_eq!(
+        store
+            .reserve_and_claim(
+                &identity,
+                "iggy.contract.schema_invalid",
+                10,
+                second_publisher,
+                Duration::from_secs(30),
+            )
+            .await?,
+        ConsumerPoisonPublishClaim::AlreadyPublished
+    );
     let retained = store
         .find(&identity)
         .await?
-        .expect("reclaimed receipt must remain durable");
+        .expect("unresolved receipt must remain durable");
     assert_eq!(retained.state, ConsumerPoisonReceiptState::Published);
     assert_eq!(retained.stable_error_code, "iggy.contract.decode_invalid");
     assert_eq!(retained.first_delivery_attempt_count, 1);

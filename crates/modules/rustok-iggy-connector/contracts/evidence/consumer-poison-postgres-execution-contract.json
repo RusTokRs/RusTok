@@ -70,12 +70,12 @@
       ]
     },
     {
-      "case": "expired_lease_is_reclaimed_and_fences_the_previous_publisher",
+      "case": "expired_lease_requires_reconciliation_and_preserves_original_publisher",
       "assertions": [
         "empty_exact_payload_accepted",
-        "expired_publication_lease_reclaimed",
-        "previous_publisher_fenced_with_claim_lost",
-        "first_diagnostics_unchanged_after_reclaim"
+        "expired_publication_lease_requires_reconciliation",
+        "original_publisher_can_settle_after_expiry",
+        "first_diagnostics_unchanged_after_uncertainty"
       ]
     },
     {

@@ -857,7 +857,7 @@ pub async fn rate_limit_for_paths(
     let rate_limit_key_fingerprint = rate_limit_key_fingerprint(&rate_limit_key);
     debug!(
         rate_limit_key_fingerprint = %rate_limit_key_fingerprint,
-        path = %path,
+        path_group = crate::middleware::http_stack::trace_path_family(&path),
         namespace = policy.limiter.namespace(),
         "Checking rate limit for matched path policy"
     );

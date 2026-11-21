@@ -10,8 +10,9 @@ use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
+use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 #[cfg(feature = "mod-seo")]
 use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
@@ -238,6 +239,38 @@ struct ModuleArtifactMaintenanceInitializationLock(std::sync::Arc<tokio::sync::M
 
 impl ModuleArtifactMaintenanceInitializationLock {
     fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Serializes the physical DLQ duplicate scanner and its companion's
+/// admission with shutdown's JoinHandle snapshot. Only synchronous operations
+/// run while this lock is held, including the async scanner starter (which has
+/// no await points); it is distinct from the router bootstrap mutex.
+#[derive(Clone, Default)]
+pub(crate) struct EventDlqObserverInitializationLock(
+    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
+);
+
+impl EventDlqObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Serializes both Social Graph operational observers' handle publication
+/// against the runtime shutdown snapshot. This lock is independent of the
+/// bootstrap lock: direct observer starters also use it without needing to
+/// acquire the bootstrap lock recursively.
+#[cfg(feature = "mod-social_graph")]
+#[derive(Clone, Default)]
+pub(crate) struct SocialGraphObserverInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+#[cfg(feature = "mod-social_graph")]
+impl SocialGraphObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
         ctx.shared_get_or_insert_with(Self::default)
     }
 }
@@ -635,7 +668,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
     let stop_rx = stop_handle.subscribe();
 
-    if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
+    if !published_worker_running::<OutboxRelayWorkerHandle>(
+        &runtime_ctx,
+        "Outbox relay worker",
+        OutboxRelayWorkerHandle::is_finished,
+    )? {
         let event_runtime = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .ok_or_else(|| Error::Message("EventRuntime not initialized".to_string()))?;
@@ -645,7 +682,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
     }
 
-    if !runtime_ctx.shared_contains::<OutboxRetentionWorkerHandle>() {
+    if !published_worker_running::<OutboxRetentionWorkerHandle>(
+        &runtime_ctx,
+        "Outbox retention worker",
+        OutboxRetentionWorkerHandle::is_finished,
+    )? {
         let retention_config = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .and_then(|runtime| runtime.outbox_retention.clone());
@@ -658,7 +699,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.background_workers.auth_retention_enabled
-        && !runtime_ctx.shared_contains::<AuthRetentionWorkerHandle>()
+        && !published_worker_running::<AuthRetentionWorkerHandle>(
+            &runtime_ctx,
+            "Auth retention worker",
+            AuthRetentionWorkerHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_auth_retention_handle(
             runtime_ctx.db_clone(),
@@ -667,7 +712,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.registry.remote_executor.enabled
-        && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
+        && !published_worker_running::<RemoteExecutorReaperHandle>(
+            &runtime_ctx,
+            "Remote executor reaper",
+            RemoteExecutorReaperHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_remote_executor_reaper_handle(
             runtime_ctx.clone(),
@@ -677,7 +726,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+    if seo_worker_enabled && !published_worker_running::<SeoBulkWorkerHandle>(
+        &runtime_ctx,
+        "SEO bulk worker",
+        SeoBulkWorkerHandle::is_finished,
+    )? {
         let authorization = SeoWorkerAuthorization::from_runtime_config(
             settings.runtime.runs_background_workers(),
             seo_worker_enabled,
@@ -701,7 +754,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.runs_background_workers()
-        && !runtime_ctx.shared_contains::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>()
+        && !published_worker_running::<ModuleTransitionWatchdogHandle>(
+            &runtime_ctx,
+            "Module transition watchdog",
+            ModuleTransitionWatchdogHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(
             crate::services::module_transition_watchdog::spawn_module_transition_watchdog_handle(
@@ -896,6 +953,27 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let _worker_initialization_guard = worker_initialization.0.lock().await;
     drop(_worker_initialization_guard);
 
+    // Direct observer startup can bypass router bootstrap. Wait for each
+    // observer's check-stop -> spawn -> publish sequence to complete before
+    // taking the shutdown JoinHandle snapshot. Lock order is bootstrap ->
+    // runtime workers -> observer; observer starters never acquire either
+    // outer lock while holding this one.
+    #[cfg(feature = "mod-social_graph")]
+    let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
+    #[cfg(feature = "mod-social_graph")]
+    let _observer_initialization_guard = observer_initialization.0.lock().await;
+    #[cfg(feature = "mod-social_graph")]
+    drop(_observer_initialization_guard);
+
+    // Direct DLQ observer/projection startup may bypass router bootstrap.
+    // Synchronize both check-stop -> publish paths with the shutdown snapshot.
+    let dlq_observer_initialization = EventDlqObserverInitializationLock::ensure(runtime_ctx);
+    let _dlq_observer_guard = dlq_observer_initialization
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    drop(_dlq_observer_guard);
+
     let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
@@ -1009,9 +1087,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let module_event_dispatcher_drain = async {
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>(
-        ) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_module_dispatcher_for_shutdown(runtime_ctx)
+        {
             // Request a cooperative drain first; the bounded helper aborts and
             // joins the dispatcher if an in-flight handler exceeds the deadline.
             worker.request_stop();
@@ -1079,7 +1157,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-commerce")]
     let paid_order_label_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Paid-order label", worker.into_task()).await;
         }
     };
@@ -1088,7 +1166,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "commerce-marketplace-financial")]
     let marketplace_financial_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Marketplace financial", worker.into_task()).await;
         }
     };
@@ -1097,7 +1175,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-payment")]
     let payment_provider_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Payment provider event", worker.into_task()).await;
         }
     };
@@ -1106,7 +1184,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-product")]
     let product_media_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Product media release", worker.into_task()).await;
         }
     };
