@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::middleware::channel::invalidate_all_channel_cache_local;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 pub const CHANNEL_RESOLUTION_INVALIDATION_CHANNEL: &str = "channel.resolution.generation.v1";
 const CHANNEL_RESOLUTION_INVALIDATION_CAUSE: &str = "channel.resolution.changed";
@@ -554,13 +555,11 @@ pub async fn start_channel_cache_invalidation_listener(
         .ok_or_else(|| {
             Error::Cache("channel invalidation start lock is unavailable".to_string())
         })?;
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return Ok(());
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<ChannelCacheInvalidationListenerHandle>() {
         if existing.is_running() {
@@ -572,16 +571,20 @@ pub async fn start_channel_cache_invalidation_listener(
         for task in &tasks {
             task.abort();
         }
-        for task in tasks {
-            if let Err(error) = task.await {
-                if !error.is_cancelled() {
-                    tracing::warn!(
-                        ?error,
-                        "Old channel invalidation worker failed while being replaced"
-                    );
+        let Some(()) = await_worker_startup_or_stop(&stop, async {
+            for task in tasks {
+                if let Err(error) = task.await {
+                    if !error.is_cancelled() {
+                        tracing::warn!(
+                            ?error,
+                            "Old channel invalidation worker failed while being replaced"
+                        );
+                    }
                 }
             }
-        }
+        }).await else {
+            return Ok(());
+        };
     }
 
     let health = Arc::new(ChannelCacheInvalidationHealth::default());
@@ -589,16 +592,15 @@ pub async fn start_channel_cache_invalidation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL);
-    if let Err(error) = listener.reconcile_generation().await
+    let Some(recovery) =
+        await_worker_startup_or_stop(&stop, listener.reconcile_generation()).await
+    else {
+        return Ok(());
+    };
+    if let Err(error) = recovery
         && !is_missing_generation_state(&error)
     {
         tracing::warn!(%error, "Initial channel cache generation recovery deferred");
-    }
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
-        return Ok(());
     }
 
     let first_local = Arc::new(Mutex::new(Some(initial_local)));
