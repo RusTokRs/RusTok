@@ -206,8 +206,8 @@ async fn supervise_field_definition_cache_generation(
             Ok(Ok(())) => tracing::error!(
                 "Field-definition cache generation reconciler exited unexpectedly; restarting"
             ),
-            Ok(Err(error)) => tracing::error!(
-                %error,
+            Ok(Err(_error)) => tracing::error!(
+                error_code = "field_definition_cache_reconciler_failed",
                 "Field-definition cache generation reconciler failed; restarting"
             ),
             Err(_) => {
