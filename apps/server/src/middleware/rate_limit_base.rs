@@ -731,8 +731,12 @@ fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str
         Ok(header_value) => {
             headers.insert(key, header_value);
         }
-        Err(error) => {
-            tracing::warn!(%key, %value, %error, "Skipping invalid rate limit header value");
+        Err(_error) => {
+            tracing::warn!(
+                header = key,
+                failure_code = "rate_limit_header_value_invalid",
+                "Skipping invalid rate limit header value"
+            );
         }
     }
 }
