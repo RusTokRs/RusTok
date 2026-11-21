@@ -1411,6 +1411,39 @@ mod tests {
     }
 
     #[test]
+    fn event_forwarder_readiness_follows_event_bus_composition() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let check = || {
+            check_runtime_workers(&ctx, ctx.settings())
+                .into_iter()
+                .find(|check| check.name == "worker:event_forwarder")
+                .expect("event-forwarder readiness check")
+        };
+
+        let before_bus = check();
+        assert_eq!(before_bus.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(before_bus.status, ReadinessStatus::Ok);
+
+        ctx.shared_insert(crate::services::event_bus::SharedEventBus(
+            std::sync::Arc::new(rustok_core::EventBus::new()),
+        ));
+
+        let missing_forwarder = check();
+        assert_eq!(missing_forwarder.criticality, DependencyCriticality::Critical);
+        assert_eq!(missing_forwarder.status, ReadinessStatus::Unhealthy);
+        assert!(
+            missing_forwarder
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("missing")),
+            "a composed event bus without its forwarder must fail readiness"
+        );
+    }
+
+    #[test]
     fn cache_reconciliation_readiness_covers_surface_hosts_without_general_workers() {
         for host_mode in [
             crate::common::settings::RuntimeHostMode::Api,

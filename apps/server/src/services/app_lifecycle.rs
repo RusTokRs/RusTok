@@ -422,7 +422,8 @@ pub(crate) fn additional_runtime_worker_snapshots(
         },
         RuntimeWorkerSnapshot {
             name: "event_forwarder",
-            required: local && ctx.shared_contains::<EventForwarderHandle>(),
+            required: local
+                && ctx.shared_contains::<crate::services::event_bus::SharedEventBus>(),
             finished: ctx.shared_map::<EventForwarderHandle, _>(|worker| !worker.is_running()),
         },
         RuntimeWorkerSnapshot {

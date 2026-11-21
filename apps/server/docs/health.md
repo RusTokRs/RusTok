@@ -126,9 +126,10 @@ Checks are published in `checks` with `kind = "worker"`:
   `mod-seo`. They observe the same supervised SEO worker handle under distinct
   configuration gates.
 - `worker:auth_retention` — critical if auth retention is enabled;
-- `worker:module_event_dispatcher` — critical when composition registered at least one listener.
-  Before composition has evaluated the listener set it is treated as required;
-  a confirmed empty set does not require a dispatcher task;
+- `worker:module_event_dispatcher` — critical once the event runtime has been
+  composed. An explicit empty listener registry still requires a live dispatcher:
+  it distinguishes “no local handler” from “listener registry not initialized”.
+  Before composition binds that registry, readiness fails closed;
 - `worker:module_work_scheduler` — critical when module composition registered scheduled work.
   Before the registration set is evaluated it is treated as required; an absent or empty
   registration set does not require a scheduler task. Startup is serialized per
