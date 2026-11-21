@@ -1630,6 +1630,12 @@ mod tests {
             .expect("SQLite database");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
+            .await
+            .expect("oauth_apps table");
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
             .await
             .expect("oauth_tokens table");
@@ -1647,6 +1653,11 @@ mod tests {
         );
         client.id = app_id;
         client.tenant_id = tenant_id;
+        let mut tenant = tenants::ActiveModel::new("Replay test tenant", "replay-test-tenant");
+        tenant.id = Set(tenant_id);
+        tenant.insert(&db).await.expect("insert tenant");
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
+        active_app.insert(&db).await.expect("insert OAuth app");
 
         let make_token = |id, hash: &str, revoked_at| oauth_tokens::ActiveModel {
             id: Set(id),
@@ -2190,6 +2201,14 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("connect sqlite");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
+            .await
+            .expect("oauth_apps table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_tokens (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -2216,6 +2235,17 @@ mod tests {
         let app_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
+        let mut tenant = tenants::ActiveModel::new("Code replay tenant", "code-replay-tenant");
+        tenant.id = Set(tenant_id);
+        tenant.insert(&db).await.expect("insert tenant");
+        let mut client = app(
+            serde_json::json!(["openid"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.id = app_id;
+        client.tenant_id = tenant_id;
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.into();
+        active_app.insert(&db).await.expect("insert OAuth app");
         let now = Utc::now();
         let mut ids = Vec::new();
         for (index, (token_app, token_tenant, token_user, token_code)) in [
