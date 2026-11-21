@@ -129,10 +129,14 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     };
 
     let mut reports = Vec::new();
-    for entry in entries.iter().take(MAX_REPORTS_PER_REQUEST) {
-        if entry.get("type").and_then(Value::as_str) != Some("csp-violation") {
-            continue;
-        }
+    // The reporting API may mix deprecation, intervention, and CSP entries.
+    // Apply the bounded budget to CSP reports, not to unrelated entries at
+    // the front of the batch, which could otherwise hide every CSP report.
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("csp-violation"))
+        .take(MAX_REPORTS_PER_REQUEST)
+    {
         let body = entry
             .get("body")
             .cloned()
@@ -270,6 +274,23 @@ mod tests {
             sanitized_location(reports[0].violation.blocked_uri.as_deref()).as_deref(),
             Some("https://cdn.example.net")
         );
+    }
+
+    #[test]
+    fn reporting_api_budget_counts_csp_reports_after_unrelated_entries() {
+        let mut entries = (0..MAX_REPORTS_PER_REQUEST + 5)
+            .map(|_| serde_json::json!({"type": "deprecation", "body": {}}))
+            .collect::<Vec<_>>();
+        entries.extend((0..MAX_REPORTS_PER_REQUEST + 3).map(|_| {
+            serde_json::json!({
+                "type": "csp-violation",
+                "body": {"effectiveDirective": "script-src"}
+            })
+        }));
+        let body = serde_json::to_vec(&entries).expect("reporting API JSON");
+        let reports = parse_reports(&body).expect("CSP reports after unrelated entries");
+        assert_eq!(reports.len(), MAX_REPORTS_PER_REQUEST);
+        assert!(reports.iter().all(|report| report.format == "reporting_api"));
     }
 
     #[test]
