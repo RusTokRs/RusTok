@@ -1,5 +1,23 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — bounded HTTP path diagnostics (2026-11-21)
+
+The edge `RusTokMakeSpan` traced `request.uri().path()` verbatim, and
+metrics-auth and both rate-limit middleware layers repeated this user input
+in debug diagnostics. A path can contain bearer-like reset links, account
+identifiers or arbitrary content even for unmatched routes; the tracing
+fields were not subject to the existing bounded Prometheus route-label
+policy.
+
+The shared `trace_path_family` helper in `middleware/http_stack.rs`
+exposes only fixed route families at the pre-routing boundary: exact public
+health/metrics/GraphQL entry points, generic API/admin buckets and a generic
+fallback. The edge span and middleware diagnostics use this bounded field.
+The original path is still used for policy matching and Axum route dispatch,
+while Prometheus continues to label matched route templates after routing.
+Unit regressions assert secrets in nested paths cannot become trace path
+fields, including lookalike `/apiary` prefixes. No runtime checks executed.
+
 ## Server audit continuation — poison receipt SQL fallback type fix (2026-11-21)
 
 A review of the previous ambiguous DLQ publication patch found a Rust type

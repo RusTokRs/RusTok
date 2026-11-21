@@ -218,6 +218,15 @@ REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
 
+HTTP edge tracing and middleware diagnostics now emit only a fixed
+`path_group` (for example `/api/:request`, `/admin/:request`,
+`/graphql`, or `/health/ready`) rather than the raw URI pathname. URL
+segments can contain user and token identifiers, so route-specific metrics
+continue to use Axum's matched template separately after routing; the
+trace layer cannot see the matched template before routing. The change also
+covers the metrics-auth middleware and both rate-limit entry points; actual
+rate-limit policy matching still operates on the original request path.
+
 HTTP edge settings are bounded before reaching Tokio and Tower:
 `RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
 600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped

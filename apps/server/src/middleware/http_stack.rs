@@ -175,12 +175,33 @@ impl<B> MakeSpan<B> for RusTokMakeSpan {
         tracing::info_span!(
             "http_request",
             method = %request.method(),
-            uri = %request.uri().path(),
+            path_group = trace_path_family(request.uri().path()),
             version = ?request.version(),
             request_id = %request_id,
             correlation_id = %correlation_id,
             traceparent = %traceparent,
         )
+    }
+}
+
+/// Privacy-bounded path family for pre-routing HTTP traces and middleware
+/// diagnostics. Axum's matched route template is not yet available to the
+/// outer edge span. Never record raw path segments (they can contain tokens,
+/// account identifiers, or arbitrary user input). Full route templates remain
+/// available to the existing post-routing metrics collector.
+pub(crate) fn trace_path_family(path: &str) -> &'static str {
+    match path {
+        "/" => "/",
+        "/health" => "/health",
+        "/health/live" => "/health/live",
+        "/health/ready" => "/health/ready",
+        "/health/runtime" => "/health/runtime",
+        "/health/modules" => "/health/modules",
+        "/metrics" | "/metrics/" => "/metrics",
+        "/graphql" | "/api/graphql" => "/graphql",
+        _ if path == "/api" || path.starts_with("/api/") => "/api/:request",
+        _ if path == "/admin" || path.starts_with("/admin/") => "/admin/:request",
+        _ => "/:request",
     }
 }
 
@@ -730,6 +751,39 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn traces_use_bounded_path_families_without_untrusted_segments() {
+        assert_eq!(trace_path_family("/health/ready"), "/health/ready");
+        assert_eq!(trace_path_family("/metrics/"), "/metrics");
+        assert_eq!(trace_path_family("/api/graphql"), "/graphql");
+        assert_eq!(
+            trace_path_family("/api/auth/password/reset/secret-token-in-path"),
+            "/api/:request"
+        );
+        assert_eq!(
+            trace_path_family("/admin/tenant/private-user-id"),
+            "/admin/:request"
+        );
+        assert_eq!(
+            trace_path_family("/apiary/private"),
+            "/:request",
+            "a similarly prefixed path must not acquire the API path family"
+        );
+        assert_eq!(
+            trace_path_family("/hidden/secrets/aaa?password=not-logged"),
+            "/:request"
+        );
+        for path in [
+            "/api/auth/password/reset/secret-token-in-path",
+            "/admin/tenant/private-user-id",
+            "/hidden/secrets/aaa?password=not-logged",
+        ] {
+            assert!(!trace_path_family(path).contains("secret"));
+            assert!(!trace_path_family(path).contains("private-user"));
+            assert!(!trace_path_family(path).contains("password"));
+        }
     }
 
     #[test]
