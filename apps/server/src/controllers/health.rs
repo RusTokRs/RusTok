@@ -1284,65 +1284,38 @@ fn collect_reasons(checks: &[ReadinessCheck], modules: &[ReadinessCheck]) -> Vec
         .collect()
 }
 
-fn parse_host_port(url: &str) -> std::result::Result<(String, u16), String> {
-    let (scheme, authority_source) = match url.split_once("://") {
-        Some((scheme, rest)) => (Some(scheme.trim().to_ascii_lowercase()), rest),
-        None => (None, url),
-    };
-    let default_port = match scheme.as_deref() {
-        Some("https") => 443,
-        _ => 80,
-    };
-
-    let authority_trimmed = authority_source
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .trim();
-    let authority = match authority_trimmed.rsplit_once('@') {
-        Some((_, host)) => host,
-        None => authority_trimmed,
-    };
-
-    if authority.is_empty() {
+fn parse_host_port(raw: &str) -> std::result::Result<(String, u16), String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
         return Err("search backend URL is empty or invalid".to_string());
     }
 
-    if authority.starts_with('[') {
-        let end = authority
-            .find(']')
-            .ok_or_else(|| "search backend URL contains an invalid host".to_string())?;
-        let host = &authority[1..end];
-        if host.is_empty() {
-            return Err("search backend URL contains an invalid host".to_string());
-        }
-        let remainder = &authority[end + 1..];
-        let port = if remainder.is_empty() {
-            default_port
-        } else if let Some(port) = remainder.strip_prefix(':') {
-            port.parse::<u16>()
-                .map_err(|_| "search backend URL contains an invalid port".to_string())?
-        } else {
-            return Err("search backend URL contains an invalid host".to_string());
-        };
-        return Ok((host.to_string(), port));
+    // Accept a bare authority for legacy configuration, but parse the resulting
+    // URL as a whole. Splitting on '/' misses '?' and '#' and treats malformed
+    // authorities (including stray IPv6 colons) as hostnames.
+    let candidate = if raw.contains("://") {
+        raw.to_string()
+    } else {
+        format!("http://{raw}")
+    };
+    let parsed = url::Url::parse(&candidate)
+        .map_err(|_| "search backend URL is invalid".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("search backend URL has an unsupported scheme".to_string());
     }
-
-    if authority.matches(':').count() > 1 {
-        return Ok((authority.to_string(), default_port));
+    let host = match parsed.host() {
+        Some(url::Host::Domain(host)) => host.to_string(),
+        Some(url::Host::Ipv4(host)) => host.to_string(),
+        Some(url::Host::Ipv6(host)) => host.to_string(),
+        None => return Err("search backend URL contains an invalid host".to_string()),
+    };
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| "search backend URL contains an invalid port".to_string())?;
+    if port == 0 {
+        return Err("search backend URL contains an invalid port".to_string());
     }
-
-    if let Some((host, port)) = authority.rsplit_once(':') {
-        let port = port
-            .parse::<u16>()
-            .map_err(|_| "search backend URL contains an invalid port".to_string())?;
-        if host.is_empty() {
-            return Err("search backend URL contains an invalid host".to_string());
-        }
-        return Ok((host.to_string(), port));
-    }
-
-    Ok((authority.to_string(), default_port))
+    Ok((host, port))
 }
 
 pub fn router() -> crate::routes::ServerRouter {
@@ -1828,6 +1801,32 @@ mod tests {
             parse_host_port("https://user:secret@[2001:db8::1]:9443/search").expect("valid url");
         assert_eq!(host, "2001:db8::1");
         assert_eq!(port, 9443);
+    }
+
+    #[test]
+    fn parse_host_port_ignores_queries_fragments_and_uses_url_authority() {
+        assert_eq!(
+            parse_host_port("https://search.example.test?access_token=private#fragment"),
+            Ok(("search.example.test".to_string(), 443))
+        );
+        assert_eq!(
+            parse_host_port("localhost:7700/search?debug=1"),
+            Ok(("localhost".to_string(), 7700))
+        );
+    }
+
+    #[test]
+    fn parse_host_port_rejects_malformed_authorities_and_ports() {
+        for invalid in [
+            "",
+            "http://",
+            "ftp://search.example.test",
+            "http://search.example.test:0",
+            "http://search.example.test:99999",
+            "http://2001:db8::1",
+        ] {
+            assert!(parse_host_port(invalid).is_err(), "accepted invalid URL: {invalid}");
+        }
     }
 
     #[test]
