@@ -607,10 +607,13 @@ mod tests {
         .await
         .expect("concurrent secret update must not be blocked by preparation");
 
-        let error = guard
+        let error = match guard
             .commit_prepared_oauth_secret_rotation(&context, app_id, &authority, prepared)
             .await
-            .expect_err("stale prepared secret must never overwrite new secret");
+        {
+            Ok(_) => panic!("stale prepared secret must never overwrite new secret"),
+            Err(error) => error,
+        };
         assert!(matches!(
             error,
             AuthAdminMutationError::Validation(message)
