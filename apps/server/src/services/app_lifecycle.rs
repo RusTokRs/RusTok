@@ -2115,6 +2115,70 @@ mod tests {
         assert!(!ctx.shared_contains::<u64>());
     }
 
+    #[cfg(feature = "mod-comments")]
+    #[tokio::test]
+    async fn comments_direct_worker_handles_wait_for_publication_before_shutdown_take() {
+        use crate::services::comments_provider_runtime::{
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+        };
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::DirectWorkerRegistrationLock::ensure(&ctx);
+        let guard = registration
+            .0
+            .lock()
+            .expect("hold Comments final registration window");
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (taken_tx, taken_rx) = std::sync::mpsc::channel();
+        let shutdown_ctx = ctx.clone();
+        let taker = std::thread::spawn(move || {
+            ready_tx.send(()).expect("shutdown taker begins");
+            let listener = super::take_direct_worker_for_shutdown::<CommentsTcpListenerTask>(
+                &shutdown_ctx,
+            );
+            let handoff = super::take_direct_worker_for_shutdown::<
+                CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
+            >(&shutdown_ctx);
+            taken_tx
+                .send((listener, handoff))
+                .expect("report both captured tasks");
+        });
+
+        ready_rx.recv().expect("shutdown taker thread started");
+        assert!(
+            taken_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "shutdown cannot take a Comments handle before publication finishes"
+        );
+
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task: tokio::spawn(std::future::pending()),
+            shutdown_timeout: Duration::from_secs(1),
+        });
+        ctx.shared_insert(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(tokio::spawn(
+                std::future::pending(),
+            )),
+        );
+        drop(guard);
+
+        let (listener, handoff) = taken_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("shutdown acquires both Comments task handles");
+        taker.join().expect("shutdown taker thread completes");
+        let listener = listener.expect("listener handle must be visible to shutdown");
+        listener.task.abort();
+        let _ = listener.task.await;
+        let handoff = handoff.expect("handoff handle must be visible to shutdown");
+        let handoff_task = handoff.take_task().expect("handoff task is retained");
+        handoff_task.abort();
+        let _ = handoff_task.await;
+        assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
+        assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
+    }
+
     #[tokio::test]
     async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
         let ctx = ServerRuntimeContext::new(
