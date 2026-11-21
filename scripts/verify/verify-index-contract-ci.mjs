@@ -117,6 +117,13 @@ for (const [path, fixture] of [
   requireInJob('product-host', [`${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
   if (!read(`apps/server/src/${path}`).includes(`async fn ${fixture}()`)) fail(`${fixture} is not a server test`);
 }
+for (const fixture of [
+  'sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans',
+  'manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug',
+]) {
+  requireInJob('product-host', [fixture]);
+  if (!read('apps/server/src/services/oauth_app.rs').includes(`async fn ${fixture}()`)) fail(`${fixture} is not an OAuth test`);
+}
 const installWasmTarget = 'rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown';
 requireInJob('admin-profiles', [
   'profile: [ssr, hydrate, csr]',
@@ -184,6 +191,13 @@ for (const pathMarker of [
   '"apps/server/Cargo.toml"',
   '"apps/server/src/graphql/index_replay*.rs"',
   '"apps/server/src/services/app_router.rs"',
+  '"apps/server/src/controllers/marketplace_registry.rs"',
+  '"apps/server/src/models/oauth_apps.rs"',
+  '"apps/server/src/services/graphql_schema.rs"',
+  '"apps/server/src/services/mcp_management.rs"',
+  '"apps/server/src/services/mcp_scaffold_workspace.rs"',
+  '"apps/server/src/services/oauth_app.rs"',
+  '"apps/server/src/services/tenant_locale_generation.rs"',
   '"apps/server/src/services/index_reconciliation_operator.rs"',
   '"apps/server/src/services/index_replay_runtime_composition.rs"',
   '"apps/admin/Cargo.toml"',

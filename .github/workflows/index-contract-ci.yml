@@ -23,6 +23,13 @@ on:
       - "apps/server/Cargo.toml"
       - "apps/server/src/graphql/index_replay*.rs"
       - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/controllers/marketplace_registry.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/mcp_management.rs"
+      - "apps/server/src/services/mcp_scaffold_workspace.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
       - "Cargo.toml"
@@ -82,6 +89,13 @@ on:
       - "apps/server/Cargo.toml"
       - "apps/server/src/graphql/index_replay*.rs"
       - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/controllers/marketplace_registry.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/mcp_management.rs"
+      - "apps/server/src/services/mcp_scaffold_workspace.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
       - "Cargo.toml"
@@ -300,6 +314,12 @@ jobs:
           bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
           bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
           bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
+      - name: Verify OAuth manifest sync on its owner transaction
+        if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
+        run: >-
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib --
+          sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
+          manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
       - name: Verify Product refresh host envelope projection and retry boundary
         if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
         run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
