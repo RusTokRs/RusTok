@@ -267,8 +267,12 @@ impl McpManagementService {
                     .and_then(|identity| policy.to_access_context(&client, Some(identity)))
             })
             .transpose()
-            .map_err(|error| {
-                tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+            .map_err(|_error| {
+                tracing::error!(
+                    client_id = %client.id,
+                    error_code = "mcp_persisted_policy_invalid",
+                    "Persisted MCP policy is invalid"
+                );
                 Error::InternalServerError
             })?;
 
@@ -1056,8 +1060,11 @@ fn normalize_metadata(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
-fn map_db_err(err: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %err, "MCP management database operation failed");
+fn map_db_err(_err: sea_orm::DbErr) -> Error {
+    tracing::error!(
+        error_code = "mcp_management_database_operation_failed",
+        "MCP management database operation failed"
+    );
     Error::InternalServerError
 }
 

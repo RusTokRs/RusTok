@@ -173,10 +173,10 @@ impl DbBackedMcpRuntimeBridge {
             tenant_id,
         )
         .await
-        .map_err(|error| {
+        .map_err(|_error| {
             tracing::error!(
-                %error,
                 tenant_id = %tenant_id,
+                error_code = "mcp_module_permission_availability_failed",
                 "MCP module permission availability failed"
             );
             Error::InternalServerError
@@ -369,8 +369,11 @@ fn filter_active_module_permissions(
     for value in granted_permissions {
         match value.parse::<Permission>() {
             Ok(permission) => permissions.push(permission),
-            Err(error) => {
-                tracing::warn!(value = %value, error = %error, "Ignoring unparseable granted permission");
+            Err(_error) => {
+                tracing::warn!(
+                    error_code = "mcp_granted_permission_invalid",
+                    "Ignoring unparseable granted permission"
+                );
             }
         }
     }
@@ -389,14 +392,22 @@ fn access_context_for_client(
 ) -> Result<McpAccessContext> {
     match policy {
         Some(policy) => {
-            let identity = identity_for_client(client, policy).map_err(|error| {
-                tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+            let identity = identity_for_client(client, policy).map_err(|_error| {
+                tracing::error!(
+                    client_id = %client.id,
+                    error_code = "mcp_persisted_policy_invalid",
+                    "Persisted MCP policy is invalid"
+                );
                 Error::InternalServerError
             })?;
             policy
                 .to_access_context(client, Some(identity))
-                .map_err(|error| {
-                    tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+                .map_err(|_error| {
+                    tracing::error!(
+                        client_id = %client.id,
+                        error_code = "mcp_persisted_policy_invalid",
+                        "Persisted MCP policy is invalid"
+                    );
                     Error::InternalServerError
                 })
         }
@@ -553,8 +564,11 @@ fn actor_type_slug(actor_type: McpActorType) -> &'static str {
     }
 }
 
-fn map_db_err(err: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %err, "MCP runtime database operation failed");
+fn map_db_err(_err: sea_orm::DbErr) -> Error {
+    tracing::error!(
+        error_code = "mcp_runtime_database_operation_failed",
+        "MCP runtime database operation failed"
+    );
     Error::InternalServerError
 }
 
@@ -562,10 +576,16 @@ fn map_runtime_policy_error(
     client: &mcp_clients::Model,
     error: McpManagementAuthorityError,
 ) -> Error {
+    let error_code = match &error {
+        McpManagementAuthorityError::Internal(_) => "mcp_policy_internal_error",
+        McpManagementAuthorityError::Invalid(_) => "mcp_policy_invalid",
+        McpManagementAuthorityError::Forbidden(_) => "mcp_policy_forbidden",
+        McpManagementAuthorityError::NotFound(_) => "mcp_policy_not_found",
+    };
     tracing::warn!(
         tenant_id = %client.tenant_id,
         client_id = %client.id,
-        %error,
+        error_code,
         "MCP runtime policy is no longer authorized"
     );
     match error {
