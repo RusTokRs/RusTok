@@ -1,5 +1,26 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — tenant locale generation transition ownership (2026-11-21)
+
+The tenant locale-generation listener is cloned into three independent
+local, Redis and periodic reconciliation task owners. All three previously
+ran asynchronous `current_generation`, cache invalidation and tracker
+acknowledgement concurrently, then separately set a single readiness flag.
+The bounded tracker protected individual map operations but did not protect
+the whole observe → invalidate → acknowledge → health sequence. An older
+in-flight recovery could therefore report readiness after a newer failure,
+or classify an event against a checkpoint that was being advanced by a
+different task.
+
+A shared `Arc<tokio::sync::Mutex<()>>` now serializes both
+`recover_if_advanced` and `handle_message` across every cloned listener.
+These entrypoints preserve the existing durable checks, full-cache clear
+fallback, failure reporting and retry behavior. The gate is held through
+the final readiness update; internal helpers do not recursively acquire it.
+A focused Tokio regression verifies both entrypoints wait for a lock
+held by another clone. This does not provide multi-replica serialization.
+No tests/builds/formatting were executed.
+
 ## Server audit continuation — registry publish middleware parity (2026-11-21)
 
 The outer `registry_remote_claim::claim_atomic` middleware delegated only

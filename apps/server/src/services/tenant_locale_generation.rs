@@ -49,6 +49,11 @@ struct TenantLocaleGenerationListener {
     ctx: ServerRuntimeContext,
     cache: CacheService,
     tracker: BoundedCacheInvalidationGapTracker,
+    // Local, Redis and periodic reconciliation share a receipt/generation
+    // tracker and a readiness flag. Serialize the whole observe -> invalidate
+    // -> acknowledge -> health transition, not just the in-memory tracker CAS.
+    // Clones must use the same lock across all three task owners.
+    operation_gate: Arc<tokio::sync::Mutex<()>>,
     health: Arc<TenantLocaleGenerationHealth>,
 }
 
@@ -62,6 +67,7 @@ impl TenantLocaleGenerationListener {
             ctx,
             cache,
             tracker: BoundedCacheInvalidationGapTracker::default(),
+            operation_gate: Arc::new(tokio::sync::Mutex::new(())),
             health,
         }
     }
@@ -110,6 +116,7 @@ impl TenantLocaleGenerationListener {
     }
 
     async fn recover_if_advanced(&self) -> Result<u64> {
+        let _operation_guard = self.operation_gate.lock().await;
         let result = self.recover_if_advanced_inner().await;
         match &result {
             Ok(_) => self.health.mark_ready(),
@@ -152,6 +159,7 @@ impl TenantLocaleGenerationListener {
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
+        let _operation_guard = self.operation_gate.lock().await;
         let result = async {
             let event = VersionedCacheInvalidation::from_message(&message)
                 .map_err(|error| Error::Cache(error.to_string()))?;

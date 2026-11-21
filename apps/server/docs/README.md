@@ -434,6 +434,12 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
+- Tenant locale generation recovery now serializes local invalidation
+  messages, Redis Pub/Sub delivery and periodic reconciliation under one
+  per-listener asynchronous transition gate. The shared generation tracker
+  and readiness bit cannot be updated by interleaved older recovery results.
+  Cloned listener task owners reuse the same gate; this is process-local and
+  does not replace durable namespace generation checks.
 - The global Event DLQ physical duplicate-alert scanner and identifier-free
   telemetry companion share a shutdown-aware registration lock. Their
   `shared_contains` / `shared_insert` race could spawn duplicate tasks,
