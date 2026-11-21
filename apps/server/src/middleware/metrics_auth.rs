@@ -102,11 +102,12 @@ fn allow_unauthenticated_without_token(is_production: bool) -> bool {
 fn supplied_token(request: &Request<Body>) -> Option<&str> {
     let mut values = request.headers().get_all(header::AUTHORIZATION).iter();
     let first = values.next()?;
-    for duplicate in values {
-        if duplicate != first {
-            tracing::warn!("Conflicting duplicate Authorization headers on observability request");
-            return None;
-        }
+    // Even identical duplicate Authorization fields are ambiguous across
+    // intermediaries. Match the fail-closed token extraction used by the
+    // ordinary authentication endpoints.
+    if values.next().is_some() {
+        tracing::warn!("Duplicate Authorization headers on observability request");
+        return None;
     }
     first.to_str().ok().and_then(parse_bearer_token)
 }
@@ -271,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn supplied_token_handles_duplicate_and_conflicting_headers() {
+    fn supplied_token_rejects_duplicate_and_conflicting_headers() {
         let mut req = Request::builder()
             .uri("/metrics")
             .body(Body::empty())
@@ -280,7 +281,16 @@ mod tests {
             .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
         req.headers_mut()
             .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
-        assert_eq!(supplied_token(&req), Some("tok1"));
+        assert_eq!(supplied_token(&req), None);
+
+        let mut single = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        single
+            .headers_mut()
+            .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        assert_eq!(supplied_token(&single), Some("tok1"));
 
         let mut req2 = Request::builder()
             .uri("/metrics")
