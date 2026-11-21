@@ -42,12 +42,16 @@ struct ConfiguredCredential {
 
 impl HostAuthorityPolicy {
     pub fn from_env() -> Result<Self> {
-        match std::env::var(HOST_AUTHORITY_CREDENTIALS_ENV) {
+        Self::from_env_value(std::env::var(HOST_AUTHORITY_CREDENTIALS_ENV))
+    }
+
+    fn from_env_value(value: std::result::Result<String, std::env::VarError>) -> Result<Self> {
+        match value {
             Ok(value) => Self::parse_env_policy(&value),
             Err(std::env::VarError::NotPresent) => Ok(Self::default()),
-            Err(std::env::VarError::NotUnicode(_)) => Err(Error::BadRequest(format!(
-                "{HOST_AUTHORITY_CREDENTIALS_ENV} must contain valid UTF-8"
-            ))),
+            Err(std::env::VarError::NotUnicode(_)) => Err(Error::Message(
+                "Host authority credential configuration is invalid".to_string(),
+            )),
         }
     }
 
@@ -218,6 +222,15 @@ mod tests {
     fn invalid_environment_policy_is_a_server_configuration_error() {
         let error = super::parse_env_policy("{")
             .expect_err("invalid environment policy must be rejected");
+        assert!(matches!(error, crate::error::Error::Message(_)));
+    }
+
+    #[test]
+    fn non_unicode_environment_policy_is_a_server_configuration_error() {
+        let error = super::HostAuthorityPolicy::from_env_value(Err(
+            std::env::VarError::NotUnicode(std::ffi::OsString::from("invalid")),
+        ))
+        .expect_err("non-Unicode environment policy must be rejected");
         assert!(matches!(error, crate::error::Error::Message(_)));
     }
 
