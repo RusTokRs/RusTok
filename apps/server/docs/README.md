@@ -365,6 +365,17 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   a request delayed behind another cannot apply an obsolete window timestamp.
   Exactly at a window deadline, its counter restarts rather than extending the
   previous window by one tick.
+- Built-in password-reset and verification email sends register active Tokio
+  tasks in a single host-runtime registry, independent of HTTP callers retaining
+  their JoinHandles. Host shutdown closes email admission, waits for accepted
+  sends for up to five seconds, then aborts and observes remaining tasks within
+  another bounded second. Panics during future construction and delivery are
+  caught and logged without exposing credentials. Concurrent SMTP sender
+  initialization preserves the first shared connection pool. Skipped sends on
+  shutdown are counted as skipped deliveries; templates match the full locale
+  language subtag rather than an arbitrary `ru` prefix. This improves graceful
+  shutdown **only**: email delivery remains best-effort, without a durable
+  queue, retry lease, or crash recovery.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
