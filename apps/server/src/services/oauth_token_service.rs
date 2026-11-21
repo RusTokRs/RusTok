@@ -648,7 +648,7 @@ async fn detect_oauth_refresh_reuse(
     );
 
     let now = Utc::now();
-    OAuthTokens::update_many()
+    let result = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -661,15 +661,21 @@ async fn detect_oauth_refresh_reuse(
                 .add(oauth_tokens::Column::Id.eq(family_id)),
         )
         .exec(&tx)
-        .await
-        .map_err(|error| {
-            tracing::error!(
-                %error,
-                family_id = %family_id,
-                "failed to revoke OAuth refresh token family after reuse detection"
-            );
-            OAuthTokenProtocolError::server_error("Failed to revoke replayed refresh-token family")
+        .await;
+    if let Err(error) = result {
+        tracing::error!(
+            %error,
+            family_id = %family_id,
+            "failed to revoke OAuth refresh token family after reuse detection"
+        );
+        tx.rollback().await.map_err(|rollback| {
+            tracing::error!(%rollback, family_id = %family_id, "Failed to roll back OAuth replay revocation");
+            OAuthTokenProtocolError::server_error("Failed to roll back refresh-token reuse revocation")
         })?;
+        return Err(OAuthTokenProtocolError::server_error(
+            "Failed to revoke replayed refresh-token family",
+        ));
+    }
     tx.commit().await.map_err(|error| {
         tracing::error!(%error, family_id = %family_id, "Failed to commit OAuth refresh replay revocation");
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token reuse revocation")
@@ -699,7 +705,12 @@ async fn revoke_authorization_code_family(
             .map_err(|_| {
                 OAuthTokenProtocolError::server_error("Failed to lock OAuth client for code replay")
             })?;
-    revoke_authorization_code_family_in_tx(&tx, code).await?;
+    if let Err(error) = revoke_authorization_code_family_in_tx(&tx, code).await {
+        tx.rollback().await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to roll back authorization-code replay revocation")
+        })?;
+        return Err(error);
+    }
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit authorization-code replay revocation")
     })
