@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 #[cfg(feature = "mod-blog")]
 #[path = "blog_public_comments_snapshot.rs"]
@@ -82,6 +82,37 @@ fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
     settings.runtime.runs_background_workers()
 }
 
+/// Distinguish a dispatcher already published in the runtime from one still
+/// being built by another caller. An in-flight reservation is *not* readiness:
+/// the owner can still fail before it registers its handle and listener flag.
+fn claim_module_dispatcher_start(
+    ctx: &ServerRuntimeContext,
+) -> Result<Option<ServerRuntimeStartReservation<'_, ModuleEventDispatcherReservation>>> {
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started before module dispatcher initialization".to_string(),
+        ));
+    }
+    if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
+        return Ok(None);
+    }
+
+    let Some(claim) =
+        ServerRuntimeStartReservation::try_claim(ctx, ModuleEventDispatcherReservation)
+    else {
+        // The first starter may have published its handle between our
+        // preflight and the failed atomic claim. Otherwise report contention,
+        // not a misleading Ok from a worker that does not yet exist.
+        if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
+            return Ok(None);
+        }
+        return Err(Error::Message(
+            "module event dispatcher startup is already in progress; retry".to_string(),
+        ));
+    };
+    Ok(Some(claim))
+}
+
 pub fn spawn_module_event_dispatcher(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
@@ -107,22 +138,20 @@ pub fn spawn_module_event_dispatcher(
         None
     };
 
-    // Two parallel composition attempts must not each start a dispatcher and
-    // overwrite the other's shutdown handle. Reserve the lifecycle *before*
-    // any module worker initialization or registration side effects.
-    if event_bus.is_some() {
-        if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
-            return Err(Error::Message(
-                "server shutdown started before module dispatcher initialization".to_string(),
-            ));
+    // Claim ownership before enriching the runtime or registering listeners.
+    // The guard releases the claim on errors, unwinds and abandoned startups.
+    // A concurrent *in-progress* attempt must never be reported as success.
+    let reservation = if event_bus.is_some() {
+        match claim_module_dispatcher_start(ctx)? {
+            Some(reservation) => Some(reservation),
+            None => {
+                tracing::debug!("Module event dispatcher is already registered");
+                return Ok(());
+            }
         }
-        if ctx.shared_contains::<ModuleEventDispatcherHandle>()
-            || !ctx.shared_insert_if_absent(ModuleEventDispatcherReservation)
-        {
-            tracing::debug!("Module event dispatcher already started or initializing");
-            return Ok(());
-        }
-    }
+    } else {
+        None
+    };
 
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
 
@@ -144,16 +173,15 @@ pub fn spawn_module_event_dispatcher(
     }
 
     if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
-        ctx.shared_remove::<ModuleEventDispatcherReservation>();
         return Err(Error::Message(
             "server shutdown started during module dispatcher initialization".to_string(),
         ));
     }
-    let result = start_module_event_dispatcher(ctx, dispatcher, handler_count);
-    if result.is_err() {
-        // Failure must not permanently poison a later initialization retry.
-        ctx.shared_remove::<ModuleEventDispatcherReservation>();
-        return result;
+    // Publication is the commit boundary for local startup ownership.
+    // On any earlier failure, the RAII guard automatically permits retry.
+    start_module_event_dispatcher(ctx, dispatcher, handler_count)?;
+    if let Some(reservation) = reservation {
+        reservation.commit();
     }
 
     // Required dispatcher startup has succeeded. Optional recovery workers may
@@ -166,7 +194,7 @@ pub fn spawn_module_event_dispatcher(
     spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
-    result
+    Ok(())
 }
 
 fn start_module_event_dispatcher(
