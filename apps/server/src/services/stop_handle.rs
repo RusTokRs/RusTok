@@ -2,18 +2,19 @@
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Stored in `ServerRuntimeContext`; shutdown signals workers, which drain their current operation.
-/// A shutdown signal is an admission fence for new durable worker work.
+/// A shutdown signal fences admission of new durable worker work.
 ///
-//// Do not cancel operations already claimed; recheck this immediately after
-//// any awaited preparation (broker receive, tenant policy, retry transition)
-//// and before the next effectful owner call.
+/// Finish operations already claimed. Recheck immediately after awaited
+/// preparation (broker receive, tenant policy, retry transition) and before
+/// the next effectful owner call.
 pub(crate) fn may_admit_next_worker_operation(
     stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> bool {
     !*stop_rx.borrow()
 }
 
+/// Stored in `ServerRuntimeContext`; shutdown signals each worker so it can
+/// complete its current durable operation and stop before the next one.
 #[derive(Clone)]
 pub struct StopHandle {
     stop_tx: tokio::sync::watch::Sender<bool>,
