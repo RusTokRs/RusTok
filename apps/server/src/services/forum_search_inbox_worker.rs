@@ -19,11 +19,14 @@ use rustok_search::{
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 use crate::services::stop_handle::StopHandle;
 
 const FORUM_SEARCH_INBOX_POLL_INTERVAL: Duration = Duration::from_secs(5);
 static FORUM_SEARCH_INBOX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+
+// Prevent two callers from publishing competing inbox sweeper tasks.
+struct ForumSearchInboxStartupReservation;
 
 pub struct ForumSearchInboxWorkerHandle {
     instance_id: u64,
@@ -100,7 +103,28 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         return Ok(());
     }
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search inbox worker cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ForumSearchInboxStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Forum Search inbox worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
+        return Ok(());
+    }
+    let stop_rx = stop.subscribe();
 
     let instance_id = FORUM_SEARCH_INBOX_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
@@ -110,10 +134,16 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         poll_interval_seconds = FORUM_SEARCH_INBOX_POLL_INTERVAL.as_secs(),
         "Starting Forum Search inbox and owner checkpoint worker"
     );
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search inbox startup interrupted by server shutdown".to_string(),
+        ));
+    }
     ctx.shared_insert(ForumSearchInboxWorkerHandle {
         instance_id,
         _handle: tokio::spawn(forum_search_inbox_worker_loop(reconciler, stop_rx)),
     });
+    reservation.commit();
     Ok(())
 }
 
