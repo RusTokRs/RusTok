@@ -1472,6 +1472,44 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn readiness_route_includes_cache_reconciliation_for_surface_hosts() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory readiness database");
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Api;
+        settings.features.search_indexing = false;
+        settings.rate_limit.enabled = false;
+        let ctx = ServerRuntimeContext::new(db, settings);
+
+        let response = collect_readiness(ctx, ModuleRegistry::new()).await;
+
+        let field_cache = response
+            .checks
+            .iter()
+            .find(|check| check.name == "worker:field_definition_cache_generation")
+            .expect("surface readiness must include field-definition cache reconciliation");
+        assert_eq!(field_cache.criticality, DependencyCriticality::Critical);
+        assert_eq!(field_cache.status, ReadinessStatus::Unhealthy);
+
+        #[cfg(feature = "mod-seo")]
+        {
+            let seo_cache = response
+                .checks
+                .iter()
+                .find(|check| check.name == "worker:seo_redirect_cache_reconciliation")
+                .expect("surface readiness must include SEO redirect cache reconciliation");
+            assert_eq!(seo_cache.criticality, DependencyCriticality::Critical);
+            assert_eq!(seo_cache.status, ReadinessStatus::Unhealthy);
+        }
+
+        assert!(
+            response.checks.iter().any(|check| check.name == "host_mode"),
+            "surface hosts must retain the general-worker ownership marker"
+        );
+    }
+
     #[test]
     fn readiness_lag_comparison_handles_full_u64_threshold_range() {
         assert!(lag_exceeds_threshold(10, 9));
