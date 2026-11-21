@@ -112,10 +112,11 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
   Persistence blocks new applies while any unreconciled session has a
   recorded owner, even after lease expiry; `recovery_required` remains blocking
-  until manual reconciliation. However, state/receipt writes do not yet
-  compare the owner on every mutation, and resumable execution plus effect
-  reconciliation remain unimplemented; do not reset stale jobs based only on
-  lease expiry.
+  until manual reconciliation. State, tenant association and receipt writes
+  already compare the persisted owner and attempt generation, but this is
+  not a process-crash recovery or a heartbeat/expiry takeover protocol;
+  resumable execution and effect reconciliation remain unimplemented. Do not
+  reset stale jobs based only on lease expiry.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
   all-tenants bootstrap pass commits one tenant at a time, not as a single
   cross-tenant transaction. Built-in auth email delivery remains best effort.
