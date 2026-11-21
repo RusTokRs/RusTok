@@ -32,7 +32,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::event_bus::transactional_event_bus_from_context;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const COMMENTS_PROVIDER_MODE_ENV: &str = "RUSTOK_COMMENTS_PROVIDER_MODE";
 pub const COMMENTS_TCP_ENDPOINT_ENV: &str = "RUSTOK_COMMENTS_TCP_ENDPOINT";
@@ -51,8 +51,15 @@ pub const COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV: &str = "RUSTOK_COMMENTS_TCP_SHUTDO
 pub const COMMENTS_TCP_MAX_FRAME_BYTES_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_FRAME_BYTES";
 
 const DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS: usize = 64;
+const MAX_COMMENTS_TCP_MAX_CONNECTIONS: usize = 128;
+const MAX_COMMENTS_TCP_FRAME_BYTES: usize = 8 * 1024 * 1024;
+const MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 60_000;
+const COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
+const COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 5_000;
+const MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 60_000;
+const COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const COMMENTS_TCP_SERVICE_ROLE: &str = "admin";
 const COMMENTS_TCP_SERVICE_PERMISSION: &str = "comments:manage";
@@ -145,27 +152,22 @@ impl CommentsTcpListenerConfig {
             ));
         }
 
-        let max_connections = parse_optional_positive_usize(
+        let max_connections = validate_max_connections(parse_optional_positive_usize(
             COMMENTS_TCP_MAX_CONNECTIONS_ENV,
             DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS,
-        )?;
-        let pre_request_timeout_ms = parse_optional_positive_u64(
+        )?)?;
+        let pre_request_timeout_ms = validate_pre_request_timeout_ms(parse_optional_positive_u64(
             COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV,
             DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS,
-        )?;
-        let shutdown_grace_ms = parse_optional_positive_u64(
+        )?)?;
+        let shutdown_grace_ms = validate_shutdown_grace_ms(parse_optional_positive_u64(
             COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV,
             DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS,
-        )?;
-        let max_frame_bytes = parse_optional_positive_usize(
+        )?)?;
+        let max_frame_bytes = validate_max_frame_bytes(parse_optional_positive_usize(
             COMMENTS_TCP_MAX_FRAME_BYTES_ENV,
             DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES,
-        )?;
-        if max_frame_bytes > u32::MAX as usize {
-            return Err(format!(
-                "{COMMENTS_TCP_MAX_FRAME_BYTES_ENV} must be within 1..=u32::MAX"
-            ));
-        }
+        )?)?;
 
         Ok(Some(Self {
             bind_addr,
@@ -183,7 +185,10 @@ pub struct CommentsTcpListenerHandle {
     pub local_addr: SocketAddr,
 }
 
-pub(crate) struct CommentsTcpListenerTask(pub(crate) JoinHandle<()>);
+pub(crate) struct CommentsTcpListenerTask {
+    pub(crate) task: JoinHandle<()>,
+    pub(crate) shutdown_timeout: Duration,
+}
 
 struct CommentsTcpListenerLifecycleReservation;
 
@@ -297,20 +302,57 @@ pub async fn start_comments_tcp_listener_if_enabled(
         ));
     }
 
-    if !runtime_ctx.shared_insert_if_absent(CommentsTcpListenerLifecycleReservation) {
+    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_tcp_listener_start_not_stopping(&stop_handle)?;
+    if existing_comments_tcp_listener(runtime_ctx)? {
         return Ok(());
     }
 
-    let result = start_comments_tcp_listener(runtime_ctx, config).await;
-    if result.is_err() {
-        let _ = runtime_ctx.shared_take::<CommentsTcpListenerLifecycleReservation>();
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        runtime_ctx,
+        CommentsTcpListenerLifecycleReservation,
+    ) else {
+        if existing_comments_tcp_listener(runtime_ctx)? {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Comments TCP listener startup is already in progress; retry".to_string(),
+        ));
+    };
+
+    if existing_comments_tcp_listener(runtime_ctx)? {
+        return Ok(());
     }
-    result
+
+    start_comments_tcp_listener(runtime_ctx, config, &stop_handle).await?;
+    reservation.commit();
+    Ok(())
+}
+
+fn existing_comments_tcp_listener(runtime_ctx: &ServerRuntimeContext) -> Result<bool> {
+    match runtime_ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.task.is_finished()) {
+        Some(false) => Ok(true),
+        Some(true) => Err(Error::Message(
+            "Comments TCP listener task has exited; automatic restart is not configured"
+                .to_string(),
+        )),
+        None => Ok(false),
+    }
+}
+
+fn ensure_comments_tcp_listener_start_not_stopping(stop_handle: &StopHandle) -> Result<()> {
+    if stop_handle.is_stopping() {
+        return Err(Error::Message(
+            "Comments TCP listener startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 async fn start_comments_tcp_listener(
     runtime_ctx: &ServerRuntimeContext,
     config: CommentsTcpListenerConfig,
+    stop_handle: &StopHandle,
 ) -> Result<()> {
     let extensions = runtime_ctx.shared_get::<Arc<ModuleRuntimeExtensions>>();
     let authority = runtime_ctx
@@ -376,8 +418,9 @@ async fn start_comments_tcp_listener(
         ))
     })?;
 
-    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_tcp_listener_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
+    let shutdown_timeout = comments_tcp_listener_shutdown_timeout(config.shutdown_grace);
     let instance_id = COMMENTS_TCP_LISTENER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let task = tokio::spawn(run_comments_tcp_listener(
         listener,
@@ -391,7 +434,10 @@ async fn start_comments_tcp_listener(
         instance_id,
         local_addr,
     });
-    runtime_ctx.shared_insert(CommentsTcpListenerTask(task));
+    runtime_ctx.shared_insert(CommentsTcpListenerTask {
+        task,
+        shutdown_timeout,
+    });
 
     tracing::info!(
         instance_id,
@@ -547,8 +593,11 @@ async fn run_comments_tcp_listener(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
     instance_id: u64,
 ) {
+    // Validate the operator-supplied limit before constructing the semaphore;
+    // Semaphore::new panics when the requested permit count exceeds Tokio's bound.
     let permits = Arc::new(Semaphore::new(config.max_connections));
     let mut connections = JoinSet::new();
+    let mut accept_error_attempts = 0_u32;
 
     loop {
         if *stop_rx.borrow() {
@@ -563,9 +612,22 @@ async fn run_comments_tcp_listener(
             }
             accepted = listener.accept() => {
                 let (stream, peer_addr) = match accepted {
-                    Ok(value) => value,
+                    Ok(value) => {
+                        accept_error_attempts = 0;
+                        value
+                    }
                     Err(error) => {
-                        tracing::warn!(instance_id, error = %error, "Comments TCP accept failed");
+                        accept_error_attempts = accept_error_attempts.saturating_add(1);
+                        let retry_delay = comments_tcp_accept_retry_delay(accept_error_attempts);
+                        tracing::warn!(
+                            instance_id,
+                            error = %error,
+                            retry_delay_ms = retry_delay.as_millis() as u64,
+                            "Comments TCP accept failed; retrying with bounded backoff"
+                        );
+                        if wait_for_accept_retry_or_shutdown(&mut stop_rx, retry_delay).await {
+                            break;
+                        }
                         continue;
                     }
                 };
@@ -639,6 +701,71 @@ async fn run_comments_tcp_listener(
         );
     } else {
         tracing::info!(instance_id, "Comments TCP listener drained all connections");
+    }
+}
+
+
+
+
+fn validate_pre_request_timeout_ms(timeout_ms: u64) -> std::result::Result<u64, String> {
+    if !(1..=MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS).contains(&timeout_ms) {
+        return Err(format!(
+            "{COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV} must be within 1..={MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS}"
+        ));
+    }
+    Ok(timeout_ms)
+}
+
+fn validate_max_frame_bytes(max_frame_bytes: usize) -> std::result::Result<usize, String> {
+    if !(1..=MAX_COMMENTS_TCP_FRAME_BYTES).contains(&max_frame_bytes) {
+        return Err(format!(
+            "{COMMENTS_TCP_MAX_FRAME_BYTES_ENV} must be within 1..={MAX_COMMENTS_TCP_FRAME_BYTES}"
+        ));
+    }
+    Ok(max_frame_bytes)
+}
+
+fn validate_shutdown_grace_ms(shutdown_grace_ms: u64) -> std::result::Result<u64, String> {
+    if !(1..=MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS).contains(&shutdown_grace_ms) {
+        return Err(format!(
+            "{COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV} must be within 1..={MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS}"
+        ));
+    }
+    Ok(shutdown_grace_ms)
+}
+
+fn comments_tcp_listener_shutdown_timeout(shutdown_grace: Duration) -> Duration {
+    shutdown_grace.saturating_add(COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN)
+}
+
+fn validate_max_connections(max_connections: usize) -> std::result::Result<usize, String> {
+    if !(1..=MAX_COMMENTS_TCP_MAX_CONNECTIONS).contains(&max_connections) {
+        return Err(format!(
+            "{COMMENTS_TCP_MAX_CONNECTIONS_ENV} must be within 1..={MAX_COMMENTS_TCP_MAX_CONNECTIONS}"
+        ));
+    }
+    Ok(max_connections)
+}
+
+fn comments_tcp_accept_retry_delay(attempt: u32) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(6);
+    let multiplier = 1_u64 << exponent;
+    COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY
+        .saturating_mul(multiplier as u32)
+        .min(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY)
+}
+
+async fn wait_for_accept_retry_or_shutdown(
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    delay: Duration,
+) -> bool {
+    if *stop_rx.borrow() {
+        return true;
+    }
+
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => false,
+        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
     }
 }
 
@@ -758,8 +885,15 @@ mod tests {
         let starter = start_comments_tcp_listener_if_enabled;
         let _ = starter;
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS, 64);
+        assert_eq!(MAX_COMMENTS_TCP_MAX_CONNECTIONS, 128);
+        assert_eq!(MAX_COMMENTS_TCP_FRAME_BYTES, 8 * 1024 * 1024);
+        assert_eq!(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 60_000);
+        assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY, Duration::from_millis(100));
+        assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 5_000);
+        assert_eq!(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 60_000);
+        assert_eq!(COMMENTS_TCP_SHUTDOWN_JOIN_MARGIN, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES, 8 * 1024 * 1024);
         assert_eq!(DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, 5_000);
         assert_eq!(MAX_COMMENTS_TCP_DELEGATION_TTL_MS, 30_000);
@@ -768,6 +902,29 @@ mod tests {
         assert!(!parse_bool_value("enabled", "off").unwrap());
         assert!(parse_positive_usize_value("limit", "0").is_err());
         assert!(parse_positive_u64_value("timeout", "0").is_err());
+        assert_eq!(validate_max_connections(1), Ok(1));
+        assert_eq!(
+            validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS),
+            Ok(MAX_COMMENTS_TCP_MAX_CONNECTIONS)
+        );
+        assert!(validate_max_connections(0).is_err());
+        assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
+        assert_eq!(validate_pre_request_timeout_ms(1), Ok(1));
+        assert_eq!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS), Ok(60_000));
+        assert!(validate_pre_request_timeout_ms(0).is_err());
+        assert!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS + 1).is_err());
+        assert_eq!(validate_max_frame_bytes(1), Ok(1));
+        assert_eq!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES), Ok(8 * 1024 * 1024));
+        assert!(validate_max_frame_bytes(0).is_err());
+        assert!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES + 1).is_err());
+        assert_eq!(validate_shutdown_grace_ms(1), Ok(1));
+        assert_eq!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS), Ok(60_000));
+        assert!(validate_shutdown_grace_ms(0).is_err());
+        assert!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS + 1).is_err());
+        assert_eq!(
+            comments_tcp_listener_shutdown_timeout(Duration::from_secs(5)),
+            Duration::from_secs(10)
+        );
     }
 
     #[test]
@@ -792,4 +949,69 @@ mod tests {
         assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
     }
+
+    #[tokio::test]
+    async fn comments_tcp_listener_start_rejects_a_signaled_shutdown() {
+        let (stop, _receiver) = StopHandle::new();
+        stop.stop().await;
+        assert!(ensure_comments_tcp_listener_start_not_stopping(&stop).is_err());
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_listener_does_not_report_a_finished_task_as_live() {
+        use crate::common::settings::RustokSettings;
+
+        let runtime_ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        runtime_ctx.shared_insert(CommentsTcpListenerTask {
+            task,
+            shutdown_timeout: Duration::from_secs(1),
+        });
+        assert!(existing_comments_tcp_listener(&runtime_ctx).is_err());
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_accept_retry_wait_is_interruptible_by_shutdown() {
+        let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        let wait = tokio::spawn(async move {
+            wait_for_accept_retry_or_shutdown(&mut stop_rx, Duration::from_secs(5)).await
+        });
+
+        tokio::task::yield_now().await;
+        stop_tx.send(true).expect("shutdown receiver is alive");
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), wait)
+                .await
+                .expect("shutdown interrupts accept retry backoff")
+                .expect("retry wait task joins")
+        );
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_accept_retry_backoff_is_exponential_and_bounded() {
+        assert_eq!(
+            comments_tcp_accept_retry_delay(1),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(2),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(3),
+            Duration::from_millis(400)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(32),
+            Duration::from_secs(5)
+        );
+    }
+
 }

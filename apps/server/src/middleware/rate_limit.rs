@@ -96,6 +96,7 @@ fn cleanup_task_has_external_owners(limiter: &Arc<RateLimiter>) -> bool {
 /// the complete limiter/cache alive forever.
 pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
     let mut interval = tokio::time::interval(Duration::from_secs(300));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         interval.tick().await;
