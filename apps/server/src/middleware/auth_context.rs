@@ -33,7 +33,7 @@ pub async fn resolve_optional(
     let (mut parts, body) = req.into_parts();
     let request_path = parts.uri.path().to_string();
     tracing::debug!(
-        path = request_path.as_str(),
+        path_group = super::http_stack::trace_path_family(&request_path),
         "auth_context::resolve_optional entry"
     );
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
@@ -210,7 +210,7 @@ pub async fn resolve_optional(
         parts.extensions.insert(host_authority);
     }
     tracing::debug!(
-        path = request_path.as_str(),
+        path_group = super::http_stack::trace_path_family(&request_path),
         "auth_context::resolve_optional calling next"
     );
     let req = Request::from_parts(parts, body);

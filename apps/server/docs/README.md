@@ -247,8 +247,12 @@ HTTP edge tracing and middleware diagnostics now emit only a fixed
 segments can contain user and token identifiers, so route-specific metrics
 continue to use Axum's matched template separately after routing; the
 trace layer cannot see the matched template before routing. The change also
-covers the metrics-auth middleware and both rate-limit entry points; actual
-rate-limit policy matching still operates on the original request path.
+covers metrics auth, both rate-limit entry points, tenant resolution,
+auth-context, channel, locale, security headers and registry artifact/publish
+authorization. All those middleware use the shared bounded path vocabulary;
+custom methods in registry diagnostics use the bounded method vocabulary.
+The original request pathname still drives routing, security-header
+selection, request authorization, tenant/locale policy and rate-limit matching.
 
 HTTP edge settings are bounded before reaching Tokio and Tower:
 `RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at

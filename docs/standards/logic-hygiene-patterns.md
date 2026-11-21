@@ -30,7 +30,7 @@ without evidence of a failure is recorded separately below.
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
 | `P-CORS-IMPLICIT-LOOPBACK` | Credentialed production CORS previously trusted a synthesized localhost origin with an empty/invalid allow-list, and mapped a wildcard bind host to the same trusted origin. Production now allows only explicit valid HTTP(S) browser origins; developer bind-host fallback remains local-only. Source/regressions are authored but unrun. | [CORS middleware](../../apps/server/src/middleware/cors.rs), [Router composition](../../apps/server/src/services/app_router.rs), [Server docs](../../apps/server/docs/README.md) |
 | `P-HTTP-UNBOUNDED-TRACE-CONTEXT` | The outer HTTP span still logged raw client-supplied request/correlation IDs, traceparent and extension methods after URI path bounding. Root-span diagnostics now validate fixed-size UUID/trace IDs and W3C version-00 traceparent, redact other input and bucket nonstandard methods; headers are unchanged. Regression authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Server docs](../../apps/server/docs/README.md) |
-| `P-HTTP-RAW-PATH-TRACE` | Edge tracing and metrics-auth/rate-limit debug diagnostics emitted user-controlled URI path segments even though HTTP metrics were already route-template bounded. All three middleware entry points now use a fixed `trace_path_family` vocabulary; route dispatch and limit keys retain their original path semantics. Regression is authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Metrics auth](../../apps/server/src/middleware/metrics_auth.rs), [Rate limit](../../apps/server/src/middleware/rate_limit.rs) |
+| `P-HTTP-RAW-PATH-TRACE` | Edge tracing and metrics-auth/rate-limit debug diagnostics emitted user-controlled URI path segments even though HTTP metrics were already route-template bounded. The root HTTP trace, metrics-auth, rate-limit, tenant, auth-context, channel, locale, security-header and registry authorization middleware now use one fixed `trace_path_family` vocabulary; request dispatch and policy matching retain the original URI. Registry method diagnostics also use a fixed method family. Regression is authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Metrics auth](../../apps/server/src/middleware/metrics_auth.rs), [Rate limit](../../apps/server/src/middleware/rate_limit.rs) |
 | `P-QUERYRESULT-DECODE-ORDER` | The poison receipt claim-failure fallback shadowed its raw SQL `QueryResult` with a decoded neutral receipt and then passed the decoded type to an expiry helper requiring the SQL row. Read the derived SQL-only expiry before decoding, retain a narrow source-order regression guard; compile verification remains maintainer-run. | [Receipt store](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Source guard](../../scripts/verify/verify-iggy-consumer-poison-receipts.mjs) |
 | `P-DLQ-OBSERVER-SINGLE-OWNER` | Physical Event DLQ duplicate-alert scanner and telemetry companion could overwrite each other's shutdown-visible lifecycle independently of stop. They now share a registration mutex acquired by shutdown before snapshot; exited tasks emit a stable diagnostic instead of silently returning and are retained for join accounting. No-task modes keep their existing semantics; source tests are authored but unrun. | [Scanner](../../apps/server/src/services/event_dlq_duplicate_alert_observer.rs), [Telemetry companion](../../apps/server/src/services/event_dlq_duplicate_alert_observability.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
 | `P-OBSERVER-LIFECYCLE-OWNERSHIP` | Social Graph position/poison observers used a check-then-spawn registry check, allowing duplicate tasks to overwrite a shutdown handle; retained finished handles also produced false idempotent success. Both observers now reserve startup atomically, reject exited handles and reject stop-time admission; shutdown also waits on their shared registration lock before taking handles. Regression tests are authored but unrun. | [Poison observer](../../apps/server/src/services/social_graph_index_poison_observer.rs), [position observer](../../apps/server/src/services/social_graph_index_position_observer.rs), [runtime reservation](../../apps/server/src/services/server_runtime_context.rs) |
@@ -119,14 +119,18 @@ without evidence of a failure is recorded separately below.
 ### P-HTTP-RAW-PATH-TRACE — pre-routing spans must not expose URL segments
 
 - **Category:** Sensitive diagnostic data and untrusted request paths.
-- **Observed defect:** HTTP edge traces emitted `request.uri().path()`,
-  and two middleware families also logged a raw path. Unknown routes and
-  dynamic URL segments can carry sensitive identifiers or reset tokens.
+- **Observed defect:** HTTP edge traces emitted `request.uri().path()`;
+  metrics-auth and rate limit repeated it. Additional inspection found
+  identical raw-path logging in seven middleware files for tenant, auth,
+  locale, channel, security headers and registry authorization. Unknown
+  routes and dynamic segments can contain identifiers and reset tokens.
 - **Remediation:** Emit a closed family label before routing. Use exact
   static health/metrics/GraphQL labels and generic API/admin/default
   categories; never interpolate arbitrary path components. Preserve the
-  original URI for actual routing and rate-limit matching. Matched Axum
-  templates are still available after routing for Prometheus HTTP labels.
+  original URI for actual routing, auth/tenant and rate-limit matching.
+  Reuse the same vocabulary across all middleware; registry diagnostic
+  methods have a separate fixed group. Matched Axum templates remain
+  available after routing for Prometheus HTTP labels.
 - **Verification:** Unit source regressions cover sensitive nested paths and
   segment-boundary lookalikes; unrun.
 

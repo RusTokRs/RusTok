@@ -152,7 +152,7 @@ pub fn resolve_upload_timeout_seconds() -> u64 {
 
 /// Fixed log vocabulary for HTTP methods. Extension methods are accepted
 /// by the router but may be arbitrarily long and are not safe trace fields.
-fn trace_method_family(method: &Method) -> &'static str {
+pub(crate) fn trace_method_family(method: &Method) -> &'static str {
     match method.as_str() {
         "GET" => "GET",
         "POST" => "POST",

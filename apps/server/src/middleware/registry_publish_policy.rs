@@ -27,7 +27,11 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     if request.method() != Method::POST || !is_publish_path(path) {
         return next.run(request).await;
     }
-    tracing::debug!(path, method = %request.method(), "registry_publish_policy::enforce entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(path),
+        method_group = super::http_stack::trace_method_family(request.method()),
+        "registry_publish_policy::enforce entry"
+    );
 
     let (parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_PUBLISH_BODY_BYTES).await {

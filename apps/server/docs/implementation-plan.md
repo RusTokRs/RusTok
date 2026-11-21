@@ -1,5 +1,24 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — middleware raw-path diagnostic closure (2026-11-21)
+
+The previous path-label audit fixed the root HTTP trace span, metrics-auth
+and rate-limit diagnostics, but a follow-up traversal of the middleware
+directory found seven more request entry points logging the original URI
+pathname: `auth_context`, `tenant`, `channel`, `locale`,
+`security_headers`, `registry_artifact_access`, and
+`registry_publish_policy`. These execute within the edge span and
+could still record unknown dynamic URL segments, account identifiers or
+credential-like path material on both success and failure.
+
+All those diagnostic sites now use the existing fixed
+`trace_path_family` rather than retaining separate sanitization
+policies. Registry log entries also bucket extension HTTP methods with
+the fixed `trace_method_family`. The original path and HTTP method are
+preserved for routing, authentication, CSP selection, and authorization.
+Existing middleware behavior tests plus the shared family helper's
+focused regression remain available to the maintainer; none were run.
+
 ## Server audit continuation — bounded HTTP trace identifiers (2026-11-21)
 
 The edge `RusTokMakeSpan` already used bounded `path_group` after
