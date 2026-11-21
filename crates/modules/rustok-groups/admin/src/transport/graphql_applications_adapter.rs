@@ -1,33 +1,16 @@
-#![allow(dead_code)]
-
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
-    GroupsAdminApplicationAnswer, GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
-    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule, GroupsAdminMembership,
-    GroupsAdminMembershipApplication, GroupsAdminMembershipApplicationConnection,
-    GroupsAdminMembershipApplicationQuery, GroupsAdminReviewApplicationResult,
-    GroupsAdminUpsertApplicationPolicyResult, ReviewGroupMembershipApplicationCommand,
-    UpsertGroupApplicationPolicyCommand,
+    GroupsAdminApplicationAnswer, GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
+    GroupsAdminMembership, GroupsAdminMembershipApplication,
+    GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
+    GroupsAdminReviewApplicationResult, ReviewGroupMembershipApplicationCommand,
 };
 
 pub type GraphqlGroupsApplicationError = String;
 
-const POLICY_FIELDS: &str = "id group_id: groupId revision enabled locale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required }";
 const APPLICATION_FIELDS: &str = "id group_id: groupId user_id: userId policy_id: policyId policy_revision: policyRevision policy_locale: policyLocale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required } answers { key value } acknowledged_rule_keys: acknowledgedRuleKeys status submitted_at: submittedAt reviewed_at: reviewedAt reviewed_by_user_id: reviewedByUserId review_note: reviewNote";
-
-fn policy_query() -> String {
-    format!(
-        "query GroupsAdminApplicationPolicy($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}"
-    )
-}
-
-fn upsert_policy_mutation() -> String {
-    format!(
-        "mutation GroupsAdminUpsertApplicationPolicy($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}"
-    )
-}
 
 fn list_applications_query() -> String {
     format!(
@@ -39,48 +22,6 @@ fn review_application_mutation() -> String {
     format!(
         "mutation GroupsAdminReviewMembershipApplication($idempotencyKey: String!, $applicationId: UUID!, $decision: GroupApplicationReviewDecisionGql!, $note: String) {{ review_group_membership_application: reviewGroupMembershipApplication(idempotencyKey: $idempotencyKey, applicationId: $applicationId, decision: $decision, note: $note) {{ application {{ {APPLICATION_FIELDS} }} membership {{ id group_id: groupId user_id: userId role status }} group_version: groupVersion replayed }} }}"
     )
-}
-
-#[derive(Debug, Serialize)]
-struct PolicyVariables {
-    #[serde(rename = "groupId")]
-    group_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertPolicyVariables {
-    #[serde(rename = "idempotencyKey")]
-    idempotency_key: String,
-    #[serde(rename = "groupId")]
-    group_id: String,
-    input: UpsertPolicyInput,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertPolicyInput {
-    locale: String,
-    enabled: bool,
-    questions: Vec<QuestionInput>,
-    rules: Vec<RuleInput>,
-}
-
-#[derive(Debug, Serialize)]
-struct QuestionInput {
-    key: String,
-    prompt: String,
-    #[serde(rename = "helpText")]
-    help_text: Option<String>,
-    required: bool,
-    #[serde(rename = "maxAnswerChars")]
-    max_answer_chars: i32,
-}
-
-#[derive(Debug, Serialize)]
-struct RuleInput {
-    key: String,
-    title: String,
-    body: String,
-    required: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,16 +42,6 @@ struct ReviewApplicationVariables {
     application_id: String,
     decision: String,
     note: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PolicyResponse {
-    group_application_policy: PolicyWire,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpsertPolicyResponse {
-    upsert_group_application_policy: UpsertPolicyWire,
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,17 +69,6 @@ struct RuleWire {
     title: String,
     body: String,
     required: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct PolicyWire {
-    id: String,
-    group_id: String,
-    revision: u64,
-    enabled: bool,
-    locale: String,
-    questions: Vec<QuestionWire>,
-    rules: Vec<RuleWire>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,19 +106,11 @@ struct MembershipWire {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpsertPolicyWire {
-    policy: PolicyWire,
-    group_version: u64,
-    created: bool,
-    replayed: bool,
-}
-
-#[derive(Debug, Deserialize)]
 struct ApplicationConnectionWire {
-    items: Vec<ApplicationWire>,
     total: u64,
     page: u64,
     per_page: u64,
+    items: Vec<ApplicationWire>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,81 +119,6 @@ struct ReviewApplicationWire {
     membership: MembershipWire,
     group_version: u64,
     replayed: bool,
-}
-
-pub async fn load_group_application_policy(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    query: GroupsAdminApplicationPolicyQuery,
-) -> Result<GroupsAdminApplicationPolicy, GraphqlGroupsApplicationError> {
-    let response: PolicyResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            policy_query(),
-            Some(PolicyVariables {
-                group_id: query.group_id,
-            }),
-        ),
-        token,
-        tenant_slug,
-        None,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    Ok(response.group_application_policy.into())
-}
-
-pub async fn upsert_group_application_policy(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    command: UpsertGroupApplicationPolicyCommand,
-) -> Result<GroupsAdminUpsertApplicationPolicyResult, GraphqlGroupsApplicationError> {
-    let response: UpsertPolicyResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            upsert_policy_mutation(),
-            Some(UpsertPolicyVariables {
-                idempotency_key: command.idempotency_key,
-                group_id: command.group_id,
-                input: UpsertPolicyInput {
-                    locale: command.locale,
-                    enabled: command.enabled,
-                    questions: command
-                        .questions
-                        .into_iter()
-                        .map(|question| QuestionInput {
-                            key: question.key,
-                            prompt: question.prompt,
-                            help_text: question.help_text,
-                            required: question.required,
-                            max_answer_chars: question.max_answer_chars.min(i32::MAX as u32) as i32,
-                        })
-                        .collect(),
-                    rules: command
-                        .rules
-                        .into_iter()
-                        .map(|rule| RuleInput {
-                            key: rule.key,
-                            title: rule.title,
-                            body: rule.body,
-                            required: rule.required,
-                        })
-                        .collect(),
-                },
-            }),
-        ),
-        token,
-        tenant_slug,
-        None,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    Ok(GroupsAdminUpsertApplicationPolicyResult {
-        policy: response.upsert_group_application_policy.policy.into(),
-        group_version: response.upsert_group_application_policy.group_version,
-        created: response.upsert_group_application_policy.created,
-        replayed: response.upsert_group_application_policy.replayed,
-    })
 }
 
 pub async fn load_group_membership_applications(
@@ -306,17 +143,7 @@ pub async fn load_group_membership_applications(
     )
     .await
     .map_err(|error| error.to_string())?;
-    Ok(GroupsAdminMembershipApplicationConnection {
-        items: response
-            .group_membership_applications
-            .items
-            .into_iter()
-            .map(Into::into)
-            .collect(),
-        total: response.group_membership_applications.total,
-        page: response.group_membership_applications.page,
-        per_page: response.group_membership_applications.per_page,
-    })
+    Ok(response.group_membership_applications.into())
 }
 
 pub async fn review_group_membership_application(
@@ -378,20 +205,6 @@ impl From<RuleWire> for GroupsAdminApplicationRule {
     }
 }
 
-impl From<PolicyWire> for GroupsAdminApplicationPolicy {
-    fn from(value: PolicyWire) -> Self {
-        Self {
-            id: value.id,
-            group_id: value.group_id,
-            revision: value.revision,
-            enabled: value.enabled,
-            locale: value.locale,
-            questions: value.questions.into_iter().map(Into::into).collect(),
-            rules: value.rules.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
 impl From<ApplicationWire> for GroupsAdminMembershipApplication {
     fn from(value: ApplicationWire) -> Self {
         Self {
@@ -429,6 +242,17 @@ impl From<MembershipWire> for GroupsAdminMembership {
             user_id: value.user_id,
             role: value.role.to_ascii_lowercase(),
             status: value.status.to_ascii_lowercase(),
+        }
+    }
+}
+
+impl From<ApplicationConnectionWire> for GroupsAdminMembershipApplicationConnection {
+    fn from(value: ApplicationConnectionWire) -> Self {
+        Self {
+            total: value.total,
+            page: value.page,
+            per_page: value.per_page,
+            items: value.items.into_iter().map(Into::into).collect(),
         }
     }
 }

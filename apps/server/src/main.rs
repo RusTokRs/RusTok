@@ -25,8 +25,11 @@ fn main() -> eyre::Result<()> {
         .thread_stack_size(stack_size)
         .build()?;
     let result = runtime.block_on(rustok_server::host::run());
-    if let Err(ref error) = result {
-        tracing::error!(error = %error, "RusTok Axum host terminated with fatal error");
+    if result.is_err() {
+        tracing::error!(
+            failure_code = "server_host_terminated",
+            "RusTok Axum host terminated with fatal error"
+        );
     }
     if has_otel {
         runtime.block_on(rustok_telemetry::otel::shutdown());

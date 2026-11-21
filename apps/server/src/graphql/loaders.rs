@@ -47,9 +47,9 @@ impl Loader<Uuid> for TenantNameLoader {
     }
 }
 
-fn tenant_name_loader_error(error: impl Display, key_count: usize) -> async_graphql::Error {
+fn tenant_name_loader_error(_error: impl Display, key_count: usize) -> async_graphql::Error {
     tracing::error!(
-        %error,
+        error_code = "graphql_tenant_name_loader_failed",
         key_count,
         "Tenant name GraphQL loader database lookup failed"
     );

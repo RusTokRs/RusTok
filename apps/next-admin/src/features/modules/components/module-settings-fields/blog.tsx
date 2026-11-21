@@ -1,6 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
+import {
+  mergeSettingsJson,
+  parseSettingsObject
+} from '../module-settings-json';
 
 import { Switch } from '@/shared/ui/shadcn/switch';
 
@@ -20,12 +24,9 @@ export function BlogModuleSettingsFields({
   onSettingsTextChange,
   disabled = false
 }: BlogModuleSettingsFieldsProps) {
-  const { comments_mode, use_reactions } = useMemo(() => {
+  const { comments_mode, use_reactions, valid } = useMemo(() => {
     try {
-      const parsed = JSON.parse(settingsText || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { comments_mode: 'open' as CommentsMode, use_reactions: false };
-      }
+      const parsed = parseSettingsObject(settingsText);
       const rawMode = parsed.comments_mode;
       const validMode: CommentsMode =
         rawMode === 'disabled' || rawMode === 'read_only' || rawMode === 'open'
@@ -33,25 +34,22 @@ export function BlogModuleSettingsFields({
           : 'open';
       return {
         comments_mode: validMode,
-        use_reactions: parsed.use_reactions === true
+        use_reactions: parsed.use_reactions === true,
+        valid: true
       };
     } catch {
-      return { comments_mode: 'open' as CommentsMode, use_reactions: false };
+      return {
+        comments_mode: 'open' as CommentsMode,
+        use_reactions: false,
+        valid: false
+      };
     }
   }, [settingsText]);
 
   const updateSettings = (
     updates: Partial<{ comments_mode: CommentsMode; use_reactions: boolean }>
   ) => {
-    try {
-      const parsed = JSON.parse(settingsText || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return;
-      }
-      onSettingsTextChange(JSON.stringify({ ...parsed, ...updates }, null, 2));
-    } catch {
-      // The generic JSON editor remains the authority while the document is invalid.
-    }
+    onSettingsTextChange(mergeSettingsJson(settingsText, updates));
   };
 
   return (
@@ -66,7 +64,7 @@ export function BlogModuleSettingsFields({
         </div>
         <select
           value={comments_mode}
-          disabled={disabled}
+          disabled={disabled || !valid}
           onChange={(e) =>
             updateSettings({ comments_mode: e.target.value as CommentsMode })
           }
@@ -91,7 +89,7 @@ export function BlogModuleSettingsFields({
         </div>
         <Switch
           checked={use_reactions}
-          disabled={disabled}
+          disabled={disabled || !valid}
           onCheckedChange={(checked) =>
             updateSettings({ use_reactions: checked })
           }

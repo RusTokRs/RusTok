@@ -293,9 +293,12 @@ impl OAuthAppService {
         input: UpdateOAuthAppInput,
     ) -> Result<oauth_apps::Model> {
         let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        // The authorization decision and security-sensitive OAuth configuration
+        // mutation must observe the same app version. Manifest reconciliation,
+        // token issuance and consent use this app-row fence too. On SQLite it
+        // reserves the writer before reading to avoid read-to-write races.
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -337,15 +340,15 @@ impl OAuthAppService {
         active.updated_at = Set(Utc::now().into());
 
         let mut updated = active
-            .update(db)
+            .update(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
         // The ActiveModel update deliberately leaves these columns NotSet.
-        // Refresh their projection after commit so the response does not
-        // report a stale secret/lifecycle/use snapshot from the initial read.
+        // Read their projection under the same lock/transaction so the response
+        // represents the committed mutation, not a stale preflight snapshot.
         let current = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+            .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -353,6 +356,7 @@ impl OAuthAppService {
         updated.is_active = current.is_active;
         updated.revoked_at = current.revoked_at;
         updated.last_used_at = current.last_used_at;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(updated)
     }
 
@@ -429,9 +433,9 @@ impl OAuthAppService {
             ));
         }
 
-        let expected_hash = app.client_secret_hash.clone().ok_or_else(|| {
-            Error::BadRequest("This OAuth app has no rotatable secret".to_string())
-        })?;
+        // A first-party app may start as a public PKCE client with no secret.
+        // The first rotation uses NULL as the compare-and-swap precondition.
+        let expected_hash = app.client_secret_hash.clone();
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
         let updated_at = Utc::now();
@@ -442,7 +446,7 @@ impl OAuthAppService {
             db,
             tenant_id,
             app_id,
-            &expected_hash,
+            expected_hash.as_deref(),
             &new_hash,
             updated_at.clone(),
         )
@@ -474,12 +478,13 @@ impl OAuthAppService {
         app_id: Uuid,
     ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+        // Check revocation eligibility only after acquiring the app mutation
+        // fence. A manifest sync may claim the app after an unprotected read;
+        // the old path could then revoke newly manifest-managed credentials.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
+            .ok_or(Error::NotFound)?;
 
         if !app.can_revoke() {
             return Err(Error::BadRequest(
@@ -491,14 +496,18 @@ impl OAuthAppService {
         let now = Utc::now();
 
         // Deactivate the app (column-scoped; see update_app)
-        oauth_apps::Entity::update_many()
+        let deactivated = oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
             .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
             .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if deactivated.rows_affected != 1 {
+            return Err(Error::NotFound);
+        }
 
         let updated = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
@@ -565,7 +574,13 @@ impl OAuthAppService {
         Ok(())
     }
 
-    /// Generate and store an authorization code for an app + user
+    /// Atomically admit and store one authorization code under the same app ->
+    /// user lock order used by exchange, consent grants and revocation.
+    ///
+    /// HTTP authorization preflight is advisory: app settings, the user's
+    /// active status and third-party consent may change before this insert.
+    /// Revalidate them inside the transaction to avoid creating a code after
+    /// revocation has already invalidated all previously pending codes.
     pub async fn generate_authorization_code(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -575,37 +590,88 @@ impl OAuthAppService {
         scopes: Vec<String>,
         code_challenge: String,
     ) -> Result<String> {
-        // Generate random 43 character code
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|app| app.is_active())
+            .ok_or(Error::NotFound)?;
+        if !app.supports_grant_type("authorization_code") || app.app_type == "service" {
+            return Err(Error::BadRequest(
+                "OAuth application does not allow authorization-code grants".to_string(),
+            ));
+        }
+        if !app.redirect_uris_list().contains(&redirect_uri) {
+            return Err(Error::BadRequest(
+                "OAuth redirect URI is no longer registered".to_string(),
+            ));
+        }
+        let allowed_scopes = app.scopes_list();
+        if scopes.is_empty()
+            || scopes.iter().any(|scope| {
+                scope.trim().is_empty() || !scope_matches(&allowed_scopes, scope)
+            })
+        {
+            return Err(Error::BadRequest(
+                "OAuth authorization scopes are no longer permitted".to_string(),
+            ));
+        }
+
+        let user = lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth authorization subject is missing or inactive".to_string())
+            })?;
+
+        if app.requires_user_consent() {
+            let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
+                .await
+                .map_err(|_| Error::InternalServerError)?
+                .ok_or_else(|| {
+                    Error::Unauthorized(
+                        "OAuth authorization requires active user consent".to_string(),
+                    )
+                })?;
+            let granted_scopes = consent.scopes_list();
+            if !scopes
+                .iter()
+                .all(|scope| scope_matches(&granted_scopes, scope))
+            {
+                return Err(Error::Unauthorized(
+                    "OAuth authorization scopes exceed current user consent".to_string(),
+                ));
+            }
+        }
+
+        // Generate a fresh code only after the caller has passed authoritative
+        // checks. Hashing an opaque random code does not leak plaintext to DB.
         let random_bytes: [u8; 32] = rand::random();
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-
-        // Hash it for DB storage
         use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(code.as_bytes());
-        let code_hash = hex::encode(hasher.finalize());
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
 
-        // Save to DB
+        let now = Utc::now();
         OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
-            user_id: Set(user_id),
+            user_id: Set(user.id),
             tenant_id: Set(tenant_id),
             code_hash: Set(code_hash),
             redirect_uri: Set(redirect_uri),
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
             code_challenge_method: Set("S256".to_string()),
-            // Code valid for 10 minutes
-            expires_at: Set((Utc::now() + chrono::Duration::minutes(10)).into()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
             used_at: Set(None),
-            created_at: Set(Utc::now().into()),
+            created_at: Set(now.into()),
         }
-        .insert(db)
+        .insert(&tx)
         .await
         .map_err(|_| Error::InternalServerError)?;
-
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(code)
     }
 
@@ -638,9 +704,12 @@ impl OAuthAppService {
 
     /// Revoke an OAuth access or refresh token and its family by hash (RFC 7009).
     ///
-    /// The lookup and family-wide revocation share one transaction. The token
-    /// predicate is scoped by client and tenant, and unknown tokens succeed
-    /// without revealing whether a hash existed. Access JWTs are registered
+    /// The app mutation fence, lookup and family-wide revocation share one
+    /// transaction. Token issuance/refresh takes the app lock first too: this
+    /// prevents revocation from missing a fresh refresh-family successor that
+    /// commits concurrently. The token predicate is scoped by client and
+    /// tenant, and unknown tokens succeed without revealing existence.
+    /// Access JWTs are registered
     /// as `token_kind = access` rows, so revocation fences an already-issued
     /// JWT before its signed TTL; refresh rows fence the rotation lineage.
     pub async fn revoke_token_by_hash(
@@ -650,6 +719,14 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Acquire the same app-row fence as refresh rotation and token issuance
+        // BEFORE reading the revocation target. Otherwise a refresh can commit
+        // its replacement after this lookup but before the family update.
+        // A missing app is not an existence oracle: still complete the normal
+        // scoped unknown-token path without a distinct public result.
+        let _app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         let token = OAuthTokens::find()
             .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
             .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -677,6 +754,9 @@ impl OAuthAppService {
                 .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
                 .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
                 .filter(family_scope)
+                // A repeated RFC 7009 request must not rewrite the original
+                // revocation timestamp of an already-invalid family member.
+                .filter(oauth_tokens::Column::RevokedAt.is_null())
                 .exec(&tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
@@ -1427,9 +1507,6 @@ where
         )
         .await?;
     } else {
-        let client_secret_plain = generate_client_secret()?;
-        let client_secret_hash = auth::hash_password(&client_secret_plain)?;
-
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -1439,7 +1516,7 @@ where
             app_type: Set("first_party".to_string()),
             icon_url: Set(None),
             client_id: Set(Uuid::new_v4()),
-            client_secret_hash: Set(Some(client_secret_hash)),
+            client_secret_hash: Set(None),
             redirect_uris: Set(
                 serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?
             ),
@@ -1469,11 +1546,10 @@ where
             Error::InternalServerError
         })?;
 
-        // Log the credentials (in production, these should go to a secure channel)
         tracing::info!(
             client_id = %app.client_id,
             slug = slug,
-            "First-party OAuth app created. Client secret was generated (store securely)."
+            "First-party OAuth app created as a public PKCE client; rotate a secret to enable SSR client_credentials"
         );
     }
 
@@ -1600,7 +1676,7 @@ async fn replace_oauth_secret_if_current(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     app_id: Uuid,
-    expected_hash: &str,
+    expected_hash: Option<&str>,
     new_hash: &str,
     updated_at: chrono::DateTime<Utc>,
 ) -> Result<bool> {
@@ -1612,7 +1688,22 @@ async fn replace_oauth_secret_if_current(
         .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(updated_at))
         .filter(oauth_apps::Column::Id.eq(app_id))
         .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-        .filter(oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string())))
+        // Rotation eligibility was checked before Argon2 hashing. Require
+        // the same eligible app-type set at the atomic write: a concurrent
+        // manifest reconciliation must not turn an embedded/unsupported app
+        // into an accidental confidential client through a stale preflight.
+        .filter(oauth_apps::Column::AppType.is_in([
+            "first_party",
+            "third_party",
+            "mobile",
+            "service",
+        ]))
+        .filter(match expected_hash {
+            Some(expected_hash) => {
+                oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string()))
+            }
+            None => oauth_apps::Column::ClientSecretHash.is_null(),
+        })
         .exec(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -1792,6 +1883,29 @@ fn validate_app_configuration(
         ));
     }
 
+    let supports_authorization_code = grant_types
+        .iter()
+        .any(|item| item == "authorization_code");
+    let supports_client_credentials = grant_types
+        .iter()
+        .any(|item| item == "client_credentials");
+
+    if matches!(app_type, "mobile" | "third_party") && supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps cannot use client_credentials grant".to_string(),
+        ));
+    }
+    if matches!(app_type, "mobile" | "third_party") && !supports_authorization_code {
+        return Err(Error::BadRequest(
+            "Mobile and third-party apps must use authorization_code grant".to_string(),
+        ));
+    }
+    if app_type == "service" && !supports_client_credentials {
+        return Err(Error::BadRequest(
+            "Service apps must use client_credentials grant".to_string(),
+        ));
+    }
+
     if grant_types.iter().any(|item| item == "authorization_code") && redirect_uris.is_empty() {
         return Err(Error::BadRequest(
             "Apps using authorization_code grant must declare at least one redirect URI"
@@ -1955,7 +2069,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-        QueryFilter, Schema, Set,
+        PaginatorTrait, QueryFilter, Schema, Set,
     };
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
@@ -2349,6 +2463,63 @@ mod tests {
     }
 
     #[test]
+    fn public_client_types_cannot_use_client_credentials() {
+        for app_type in ["mobile", "third_party"] {
+            let result = validate_manual_app_configuration(
+                app_type,
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            );
+            assert!(
+                result.is_err(),
+                "{app_type} apps must not receive userless client-credentials grants"
+            );
+        }
+    }
+
+    #[test]
+    fn service_apps_require_client_credentials_and_first_party_apps_can_be_hybrid() {
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &[],
+                &["catalog:read".to_string()],
+                &["client_credentials".to_string()],
+                &["catalog:read".to_string()],
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_manual_app_configuration(
+                "service",
+                &["https://service.example/callback".to_string()],
+                &["catalog:read".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            )
+            .is_err()
+        );
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &["https://shop.example/callback".to_string()],
+                &["storefront:read".to_string()],
+                &[
+                    "authorization_code".to_string(),
+                    "refresh_token".to_string(),
+                    "client_credentials".to_string(),
+                ],
+                &["storefront:read".to_string()],
+                false,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn client_credentials_requires_granted_permissions() {
         let result = validate_manual_app_configuration(
             "service",
@@ -2713,6 +2884,183 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn authorization_code_issuance_rechecks_consent_and_revocation() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-consent-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-consent-fence@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create consent subject");
+        let redirect_uri = "https://partner.example.com/callback";
+        let scopes = vec!["openid".to_string()];
+        let issue = || {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                user.id,
+                tenant.id,
+                redirect_uri.to_string(),
+                scopes.clone(),
+                "challenge".to_string(),
+            )
+        };
+
+        let missing_consent = issue().await
+            .expect_err("third-party app must not issue without current consent");
+        assert!(matches!(missing_consent, Error::Unauthorized(_)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("grant consent");
+        let code = issue().await.expect("issue after consent");
+        use sha2::{Digest, Sha256};
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+        let pending = oauth_authorization_codes::Entity::find()
+            .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .one(&db)
+            .await
+            .expect("find pending code")
+            .expect("pending code exists");
+        assert_eq!(pending.app_id, app.id);
+        assert_eq!(pending.user_id, user.id);
+        assert!(pending.used_at.is_none());
+
+        OAuthAppService::revoke_user_consent(&db, app.id, user.id, tenant.id)
+            .await
+            .expect("revoke consent and pending codes");
+        assert!(matches!(issue().await, Err(Error::Unauthorized(_))));
+        let revoked_code = oauth_authorization_codes::Entity::find_by_id(pending.id)
+            .one(&db)
+            .await
+            .expect("reload prior code")
+            .expect("prior code survives for replay detection");
+        assert!(revoked_code.used_at.is_some());
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            1,
+            "no code may be admitted after consent revocation"
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("renew consent");
+        let _another_code = issue().await.expect("admit code after re-consent");
+        OAuthAppService::revoke_app(&db, tenant.id, app.id)
+            .await
+            .expect("revoke app and pending codes");
+        assert!(matches!(issue().await, Err(Error::NotFound)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            2,
+            "app revocation cannot be followed by newly inserted auth codes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn authorization_code_issuance_rechecks_user_and_current_app_policy() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-user-policy-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-user-policy@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create authorization subject");
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            vec!["openid".to_string()],
+        )
+        .await
+        .expect("grant active consent");
+
+        let issue = |tenant_id| OAuthAppService::generate_authorization_code(
+            &db,
+            app.id,
+            user.id,
+            tenant_id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()],
+            "challenge".to_string(),
+        );
+        assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
+
+        // A stale preflight cannot bind a code to a redirect the app no longer
+        // accepts, nor to scopes that were narrowed before the authoritative
+        // app-row lock.
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://new.example.com/callback"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("change registered redirect");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://partner.example.com/callback"])),
+            )
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["profile"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("narrow allowed scopes");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["openid"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("restore app scopes");
+        let mut inactive = users::ActiveModel::from(user);
+        inactive.status = Set(rustok_core::UserStatus::Inactive);
+        inactive.update(&db).await.expect("deactivate subject");
+        assert!(matches!(issue(tenant.id).await, Err(Error::Unauthorized(_))));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+            "invalid tenant, redirect, scope and user decisions cannot persist codes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn rfc7009_revocation_always_succeeds() {
         let (db, tenant) = test_db_with_tenant().await;
         let app = insert_revocation_app(&db, tenant.id, "rfc7009-unknown").await;
@@ -2735,6 +3083,7 @@ mod tests {
             .await
             .expect("revoke refresh family");
 
+        let mut first_revoked_at = Vec::new();
         for id in [root.id, child.id] {
             let token = oauth_tokens::Entity::find_by_id(id)
                 .one(&db)
@@ -2745,6 +3094,7 @@ mod tests {
                 token.revoked_at.is_some(),
                 "family token {id} must be revoked"
             );
+            first_revoked_at.push((id, token.revoked_at));
         }
         let unrelated = oauth_tokens::Entity::find_by_id(unrelated.id)
             .one(&db)
@@ -2756,6 +3106,17 @@ mod tests {
         OAuthAppService::revoke_token_by_hash(&db, "family-child", app.id, tenant.id)
             .await
             .expect("repeat revocation is idempotent");
+        for (id, first_timestamp) in first_revoked_at {
+            let current = oauth_tokens::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("reload revoked token")
+                .expect("token remains present");
+            assert_eq!(
+                current.revoked_at, first_timestamp,
+                "replayed revocation must preserve the original revocation timestamp"
+            );
+        }
     }
 
     #[tokio::test]
@@ -3268,7 +3629,7 @@ mod tests {
                 &db,
                 tenant.id,
                 created.app.id,
-                &stale_secret_hash,
+                Some(&stale_secret_hash),
                 "stale-hash",
                 Utc::now(),
             )
@@ -3420,6 +3781,126 @@ mod tests {
         .await
         .expect_err("revoked app must not receive new consent");
         assert!(matches!(grant_after_revoke, Error::NotFound));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn oauth_secret_rotation_cas_rechecks_allowed_app_type() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rotation-type-change").await;
+        assert!(app.can_rotate_secret());
+        assert!(app.client_secret_hash.is_none());
+
+        // The app type changes after a secret-rotation preflight but before
+        // its hash CAS. The database, not the earlier snapshot, arbitrates
+        // whether the rotation remains permitted.
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AppType, Expr::value("embedded"))
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&db)
+            .await
+            .expect("change OAuth app type concurrently");
+        assert!(
+            !replace_oauth_secret_if_current(
+                &db,
+                tenant.id,
+                app.id,
+                app.client_secret_hash.as_deref(),
+                "new-secret-hash-that-must-not-be-persisted",
+                Utc::now(),
+            )
+            .await
+            .expect("atomic rotation predicate"),
+            "stale rotation must not set a secret for an unsupported app type"
+        );
+        let stored = OAuthApps::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app exists");
+        assert_eq!(stored.app_type, "embedded");
+        assert!(stored.client_secret_hash.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manual_oauth_edit_and_revoke_reject_newly_manifest_owned_app() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Pending ownership change".to_string(),
+                    slug: "pending-ownership-change".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+        let app_id = created.app.id;
+        assert!(created.app.can_edit() && created.app.can_revoke());
+
+        // Model the ownership transfer performed by a manifest reconciliation:
+        // a different writer acquires the canonical row fence and commits new
+        // ownership before either manual mutation is admitted.
+        let tx = db.begin().await.expect("ownership transaction");
+        let before = lock_oauth_app_for_mutation(&tx, app_id, tenant.id)
+            .await
+            .expect("lock app")
+            .expect("manual app still exists");
+        assert!(before.can_edit());
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AutoCreated, Expr::value(true))
+            .col_expr(
+                oauth_apps::Column::ManifestRef,
+                Expr::value(Some("manifest-owned".to_string())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&tx)
+            .await
+            .expect("manifest claims ownership");
+        tx.commit().await.expect("ownership commits");
+
+        let edit = OAuthAppService::update_app(
+            &db,
+            tenant.id,
+            app_id,
+            UpdateOAuthAppInput {
+                name: "Unexpected manual edit".to_string(),
+                description: None,
+                icon_url: None,
+                redirect_uris: vec!["https://attacker.example.com/callback".to_string()],
+                scopes: vec!["catalog:write".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: vec![],
+            },
+        )
+        .await;
+        assert!(matches!(edit, Err(Error::BadRequest(_))));
+        let revoke = OAuthAppService::revoke_app(&db, tenant.id, app_id).await;
+        assert!(matches!(revoke, Err(Error::BadRequest(_))));
+
+        let stored = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .one(&db)
+            .await
+            .expect("reload claimed app")
+            .expect("app remains");
+        assert!(stored.is_active());
+        assert!(stored.managed_by_manifest());
+        assert_eq!(stored.redirect_uris_list(), vec!["https://partner.example.com/callback"]);
+        assert!(stored.revoked_at.is_none());
     }
 
     #[tokio::test]
@@ -3865,6 +4346,14 @@ mod tests {
             .find(|app| app.slug == "next-admin")
             .expect("next-admin app");
         assert_eq!(next_admin.app_type, "first_party");
+        assert!(
+            next_admin.client_secret_hash.is_none(),
+            "manifest-created first-party apps must be usable as public PKCE clients"
+        );
+        assert!(
+            next_admin.can_rotate_secret(),
+            "operators must be able to provision the optional SSR credential"
+        );
         assert_eq!(
             next_admin.redirect_uris_list(),
             vec!["https://admin.example.com/auth/callback".to_string()]

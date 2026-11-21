@@ -1,13 +1,13 @@
-﻿import { storefrontGraphql } from "@/shared/lib/graphql";
+import { storefrontGraphql } from "@/shared/lib/graphql";
 
 const ENABLED_MODULES_QUERY = `
   query EnabledModules {
-    enabledModules
+    enabledModules(limit: 100)
   }
 `;
 
 type EnabledModulesResponse = {
-  enabledModules?: string[] | null;
+  enabledModules?: unknown;
 };
 
 function normalizeModules(modules: string[]): string[] {
@@ -29,8 +29,8 @@ export function getStorefrontTenantId(): string | null {
 export async function fetchEnabledModules(
   tenantSlug = getStorefrontTenantSlug(),
 ): Promise<string[]> {
-  if (!tenantSlug) {
-    return [];
+  if (!tenantSlug?.trim()) {
+    throw new Error("Storefront module availability scope is missing");
   }
 
   const response = await storefrontGraphql<EnabledModulesResponse>({
@@ -39,8 +39,20 @@ export async function fetchEnabledModules(
   });
 
   if (response.errors?.length) {
-    return [];
+    throw new Error("Storefront module availability is unavailable");
   }
 
-  return normalizeModules(response.data?.enabledModules ?? []);
+  const modules = response.data?.enabledModules;
+  if (
+    !Array.isArray(modules) ||
+    modules.some((slug) => typeof slug !== "string" || !slug.trim())
+  ) {
+    throw new Error("Storefront module availability response is invalid");
+  }
+  // The server clamps the unpaginated query at 100. At the cap we cannot
+  // distinguish a complete policy from a truncated one.
+  if (modules.length >= 100) {
+    throw new Error("Storefront module availability may be incomplete");
+  }
+  return normalizeModules(modules);
 }

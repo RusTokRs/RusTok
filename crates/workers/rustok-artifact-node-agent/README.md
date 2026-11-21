@@ -13,5 +13,15 @@ It reports `prepared` after non-executing local payload preparation and
 `healthy` only after the exact runtime check succeeds. The control-plane owner
 alone promotes all healthy assignments to `active` and advances convergence.
 
+On heartbeat failure or timeout the agent waits for the in-flight materializer
+future and does not start a new report; if a report is already in flight, it
+awaits its outcome. Waiting does not cancel materialization or prove that local
+or external effects have stopped; shutdown or process termination can interrupt
+the wait. The agent handles pending and prepared assignments but not active
+assignments that the owner can offer for drift observation. These gaps require
+reconciliation and an execution fence before using node leases as a lifecycle
+safety boundary. The new heartbeat supervision has not been compiled or tested
+in the current environment.
+
 See the [deployment contract](./docs/README.md) and the
 [module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

@@ -21,7 +21,7 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 const ENABLE_ENV: &str = "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_FORUM_SEARCH_CONTRACT_CONSUMER_IDLE_POLL_MS";
@@ -85,6 +85,9 @@ impl ForumSearchContractWorkerConfig {
         })
     }
 }
+
+// Guards broker group opening and worker publication as one local lifecycle.
+struct ForumSearchContractStartupReservation;
 
 pub struct ForumSearchContractConsumerWorkerHandle {
     instance_id: u64,
@@ -154,6 +157,31 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             "Forum Search typed invalidation consumer requires PostgreSQL".to_string(),
         ));
     }
+    // Group opening can await network I/O. Claim before the await so another
+    // request cannot open the same group and later overwrite our JoinHandle.
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search contract consumer cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ForumSearchContractStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Forum Search contract worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    if ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>() {
+        return Ok(());
+    }
+    let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
+
     let group = transport
         .open_persistent_contract_consumer_group(
             FORUM_SEARCH_CONTRACT_CONSUMER_GROUP,
@@ -166,8 +194,12 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             ))
         })?;
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
-    let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Forum Search contract consumer startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();
 
@@ -192,6 +224,7 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             stop_rx,
         )),
     });
+    reservation.commit();
     Ok(())
 }
 
@@ -253,9 +286,9 @@ async fn forum_search_contract_consumer_loop(
                 .await
             }
             Ok(None) => !wait_or_stop(config.idle_poll, &mut stop_rx).await,
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
-                    error = %error,
+                    error_code = "forum_search_contract_receive_failed",
                     "Forum Search typed invalidation receive failed; broker offset remains uncommitted"
                 );
                 false
@@ -367,10 +400,10 @@ async fn terminalize_semantic_poison(
         stable_error_code,
         observed_attempts,
     )
-    .map_err(|error| {
+    .map_err(|_error| {
         tracing::error!(
             typed_envelope_id = %consumed.envelope.id(),
-            error = %error,
+            error_code = "forum_search_semantic_poison_identity_failed",
             "Forum Search semantic poison identity failed; broker offset remains uncommitted"
         );
     })
@@ -565,20 +598,20 @@ async fn establish_poison_result(
                         )
                         .await;
                     }
-                    Err(error) if attempt < config.max_attempts => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) if attempt < config.max_attempts => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "forum_search_poison_claim_release_failed",
                                 "Failed to release poison claim before retry"
                             );
                         }
                         let delay = retry_delay(config, attempt);
                         tracing::warn!(
-                            error = %error,
                             error_code = stable_error_code,
+                            failure_code = "forum_search_dlq_publish_failed",
                             attempt,
                             retry_delay_ms = duration_millis(delay),
                             "Forum Search poison DLQ publication failed; released claim and retained broker offset"
@@ -588,19 +621,19 @@ async fn establish_poison_result(
                         }
                         attempt += 1;
                     }
-                    Err(error) => {
-                        if let Err(release_err) = poison_receipts
+                    Err(_error) => {
+                        if let Err(_release_err) = poison_receipts
                             .release_claim(identity, poison_publisher_id)
                             .await
                         {
                             tracing::warn!(
-                                error = %release_err,
+                                failure_code = "forum_search_poison_claim_release_failed",
                                 "Failed to release poison claim on final attempt"
                             );
                         }
                         tracing::error!(
-                            error = %error,
                             error_code = stable_error_code,
+                            failure_code = "forum_search_dlq_publish_failed",
                             attempts = attempt,
                             "Forum Search poison DLQ publication failed; broker offset remains uncommitted"
                         );
@@ -717,11 +750,11 @@ async fn acknowledge_event(
     loop {
         match group.acknowledge(consumed).await {
             Ok(()) => return true,
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 tracing::warn!(
                     typed_envelope_id = %consumed.envelope.id(),
-                    error = %error,
+                    failure_code = "forum_search_broker_ack_failed",
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search durable result exists but broker acknowledgement failed"
@@ -731,10 +764,10 @@ async fn acknowledge_event(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
                     typed_envelope_id = %consumed.envelope.id(),
-                    error = %error,
+                    failure_code = "forum_search_broker_ack_failed",
                     attempts = attempt,
                     "Forum Search broker acknowledgement failed; redelivery will recognize the durable inbox row"
                 );
@@ -784,11 +817,11 @@ async fn acknowledge_decode_failure_with_receipt(
                 }
                 return true;
             }
-            Err(error) if attempt < config.max_attempts => {
+            Err(_error) if attempt < config.max_attempts => {
                 let delay = retry_delay(config, attempt);
                 tracing::warn!(
-                    error = %error,
                     error_code = failure.stable_error_code(),
+                    failure_code = "forum_search_decode_ack_failed",
                     attempt,
                     retry_delay_ms = duration_millis(delay),
                     "Forum Search raw poison result exists but broker acknowledgement failed"
@@ -798,10 +831,10 @@ async fn acknowledge_decode_failure_with_receipt(
                 }
                 attempt += 1;
             }
-            Err(error) => {
+            Err(_error) => {
                 tracing::error!(
-                    error = %error,
                     error_code = failure.stable_error_code(),
+                    failure_code = "forum_search_decode_ack_failed",
                     attempts = attempt,
                     "Forum Search raw poison acknowledgement failed; redelivery will recognize the durable receipt"
                 );

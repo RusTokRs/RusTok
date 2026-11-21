@@ -95,7 +95,7 @@ allowed to work with a specific tenant's API.
 
 Each connection has:
 - `client_id` — public identifier (UUID)
-- `client_secret` — secret (stored as hash, shown once)
+- `client_secret` — optional confidential-client secret (stored as a hash, shown once when created or rotated); public PKCE clients may have no secret
 - `app_type` — application type (determines available OAuth2 flows)
 - `scopes` — allowed operations
 - `redirect_uris` — for Authorization Code flow
@@ -111,7 +111,7 @@ pub enum AppType {
 
     /// First party: our admin/storefront deployed as a separate process.
     /// Trusted — full set of scopes by default.
-    /// Flow: Authorization Code + PKCE (for SPA), Client Credentials (for SSR).
+    /// Flow: secretless Authorization Code + PKCE (for SPA), Client Credentials (for SSR, after secret rotation).
     FirstParty,
 
     /// Mobile app: Authorization Code + PKCE.
@@ -719,20 +719,18 @@ stack = "next"
 ```
 
 The system:
-1. Creates an `oauth_apps` record: `slug="site-eu"`, `app_type=FirstParty`
-2. Generates `client_id` and `client_secret`
-3. Outputs in CLI:
-```
-✅ App connection created for storefront "site-eu"
+1. Creates an `oauth_apps` record: `slug="site-eu"`, `app_type=FirstParty`.
+2. Creates it as a public PKCE client with a `client_id` and no client secret. Browser Authorization Code + PKCE works immediately.
+3. If the SSR backend needs `client_credentials`, an operator explicitly rotates the app secret in the OAuth app administration UI. The plaintext is returned once by that operation; save it in the server-side environment.
 
-   Client ID:     8a3f2d1c-...
-   Client Secret: sk_live_a8b7c6d5e4f3...  ← SAVE THIS!
-
-   Add to your Next.js .env:
-   RUSTOK_CLIENT_ID=8a3f2d1c-...
-   RUSTOK_CLIENT_SECRET=sk_live_a8b7c6d5e4f3...
-   RUSTOK_API_URL=https://api.example.com
+After secret rotation, configure the Next.js server environment:
+```env
+RUSTOK_CLIENT_ID=8a3f2d1c-...
+RUSTOK_CLIENT_SECRET=sk_live_...  # returned once by secret rotation
+RUSTOK_API_URL=https://api.example.com
 ```
+
+The browser PKCE exchange continues to use the public client ID and verifier; it does not send the SSR client secret.
 
 ### Next.js SDK Integration
 

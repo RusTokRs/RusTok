@@ -167,10 +167,12 @@ impl GroupMembershipEffectiveStatus {
     }
 }
 
-pub fn normalize_group_handle(value: &str) -> Result<String, String> {
+pub fn normalize_group_handle(value: &str) -> crate::error::GroupsResult<String> {
     let normalized = value.trim().to_ascii_lowercase().replace(' ', "-");
     if !(3..=80).contains(&normalized.len()) {
-        return Err("group handle must contain between 3 and 80 characters".to_string());
+        return Err(crate::error::GroupsError::Validation(
+            "group handle must contain between 3 and 80 characters".to_string(),
+        ));
     }
     if normalized.starts_with('-')
         || normalized.ends_with('-')
@@ -181,20 +183,20 @@ pub fn normalize_group_handle(value: &str) -> Result<String, String> {
                 || character == '_'
         })
     {
-        return Err(
+        return Err(crate::error::GroupsError::Validation(
             "group handle may contain lowercase ASCII letters, digits, hyphens, and underscores"
                 .to_string(),
-        );
+        ));
     }
     Ok(normalized)
 }
 
-pub fn normalize_feature_key(value: &str) -> Result<String, String> {
+pub fn normalize_feature_key(value: &str) -> crate::error::GroupsResult<String> {
     let normalized = value.trim().to_ascii_lowercase();
     let Some((owner, feature)) = normalized.split_once('.') else {
-        return Err(
+        return Err(crate::error::GroupsError::Validation(
             "group feature key must be namespaced, for example forum.discussions".to_string(),
-        );
+        ));
     };
     let valid_part = |part: &str| {
         !part.is_empty()
@@ -207,21 +209,19 @@ pub fn normalize_feature_key(value: &str) -> Result<String, String> {
             })
     };
     if !valid_part(owner) || !valid_part(feature) {
-        return Err("group feature namespace and name contain unsupported characters".to_string());
+        return Err(crate::error::GroupsError::Validation(
+            "group feature namespace and name contain unsupported characters".to_string(),
+        ));
     }
     Ok(normalized)
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-
-    let digest = Sha256::digest(bytes);
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        std::fmt::Write::write_fmt(&mut encoded, format_args!("{byte:02x}"))
-            .expect("writing a SHA-256 digest to a string cannot fail");
-    }
-    encoded
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]

@@ -765,7 +765,7 @@ impl SettingsService {
         // The change event requires a non-nil actor. Rejecting here keeps the
         // failure a clear validation error instead of a mid-transaction event
         // serialization failure after the row has been written.
-        let Some(actor_id) = actor_id else {
+        let Some(actor_id) = actor_id.filter(|id| !id.is_nil()) else {
             return Err(SettingsError::MissingActor);
         };
 
@@ -1749,6 +1749,37 @@ mod tests {
             !value.to_string().contains("deploy-secret"),
             "no field of a settings read may carry the deployment password: {value}"
         );
+    }
+
+    #[tokio::test]
+    async fn settings_writes_reject_nil_actors_before_touching_the_database() {
+        use rustok_outbox::OutboxTransport;
+        use std::sync::Arc;
+
+        // No schema is needed: invalid actor evidence must fail before any SQL.
+        let db = sea_orm::DatabaseConnection::default();
+        let ctx = ServerRuntimeContext::new(
+            db.clone(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db)));
+        let validators = ValidatorRegistry::default();
+        let tenant_id = Uuid::new_v4();
+        for actor in [None, Some(Uuid::nil())] {
+            assert!(matches!(
+                SettingsService::update(
+                    &ctx,
+                    &event_bus,
+                    tenant_id,
+                    category::GENERAL,
+                    json!({"site_name": "example"}),
+                    actor,
+                    &validators,
+                )
+                .await,
+                Err(SettingsError::MissingActor)
+            ));
+        }
     }
 
     #[tokio::test]

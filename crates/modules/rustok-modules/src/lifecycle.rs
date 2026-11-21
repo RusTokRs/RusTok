@@ -14,13 +14,13 @@ pub enum ModuleOperationStatus {
     Committed,
     /// The state transition committed durably, but the post-hook failed.
     /// The operation must never be reported as `Failed`: its state change is
-    /// in effect, and only the hook remains outstanding (recovery retries it
-    /// via `ModuleOperationRecoveryAction::RetryPostHook`).
+    /// in effect, and the hook remains outstanding. New retry or compensation
+    /// requires verified original execution identity and external quiescence.
     CommittedHookFailed,
     Failed,
     /// The executor disappeared before a durable state commit was recorded.
-    /// The operation is terminal and must be repeated as a new command after
-    /// rereading the aggregate; it is not a hook or persistence failure.
+    /// The journal operation is terminal, but external hook effects may still
+    /// be running. Its status alone never authorizes a repeat.
     Orphaned,
 }
 
@@ -103,6 +103,9 @@ impl ModuleOperationIssue {
         }
     }
 
+    /// Classifies the failure kind only. This is not an authorization to
+    /// execute recovery: the owner plan also requires execution evidence and
+    /// currently denies all new retries.
     pub const fn retryable(self) -> bool {
         matches!(self, Self::PostHookFailed)
     }

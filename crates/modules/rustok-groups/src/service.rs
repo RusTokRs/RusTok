@@ -151,7 +151,7 @@ impl GroupsService {
         input.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let owner_user_id = actor_user_id(context)?;
-        let handle = normalize_group_handle(&input.handle).map_err(GroupsError::Validation)?;
+        let handle = normalize_group_handle(&input.handle)?;
         let locale = normalize_locale_tag(&input.locale)
             .ok_or_else(|| GroupsError::Validation("invalid group locale".to_string()))?;
         let title = input.title.trim();
@@ -356,8 +356,7 @@ impl GroupsService {
         query = match (request.group_id, request.handle) {
             (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
             (None, Some(handle)) => query.filter(
-                group::Column::Handle
-                    .eq(normalize_group_handle(&handle).map_err(GroupsError::Validation)?),
+                group::Column::Handle.eq(normalize_group_handle(&handle)?),
             ),
             (None, None) => {
                 return Err(GroupsError::Validation(

@@ -1,6 +1,7 @@
 use std::{
     any::{Any, TypeId},
     collections::{HashMap, hash_map::Entry},
+    marker::PhantomData,
     sync::{Arc, RwLock},
 };
 
@@ -127,6 +128,44 @@ pub struct ServerRuntimeContext {
     db: DatabaseConnection,
     settings: Arc<RustokSettings>,
     shared_values: ServerSharedValues,
+}
+
+/// A single-process worker startup claim. It is held across all fallible
+/// preparation (including async database bootstrap), and released automatically
+/// if the startup future is cancelled or returns an error. Once a handle is
+/// published the reservation stays in the context for that runtime lifetime.
+///
+/// This is only an in-process owner fence; multi-replica work deduplication is
+/// the durable worker owner's responsibility.
+pub(crate) struct ServerRuntimeStartReservation<'a, T: 'static + Send + Sync> {
+    ctx: &'a ServerRuntimeContext,
+    claimed: bool,
+    _type: PhantomData<T>,
+}
+
+impl<'a, T: 'static + Send + Sync> ServerRuntimeStartReservation<'a, T> {
+    pub(crate) fn try_claim(ctx: &'a ServerRuntimeContext, marker: T) -> Option<Self> {
+        // Build the cleanup guard only for a successful atomic claim.
+        // Eager construction on failure would drop the losing temporary
+        // guard and erroneously remove the winner's reservation.
+        ctx.shared_insert_if_absent(marker).then(|| Self {
+            ctx,
+            claimed: true,
+            _type: PhantomData,
+        })
+    }
+
+    pub(crate) fn commit(mut self) {
+        self.claimed = false;
+    }
+}
+
+impl<T: 'static + Send + Sync> Drop for ServerRuntimeStartReservation<'_, T> {
+    fn drop(&mut self) {
+        if self.claimed {
+            self.ctx.shared_remove::<T>();
+        }
+    }
 }
 
 impl ServerRuntimeContext {
@@ -310,7 +349,9 @@ impl FromRef<ServerAuthRuntime> for Arc<RustokSettings> {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerSharedValues;
+    use super::{ServerRuntimeContext, ServerSharedValues};
+    use crate::common::settings::RustokSettings;
+    use sea_orm::DatabaseConnection;
 
     #[test]
     fn shared_take_returns_and_removes_the_typed_value() {
@@ -330,6 +371,103 @@ mod tests {
 
         assert_eq!(values.take::<String>().as_deref(), Some("listener"));
         assert_eq!(values.get::<u64>(), Some(42));
+    }
+
+    #[test]
+    fn start_reservation_rolls_back_and_preserves_committed_ownership() {
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        {
+            let claimed = super::ServerRuntimeStartReservation::try_claim(&ctx, 5_usize)
+                .expect("first bootstrap owns reservation");
+            assert!(
+                super::ServerRuntimeStartReservation::try_claim(&ctx, 6_usize).is_none(),
+                "second starter must not replace an in-flight owner"
+            );
+            assert_eq!(ctx.shared_get::<usize>(), Some(5));
+            drop(claimed);
+        }
+        assert!(!ctx.shared_contains::<usize>(), "failed startup must release claim");
+        super::ServerRuntimeStartReservation::try_claim(&ctx, 7_usize)
+            .expect("retry after failed startup")
+            .commit();
+        assert_eq!(ctx.shared_get::<usize>(), Some(7));
+        assert!(
+            super::ServerRuntimeStartReservation::try_claim(&ctx, 8_usize).is_none(),
+            "committed startup keeps ownership reserved"
+        );
+    }
+
+    #[test]
+    fn concurrent_worker_start_reservations_have_one_local_owner() {
+        use std::sync::{
+            Arc, Barrier,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        const STARTERS: usize = 12;
+        let enter = Arc::new(Barrier::new(STARTERS));
+        let leave = Arc::new(Barrier::new(STARTERS));
+        let winners = Arc::new(AtomicUsize::new(0));
+
+        std::thread::scope(|scope| {
+            for _ in 0..STARTERS {
+                let ctx = ctx.clone();
+                let enter = enter.clone();
+                let leave = leave.clone();
+                let winners = winners.clone();
+                scope.spawn(move || {
+                    enter.wait();
+                    let claim =
+                        super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u16);
+                    if claim.is_some() {
+                        winners.fetch_add(1, Ordering::Relaxed);
+                    }
+                    // Keep the unique claim alive until every competing
+                    // starter has attempted the same atomic reservation.
+                    leave.wait();
+                    if let Some(claim) = claim {
+                        claim.commit();
+                    }
+                });
+            }
+        });
+        assert_eq!(winners.load(Ordering::Relaxed), 1);
+        assert!(ctx.shared_contains::<u16>());
+    }
+
+    #[test]
+    fn cancelled_async_start_releases_reservation_before_retry() {
+        use std::future::Future;
+        use std::task::{Context, Waker};
+
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let pending_bootstrap = async {
+            let _reservation =
+                super::ServerRuntimeStartReservation::try_claim(&ctx, 1_u32)
+                    .expect("startup claims marker");
+            std::future::pending::<()>().await;
+        };
+        let mut pending_bootstrap = Box::pin(pending_bootstrap);
+        let mut task = Context::from_waker(Waker::noop());
+        assert!(Future::poll(pending_bootstrap.as_mut(), &mut task).is_pending());
+        assert!(ctx.shared_contains::<u32>(), "async startup holds marker");
+        // Cancellation is a drop of the in-flight future, not an Err
+        // returned from its body. The marker must still be released.
+        drop(pending_bootstrap);
+        assert!(!ctx.shared_contains::<u32>());
+        super::ServerRuntimeStartReservation::try_claim(&ctx, 2_u32)
+            .expect("retry can claim after cancellation")
+            .commit();
     }
 
     #[test]

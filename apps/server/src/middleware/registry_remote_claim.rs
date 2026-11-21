@@ -6,7 +6,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rustok_modules::ModuleGovernanceErrorCategory;
+use rustok_modules::{ModuleGovernanceError, ModuleGovernanceErrorCategory};
 
 use crate::services::marketplace_catalog::{
     REGISTRY_MUTATION_SCHEMA_VERSION, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
@@ -130,25 +130,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
     .await
     {
         Ok(claim) => claim,
-        Err(error)
-            if error
-                .to_string()
-                .starts_with("Unsupported validation stage") =>
-        {
-            return response(
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                &error.to_string(),
-            );
-        }
-        Err(error) => {
-            tracing::error!(%error, runner_id = %runner_id, "Atomic registry runner claim failed");
-            return response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error",
-                "Failed to claim registry validation stage",
-            );
-        }
+        Err(error) => return claim_error_response(error),
     };
 
     Json(RegistryRunnerClaimResponse {
@@ -277,6 +259,48 @@ fn normalize_runner_id(runner_id: &str) -> RegistryClaimValidationResult<String>
     Ok(runner_id.to_string())
 }
 
+fn claim_error_response(error: ModuleGovernanceError) -> Response {
+    let category = error.category();
+    let code = error.code();
+
+    match category {
+        ModuleGovernanceErrorCategory::InvalidInput => {
+            tracing::warn!(error_code = code, "Rejected invalid registry runner claim");
+            response(
+                StatusCode::BAD_REQUEST,
+                code,
+                "Runner claim request is invalid",
+            )
+        }
+        ModuleGovernanceErrorCategory::PermissionDenied => {
+            tracing::warn!(error_code = code, "Registry runner claim was denied");
+            response(
+                StatusCode::FORBIDDEN,
+                code,
+                "Runner claim is not authorized",
+            )
+        }
+        ModuleGovernanceErrorCategory::NotFound => response(
+            StatusCode::NOT_FOUND,
+            code,
+            "Registry runner claim target was not found",
+        ),
+        ModuleGovernanceErrorCategory::Conflict => response(
+            StatusCode::CONFLICT,
+            code,
+            "Registry runner claim conflicts with the current state",
+        ),
+        ModuleGovernanceErrorCategory::Internal => {
+            tracing::error!(error_code = code, "Atomic registry runner claim failed");
+            response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Failed to claim registry validation stage",
+            )
+        }
+    }
+}
+
 fn mutation_response(claim_id: &str, status: &str) -> Response {
     Json(RegistryRunnerMutationResponse {
         accepted: true,
@@ -291,21 +315,34 @@ fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
     let RegistryRemoteTransitionError {
         category,
         code,
-        detail,
+        detail: _detail,
     } = error;
     match category {
-        ModuleGovernanceErrorCategory::InvalidInput => {
-            response(StatusCode::BAD_REQUEST, code, &detail)
-        }
-        ModuleGovernanceErrorCategory::PermissionDenied => {
-            response(StatusCode::FORBIDDEN, code, &detail)
-        }
-        ModuleGovernanceErrorCategory::NotFound => {
-            response(StatusCode::NOT_FOUND, code, "Not found")
-        }
-        ModuleGovernanceErrorCategory::Conflict => response(StatusCode::CONFLICT, code, &detail),
+        ModuleGovernanceErrorCategory::InvalidInput => response(
+            StatusCode::BAD_REQUEST,
+            code,
+            "Runner transition request is invalid",
+        ),
+        ModuleGovernanceErrorCategory::PermissionDenied => response(
+            StatusCode::FORBIDDEN,
+            code,
+            "Runner transition is not authorized",
+        ),
+        ModuleGovernanceErrorCategory::NotFound => response(
+            StatusCode::NOT_FOUND,
+            code,
+            "Runner transition target was not found",
+        ),
+        ModuleGovernanceErrorCategory::Conflict => response(
+            StatusCode::CONFLICT,
+            code,
+            "Runner transition conflicts with the current state",
+        ),
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(error = %detail, "Atomic registry runner transition failed");
+            tracing::error!(
+                error_code = code,
+                "Atomic registry runner transition failed"
+            );
             response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -359,7 +396,72 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RunnerRoute, runner_route};
+    use axum::{
+        body::to_bytes,
+        http::StatusCode,
+    };
+    use rustok_modules::ModuleGovernanceError;
+
+    use super::{
+        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RegistryRemoteTransitionError,
+        RunnerRoute, claim_error_response, runner_route, transition_error_response,
+    };
+    use rustok_modules::ModuleGovernanceErrorCategory;
+
+    #[tokio::test]
+    async fn transition_error_response_redacts_untrusted_details() {
+        let response = transition_error_response(RegistryRemoteTransitionError {
+            category: ModuleGovernanceErrorCategory::InvalidInput,
+            code: "module_governance_invalid_input",
+            detail: "unsupported validation stage: private-stage-value".to_string(),
+        });
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("transition error response should fit its bounded envelope");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("transition error response should be valid JSON");
+        assert_eq!(payload["message"], "Runner transition request is invalid");
+        assert_eq!(payload["message"], "Runner transition request is invalid");
+    }
+
+    #[tokio::test]
+    async fn invalid_claim_stage_is_a_redacted_bad_request() {
+        let untrusted_stage = "unsupported-stage-".repeat(256);
+        let response = claim_error_response(
+            ModuleGovernanceError::InvalidRemoteValidationClaimStage(untrusted_stage.clone()),
+        );
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("claim error response should fit its bounded envelope");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("claim error response should be valid JSON");
+        assert_eq!(payload["error"], "module_governance_invalid_input");
+        assert_eq!(payload["message"], "Runner claim request is invalid");
+        assert_ne!(payload["message"].as_str(), Some(untrusted_stage.as_str()));
+    }
+
+    #[tokio::test]
+    async fn internal_claim_failure_does_not_expose_storage_details() {
+        let response = super::claim_error_response(ModuleGovernanceError::Store(
+            "database password and SQL detail".to_string(),
+        ));
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("claim error response should fit its bounded envelope");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("claim error response should be valid JSON");
+        assert_eq!(payload["error"], "internal_error");
+        assert_eq!(
+            payload["message"],
+            "Failed to claim registry validation stage"
+        );
+    }
 
     #[test]
     fn routes_all_atomic_runner_transitions() {

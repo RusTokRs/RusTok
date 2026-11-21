@@ -57,7 +57,7 @@ pub(crate) async fn reserve_group_write_for_update(
                 ))
                 .await?;
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        DbBackend::Postgres | DbBackend::MySql | _ => {
             group::Entity::find()
                 .filter(group::Column::TenantId.eq(tenant_id))
                 .filter(group::Column::Id.eq(group_id))
@@ -65,7 +65,6 @@ pub(crate) async fn reserve_group_write_for_update(
                 .one(transaction)
                 .await?;
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
     }
     Ok(())
 }
@@ -118,7 +117,7 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
                 .one(transaction)
                 .await?
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        DbBackend::Postgres | DbBackend::MySql | _ => {
             membership_state::Entity::find_by_id(membership_id)
                 .filter(membership_state::Column::TenantId.eq(tenant_id))
                 .filter(membership_state::Column::GroupId.eq(locator.group_id))
@@ -126,7 +125,6 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
                 .one(transaction)
                 .await?
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
     };
     let Some(locked_membership) = locked_membership else {
         return Ok(None);
@@ -147,14 +145,13 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
                 .one(transaction)
                 .await?
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        DbBackend::Postgres | DbBackend::MySql | _ => {
             membership_enforcement::Entity::find_by_id(locked_membership.id)
                 .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
                 .lock_exclusive()
                 .one(transaction)
                 .await?
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
     };
 
     Ok(Some(LockedMembershipEnforcementTarget {
@@ -188,7 +185,7 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                 .one(transaction)
                 .await?
         }
-        DbBackend::Postgres | DbBackend::MySql => {
+        DbBackend::Postgres | DbBackend::MySql | _ => {
             membership_state::Entity::find()
                 .filter(membership_state::Column::TenantId.eq(tenant_id))
                 .filter(membership_state::Column::GroupId.eq(group_id))
@@ -197,7 +194,6 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                 .one(transaction)
                 .await?
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
     };
 
     if let Some(membership) = membership {
@@ -208,14 +204,13 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                     .one(transaction)
                     .await?;
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            DbBackend::Postgres | DbBackend::MySql | _ => {
                 membership_enforcement::Entity::find_by_id(membership.id)
                     .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
                     .lock_exclusive()
                     .one(transaction)
                     .await?;
             }
-            _ => unreachable!("unsupported SeaORM database backend"),
         }
     }
 

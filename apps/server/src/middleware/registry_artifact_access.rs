@@ -151,8 +151,11 @@ async fn validate_owner_transfer(
                 "Registry owner transfer target does not exist in the authenticated tenant",
             );
         }
-        Err(error) => {
-            tracing::error!(%error, "Failed to validate registry owner transfer target");
+        Err(_error) => {
+            tracing::error!(
+                error_code = "registry_owner_transfer_target_lookup_failed",
+                "Failed to validate registry owner transfer target"
+            );
             return internal_error("Failed to validate registry owner transfer target");
         }
     };
@@ -192,8 +195,11 @@ async fn authorize_user_access(
     let snapshot = RegistryGovernanceService::new(ctx.db_clone())
         .publish_request_status_snapshot_for_authority(request_id, Some(&authority))
         .await
-        .map_err(|error| {
-            tracing::error!(%error, request_id, "Failed to load owner publish-request authorization snapshot");
+        .map_err(|_error| {
+            tracing::error!(
+                error_code = "registry_publish_authorization_snapshot_failed",
+                "Failed to load owner publish-request authorization snapshot"
+            );
             internal_error("Failed to authorize registry publish request access")
         })?
         .ok_or_else(|| not_found("Registry publish request was not found"))?;

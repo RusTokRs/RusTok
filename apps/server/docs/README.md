@@ -326,7 +326,18 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Module event dispatcher startup requires `EventRuntime` before launching any
   dependent Product Media release, Commerce paid-order label, marketplace financial,
   or Payment provider recovery workers. A missing event runtime fails bootstrap
-  without leaving detached module-owned recovery tasks running.
+  without leaving detached module-owned recovery tasks running. An atomic
+  per-runtime reservation prevents concurrent dispatcher startup from replacing
+  its shutdown handle. The required-listener flag is set only after the
+  dispatcher starts successfully; optional module recovery loops start only
+  after that success, so a failed required dispatcher cannot leave those loops
+  running. Product-media, paid-order-label, marketplace-financial and payment
+  provider worker admission each uses its own atomic reservation, preventing
+  concurrent composition from spawning and losing duplicate worker handles.
+  Missing optional dependencies release the corresponding reservation for a
+  later retry; already stopping hosts do not admit new recovery workers.
+  These are **process-local** startup fences, not cross-replica singleton
+  leases or a replacement for owner-level idempotency and durable recovery.
 - Event runtime construction completes fallible transport, projector, and relay
   configuration work before it adds tenant-generation or Redis-status listener
   tasks. The RBAC invalidation listener may already be started by early server
@@ -345,11 +356,45 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification candidate, fanout, Outbox intake, Forum Search inbox,
+  Forum Search contract, Product Index refresh and Social Graph Index worker
+  startup have distinct process-local atomic lifecycle claims in
+  `ServerRuntimeContext`. A second caller cannot spawn a duplicate worker,
+  overwrite the only shutdown `JoinHandle`, open a duplicate Iggy consumer
+  group, or run concurrent Outbox registration/backfill while the first
+  startup is still in progress. A contending starter sees a retryable
+  startup-in-progress error, never a false `Ok` while no worker exists yet;
+  a caller that observes the already-published worker handle succeeds
+  idempotently. Claims are released on preparation error and async cancellation,
+  and retained after successful handle publication. All seven starters check
+  the shared stop signal before publishing a worker. This is an
+  in-process guarantee, not distributed leader election; durable queue
+  ownership/receipt correctness remains with the Outbox, Search, Index,
+  and Notifications domain workers.
+- Social Graph Index raw-poison DLQ publication keeps the source offset
+  **uncommitted** after all transport retries fail; its worker reports a stable
+  failure diagnostic without embedding untrusted broker error text. The
+  durable poison receipt claim is released on a failed publish (or expires by
+  lease after a failed release) so a restarted worker can retry the same
+  source identity. A successful DLQ publication is recorded durably before
+  broker source acknowledgement; a crash between these steps retries the
+  receipt/offset path rather than dropping the source message.
+- Marketplace financial recovery runs provider-reversal adaptation, reversal
+  event reconciliation and paid-order event reconciliation in that order.
+  During cooperative shutdown it finishes the currently running durable
+  operation but **does not start a subsequent phase** after the stop signal
+  becomes visible; the next startup resumes outstanding durable work.
+  Individual operations can still block until their own completion or the
+  bounded host shutdown deadline.
 - Notification intake registers its supported event types in the Outbox-owned
   consumer ledger before runtime retention starts. Accepted receipts and
   permanent rejections acknowledge the original event in the same transaction;
   unacknowledged events remain retained through intake outages. Registration is
   durable, so disabling the worker does not release an existing retention hold.
+  Its initial legacy-receipt backfill checks the host stop signal before every
+  page and receipt and aborts startup if shutdown begins; already acknowledged
+  receipts are safe for replay during a later startup. In-flight DB operations
+  still run to completion before the next stop check.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
@@ -361,6 +406,17 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   a request delayed behind another cannot apply an obsolete window timestamp.
   Exactly at a window deadline, its counter restarts rather than extending the
   previous window by one tick.
+- Built-in password-reset and verification email sends register active Tokio
+  tasks in a single host-runtime registry, independent of HTTP callers retaining
+  their JoinHandles. Host shutdown closes email admission, waits for accepted
+  sends for up to five seconds, then aborts and observes remaining tasks within
+  another bounded second. Panics during future construction and delivery are
+  caught and logged without exposing credentials. Concurrent SMTP sender
+  initialization preserves the first shared connection pool. Skipped sends on
+  shutdown are counted as skipped deliveries; templates match the full locale
+  language subtag rather than an arbitrary `ru` prefix. This improves graceful
+  shutdown **only**: email delivery remains best-effort, without a durable
+  queue, retry lease, or crash recovery.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
@@ -395,10 +451,24 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   Authority changes attempt a 4401 close; a blocked or disconnected peer may see
   only a dropped connection. The hub is an
   atomic process-local singleton, not a distributed or durable event stream.
-- Effective-module-policy snapshots carry the owner-produced tenant and exact
-  policy-revision cache identity. Server consumers must match both fields;
-  TTL or process generation alone never makes a cached authorization decision
-  current.
+- Effective-module-policy snapshots carry an owner-produced tenant/revision
+  cache identity, but the server's `get_latest` path does not compare it to an
+  independently read current owner revision. The cache returns only policy;
+  callers needing policy with defaults use an uncached owner resolution, which
+  passes the same manifest defaults into policy construction. The underlying
+  database reads are not a single transactional snapshot. Local observed
+  invalidations fence in-flight fills; missed or delayed events, database races
+  and volatile executor inputs remain freshness gaps. TTL and process generation
+  are not authorization guarantees, and dispatch checks do not cover earlier
+  guard/RBAC decisions.
+- Artifact binding dispatch now requires policy facts for the exact artifact
+  release and installation, both at admission and at non-lifecycle runtime
+  revalidation; a static module sharing its slug is not sufficient. The current
+  server resolver builds a static-only policy, so artifact bindings using this
+  resolver fail closed until an artifact-aware catalog and executor inputs are
+  wired into the owner policy path. Node readiness and dispatch checks do not
+  turn that static policy into artifact evidence. Lifecycle hooks have their
+  separate lifecycle admission path.
 - Production release admission, rollout, activation, recovery, and related
   events are owned by `rustok-modules`; build events contain build facts only.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
@@ -419,7 +489,9 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   default is fail-closed; deployments that expose an authorization server must opt in explicitly.
 - Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
   token families, so a used code remains available as the replay anchor for the delegated lineage it
-  issued while still bounding storage.
+  issued while still bounding storage. Session, invite, token, and code cleanup now share one
+  database transaction: a later deletion failure rolls back the earlier deletions, and the purge
+  counts describe only a committed sweep.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
   goes through `rustok_web::json_response`.
@@ -447,9 +519,31 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   locks the app and subject and rechecks the client-secret hash, refresh grant,
   current scopes, subject status, and password-change epoch before consuming the
   refresh token. Client-credentials issuance locks and rechecks its app before
-  persisting the access row. App, consent, password, and user-status revocation also
-  invalidate outstanding authorization codes, preventing pending credentials from
-  surviving a later reactivation.
+  persisting the access row. The OAuth authorization-code **creation**
+  service independently reserves the same app-then-user mutation fences,
+  revalidates active app/subject, authorization-code grant, registered redirect,
+  scope ceiling and (for third-party clients) active scope-covering consent,
+  then inserts the pending code and commits in that transaction. Browser,
+  consent-form and JSON authorization paths share this service; their earlier
+  presentation/consent checks are only preflight decisions. This prevents a
+  code from being inserted after a competing app/consent revocation already
+  invalidated the then-pending codes. App, consent, password, and user-status
+  revocation also invalidate outstanding authorization codes, preventing
+  pending credentials from surviving a later reactivation. When an
+  authoritative issuance check rejects a stale HTTP preflight, the
+  controller returns a redacted `invalid_client`, `invalid_request` or
+  `access_denied` protocol error instead of incorrectly reporting a
+  persistence failure; unexpected database failures remain `server_error`.
+  OAuth refresh-token **reuse** handling performs an advisory preflight lookup
+  without locking the app for random unknown tokens, then locks the tenant-scoped
+  app and re-reads the revoked token under that lock before any live-family
+  revocation. The checked replay timestamp and family update share a transaction
+  and use the same app-first mutation fence as refresh issuance; failures propagate
+  instead of reporting a successful revocation. No-op/grace checks explicitly
+  release the transaction. An already-used authorization code similarly revokes
+  its scoped access/refresh lineage in an app-locked transaction and commits
+  before returning `invalid_grant`. These guarantees depend on cooperating
+  writers using the canonical app-row lock, not on distributed process leases.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
@@ -459,8 +553,35 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fence used by token issuance and consent before their security-sensitive configuration changes.
   Reactivation also revokes dependent credentials left live by older versions. The all-tenants bootstrap
   sweep is sequential and does not provide one global cross-tenant transaction.
-- Explicit OAuth app revocation deactivates the app and revokes its active access/refresh tokens, user
-  consents, and pending authorization codes in the same transaction.
+- OAuth client-secret rotation performs a tenant-scoped, permission-checked
+  preflight **without** holding a SQL transaction while generating and Argon2-
+  hashing the replacement secret. The commit phase locks the current app row,
+  repeats the permission and rotation-admission checks, and rejects a prepared
+  rotation with a typed conflict when another operation has already changed
+  the secret hash. Thus
+  expensive hashing does not hold an app mutation lock, and simultaneous
+  rotations from the same original secret cannot both report success while
+  one silently invalidates the other. A stale preparation must be retried;
+  rotation still does not by itself imply delivery or credential revocation.
+- Manual OAuth app configuration edits and explicit app revocation now acquire the
+  same tenant-scoped app mutation row fence as token issuance/consent and manifest
+  reconciliation before testing whether an app can still be changed manually.
+  The edit keeps validation, base-row mutation, presentation translations and
+  their change records inside one transaction; revocation deactivates the app
+  and revokes its active access/refresh tokens, user consents and pending
+  authorization codes in one transaction. A concurrent manifest ownership
+  transfer cannot slip between a stale manual-edit/revoke permission check and
+  the subsequent write. The SQLite branch reserves the write lock before its
+  first security-state read; PostgreSQL/MySQL use FOR UPDATE.
+- RFC 7009 family revocation takes the app lock before looking up and updating
+  the token family, sharing the token-issuance/refresh lock order. This prevents
+  a new refresh successor being issued after a stale revocation read. Repeated
+  revocations preserve the first `revoked_at` timestamp of every family member;
+  unknown scoped tokens retain the standard success response.
+- OAuth secret rotation's database CAS additionally checks that the app still
+  belongs to a type permitted to rotate credentials. A concurrent configuration
+  change to an embedded/unsupported app type cannot cause a stale preflight
+  to install a secret; the caller receives the existing retryable conflict.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
@@ -609,8 +730,13 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   resolver-level owner checks remain a second boundary. The same pre-resolver
   guard classifies the immutable composition snapshot as read and the
   operational marketplace registry freshness projection as manage, matching
-  their owner-resolver checks. `enabledModules`, the tenant availability list
-  consumed by admin navigation, is also `modules:read`-gated at both layers.
+  their owner-resolver checks. Unlike `moduleEffectivePolicy`, the current
+  tenant-scoped `enabledModules` resolver is not classified by that module
+  permission guard and does not call `ensure_modules_read_permission`; storefront
+  and admin navigation use it. Its list is capped at 100 without a completeness
+  marker, so it cannot establish a complete policy at the cap. The intended
+  public-versus-admin availability authorization and a complete projection need
+  an explicit contract before widening or replacing this surface.
 - GraphQL build history and active-build reads use the host-composed read-only
   `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
   owner, and the transport does not import build persistence entities.
@@ -636,8 +762,8 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   checksum or server ORM row.
 - Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`. The service returns the owner decision with its deterministic revision, typed facts, and denial reasons; server guards, GraphQL, and installer adapters consume only its enabled projection.
 - Static module manifests and catalog entries are parsed by the server host, but `rustok-modules` owns module metadata, resolved static-catalog topology (defaults, dependencies, conflicts, and version compatibility), static manifest-versus-registry comparison, settings-schema, marketplace metadata, static UI classification, UI i18n semantics, static HTTP provider exclusivity, crate-local runtime binding normalization, deployment build-surface semantics, and settings normalization before lifecycle persistence with the effective-enablement and Core invariants; server filesystem, registry-fact extraction, and ORM code are adapters only.
-- For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope and derives the complete authenticated `ModuleCommandContext`, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals the context tenant-scoped and replays the same semantic command without redispatching its hook; actor, trace, and correlation are retained as audit evidence for lifecycle replay.
-- For server-composed static enable and enable-direction compensation, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this read is not an atomic static-rollout fence. Semantic lifecycle replay preserves the original operation result and binds a recovery to its original operation; actor, trace, and correlation are recorded audit evidence. Post-hook retry requires an exact match of the recorded hook-settings digest and current settings, and fails closed when historical evidence is missing.
+- For uncertain lifecycle hook outcomes see `module-lifecycle-retry-compensation-runbook.md`; committed tenant intent is not rolled back automatically. The owner currently rejects new retry and compensation commands because the journal does not establish the original executor identity or external quiescence, even if the aggregate claim is absent. A matching historical committed retry may still be replayed without dispatch. Plans advertise no automatic action; older writers and ordinary new toggles do not yet comprehensively fence legacy uncertainty.
+- For server-composed static enable, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this does not fence static rollouts. Existing semantic lifecycle replays preserve the original operation result.
 - Schema lookup rejects unknown modules and missing or unmaterialized package manifests, including inline settings declarations without package evidence. Exact lifecycle replays are checked before a schema lookup failure blocks new enable or enable-direction compensation commands. The filesystem lookup is not release-bound; release images without these files reject fresh settings and enable commands until release-owned schema evidence is wired.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
 - Registry publish-request translations are written only through the owner create/publication transactions; the server no longer retains a parallel translation upsert helper.
@@ -668,7 +794,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   client cannot be constructed; it never falls back to an unbounded default
   client.
 - The repo-side surface for the current `module-system` is considered closed for the purpose of Admin-driven install/uninstall/upgrade/deploy with progress feedback; ongoing work is limited to targeted verification and docs/audit, while rollout of `modules.rustok.dev` remains an external infra task.
-- GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
+- GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` route through `ModuleLifecycleService` and `modules:manage`. New recovery actions currently fail closed; the endpoints must not bypass that restriction.
   Recovery plan projection validates both UUIDs and fails the affected field with a sanitized `INTERNAL_ERROR` rather than panicking or silently omitting a malformed plan. The retry command runs before its response is projected: a projection error does not imply that the command was rolled back. Clients should inspect the operation and use the existing idempotency/revision contract when recovering from an ambiguous response.
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
 - `PUT` and `DELETE /api/rbac/artifact-permissions/roles/{role_id}` are the
@@ -709,7 +835,21 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   `GET /api/install/jobs/{job_id}`, and
   `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` starts a
   background job and returns `202 Accepted` with `job_id`; the wizard must poll
-  the job status and read persisted receipts for progress UI. Mutating HTTP install
+  the job status and read persisted receipts for progress UI. The host reserves
+  the local installer slot only after validating the request and checking the
+  persisted running-job fence. A single detached task then owns both the durable
+  `running` row creation and its executor work; the HTTP response awaits the
+  creation acknowledgement, but disconnecting cannot interrupt the claim-to-run
+  handoff or leak the local slot. Failed claims release the slot and preserve the
+  409 conflict/500 storage-error mapping. New apply requests receive 503 while
+  host shutdown is active. Neither this mechanism nor the existing unique
+  running-job index recovers a job after process termination: ambiguous effects
+  must be reconciled against durable receipts before an operator releases the
+  global installer fence. If shutdown is detected after durable claim
+  creation but before executor entry, the background owner transitions that
+  unstarted job to `failed` and releases the slot, instead of beginning new
+  installer side effects. A stop racing after the executor's final admission
+  check still requires operator reconciliation of any interrupted effects. Mutating HTTP install
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token

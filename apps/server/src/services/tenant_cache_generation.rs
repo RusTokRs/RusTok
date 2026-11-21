@@ -456,7 +456,10 @@ pub async fn start_tenant_cache_generation_listener(
             for task in tasks {
                 if let Err(join_err) = task.await {
                     if !join_err.is_cancelled() {
-                        tracing::warn!(error = %join_err, "Aborted stale tenant cache generation listener task failed unexpectedly");
+                        tracing::warn!(
+                            failure_code = "tenant_cache_generation_listener_join_failed",
+                            "Aborted stale tenant cache generation listener task failed unexpectedly"
+                        );
                     }
                 }
             }
@@ -470,17 +473,27 @@ pub async fn start_tenant_cache_generation_listener(
     match listener.recover_shared_generation().await {
         Ok(_) if !redis_required => state.mark_local_healthy().await,
         Ok(_) => state.mark_reconciliation_healthy().await,
-        Err(error) if redis_required => {
-            state.mark_reconciliation_degraded(error.to_string()).await;
-            tracing::warn!(%error, "Tenant cache generation startup recovery failed; isolated boot namespace remains active");
+        Err(_error) if redis_required => {
+            state
+                .mark_reconciliation_degraded("tenant cache generation startup recovery failed")
+                .await;
+            tracing::warn!(
+                error_code = "tenant_cache_generation_startup_recovery_failed",
+                "Tenant cache generation startup recovery failed; isolated boot namespace remains active"
+            );
             rustok_telemetry::metrics::record_event_error(
                 "tenant.cache.generation",
                 "startup_recovery",
             );
         }
-        Err(error) => {
-            state.mark_local_degraded(error.to_string()).await;
-            tracing::warn!(%error, "Local tenant cache generation startup recovery failed");
+        Err(_error) => {
+            state
+                .mark_local_degraded("local tenant cache generation startup recovery failed")
+                .await;
+            tracing::warn!(
+                error_code = "tenant_cache_generation_local_startup_recovery_failed",
+                "Local tenant cache generation startup recovery failed"
+            );
             rustok_telemetry::metrics::record_event_error(
                 "tenant.cache.generation",
                 "startup_recovery",
@@ -517,9 +530,14 @@ pub async fn start_tenant_cache_generation_listener(
                     Ok(()) => {
                         local_state.mark_local_healthy().await;
                     }
-                    Err(error) => {
-                        local_state.mark_local_degraded(error.to_string()).await;
-                        tracing::error!(%error, "Local tenant cache generation apply failed");
+                    Err(_error) => {
+                        local_state
+                            .mark_local_degraded("local tenant cache generation apply failed")
+                            .await;
+                        tracing::error!(
+                            error_code = "tenant_cache_generation_local_apply_failed",
+                            "Local tenant cache generation apply failed"
+                        );
                         rustok_telemetry::metrics::record_event_error(
                             "tenant.cache.generation",
                             "local_apply",
@@ -530,9 +548,14 @@ pub async fn start_tenant_cache_generation_listener(
                     runtime.lagged(skipped);
                     match local_listener.recover_shared_generation().await {
                         Ok(_) => local_state.mark_local_healthy().await,
-                        Err(error) => {
-                            local_state.mark_local_degraded(error.to_string()).await;
-                            tracing::error!(%error, "Tenant cache generation recovery after local lag failed");
+                        Err(_error) => {
+                            local_state
+                                .mark_local_degraded("tenant cache generation recovery after local lag failed")
+                                .await;
+                            tracing::error!(
+                                error_code = "tenant_cache_generation_local_lag_recovery_failed",
+                                "Tenant cache generation recovery after local lag failed"
+                            );
                             rustok_telemetry::metrics::record_event_error(
                                 "tenant.cache.generation",
                                 "local_lag_recovery",
@@ -566,7 +589,7 @@ pub async fn start_tenant_cache_generation_listener(
                 let ready_state = Arc::clone(&redis_state);
                 let handler_listener = redis_listener.clone();
                 let handler_state = Arc::clone(&redis_state);
-                let result = invalidations
+                let _result = invalidations
                     .consume_subscription_with_ready(
                         TENANT_CACHE_GENERATION_CHANNEL,
                         move || {
@@ -577,11 +600,16 @@ pub async fn start_tenant_cache_generation_listener(
                                     Ok(_) => {
                                         ready_state.mark_subscriber_ready_after_recovery().await;
                                     }
-                                    Err(error) => {
+                                    Err(_error) => {
                                         ready_state
-                                            .mark_subscriber_degraded(error.to_string())
+                                            .mark_subscriber_degraded(
+                                                "tenant cache generation post-subscribe recovery failed",
+                                            )
                                             .await;
-                                        tracing::warn!(%error, "Tenant cache generation post-subscribe recovery failed");
+                                        tracing::warn!(
+                                            error_code = "tenant_cache_generation_post_subscribe_recovery_failed",
+                                            "Tenant cache generation post-subscribe recovery failed"
+                                        );
                                         rustok_telemetry::metrics::record_event_error(
                                             "tenant.cache.generation",
                                             "redis_ready_recovery",
@@ -598,11 +626,14 @@ pub async fn start_tenant_cache_generation_listener(
                                     Ok(()) => {
                                         handler_state.mark_subscriber_activity_healthy().await;
                                     }
-                                    Err(error) => {
+                                    Err(_error) => {
                                         handler_state
-                                            .mark_subscriber_degraded(error.to_string())
+                                            .mark_subscriber_degraded("Redis tenant cache generation apply failed")
                                             .await;
-                                        tracing::error!(%error, "Redis tenant cache generation apply failed");
+                                        tracing::error!(
+                                            error_code = "tenant_cache_generation_redis_apply_failed",
+                                            "Redis tenant cache generation apply failed"
+                                        );
                                         rustok_telemetry::metrics::record_event_error(
                                             "tenant.cache.generation",
                                             "redis_apply",
@@ -614,11 +645,12 @@ pub async fn start_tenant_cache_generation_listener(
                     )
                     .await;
                 redis_state
-                    .mark_subscriber_degraded(format!(
-                        "Redis tenant generation subscriber stopped: {result:?}"
-                    ))
+                    .mark_subscriber_degraded("Redis tenant generation subscriber stopped")
                     .await;
-                tracing::warn!(?result, "Tenant cache generation Redis subscriber stopped");
+                tracing::warn!(
+                    failure_code = "tenant_cache_generation_subscriber_stopped",
+                    "Tenant cache generation Redis subscriber stopped"
+                );
                 reason = "reconnect";
                 tokio::time::sleep(LISTENER_RESTART_DELAY).await;
             }
@@ -635,11 +667,16 @@ pub async fn start_tenant_cache_generation_listener(
                 interval.tick().await;
                 match reconcile_listener.recover_shared_generation().await {
                     Ok(_) => reconcile_state.mark_reconciliation_healthy().await,
-                    Err(error) => {
+                    Err(_error) => {
                         reconcile_state
-                            .mark_reconciliation_degraded(error.to_string())
+                            .mark_reconciliation_degraded(
+                                "periodic tenant cache generation reconciliation failed",
+                            )
                             .await;
-                        tracing::warn!(%error, "Periodic tenant cache generation reconciliation failed");
+                        tracing::warn!(
+                            error_code = "tenant_cache_generation_periodic_reconciliation_failed",
+                            "Periodic tenant cache generation reconciliation failed"
+                        );
                         rustok_telemetry::metrics::record_event_error(
                             "tenant.cache.generation",
                             "periodic_reconciliation",

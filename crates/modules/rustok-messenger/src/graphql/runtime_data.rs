@@ -11,10 +11,21 @@ pub struct MessengerGraphqlRuntimeData {
     pub room_hub: Arc<MessengerRoomHub>,
 }
 
+/// Error returned when initializing Messenger GraphQL runtime data fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct MessengerGraphqlRuntimeError(pub String);
+
+impl From<&str> for MessengerGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
 /// Attach shared device registry and real-time room hub to the GraphQL schema.
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
-) -> Result<MessengerGraphqlRuntimeData, String> {
+) -> Result<MessengerGraphqlRuntimeData, MessengerGraphqlRuntimeError> {
     let device_keys = inputs
         .shared_get::<Arc<DeviceKeyRegistry>>()
         .unwrap_or_else(|| Arc::new(DeviceKeyRegistry::new()));

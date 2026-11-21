@@ -16,13 +16,13 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
 } from 'react';
 import { toast } from 'sonner';
 
-import { useEnabledModulesActions } from '@/shared/hooks/use-enabled-modules';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
 import {
@@ -255,7 +255,15 @@ export function ModulesList({
     settings: string;
     revision: number;
     scope: GqlOpts | null;
-  }>({ open: false, slug: '', settings: '{}', revision: 0, scope: null });
+    request: number;
+  }>({
+    open: false,
+    slug: '',
+    settings: '{}',
+    revision: 0,
+    scope: null,
+    request: 0
+  });
   const [catalogFilterDraft, setCatalogFilterDraft] = useState(DEFAULT_FILTERS);
   const [appliedCatalogFilters, setAppliedCatalogFilters] =
     useState(DEFAULT_FILTERS);
@@ -302,6 +310,13 @@ export function ModulesList({
       session?.user?.tenantId
     ]
   );
+  const activeScope = useRef<GqlOpts | null>(null);
+  useLayoutEffect(() => {
+    activeScope.current = apiOpts;
+    return () => {
+      activeScope.current = null;
+    };
+  }, [apiOpts]);
   useEffect(() => {
     return () => {
       settingsRequest.current += 1;
@@ -313,20 +328,32 @@ export function ModulesList({
       const request = ++settingsRequest.current;
       try {
         const tenantModules = await listTenantModules(apiOpts);
-        if (request !== settingsRequest.current) return;
+        if (
+          request !== settingsRequest.current ||
+          activeScope.current !== apiOpts
+        )
+          return;
         const current = tenantModules.find(
           (module) => module.moduleSlug === slug
         );
         if (!current) throw new Error(`Settings for ${slug} are unavailable`);
-        setSettingsDialog({
-          open: true,
-          slug,
-          settings: current.settings,
-          revision: current.revision,
-          scope: apiOpts
-        });
+        setSettingsDialog((prev) =>
+          activeScope.current !== apiOpts || request !== settingsRequest.current
+            ? prev
+            : {
+                open: true,
+                slug,
+                settings: current.settings,
+                revision: current.revision,
+                scope: apiOpts,
+                request
+              }
+        );
       } catch (error) {
-        if (request === settingsRequest.current) {
+        if (
+          request === settingsRequest.current &&
+          activeScope.current === apiOpts
+        ) {
           toast.error(
             error instanceof Error
               ? error.message
@@ -337,7 +364,6 @@ export function ModulesList({
     },
     [apiOpts]
   );
-  const { setModuleEnabled } = useEnabledModulesActions();
 
   const coreModules = modules.filter((module) => module.kind === 'core');
   const optionalModules = modules.filter(
@@ -726,7 +752,6 @@ export function ModulesList({
             : module
         )
       );
-      setModuleEnabled(slug, updated.enabled);
       toast.success(updated.enabled ? t('toast.enabled') : t('toast.disabled'));
       router.refresh();
     } catch (err) {
@@ -1418,29 +1443,52 @@ export function ModulesList({
 
       {settingsDialog.open && settingsDialog.scope === apiOpts && (
         <ModuleSettingsDialog
+          key={settingsDialog.request}
           moduleSlug={settingsDialog.slug}
           initialSettings={settingsDialog.settings}
           expectedRevision={settingsDialog.revision}
           open={settingsDialog.open}
-          onOpenChange={(open) =>
-            setSettingsDialog((prev) => ({ ...prev, open }))
-          }
+          onOpenChange={(open) => {
+            if (activeScope.current !== settingsDialog.scope) return;
+            setSettingsDialog((prev) =>
+              activeScope.current === settingsDialog.scope &&
+              prev.request === settingsDialog.request &&
+              prev.scope === settingsDialog.scope
+                ? { ...prev, open }
+                : prev
+            );
+          }}
           onSaved={(slug, _newSettings, newRevision) => {
+            if (activeScope.current !== settingsDialog.scope) return;
             setModules((prev) =>
-              prev.map((m) =>
-                m.moduleSlug === slug
-                  ? { ...m, lifecycleRevision: newRevision }
-                  : m
-              )
+              activeScope.current !== settingsDialog.scope
+                ? prev
+                : prev.map((m) =>
+                    m.moduleSlug === slug
+                      ? {
+                          ...m,
+                          lifecycleRevision: Math.max(
+                            m.lifecycleRevision,
+                            newRevision
+                          )
+                        }
+                      : m
+                  )
             );
           }}
           apiOpts={apiOpts}
           settingsFields={
             settingsDialog.slug === 'forum'
-              ? ({ settingsText, onSettingsTextChange, disabled }) => (
+              ? ({
+                  settingsText,
+                  onSettingsTextChange,
+                  onFieldValidityChange,
+                  disabled
+                }) => (
                   <ForumModuleSettingsFields
                     settingsText={settingsText}
                     onSettingsTextChange={onSettingsTextChange}
+                    onFieldValidityChange={onFieldValidityChange}
                     disabled={disabled}
                   />
                 )
@@ -1480,7 +1528,6 @@ export function ModulesList({
                     : module
                 )
               );
-              setModuleEnabled(updated.moduleSlug, updated.enabled);
             }}
             onRefresh={() => {
               void refreshOrchestrationState();

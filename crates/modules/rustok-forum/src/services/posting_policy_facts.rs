@@ -188,7 +188,7 @@ impl ForumPostingPolicyOwnerFactValue {
                     Self::TopicCreatesWindow(_) => Self::TopicCreatesWindow(window),
                     Self::ReplyCreatesWindow(_) => Self::ReplyCreatesWindow(window),
                     Self::EditsWindow(_) => Self::EditsWindow(window),
-                    _ => unreachable!("matched window variants above"),
+                    other => other,
                 })
             }
             _ => Ok(self),

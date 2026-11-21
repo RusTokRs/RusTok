@@ -180,6 +180,10 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         })
     }
 
+    /// The original execution may publish its proven response after an advisory
+    /// expiry has parked its receipt. Expiry never transfers execution authority;
+    /// only the exact original operation and request can complete it. Any future
+    /// reconciliation workflow must fence this completion before taking action.
     pub async fn complete(
         &self,
         request: &ArtifactBindingIdempotencyRequest,
@@ -215,7 +219,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             .map_err(storage_error)?;
         if completed.rows_affected() != 1 {
             return Err(ArtifactBindingIdempotencyError::Storage(
-                "artifact binding operation is no longer leased by this request".to_string(),
+                "artifact binding operation cannot be completed by this request".to_string(),
             ));
         }
         transaction.commit().await.map_err(storage_error)?;
@@ -327,7 +331,7 @@ fn complete_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     let now = backend.now_sql();
     format!(
-        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = {now} WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status = 'pending'"
+        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = {now} WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status IN ('pending', 'reconciliation_required')"
     )
 }
 
@@ -504,6 +508,24 @@ mod tests {
                 .await
                 .expect("reconciliation remains blocked"),
             ArtifactBindingIdempotencyClaim::ReconciliationRequired
+        );
+
+        // The original executor may finish after the advisory expiry, but no
+        // other operation can publish a result on its behalf.
+        let response = serde_json::json!({"status": "completed"});
+        assert!(
+            store
+                .complete(&expired_request, Uuid::new_v4(), &response)
+                .await
+                .is_err()
+        );
+        store
+            .complete(&expired_request, operation_id, &response)
+            .await
+            .expect("late original completion");
+        assert_eq!(
+            store.claim(&expired_request).await.expect("late result replay"),
+            ArtifactBindingIdempotencyClaim::Replay { response }
         );
 
         let failed_request = request(Uuid::new_v4(), "execution-error");

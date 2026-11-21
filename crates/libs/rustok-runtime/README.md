@@ -8,6 +8,9 @@ adapters away from framework-specific runtime contexts.
 ## Responsibilities
 
 - Provide the neutral import surface for host runtime access helpers.
+- Poll every registered work source even when another source fails; claim and
+  completion failures are logged and the first error is returned after the pass.
+  A failed pass may therefore still have completed work from other sources.
 - Keep typed shared-handle lookup errors consistent across backend adapters.
 - Keep executable runtime helper code outside `rustok-api` as the API contract crate is
   reduced back to stable contracts.

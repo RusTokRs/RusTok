@@ -1213,7 +1213,7 @@ fn module_recovery_helpers_use_canonical_graphql_surface() {
         "Lifecycle recovery",
         "Recovery retry processed",
         "Compensation applied",
-        "let compensatable = plan.issue == \"post_hook_failed\";",
+        "let compensatable = plan.retryable && plan.issue == \"post_hook_failed\";",
         "|| !compensatable",
     ] {
         assert!(
@@ -1362,7 +1362,7 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
         "toggle_internal_error_taxonomy_maps_only_to_internal_error_code",
         "toggle_error_mapping_matrix_preserves_message_and_code_contract",
         "toggle_hook_failed_pre_hook_sets_non_retryable_issue_extensions",
-        "toggle_hook_failed_post_hook_sets_retryable_issue_extensions",
+        "toggle_hook_failed_post_hook_sets_non_retryable_issue_extensions",
     ] {
         assert!(
             server_mutations.contains(mapper_test),

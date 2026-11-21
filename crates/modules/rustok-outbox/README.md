@@ -17,11 +17,15 @@ use the storage library with its own database and compose delivery separately.
 - Own the `sys_events` schema (table, claim index, retention index) and related migrations.
 - Own the generic `owner_operation_receipts` schema and fenced idempotency
   admission/replay primitive; owner services retain their domain mutations and
-  semantic side effects. The owner may persist terminal failures with `fail`,
-  but retryable failures must use `release_retryable` after rolling back (or
-  receiving a commit error). Release requires both a matching lease token and
+  semantic side effects. The owner may persist terminal failures with `fail`.
+  For retryable failures it may retain the processing receipt and fingerprint,
+  or use `release_retryable` only when deleting that fingerprint is safe after
+  rollback (or a commit error). Release requires both a matching lease token and
   `processing` status, so it cannot delete a completed receipt or a reclaimed
-  operation.
+  operation. Owners coordinating another aggregate may use `lock_current` at
+  the start of their owner transaction before acquiring aggregate locks; this
+  verifies the receipt token and holds its row lock, but does not renew the
+  lease or fence external side effects.
 - Expose the runtime services used by `apps/server` event bootstrap and background delivery.
 - Ship the module-owned Leptos admin UI package for relay visibility with a `core/transport/ui` FFA split.
 

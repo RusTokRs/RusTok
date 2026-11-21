@@ -107,7 +107,7 @@ async fn finalize_is_revision_guarded_idempotent_and_releases_holds_atomically()
     let db = setup_db().await;
     let operation_id = Uuid::new_v4();
     let checkpoint = checkpoint(operation_id);
-    TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
         .await
         .expect("checkpoint");
     RetentionHoldStore::insert_hold(
@@ -193,7 +193,7 @@ async fn finalize_is_revision_guarded_idempotent_and_releases_holds_atomically()
 async fn finalize_denies_unauthorized_commands_without_mutation() {
     let db = setup_db().await;
     let operation_id = Uuid::new_v4();
-    TransitionCheckpointStore::save_checkpoint(&db, &checkpoint(operation_id))
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint(operation_id))
         .await
         .expect("checkpoint");
     let command = ModuleTransitionFinalizeCommand {
@@ -227,7 +227,7 @@ async fn transition_queries_are_exactly_tenant_scoped() {
     let tenant_id = Uuid::new_v4();
     let mut tenant_checkpoint = checkpoint(Uuid::new_v4());
     tenant_checkpoint.tenant_id = Some(tenant_id);
-    TransitionCheckpointStore::save_checkpoint(&db, &tenant_checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &tenant_checkpoint)
         .await
         .expect("tenant checkpoint");
 
@@ -264,7 +264,7 @@ async fn checkpoint_store_rejects_values_outside_the_database_contract() {
     invalid.revision = u64::MAX;
 
     assert!(matches!(
-        TransitionCheckpointStore::save_checkpoint(&db, &invalid)
+        TransitionCheckpointStore::save_checkpoint_for_test(&db, &invalid)
             .await
             .expect_err("an overflowing revision must fail before persistence"),
         TransitionStoreError::CorruptData(_)

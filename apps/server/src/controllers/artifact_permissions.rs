@@ -239,8 +239,11 @@ fn map_assignment_error(error: ArtifactPermissionAssignmentError) -> Error {
                 "Idempotency key was already used for a different artifact permission command",
             ))
         }
-        ArtifactPermissionAssignmentError::Database(error) => {
-            tracing::error!(%error, "artifact permission assignment failed");
+        ArtifactPermissionAssignmentError::Database(_error) => {
+            tracing::error!(
+                error_code = "artifact_permission_assignment_database_failed",
+                "Artifact permission assignment failed"
+            );
             Error::InternalServerError
         }
     }

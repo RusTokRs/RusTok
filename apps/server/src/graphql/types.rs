@@ -205,8 +205,12 @@ impl User {
     }
 }
 
-fn graphql_internal_error(message: &'static str, error: impl Display) -> async_graphql::FieldError {
-    tracing::error!(%error, message, "GraphQL user field failed");
+fn graphql_internal_error(message: &'static str, _error: impl Display) -> async_graphql::FieldError {
+    tracing::error!(
+        error_code = "graphql_user_field_failed",
+        operation = message,
+        "GraphQL user field failed"
+    );
     <async_graphql::FieldError as GraphQLError>::internal_error(message)
 }
 

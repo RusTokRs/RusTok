@@ -647,10 +647,12 @@ impl Model {
     }
 
     pub fn can_rotate_secret(&self) -> bool {
-        if self.app_type == "embedded" {
-            return false;
-        }
-        self.client_secret_hash.is_some()
+        // First-party apps are public PKCE clients by default. Operators may
+        // add a confidential credential later for server-side client_credentials.
+        matches!(
+            self.app_type.as_str(),
+            "first_party" | "third_party" | "mobile" | "service"
+        )
     }
 
     pub fn can_revoke(&self) -> bool {
@@ -693,6 +695,31 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[test]
+    fn first_party_pkce_apps_without_a_secret_can_enable_server_side_credentials() {
+        let mut app = app(
+            true,
+            serde_json::json!([
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+            ]),
+        );
+        app.app_type = "first_party".to_string();
+        app.client_secret_hash = None;
+
+        assert!(app.can_rotate_secret());
+    }
+
+    #[test]
+    fn embedded_apps_cannot_rotate_client_secrets() {
+        let mut app = app(true, serde_json::json!([]));
+        app.app_type = "embedded".to_string();
+        app.client_secret_hash = None;
+
+        assert!(!app.can_rotate_secret());
     }
 
     #[test]

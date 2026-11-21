@@ -96,6 +96,9 @@ function apolloClientFor(url: string): ApolloClient {
   if (existing) return existing;
 
   const client = new ApolloClient({
+    // Apollo deduplicates in-flight queries by document and variables, not
+    // request headers. This client is shared by URL across tenants and actors.
+    queryDeduplication: false,
     cache: new InMemoryCache(),
     link: new HttpLink({
       uri: url,

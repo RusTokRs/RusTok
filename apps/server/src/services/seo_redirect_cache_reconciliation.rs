@@ -247,8 +247,8 @@ async fn supervise_seo_redirect_cache_reconciliation(
             Ok(Ok(())) => {
                 tracing::error!("SEO redirect cache reconciliation exited unexpectedly")
             }
-            Ok(Err(error)) => tracing::error!(
-                %error,
+            Ok(Err(_error)) => tracing::error!(
+                error_code = "seo_redirect_cache_reconciliation_failed",
                 "SEO redirect cache reconciliation failed; restarting"
             ),
             Err(_) => tracing::error!("SEO redirect cache reconciliation panicked; restarting"),

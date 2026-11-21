@@ -2625,17 +2625,26 @@ async fn first_party_catalog_modules(
     locale: &str,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
     let manifest = if ctx.settings().runtime.is_registry_only() {
-        ManifestManager::load().map_err(|error| {
-            tracing::error!(%error, "Failed to load modules.toml manifest for registry catalog");
+        ManifestManager::load().map_err(|_error| {
+            tracing::error!(
+                error_code = "registry_catalog_manifest_load_failed",
+                "Failed to load modules.toml manifest for registry catalog"
+            );
             Error::InternalServerError
         })?
     } else {
         match PlatformCompositionService::active_manifest(ctx.db()).await {
             Ok(manifest) => manifest,
-            Err(error) => {
-                tracing::warn!(%error, "Failed to load platform composition for registry catalog from db, falling back to modules.toml");
-                ManifestManager::load().map_err(|err| {
-                    tracing::error!(%err, "Failed to load fallback modules.toml manifest for registry catalog");
+            Err(_error) => {
+                tracing::warn!(
+                    error_code = "registry_catalog_platform_composition_load_failed",
+                    "Failed to load platform composition for registry catalog from db, falling back to modules.toml"
+                );
+                ManifestManager::load().map_err(|_fallback_error| {
+                    tracing::error!(
+                        error_code = "registry_catalog_fallback_manifest_load_failed",
+                        "Failed to load fallback modules.toml manifest for registry catalog"
+                    );
                     Error::InternalServerError
                 })?
             }
@@ -2643,12 +2652,18 @@ async fn first_party_catalog_modules(
     };
     let modules = tokio::task::spawn_blocking(move || ManifestManager::catalog_modules(&manifest))
         .await
-        .map_err(|error| {
-            tracing::error!(%error, "Marketplace catalog worker join error");
+        .map_err(|_error| {
+            tracing::error!(
+                failure_code = "marketplace_catalog_worker_join_failed",
+                "Marketplace catalog worker join error"
+            );
             Error::InternalServerError
         })?
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to build marketplace catalog");
+        .map_err(|_error| {
+            tracing::error!(
+                error_code = "marketplace_catalog_build_failed",
+                "Failed to build marketplace catalog"
+            );
             Error::InternalServerError
         })?;
 
@@ -2662,8 +2677,11 @@ async fn first_party_catalog_modules(
         .await
     {
         Ok(projected) => Ok(projected),
-        Err(error) => {
-            tracing::warn!(%error, "Failed to project registry releases into catalog; falling back to manifest metadata");
+        Err(_error) => {
+            tracing::warn!(
+                error_code = "registry_release_catalog_projection_failed",
+                "Failed to project registry releases into catalog; falling back to manifest metadata"
+            );
             Ok(first_party_modules)
         }
     }

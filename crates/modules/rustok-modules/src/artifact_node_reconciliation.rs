@@ -6,7 +6,7 @@
 //! advances the durable observed head.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
@@ -814,7 +814,9 @@ where
     {
         validate_assignment_claim(&command)?;
         self.authorizer.authorize_assignment_claim(&command).await?;
-        let transaction = self.db.begin().await.map_err(store_error)?;
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await
+            .map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
@@ -829,24 +831,23 @@ where
             return Ok(None);
         }
         validate_reconciliation_installation_identities(&transaction, &reconciliation).await?;
-        let now = self.infrastructure.now();
-        let Some(assignment) = load_next_assignment_for_node(
+        let selection_time = assignment_lease_database_now(&transaction).await?;
+        let Some(mut assignment) = load_next_assignment_for_node(
             &transaction,
             reconciliation_id,
             command.node_id,
             &command.agent_id,
-            &now,
+            &selection_time,
         )
         .await?
         else {
             transaction.commit().await.map_err(store_error)?;
             return Ok(None);
         };
-        if let (Some(claim_id), Some(claimed_by_agent), Some(lease_expires_at)) = (
-            assignment.active_claim_id,
-            assignment.claimed_by_agent.as_deref(),
-            assignment.claim_expires_at,
-        ) && claimed_by_agent == command.agent_id.as_str()
+        // Recheck against the database clock after selecting and locking the row.
+        let now = assignment_lease_database_now(&transaction).await?;
+        if let Some((claim_id, lease_expires_at)) =
+            replayable_assignment_claim(&assignment, &command.agent_id, now)
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(Some(ModuleArtifactNodeAssignmentWorkItem {
@@ -857,22 +858,18 @@ where
                 assignment,
             }));
         }
-        let lease_expires_at = now
-            .checked_add_signed(Duration::seconds(
-                MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS,
-            ))
-            .ok_or(ModuleArtifactNodeReconciliationError::LeaseOverflow)?;
         let claim_id = self.infrastructure.new_id();
-        claim_assignment(
+        let lease_expires_at = claim_assignment(
             &transaction,
             reconciliation_id,
             &assignment,
             claim_id,
             &command.agent_id,
-            &lease_expires_at,
-            &now,
         )
         .await?;
+        assignment.active_claim_id = Some(claim_id);
+        assignment.claimed_by_agent = Some(command.agent_id.clone());
+        assignment.claim_expires_at = Some(lease_expires_at);
         transaction.commit().await.map_err(store_error)?;
         Ok(Some(ModuleArtifactNodeAssignmentWorkItem {
             claim_id,
@@ -893,17 +890,23 @@ where
         self.authorizer
             .authorize_assignment_heartbeat(&command)
             .await?;
-        let now = self.infrastructure.now();
-        let lease_expires_at = now
-            .checked_add_signed(Duration::seconds(
-                MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS,
-            ))
-            .ok_or(ModuleArtifactNodeReconciliationError::LeaseOverflow)?;
-        let transaction = self.db.begin().await.map_err(store_error)?;
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await
+            .map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
-        heartbeat_assignment(&transaction, &command, &lease_expires_at, &now).await?;
+        // Serialize with reconciliation changes and validate the current
+        // installation identities in the same order as claim_assignment.
+        let state = load_state(&transaction, true).await?;
+        let reconciliation_id = state.desired_id
+            .ok_or(ModuleArtifactNodeReconciliationError::ClaimConflict)?;
+        let reconciliation = load_reconciliation(&transaction, reconciliation_id, true).await?;
+        if !reconciliation.status.is_claimable() {
+            return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
+        }
+        validate_reconciliation_installation_identities(&transaction, &reconciliation).await?;
+        let lease_expires_at = heartbeat_assignment(&transaction, reconciliation_id, &command).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleArtifactNodeAssignmentHeartbeatReceipt {
             claim_id: command.claim_id,
@@ -935,7 +938,9 @@ where
         {
             return replay_report(&operation);
         }
-        let transaction = self.db.begin().await.map_err(store_error)?;
+        let transaction = crate::backend::begin_fenced_transaction(&self.db)
+            .await
+            .map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
@@ -975,12 +980,12 @@ where
         .await?;
         validate_report_identity(&command, &assignment)?;
         validate_current_assignment_identity(&transaction, &assignment, true).await?;
-        let now = self.infrastructure.now();
+        let now = assignment_lease_database_now(&transaction).await?;
         if assignment.active_claim_id != Some(command.claim_id)
             || assignment.claimed_by_agent.as_deref() != Some(command.agent_id.as_str())
             || assignment
                 .claim_expires_at
-                .is_none_or(|expires_at| expires_at < now)
+                .is_none_or(|expires_at| expires_at <= now)
         {
             return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
         }
@@ -1740,7 +1745,7 @@ async fn update_assignment(
                      active_claim_id = NULL, claimed_by_agent = NULL, claim_expires_at = NULL \
                  WHERE reconciliation_id = {} AND node_id = {} AND installation_id = {} \
                    AND observation_revision = {} AND active_claim_id = {} \
-                   AND claimed_by_agent = {} AND claim_expires_at >= {}",
+                   AND claimed_by_agent = {} AND {} AND claim_expires_at > {}",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
@@ -1768,7 +1773,8 @@ async fn update_assignment(
                 backend.placeholder(25),
                 backend.placeholder(26),
                 backend.placeholder(27),
-                backend.placeholder(28),
+                assignment_lease_timestamp_is_canonical_sql(backend),
+                backend.lease_now_sql(),
             ),
             vec![
                 revision_value(observation_revision)?,
@@ -1790,15 +1796,14 @@ async fn update_assignment(
                 failure_detail.into(),
                 command.agent_id.clone().into(),
                 report_digest.to_owned().into(),
-                now.to_owned().into(),
-                now.to_owned().into(),
+                backend.datetime_value(*now),
+                backend.datetime_value(*now),
                 backend.uuid_value(command.reconciliation_id),
                 backend.uuid_value(command.node_id),
                 backend.uuid_value(command.installation_id),
                 revision_value(command.expected_observation_revision)?,
                 backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
-                now.to_owned().into(),
             ],
         ))
         .await
@@ -2158,6 +2163,48 @@ async fn load_assignment<C: ConnectionTrait>(
     assignment_from_row(&row, backend)
 }
 
+// Lease predicates use a shared DB wall clock. Variable-precision SQLite
+// timestamps written by older owners do not sort safely against our fixed
+// millisecond clock and must be reconciled rather than silently reused.
+fn assignment_lease_timestamp_is_canonical_sql(backend: SupportedBackend) -> &'static str {
+    match backend {
+        SupportedBackend::Postgres => "TRUE",
+        SupportedBackend::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', claim_expires_at) = claim_expires_at",
+    }
+}
+
+fn assignment_lease_expiry_sql(backend: SupportedBackend) -> String {
+    match backend {
+        SupportedBackend::Postgres => format!("clock_timestamp() + interval '{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds'"),
+        SupportedBackend::Sqlite => format!("strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS} seconds')"),
+    }
+}
+
+async fn assignment_lease_database_now(
+    transaction: &DatabaseTransaction,
+) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let row = transaction.query_one_raw(Statement::from_string(
+        backend.db_backend(), format!("SELECT {} AS lease_now", backend.lease_now_sql()),
+    )).await.map_err(store_error)?.ok_or_else(|| ModuleArtifactNodeReconciliationError::Store(
+        "database lease clock returned no row".to_string(),
+    ))?;
+    backend.datetime_from_row(&row, "lease_now").map_err(store_error)
+}
+
+fn replayable_assignment_claim(
+    assignment: &ModuleArtifactNodeAssignment,
+    agent_id: &str,
+    now: DateTime<Utc>,
+) -> Option<(Uuid, DateTime<Utc>)> {
+    match (assignment.active_claim_id, assignment.claimed_by_agent.as_deref(), assignment.claim_expires_at) {
+        (Some(claim_id), Some(owner), Some(expires_at)) if owner == agent_id && expires_at > now => {
+            Some((claim_id, expires_at))
+        }
+        _ => None,
+    }
+}
+
 async fn load_next_assignment_for_node(
     transaction: &DatabaseTransaction,
     reconciliation_id: Uuid,
@@ -2166,57 +2213,32 @@ async fn load_next_assignment_for_node(
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleArtifactNodeAssignment>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let lock = if backend == SupportedBackend::Postgres {
-        " FOR UPDATE SKIP LOCKED"
-    } else {
-        ""
-    };
-    let row = transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!(
-                "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
-                        payload_kind, payload_media_type, \
-                        admission_revision, dependency_graph_revision, dependency_graph_digest, \
-                        capability_grant_revision, executor_abi, policy_revision, ordinal, \
-                        observation_revision, phase, observed_installation_scope, observed_release_digest, \
-                        observed_payload_digest, observed_payload_kind, observed_payload_media_type, \
-                        observed_admission_revision, \
-                        observed_dependency_graph_revision, observed_dependency_graph_digest, \
-                        observed_capability_grant_revision, observed_executor_abi, observed_policy_revision, \
-                        health_evidence_reference, health_evidence_digest, \
-                        failure_code, failure_detail, reported_by, last_report_digest, \
-                        active_claim_id, claimed_by_agent, claim_expires_at \
-                 FROM module_artifact_node_reconciliation_assignments \
-                 WHERE reconciliation_id = {} AND node_id = {} \
-                   AND phase IN ('pending', 'prepared', 'healthy', 'active') \
-                   AND (active_claim_id IS NULL OR claim_expires_at < {} \
-                        OR (claimed_by_agent = {} AND claim_expires_at >= {})) \
-                 ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at >= {} THEN 0 ELSE 1 END, \
-                          ordinal \
-                 LIMIT 1{lock}",
-                backend.placeholder(1),
-                backend.placeholder(2),
-                backend.placeholder(3),
-                backend.placeholder(4),
-                backend.placeholder(5),
-                backend.placeholder(6),
-                backend.placeholder(7),
-            ),
-            vec![
-                backend.uuid_value(reconciliation_id),
-                backend.uuid_value(node_id),
-                now.to_owned().into(),
-                agent_id.to_owned().into(),
-                now.to_owned().into(),
-                agent_id.to_owned().into(),
-                now.to_owned().into(),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    row.map(|row| assignment_from_row(&row, backend))
-        .transpose()
+    let lock = if backend == SupportedBackend::Postgres { " FOR UPDATE SKIP LOCKED" } else { "" };
+    let canonical = assignment_lease_timestamp_is_canonical_sql(backend);
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!(
+            "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
+                    payload_kind, payload_media_type, admission_revision, dependency_graph_revision, dependency_graph_digest, \
+                    capability_grant_revision, executor_abi, policy_revision, ordinal, observation_revision, phase, \
+                    observed_installation_scope, observed_release_digest, observed_payload_digest, observed_payload_kind, \
+                    observed_payload_media_type, observed_admission_revision, observed_dependency_graph_revision, \
+                    observed_dependency_graph_digest, observed_capability_grant_revision, observed_executor_abi, \
+                    observed_policy_revision, health_evidence_reference, health_evidence_digest, failure_code, \
+                    failure_detail, reported_by, last_report_digest, active_claim_id, claimed_by_agent, claim_expires_at \
+             FROM module_artifact_node_reconciliation_assignments \
+             WHERE reconciliation_id = {} AND node_id = {} AND phase IN ('pending', 'prepared', 'healthy', 'active') \
+               AND (active_claim_id IS NULL OR ({canonical} AND (claim_expires_at <= {} \
+                    OR (claimed_by_agent = {} AND claim_expires_at > {})))) \
+             ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at > {} THEN 0 ELSE 1 END, ordinal \
+             LIMIT 1{lock}",
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+            backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), backend.placeholder(7),
+        ),
+        vec![backend.uuid_value(reconciliation_id), backend.uuid_value(node_id), backend.datetime_value(*now),
+            agent_id.to_owned().into(), backend.datetime_value(*now), agent_id.to_owned().into(), backend.datetime_value(*now)],
+    )).await.map_err(store_error)?;
+    row.map(|row| assignment_from_row(&row, backend)).transpose()
 }
 
 async fn claim_assignment(
@@ -2225,80 +2247,81 @@ async fn claim_assignment(
     assignment: &ModuleArtifactNodeAssignment,
     claim_id: Uuid,
     agent_id: &str,
-    lease_expires_at: &DateTime<Utc>,
-    now: &DateTime<Utc>,
-) -> Result<(), ModuleArtifactNodeReconciliationError> {
+) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let updated = transaction
-        .execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!(
-                "UPDATE module_artifact_node_reconciliation_assignments \
+    let canonical = assignment_lease_timestamp_is_canonical_sql(backend);
+    let updated = transaction.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!("UPDATE module_artifact_node_reconciliation_assignments \
                  SET active_claim_id = {}, claimed_by_agent = {}, claim_expires_at = {} \
                  WHERE reconciliation_id = {} AND node_id = {} AND installation_id = {} \
-                   AND phase IN ('pending', 'prepared', 'healthy', 'active') \
-                   AND observation_revision = {} \
-                   AND (active_claim_id IS NULL OR claim_expires_at < {})",
-                backend.placeholder(1),
-                backend.placeholder(2),
-                backend.placeholder(3),
-                backend.placeholder(4),
-                backend.placeholder(5),
-                backend.placeholder(6),
-                backend.placeholder(7),
-                backend.placeholder(8),
-            ),
-            vec![
-                backend.uuid_value(claim_id),
-                agent_id.to_owned().into(),
-                lease_expires_at.to_owned().into(),
-                backend.uuid_value(reconciliation_id),
-                backend.uuid_value(assignment.node_id),
-                backend.uuid_value(assignment.installation_id),
-                revision_value(assignment.observation_revision)?,
-                now.to_owned().into(),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
+                   AND phase IN ('pending', 'prepared', 'healthy', 'active') AND observation_revision = {} \
+                   AND (active_claim_id IS NULL OR ({canonical} AND claim_expires_at <= {}))",
+            backend.placeholder(1), backend.placeholder(2), assignment_lease_expiry_sql(backend),
+            backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+            backend.lease_now_sql()),
+        vec![backend.uuid_value(claim_id), agent_id.to_owned().into(), backend.uuid_value(reconciliation_id),
+            backend.uuid_value(assignment.node_id), backend.uuid_value(assignment.installation_id),
+            revision_value(assignment.observation_revision)?],
+    )).await.map_err(store_error)?;
     if updated.rows_affected() != 1 {
         return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
     }
-    Ok(())
+    read_exact_claim_expiry(transaction, reconciliation_id, claim_id, agent_id).await
+}
+
+async fn read_exact_claim_expiry(
+    transaction: &DatabaseTransaction,
+    reconciliation_id: Uuid,
+    claim_id: Uuid,
+    agent_id: &str,
+) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let rows = transaction.query_all_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!("SELECT claim_expires_at FROM module_artifact_node_reconciliation_assignments \
+                 WHERE reconciliation_id = {} AND active_claim_id = {} AND claimed_by_agent = {} LIMIT 2",
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
+        vec![backend.uuid_value(reconciliation_id), backend.uuid_value(claim_id), agent_id.to_owned().into()],
+    )).await.map_err(store_error)?;
+    if rows.len() != 1 {
+        return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
+    }
+    backend.datetime_from_row(&rows[0], "claim_expires_at").map_err(store_error)
 }
 
 async fn heartbeat_assignment(
     transaction: &DatabaseTransaction,
+    reconciliation_id: Uuid,
     command: &ModuleArtifactNodeAssignmentHeartbeatCommand,
-    lease_expires_at: &DateTime<Utc>,
-    now: &DateTime<Utc>,
-) -> Result<(), ModuleArtifactNodeReconciliationError> {
+) -> Result<DateTime<Utc>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let updated = transaction
-        .execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!(
-                "UPDATE module_artifact_node_reconciliation_assignments \
-                 SET claim_expires_at = {} \
-                 WHERE active_claim_id = {} AND claimed_by_agent = {} AND claim_expires_at >= {}",
-                backend.placeholder(1),
-                backend.placeholder(2),
-                backend.placeholder(3),
-                backend.placeholder(4),
-            ),
-            vec![
-                lease_expires_at.to_owned().into(),
-                backend.uuid_value(command.claim_id),
-                command.agent_id.clone().into(),
-                now.to_owned().into(),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres { " FOR UPDATE" } else { "" };
+    let canonical = assignment_lease_timestamp_is_canonical_sql(backend);
+    // The update clock is evaluated only after the exact claim row is locked.
+    let rows = transaction.query_all_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!("SELECT active_claim_id FROM module_artifact_node_reconciliation_assignments \
+                 WHERE reconciliation_id = {} AND active_claim_id = {} AND claimed_by_agent = {} LIMIT 2{lock}",
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
+        vec![backend.uuid_value(reconciliation_id), backend.uuid_value(command.claim_id), command.agent_id.clone().into()],
+    )).await.map_err(store_error)?;
+    if rows.len() != 1 {
+        return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
+    }
+    let updated = transaction.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = {} \
+                 WHERE reconciliation_id = {} AND active_claim_id = {} AND claimed_by_agent = {} \
+                   AND {canonical} AND claim_expires_at > {}",
+            assignment_lease_expiry_sql(backend), backend.placeholder(1), backend.placeholder(2),
+            backend.placeholder(3), backend.lease_now_sql()),
+        vec![backend.uuid_value(reconciliation_id), backend.uuid_value(command.claim_id), command.agent_id.clone().into()],
+    )).await.map_err(store_error)?;
     if updated.rows_affected() != 1 {
         return Err(ModuleArtifactNodeReconciliationError::ClaimConflict);
     }
-    Ok(())
+    read_exact_claim_expiry(transaction, reconciliation_id, command.claim_id, &command.agent_id).await
 }
 
 fn assignment_from_row(
@@ -2343,8 +2366,8 @@ fn assignment_from_row(
         last_report_digest: row.try_get("", "last_report_digest").map_err(store_error)?,
         active_claim_id: optional_uuid_from_row(row, "active_claim_id", backend)?,
         claimed_by_agent: row.try_get("", "claimed_by_agent").map_err(store_error)?,
-        claim_expires_at: row
-            .try_get::<Option<DateTime<Utc>>>("", "claim_expires_at")
+        claim_expires_at: backend
+            .optional_datetime_from_row(row, "claim_expires_at")
             .map_err(store_error)?,
     };
     if !valid_text(&assignment.payload_media_type, MAX_PAYLOAD_MEDIA_TYPE_BYTES) {
@@ -3038,14 +3061,60 @@ mod tests {
                 .created
         );
 
-        let prepared = service
-            .claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {
-                node_id,
-                agent_id: "node-agent-a".to_string(),
-            })
-            .await
-            .expect("prepared claim")
-            .expect("prepared work");
+        let claim = ModuleArtifactNodeAssignmentClaimCommand {
+            node_id,
+            agent_id: "node-agent-a".to_string(),
+        };
+        let initial = service.claim_assignment(claim.clone()).await.unwrap().unwrap();
+        assert_eq!(initial.assignment.active_claim_id, Some(initial.claim_id));
+        assert_eq!(initial.assignment.claim_expires_at, Some(initial.lease_expires_at));
+        assert_eq!(service.claim_assignment(claim.clone()).await.unwrap().unwrap().claim_id, initial.claim_id);
+        assert!(replayable_assignment_claim(&initial.assignment, "node-agent-a", initial.lease_expires_at).is_none());
+        let heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: initial.claim_id, agent_id: "node-agent-a".into() };
+        service.heartbeat_assignment(heartbeat.clone()).await.expect("live heartbeat");
+        assert!(service.claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {
+            node_id, agent_id: "different-agent".into(),
+        }).await.unwrap().is_none());
+
+        // A legacy SQLite timestamp cannot be safely compared lexically.
+        service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = '2999-01-01T00:00:00.123456+00:00'").await.unwrap();
+        assert!(service.claim_assignment(claim.clone()).await.unwrap().is_none());
+        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
+            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+
+        service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_assignments SET claim_expires_at = '2000-01-01T00:00:00.000+00:00'").await.unwrap();
+        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
+            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        let prepared = service.claim_assignment(claim).await.unwrap().unwrap();
+        assert_ne!(prepared.claim_id, initial.claim_id);
+        assert!(matches!(service.heartbeat_assignment(heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(service.report(report_from_work(&initial, ModuleReconciliationPhase::Prepared,
+            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        let live_heartbeat = ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: prepared.claim_id, agent_id: "node-agent-a".into() };
+
+        service.db.execute_unprepared("UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = NULL").await.unwrap();
+        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(service.report(report_from_work(&prepared, ModuleReconciliationPhase::Prepared,
+            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
+        service.db.execute_unprepared(&format!("UPDATE module_artifact_node_reconciliation_state SET desired_reconciliation_id = '{}'", created.reconciliation_id)).await.unwrap();
+        service.db.execute_unprepared("UPDATE module_artifact_node_reconciliations SET status = 'failed', failed_at = CURRENT_TIMESTAMP, failure_code = 'test', failure_detail = 'test' ").await.unwrap();
+        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        assert!(matches!(service.report(report_from_work(&prepared, ModuleReconciliationPhase::Prepared,
+            None, None, Uuid::new_v4())).await, Err(ModuleArtifactNodeReconciliationError::TerminalReconciliation)));
+        service.db.execute_unprepared("UPDATE module_artifact_node_reconciliations SET status = 'preparing', failed_at = NULL, failure_code = NULL, failure_detail = NULL").await.unwrap();
+        service.db.execute_unprepared("UPDATE module_artifact_admissions SET revision = 2").await.unwrap();
+        assert!(matches!(service.heartbeat_assignment(live_heartbeat.clone()).await,
+            Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)));
+        service.db.execute_unprepared("UPDATE module_artifact_admissions SET revision = 1").await.unwrap();
+        service.heartbeat_assignment(live_heartbeat).await.expect("heartbeat after repair");
+
         let prepared_receipt = service
             .report(report_from_work(
                 &prepared,
@@ -3268,6 +3337,60 @@ mod tests {
             DomainEvent::ModuleArtifactNodeReconciliationStatusChanged { status, .. }
             if status == "degraded"
         )));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL schema privileges"]
+    async fn postgres_artifact_heartbeat_rechecks_expiry_after_row_lock_wait() {
+        async fn connection(url: &str) -> DatabaseConnection {
+            let mut options = sea_orm::ConnectOptions::new(url);
+            options.max_connections(1).min_connections(1).sqlx_logging(false);
+            Database::connect(options).await.unwrap()
+        }
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").expect("test database URL");
+        let locker = connection(&url).await;
+        let worker = connection(&url).await;
+        let monitor = connection(&url).await;
+        let schema = format!("artifact_lease_test_{}", Uuid::new_v4().simple());
+        locker.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET search_path TO {schema}; \
+            CREATE TABLE module_artifact_node_reconciliation_assignments (reconciliation_id UUID NOT NULL, \
+            active_claim_id UUID NOT NULL, claimed_by_agent TEXT NOT NULL, claim_expires_at TIMESTAMPTZ NOT NULL)")).await.unwrap();
+        worker.execute_unprepared(&format!("SET search_path TO {schema}")).await.unwrap();
+        let pid: i32 = worker.query_one_raw(Statement::from_string(DbBackend::Postgres,
+            "SELECT pg_backend_pid() AS pid".to_string())).await.unwrap().unwrap().try_get("", "pid").unwrap();
+        let reconciliation = Uuid::new_v4();
+        let claim = Uuid::new_v4();
+        locker.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "INSERT INTO module_artifact_node_reconciliation_assignments VALUES ($1,$2,'agent-a',clock_timestamp() + interval '2 seconds')",
+            vec![reconciliation.into(), claim.into()])).await.unwrap();
+        let tx = locker.begin().await.unwrap();
+        tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "SELECT active_claim_id FROM module_artifact_node_reconciliation_assignments WHERE active_claim_id=$1 FOR UPDATE",
+            vec![claim.into()])).await.unwrap();
+        let task = tokio::spawn(async move {
+            let worker_tx = worker.begin().await.unwrap();
+            let result = heartbeat_assignment(&worker_tx, reconciliation,
+                &ModuleArtifactNodeAssignmentHeartbeatCommand { claim_id: claim, agent_id: "agent-a".into() }).await;
+            worker_tx.rollback().await.unwrap();
+            result
+        });
+        let mut blocked = false;
+        for _ in 0..100 {
+            let row = monitor.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock') AS blocked",
+                vec![pid.into()])).await.unwrap().unwrap();
+            if row.try_get::<bool>("", "blocked").unwrap() { blocked = true; break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(blocked, "heartbeat did not wait for the row lock");
+        tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+        tx.commit().await.unwrap();
+        assert!(matches!(task.await.unwrap(), Err(ModuleArtifactNodeReconciliationError::ClaimConflict)));
+        let row = locker.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "SELECT claim_expires_at <= clock_timestamp() AS expired FROM module_artifact_node_reconciliation_assignments WHERE active_claim_id=$1",
+            vec![claim.into()])).await.unwrap().unwrap();
+        assert!(row.try_get::<bool>("", "expired").unwrap());
+        locker.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
     }
 
     #[tokio::test]

@@ -144,8 +144,11 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
 fn policy_header(policy: &str) -> HeaderValue {
     match HeaderValue::try_from(policy) {
         Ok(value) => value,
-        Err(error) => {
-            tracing::error!(%error, "Generated CSP policy was not a valid HTTP header");
+        Err(_error) => {
+            tracing::error!(
+                error_code = "security_csp_header_invalid",
+                "Generated CSP policy was not a valid HTTP header"
+            );
             HeaderValue::from_static(API_CSP)
         }
     }

@@ -41,6 +41,9 @@ Local documentation for `apps/next-admin`.
 
 - canonical FSD layers for host: `app`, `shared`, `entities`, `features`, `widgets`;
 - backend integration goes through `apps/server` and shared transport packages;
+- the shared Apollo client disables in-flight query deduplication: Apollo's
+  default key excludes tenant, actor and locale headers, while the client is
+  shared by endpoint. Query results also use `no-cache` and HTTP `no-store`;
 - effective locale is selected by the host/runtime layer via `x-rustok-effective-locale`
   and `@rustok/next-fluent`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
 - user language selection in Next Admin is stored in the host-owned cookie `rustok-admin-locale`;
@@ -59,14 +62,50 @@ Local documentation for `apps/next-admin`.
   Next-local state;
 - opening module settings reads the current tenant module snapshot and its
   revision together; a failed or missing read blocks editing instead of
-  substituting empty settings, and responses from a previous session are ignored;
+  substituting empty settings, and responses from a previous session are ignored.
+  Formatting, submission and the Forum/Blog field merges preserve the number
+  lexemes received by the editor instead of rounding unrelated large integers.
+  Forum numeric controls display and write decimal integers losslessly; an
+  incomplete or invalid numeric draft blocks saving and JSON editing until it
+  is corrected. Empty, invalid, and non-object snapshots are not silently
+  replaced or submitted as empty settings. Forum and Blog structured controls
+  are disabled while the JSON is invalid or not an object. This is not an
+  end-to-end arbitrary-precision guarantee: the owner reads JSON through
+  `serde_json::Value`, and domain validation still determines which numbers are
+  allowed. A synchronous per-dialog guard prevents duplicate concurrent saves,
+  dismissal is blocked while a save is pending, and late responses from an
+  unmounted/replaced dialog do not notify the current session. An error is
+  presented as an unconfirmed outcome, not proof of rejection. While the dialog
+  remains open, editing is frozen and retry resends the exact payload, revision,
+  scope and idempotency key. This is not durable retry: closing or reloading
+  loses the operation, so the operator must review the current owner snapshot
+  before a new attempt. A read alone does not prove an in-flight outcome has
+  settled. Settings may contain sensitive values, so a persistent replay
+  journal requires a separate secure design and owner outcome contract;
+- shell availability is derived only from the owner-issued enabled-module
+  projection; lifecycle results do not locally edit the projection. A failed
+  policy read or missing session scope is surfaced as a localized retryable
+  error rather than interpreted as a disabled module, including reads made by
+  the dashboard layout and nested module guards. Retrying refreshes the current
+  server-rendered route. The GraphQL `enabledModules` list is capped at 100
+  entries without a completeness marker. At the cap, shell and dashboard use a
+  separate complete `moduleEffectivePolicy` read, which the server permits only
+  with `modules:read`, `modules:list` or `modules:manage`. They validate the
+  decision shape and its common revision and use that snapshot alone, not a
+  union with the earlier capped result. Users without those permissions, and
+  users whose complete read fails, still see an availability error at the cap;
+  a public complete projection remains open. The storefront GraphQL adapters
+  separately reject capped lists. Leptos storefront shell and generic module-page
+  error handling require runtime verification;
 - module transition finalization forwards the owner-issued checkpoint revision
   with a fresh UUID idempotency key; dynamic rollback is invoked only from the
   selected active installation contract, never by changing a transition label;
 - code must go through canonical FSD paths and shared package boundaries.
 
 Governance actions use the owner-issued publish-request ID and available actions;
-the operator workspace exposes lifecycle retry and compensation, and transition
+the operator workspace shows lifecycle recovery plans but disables retry and
+compensation when the owner reports them unavailable; new actions are currently
+fail-closed pending execution identity and quiescence evidence. Transition
 rollback uses the owner operation identity. Both admin hosts display all active
 transition checkpoints, plus a distinct checkpoint selected by URL when present,
 and surface read errors. Runtime and browser verification remain required.

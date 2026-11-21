@@ -52,8 +52,9 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
     for sql in [
         "PRAGMA foreign_keys = ON",
         "CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants",
+        "CREATE TABLE claim_rollback_probe (value TEXT NOT NULL)",
         "CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, revision INTEGER NOT NULL, \
-         active_idempotency_key BLOB, active_claimed_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+         active_idempotency_key BLOB, active_claimed_at TEXT, claim_owner TEXT NOT NULL DEFAULT 'journal', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, module_slug), \
          FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
     ] {
@@ -78,18 +79,18 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
     for tenant in [native, text, uppercase] {
         let first = Uuid::new_v4();
         assert!(matches!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap(),
             StaticTenantLifecycleClaim::Acquired(_)
         ));
         assert!(
-            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap()
         );
         assert!(matches!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, Uuid::new_v4())
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 0, Uuid::new_v4())
                 .await,
             Err(StaticTenantLifecycleStoreError::OperationInProgress { .. })
         ));
@@ -106,17 +107,17 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         .await
         .unwrap();
         assert!(
-            !StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+            !StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap()
         );
         assert!(
-            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::advance_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .is_err()
         );
         assert!(
-            StaticTenantLifecycleStore::release(&db, tenant, "notifications", first)
+            StaticTenantLifecycleStore::release_for_test(&db, tenant, "notifications", first)
                 .await
                 .is_err()
         );
@@ -128,7 +129,7 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         .await
         .unwrap();
         assert!(
-            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap()
         );
@@ -137,7 +138,7 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
             "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1 WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
             vec![first.into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
         assert!(
-            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap()
         );
@@ -145,55 +146,72 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
             "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1 WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
             vec![first.to_string().to_uppercase().into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
         assert!(
-            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap()
         );
         assert_eq!(
-            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 0, first)
+            StaticTenantLifecycleStore::advance_for_test(&db, tenant, "notifications", 0, first)
                 .await
                 .unwrap(),
             1
         );
-        StaticTenantLifecycleStore::release(&db, tenant, "notifications", first)
+        StaticTenantLifecycleStore::release_for_test(&db, tenant, "notifications", first)
             .await
             .unwrap();
         assert!(matches!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, Uuid::new_v4())
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 0, Uuid::new_v4())
                 .await,
             Err(StaticTenantLifecycleStoreError::RevisionConflict { .. })
         ));
         let old = Uuid::new_v4();
         let replacement = Uuid::new_v4();
-        StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 1, old)
+        StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 1, old)
             .await
             .unwrap();
         db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
             "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1, active_claimed_at = '2000-01-01T00:00:00Z' WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
             vec![old.into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
+        // Expiry is not renewable even before a contender has reclaimed it.
+        assert!(!StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 1, old)
+            .await.unwrap());
+        let transaction = db.begin().await.unwrap();
+        transaction.execute_unprepared("INSERT INTO claim_rollback_probe VALUES ('uncommitted')").await.unwrap();
+        assert!(StaticTenantLifecycleStore::advance_for_test(&transaction, tenant, "notifications", 1, old)
+            .await.is_err());
+        transaction.rollback().await.unwrap();
+        let row = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM claim_rollback_probe".to_string())).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
+        assert_eq!(StaticTenantLifecycleStore::snapshot(&db, tenant, "notifications").await.unwrap().revision, 1);
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE module_static_tenant_lifecycle SET active_claimed_at = NULL WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?1, ?2)",
+            vec![tenant.into(), tenant.to_string().into()])).await.unwrap();
+        assert!(!StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 1, old)
+            .await.unwrap());
         assert!(matches!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 1, replacement)
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 1, replacement)
                 .await
                 .unwrap(),
             StaticTenantLifecycleClaim::Acquired(_)
         ));
         assert!(
-            !StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 1, old)
+            !StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 1, old)
                 .await
                 .unwrap()
         );
         assert!(
-            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 1, old)
+            StaticTenantLifecycleStore::advance_for_test(&db, tenant, "notifications", 1, old)
                 .await
                 .is_err()
         );
         assert_eq!(
-            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 1, replacement)
+            StaticTenantLifecycleStore::advance_for_test(&db, tenant, "notifications", 1, replacement)
                 .await
                 .unwrap(),
             2
         );
-        StaticTenantLifecycleStore::release(&db, tenant, "notifications", replacement)
+        StaticTenantLifecycleStore::release_for_test(&db, tenant, "notifications", replacement)
             .await
             .unwrap();
         assert_eq!(
@@ -220,23 +238,23 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         .unwrap();
         let claim = Uuid::new_v4();
         assert!(matches!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, claim)
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "notifications", 0, claim)
                 .await
                 .unwrap(),
             StaticTenantLifecycleClaim::Acquired(_)
         ));
         assert!(
-            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, claim)
+            StaticTenantLifecycleStore::heartbeat_for_test(&db, tenant, "notifications", 0, claim)
                 .await
                 .unwrap()
         );
         assert_eq!(
-            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 0, claim)
+            StaticTenantLifecycleStore::advance_for_test(&db, tenant, "notifications", 0, claim)
                 .await
                 .unwrap(),
             1
         );
-        StaticTenantLifecycleStore::release(&db, tenant, "notifications", claim)
+        StaticTenantLifecycleStore::release_for_test(&db, tenant, "notifications", claim)
             .await
             .unwrap();
         db.execute_raw(Statement::from_sql_and_values(
@@ -247,14 +265,14 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         .await
         .unwrap();
         assert!(
-            StaticTenantLifecycleStore::claim(&db, tenant, "other", 0, Uuid::new_v4())
+            StaticTenantLifecycleStore::claim_for_test(&db, tenant, "other", 0, Uuid::new_v4())
                 .await
                 .is_err()
         );
     }
     let absent = Uuid::new_v4();
     assert!(matches!(
-        StaticTenantLifecycleStore::claim(&db, absent, "notifications", 0, Uuid::new_v4()).await,
+        StaticTenantLifecycleStore::claim_for_test(&db, absent, "notifications", 0, Uuid::new_v4()).await,
         Err(StaticTenantLifecycleStoreError::InconsistentState(_))
     ));
     db.execute_raw(Statement::from_sql_and_values(
@@ -265,7 +283,7 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
     .await
     .unwrap();
     assert!(
-        StaticTenantLifecycleStore::claim(&db, native, "other", 0, Uuid::new_v4())
+        StaticTenantLifecycleStore::claim_for_test(&db, native, "other", 0, Uuid::new_v4())
             .await
             .is_err()
     );
@@ -332,10 +350,10 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         .await
         .unwrap();
         let command = request(tenant, Uuid::new_v4());
-        let first = ModuleOperationJournal::record_idempotent(&db, command.clone())
+        let first = ModuleOperationJournal::record_idempotent_for_test(&db, command.clone())
             .await
             .unwrap();
-        let replay = ModuleOperationJournal::record_idempotent(&db, command)
+        let replay = ModuleOperationJournal::record_idempotent_for_test(&db, command)
             .await
             .unwrap();
         let id = match (first, replay) {
@@ -367,18 +385,18 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
     }
     let missing_tenant = request(Uuid::new_v4(), Uuid::new_v4());
     assert!(matches!(
-        ModuleOperationJournal::record_idempotent(&db, missing_tenant.clone()).await,
+        ModuleOperationJournal::record_idempotent_for_test(&db, missing_tenant.clone()).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
-        ModuleOperationJournal::record(&db, missing_tenant).await,
+        ModuleOperationJournal::record_for_test(&db, missing_tenant).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     let native_request = request(native, Uuid::new_v4());
-    let first = ModuleOperationJournal::record_idempotent(&db, native_request.clone())
+    let first = ModuleOperationJournal::record_idempotent_for_test(&db, native_request.clone())
         .await
         .unwrap();
-    let replay = ModuleOperationJournal::record_idempotent(&db, native_request)
+    let replay = ModuleOperationJournal::record_idempotent_for_test(&db, native_request)
         .await
         .unwrap();
     let native_operation = match (first, replay) {
@@ -403,7 +421,7 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         vec![Uuid::new_v4().into(), legacy.to_string().to_uppercase().into(), legacy_key.into()],
     )).await.unwrap();
     assert!(matches!(
-        ModuleOperationJournal::record_idempotent(&db, request(legacy, legacy_key))
+        ModuleOperationJournal::record_idempotent_for_test(&db, request(legacy, legacy_key))
             .await
             .unwrap(),
         ModuleOperationRecordOutcome::Replayed(_)
@@ -419,10 +437,10 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         .unwrap();
     assert_eq!(row.try_get::<i64>("", "count").unwrap(), 1);
     let new_legacy_request = request(legacy, Uuid::new_v4());
-    let legacy_insert = ModuleOperationJournal::record_idempotent(&db, new_legacy_request.clone())
+    let legacy_insert = ModuleOperationJournal::record_idempotent_for_test(&db, new_legacy_request.clone())
         .await
         .unwrap();
-    let legacy_replay = ModuleOperationJournal::record_idempotent(&db, new_legacy_request)
+    let legacy_replay = ModuleOperationJournal::record_idempotent_for_test(&db, new_legacy_request)
         .await
         .unwrap();
     let legacy_operation = match (legacy_insert, legacy_replay) {
@@ -440,7 +458,7 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
             .tenant_id,
         legacy
     );
-    ModuleOperationJournal::mark_failed(&db, legacy_operation.id, "test failure")
+    ModuleOperationJournal::mark_failed_for_test(&db, legacy_operation.id, "test failure")
         .await
         .unwrap();
     let failures = ModuleOperationJournal::failed_for_tenant(&db, legacy, Some("notifications"))
@@ -490,11 +508,11 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
-        ModuleOperationJournal::record_idempotent(&db, request(legacy, Uuid::new_v4())).await,
+        ModuleOperationJournal::record_idempotent_for_test(&db, request(legacy, Uuid::new_v4())).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
-        ModuleOperationJournal::record(&db, request(legacy, Uuid::new_v4())).await,
+        ModuleOperationJournal::record_for_test(&db, request(legacy, Uuid::new_v4())).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
@@ -516,11 +534,11 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         vec![Uuid::new_v4().into(), native.to_string().into(), Uuid::new_v4().into()],
     )).await.unwrap();
     assert!(matches!(
-        ModuleOperationJournal::record_idempotent(&db, request(native, Uuid::new_v4())).await,
+        ModuleOperationJournal::record_idempotent_for_test(&db, request(native, Uuid::new_v4())).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
-        ModuleOperationJournal::record(&db, request(native, Uuid::new_v4())).await,
+        ModuleOperationJournal::record_for_test(&db, request(native, Uuid::new_v4())).await,
         Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
     ));
     assert!(matches!(
@@ -531,12 +549,12 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         .await
         .unwrap();
     assert!(
-        ModuleOperationJournal::record_idempotent(&db, request(native, Uuid::new_v4()))
+        ModuleOperationJournal::record_idempotent_for_test(&db, request(native, Uuid::new_v4()))
             .await
             .is_err()
     );
     assert!(
-        ModuleOperationJournal::record(&db, request(native, Uuid::new_v4()))
+        ModuleOperationJournal::record_for_test(&db, request(native, Uuid::new_v4()))
             .await
             .is_err()
     );
@@ -982,10 +1000,10 @@ async fn postgres_policy_and_operator_reads_preserve_uuid_contract() {
         recovery_source_id: None,
         expected_revision: Some(0),
     };
-    let first = ModuleOperationJournal::record_idempotent(&db, journal_request.clone())
+    let first = ModuleOperationJournal::record_idempotent_for_test(&db, journal_request.clone())
         .await
         .unwrap();
-    let replay = ModuleOperationJournal::record_idempotent(&db, journal_request)
+    let replay = ModuleOperationJournal::record_idempotent_for_test(&db, journal_request)
         .await
         .unwrap();
     let journal_operation = match (first, replay) {
@@ -995,7 +1013,7 @@ async fn postgres_policy_and_operator_reads_preserve_uuid_contract() {
         ) if first.id == replay.id => first,
         _ => panic!("journal must replay the original operation"),
     };
-    ModuleOperationJournal::mark_failed(&db, journal_operation.id, "test failure")
+    ModuleOperationJournal::mark_failed_for_test(&db, journal_operation.id, "test failure")
         .await
         .unwrap();
     let failures = ModuleOperationJournal::failed_for_tenant(&db, tenant_id, Some("notifications"))

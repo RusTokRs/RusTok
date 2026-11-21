@@ -66,7 +66,7 @@ async fn test_watchdog_expired_window_requires_intervention_and_expires_rollout_
         created_at: Utc::now() - Duration::minutes(10),
         updated_at: Utc::now() - Duration::minutes(5),
     };
-    TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
         .await
         .expect("save checkpoint");
 
@@ -191,7 +191,7 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
         .await
         .expect("save checkpoint");
 
@@ -248,7 +248,7 @@ async fn test_watchdog_epoch_preemption_requires_intervention_without_claiming_r
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+    TransitionCheckpointStore::save_checkpoint_for_test(&db, &checkpoint)
         .await
         .expect("save checkpoint");
 

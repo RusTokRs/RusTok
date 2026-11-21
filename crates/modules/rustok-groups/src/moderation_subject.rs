@@ -31,6 +31,7 @@ pub struct GroupsModerationSubjectAdapterFactory;
 
 impl GroupsModerationSubjectAdapterFactory {
     fn adapter_key(self) -> ModerationSubjectAdapterKey {
+        // INVARIANT: GROUPS_MODERATION_MODULE is a valid module identifier and GroupMembership is a valid kind.
         ModerationSubjectAdapterKey::new(
             GROUPS_MODERATION_MODULE,
             ModerationSubjectKind::GroupMembership,

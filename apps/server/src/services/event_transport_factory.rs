@@ -207,7 +207,10 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         for task in tasks {
             if let Err(join_err) = task.await {
                 if !join_err.is_cancelled() {
-                    tracing::warn!(error = %join_err, "Aborted tenant cache generation task failed unexpectedly");
+                    tracing::warn!(
+                        failure_code = "tenant_cache_generation_listener_join_failed",
+                        "Aborted tenant cache generation task failed unexpectedly"
+                    );
                 }
             }
         }
@@ -325,7 +328,6 @@ pub fn spawn_outbox_relay_worker(
                             kind = ?error.kind,
                             code = %error.code,
                             retryable = error.retryable,
-                            message = %error.message,
                             "Relay processing error"
                         );
                     }
@@ -341,9 +343,9 @@ pub fn spawn_outbox_relay_worker(
                     }
                     OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
                     match result {
-                        Some(Err(error)) => tracing::error!(
-                            "Outbox relay worker failed: {:?}. Restarting in 5s.",
-                            error
+                        Some(Err(_error)) => tracing::error!(
+                            failure_code = "outbox_relay_worker_join_failed",
+                            "Outbox relay worker failed; restarting in 5s."
                         ),
                         Some(Ok(())) => tracing::error!(
                             "Outbox relay worker exited unexpectedly. Restarting in 5s."
@@ -415,7 +417,7 @@ impl EventTransport for LocalEventDeliveryTransport {
             tracing::error!(
                 event_id = %event_id,
                 event_type,
-                error = %error,
+                failure_code = "local_root_event_delivery_failed",
                 "Local root-event delivery failed"
             );
             return Err(error);
@@ -438,7 +440,7 @@ impl EventTransport for LocalEventDeliveryTransport {
             tracing::error!(
                 %event_id,
                 %event_type,
-                error = %error,
+                failure_code = "local_contract_delivery_failed",
                 "Local contract delivery failed"
             );
             return Err(error);
@@ -481,7 +483,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
             tracing::error!(
                 event_id = %event_id,
                 event_type,
-                error = %error,
+                failure_code = "remote_accepted_local_root_delivery_failed",
                 "Remote event was accepted but acknowledged local module delivery failed"
             );
             return Err(error);

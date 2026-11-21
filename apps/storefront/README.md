@@ -25,6 +25,16 @@
 - Consumes tenant-aware SEO runtime from `rustok-seo` through the shared Rust renderer `rustok-seo-render`.
 - Stays in architectural parity with `apps/next-frontend` while remaining the Rust-first storefront host.
 
+## Standalone CSR tenant
+
+Set `RUSTOK_TENANT_SLUG` (or `NEXT_PUBLIC_TENANT_SLUG` /
+`NEXT_PUBLIC_DEFAULT_TENANT_SLUG`) in the environment **when building** the WASM
+bundle. The first nonempty value is embedded as a public routing hint for one
+storefront tenant; it is not a credential and cannot replace server tenant
+resolution. Rebuild when changing the tenant. Without a usable hint the CSR
+host shows an availability error; it does not infer the store from an admin
+session or an unbound module-list meta tag. See [app docs](./docs/README.md).
+
 ## Known Limitations / Pending Implementation
 
 - The shared Cart/Product client now has a source-level landing event consumer and count

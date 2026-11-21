@@ -4,7 +4,7 @@
 //! one at-least-once execution state machine per `(source event, immutable
 //! installation, binding)`, so it cannot be mistaken for a second event log.
 
-use std::{any::Any, collections::BTreeMap, sync::Arc};
+use std::{any::Any, sync::Arc};
 
 use async_trait::async_trait;
 use rustok_events::{ContractEventEnvelope, ContractEventPayload};
@@ -38,6 +38,10 @@ const MAX_EVENT_TYPE_BYTES: usize = 128;
 const MAX_BINDING_ID_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 128;
 const MAX_ERROR_CODE_BYTES: usize = 96;
+/// Maximum eligible installation rows in one complete tenant projection. The
+/// query reads one extra sentinel row; over the limit it fails rather than
+/// dispatching an event with an arbitrarily truncated subscription set.
+const MAX_EVENT_CANDIDATES_PER_PROJECTION: usize = 10_000;
 /// Upper bound on poison/lost-race candidates one `claim_next` call will
 /// skip before reporting no work, so a single poll stays time-bounded.
 const MAX_CANDIDATE_SKIPS_PER_CLAIM: usize = 16;
@@ -78,6 +82,7 @@ pub struct ArtifactEventDeliveryWorkItem {
     pub tenant_id: Uuid,
     pub installation_id: Uuid,
     pub attempt: u32,
+    pub claim_token: Uuid,
     pub release: ArtifactReleaseRef,
     pub binding: ModuleRuntimeBinding,
     pub source: ArtifactEventDeliverySource,
@@ -107,6 +112,7 @@ pub enum ArtifactEventDeliveryOutcome {
 pub struct ArtifactEventDeliveryCompletion {
     pub delivery_id: Uuid,
     pub attempt: u32,
+    pub claim_token: Uuid,
     pub outcome: ArtifactEventDeliveryOutcome,
 }
 
@@ -295,6 +301,8 @@ impl SeaOrmArtifactEventSubscriptionProjector {
                 backend.db_backend(),
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
+                            installation.version, installation.payload_digest, \
+                            admission.payload_digest AS admission_payload_digest, \
                             CAST(installation.descriptor AS TEXT) AS descriptor \
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission \
@@ -307,52 +315,41 @@ impl SeaOrmArtifactEventSubscriptionProjector {
                                        WHERE uninstall.installation_id = installation.installation_id) \
                        AND {enabled} \
                        AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
-                            OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
+                            OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)) \
+                     LIMIT {candidate_limit}",
                     backend.placeholder(1),
                     backend.placeholder(2),
+                    candidate_limit = MAX_EVENT_CANDIDATES_PER_PROJECTION + 1,
                 ),
                 vec![backend.uuid_value(tenant_id), backend.uuid_value(tenant_id)],
             ))
             .await
             .map_err(storage_error)?;
-        let mut effective = BTreeMap::<String, ArtifactSubscriptionCandidate>::new();
-        let mut excluded_slugs = std::collections::BTreeSet::new();
-        for row in rows {
-            // Per-installation corruption (unparseable/invalid stored
-            // descriptor, slug mismatch) quarantines only that
-            // installation. Failing the whole projection would stall every
-            // tenant event behind one poisoned row — the transport
-            // decorator projects before downstream publish, so the outbox
-            // relay would retry forever. Storage failures still propagate.
-            let candidate = match subscription_candidate_from_row(&row, backend) {
-                Ok(candidate) => candidate,
-                Err(ArtifactEventDeliveryError::SubscriptionStateInvalid) => continue,
-                Err(error) => return Err(error),
-            };
-            if excluded_slugs.contains(&candidate.slug) {
-                continue;
-            }
-            match effective.get(&candidate.slug) {
-                None => {
-                    effective.insert(candidate.slug.clone(), candidate);
-                }
-                Some(existing) if candidate.tenant_scoped && !existing.tenant_scoped => {
-                    effective.insert(candidate.slug.clone(), candidate);
-                }
-                Some(existing) if !candidate.tenant_scoped && existing.tenant_scoped => {}
-                Some(_) => {
-                    // Duplicate active installations for one slug are an
-                    // invariant breach; disable only the offending slug
-                    // instead of failing the tenant-wide projection.
-                    effective.remove(&candidate.slug);
-                    excluded_slugs.insert(candidate.slug);
-                }
-            }
+        if rows.len() > MAX_EVENT_CANDIDATES_PER_PROJECTION {
+            return Err(ArtifactEventDeliveryError::SubscriptionCandidateLimitExceeded);
         }
+        // Selection precedes descriptor parsing: a corrupt tenant winner
+        // cannot resurrect its platform fallback. An incomplete selection is
+        // an error, not an empty subscription: otherwise the relay can mark
+        // the source dispatched and permanently lose potential deliveries.
+        let selected = crate::installation_selection::select_projection_rows(rows)
+            .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
+        if selected.ambiguous_count != 0 {
+            tracing::warn!(%tenant_id, ambiguous_count = selected.ambiguous_count,
+                "artifact event subscription selection is ambiguous");
+            return Err(ArtifactEventDeliveryError::SubscriptionStateInvalid);
+        }
 
         let mut subscriptions = Vec::new();
-        for candidate in effective.into_values() {
+        for row in selected.rows {
+            let candidate = match subscription_candidate_from_row(&row, backend) {
+                Err(ArtifactEventDeliveryError::SubscriptionStateInvalid) => {
+                    tracing::warn!(%tenant_id, "invalid artifact event subscription descriptor or release identity");
+                    return Err(ArtifactEventDeliveryError::SubscriptionStateInvalid);
+                }
+                result => result?,
+            };
             for binding in candidate.descriptor.bindings {
                 if binding.kind == ModuleRuntimeBindingKind::Event
                     && binding
@@ -439,8 +436,6 @@ impl EventTransport for ArtifactEventProjectionTransport {
 #[derive(Clone)]
 struct ArtifactSubscriptionCandidate {
     installation_id: Uuid,
-    slug: String,
-    tenant_scoped: bool,
     descriptor: ModuleArtifactDescriptor,
 }
 
@@ -453,28 +448,11 @@ fn subscription_candidate_from_row(
     row: &QueryResult,
     backend: SupportedBackend,
 ) -> Result<ArtifactSubscriptionCandidate, ArtifactEventDeliveryError> {
-    let slug: String = row.try_get("", "slug").map_err(storage_error)?;
-    let scope_kind: String = row.try_get("", "scope_kind").map_err(storage_error)?;
-    let tenant_scoped = match scope_kind.as_str() {
-        "tenant" => true,
-        "platform" => false,
-        _ => return Err(ArtifactEventDeliveryError::SubscriptionStateInvalid),
-    };
-    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-        &row.try_get::<String>("", "descriptor")
-            .map_err(storage_error)?,
-    )
-    .map_err(|_| ArtifactEventDeliveryError::SubscriptionStateInvalid)?;
-    descriptor
-        .validate()
-        .map_err(|_| ArtifactEventDeliveryError::SubscriptionStateInvalid)?;
-    if descriptor.slug != slug {
-        return Err(ArtifactEventDeliveryError::SubscriptionStateInvalid);
-    }
+    let descriptor = crate::installation_selection::descriptor_with_identity(row)
+        .map_err(storage_error)?
+        .ok_or(ArtifactEventDeliveryError::SubscriptionStateInvalid)?;
     Ok(ArtifactSubscriptionCandidate {
         installation_id: uuid_from_row(row, "installation_id", backend).map_err(storage_error)?,
-        slug,
-        tenant_scoped,
         descriptor,
     })
 }
@@ -488,6 +466,7 @@ pub struct ArtifactEventDeliveryWorkAdapter {
     executor: SharedArtifactBindingExecutor,
     tenants: SharedArtifactDeliveryTenantSource,
     worker_id: String,
+    tenant_cursor: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl ArtifactEventDeliveryWorkAdapter {
@@ -503,6 +482,7 @@ impl ArtifactEventDeliveryWorkAdapter {
             executor,
             tenants,
             worker_id,
+            tenant_cursor: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         })
     }
 
@@ -572,34 +552,47 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
         if worker_slug != ARTIFACT_EVENT_DELIVERY_WORKER {
             return Ok(None);
         }
-        let tenant_ids = self
+        let mut tenant_ids = self
             .tenants
             .tenant_ids()
             .await
             .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+        if tenant_ids.iter().any(Uuid::is_nil) {
+            return Err(ModuleWorkError::Source(
+                "artifact event tenant source returned a nil tenant id".to_string(),
+            ));
+        }
+        tenant_ids.sort_unstable();
+        tenant_ids.dedup();
+        if !tenant_ids.is_empty() {
+            let start = self.tenant_cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % tenant_ids.len();
+            tenant_ids.rotate_left(start);
+        }
+        let mut first_error = None;
         for tenant_id in tenant_ids {
-            if tenant_id.is_nil() {
-                return Err(ModuleWorkError::Source(
-                    "artifact event tenant source returned a nil tenant id".to_string(),
-                ));
-            }
-            if let Some(item) = self
-                .queue
-                .claim_next(tenant_id, &self.worker_id)
-                .await
-                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
-            {
+            let item = match self.queue.claim_next(tenant_id, &self.worker_id).await {
+                Ok(item) => item,
+                Err(error) => {
+                    tracing::error!(%tenant_id, %error, "artifact event delivery claim failed");
+                    if first_error.is_none() { first_error = Some(error.to_string()); }
+                    continue;
+                }
+            };
+            if let Some(item) = item {
                 return Ok(Some(ModuleWorkItem {
                     id: item.delivery_id,
                     tenant_id: item.tenant_id,
                     worker_slug: ARTIFACT_EVENT_DELIVERY_WORKER.to_string(),
-                    lease_token: self.queue.infrastructure.new_id().to_string(),
+                    lease_token: item.claim_token.to_string(),
                     // INVARIANT: EventDeliveryWorkItem contains only serializable fields
                     payload: serde_json::to_value(item).expect("event work item must serialize"),
                 }));
             }
         }
-        Ok(None)
+        match first_error {
+            Some(error) => Err(ModuleWorkError::Source(error)),
+            None => Ok(None),
+        }
     }
 
     async fn complete(
@@ -613,7 +606,8 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
             ));
         }
         let payload = Self::payload(item)?;
-        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id {
+        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id
+            || payload.claim_token.to_string() != item.lease_token {
             return Err(ModuleWorkError::Source(
                 "artifact event completion identity does not match its payload".to_string(),
             ));
@@ -645,6 +639,7 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
                 ArtifactEventDeliveryCompletion {
                     delivery_id: payload.delivery_id,
                     attempt: payload.attempt,
+                    claim_token: payload.claim_token,
                     outcome,
                 },
             )
@@ -666,7 +661,8 @@ impl ModuleWorkHandler for ArtifactEventDeliveryWorkAdapter {
             ));
         }
         let payload = Self::payload(&item)?;
-        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id {
+        if payload.delivery_id != item.id || payload.tenant_id != item.tenant_id
+            || payload.claim_token.to_string() != item.lease_token {
             return Err(ModuleWorkError::Handler(
                 "artifact event execution identity does not match its payload".to_string(),
             ));
@@ -743,8 +739,9 @@ impl SeaOrmArtifactEventDeliveryQueue {
     }
 
     /// Creates the binding-scoped projection or returns the original receipt
-    /// for an identical source retry. A changed source under the same unique
-    /// identity is rejected rather than overwriting audit evidence.
+    /// for an identical source retry in the same tenant. A changed source or
+    /// an identity belonging to another tenant is never acknowledged as a
+    /// replay, even where the database role bypasses tenant RLS.
     pub async fn enqueue(
         &self,
         request: ArtifactEventDeliveryRequest,
@@ -827,15 +824,18 @@ impl SeaOrmArtifactEventDeliveryQueue {
                 backend.db_backend(),
                 format!(
                     "SELECT delivery_id, source_digest FROM module_artifact_event_deliveries \
-                     WHERE source_event_id = {} AND installation_id = {} AND binding_id = {}",
+                     WHERE source_event_id = {} AND installation_id = {} AND binding_id = {} \
+                       AND tenant_id = {}",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
                     backend.uuid_value(request.source.event_id),
                     backend.uuid_value(request.installation_id),
                     request.binding_id.into(),
+                    backend.uuid_value(request.tenant_id),
                 ],
             ))
             .await
@@ -925,6 +925,9 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     backend.db_backend(),
                     format!(
                         "SELECT \
+                            i.slug, i.version, i.payload_digest, \
+                            admission.payload_digest AS admission_payload_digest, \
+                            CAST(i.descriptor AS TEXT) AS descriptor, \
                             admission.status AS admission_status, \
                             (EXISTS (SELECT 1 FROM module_artifact_uninstall_operations u WHERE u.installation_id = i.installation_id)) AS is_uninstalled, \
                             (EXISTS (SELECT 1 FROM module_artifact_security_states s WHERE s.module_slug = i.slug AND s.module_version = i.version AND s.payload_digest = i.payload_digest AND s.status IN ('quarantined', 'revoked'))) AS is_revoked \
@@ -939,6 +942,17 @@ impl SeaOrmArtifactEventDeliveryQueue {
                 .map_err(storage_error)?;
 
             if let Some(row) = validity {
+                let descriptor = crate::installation_selection::descriptor_with_identity(&row)
+                    .map_err(storage_error)?;
+                if descriptor.is_none() {
+                    let error = ArtifactEventDeliveryError::InvalidInstallationIdentity;
+                    transaction.rollback().await.map_err(|rollback_error| {
+                        storage_error(format!(
+                            "{error}; additionally, rolling back the event claim failed: {rollback_error}"
+                        ))
+                    })?;
+                    return Err(error);
+                }
                 let is_revoked: bool = row.try_get("", "is_revoked").map_err(storage_error)?;
                 let is_uninstalled: bool =
                     row.try_get("", "is_uninstalled").map_err(storage_error)?;
@@ -985,25 +999,15 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     continue;
                 }
             } else {
-                transaction
-                    .execute_raw(Statement::from_sql_and_values(
-                        backend.db_backend(),
-                        format!(
-                            "UPDATE module_artifact_event_deliveries \
-                             SET status = 'dead_letter', dead_lettered_at = {}, last_error_code = 'installation_unavailable', \
-                                 claimed_by = NULL, claimed_until = NULL \
-                             WHERE delivery_id = {} AND tenant_id = {}",
-                            backend.now_sql(),
-                            backend.placeholder(1),
-                            backend.placeholder(2),
-                        ),
-                        vec![backend.uuid_value(delivery_id), backend.uuid_value(tenant_id)],
-                    ))
-                    .await
-                    .map_err(storage_error)?;
-                continue;
+                // A missing installation or admission cannot establish the
+                // immutable identity needed for a terminal security decision.
+                transaction.rollback().await.map_err(storage_error)?;
+                return Err(ArtifactEventDeliveryError::InvalidInstallationIdentity);
             }
 
+            // This fence is independent of both the attempt budget and any
+            // injected deterministic ID source used for durable entity IDs.
+            let claim_token = Uuid::new_v4();
             let lease_until = lease_expression(backend, 2);
             let claimed = transaction
                 .execute_raw(Statement::from_sql_and_values(
@@ -1011,10 +1015,11 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     format!(
                         "UPDATE module_artifact_event_deliveries \
                          SET status = 'running', attempt = attempt + 1, claimed_by = {}, \
-                             claimed_until = {lease_until}, last_error_code = NULL \
+                             claimed_until = {lease_until}, claim_token = {}, last_error_code = NULL \
                          WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending' \
                            AND available_at <= {}",
                         backend.placeholder(1),
+                        backend.placeholder(5),
                         backend.placeholder(3),
                         backend.placeholder(4),
                         backend.now_sql(),
@@ -1024,6 +1029,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
                         i64::from(self.config.lease_seconds).into(),
                         backend.uuid_value(delivery_id),
                         backend.uuid_value(tenant_id),
+                        backend.uuid_value(claim_token),
                     ],
                 ))
                 .await
@@ -1038,10 +1044,14 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     format!(
                         "SELECT delivery.delivery_id, delivery.tenant_id, delivery.installation_id, \
                                 delivery.binding_id, delivery.source_event_id, delivery.event_type, delivery.schema_version, \
-                                delivery.payload, delivery.attempt, CAST(installation.descriptor AS TEXT) AS descriptor \
+                                delivery.payload, delivery.attempt, installation.slug, installation.version, \
+                                installation.payload_digest, admission.payload_digest AS admission_payload_digest, \
+                                CAST(installation.descriptor AS TEXT) AS descriptor \
                          FROM module_artifact_event_deliveries delivery \
                          JOIN module_artifact_installations installation \
                            ON installation.installation_id = delivery.installation_id \
+                         JOIN module_artifact_admissions admission \
+                           ON admission.installation_id = installation.installation_id \
                          WHERE delivery.delivery_id = {} AND delivery.tenant_id = {} \
                            AND delivery.status = 'running' AND delivery.claimed_by = {}",
                         backend.placeholder(1),
@@ -1057,7 +1067,17 @@ impl SeaOrmArtifactEventDeliveryQueue {
                 .await
                 .map_err(storage_error)?
                 .ok_or(ArtifactEventDeliveryError::ClaimLost)?;
-            let item = work_item_from_row(&row, backend)?;
+            let item = match work_item_from_row(&row, backend, claim_token) {
+                Ok(item) => item,
+                Err(error) => {
+                    transaction.rollback().await.map_err(|rollback_error| {
+                        storage_error(format!(
+                            "{error}; additionally, rolling back the event claim failed: {rollback_error}"
+                        ))
+                    })?;
+                    return Err(error);
+                }
+            };
             transaction.commit().await.map_err(storage_error)?;
             return Ok(Some(item));
         }
@@ -1075,7 +1095,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
         completion: ArtifactEventDeliveryCompletion,
     ) -> Result<(), ArtifactEventDeliveryError> {
         validate_worker_id(worker_id)?;
-        if completion.delivery_id.is_nil() || completion.attempt == 0 {
+        if completion.delivery_id.is_nil() || completion.claim_token.is_nil() || completion.attempt == 0 {
             return Err(ArtifactEventDeliveryError::InvalidCompletion);
         }
         if let ArtifactEventDeliveryOutcome::Retryable { error_code }
@@ -1090,71 +1110,45 @@ impl SeaOrmArtifactEventDeliveryQueue {
             .map_err(storage_error)?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        if !crate::delivery_lease::lock_for_completion(
+            &transaction, backend, crate::delivery_lease::DeliveryQueue::Event,
+            tenant_id, completion.delivery_id,
+        ).await.map_err(storage_error)? {
+            return Err(ArtifactEventDeliveryError::ClaimLost);
+        }
+        let claim = EventDeliveryClaim {
+            backend,
+            tenant_id,
+            worker_id,
+            delivery_id: completion.delivery_id,
+            attempt: completion.attempt,
+            claim_token: completion.claim_token,
+        };
         let affected = match completion.outcome {
             ArtifactEventDeliveryOutcome::Succeeded => {
-                complete_succeeded(
-                    &transaction,
-                    backend,
-                    tenant_id,
-                    worker_id,
-                    completion.delivery_id,
-                    completion.attempt,
-                )
-                .await?
+                complete_succeeded(&transaction, claim).await?
             }
             ArtifactEventDeliveryOutcome::DeadLetter { error_code } => {
-                complete_dead_letter(
-                    &transaction,
-                    backend,
-                    tenant_id,
-                    worker_id,
-                    completion.delivery_id,
-                    completion.attempt,
-                    error_code,
-                )
-                .await?
+                complete_dead_letter(&transaction, claim, error_code).await?
             }
             ArtifactEventDeliveryOutcome::Held { error_code } => {
                 complete_held(
                     &transaction,
-                    EventDeliveryClaim {
-                        backend,
-                        tenant_id,
-                        worker_id,
-                        delivery_id: completion.delivery_id,
-                        attempt: completion.attempt,
-                    },
+                    claim,
                     error_code,
                     self.config.retry_delay_seconds(completion.attempt),
-                )
-                .await?
+                ).await?
             }
             ArtifactEventDeliveryOutcome::Retryable { error_code } => {
                 if completion.attempt >= self.config.max_attempts {
-                    complete_dead_letter(
-                        &transaction,
-                        backend,
-                        tenant_id,
-                        worker_id,
-                        completion.delivery_id,
-                        completion.attempt,
-                        error_code,
-                    )
-                    .await?
+                    complete_dead_letter(&transaction, claim, error_code).await?
                 } else {
                     complete_retryable(
                         &transaction,
-                        EventDeliveryClaim {
-                            backend,
-                            tenant_id,
-                            worker_id,
-                            delivery_id: completion.delivery_id,
-                            attempt: completion.attempt,
-                        },
+                        claim,
                         error_code,
                         self.config.retry_delay_seconds(completion.attempt),
-                    )
-                    .await?
+                    ).await?
                 }
             }
         };
@@ -1187,6 +1181,9 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
         crate::delivery_descriptor::LoadAdmittedDescriptorError::Unavailable => {
             ArtifactEventDeliveryError::InstallationUnavailable
         }
+        crate::delivery_descriptor::LoadAdmittedDescriptorError::InvalidIdentity => {
+            ArtifactEventDeliveryError::InvalidInstallationIdentity
+        }
         crate::delivery_descriptor::LoadAdmittedDescriptorError::Storage(message) => {
             ArtifactEventDeliveryError::Storage(message)
         }
@@ -1210,13 +1207,13 @@ async fn expire_claims<C: ConnectionTrait>(
                      available_at = {}, claimed_by = NULL, claimed_until = NULL, \
                      last_error_code = 'lease_expired', \
                      dead_lettered_at = CASE WHEN attempt >= {} THEN {} ELSE NULL END \
-                 WHERE tenant_id = {} AND status = 'running' AND claimed_until < {}",
+                 WHERE tenant_id = {} AND status = 'running' AND claimed_until <= {}",
                 backend.placeholder(1),
                 retry_available_at_expression(backend, 4, 5),
                 backend.placeholder(2),
                 backend.now_sql(),
                 backend.placeholder(3),
-                backend.now_sql(),
+                backend.lease_now_sql(),
             ),
             vec![
                 i32::try_from(max_attempts)
@@ -1235,61 +1232,43 @@ async fn expire_claims<C: ConnectionTrait>(
     Ok(())
 }
 
-async fn complete_succeeded<C: ConnectionTrait>(
-    connection: &C,
-    backend: SupportedBackend,
-    tenant_id: Uuid,
-    worker_id: &str,
-    delivery_id: Uuid,
-    attempt: u32,
-) -> Result<u64, ArtifactEventDeliveryError> {
-    update_completion(
-        connection,
-        EventDeliveryClaim {
-            backend,
-            tenant_id,
-            worker_id,
-            delivery_id,
-            attempt,
-        },
-        "status = 'succeeded', claimed_by = NULL, claimed_until = NULL, last_error_code = NULL, completed_at = ",
-        None,
-        backend.now_sql(),
-    )
-    .await
-}
-
-async fn complete_dead_letter<C: ConnectionTrait>(
-    connection: &C,
-    backend: SupportedBackend,
-    tenant_id: Uuid,
-    worker_id: &str,
-    delivery_id: Uuid,
-    attempt: u32,
-    error_code: String,
-) -> Result<u64, ArtifactEventDeliveryError> {
-    update_completion(
-        connection,
-        EventDeliveryClaim {
-            backend,
-            tenant_id,
-            worker_id,
-            delivery_id,
-            attempt,
-        },
-        "status = 'dead_letter', claimed_by = NULL, claimed_until = NULL, last_error_code = ",
-        Some(error_code),
-        backend.now_sql(),
-    )
-    .await
-}
-
+#[derive(Clone, Copy)]
 struct EventDeliveryClaim<'a> {
     backend: SupportedBackend,
     tenant_id: Uuid,
     worker_id: &'a str,
     delivery_id: Uuid,
     attempt: u32,
+    claim_token: Uuid,
+}
+
+async fn complete_succeeded<C: ConnectionTrait>(
+    connection: &C,
+    claim: EventDeliveryClaim<'_>,
+) -> Result<u64, ArtifactEventDeliveryError> {
+    update_completion(
+        connection,
+        claim,
+        "status = 'succeeded', claimed_by = NULL, claimed_until = NULL, last_error_code = NULL, completed_at = ",
+        None,
+        claim.backend.now_sql(),
+    )
+    .await
+}
+
+async fn complete_dead_letter<C: ConnectionTrait>(
+    connection: &C,
+    claim: EventDeliveryClaim<'_>,
+    error_code: String,
+) -> Result<u64, ArtifactEventDeliveryError> {
+    update_completion(
+        connection,
+        claim,
+        "status = 'dead_letter', claimed_by = NULL, claimed_until = NULL, last_error_code = ",
+        Some(error_code),
+        claim.backend.now_sql(),
+    )
+    .await
 }
 
 async fn complete_retryable<C: ConnectionTrait>(
@@ -1304,6 +1283,7 @@ async fn complete_retryable<C: ConnectionTrait>(
         worker_id,
         delivery_id,
         attempt,
+        claim_token,
     } = claim;
     let delay = retry_expression(backend, 2);
     let result = connection
@@ -1314,12 +1294,14 @@ async fn complete_retryable<C: ConnectionTrait>(
                  SET status = 'pending', claimed_by = NULL, claimed_until = NULL, \
                      last_error_code = {}, available_at = {delay} \
                  WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' \
-                   AND claimed_by = {} AND attempt = {}",
+                   AND claimed_by = {} AND attempt = {} AND claim_token = {} AND claimed_until > {}",
                 backend.placeholder(1),
                 backend.placeholder(3),
                 backend.placeholder(4),
                 backend.placeholder(5),
                 backend.placeholder(6),
+                backend.placeholder(7),
+                backend.lease_now_sql(),
             ),
             vec![
                 error_code.into(),
@@ -1328,6 +1310,7 @@ async fn complete_retryable<C: ConnectionTrait>(
                 backend.uuid_value(tenant_id),
                 worker_id.to_owned().into(),
                 i64::from(attempt).into(),
+                backend.uuid_value(claim_token),
             ],
         ))
         .await
@@ -1351,6 +1334,7 @@ async fn complete_held<C: ConnectionTrait>(
         worker_id,
         delivery_id,
         attempt,
+        claim_token,
     } = claim;
     let delay = retry_expression(backend, 2);
     let result = connection
@@ -1361,12 +1345,14 @@ async fn complete_held<C: ConnectionTrait>(
                  SET status = 'pending', attempt = attempt - 1, claimed_by = NULL, claimed_until = NULL, \
                      last_error_code = {}, available_at = {delay} \
                  WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' \
-                   AND claimed_by = {} AND attempt = {}",
+                   AND claimed_by = {} AND attempt = {} AND claim_token = {} AND claimed_until > {}",
                 backend.placeholder(1),
                 backend.placeholder(3),
                 backend.placeholder(4),
                 backend.placeholder(5),
                 backend.placeholder(6),
+                backend.placeholder(7),
+                backend.lease_now_sql(),
             ),
             vec![
                 error_code.into(),
@@ -1375,6 +1361,7 @@ async fn complete_held<C: ConnectionTrait>(
                 backend.uuid_value(tenant_id),
                 worker_id.to_owned().into(),
                 i64::from(attempt).into(),
+                backend.uuid_value(claim_token),
             ],
         ))
         .await
@@ -1395,6 +1382,7 @@ async fn update_completion<C: ConnectionTrait>(
         worker_id,
         delivery_id,
         attempt,
+        claim_token,
     } = claim;
     let has_error_code = error_code.is_some();
     let (assignment, values) = match error_code {
@@ -1411,7 +1399,7 @@ async fn update_completion<C: ConnectionTrait>(
             format!(
                 "UPDATE module_artifact_event_deliveries SET {assignment}{} \
                  WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' \
-                   AND claimed_by = {} AND attempt = {}",
+                   AND claimed_by = {} AND attempt = {} AND claim_token = {} AND claimed_until > {}",
                 if has_error_code {
                     format!(", dead_lettered_at = {terminal_timestamp}")
                 } else {
@@ -1421,6 +1409,8 @@ async fn update_completion<C: ConnectionTrait>(
                 backend.placeholder(offset + 2),
                 backend.placeholder(offset + 3),
                 backend.placeholder(offset + 4),
+                backend.placeholder(offset + 5),
+                backend.lease_now_sql(),
             ),
             {
                 let mut values = values;
@@ -1429,6 +1419,7 @@ async fn update_completion<C: ConnectionTrait>(
                     backend.uuid_value(tenant_id),
                     worker_id.to_owned().into(),
                     i64::from(attempt).into(),
+                    backend.uuid_value(claim_token),
                 ]);
                 values
             },
@@ -1441,15 +1432,14 @@ async fn update_completion<C: ConnectionTrait>(
 fn work_item_from_row(
     row: &QueryResult,
     backend: SupportedBackend,
+    claim_token: Uuid,
 ) -> Result<ArtifactEventDeliveryWorkItem, ArtifactEventDeliveryError> {
-    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-        &row.try_get::<String>("", "descriptor")
-            .map_err(storage_error)?,
-    )
-    .map_err(|_| ArtifactEventDeliveryError::InstallationUnavailable)?;
-    descriptor
-        .validate()
-        .map_err(|_| ArtifactEventDeliveryError::InstallationUnavailable)?;
+    // A malformed descriptor or identity mismatch is not proof that this
+    // delivery is terminally unavailable. Abort the claim transaction so the
+    // item stays pending for repair rather than dispatching a different release.
+    let descriptor = crate::installation_selection::descriptor_with_identity(row)
+        .map_err(storage_error)?
+        .ok_or(ArtifactEventDeliveryError::InvalidInstallationIdentity)?;
     let binding_id: String = row.try_get("", "binding_id").map_err(storage_error)?;
     let binding = descriptor
         .bindings
@@ -1485,6 +1475,7 @@ fn work_item_from_row(
         tenant_id: uuid_from_row(row, "tenant_id", backend).map_err(storage_error)?,
         installation_id: uuid_from_row(row, "installation_id", backend).map_err(storage_error)?,
         attempt: u32::try_from(attempt).map_err(|_| ArtifactEventDeliveryError::ClaimLost)?,
+        claim_token,
         release: descriptor.release_ref(),
         binding,
         source: ArtifactEventDeliverySource {
@@ -1551,7 +1542,7 @@ fn source_digest(source: &ArtifactEventDeliverySource) -> String {
 fn lease_expression(backend: SupportedBackend, parameter: usize) -> String {
     match backend {
         SupportedBackend::Postgres => format!(
-            "NOW() + ({} * INTERVAL '1 second')",
+            "clock_timestamp() + ({} * INTERVAL '1 second')",
             backend.placeholder(parameter)
         ),
         SupportedBackend::Sqlite => format!(
@@ -1585,10 +1576,14 @@ pub enum ArtifactEventDeliveryError {
     IdempotencyConflict,
     #[error("artifact event-delivery installation is not active for the tenant")]
     InstallationUnavailable,
+    #[error("artifact event-delivery installation identity is inconsistent")]
+    InvalidInstallationIdentity,
     #[error("artifact event-delivery binding is not admitted for the source event")]
     BindingUnavailable,
     #[error("artifact event subscription state is invalid")]
     SubscriptionStateInvalid,
+    #[error("artifact event subscription candidate limit exceeded")]
+    SubscriptionCandidateLimitExceeded,
     #[error("artifact event-delivery claim was lost or expired")]
     ClaimLost,
     #[error("artifact event-delivery storage failed: {0}")]
@@ -1599,7 +1594,51 @@ pub enum ArtifactEventDeliveryError {
 mod contract_projection_tests {
     use super::*;
     use rustok_events::InventoryReservationEvent;
-    use sea_orm::Database;
+    use sea_orm::{Database, DbBackend};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TestTenants(Vec<Uuid>);
+
+    #[async_trait]
+    impl crate::ArtifactDeliveryTenantSource for TestTenants {
+        async fn tenant_ids(&self) -> Result<Vec<Uuid>, crate::ArtifactDeliveryTenantSourceError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct FailingTenants;
+
+    #[async_trait]
+    impl crate::ArtifactDeliveryTenantSource for FailingTenants {
+        async fn tenant_ids(&self) -> Result<Vec<Uuid>, crate::ArtifactDeliveryTenantSourceError> {
+            Err(crate::ArtifactDeliveryTenantSourceError::Store("tenant enumeration failed".into()))
+        }
+    }
+
+    struct ClaimOnlyExecutor;
+
+    #[async_trait]
+    impl crate::ArtifactBindingExecutor for ClaimOnlyExecutor {
+        fn supports_payload_kind(&self, _: crate::ArtifactPayloadKind) -> bool { true }
+        async fn dispatch_binding(&self, _: ArtifactBindingDispatch<'_>) -> Result<Value, crate::ArtifactBindingDispatchError> {
+            panic!("claim-only adapter test must not dispatch guest work")
+        }
+    }
+
+    struct CountingTransport(AtomicUsize);
+    #[async_trait]
+    impl EventTransport for CountingTransport {
+        async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        async fn publish_contract(&self, _envelope: ContractEventEnvelope) -> rustok_core::Result<()> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn reliability_level(&self) -> ReliabilityLevel { ReliabilityLevel::InMemory }
+        fn as_any(&self) -> &dyn Any { self }
+    }
 
     fn envelope() -> ContractEventEnvelope {
         ContractEventEnvelope::new(
@@ -1611,6 +1650,137 @@ mod contract_projection_tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn postgres_event_lease_and_retry_use_wall_clock() {
+        assert!(lease_expression(SupportedBackend::Postgres, 1).contains("clock_timestamp()"));
+        assert!(retry_available_at_expression(SupportedBackend::Postgres, 1, 2).contains("clock_timestamp()"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL"]
+    async fn postgres_event_lease_is_live_after_transaction_wait() {
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL").expect("test database URL");
+        let db = Database::connect(url).await.unwrap();
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared("SELECT pg_sleep(1.2)").await.unwrap();
+        let row = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            format!("SELECT {} > clock_timestamp() AS live", lease_expression(SupportedBackend::Postgres, 1)),
+            vec![1_i64.into()])).await.unwrap().unwrap();
+        assert!(row.try_get::<bool>("", "live").unwrap());
+        let row = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            format!("SELECT {} > clock_timestamp() AS delayed FROM (SELECT 1 AS attempt) candidate", retry_available_at_expression(SupportedBackend::Postgres, 1, 2)),
+            vec![1_i64.into(), 1_i64.into()])).await.unwrap().unwrap();
+        assert!(row.try_get::<bool>("", "delayed").unwrap());
+        tx.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delivery_adapters_rotate_and_isolate_poisoned_tenants() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use crate::{ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryRequest,
+            ArtifactScheduleDeliveryWorkAdapter, SeaOrmArtifactScheduleDeliveryQueue,
+            ARTIFACT_SCHEDULE_DELIVERY_WORKER};
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let fixture = ProjectionFixture::new().await;
+        fixture.set_active(fixture.platform_duplicate, false).await;
+        fixture.set_active(fixture.tenant_winner, false).await;
+        for sql in [
+            "CREATE TABLE module_artifact_work_generations (installation_id TEXT, retired INTEGER)",
+            "CREATE TABLE module_artifact_security_states (module_slug TEXT, module_version TEXT, payload_digest TEXT, status TEXT)",
+            "CREATE TABLE module_artifact_event_deliveries (delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, source_event_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL, payload JSON NOT NULL, source_digest TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, available_at TEXT NOT NULL, created_at TEXT NOT NULL, claimed_by TEXT, claimed_until TEXT, claim_token TEXT, last_error_code TEXT, completed_at TEXT, dead_lettered_at TEXT, UNIQUE (source_event_id, installation_id, binding_id))",
+            "CREATE TABLE module_artifact_schedule_deliveries (delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, schedule_digest TEXT NOT NULL, scheduled_for TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, available_at TEXT NOT NULL, created_at TEXT NOT NULL, claimed_by TEXT, claimed_until TEXT, claim_token TEXT, last_error_code TEXT, completed_at TEXT, cancelled_at TEXT, dead_lettered_at TEXT, UNIQUE (tenant_id, installation_id, binding_id, scheduled_for))",
+            "CREATE TABLE module_artifact_schedule_cursors (tenant_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, schedule_digest TEXT NOT NULL, materialized_through TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, installation_id, binding_id))",
+        ] { fixture.db.execute_unprepared(sql).await.unwrap(); }
+        let event_queue = SeaOrmArtifactEventDeliveryQueue::new(fixture.db.clone(), ArtifactEventDeliveryConfig::default()).unwrap();
+        let schedule_queue = SeaOrmArtifactScheduleDeliveryQueue::new(fixture.db.clone(), ArtifactScheduleDeliveryConfig::default()).unwrap();
+        let poison = Uuid::from_u128(1);
+        let healthy_a = Uuid::from_u128(2);
+        let healthy_b = Uuid::from_u128(3);
+        for (tenant, installation, count) in [(poison, fixture.other, 1), (healthy_a, fixture.platform, 2), (healthy_b, fixture.platform, 2)] {
+            for index in 0..count {
+                event_queue.enqueue(ArtifactEventDeliveryRequest {
+                    tenant_id: tenant, installation_id: installation, binding_id: "event_handler".into(),
+                    source: ArtifactEventDeliverySource { event_id: Uuid::new_v4(), event_type: "sample.event".into(), schema_version: 1, payload: serde_json::json!({}) },
+                }).await.unwrap();
+                schedule_queue.enqueue(ArtifactScheduleDeliveryRequest {
+                    tenant_id: tenant, installation_id: installation, binding_id: "schedule_handler".into(),
+                    scheduled_for: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc) + chrono::Duration::minutes(10 * index),
+                }).await.unwrap();
+            }
+        }
+        // Leave an already-enqueued poison item: a missing admission must
+        // fail only its tenant, without turning that item terminal.
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "DELETE FROM module_artifact_admissions WHERE installation_id = ?1", vec![fixture.other.to_string().into()])).await.unwrap();
+        let tenants: SharedArtifactDeliveryTenantSource = Arc::new(TestTenants(vec![healthy_b, healthy_a, poison, healthy_a]));
+        let executor: SharedArtifactBindingExecutor = Arc::new(ClaimOnlyExecutor);
+        let event = ArtifactEventDeliveryWorkAdapter::new(event_queue, executor.clone(), tenants.clone(), "worker".into()).unwrap();
+        let schedule = ArtifactScheduleDeliveryWorkAdapter::new(schedule_queue.clone(), executor, tenants, "worker".into()).unwrap();
+
+        async fn exercise(adapter: &dyn ModuleWorkSource, clone: &dyn ModuleWorkSource, worker: &str, a: Uuid, b: Uuid) {
+            // Rotation is over sorted/deduplicated tenants. Clones share the
+            // cursor, so a continuously busy tenant cannot win every poll.
+            for (source, expected) in [(adapter, a), (clone, a), (adapter, b), (clone, b)] {
+                let item = source.claim(worker).await.unwrap().expect("healthy tenant work");
+                assert_eq!(item.tenant_id, expected);
+                source.complete(&item, ModuleWorkOutcome::Completed).await.unwrap();
+            }
+            let error = adapter.claim(worker).await.expect_err("poison must remain observable when no work is available");
+            assert!(matches!(error, ModuleWorkError::Source(_)));
+        }
+        let event_clone = event.clone();
+        exercise(&event, &event_clone, ARTIFACT_EVENT_DELIVERY_WORKER, healthy_a, healthy_b).await;
+        let schedule_clone = schedule.clone();
+        exercise(&schedule, &schedule_clone, ARTIFACT_SCHEDULE_DELIVERY_WORKER, healthy_a, healthy_b).await;
+
+        // Independently exercise materializer isolation, not just the queue's
+        // missing-admission error. Poison cursor initialization for one
+        // tenant while another still has a valid durable slot.
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "DELETE FROM module_artifact_schedule_cursors WHERE tenant_id = ?1", vec![poison.to_string().into()])).await.unwrap();
+        fixture.db.execute_unprepared(&format!(
+            "CREATE TRIGGER fail_poison_cursor BEFORE INSERT ON module_artifact_schedule_cursors WHEN NEW.tenant_id = '{poison}' BEGIN SELECT RAISE(ABORT, 'poison materializer'); END"
+        )).await.unwrap();
+        schedule_queue.enqueue(ArtifactScheduleDeliveryRequest {
+            tenant_id: healthy_a, installation_id: fixture.platform, binding_id: "schedule_handler".into(),
+            scheduled_for: chrono::DateTime::parse_from_rfc3339("2020-01-02T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+        }).await.unwrap();
+        let item = schedule.claim(ARTIFACT_SCHEDULE_DELIVERY_WORKER).await.unwrap().unwrap();
+        assert_eq!(item.tenant_id, healthy_a);
+        schedule.complete(&item, ModuleWorkOutcome::Completed).await.unwrap();
+        let failure = schedule.claim(ARTIFACT_SCHEDULE_DELIVERY_WORKER).await.expect_err("materialization failure must remain observable");
+        assert!(failure.to_string().contains("poison materializer"));
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            let row = fixture.db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                format!("SELECT status, attempt FROM {table} WHERE tenant_id = ?1"), vec![poison.to_string().into()])).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<String>("", "status").unwrap(), "pending");
+            assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn delivery_adapters_reject_invalid_or_unavailable_tenant_enumeration() {
+        use crate::{ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryWorkAdapter,
+            SeaOrmArtifactScheduleDeliveryQueue, ARTIFACT_SCHEDULE_DELIVERY_WORKER};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let executor: SharedArtifactBindingExecutor = Arc::new(ClaimOnlyExecutor);
+        for tenants in [Arc::new(TestTenants(vec![Uuid::nil()])) as SharedArtifactDeliveryTenantSource,
+            Arc::new(FailingTenants) as SharedArtifactDeliveryTenantSource] {
+            let event = ArtifactEventDeliveryWorkAdapter::new(
+                SeaOrmArtifactEventDeliveryQueue::new(db.clone(), ArtifactEventDeliveryConfig::default()).unwrap(),
+                executor.clone(), tenants.clone(), "worker".into()).unwrap();
+            let schedule = ArtifactScheduleDeliveryWorkAdapter::new(
+                SeaOrmArtifactScheduleDeliveryQueue::new(db.clone(), ArtifactScheduleDeliveryConfig::default()).unwrap(),
+                executor.clone(), tenants, "worker".into()).unwrap();
+            assert!(matches!(event.claim(ARTIFACT_EVENT_DELIVERY_WORKER).await, Err(ModuleWorkError::Source(_))));
+            assert!(matches!(schedule.claim(ARTIFACT_SCHEDULE_DELIVERY_WORKER).await, Err(ModuleWorkError::Source(_))));
+            // Irrelevant worker names must not enumerate tenants at all.
+            assert!(event.claim("other").await.unwrap().is_none());
+            assert!(schedule.claim("other").await.unwrap().is_none());
+        }
     }
 
     #[tokio::test]
@@ -1628,6 +1798,498 @@ mod contract_projection_tests {
             projector.project_contract(&invalid).await,
             Err(ArtifactEventDeliveryError::InvalidSourceEvent)
         ));
+    }
+
+    #[tokio::test]
+    async fn event_projection_rejects_incomplete_selection_and_recovers() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use sea_orm::ConnectionTrait;
+        use std::collections::BTreeSet;
+
+        async fn ids(
+            projector: &SeaOrmArtifactEventSubscriptionProjector,
+            tenant: Uuid,
+        ) -> BTreeSet<Uuid> {
+            projector
+                .effective_subscriptions(tenant, "sample.event")
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|subscription| subscription.installation_id)
+                .collect()
+        }
+
+        let fixture = ProjectionFixture::new().await;
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(),
+            ArtifactEventDeliveryConfig::default(),
+        )
+        .unwrap();
+        // A corrupt tenant winner cannot become an empty successful projection.
+        assert!(matches!(projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.repair_tenant().await;
+        assert_eq!(ids(&projector, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+        fixture.set_active(fixture.tenant_duplicate, true).await;
+        assert!(matches!(projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.set_active(fixture.tenant_winner, false).await;
+        fixture.set_active(fixture.tenant_duplicate, false).await;
+        assert!(matches!(projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.set_active(fixture.platform_duplicate, false).await;
+        assert_eq!(ids(&projector, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+        fixture.set_active(fixture.tenant_winner, true).await;
+        fixture.set_tenant_enabled(false).await;
+        assert_eq!(ids(&projector, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+        fixture.set_tenant_enabled(true).await;
+        assert_eq!(ids(&projector, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.tenant_winner]));
+        fixture.db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO module_artifact_uninstall_operations VALUES (?1)",
+            vec![fixture.tenant_winner.to_string().into()],
+        )).await.unwrap();
+        assert_eq!(ids(&projector, fixture.tenant).await, BTreeSet::from([fixture.other, fixture.platform]));
+    }
+
+    #[tokio::test]
+    async fn event_projection_rejects_mismatched_release_identity_before_forwarding() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use rustok_events::DomainEvent;
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let fixture = ProjectionFixture::new().await;
+        fixture.repair_tenant().await;
+        let downstream = Arc::new(CountingTransport(AtomicUsize::new(0)));
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        let transport = ArtifactEventProjectionTransport::new(projector, downstream.clone());
+        let root = ControlPlaneInfrastructure::default().event_envelope(
+            Some(fixture.tenant), None, DomainEvent::TenantUpdated { tenant_id: fixture.tenant },
+        );
+        let good_digest = format!("sha256:{}", "a".repeat(64));
+        let bad_digest = format!("sha256:{}", "b".repeat(64));
+        for (table, column, bad, good) in [
+            ("module_artifact_installations", "version", "2.0.0".to_string(), "1.0.0".to_string()),
+            ("module_artifact_installations", "payload_digest", bad_digest.clone(), good_digest.clone()),
+            ("module_artifact_admissions", "payload_digest", bad_digest.clone(), good_digest.clone()),
+        ] {
+            let update = format!("UPDATE {table} SET {column} = ?1 WHERE installation_id = ?2");
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update.clone(),
+                vec![bad.into(), fixture.tenant_winner.to_string().into()],
+            )).await.unwrap();
+            // This event has no matching binding. Identity validation still
+            // precedes filtering, so it cannot silently miss a subscription.
+            assert!(transport.publish(root.clone()).await.is_err());
+            assert_eq!(downstream.0.load(Ordering::SeqCst), 0);
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update,
+                vec![good.into(), fixture.tenant_winner.to_string().into()],
+            )).await.unwrap();
+        }
+        transport.publish(root).await.unwrap();
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn event_delivery_replay_never_acknowledges_another_tenant() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let fixture = ProjectionFixture::new().await;
+        // Add the delivery-loader dependencies not needed for selection.
+        for sql in [
+            "CREATE TABLE module_artifact_work_generations (installation_id TEXT, retired INTEGER)",
+            "CREATE TABLE module_artifact_security_states (module_slug TEXT, module_version TEXT, payload_digest TEXT, status TEXT)",
+            "CREATE TABLE module_artifact_event_deliveries (delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, source_event_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL, payload JSON NOT NULL, source_digest TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, available_at TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (source_event_id, installation_id, binding_id))",
+        ] {
+            fixture.db.execute_unprepared(sql).await.unwrap();
+        }
+        fixture.set_active(fixture.platform_duplicate, false).await;
+        fixture.set_active(fixture.tenant_winner, false).await;
+        fixture.set_active(fixture.other, false).await;
+        let queue = SeaOrmArtifactEventDeliveryQueue::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        let source = ArtifactEventDeliverySource {
+            event_id: Uuid::new_v4(), event_type: "sample.event".into(),
+            schema_version: 1, payload: serde_json::json!({"value": 1}),
+        };
+        let request = ArtifactEventDeliveryRequest {
+            tenant_id: fixture.tenant, installation_id: fixture.platform,
+            binding_id: "event_handler".into(), source: source.clone(),
+        };
+        let first = queue.enqueue(request.clone()).await.unwrap();
+        assert!(first.created);
+        let replay = queue.enqueue(request.clone()).await.unwrap();
+        assert!(!replay.created);
+        assert_eq!(first.delivery_id, replay.delivery_id);
+        let mut changed = request.clone();
+        changed.source.payload = serde_json::json!({"value": 2});
+        assert!(matches!(queue.enqueue(changed).await, Err(ArtifactEventDeliveryError::IdempotencyConflict)));
+        let other_tenant = Uuid::new_v4();
+        let mut foreign = request;
+        foreign.tenant_id = other_tenant;
+        assert!(queue.enqueue(foreign).await.is_err());
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        assert!(projector.project_source(other_tenant, source).await.is_err(),
+            "a foreign delivery must not make the relay acknowledge this tenant's event");
+        let count: i64 = fixture.db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite, "SELECT COUNT(*) AS count FROM module_artifact_event_deliveries",
+        )).await.unwrap().unwrap().try_get("", "count").unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn delivery_queues_reject_inconsistent_release_identity_without_losing_work() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use crate::{
+            ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryOutcome,
+            ArtifactScheduleDeliveryRequest, SeaOrmArtifactScheduleDeliveryQueue,
+        };
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let fixture = ProjectionFixture::new().await;
+        for sql in [
+            "CREATE TABLE module_artifact_work_generations (installation_id TEXT, retired INTEGER)",
+            "CREATE TABLE module_artifact_security_states (module_slug TEXT, module_version TEXT, payload_digest TEXT, status TEXT)",
+            "CREATE TABLE module_artifact_event_deliveries (delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, source_event_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, event_type TEXT NOT NULL, schema_version INTEGER NOT NULL, payload JSON NOT NULL, source_digest TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, available_at TEXT NOT NULL, created_at TEXT NOT NULL, claimed_by TEXT, claimed_until TEXT, claim_token TEXT, last_error_code TEXT, completed_at TEXT, dead_lettered_at TEXT, UNIQUE (source_event_id, installation_id, binding_id))",
+            "CREATE TABLE module_artifact_schedule_deliveries (delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, schedule_digest TEXT NOT NULL, scheduled_for TEXT NOT NULL, attempt INTEGER NOT NULL, status TEXT NOT NULL, available_at TEXT NOT NULL, created_at TEXT NOT NULL, claimed_by TEXT, claimed_until TEXT, claim_token TEXT, last_error_code TEXT, completed_at TEXT, cancelled_at TEXT, dead_lettered_at TEXT, UNIQUE (tenant_id, installation_id, binding_id, scheduled_for))",
+        ] {
+            fixture.db.execute_unprepared(sql).await.unwrap();
+        }
+        let event_queue = SeaOrmArtifactEventDeliveryQueue::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        let schedule_queue = SeaOrmArtifactScheduleDeliveryQueue::new(
+            fixture.db.clone(), ArtifactScheduleDeliveryConfig::default(),
+        ).unwrap();
+        let event = ArtifactEventDeliveryRequest {
+            tenant_id: fixture.tenant, installation_id: fixture.platform,
+            binding_id: "event_handler".into(), source: ArtifactEventDeliverySource {
+                event_id: Uuid::new_v4(), event_type: "sample.event".into(),
+                schema_version: 1, payload: serde_json::json!({"value": 1}),
+            },
+        };
+        let schedule = ArtifactScheduleDeliveryRequest {
+            tenant_id: fixture.tenant, installation_id: fixture.platform,
+            binding_id: "schedule_handler".into(),
+            scheduled_for: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+                .unwrap().with_timezone(&chrono::Utc),
+        };
+        event_queue.enqueue(event.clone()).await.unwrap();
+        schedule_queue.enqueue(schedule.clone()).await.unwrap();
+        let good_digest = format!("sha256:{}", "a".repeat(64));
+        let bad_digest = format!("sha256:{}", "b".repeat(64));
+        // The inconsistent version happens to name a quarantined release.
+        // Its security status must not terminalize this different delivery.
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_security_states VALUES (?1, ?2, ?3, 'quarantined')",
+            vec!["sample_module".into(), "2.0.0".into(), good_digest.clone().into()],
+        )).await.unwrap();
+        let descriptor: String = fixture.db.query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT descriptor FROM module_artifact_installations WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()],
+        )).await.unwrap().unwrap().try_get("", "descriptor").unwrap();
+        for (table, column, bad, good) in [
+            ("module_artifact_installations", "descriptor", "invalid JSON".to_string(), descriptor),
+            ("module_artifact_installations", "slug", "wrong_module".to_string(), "sample_module".to_string()),
+            ("module_artifact_installations", "version", "2.0.0".to_string(), "1.0.0".to_string()),
+            ("module_artifact_installations", "payload_digest", bad_digest.clone(), good_digest.clone()),
+            ("module_artifact_admissions", "payload_digest", bad_digest.clone(), good_digest.clone()),
+        ] {
+            let update = format!("UPDATE {table} SET {column} = ?1 WHERE installation_id = ?2");
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update.clone(), vec![bad.into(), fixture.platform.to_string().into()],
+            )).await.unwrap();
+            assert!(matches!(event_queue.enqueue(event.clone()).await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+            assert!(matches!(schedule_queue.enqueue(schedule.clone()).await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+            assert!(matches!(event_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+            assert!(matches!(schedule_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+            for deliveries in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+                let row = fixture.db.query_one_raw(Statement::from_string(
+                    DbBackend::Sqlite, format!("SELECT status, attempt FROM {deliveries}"),
+                )).await.unwrap().unwrap();
+                assert_eq!(row.try_get::<String>("", "status").unwrap(), "pending");
+                assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 0);
+            }
+            fixture.db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite, update, vec![good.into(), fixture.platform.to_string().into()],
+            )).await.unwrap();
+        }
+        // An absent admission is not an inactive installation: both queues
+        // must preserve the pending work until its identity can be repaired.
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "DELETE FROM module_artifact_admissions WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()])).await.unwrap();
+        assert!(matches!(event_queue.enqueue(event.clone()).await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(schedule_queue.enqueue(schedule.clone()).await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(event_queue.claim_next(fxture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(schedule_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            let row = fixture.db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+                format!("SELECT status, attempt FROM {table}"))).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<String>("", "status").unwrap(), "pending");
+            assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 0);
+        }
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO module_artifact_admissions (installation_id, status, payload_digest) VALUES (?1, 'active', ?2)",
+            vec![fixture.platform.to_string().into(), good_digest.clone().into()])).await.unwrap();
+        // Missing installation identity is also repairable corruption, not
+        // evidence that the schedule may be terminally cancelled.
+        fixture.db.execute_unprepared("CREATE TABLE fixture_saved_installation AS SELECT * FROM module_artifact_installations WHERE 0").await.unwrap();
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO fixture_saved_installation SELECT * FROM module_artifact_installations WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()])).await.unwrap();
+        fixture.db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "DELETE FROM module_artifact_installations WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()])).await.unwrap();
+        assert!(matches!(event_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(schedule_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            let row = fixture.db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+                format!("SELECT status, attempt FROM {table}"))).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<String>("", "status").unwrap(), "pending");
+            assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 0);
+        }
+        fixture.db.execute_unprepared("INSERT INTO module_artifact_installations SELECT * FROM fixture_saved_installation").await.unwrap();
+        // An uninstall marker also cannot turn a corrupt identity into a
+        // terminal queue decision.
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_uninstall_operations VALUES (?1)",
+            vec![fixture.platform.to_string().into()],
+        )).await.unwrap();
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET version = '2.0.0' WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()],
+        )).await.unwrap();
+        assert!(matches!(event_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(schedule_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            let row = fixture.db.query_one_raw(Statement::from_string(
+                DbBackend::Sqlite, format!("SELECT status, attempt FROM {table}"),
+            )).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<String>("", "status").unwrap(), "pending");
+            assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 0);
+        }
+        fixture.db.execute_unprepared("DELETE FROM module_artifact_uninstall_operations").await.unwrap();
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_installations SET version = '1.0.0' WHERE installation_id = ?1",
+            vec![fixture.platform.to_string().into()],
+        )).await.unwrap();
+        let old_event = event_queue.claim_next(fixture.tenant, "worker").await.unwrap().unwrap();
+        let old_schedule = schedule_queue.claim_next(fixture.tenant, "worker").await.unwrap().unwrap();
+        event_queue.complete(fixture.tenant, "worker", ArtifactEventDeliveryCompletion {
+            delivery_id: old_event.delivery_id, attempt: old_event.attempt, claim_token: old_event.claim_token,
+            outcome: ArtifactEventDeliveryOutcome::Held { error_code: "held".into() },
+        }).await.unwrap();
+        schedule_queue.complete(fixture.tenant, "worker", old_schedule.delivery_id, old_schedule.attempt,
+            old_schedule.claim_token, ArtifactScheduleDeliveryOutcome::Held { error_code: "held".into() }).await.unwrap();
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            fixture.db.execute_unprepared(&format!("UPDATE {table} SET available_at = '2000-01-01T00:00:00.000+00:00'")).await.unwrap();
+        }
+        let event_item = event_queue.claim_next(fixture.tenant, "worker").await.unwrap().unwrap();
+        let schedule_item = schedule_queue.claim_next(fixture.tenant, "worker").await.unwrap().unwrap();
+        assert_eq!(old_event.attempt, event_item.attempt);
+        assert_eq!(old_schedule.attempt, schedule_item.attempt);
+        assert_ne!(old_event.claim_token, event_item.claim_token);
+        assert_ne!(old_schedule.claim_token, schedule_item.claim_token);
+        for outcome in [
+            ArtifactEventDeliveryOutcome::Succeeded,
+            ArtifactEventDeliveryOutcome::DeadLetter { error_code: "failed".into() },
+            ArtifactEventDeliveryOutcome::Retryable { error_code: "failed".into() },
+            ArtifactEventDeliveryOutcome::Held { error_code: "held".into() },
+        ] {
+            assert!(matches!(event_queue.complete(fixture.tenant, "worker", ArtifactEventDeliveryCompletion {
+                delivery_id: old_event.delivery_id, attempt: old_event.attempt, claim_token: old_event.claim_token, outcome,
+            }).await, Err(ArtifactEventDeliveryError::ClaimLost)));
+        }
+        for outcome in [
+            ArtifactScheduleDeliveryOutcome::Succeeded,
+            ArtifactScheduleDeliveryOutcome::Cancelled { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::DeadLetter { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::Retryable { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::Held { error_code: "held".into() },
+        ] {
+            assert!(matches!(schedule_queue.complete(fixture.tenant, "worker", old_schedule.delivery_id,
+                old_schedule.attempt, old_schedule.claim_token, outcome).await, Err(ArtifactScheduleDeliveryError::ClaimLost)));
+        }
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            fixture.db.execute_unprepared(&format!("UPDATE {table} SET claimed_until = '2000-01-01T00:00:00.000+00:00'")).await.unwrap();
+        }
+        for outcome in [
+            ArtifactEventDeliveryOutcome::Succeeded,
+            ArtifactEventDeliveryOutcome::DeadLetter { error_code: "failed".into() },
+            ArtifactEventDeliveryOutcome::Retryable { error_code: "failed".into() },
+            ArtifactEventDeliveryOutcome::Held { error_code: "held".into() },
+        ] {
+            assert!(matches!(event_queue.complete(fixture.tenant, "worker", ArtifactEventDeliveryCompletion {
+                delivery_id: event_item.delivery_id, attempt: event_item.attempt, claim_token: event_item.claim_token, outcome,
+            }).await, Err(ArtifactEventDeliveryError::ClaimLost)));
+        }
+        for outcome in [
+            ArtifactScheduleDeliveryOutcome::Succeeded,
+            ArtifactScheduleDeliveryOutcome::Cancelled { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::DeadLetter { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::Retryable { error_code: "failed".into() },
+            ArtifactScheduleDeliveryOutcome::Held { error_code: "held".into() },
+        ] {
+            assert!(matches!(schedule_queue.complete(fixture.tenant, "worker", schedule_item.delivery_id,
+                schedule_item.attempt, schedule_item.claim_token, outcome).await, Err(ArtifactScheduleDeliveryError::ClaimLost)));
+        }
+        for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
+            let row = fixture.db.query_one_raw(Statement::from_string(
+                DbBackend::Sqlite, format!("SELECT status, attempt FROM {table}"),
+            )).await.unwrap().unwrap();
+            assert_eq!(row.try_get::<String>("", "status").unwrap(), "running");
+            assert_eq!(row.try_get::<i64>("", "attempt").unwrap(), 1);
+            fixture.db.execute_unprepared(&format!("UPDATE {table} SET claimed_until = '2999-01-01T00:00:00.000+00:00'")).await.unwrap();
+        }
+        event_queue.complete(fixture.tenant, "worker", ArtifactEventDeliveryCompletion {
+            delivery_id: event_item.delivery_id, attempt: event_item.attempt, claim_token: event_item.claim_token,
+            outcome: ArtifactEventDeliveryOutcome::Succeeded,
+        }).await.unwrap();
+        schedule_queue.complete(fixture.tenant, "worker", schedule_item.delivery_id,
+            schedule_item.attempt, schedule_item.claim_token, ArtifactScheduleDeliveryOutcome::Succeeded).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn event_projection_rejects_limit_plus_one_before_publishing() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use rustok_events::DomainEvent;
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let fixture = ProjectionFixture::new().await;
+        fixture.repair_tenant().await;
+        // Four fixture installations are eligible. At the limit the duplicate
+        // slug is an invariant error; one more row must report the limit.
+        fixture.add_limit_candidates(MAX_EVENT_CANDIDATES_PER_PROJECTION - 4).await;
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        assert!(matches!(projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.set_active(fixture.tenant_duplicate, true).await;
+        assert!(matches!(projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionCandidateLimitExceeded)));
+
+        let downstream = Arc::new(CountingTransport(AtomicUsize::new(0)));
+        let transport = ArtifactEventProjectionTransport::new(projector, downstream.clone());
+        let root = ControlPlaneInfrastructure::default().event_envelope(
+            Some(fixture.tenant), None, DomainEvent::TenantUpdated { tenant_id: fixture.tenant },
+        );
+        assert!(transport.publish(root.clone()).await.is_err());
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 0);
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_tenant_lifecycle VALUES (?1, ?2, 0)",
+            vec![fixture.tenant_duplicate.to_string().into(), fixture.tenant.to_string().into()],
+        )).await.unwrap();
+        assert!(matches!(transport.projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM module_artifact_tenant_lifecycle WHERE installation_id = ?1",
+            vec![fixture.tenant_duplicate.to_string().into()],
+        )).await.unwrap();
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_uninstall_operations VALUES (?1)",
+            vec![fixture.tenant_duplicate.to_string().into()],
+        )).await.unwrap();
+        assert!(matches!(transport.projector.effective_subscriptions(fixture.tenant, "sample.event").await,
+            Err(ArtifactEventDeliveryError::SubscriptionStateInvalid)));
+        fixture.set_active(fixture.tenant_duplicate, false).await;
+        fixture.db.execute_raw(Statement::from_string(DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id LIKE 'limit-%'".to_string(),
+        )).await.unwrap();
+        transport.publish(root).await.unwrap();
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn incomplete_projection_blocks_both_transport_paths_until_repaired() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use rustok_events::DomainEvent;
+
+        let fixture = ProjectionFixture::new().await;
+        let downstream = Arc::new(CountingTransport(AtomicUsize::new(0)));
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        let transport = ArtifactEventProjectionTransport::new(projector, downstream.clone());
+        let root = ControlPlaneInfrastructure::default().event_envelope(Some(fixture.tenant), None, DomainEvent::TenantUpdated { tenant_id: fixture.tenant });
+        let contract = ContractEventEnvelope::new(fixture.tenant, None, InventoryReservationEvent::Changed {
+            product_id: Uuid::new_v4(), variant_id: Uuid::new_v4(),
+        }).unwrap();
+
+        assert!(transport.publish(root.clone()).await.is_err());
+        assert!(transport.publish_contract(contract.clone()).await.is_err());
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 0);
+        fixture.repair_tenant().await;
+        // Neither event type matches the fixture bindings, so no queue tables
+        // are needed to verify forwarding after repair.
+        transport.publish(root.clone()).await.unwrap();
+        transport.publish_contract(contract.clone()).await.unwrap();
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 2);
+        fixture.set_active(fixture.tenant_duplicate, true).await;
+        assert!(transport.publish(root).await.is_err());
+        assert!(transport.publish_contract(contract).await.is_err());
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn relay_dead_letters_incomplete_projection_instead_of_dispatching() {
+        use crate::installation_selection::test_support::ProjectionFixture;
+        use rustok_events::DomainEvent;
+        use rustok_outbox::{entity, OutboxRelay, RelayConfig, SysEventsMigration};
+        use sea_orm::{EntityTrait, Set};
+        use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+        let fixture = ProjectionFixture::new().await;
+        SysEventsMigration.up(&SchemaManager::new(&fixture.db)).await.unwrap();
+        let root = ControlPlaneInfrastructure::default().event_envelope(Some(fixture.tenant), None, DomainEvent::TenantUpdated { tenant_id: fixture.tenant });
+        let event_id = root.id;
+        entity::Entity::insert(entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set(root.event_type.clone()),
+            schema_version: Set(root.schema_version as i16),
+            payload: Set(serde_json::to_value(root).unwrap()),
+            status: Set(entity::SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(chrono::Utc::now()),
+            dispatched_at: Set(None),
+        }).exec_without_returning(&fixture.db).await.unwrap();
+        let downstream = Arc::new(CountingTransport(AtomicUsize::new(0)));
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            fixture.db.clone(), ArtifactEventDeliveryConfig::default(),
+        ).unwrap();
+        let transport = Arc::new(ArtifactEventProjectionTransport::new(projector, downstream.clone()));
+        let relay = OutboxRelay::new(fixture.db.clone(), transport).with_config(RelayConfig {
+            max_attempts: 1,
+            worker_id: "projection-test".to_string(),
+            ..RelayConfig::default()
+        });
+        assert_eq!(relay.process_pending_once(Some(1)).await.unwrap(), 1);
+        let event = entity::Entity::find_by_id(event_id).one(&fixture.db).await.unwrap().unwrap();
+        assert_eq!(event.status, entity::SysEventStatus::Failed);
+        assert_eq!(event.retry_count, 1);
+        assert!(event.last_error.as_deref().is_some_and(|message| message.contains("artifact event subscription state is invalid")));
+        assert!(event.dispatched_at.is_none());
+        assert_eq!(downstream.0.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

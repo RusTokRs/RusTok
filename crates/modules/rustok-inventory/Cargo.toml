@@ -9,6 +9,9 @@ description = "Inventory domain module extracted from rustok-commerce"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

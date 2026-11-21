@@ -1,3 +1,4 @@
+use super::detail::json_editor::parse_scalar_input_value;
 use super::module_card::ModuleCard;
 use super::module_detail_panel::{ModuleDetailPanel, ModuleDetailPanelInput};
 use super::module_update_card::ModuleUpdateCard;
@@ -19,7 +20,7 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
-use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 use rustok_ui_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
@@ -107,11 +108,11 @@ fn pretty_json(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-fn parse_settings_object(value: &str) -> serde_json::Map<String, serde_json::Value> {
-    serde_json::from_str::<serde_json::Value>(value)
-        .ok()
-        .and_then(|json| json.as_object().cloned())
-        .unwrap_or_default()
+fn parse_settings_object(value: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    match serde_json::from_str::<serde_json::Value>(value) {
+        Ok(serde_json::Value::Object(object)) => Ok(object),
+        _ => Err("The stored module settings snapshot is not a valid JSON object. Refresh or repair it before editing.".to_string()),
+    }
 }
 
 fn schema_supports_generated_form(schema: &[ModuleSettingField]) -> bool {
@@ -137,14 +138,8 @@ fn setting_field_draft_value(
             })
             .unwrap_or_default(),
         "number" => value
-            .and_then(serde_json::Value::as_f64)
-            .map(|number| {
-                let mut rendered = number.to_string();
-                if rendered.ends_with(".0") {
-                    rendered.truncate(rendered.len() - 2);
-                }
-                rendered
-            })
+            .and_then(serde_json::Value::as_number)
+            .map(ToString::to_string)
             .unwrap_or_default(),
         "boolean" => value
             .and_then(serde_json::Value::as_bool)
@@ -157,15 +152,51 @@ fn setting_field_draft_value(
     }
 }
 
+fn settings_snapshot_object(
+    tenant_module: Option<&TenantModule>,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    tenant_module
+        .map(|module| parse_settings_object(&module.settings))
+        .transpose()
+        .map(|object| object.unwrap_or_default())
+}
+
+fn validate_settings_snapshot(
+    schema: &[ModuleSettingField],
+    tenant_module: Option<&TenantModule>,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let object = settings_snapshot_object(tenant_module)?;
+    for field in schema {
+        let Some(value) = object.get(&field.key) else {
+            continue;
+        };
+        let representable = match field.value_type.as_str() {
+            "string" => value.is_string(),
+            "integer" => value.is_i64() || value.is_u64(),
+            "number" => value.is_number(),
+            "boolean" => value.is_boolean(),
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            "json" | "any" => true,
+            _ => false,
+        };
+        if !representable || (!field.options.is_empty() && !field.options.contains(value)) {
+            return Err(format!(
+                "Stored setting '{}' cannot be represented by its current form",
+                field.key
+            ));
+        }
+    }
+    Ok(object)
+}
+
 fn build_settings_form_draft(
     schema: &[ModuleSettingField],
     tenant_module: Option<&TenantModule>,
-) -> HashMap<String, String> {
-    let existing = tenant_module
-        .map(|module| parse_settings_object(&module.settings))
-        .unwrap_or_default();
+) -> Result<HashMap<String, String>, String> {
+    let existing = settings_snapshot_object(tenant_module)?;
 
-    schema
+    Ok(schema
         .iter()
         .map(|field| {
             (
@@ -173,46 +204,112 @@ fn build_settings_form_draft(
                 setting_field_draft_value(field, existing.get(&field.key)),
             )
         })
-        .collect()
+        .collect())
+}
+
+type SettingsDraftScope = (String, Option<TenantModule>, Vec<ModuleSettingField>);
+
+#[derive(Clone, Debug, PartialEq)]
+struct StoredSettingsDraft {
+    scope: SettingsDraftScope,
+    raw: String,
+    fields: HashMap<String, String>,
+}
+
+// Save only dirty drafts, and restore them with the original snapshot/schema.
+// A restored stale scope is rejected by the normal conflict check.
+fn switch_cached_settings_draft(
+    drafts: &mut HashMap<String, StoredSettingsDraft>,
+    outgoing: Option<StoredSettingsDraft>,
+    next_slug: Option<&str>,
+) -> Option<StoredSettingsDraft> {
+    if let Some(draft) = outgoing {
+        drafts.insert(draft.scope.0.clone(), draft);
+    }
+    next_slug.and_then(|slug| drafts.remove(slug))
+}
+
+fn clear_submitted_cached_draft(
+    drafts: &mut HashMap<String, StoredSettingsDraft>,
+    submitted: &StoredSettingsDraft,
+) {
+    let slug = &submitted.scope.0;
+    if drafts.get(slug) == Some(submitted) {
+        drafts.remove(slug);
+    }
+}
+
+// Ignore unrelated reactive updates and retain a dirty draft if the same
+// module's owner snapshot or schema changes; the operator must discard it.
+fn should_reset_settings_draft(
+    previous: Option<&SettingsDraftScope>,
+    next: Option<&SettingsDraftScope>,
+    dirty: bool,
+) -> bool {
+    if previous == next {
+        return false;
+    }
+    !dirty || !matches!((previous, next), (Some(old), Some(new)) if old.0 == new.0)
+}
+
+fn accepts_module_detail_response(
+    requested_slug: &str,
+    selected_slug: Option<&str>,
+    requested_sequence: u64,
+    current_sequence: u64,
+    scope_ready: bool,
+    expected_scope_generation: u64,
+    current_scope_generation: u64,
+) -> bool {
+    scope_ready
+        && expected_scope_generation == current_scope_generation
+        && requested_sequence == current_sequence
+        && selected_slug == Some(requested_slug)
+}
+
+fn settings_expected_revision(
+    tenant_module: Option<&TenantModule>,
+    registry_revision: Option<i64>,
+) -> Option<i64> {
+    tenant_module.map(|module| module.revision).or(registry_revision)
 }
 
 fn schema_settings_payload(
     schema: &[ModuleSettingField],
     draft: &HashMap<String, String>,
+    initial_draft: &HashMap<String, String>,
+    mut payload: serde_json::Map<String, serde_json::Value>,
 ) -> Result<String, String> {
-    let mut payload = serde_json::Map::new();
-
     for field in schema {
         let raw = draft.get(&field.key).cloned().unwrap_or_default();
+        if initial_draft.get(&field.key).is_some_and(|initial| initial == &raw) {
+            continue;
+        }
         let trimmed = raw.trim();
 
         let value = match field.value_type.as_str() {
             "string" => serde_json::Value::String(raw),
             "integer" => {
                 if trimmed.is_empty() {
+                    payload.remove(&field.key);
                     continue;
                 }
-                let parsed = trimmed
-                    .parse::<i64>()
-                    .map_err(|_| format!("{} must be an integer", humanize_label(&field.key)))?;
-                serde_json::json!(parsed)
+                parse_scalar_input_value(trimmed, "integer")
+                    .ok_or_else(|| format!("{} must be an integer", humanize_label(&field.key)))?
             }
             "number" => {
                 if trimmed.is_empty() {
+                    payload.remove(&field.key);
                     continue;
                 }
-                let parsed = trimmed
-                    .parse::<f64>()
-                    .map_err(|_| format!("{} must be a number", humanize_label(&field.key)))?;
-                serde_json::Number::from_f64(parsed)
-                    .map(serde_json::Value::Number)
-                    .ok_or_else(|| {
-                        format!("{} must be a finite number", humanize_label(&field.key))
-                    })?
+                parse_scalar_input_value(trimmed, "number").ok_or_else(|| {
+                    format!("{} must be a finite JSON number", humanize_label(&field.key))
+                })?
             }
             "boolean" => serde_json::Value::Bool(trimmed.eq_ignore_ascii_case("true")),
             "object" => {
                 if trimmed.is_empty() {
+                    payload.remove(&field.key);
                     continue;
                 }
                 let parsed = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
@@ -228,6 +325,7 @@ fn schema_settings_payload(
             }
             "array" => {
                 if trimmed.is_empty() {
+                    payload.remove(&field.key);
                     continue;
                 }
                 let parsed = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
@@ -243,6 +341,7 @@ fn schema_settings_payload(
             }
             "json" | "any" => {
                 if trimmed.is_empty() {
+                    payload.remove(&field.key);
                     continue;
                 }
                 serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
@@ -408,6 +507,7 @@ pub fn ModulesList(
     let (selected_module_detail, set_selected_module_detail) =
         signal::<Option<MarketplaceModule>>(None);
     let (module_detail_loading, set_module_detail_loading) = signal(false);
+    let (module_detail_request, set_module_detail_request) = signal(0_u64);
     let (catalog_filter_draft, set_catalog_filter_draft) = signal(CatalogFilters::default());
     let (applied_catalog_filters, set_applied_catalog_filters) = signal(CatalogFilters::default());
     let (catalog_refreshing, set_catalog_refreshing) = signal(false);
@@ -448,6 +548,12 @@ pub fn ModulesList(
     let (module_settings_draft, set_module_settings_draft) = signal("{}".to_string());
     let (module_settings_form_draft, set_module_settings_form_draft) =
         signal(HashMap::<String, String>::new());
+    let (settings_draft_scope, set_settings_draft_scope) =
+        signal::<Option<SettingsDraftScope>>(None);
+    let (settings_draft_dirty, set_settings_draft_dirty) = signal(false);
+    // Component-local only: never persist drafts across auth scopes or reloads.
+    let (settings_draft_cache, set_settings_draft_cache) =
+        signal(HashMap::<String, StoredSettingsDraft>::new());
     let (form_state, set_form_state) = signal(FormState::idle());
     let (success_message, set_success_message) = signal::<Option<String>>(None);
     let (failed_recovery_plans, set_failed_recovery_plans) =
@@ -459,6 +565,12 @@ pub fn ModulesList(
     let (live_subscription_connected, set_live_subscription_connected) = signal(false);
     let token = use_token();
     let tenant = use_tenant();
+    let auth = use_auth();
+    let initial_scope_generation = auth.client_scope().generation;
+    let auth_for_edit = auth.clone();
+    let auth_for_save = auth.clone();
+    let auth_for_reload = auth.clone();
+    let auth_for_detail = auth.clone();
     let navigate = use_navigate();
     let query = use_query_map();
     let enabled_modules = StoredValue::new(use_enabled_modules_context());
@@ -1050,7 +1162,7 @@ pub fn ModulesList(
         let Some(module_slug) = failed_recovery_plans_for_retry
             .get_untracked()
             .into_iter()
-            .find(|plan| plan.operation_id == operation_id)
+            .find(|plan| plan.operation_id == operation_id && plan.retryable)
             .map(|plan| plan.module_slug)
         else {
             set_form_state.set(FormState::with_form_error(
@@ -1112,7 +1224,7 @@ pub fn ModulesList(
         let Some(module_slug) = failed_recovery_plans_for_compensation
             .get_untracked()
             .into_iter()
-            .find(|plan| plan.operation_id == operation_id)
+            .find(|plan| plan.operation_id == operation_id && plan.retryable && plan.issue == "post_hook_failed")
             .map(|plan| plan.module_slug)
         else {
             set_form_state.set(FormState::with_form_error(
@@ -1323,7 +1435,56 @@ pub fn ModulesList(
                 .find(|module| module.module_slug == slug)
         })
     });
+    let selected_settings_schema = Signal::derive(move || {
+        let slug = selected_module_slug.get();
+        selected_module_detail
+            .get()
+            .filter(|module| Some(&module.slug) == slug.as_ref())
+            .map(|module| module.settings_schema)
+            .unwrap_or_default()
+    });
+    let current_settings_scope = Signal::derive(move || {
+        selected_module_slug.get().map(|slug| {
+            (slug, selected_tenant_module.get(), selected_settings_schema.get())
+        })
+    });
+    let settings_draft_current = Signal::derive(move || {
+        let current = current_settings_scope.get();
+        current.is_some() && settings_draft_scope.get() == current
+    });
+    let settings_draft_conflict = Signal::derive(move || {
+        if !settings_draft_dirty.get() || settings_draft_current.get() {
+            return false;
+        }
+        matches!(
+            (settings_draft_scope.get(), current_settings_scope.get()),
+            (Some(previous), Some(current)) if previous.0 == current.0
+        )
+    });
+    let settings_display_schema = Signal::derive(move || {
+        if settings_draft_conflict.get() {
+            settings_draft_scope.get().map(|(_, _, schema)| schema).unwrap_or_default()
+        } else {
+            selected_settings_schema.get()
+        }
+    });
+    let settings_snapshot_invalid = Signal::derive(move || {
+        validate_settings_snapshot(
+            &selected_settings_schema.get(),
+            selected_tenant_module.get().as_ref(),
+        )
+        .is_err()
+    });
     let settings_editable = Signal::derive(move || {
+        let scope = auth_for_edit.client_scope();
+        if !scope.is_ready()
+            || scope.generation != initial_scope_generation
+            || settings_snapshot_invalid.get()
+            || !settings_draft_current.get()
+            || module_detail_loading.get()
+        {
+            return false;
+        }
         let Some(slug) = selected_module_slug.get() else {
             return false;
         };
@@ -1334,56 +1495,114 @@ pub fn ModulesList(
             .find(|module| module.module_slug == slug)
             .is_some_and(|module| module.enabled || module.is_core())
     });
-    let selected_settings_schema = Signal::derive(move || {
-        selected_module_detail
-            .get()
-            .map(|module| module.settings_schema)
-            .unwrap_or_default()
-    });
     let settings_form_supported =
-        Signal::derive(move || schema_supports_generated_form(&selected_settings_schema.get()));
+        Signal::derive(move || schema_supports_generated_form(&settings_display_schema.get()));
     let settings_saving = Signal::derive(move || settings_loading_slug.get().is_some());
     Effect::new(move |_| {
-        let tenant_module = selected_tenant_module.get();
-        let schema = selected_settings_schema.get();
-        set_module_settings_form_draft
-            .set(build_settings_form_draft(&schema, tenant_module.as_ref()));
-        let draft = tenant_module
-            .as_ref()
+        let next = current_settings_scope.get();
+        let previous = settings_draft_scope.get_untracked();
+        let dirty = settings_draft_dirty.get_untracked();
+        if !should_reset_settings_draft(previous.as_ref(), next.as_ref(), dirty) {
+            return;
+        }
+        let switched = previous.as_ref().map(|scope| &scope.0)
+            != next.as_ref().map(|scope| &scope.0);
+        if switched {
+            let outgoing = previous.as_ref().filter(|_| dirty).map(|scope| StoredSettingsDraft {
+                scope: scope.clone(),
+                raw: module_settings_draft.get_untracked(),
+                fields: module_settings_form_draft.get_untracked(),
+            });
+            let mut drafts = settings_draft_cache.get_untracked();
+            let restored = switch_cached_settings_draft(
+                &mut drafts, outgoing, next.as_ref().map(|scope| scope.0.as_str()),
+            );
+            set_settings_draft_cache.set(drafts);
+            if let Some(draft) = restored {
+                set_module_settings_form_draft.set(draft.fields);
+                set_module_settings_draft.set(draft.raw);
+                set_settings_draft_dirty.set(true);
+                set_settings_draft_scope.set(Some(draft.scope));
+                return;
+            }
+        }
+        let draft = next.as_ref()
+            .and_then(|(_, tenant_module, schema)| build_settings_form_draft(schema, tenant_module.as_ref()).ok())
+            .unwrap_or_default();
+        let raw = next.as_ref()
+            .and_then(|(_, tenant_module, _)| tenant_module.as_ref())
             .map(|module| pretty_json(&module.settings))
-            .or_else(|| {
-                if schema.is_empty() {
-                    None
-                } else {
-                    schema_settings_payload(
-                        &schema,
-                        &build_settings_form_draft(&schema, tenant_module.as_ref()),
-                    )
-                    .ok()
-                    .map(|payload| pretty_json(&payload))
-                }
-            })
             .unwrap_or_else(|| "{}".to_string());
-        set_module_settings_draft.set(draft);
+        set_module_settings_form_draft.set(draft);
+        set_module_settings_draft.set(raw);
+        set_settings_draft_dirty.set(false);
+        set_settings_draft_scope.set(next);
     });
     let on_settings_input = Callback::new(move |value: String| {
+        set_settings_draft_dirty.set(true);
         set_module_settings_draft.set(value);
     });
     let on_settings_field_input = Callback::new(move |(key, value): (String, String)| {
+        set_settings_draft_dirty.set(true);
         set_module_settings_form_draft.update(|draft: &mut HashMap<String, String>| {
             draft.insert(key, value);
         });
+    });
+    let on_discard_settings_draft = Callback::new(move |_| {
+        let scope = auth_for_reload.client_scope_untracked();
+        if !scope.is_ready() || scope.generation != initial_scope_generation
+            || settings_saving.get_untracked() || module_detail_loading.get_untracked()
+        {
+            return;
+        }
+        let Some((slug, tenant_module, schema)) = current_settings_scope.get_untracked() else {
+            return;
+        };
+        let draft = build_settings_form_draft(&schema, tenant_module.as_ref()).unwrap_or_default();
+        let raw = tenant_module.as_ref()
+            .map(|module| pretty_json(&module.settings))
+            .unwrap_or_else(|| "{}".to_string());
+        set_module_settings_form_draft.set(draft);
+        set_module_settings_draft.set(raw);
+        set_settings_draft_dirty.set(false);
+        set_settings_draft_scope.set(Some((slug, tenant_module, schema)));
     });
     let on_save_settings = Callback::new(move |_| {
         let Some(slug) = selected_module_slug.get() else {
             return;
         };
-        let Some(expected_revision) = module_list
+        let scope = auth_for_save.client_scope();
+        let tenant_module = selected_tenant_module.get_untracked();
+        let schema = selected_settings_schema.get_untracked();
+        if !scope.is_ready()
+            || scope.generation != initial_scope_generation
+            || !settings_editable.get_untracked()
+            || settings_saving.get_untracked()
+            || module_detail_loading.get_untracked()
+            || settings_draft_scope.get_untracked()
+                != Some((slug.clone(), tenant_module.clone(), schema.clone()))
+        {
+            set_form_state.set(FormState::with_form_error(
+                "The settings snapshot or session changed. Refresh and try again.".to_string(),
+            ));
+            return;
+        }
+        let baseline = match validate_settings_snapshot(&schema, tenant_module.as_ref()) {
+            Ok(object) => object,
+            Err(err) => {
+                set_form_state.set(FormState::with_form_error(err));
+                return;
+            }
+        };
+        // The CAS revision must belong to the settings snapshot, not a newer
+        // independent registry read that could authorize overwriting stale data.
+        let registry_revision = module_list
             .get_untracked()
             .into_iter()
             .find(|module| module.module_slug == slug)
-            .map(|module| module.lifecycle_revision)
-        else {
+            .map(|module| module.lifecycle_revision);
+        let expected_revision = settings_expected_revision(tenant_module.as_ref(), registry_revision);
+        let Some(expected_revision) = expected_revision else {
             set_form_state.set(FormState::with_form_error(
                 "The module lifecycle revision is unavailable. Refresh and try again.".to_string(),
             ));
@@ -1394,9 +1613,20 @@ pub fn ModulesList(
         set_success_message.set(None);
         let token_val = token.get();
         let tenant_val = tenant.get();
-        let schema = selected_settings_schema.get_untracked();
         let settings_payload = if schema_supports_generated_form(&schema) {
-            match schema_settings_payload(&schema, &module_settings_form_draft.get_untracked()) {
+            let initial_draft = match build_settings_form_draft(&schema, tenant_module.as_ref()) {
+                Ok(draft) => draft,
+                Err(err) => {
+                    set_form_state.set(FormState::with_form_error(err));
+                    return;
+                }
+            };
+            match schema_settings_payload(
+                &schema,
+                &module_settings_form_draft.get_untracked(),
+                &initial_draft,
+                baseline,
+            ) {
                 Ok(payload) => payload,
                 Err(err) => {
                     set_form_state.set(FormState::with_form_error(err));
@@ -1406,10 +1636,16 @@ pub fn ModulesList(
         } else {
             module_settings_draft.get_untracked()
         };
+        let submitted_draft = StoredSettingsDraft {
+            scope: (slug.clone(), tenant_module, schema),
+            raw: module_settings_draft.get_untracked(),
+            fields: module_settings_form_draft.get_untracked(),
+        };
+        let auth_for_response = auth_for_save.clone();
         set_settings_loading_slug.set(Some(slug.clone()));
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match transport::update_module_settings(
+            let result = transport::update_module_settings(
                 slug.clone(),
                 settings_payload,
                 expected_revision,
@@ -1417,32 +1653,92 @@ pub fn ModulesList(
                 token_val,
                 tenant_val,
             )
-            .await
-            {
+            .await;
+            let response_scope = auth_for_response.client_scope_untracked();
+            let Some(selected_slug) = selected_module_slug.try_get_untracked() else {
+                return;
+            };
+            if !response_scope.is_ready() || response_scope.generation != initial_scope_generation {
+                return;
+            }
+            let still_selected = selected_slug.as_deref() == Some(slug.as_str());
+            match result {
+                Ok(module) if module.module_slug != slug => {
+                    if still_selected {
+                        set_form_state.set(FormState::with_form_error(
+                            "Settings response did not match the requested module.".to_string(),
+                        ));
+                    } else {
+                        set_form_state.set(FormState::idle());
+                    }
+                }
+                Ok(module) if module.revision < expected_revision
+                    || submitted_draft.scope.1.as_ref().is_some_and(|previous|
+                        previous.revision == module.revision && previous != &module) => {
+                    if still_selected {
+                        set_form_state.set(FormState::with_form_error(
+                            "Settings response conflicts with the submitted snapshot. Refresh the page.".to_string(),
+                        ));
+                    } else {
+                        set_form_state.set(FormState::idle());
+                    }
+                }
                 Ok(module) => {
+                    let active_matches_submission = settings_draft_scope.get_untracked().as_ref()
+                        == Some(&submitted_draft.scope)
+                        && module_settings_draft.get_untracked() == submitted_draft.raw
+                        && module_settings_form_draft.get_untracked() == submitted_draft.fields;
+                    let superseded = tenant_module_list.get_untracked().iter().any(|existing|
+                        existing.module_slug == slug && existing.revision > module.revision
+                    );
+                    if !superseded {
+                        set_settings_draft_cache.update(|drafts| {
+                            clear_submitted_cached_draft(drafts, &submitted_draft);
+                        });
+                        // A selection may change before the switch effect archives
+                        // the active draft. Do not archive a successfully saved one.
+                        if !still_selected && active_matches_submission {
+                            set_settings_draft_dirty.set(false);
+                        }
+                    }
+                    if !superseded && still_selected && active_matches_submission
+                        && current_settings_scope.get_untracked() == Some(submitted_draft.scope.clone())
+                    {
+                        let schema = submitted_draft.scope.2.clone();
+                        let next_draft = build_settings_form_draft(&schema, Some(&module)).unwrap_or_default();
+                        set_module_settings_form_draft.set(next_draft);
+                        set_module_settings_draft.set(pretty_json(&module.settings));
+                        set_settings_draft_dirty.set(false);
+                        set_settings_draft_scope.set(Some((slug.clone(), Some(module.clone()), schema)));
+                    }
                     set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
                         if let Some(existing) = modules
                             .iter_mut()
                             .find(|existing| existing.module_slug == module.module_slug)
                         {
-                            *existing = module.clone();
+                            if module.revision > existing.revision {
+                                *existing = module.clone();
+                            }
                         } else {
                             modules.push(module.clone());
                             modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
                         }
                     });
-                    set_module_settings_draft.set(pretty_json(&module.settings));
                     set_module_list.update(|modules| {
                         if let Some(existing) = modules
                             .iter_mut()
                             .find(|existing| existing.module_slug == module.module_slug)
                         {
-                            existing.lifecycle_revision = module.revision;
+                            existing.lifecycle_revision = existing.lifecycle_revision.max(module.revision);
                         }
                     });
-                    set_success_message.set(Some(format!("Saved tenant settings for {}", slug)));
+                    if still_selected {
+                        set_success_message.set(Some(format!("Saved tenant settings for {}", slug)));
+                    }
+                    set_form_state.set(FormState::idle());
                 }
-                Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
+                Err(err) if still_selected => set_form_state.set(FormState::with_form_error(format!("{}", err))),
+                Err(_) => set_form_state.set(FormState::idle()),
             }
             set_settings_loading_slug.set(None);
         });
@@ -1464,20 +1760,53 @@ pub fn ModulesList(
     let on_close_detail = Callback::new(move |_| {
         navigate_for_close("/modules", Default::default());
     });
-    let on_refresh_detail = Callback::new(move |_| {
-        let Some(slug) = selected_module_slug.get() else {
+    let request_module_detail = Callback::new(move |slug: String| {
+        let scope = auth_for_detail.client_scope_untracked();
+        if !scope.is_ready() || scope.generation != initial_scope_generation {
+            return;
+        }
+        let Some(request) = module_detail_request.get_untracked().checked_add(1) else {
+            set_form_state.set(FormState::with_form_error(
+                "Module detail refresh limit reached. Reload the page.".to_string(),
+            ));
             return;
         };
-        let token_value = token.get();
-        let tenant_value = tenant.get();
+        set_module_detail_request.set(request);
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let response_auth = auth_for_detail.clone();
         set_module_detail_loading.set(true);
         spawn_local(async move {
-            match transport::fetch_marketplace_module(slug, token_value, tenant_value).await {
-                Ok(module) => set_selected_module_detail.set(module),
+            let result = transport::fetch_marketplace_module(slug.clone(), token_value, tenant_value).await;
+            let Some(selected_slug) = selected_module_slug.try_get_untracked() else {
+                return;
+            };
+            let Some(current_request) = module_detail_request.try_get_untracked() else {
+                return;
+            };
+            let scope = response_auth.client_scope_untracked();
+            if !accepts_module_detail_response(
+                &slug, selected_slug.as_deref(), request, current_request,
+                scope.is_ready(), initial_scope_generation, scope.generation,
+            ) {
+                return;
+            }
+            match result {
+                Ok(module) if module.as_ref().is_none_or(|module| module.slug == slug) => {
+                    set_selected_module_detail.set(module);
+                }
+                Ok(_) => set_form_state.set(FormState::with_form_error(
+                    "Module detail response did not match the requested module.".to_string(),
+                )),
                 Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
             }
             set_module_detail_loading.set(false);
         });
+    });
+    let on_refresh_detail = Callback::new(move |_| {
+        if let Some(slug) = selected_module_slug.get_untracked() {
+            request_module_detail.run(slug);
+        }
     });
     let on_apply_filters = Callback::new(move |_| {
         set_form_state.set(FormState::idle());
@@ -1536,6 +1865,7 @@ pub fn ModulesList(
     };
     Effect::new(move |_| {
         if let Some(slug) = selected_module_slug.get()
+            && selected_module_detail.get_untracked().as_ref().is_none_or(|module| module.slug != slug)
             && let Some(module) = marketplace_catalog
                 .get()
                 .into_iter()
@@ -1546,16 +1876,7 @@ pub fn ModulesList(
     });
     Effect::new(move |_| {
         if let Some(slug) = selected_module_slug.get() {
-            let token_value = token.get();
-            let tenant_value = tenant.get();
-            set_module_detail_loading.set(true);
-            spawn_local(async move {
-                match transport::fetch_marketplace_module(slug, token_value, tenant_value).await {
-                    Ok(module) => set_selected_module_detail.set(module),
-                    Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
-                }
-                set_module_detail_loading.set(false);
-            });
+            request_module_detail.run(slug);
         }
     });
     let update_candidates = move || {
@@ -1648,7 +1969,7 @@ pub fn ModulesList(
                             let status_label = humanize_label(&plan.status);
                             let action_label = recovery_plan_action_label(&plan);
                             let retryable = plan.retryable;
-                            let compensatable = plan.issue == "post_hook_failed";
+                            let compensatable = plan.retryable && plan.issue == "post_hook_failed";
                             let correlation_id = plan.correlation_id.clone();
                             let correlation_id_for_badge = correlation_id.clone();
                             view! {
@@ -1657,6 +1978,9 @@ pub fn ModulesList(
                                         <div class="space-y-1">
                                             <p class="text-sm font-medium text-card-foreground">{format!("{} / {}", module_slug, requested_state)}</p>
                                             <p class="text-xs text-muted-foreground">{summary}</p>
+                                            <Show when=move || !retryable>
+                                                <p class="text-xs text-muted-foreground">"Automatic recovery is unavailable until original hook identity and termination of external effects are verified. Lease expiry is not proof of quiescence."</p>
+                                            </Show>
                                             <div class="flex flex-wrap items-center gap-2 text-xs">
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">{status_label}</span>
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">{action_label}</span>
@@ -1923,21 +2247,24 @@ pub fn ModulesList(
                         let detail_panel_input = ModuleDetailPanelInput {
                             admin_surface: admin_surface_value.clone(),
                             selected_slug: slug,
-                            module: selected_module_detail.get(),
+                            module: selected_module_detail.get().filter(|module| module.slug == selected_module_slug.get().unwrap_or_default()),
                             tenant_module: selected_tenant_module.get(),
-                            settings_schema: selected_settings_schema.get(),
+                            settings_schema: settings_display_schema.get(),
                             settings_form_supported,
                             settings_form_draft: Signal::derive(move || {
                                 module_settings_form_draft.get()
                             }),
                             settings_draft: Signal::derive(move || module_settings_draft.get()),
                             settings_editable,
+                            settings_snapshot_invalid,
+                            settings_draft_conflict,
                             settings_saving,
                             loading: Signal::derive(move || module_detail_loading.get()),
                             access_token: Signal::derive(move || token.get()),
                             tenant_slug: Signal::derive(move || tenant.get()),
                             on_settings_field_input,
                             on_settings_input,
+                            on_discard_settings_draft,
                             on_save_settings,
                             on_refresh_detail,
                             on_close: on_close_detail,
@@ -2147,6 +2474,182 @@ pub fn ModulesList(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn numeric_field(key: &str, value_type: &str) -> ModuleSettingField {
+        ModuleSettingField {
+            key: key.to_string(),
+            value_type: value_type.to_string(),
+            required: false,
+            default_value: None,
+            description: None,
+            min: None,
+            max: None,
+            options: Vec::new(),
+            object_keys: Vec::new(),
+            item_type: None,
+            shape: None,
+        }
+    }
+
+    #[test]
+    fn settings_forms_preserve_large_integer_and_number_values() {
+        let integer_field = numeric_field("integer", "integer");
+        let number_field = numeric_field("number", "number");
+        let integer = serde_json::json!(u64::MAX);
+        let number = serde_json::json!(9_007_199_254_740_993_u64);
+        let draft = HashMap::from([
+            (
+                integer_field.key.clone(),
+                setting_field_draft_value(&integer_field, Some(&integer)),
+            ),
+            (
+                number_field.key.clone(),
+                setting_field_draft_value(&number_field, Some(&number)),
+            ),
+        ]);
+        let payload = schema_settings_payload(
+            &[integer_field, number_field],
+            &draft,
+            &HashMap::new(),
+            serde_json::Map::new(),
+        )
+        .unwrap();
+        let decoded: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(decoded["integer"], integer);
+        assert_eq!(decoded["number"], number);
+        assert_eq!(
+            super::super::detail::json_editor::setting_option_draft_value("number", &number),
+            "9007199254740993"
+        );
+        assert_eq!(parse_scalar_input_value("18446744073709551615", "number"), Some(integer));
+        assert_eq!(parse_scalar_input_value("18446744073709551616", "number"), None);
+        assert_eq!(parse_scalar_input_value("NaN", "number"), None);
+        assert_eq!(parse_scalar_input_value("1.5", "number"), Some(serde_json::json!(1.5)));
+    }
+
+    fn tenant_settings(settings: &str) -> TenantModule {
+        TenantModule {
+            module_slug: "example".to_string(),
+            enabled: true,
+            settings: settings.to_string(),
+            revision: 7,
+        }
+    }
+
+    #[test]
+    fn settings_snapshot_rejects_invalid_objects_and_incompatible_fields() {
+        let field = numeric_field("limit", "integer");
+        for invalid in ["", "null", "[]", "{", "{\"limit\":\"3\"}", "{\"limit\":1.0}"] {
+            assert!(validate_settings_snapshot(&[field.clone()], Some(&tenant_settings(invalid))).is_err(), "{invalid}");
+        }
+        let mut constrained = field.clone();
+        constrained.options = vec![serde_json::json!(1), serde_json::json!(2)];
+        assert!(validate_settings_snapshot(&[constrained], Some(&tenant_settings("{\"limit\":3}"))).is_err());
+        assert!(validate_settings_snapshot(&[field], None).is_ok());
+    }
+
+    #[test]
+    fn settings_drafts_survive_switch_and_keep_their_original_snapshot() {
+        let scope = ("forum".to_string(), Some(tenant_settings("{\"limit\":1}")), vec![]);
+        let draft = StoredSettingsDraft {
+            scope: scope.clone(),
+            raw: "{\"limit\":-}".to_string(),
+            fields: HashMap::from([("limit".to_string(), "-".to_string())]),
+        };
+        let mut cache = HashMap::new();
+        assert_eq!(switch_cached_settings_draft(&mut cache, Some(draft.clone()), Some("blog")), None);
+        assert_eq!(cache.get("forum"), Some(&draft));
+        let restored = switch_cached_settings_draft(&mut cache, None, Some("forum")).unwrap();
+        assert_eq!(restored, draft);
+        assert!(cache.is_empty());
+        let changed = ("forum".to_string(), Some(tenant_settings("{\"limit\":2}")), vec![]);
+        assert!(!should_reset_settings_draft(Some(&restored.scope), Some(&changed), true));
+        assert_ne!(restored.scope, changed);
+        assert_eq!(switch_cached_settings_draft(&mut cache, Some(restored.clone()), None), None);
+        assert_eq!(switch_cached_settings_draft(&mut cache, None, Some("forum")), Some(restored));
+    }
+
+    #[test]
+    fn successful_response_only_clears_exact_submitted_cached_draft() {
+        let mut cache = HashMap::new();
+        let draft = StoredSettingsDraft {
+            scope: ("forum".to_string(), Some(tenant_settings("{}")), vec![]),
+            raw: "{}".to_string(),
+            fields: HashMap::from([("limit".to_string(), "1".to_string())]),
+        };
+        cache.insert("forum".to_string(), draft.clone());
+        let mut newer = draft.clone();
+        newer.fields.insert("limit".to_string(), "2".to_string());
+        cache.insert("forum".to_string(), newer.clone());
+        clear_submitted_cached_draft(&mut cache, &draft);
+        assert_eq!(cache.get("forum"), Some(&newer));
+        clear_submitted_cached_draft(&mut cache, &newer);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn detail_results_require_current_request_slug_and_auth_scope() {
+        assert!(accepts_module_detail_response("forum", Some("forum"), 2, 2, true, 8, 8));
+        assert!(!accepts_module_detail_response("forum", Some("blog"), 2, 2, true, 8, 8));
+        assert!(!accepts_module_detail_response("forum", Some("forum"), 1, 2, true, 8, 8));
+        assert!(!accepts_module_detail_response("forum", Some("forum"), 2, 2, false, 8, 8));
+        assert!(!accepts_module_detail_response("forum", Some("forum"), 2, 2, true, 8, 9));
+        assert!(!accepts_module_detail_response("forum", None, 2, 2, true, 8, 8));
+    }
+
+    #[test]
+    fn settings_draft_is_not_reset_by_same_scope_or_same_module_changes() {
+        let old = ("forum".to_string(), Some(tenant_settings("{\"limit\":1}")), vec![]);
+        let changed = ("forum".to_string(), Some(tenant_settings("{\"limit\":2}")), vec![]);
+        let changed_schema = (
+            "forum".to_string(),
+            Some(tenant_settings("{\"limit\":1}")),
+            vec![numeric_field("limit", "integer")],
+        );
+        let other = ("blog".to_string(), None, vec![]);
+        assert!(should_reset_settings_draft(None, Some(&old), false));
+        assert!(!should_reset_settings_draft(Some(&old), Some(&old), false));
+        assert!(!should_reset_settings_draft(Some(&old), Some(&old), true));
+        assert!(!should_reset_settings_draft(Some(&old), Some(&changed), true));
+        assert!(!should_reset_settings_draft(Some(&old), Some(&changed_schema), true));
+        assert!(should_reset_settings_draft(Some(&old), Some(&changed), false));
+        assert!(should_reset_settings_draft(Some(&old), Some(&other), true));
+        assert!(should_reset_settings_draft(Some(&old), None, true));
+    }
+
+    #[test]
+    fn settings_revision_belongs_to_the_snapshot() {
+        let snapshot = tenant_settings("{}");
+        assert_eq!(settings_expected_revision(Some(&snapshot), Some(12)), Some(7));
+        assert_eq!(settings_expected_revision(None, Some(12)), Some(12));
+        assert_eq!(settings_expected_revision(None, None), None);
+    }
+
+    #[test]
+    fn settings_payload_preserves_unknown_and_unchanged_values() {
+        let field = numeric_field("limit", "integer");
+        let source = tenant_settings("{\"limit\":7,\"future\":{\"large\":18446744073709551615}}");
+        let schema = [field];
+        let baseline = validate_settings_snapshot(&schema, Some(&source)).unwrap();
+        let initial = build_settings_form_draft(&schema, Some(&source)).unwrap();
+        let mut draft = initial.clone();
+        draft.insert("limit".to_string(), "9".to_string());
+        let payload = schema_settings_payload(&schema, &draft, &initial, baseline.clone()).unwrap();
+        let decoded: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(decoded["limit"], 9);
+        assert_eq!(decoded["future"]["large"], serde_json::json!(u64::MAX));
+        draft.insert("limit".to_string(), "-".to_string());
+        assert!(schema_settings_payload(&schema, &draft, &initial, baseline.clone()).is_err());
+        draft.insert("limit".to_string(), String::new());
+        let payload = schema_settings_payload(&schema, &draft, &initial, baseline).unwrap();
+        let decoded: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert!(decoded.get("limit").is_none());
+        assert!(decoded.get("future").is_some());
+
+        let absent = build_settings_form_draft(&schema, None).unwrap();
+        let untouched = schema_settings_payload(&schema, &absent, &absent, serde_json::Map::new()).unwrap();
+        assert_eq!(untouched, "{}");
+    }
 
     #[test]
     fn registry_freshness_formatting_is_stable() {

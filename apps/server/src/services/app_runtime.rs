@@ -433,7 +433,10 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
             result = &mut cron_task => {
                 if let Err(error) = result {
                     if !error.is_cancelled() {
-                        tracing::error!(%error, "Workflow cron scheduler task failed");
+                        tracing::error!(
+                            failure_code = "workflow_cron_task_panicked",
+                            "Workflow cron scheduler task failed"
+                        );
                     }
                 }
             }
@@ -443,7 +446,10 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
                     cron_task.abort();
                     if let Err(error) = cron_task.await {
                         if !error.is_cancelled() {
-                            tracing::error!(%error, "Workflow cron scheduler failed to stop cleanly");
+                            tracing::error!(
+                                failure_code = "workflow_cron_shutdown_join_failed",
+                                "Workflow cron scheduler failed to stop cleanly"
+                            );
                         }
                     }
                 }

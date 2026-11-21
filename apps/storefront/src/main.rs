@@ -40,20 +40,32 @@ fn main() {
     use leptos::prelude::*;
     use rustok_auth_ui::ui::leptos::AuthProvider;
     use rustok_storefront::app::{StorefrontModulePage, StorefrontShell};
+    use rustok_storefront::shared::api::configured_tenant_slug;
+    use rustok_storefront::shared::context::enabled_modules::{
+        ModulePolicyReadError, invalidate_pending_projection,
+    };
 
     console_error_panic_hook::set_once();
+    invalidate_pending_projection();
 
     let (locale, route_segment, query_params) = browser_route_context();
-    let enabled_modules = resolve_csr_enabled_modules(&query_params);
+    let Some(tenant_slug) = configured_tenant_slug() else {
+        mount_to_body(move || view! { <ModulePolicyReadError locale=locale.clone() /> });
+        return;
+    };
+    let debug_modules = resolve_csr_debug_modules(&query_params);
+    let fetch_initial = debug_modules.is_none();
+    let enabled_modules = debug_modules.unwrap_or_default();
 
     mount_to_body(move || {
         view! {
-            <AuthProvider>
+            <AuthProvider tenant_slug=tenant_slug.clone()>
                 {if let Some(route_segment) = route_segment.clone() {
                     view! {
                         <StorefrontModulePage
                             locale=locale.clone()
                             enabled_modules=enabled_modules.clone()
+                            fetch_initial=fetch_initial
                             route_segment=route_segment
                             query_params=query_params.clone()
                         />
@@ -64,6 +76,7 @@ fn main() {
                         <StorefrontShell
                             locale=locale.clone()
                             enabled_modules=enabled_modules.clone()
+                            fetch_initial=fetch_initial
                             query_params=query_params.clone()
                         />
                     }
@@ -127,41 +140,15 @@ fn looks_like_locale(segment: &str) -> bool {
             .all(|ch| ch.is_ascii_alphabetic() || ch == '-')
 }
 
+// A module-list meta tag is not bound to a tenant. Standalone CSR must read
+// the policy for its configured tenant rather than trusting such a bootstrap.
 #[cfg(feature = "csr")]
-fn read_dom_bootstrap_modules() -> Option<Vec<String>> {
-    let window = web_sys::window()?;
-    let document = window.document()?;
-    let meta = document
-        .query_selector("meta[name='rustok-enabled-modules']")
-        .ok()??;
-    let content = meta.get_attribute("content")?;
-    let modules: Vec<String> = content
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if modules.is_empty() {
-        None
-    } else {
-        Some(modules)
-    }
-}
-
-#[cfg(feature = "csr")]
-fn resolve_csr_enabled_modules(
+fn resolve_csr_debug_modules(
     _query_params: &std::collections::HashMap<String, String>,
-) -> Vec<String> {
-    if let Some(modules) = read_dom_bootstrap_modules() {
-        return modules;
-    }
-
+) -> Option<Vec<String>> {
     #[cfg(debug_assertions)]
-    if _query_params
-        .get("rustok_debug_modules")
-        .map(|v| v.as_str())
-        == Some("true")
-    {
-        return vec![
+    if _query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
+        return Some(vec![
             "content".into(),
             "cart".into(),
             "customer".into(),
@@ -178,11 +165,11 @@ fn resolve_csr_enabled_modules(
             "blog".into(),
             "forum".into(),
             "search".into(),
-        ];
+        ]);
     }
 
-    // Fail closed by default when tenant policy is not yet fetched or configured
-    Vec::new()
+    // Missing bootstrap is pending, not an authoritative empty projection.
+    None
 }
 
 #[cfg(not(any(feature = "ssr", feature = "csr")))]
@@ -190,7 +177,16 @@ fn main() {}
 
 #[cfg(all(test, feature = "csr"))]
 mod csr_query_parity_tests {
-    use super::parse_query_params;
+    use super::{parse_query_params, resolve_csr_debug_modules};
+
+    #[test]
+    fn standalone_csr_requires_a_policy_read_unless_explicit_debug_is_enabled() {
+        assert!(resolve_csr_debug_modules(&Default::default()).is_none());
+        #[cfg(debug_assertions)]
+        assert!(resolve_csr_debug_modules(&std::collections::HashMap::from([
+            ("rustok_debug_modules".to_string(), "true".to_string())
+        ])).is_some());
+    }
 
     #[test]
     fn decodes_unicode_and_form_encoded_query_values() {

@@ -34,5 +34,5 @@ pub(crate) async fn require_auth_context<'a>(
 
 pub use mutation::MessengerMutation;
 pub use query::MessengerQuery;
-pub use runtime_data::{MessengerGraphqlRuntimeData, attach_schema_data};
+pub use runtime_data::{MessengerGraphqlRuntimeData, MessengerGraphqlRuntimeError, attach_schema_data};
 pub use types::*;

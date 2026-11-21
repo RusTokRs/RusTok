@@ -12,7 +12,7 @@ use rustok_modules::{
     StaticModuleLifecycleReader, StaticModuleLifecycleReaderError, TenantModuleOverrideSnapshot,
 };
 use sea_orm::{DatabaseConnection, DbErr};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 #[derive(Clone, Debug)]
 pub struct EffectiveModulePolicySnapshot {
@@ -224,40 +224,18 @@ impl EffectiveModulePolicyService {
             .map(ModuleEffectivePolicy::into_enabled_modules)
     }
 
-    /// Resolves the effective policy snapshot through the revision-bound cache.
-    /// If a fresh cache entry exists, it is returned immediately; otherwise, the
-    /// canonical policy is computed from the database, inserted into the cache, and returned.
-    pub async fn resolve_snapshot_cached(
-        db: &DatabaseConnection,
-        registry: &ModuleRegistry,
-        tenant_id: uuid::Uuid,
-        cache: &ModuleEffectivePolicyCache,
-    ) -> Result<EffectiveModulePolicySnapshot, PlatformCompositionError> {
-        if let Some((policy, cache_identity)) = cache.get_latest(tenant_id) {
-            let manifest = PlatformCompositionService::active_manifest(db).await?;
-            return Ok(EffectiveModulePolicySnapshot {
-                policy,
-                cache_identity,
-                default_enabled_modules: manifest.settings.default_enabled,
-            });
-        }
-        let snapshot = Self::resolve_snapshot(db, registry, tenant_id).await?;
-        cache
-            .insert(tenant_id, snapshot.policy.clone())
-            .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
-        Ok(snapshot)
-    }
-
-    /// Resolves the effective policy through the revision-bound cache.
+    /// Resolves only the policy through the locally invalidated TTL cache.
+    /// Callers needing defaults must use `resolve_snapshot`, not combine a
+    /// cached policy with a separately read manifest. A cached hit has no
+    /// independently verified current owner revision; this is not a
+    /// transactional or distributed freshness check.
     pub async fn resolve_cached(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         cache: &ModuleEffectivePolicyCache,
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
-        Self::resolve_snapshot_cached(db, registry, tenant_id, cache)
-            .await
-            .map(|snapshot| snapshot.policy)
+        resolve_policy_with_cache(tenant_id, cache, || Self::resolve(db, registry, tenant_id)).await
     }
 
     /// Explicitly invalidates the cached policy for a tenant.
@@ -394,6 +372,44 @@ impl EffectiveModulePolicyService {
     }
 }
 
+// Keeping the loader injectable makes the invalidation/retry behavior testable
+// without a database; production supplies the canonical owner resolve above.
+async fn resolve_policy_with_cache<F, Fut>(
+    tenant_id: uuid::Uuid,
+    cache: &ModuleEffectivePolicyCache,
+    mut load: F,
+) -> Result<ModuleEffectivePolicy, PlatformCompositionError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<ModuleEffectivePolicy, PlatformCompositionError>>,
+{
+    // Avoid an unbounded loop if invalidations or competing fills are busy.
+    for _ in 0..3 {
+        let stamp = cache
+            .begin_read()
+            .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
+        if let Some((policy, _identity)) = cache.get_latest(tenant_id) {
+            let current = cache
+                .is_current_hit(&stamp, tenant_id, &policy)
+                .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
+            if current {
+                return Ok(policy);
+            }
+            continue;
+        }
+        let policy = load().await?;
+        let inserted = cache
+            .insert_if_current(&stamp, tenant_id, policy.clone())
+            .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
+        if inserted {
+            return Ok(policy);
+        }
+    }
+    Err(PlatformCompositionError::EffectivePolicy(
+        "effective policy changed during resolution; retry".to_string(),
+    ))
+}
+
 fn map_effective_policy_error(error: ModuleLifecycleDbWriterError) -> PlatformCompositionError {
     match error {
         ModuleLifecycleDbWriterError::Definition(error) => {
@@ -410,6 +426,164 @@ fn map_effective_policy_error(error: ModuleLifecycleDbWriterError) -> PlatformCo
 mod tests {
     use super::*;
     use rustok_modules::StaticTenantLifecycleSnapshot;
+    use std::cell::Cell;
+
+    fn sample_policy(digest_char: char) -> ModuleEffectivePolicy {
+        serde_json::from_value(serde_json::json!({
+            "policy_revision": format!("sha256:{}", digest_char.to_string().repeat(64)),
+            "enabled_modules": [],
+            "decisions": {}
+        }))
+        .expect("valid policy fixture")
+    }
+
+    #[tokio::test]
+    async fn policy_cache_hit_does_not_load_owner_again() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let expected = sample_policy('a');
+        let stamp = cache.begin_read().unwrap();
+        assert!(cache
+            .insert_if_current(&stamp, tenant, expected.clone())
+            .unwrap());
+        let calls = Cell::new(0);
+        let actual = resolve_policy_with_cache(tenant, &cache, || {
+            calls.set(calls.get() + 1);
+            async { Ok(sample_policy('b')) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(calls.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn invalidated_in_flight_policy_is_discarded_and_reloaded() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let calls = Cell::new(0);
+        let cache_ref = &cache;
+        let actual = resolve_policy_with_cache(tenant, &cache, || {
+            let attempt = calls.get();
+            calls.set(attempt + 1);
+            let cache = cache_ref;
+            async move {
+                if attempt == 0 {
+                    cache.invalidate_tenant(tenant);
+                    Ok(sample_policy('a'))
+                } else {
+                    Ok(sample_policy('b'))
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(calls.get(), 2);
+        assert_eq!(actual, sample_policy('b'));
+        assert_eq!(cache.get_latest(tenant).unwrap().0, actual);
+    }
+
+    #[tokio::test]
+    async fn invalidation_while_owner_read_is_suspended_fences_completion() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::sync::Barrier;
+
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let started = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let task_cache = cache.clone();
+        let task_started = Arc::clone(&started);
+        let task_resume = Arc::clone(&resume);
+        let task_calls = Arc::clone(&calls);
+        let task = tokio::spawn(async move {
+            resolve_policy_with_cache(tenant, &task_cache, || {
+                let attempt = task_calls.fetch_add(1, Ordering::SeqCst);
+                let started = Arc::clone(&task_started);
+                let resume = Arc::clone(&task_resume);
+                async move {
+                    if attempt == 0 {
+                        started.wait().await;
+                        resume.wait().await;
+                        Ok(sample_policy('a'))
+                    } else {
+                        Ok(sample_policy('b'))
+                    }
+                }
+            })
+            .await
+        });
+        started.wait().await;
+        assert!(!cache.invalidate_tenant(tenant));
+        resume.wait().await;
+        let actual = task.await.unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(actual, sample_policy('b'));
+        assert_eq!(cache.get_latest(tenant).unwrap().0, actual);
+    }
+
+    #[tokio::test]
+    async fn competing_fill_is_read_instead_of_overwritten() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let calls = Cell::new(0);
+        let cache_ref = &cache;
+        let actual = resolve_policy_with_cache(tenant, &cache, || {
+            calls.set(calls.get() + 1);
+            let cache = cache_ref;
+            async move {
+                let competing_stamp = cache.begin_read().unwrap();
+                assert!(cache
+                    .insert_if_current(&competing_stamp, tenant, sample_policy('b'))
+                    .unwrap());
+                Ok(sample_policy('a'))
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(actual, sample_policy('b'));
+        assert_eq!(cache.get_latest(tenant).unwrap().0, actual);
+    }
+
+    #[tokio::test]
+    async fn repeated_invalidation_returns_error_without_caching_stale_results() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let calls = Cell::new(0);
+        let cache_ref = &cache;
+        let result = resolve_policy_with_cache(tenant, &cache, || {
+            calls.set(calls.get() + 1);
+            let cache = cache_ref;
+            async move {
+                cache.invalidate_tenant(tenant);
+                Ok(sample_policy('a'))
+            }
+        })
+        .await;
+        assert!(matches!(
+            result,
+            Err(PlatformCompositionError::EffectivePolicy(_))
+        ));
+        assert_eq!(calls.get(), 3);
+        assert!(cache.get_latest(tenant).is_none());
+    }
+
+    #[tokio::test]
+    async fn owner_failure_is_propagated_without_caching() {
+        let cache = ModuleEffectivePolicyCache::new();
+        let tenant = uuid::Uuid::new_v4();
+        let result = resolve_policy_with_cache(tenant, &cache, || async {
+            Err(PlatformCompositionError::EffectivePolicy("owner failed".into()))
+        })
+        .await;
+        assert!(matches!(
+            result,
+            Err(PlatformCompositionError::EffectivePolicy(message)) if message == "owner failed"
+        ));
+        assert!(cache.get_latest(tenant).is_none());
+    }
 
     #[test]
     fn static_lifecycle_revision_projection_uses_owner_module_slug_and_browser_safe_revision() {

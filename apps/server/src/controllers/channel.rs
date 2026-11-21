@@ -648,12 +648,18 @@ fn map_channel_error(error: rustok_channel::ChannelError) -> Error {
             "channel_conflict",
             "The requested channel resource conflicts with an existing resource",
         )),
-        ChannelError::Database(error) => {
-            tracing::error!(%error, "Channel controller database operation failed");
+        ChannelError::Database(_error) => {
+            tracing::error!(
+                error_code = "channel_database_operation_failed",
+                "Channel controller database operation failed"
+            );
             Error::InternalServerError
         }
-        ChannelError::Serialization(error) => {
-            tracing::error!(%error, "Channel controller serialization failed");
+        ChannelError::Serialization(_error) => {
+            tracing::error!(
+                error_code = "channel_response_serialization_failed",
+                "Channel controller serialization failed"
+            );
             Error::InternalServerError
         }
     }

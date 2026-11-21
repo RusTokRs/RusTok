@@ -56,6 +56,28 @@ route facade and perform only HTTP composition in the host.
   canonical-route resolution and SEO page-context resolution live in their respective
   `shared/context/*_native_server_adapter.rs` files. The context modules select the
   native or GraphQL path and do not share an aggregate adapter.
+- The enabled-module GraphQL adapter rejects missing tenant scope, blank slugs and lists
+  at the 100-entry server cap rather than accepting a potentially truncated projection.
+  The native reader resolves the owner policy directly and is not capped there. Shell and
+  generic module-page SSR return a localized, non-cacheable 503 when that read fails, without
+  an empty module bootstrap; a normal link retries the current URL. Canonical Pages rendering
+  exits before generating an ETag on this failure. Public string-rendering helpers return the
+  error document but cannot carry an HTTP status. Standalone CSR does not trust a module-list
+  DOM bootstrap without a tenant binding: it defers composition until it reads the configured
+  tenant policy (including an authoritative empty result). The host invalidates any old DOM
+  module projection before reading; after success it updates or creates a unique projection
+  for independent client islands. Duplicate projection tags fail closed. It shows the same reload
+  affordance on failure. The existing `rustok_debug_modules=true` override remains debug-build-only
+  and is not owner-issued policy.
+- Standalone WASM is configured for one tenant at build time, taking the first nonempty value of
+  `RUSTOK_TENANT_SLUG`, `NEXT_PUBLIC_TENANT_SLUG`, or `NEXT_PUBLIC_DEFAULT_TENANT_SLUG`. Rebuild
+  when that tenant changes. These values are public routing hints, never credentials or authority;
+  the server still resolves and authorizes tenant scope. Missing, overlong or embedded-control
+  configuration fails closed before mounting auth; other invalid slugs are rejected by the server.
+  A foreign browser auth tenant is not replaced. Native SSR continues using
+  its runtime environment and middleware-resolved tenant. Actual WASM build, GraphQL tenant routing,
+  auth mismatch, SSR, hydration and browser retry require verification. Distinct canonical route
+  resolution and module-owned route handlers are not covered.
 - Generated search mount uses host-owned `SearchStorefrontComposition`: the adapter checks tenant enablement of the `product` module, passes `UiRouteContext.locale` to a public-safe product metadata helper, and maps owner DTO to search props without moving product/search domain logic into the host.
 - Module-owned storefront packages must build generic module links through `UiRouteContext::module_route_base()`. Owner-specific canonical route families may be emitted by the owner module package when the route contract requires a different path.
 - Module-owned storefront packages do not define their own locale negotiation policy; the effective locale comes from the host/runtime contract.
