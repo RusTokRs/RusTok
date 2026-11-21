@@ -53,7 +53,16 @@ so even malformed cross-user family IDs cannot revoke another user's tokens
 inside one app/tenant.
 First-party logout also accepts the immediately preceding rotated cookie
 under the session row lock, revoking its live successor after a lost refresh
-response.
+response. Refresh-reuse detection now takes that same database-specific row
+lock before evaluating the grace window or revoking the session, preventing a
+stale ActiveModel snapshot from overwriting a concurrent token rotation.
+Focused regression tests cover the in-grace race, post-grace revocation, and
+persistence-failure rollback. Session-id logout also acquires the session row
+lock (or SQLite write fence) before converting the row into an ActiveModel
+update; its regression test exercises the actual logout service and repeated
+idempotent logout. The 30-second grace window is not an idempotent retry
+protocol: the old token is rejected without revoking the current session, but
+a lost successful response still cannot be recovered.
 
 Remaining auth contract gaps requiring owner-level design and verification:
 the in-place first-party refresh session stores only the immediately previous
@@ -1321,19 +1330,24 @@ cargo test -p rustok-core --lib events::handler
 
 ## P20 — Surface core runtime worker failures in readiness (2026-11-18)
 
-The runtime readiness snapshot covered the event forwarder and several module
-workers, but omitted the Outbox relay, Outbox retention, remote-executor reaper,
-and SEO bulk worker. A terminated required worker could therefore leave the HTTP
-host reporting ready while durable delivery, retention, recovery, or SEO work had
-stopped.
+The readiness review identified the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO workers as critical runtime obligations.
+The health controller already owned explicit, configuration-aware checks for
+these workers. Mirroring them in `additional_runtime_worker_snapshots` was
+redundant and emitted duplicate Outbox/remote-executor checks plus a second,
+non-canonical SEO worker label. P21 records and corrects that implementation
+mistake; the explicit checks in `health.rs` remain authoritative.
 
 ### Implemented
 
-- Added readiness snapshots for Outbox relay and Outbox retention.
-- Added snapshots for the remote-executor reaper and feature-gated SEO bulk
-  worker once those workers are started.
-- Extended the existing Outbox worker lifecycle test to require both core
-  Outbox workers to appear as live readiness entries.
+- Kept the existing explicit checks for Outbox relay/retention,
+  remote-executor reaper, and each enabled SEO worker as the single source of
+  readiness truth.
+- Kept the event-forwarder snapshot in the additional worker list because it
+  has no separate explicit check; it becomes required when the EventBus
+  forwarder handle is registered.
+- Added a regression test that rejects duplicate readiness check names and
+  asserts one canonical check for each core worker.
 
 ### Verification status
 
@@ -1342,6 +1356,331 @@ Not run in this task, at the user's request. Run before merge:
 ```bash
 cargo fmt --all -- --check
 cargo check -p rustok-server --lib
-cargo test -p rustok-server --lib services::app_lifecycle::tests::connect_runtime_workers_is_idempotent_for_outbox_relay_handle
+cargo test -p rustok-server --lib controllers::health::tests::runtime_worker_readiness_uses_one_canonical_check_per_worker
+cargo test -p rustok-server --lib services::app_lifecycle::tests::additional_workers_respect_host_modes_and_auth_retention_config
+cargo check -p rustok-server --lib --features commerce-marketplace-financial
+cargo check -p rustok-server --lib --no-default-features --features mod-seo
 ```
 
+
+## P21 — Keep runtime worker readiness single-source (2026-11-18)
+
+A source-level re-review found that `controllers/health.rs` already creates
+configuration-aware checks for the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO worker variants. The additional lifecycle
+snapshot list had duplicated those checks. The extra Outbox/remote entries
+reused the same check names; the SEO entry used a second name for the same
+supervised handle. Duplicate readiness entries can confuse operators and
+produce repeated worker metrics.
+
+### Implemented
+
+- Removed the redundant Outbox relay, Outbox retention, remote-executor, and
+  SEO entries from `additional_runtime_worker_snapshots`; the existing
+  `health.rs` checks remain the only canonical entries for those workers.
+- Retained the EventBus forwarder snapshot, which has no separate explicit
+  check, and classified it as optional until its handle is registered.
+- Removed a duplicate feature-gated import that would fail compilation when
+  `commerce-marketplace-financial` is enabled.
+- Removed the redundant SEO snapshot (which had been gated by both
+  `mod-workflow` and `mod-seo`); the canonical SEO readiness checks remain
+  independently gated by `mod-seo`.
+- Added a regression test asserting readiness check names are unique and that
+  Outbox, remote-executor, and SEO worker checks each have one canonical entry.
+- Updated the host-mode snapshot test to treat EventBus forwarding and optional
+  Comments workers as optional until their runtime handles are registered.
+- Updated the readiness runbook to document Outbox retention, EventBus
+  forwarder, and the three independently configured SEO worker checks.
+
+### Verification status
+
+Not run in this task, at the user's request. No Rust compilation, formatting,
+or tests are claimed. Run the commands listed under P20 on one revision before
+integration; tests remain with the maintainer.
+
+## P22 — Atomic tenant-scoped OAuth manifest reconciliation (2026-11-18)
+
+The manifest sync previously committed app upserts and translation writes
+individually, then used a separate transaction for orphan cleanup. A conflict
+or storage failure late in the pass could leave a tenant with a partially
+updated OAuth application set. Concurrent server replicas could also perform
+the same read/upsert/orphan sequence without a tenant-level serialization fence.
+
+### Implemented
+
+- The sync_app_connections flow now acquires an exclusive tenant-row lock before
+  reading the current managed-app set. PostgreSQL/MySQL use FOR UPDATE;
+  SQLite takes its write fence before the first read. Existing managed-app
+  rows are then locked with the same app-mutation fence used by token issuance
+  and consent before security-sensitive configuration is updated.
+- App creation/reactivation, first-party manifest updates, translation writes,
+  orphan deactivation, token revocation, consent revocation, and authorization-code
+  invalidation now share one transaction per tenant.
+- A failure in any manifest entry or orphan cleanup rolls back all earlier
+  writes from that tenant's reconciliation.
+- Reconciliation includes already-inactive managed apps, repairs stale credentials
+  left by older versions, and clears credentials again before reactivating a
+  previously disabled app. Embedded-app reactivation also checks the combined
+  active/revoked state instead of the raw is_active column alone.
+- Explicit manual app revocation uses the same credential cleanup path and
+  revokes active user consents alongside tokens and pending authorization codes.
+- Added a regression case where an embedded app is upserted before a later
+  manual-app slug conflict; the earlier embedded-app write must not leak.
+- The all-tenants bootstrap remains a sequence of per-tenant transactions,
+  not a single global transaction across every tenant. A failure can leave
+  earlier tenants committed while later tenants have not yet been processed;
+  rerunning the idempotent sync reconciles those tenants.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
+cargo test -p rustok-server --lib services::oauth_app::tests::app_revocation_revokes_active_user_consents
+cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_reactivates_embedded_app_with_revocation_timestamp
+cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
+cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
+```
+
+## P23 — Unique installer lease-owner identities (2026-11-18)
+
+The HTTP adapter used the shared literal owner `http`, while the CLI used the
+shared literal `rustok-cli install apply`. Those labels were not unique to an
+execution attempt. The persistence layer records the owner at acquisition but
+does not yet compare it on every state/receipt write, so unique values alone
+are diagnostic/preparatory rather than a complete stale-worker fence.
+
+### Implemented
+
+- Added one shared lock-owner builder in `rustok-installer`. It sanitizes a
+  short diagnostic label and appends the optional stable session/job ID plus a
+  fresh attempt UUID; the result is bounded below the `VARCHAR(128)` session
+  column limit.
+- The HTTP adapter now uses its durable job/session ID and a fresh attempt ID.
+- The CLI adapter and `InstallApplyOptions::default()` also generate a fresh
+  attempt-specific owner rather than a static label.
+- Added contract coverage for unique owners across attempts, label
+  sanitization, storage length, and unique defaults; added HTTP-adapter coverage.
+
+### Remaining boundary
+
+This is a unique owner token, not a monotonic attempt-generation protocol,
+and persistence writes do not yet verify owner equality. The fail-closed
+session-admission gate added in P25 prevents automatic overlap after lease
+expiry, but the HTTP executor still runs in-process, is not resumable after
+process loss, and does not reconcile ambiguous external effects. Stale
+`running` jobs must not be reset based only on lease expiry. The durable
+recovery ADR remains in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo check -p rustok-installer-cli
+```
+
+## P24 — Bounded installer lease TTL input (2026-11-18)
+
+The HTTP adapter accepted arbitrary `lock_ttl_secs` values while the CLI only
+checked positivity. The persistence layer added the TTL to the current
+timestamp directly, so an extreme value could overflow the timestamp range.
+
+### Implemented
+
+- Added a shared contract: installer lease TTL must be between 1 and 86,400
+  seconds (default 900). The execution state machine validates it even when
+  called outside the HTTP/CLI adapters.
+- HTTP and CLI adapters reject zero, negative, and over-limit values before
+  creating or starting an installer job.
+- Persistence now uses checked timestamp addition and returns a database error
+  instead of panicking if a direct caller supplies an unrepresentable duration.
+- Added shared contract and HTTP-controller regression coverage for both bounds.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime installer_lock_ttl_is_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+cargo test -p rustok-installer-persistence --lib
+```
+
+## P25 — Fail-closed installer session admission (2026-11-18)
+
+Lock arbitration previously treated `lock_expires_at` as proof that a worker
+had stopped. A new apply could therefore start while a stale executor was
+still running. The current persistence adapter does not yet compare owner
+identity on every state/receipt mutation, so automatic lease-based takeover
+was unsafe.
+
+### Implemented
+
+- A session row can be claimed only once (`lock_owner IS NULL` and
+  `status = draft`); a second attempt cannot overwrite its existing owner.
+- Any other unreconciled session with a recorded owner blocks a new apply
+  even when its lease timestamp has expired. Expiry alone is no longer treated
+  as proof that the previous process stopped. `recovery_required` also blocks
+  admission until manual reconciliation, despite being terminal for execution.
+- PostgreSQL and MySQL lock acquisition now uses a serializable transaction;
+  SQLite obtains its write fence through the conditional session-claim update.
+- `completed`, safely `failed`, and `fresh_install_cleaned` sessions release
+  the global admission gate. `recovery_required` and stale unfinished sessions
+  require explicit reconciliation before another apply can start.
+- Regression coverage verifies same-session re-claim rejection, expired-lease
+  blocking, and release after finalization.
+
+### Remaining boundary
+
+State, tenant, and receipt mutations do not yet compare the persisted owner on
+every write. There is no monotonic attempt generation, periodic lease renewal,
+resumable executor, or automatic external-effect reconciliation. The fail-closed
+gate prevents automatic overlap but intentionally leaves stale sessions blocked
+until an operator reconciles them. The durable recovery ADR remains in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer-persistence --lib session_persistence_lifecycle_and_state_transitions
+cargo test -p rustok-installer-persistence --lib acquire_lock_rejects_out_of_range_ttl_before_claiming_session
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_http_lock_ttl_rejects_zero_negative_and_overflowing_values
+cargo check -p rustok-installer-cli
+```
+
+## P26 — Serialize first-party refresh-token reuse revocation (2026-11-18)
+
+Refresh-token reuse detection previously read the immediately preceding token
+hash without locking its session row, then converted the read snapshot into an
+ActiveModel update. A concurrent successful refresh could rotate the row
+between those operations; the stale update could then overwrite the newer
+token hash or expiry while revoking the session.
+
+### Implemented
+
+- Reused the database-specific previous-session lookup used by logout, which
+  acquires `FOR UPDATE` on PostgreSQL/MySQL and a conditional SQLite write
+  fence before returning the row.
+- Refresh reuse detection now holds that row lock while evaluating the grace
+  window and applying the revocation update.
+- Session-id logout no longer reads an active session and then updates its stale
+  snapshot without a lock. It locks the row on PostgreSQL/MySQL and reserves a
+  SQLite write before reading, then publishes the logout event in the same
+  transaction as the revocation.
+- Added regression tests for an in-grace duplicate (reject without revoking),
+  post-grace replay (revoke the live lineage), and failed revocation persistence
+  (propagate the storage error and preserve the active session).
+- Corrected the grace-window contract for both first-party and OAuth
+  refresh: it suppresses revocation for a likely concurrent duplicate but is
+  not an idempotent retry. The old token still receives an invalid-token error;
+  if the successful response is lost, it cannot recover the replacement
+  cookie/token. Full rotation history and idempotent response recovery remain
+  open owner-level design gaps.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_inside_grace_is_rejected_without_revoking_live_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_revocation_failure_is_propagated_without_false_success
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_can_find_previous_rotated_token_without_crossing_tenant
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+```
+
+## P27 — Use write-first SQLite fences in auth and OAuth mutations (2026-11-18)
+
+Several auth and OAuth mutation paths used SELECT followed by a no-op
+UPDATE to acquire SQLite's writer lock. In a deferred transaction this can
+race another writer during lock promotion; the direct profile path also
+converted a row read under unsupported SQLite row-lock syntax into a full
+ActiveModel update.
+
+### Implemented
+
+- Profile updates now use the shared database-specific user-row lock helper.
+- Login user lookup reserves SQLite's writer by the tenant/email key before
+  reading the account; user-by-id and current-session mutation helpers also
+  reserve the write lock before their first read.
+- Refresh and previous-refresh lookups now reserve the SQLite writer directly
+  by the presented digest, then reload the matching row while the transaction
+  owns the write fence.
+- Session-id logout already uses a write-first fence by tenant/session ID.
+- OAuth token issuance now reserves SQLite's writer by known app/subject IDs
+  before reloading the current client and subject state; it no longer performs
+  a read-first lock upgrade on those rows.
+- OAuth admin app mutations use the same write-first fence by tenant/app ID;
+  admin user mutations fence by tenant/user ID before loading their snapshots.
+- Admin user mutations also reserve SQLite's writer by tenant/user ID before
+  reading the row used for status, role, password, or profile changes.
+- Unsupported database backends now fail closed in these auth lock helpers
+  instead of silently running an unlocked read.
+- Existing SQLite tests exercise login, profile update, password change,
+  refresh/reuse, and logout paths through the new lock helpers.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::failed_attempts_lock_atomically_and_ignore_obsolete_credentials
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::update_profile_trims_name_and_allows_clearing_with_blank_value
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::change_password_rejects_expired_current_session
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse_after_grace_revokes_live_session_lineage
+cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
+```
+
+## P28 — Revalidate OAuth consent inside token-issuance transactions (2026-11-18)
+
+Authorization-code and refresh flows validated consent before starting their
+issuance transaction. They later acquired the app and subject locks, but did
+not re-read consent under those locks. A concurrent consent re-grant or scope
+narrowing could therefore commit between preflight validation and token
+persistence; the exchange could return credentials carrying a stale consent
+epoch or scopes that the user had just narrowed.
+
+### Implemented
+
+- Prepared user-token bundles now retain the consent grant timestamp observed
+  during preparation.
+- Authorization-code exchange revalidates active consent, requested scopes,
+  and the prepared grant epoch after acquiring the app and subject locks.
+- Refresh rotation revalidates active consent and scope coverage against the
+  presented refresh token's stored consent epoch under the same locks.
+- A stale epoch returns invalid_grant and a scope no longer covered by the
+  current consent returns invalid_scope before the authorization code or
+  refresh token is consumed and before replacement credentials are persisted.
+- Added a SQLite regression test that changes the consent epoch after token
+  preparation and verifies refresh commit rejects without consuming the old
+  refresh token or inserting replacement credentials; it also verifies
+  narrowed consent rejects wider token scopes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_consent_revalidation_rejects_stale_grant_epoch_and_scopes
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
+cargo test -p rustok-server --lib services::oauth_admin_guard::tests::guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling
+```

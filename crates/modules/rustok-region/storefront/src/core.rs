@@ -45,10 +45,10 @@ const REGION_ERROR_STATUS_DESCRIPTORS: [RegionErrorStatusDescriptor; 2] = [
 fn region_error_status_descriptor(
     code: RegionErrorStatusCode,
 ) -> &'static RegionErrorStatusDescriptor {
-    REGION_ERROR_STATUS_DESCRIPTORS
-        .iter()
-        .find(|descriptor| descriptor.code == code)
-        .expect("every RegionErrorStatusCode must have a descriptor")
+    match code {
+        RegionErrorStatusCode::NativeUnavailable => &REGION_ERROR_STATUS_DESCRIPTORS[0],
+        RegionErrorStatusCode::GraphqlUnavailable => &REGION_ERROR_STATUS_DESCRIPTORS[1],
+    }
 }
 
 impl RegionErrorStatusCode {

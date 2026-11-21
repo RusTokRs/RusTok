@@ -516,6 +516,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: ensure_supported_backend rejects any database backend other than Postgres or Sqlite.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -524,6 +525,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: ensure_supported_backend rejects any database backend other than Postgres or Sqlite.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -539,6 +541,7 @@ fn stored_uuid(
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
+        // INVARIANT: ensure_supported_backend rejects any database backend other than Postgres or Sqlite.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -619,6 +622,7 @@ fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Sqlite => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
+        // INVARIANT: ensure_supported_backend rejects any database backend other than Postgres or Sqlite.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

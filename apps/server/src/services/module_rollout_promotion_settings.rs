@@ -26,6 +26,15 @@ pub enum ModuleRolloutPromotionSettingsOutcome {
 }
 
 impl ModuleRolloutPromotionSettingsService {
+    #[tracing::instrument(
+        skip(db, registry, context, expected_settings, settings),
+        fields(
+            tenant_id = %tenant_id,
+            module_slug = %module_slug,
+            expected_revision = %expected_revision
+        ),
+        err
+    )]
     pub async fn update_if_current(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,

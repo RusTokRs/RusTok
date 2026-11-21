@@ -21,7 +21,7 @@ const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
 const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
-const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
+const FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN: usize = 12;
 const MAX_FORUM_ROUTE_LOCALE_LEN: usize = 64;
 const MAX_FORUM_ROUTE_SLUG_LEN: usize = 255;
 
@@ -354,14 +354,14 @@ fn exact_forum_locale(value: &str) -> Option<String> {
 }
 
 fn valid_forum_short_identity(value: &str) -> bool {
-    value.len() == FORUM_TOPIC_ROUTE_SHORT_ID_LEN
+    value.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN
         && value
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn forum_topic_short_identity(topic_id: Uuid) -> String {
-    topic_id.simple().to_string()[..FORUM_TOPIC_ROUTE_SHORT_ID_LEN].to_string()
+    topic_id.simple().to_string()[..FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN].to_string()
 }
 
 fn valid_forum_slug(value: &str) -> bool {

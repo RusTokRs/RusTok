@@ -81,17 +81,19 @@ pub struct ScriptHelperInfo {
     pub available_in: Vec<String>,
 }
 
+use crate::alloy_scaffold::AlloyScaffoldError;
+
 pub async fn alloy_scaffold_module(
     state: &AlloyScaffoldState,
     context: Option<McpScaffoldDraftRuntimeContext>,
     request: ScaffoldModuleRequest,
-) -> Result<StageModuleScaffoldResponse, String> {
+) -> Result<StageModuleScaffoldResponse, AlloyScaffoldError> {
     if let Some(draft_store) = &state.draft_store {
         let context = require_draft_runtime_context(context)?;
         return draft_store
             .stage_scaffold_draft(&context, request)
             .await
-            .map_err(|error| error.to_string());
+            .map_err(|error| AlloyScaffoldError::Validation(error.to_string()));
     }
 
     let preview = crate::alloy_scaffold::generate_module_scaffold(&request)?;
@@ -107,7 +109,7 @@ pub async fn alloy_scaffold_module(
     state
         .staged_scaffolds
         .lock()
-        .map_err(|_| "Failed to lock staged scaffold store".to_string())?
+        .map_err(|_| AlloyScaffoldError::LockFailed)?
         .insert(draft_id, draft);
 
     Ok(StageModuleScaffoldResponse {
@@ -134,26 +136,26 @@ pub async fn alloy_review_module_scaffold(
     state: &AlloyScaffoldState,
     context: Option<McpScaffoldDraftRuntimeContext>,
     request: ReviewModuleScaffoldRequest,
-) -> Result<ReviewModuleScaffoldResponse, String> {
+) -> Result<ReviewModuleScaffoldResponse, AlloyScaffoldError> {
     if let Some(draft_store) = &state.draft_store {
         let context = require_draft_runtime_context(context)?;
         return draft_store
             .review_scaffold_draft(&context, request)
             .await
-            .map_err(|error| error.to_string());
+            .map_err(|error| AlloyScaffoldError::Validation(error.to_string()));
     }
 
     let draft_id = request
         .draft_id
         .parse::<uuid::Uuid>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AlloyScaffoldError::Validation(e.to_string()))?;
     let draft = state
         .staged_scaffolds
         .lock()
-        .map_err(|_| "Failed to lock staged scaffold store".to_string())?
+        .map_err(|_| AlloyScaffoldError::LockFailed)?
         .get(&draft_id)
         .cloned()
-        .ok_or_else(|| format!("Unknown scaffold draft: {}", request.draft_id))?;
+        .ok_or_else(|| AlloyScaffoldError::UnknownDraft(request.draft_id.clone()))?;
 
     let source_digest = crate::alloy_scaffold::scaffold_source_digest(&draft.preview)?;
     Ok(ReviewModuleScaffoldResponse {
@@ -166,38 +168,38 @@ pub async fn alloy_apply_module_scaffold(
     state: &AlloyScaffoldState,
     context: Option<McpScaffoldDraftRuntimeContext>,
     request: ApplyModuleScaffoldRequest,
-) -> Result<ApplyModuleScaffoldResponse, String> {
+) -> Result<ApplyModuleScaffoldResponse, AlloyScaffoldError> {
     if let Some(draft_store) = &state.draft_store {
         let context = require_draft_runtime_context(context)?;
         return draft_store
             .apply_scaffold_draft(&context, request)
             .await
-            .map_err(|error| error.to_string());
+            .map_err(|error| AlloyScaffoldError::Validation(error.to_string()));
     }
 
     if !request.confirm {
-        return Err(
+        return Err(AlloyScaffoldError::Validation(
             "Refusing to apply staged scaffold without confirm=true after review.".to_string(),
-        );
+        ));
     }
 
     let draft_id = request
         .draft_id
         .parse::<uuid::Uuid>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AlloyScaffoldError::Validation(e.to_string()))?;
     let mut store = state
         .staged_scaffolds
         .lock()
-        .map_err(|_| "Failed to lock staged scaffold store".to_string())?;
+        .map_err(|_| AlloyScaffoldError::LockFailed)?;
     let draft = store
         .get_mut(&draft_id)
-        .ok_or_else(|| format!("Unknown scaffold draft: {}", request.draft_id))?;
+        .ok_or_else(|| AlloyScaffoldError::UnknownDraft(request.draft_id.clone()))?;
 
     if draft.status == ModuleScaffoldDraftStatus::Applied {
-        return Err(format!(
+        return Err(AlloyScaffoldError::Validation(format!(
             "Scaffold draft {} has already been applied",
             request.draft_id
-        ));
+        )));
     }
 
     let response = crate::alloy_scaffold::apply_staged_scaffold(draft, &request.workspace_root)?;
@@ -207,10 +209,12 @@ pub async fn alloy_apply_module_scaffold(
 
 fn require_draft_runtime_context(
     context: Option<McpScaffoldDraftRuntimeContext>,
-) -> Result<McpScaffoldDraftRuntimeContext, String> {
+) -> Result<McpScaffoldDraftRuntimeContext, AlloyScaffoldError> {
     context.ok_or_else(|| {
-        "Persisted scaffold draft store requires MCP runtime context with tenant/client binding"
-            .to_string()
+        AlloyScaffoldError::ContextRequired(
+            "Persisted scaffold draft store requires MCP runtime context with tenant/client binding"
+                .to_string(),
+        )
     })
 }
 
@@ -342,11 +346,10 @@ pub fn alloy_script_helpers() -> ScriptHelpersResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result as AnyhowResult;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::runtime::McpScaffoldDraftStore;
+    use crate::runtime::{McpRuntimeError, McpRuntimeResult, McpScaffoldDraftStore};
 
     fn test_state() -> AlloyScaffoldState {
         AlloyScaffoldState::new()
@@ -447,14 +450,14 @@ mod tests {
             &self,
             _context: &McpScaffoldDraftRuntimeContext,
             request: ScaffoldModuleRequest,
-        ) -> AnyhowResult<StageModuleScaffoldResponse> {
+        ) -> McpRuntimeResult<StageModuleScaffoldResponse> {
             self.stage_calls.fetch_add(1, Ordering::SeqCst);
             let preview = crate::alloy_scaffold::generate_module_scaffold(&request)
-                .map_err(anyhow::Error::msg)?;
+                .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
             Ok(StageModuleScaffoldResponse {
                 draft_id: "persisted-draft".to_string(),
                 source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
-                    .map_err(anyhow::Error::msg)?,
+                    .map_err(|e| McpRuntimeError::Message(e.to_string()))?,
                 preview,
                 status: ModuleScaffoldDraftStatus::Staged,
                 review_required: true,
@@ -467,7 +470,7 @@ mod tests {
             &self,
             _context: &McpScaffoldDraftRuntimeContext,
             request: ReviewModuleScaffoldRequest,
-        ) -> AnyhowResult<ReviewModuleScaffoldResponse> {
+        ) -> McpRuntimeResult<ReviewModuleScaffoldResponse> {
             self.review_calls.fetch_add(1, Ordering::SeqCst);
             let preview = ScaffoldModulePreview {
                 crate_name: "rustok-newsletter".to_string(),
@@ -491,7 +494,7 @@ mod tests {
                     status: ModuleScaffoldDraftStatus::Staged,
                 },
                 source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
-                    .map_err(anyhow::Error::msg)?,
+                    .map_err(|e| McpRuntimeError::Message(e.to_string()))?,
             })
         }
 
@@ -499,7 +502,7 @@ mod tests {
             &self,
             _context: &McpScaffoldDraftRuntimeContext,
             request: ApplyModuleScaffoldRequest,
-        ) -> AnyhowResult<ApplyModuleScaffoldResponse> {
+        ) -> McpRuntimeResult<ApplyModuleScaffoldResponse> {
             self.apply_calls.fetch_add(1, Ordering::SeqCst);
             let preview = ScaffoldModulePreview {
                 crate_name: "rustok-newsletter".to_string(),
@@ -512,7 +515,7 @@ mod tests {
                 crate_name: "rustok-newsletter".to_string(),
                 crate_path: "crates/modules/rustok-newsletter".to_string(),
                 source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
-                    .map_err(anyhow::Error::msg)?,
+                    .map_err(|e| McpRuntimeError::Message(e.to_string()))?,
                 wrote_files: true,
                 status: ModuleScaffoldDraftStatus::Applied,
                 next_steps: vec!["persisted".to_string()],

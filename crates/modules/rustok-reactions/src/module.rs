@@ -80,8 +80,8 @@ impl RusToKModule for ReactionsModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        let _ = ensure_reaction_subject_registry(extensions);
-        let _ = ensure_reaction_subject_factory_registry(extensions);
+        drop(ensure_reaction_subject_registry(extensions));
+        drop(ensure_reaction_subject_factory_registry(extensions));
         Ok(())
     }
 }

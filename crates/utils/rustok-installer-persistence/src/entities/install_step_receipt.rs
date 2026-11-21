@@ -11,6 +11,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub session_id: Uuid,
+    pub attempt_generation: i64,
     pub step: String,
     pub outcome: String,
     pub input_checksum: String,

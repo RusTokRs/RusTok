@@ -359,10 +359,17 @@ impl SocialGraphIndexConsumer {
         .with_connector_metadata(consumed.connector_metadata.clone())
         .with_broker_message_id(broker_message_id);
         if let Err(error) = self.transport.move_to_dlq(entry).await {
-            let _ = self
+            if let Err(release_err) = self
                 .dlq_receipts
                 .release_claim(&identity, self.dlq_publisher_id)
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    publisher_id = %self.dlq_publisher_id,
+                    error = %release_err,
+                    "failed to release dlq claim after transport error"
+                );
+            }
             return Err(SocialGraphIndexConsumerError::Transport(error.to_string()));
         }
         self.dlq_receipts

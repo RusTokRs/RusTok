@@ -66,6 +66,13 @@
 
 ### Execution Pipeline (`execution.rs`, with `feature = "host-runtime"`)
 - `execute_install_apply<P>(ports: &P, plan: InstallPlan, options: InstallApplyOptions) -> Result<InstallApplyOutput, InstallExecutionError>`
+- `InstallApplyOptions` carries an optional stable `session_id`, a host-issued per-attempt
+  `lock_owner`, and `lock_ttl_secs` (default 900; accepted range 1–86,400).
+- `build_install_lock_owner(label, session_id, attempt_id)` sanitizes a short diagnostic
+  label and appends optional session identity plus a fresh attempt UUID. Hosts must
+  generate a new attempt UUID for every execution attempt.
+- `is_valid_install_lock_ttl_secs`, `DEFAULT_INSTALL_LOCK_TTL_SECS`, and
+  `MAX_INSTALL_LOCK_TTL_SECS` expose the shared lease-duration contract.
 - Required Port Traits:
   - `InstallDatabasePort`: Prepares target DB connection and runtime handle.
   - `InstallSchemaPort<R>`: Applies bootstrap owner schema, then canonical remaining schema.
@@ -98,7 +105,7 @@
 - `StateTransitionError`: Invalid state transition attempt.
 - `SecretResolutionError`: Missing, unreadable, or unsupported secret backend.
 - `ReceiptError`: JSON serialization, I/O, or signature verification failure.
-- `InstallExecutionError`: Pipeline stage failure.
+- `InstallExecutionError`: Pipeline stage failure, including an out-of-range installer lease TTL.
 - `SeedExecutionError`: Seed validation, dependency, or content failure.
 
 ---
@@ -114,6 +121,15 @@
 3. **Distribution Admittance Binding:**
    - Every install topology must be digest-pinned and validated against the admitted distribution bundle and composition hash.
    - Roles must strictly match the admitted static distribution artifacts.
+4. **Installer Lease Contract:**
+   - Lease TTLs are bounded to 1–86,400 seconds; invalid values fail before preflight or
+     persistence, and timestamp overflow is rejected rather than panicking.
+   - A session is claimed once. Lease expiry alone does not release an unfinished session;
+     the persistence adapter keeps unreconciled sessions, including `RecoveryRequired`,
+     blocking until explicit reconciliation.
+   - Per-attempt owner strings are unique identifiers, but the persistence adapter does not
+     yet compare owner equality on every state/receipt mutation; full stale-worker fencing
+     and resumable recovery remain open.
 
 ---
 

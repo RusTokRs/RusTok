@@ -225,6 +225,7 @@ fn plan_restock_lines(
     snapshot: &OrderLineInventoryBindingsSnapshot,
 ) -> PostOrderOrchestrationResult<PreparedReturnRestock> {
     let selected = selected_items(tenant_id, order_return, decision)?;
+    // INVARIANT: database query filtered by tenant_id precedes in-memory inventory binding snapshot validation.
     if snapshot.tenant_id != tenant_id || snapshot.order_id != order_return.order_id {
         return Err(binding_conflict());
     }

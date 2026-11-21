@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -10,6 +9,26 @@ use crate::{
     ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModuleRequest,
     StageModuleScaffoldResponse,
 };
+
+#[derive(Debug, thiserror::Error)]
+pub enum McpRuntimeError {
+    #[error("MCP runtime error: {0}")]
+    Message(String),
+}
+
+impl From<String> for McpRuntimeError {
+    fn from(s: String) -> Self {
+        Self::Message(s)
+    }
+}
+
+impl From<&str> for McpRuntimeError {
+    fn from(s: &str) -> Self {
+        Self::Message(s.to_string())
+    }
+}
+
+pub type McpRuntimeResult<T> = std::result::Result<T, McpRuntimeError>;
 
 fn default_transport() -> String {
     "stdio".to_string()
@@ -193,12 +212,12 @@ pub trait McpAccessResolver: Send + Sync {
     async fn resolve_runtime_binding(
         &self,
         session: &McpSessionContext,
-    ) -> Result<McpRuntimeBinding>;
+    ) -> McpRuntimeResult<McpRuntimeBinding>;
 }
 
 #[async_trait]
 pub trait McpAuditSink: Send + Sync {
-    async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> Result<()>;
+    async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> McpRuntimeResult<()>;
 }
 
 #[async_trait]
@@ -207,19 +226,19 @@ pub trait McpScaffoldDraftStore: Send + Sync {
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ScaffoldModuleRequest,
-    ) -> Result<StageModuleScaffoldResponse>;
+    ) -> McpRuntimeResult<StageModuleScaffoldResponse>;
 
     async fn review_scaffold_draft(
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ReviewModuleScaffoldRequest,
-    ) -> Result<ReviewModuleScaffoldResponse>;
+    ) -> McpRuntimeResult<ReviewModuleScaffoldResponse>;
 
     async fn apply_scaffold_draft(
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ApplyModuleScaffoldRequest,
-    ) -> Result<ApplyModuleScaffoldResponse>;
+    ) -> McpRuntimeResult<ApplyModuleScaffoldResponse>;
 }
 
 pub type SharedMcpAccessResolver = Arc<dyn McpAccessResolver>;

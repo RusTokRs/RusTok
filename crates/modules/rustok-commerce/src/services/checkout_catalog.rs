@@ -109,6 +109,7 @@ pub(super) fn validate_variant_line(
     product: &ProductResponse,
     public_channel_slug: Option<&str>,
 ) -> CheckoutResult<()> {
+    // INVARIANT: cross-module product contract validation ensures foreign product response matches checkout tenant.
     if product.tenant_id != tenant_id
         || product.id.is_nil()
         || line.product_id.is_some_and(|id| id != product.id)

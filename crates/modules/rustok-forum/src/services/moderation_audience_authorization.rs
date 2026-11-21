@@ -296,6 +296,7 @@ fn exact_transport_context(
         return Ok(None);
     };
 
+    // INVARIANT: fail-closed port context verification ensures transport caller tenant matches target tenant.
     if context.tenant_id != tenant_id.to_string() {
         return Err(ForumError::Validation(
             "Forum moderation transport tenant does not match the owner command".to_string(),

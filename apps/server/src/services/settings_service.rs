@@ -405,6 +405,11 @@ impl SettingsService {
     ///
     /// Persists settings and outbox domain event atomically within a transaction.
     /// Returns the stored and redacted `Value`.
+    #[tracing::instrument(
+        skip(ctx, event_bus, settings, validators),
+        fields(tenant_id = %tenant_id, category = %cat),
+        err
+    )]
     pub async fn update(
         ctx: &ServerRuntimeContext,
         event_bus: &TransactionalEventBus,
@@ -425,6 +430,15 @@ impl SettingsService {
     /// the revision returned by the corresponding read (`0` for a category with
     /// no persisted row). A stale expectation is a `WriteConflict`, not an
     /// internal retry that would overwrite another writer's document.
+    #[tracing::instrument(
+        skip(ctx, event_bus, settings, validators),
+        fields(
+            tenant_id = %tenant_id,
+            category = %cat,
+            expected_schema_version = %expected_schema_version
+        ),
+        err
+    )]
     pub async fn update_if_current(
         ctx: &ServerRuntimeContext,
         event_bus: &TransactionalEventBus,

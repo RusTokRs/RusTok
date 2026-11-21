@@ -130,7 +130,13 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
                     error = %error,
                     "Script failed"
                 );
-                let _ = self.registry.record_error(script.id).await;
+                if let Err(rec_err) = self.registry.record_error(script.id).await {
+                    warn!(
+                        script.id = %script.id,
+                        error = %rec_err,
+                        "Failed to record script error in registry"
+                    );
+                }
                 ExecutionOutcome::Failed { error }
             }
         };

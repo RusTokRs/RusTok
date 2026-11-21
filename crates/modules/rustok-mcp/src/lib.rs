@@ -18,10 +18,11 @@
 pub mod access;
 pub mod alloy_authoring;
 pub mod alloy_import;
-mod alloy_scaffold;
+pub mod alloy_scaffold;
 #[path = "alloy_tools.rs"]
 mod alloy_tools_unchecked;
 pub mod alloy_tools {
+    pub use super::alloy_scaffold::AlloyScaffoldError;
     pub use super::alloy_tools_unchecked::{
         ALL_ALLOY_TOOLS, AlloyScaffoldState, ApplyModuleScaffoldRequest,
         ApplyModuleScaffoldResponse, ModuleScaffoldDraftStatus, ReviewModuleScaffoldRequest,
@@ -37,7 +38,7 @@ pub mod alloy_tools {
         state: &AlloyScaffoldState,
         context: Option<crate::McpScaffoldDraftRuntimeContext>,
         request: ApplyModuleScaffoldRequest,
-    ) -> Result<ApplyModuleScaffoldResponse, String> {
+    ) -> Result<ApplyModuleScaffoldResponse, AlloyScaffoldError> {
         super::scaffold_workspace::apply_authorized_module_scaffold(state, context, request).await
     }
 }
@@ -89,14 +90,15 @@ pub use management::{
     UpdateMcpPolicyRequest,
 };
 pub use runtime::{
-    McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpScaffoldDraftRuntimeContext,
-    McpScaffoldDraftStore, McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome,
-    SharedMcpAccessResolver, SharedMcpAuditSink, SharedMcpScaffoldDraftStore,
+    McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpRuntimeError, McpRuntimeResult,
+    McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext,
+    McpToolCallAuditEvent, McpToolCallOutcome, SharedMcpAccessResolver, SharedMcpAuditSink,
+    SharedMcpScaffoldDraftStore,
 };
 pub use scaffold_workspace::{
     MCP_SCAFFOLD_WORKSPACE_ROOT_ENV, apply_authorized_module_scaffold, authorize_scaffold_workspace,
 };
-pub use server::{McpServerConfig, RusToKMcpServer, serve_stdio};
+pub use server::{McpServerConfig, McpServerError, McpServerResult, RusToKMcpServer, serve_stdio};
 pub use tools::{
     MODULE_BLOG, MODULE_CONTENT, MODULE_FORUM, MODULE_PAGES, McpHealthResponse, McpState,
     McpToolError, McpToolResponse, ModuleDetailsResponse, ModuleInfo, ModuleListResponse,

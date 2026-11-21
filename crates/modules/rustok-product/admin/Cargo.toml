@@ -11,6 +11,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 

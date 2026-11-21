@@ -152,7 +152,13 @@ impl RagIngestionPort for AthanorRagAdapter {
         let batch = ingestion_batch(previous, &snapshot, &request, &chunks);
 
         if let Err(error) = store.publish_snapshot_batch(snapshot.clone(), batch).await {
-            let _ = store.abort_snapshot(snapshot).await;
+            if let Err(abort_err) = store.abort_snapshot(snapshot).await {
+                tracing::warn!(
+                    tenant_id = %request.tenant_id,
+                    error = %abort_err,
+                    "failed to abort athanor snapshot after publish batch error"
+                );
+            }
             return Err(provider_error(error));
         }
 

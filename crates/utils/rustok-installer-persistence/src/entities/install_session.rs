@@ -12,6 +12,7 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Option<Uuid>,
     pub status: String,
+    pub attempt_generation: i64,
     pub profile: String,
     pub environment: String,
     pub database_engine: String,

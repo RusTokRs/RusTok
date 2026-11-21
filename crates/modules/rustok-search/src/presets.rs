@@ -69,7 +69,13 @@ impl SearchFilterPresetService {
             .map(|items| {
                 items
                     .iter()
-                    .filter_map(|item| parse_preset(item).ok())
+                    .filter_map(|item| match parse_preset(item) {
+                        Ok(preset) => Some(preset),
+                        Err(err) => {
+                            tracing::warn!(preset = %item, error = %err, "Skipping malformed search filter preset in configuration");
+                            None
+                        }
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()

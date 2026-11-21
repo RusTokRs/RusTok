@@ -486,17 +486,15 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             r#"SELECT tag_id FROM blog_tag_usage WHERE tenant_id = $1"#,
             vec![tenant_id.into()],
         );
-        let usage_res = match conn {
+        let rows = match conn {
             BlogTaxonomyConnection::Connection(c) => c.query_all_raw(usage_query).await,
             BlogTaxonomyConnection::Transaction(tx) => tx.query_all_raw(usage_query).await,
-        };
-        if let Ok(rows) = usage_res {
-            return Ok(rows
-                .into_iter()
-                .filter_map(|r| r.try_get::<Uuid>("", "tag_id").ok())
-                .collect());
+        }?;
+        let mut tag_ids = HashSet::with_capacity(rows.len());
+        for row in rows {
+            tag_ids.insert(row.try_get::<Uuid>("", "tag_id")?);
         }
-        Ok(HashSet::new())
+        Ok(tag_ids)
     }
 
     async fn ensure_module_tags_in_tx(

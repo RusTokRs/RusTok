@@ -199,7 +199,10 @@ impl ForumOwnerCheckpointReconciler {
         } else {
             heads.last().map(|head| head.tenant_id)
         };
-        let _ = self.store_scan_cursor(active_cursor, next_cursor).await?;
+        let updated = self.store_scan_cursor(active_cursor, next_cursor).await?;
+        if !updated {
+            tracing::debug!("Concurrent scan cursor update observed for forum projection owner");
+        }
         Ok(report)
     }
 

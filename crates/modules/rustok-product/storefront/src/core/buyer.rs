@@ -192,11 +192,12 @@ pub fn buyer_currencies(product: &ProductDetail) -> Vec<String> {
         .iter()
         .flat_map(|variant| &variant.prices)
         .filter_map(|price| {
-            rustok_pricing_storefront::parse_optional_currency_code(Some(
+            match rustok_pricing_storefront::parse_optional_currency_code(Some(
                 price.currency_code.clone(),
-            ))
-            .ok()
-            .flatten()
+            )) {
+                Ok(code) => code,
+                Err(_) => None,
+            }
         })
         .collect::<BTreeSet<_>>()
         .into_iter()

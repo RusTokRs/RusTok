@@ -59,6 +59,17 @@ impl SocialGraphService {
             .await?)
     }
 
+    #[tracing::instrument(
+        skip(self, request),
+        fields(
+            tenant_id = %tenant_id,
+            actor_id = ?actor_id,
+            source_user_id = %request.source_user_id,
+            target_user_id = %request.target_user_id,
+            idempotency_key = %idempotency_key,
+        ),
+        err
+    )]
     pub(crate) async fn set_relation_state_with_receipt(
         &self,
         tenant_id: Uuid,

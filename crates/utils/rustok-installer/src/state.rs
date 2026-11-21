@@ -42,6 +42,43 @@ pub struct StateTransitionError {
 }
 
 impl InstallState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::PreflightPassed => "preflight_passed",
+            Self::ConfigPrepared => "config_prepared",
+            Self::DatabaseReady => "database_ready",
+            Self::SchemaApplied => "schema_applied",
+            Self::SeedApplied => "seed_applied",
+            Self::AdminProvisioned => "admin_provisioned",
+            Self::Deploying => "deploying",
+            Self::Verified => "verified",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::FreshInstallCleaned => "fresh_install_cleaned",
+            Self::RecoveryRequired => "recovery_required",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        Some(match value {
+            "draft" => Self::Draft,
+            "preflight_passed" => Self::PreflightPassed,
+            "config_prepared" => Self::ConfigPrepared,
+            "database_ready" => Self::DatabaseReady,
+            "schema_applied" => Self::SchemaApplied,
+            "seed_applied" => Self::SeedApplied,
+            "admin_provisioned" => Self::AdminProvisioned,
+            "deploying" => Self::Deploying,
+            "verified" => Self::Verified,
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            "fresh_install_cleaned" => Self::FreshInstallCleaned,
+            "recovery_required" => Self::RecoveryRequired,
+            _ => return None,
+        })
+    }
+
     pub fn can_transition_to(self, to: InstallState) -> bool {
         use InstallState::*;
 

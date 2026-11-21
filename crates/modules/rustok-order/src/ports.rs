@@ -81,13 +81,16 @@ fn order_port_context_facts(context: &PortContext) -> OrderPortContextFacts {
 
 fn order_checkout_identity_error_facts(error: &OrderCheckoutIdentityError) -> OrderPortErrorFacts {
     match error {
-        OrderCheckoutIdentityError::Validation(message)
-        | OrderCheckoutIdentityError::Conflict(message) => OrderPortErrorFacts {
-            error_variant: match error {
-                OrderCheckoutIdentityError::Validation(_) => "checkout_identity_validation",
-                OrderCheckoutIdentityError::Conflict(_) => "checkout_identity_conflict",
-                _ => unreachable!(),
-            },
+        OrderCheckoutIdentityError::Validation(message) => OrderPortErrorFacts {
+            error_variant: "checkout_identity_validation",
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderCheckoutIdentityError::Conflict(message) => OrderPortErrorFacts {
+            error_variant: "checkout_identity_conflict",
             text_field_count: 1,
             text_total_length: message.chars().count(),
             uuid_field_count: 0,
@@ -123,15 +126,24 @@ fn order_error_facts(error: &OrderError) -> OrderPortErrorFacts {
             uuid_non_nil_count: 0,
             opaque_payload_present: false,
         },
-        OrderError::OrderNotFound(id)
-        | OrderError::OrderReturnNotFound(id)
-        | OrderError::OrderChangeNotFound(id) => OrderPortErrorFacts {
-            error_variant: match error {
-                OrderError::OrderNotFound(_) => "order_not_found",
-                OrderError::OrderReturnNotFound(_) => "order_return_not_found",
-                OrderError::OrderChangeNotFound(_) => "order_change_not_found",
-                _ => unreachable!(),
-            },
+        OrderError::OrderNotFound(id) => OrderPortErrorFacts {
+            error_variant: "order_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::OrderReturnNotFound(id) => OrderPortErrorFacts {
+            error_variant: "order_return_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::OrderChangeNotFound(id) => OrderPortErrorFacts {
+            error_variant: "order_change_not_found",
             text_field_count: 0,
             text_total_length: 0,
             uuid_field_count: 1,

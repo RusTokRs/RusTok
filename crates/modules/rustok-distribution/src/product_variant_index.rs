@@ -6,7 +6,8 @@ use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation,
     IndexRecord, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexValue, IndexValueType, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef,
+    IndexSourceRegistrationError, IndexValue, IndexValueType, LocaleMode, ModuleName,
+    PostgresIndexSourceFactory, SchemaRef,
     SchemaVersion, derive_index_source_event_id, register_index_schema_source,
     register_index_source, register_postgres_index_source_factory,
 };
@@ -40,6 +41,12 @@ enum ProductVariantIndexBridgeError {
     InvalidCursor,
     #[error("ProductVariant Index source row is invalid")]
     InvalidRow,
+}
+
+impl From<DomainError> for ProductVariantIndexBridgeError {
+    fn from(error: DomainError) -> Self {
+        Self::InvalidContract(error)
+    }
 }
 
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
@@ -127,12 +134,10 @@ fn product_variant_schema() -> Result<IndexSchema, ProductVariantIndexBridgeErro
     Ok(schema)
 }
 
-fn product_variant_schema_ref() -> Result<SchemaRef, ProductVariantIndexBridgeError> {
+fn product_variant_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product")
-            .map_err(ProductVariantIndexBridgeError::InvalidContract)?,
-        entity: EntityName::new("product_variant")
-            .map_err(ProductVariantIndexBridgeError::InvalidContract)?,
+        module: ModuleName::new("rustok-product")?,
+        entity: EntityName::new("product_variant")?,
         version: SchemaVersion::new(PRODUCT_VARIANT_SCHEMA_VERSION),
     })
 }
@@ -163,7 +168,7 @@ impl PostgresIndexSourceFactory for ProductVariantIndexSourceFactory {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String> {
+    ) -> Result<(), IndexSourceRegistrationError> {
         let port = extensions
             .get::<Arc<dyn ProductVariantReplayPort>>()
             .cloned()
@@ -172,10 +177,10 @@ impl PostgresIndexSourceFactory for ProductVariantIndexSourceFactory {
             extensions,
             "product",
             PRODUCT_VARIANT_INDEX_SOURCE,
-            [product_variant_schema_ref().map_err(|error| error.to_string())?],
+            [product_variant_schema_ref()?],
             ProductVariantIndexSource { port },
-        )
-        .map_err(|error| error.to_string())
+        )?;
+        Ok(())
     }
 }
 
@@ -407,23 +412,13 @@ fn optional_string_value(value: Option<String>) -> IndexValue {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::retryable(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::retryable("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::retryable(code)
+        .unwrap_or_else(|_| IndexSourceFailure::retryable_internal_error())
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    match IndexSourceFailure::permanent(code) {
-        Ok(failure) => failure,
-        Err(_) => match IndexSourceFailure::permanent("internal_error") {
-            Ok(fallback) => fallback,
-            Err(_) => unreachable!("internal_error is a valid machine name"),
-        },
-    }
+    IndexSourceFailure::permanent(code)
+        .unwrap_or_else(|_| IndexSourceFailure::permanent_internal_error())
 }
 
 #[cfg(test)]

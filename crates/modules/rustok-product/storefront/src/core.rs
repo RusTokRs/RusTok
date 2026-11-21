@@ -20,7 +20,7 @@ use crate::catalog_controls::{
 use crate::i18n::t;
 use crate::model::{
     PricingResolutionContext, ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail,
-    ProductPricingDetail, ProductTranslation, ProductVariant,
+    ProductPricingDetail, ProductTranslation,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

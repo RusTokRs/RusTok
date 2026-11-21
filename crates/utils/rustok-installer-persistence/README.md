@@ -12,6 +12,9 @@ the schema created by `rustok-migrations`.
 ## Responsibilities
 
 - Persist installer sessions, state changes, tenant association, and locks.
+- Claim installer sessions once and fail closed while an unreconciled session
+  (including `recovery_required`) remains; lease expiry alone does not release
+  global admission.
 - Persist and read redacted, idempotent step receipts.
 - Prepare PostgreSQL/SQLite targets and apply the composed platform migrator.
 - Compose tenant, identity, RBAC, and module lifecycle writers for typed seed

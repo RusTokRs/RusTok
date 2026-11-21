@@ -18,6 +18,55 @@ mod tests {
     };
     use crate::state::{InstallState, InstallStep, StateTransitionError};
 
+    #[cfg(feature = "host-runtime")]
+    #[test]
+    fn install_lock_owner_is_unique_per_attempt_and_bounded() {
+        use crate::{InstallApplyOptions, build_install_lock_owner};
+        use uuid::Uuid;
+
+        let session_id = Uuid::from_u128(1);
+        let first_attempt = Uuid::from_u128(2);
+        let second_attempt = Uuid::from_u128(3);
+        let first = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(session_id),
+            first_attempt,
+        );
+        let second = build_install_lock_owner(
+            Some("operator/worker 1"),
+            Some(session_id),
+            second_attempt,
+        );
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("operatorworker1:"));
+        assert!(!first.contains('/'));
+        assert!(!first.contains(' '));
+        assert!(first.len() <= 128);
+        assert_ne!(
+            InstallApplyOptions::default().lock_owner,
+            InstallApplyOptions::default().lock_owner,
+            "separate default apply attempts must not share a lock owner"
+        );
+    }
+
+    #[cfg(feature = "host-runtime")]
+    #[test]
+    fn installer_lock_ttl_is_bounded() {
+        use crate::{
+            DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
+            is_valid_install_lock_ttl_secs,
+        };
+
+        assert_eq!(DEFAULT_INSTALL_LOCK_TTL_SECS, 900);
+        assert!(is_valid_install_lock_ttl_secs(1));
+        assert!(is_valid_install_lock_ttl_secs(DEFAULT_INSTALL_LOCK_TTL_SECS));
+        assert!(is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS));
+        assert!(!is_valid_install_lock_ttl_secs(0));
+        assert!(!is_valid_install_lock_ttl_secs(-1));
+        assert!(!is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS + 1));
+    }
+
     #[test]
     fn install_state_happy_path_lifecycle() {
         let mut state = InstallState::Draft;

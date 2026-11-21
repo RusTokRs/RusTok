@@ -24,12 +24,27 @@ use crate::{
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 const MODULE_SLUG: &str = "marketplace_listing";
 
+/// Error returned when initializing Marketplace Listing GraphQL runtime data fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct MarketplaceListingGraphqlRuntimeError(pub String);
+
+impl From<MarketplaceListingGraphqlRuntimeError> for String {
+    fn from(error: MarketplaceListingGraphqlRuntimeError) -> Self {
+        error.0
+    }
+}
+
 pub fn graphql_runtime_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> std::result::Result<MarketplaceListingRuntime, String> {
+) -> std::result::Result<MarketplaceListingRuntime, MarketplaceListingGraphqlRuntimeError> {
     inputs
         .shared_get::<MarketplaceListingRuntime>()
-        .ok_or_else(|| "marketplace listing runtime is not composed".to_string())
+        .ok_or_else(|| {
+            MarketplaceListingGraphqlRuntimeError(
+                "marketplace listing runtime is not composed".to_string(),
+            )
+        })
 }
 
 #[derive(Default)]

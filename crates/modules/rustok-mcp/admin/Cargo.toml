@@ -12,6 +12,9 @@ description = "Leptos admin UI package for the rustok-mcp control plane"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 

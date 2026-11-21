@@ -1104,7 +1104,9 @@ fn validate_native_field_constraints(
                 }
             }
         }
-        _ => unreachable!("native field tag was normalized before validation"),
+        other => {
+            return Err(format!("unsupported field tag: {other}"));
+        }
     }
     Ok(())
 }

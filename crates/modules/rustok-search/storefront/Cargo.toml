@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
@@ -19,7 +22,9 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-search",
+  "dep:rustok-api",
   "rustok-api/server",
+  "dep:uuid",
 ]
 
 [dependencies]
@@ -30,8 +35,9 @@ leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 rustok-ui-transport.workspace = true
 leptos-ui-routing.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, optional = true }
 rustok-search = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, optional = true }
+tracing.workspace = true

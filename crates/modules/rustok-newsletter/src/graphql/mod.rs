@@ -21,10 +21,33 @@ impl NewsletterGraphqlRuntimeData {
     }
 }
 
+/// Error type for newsletter GraphQL runtime initialization.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct NewsletterGraphqlRuntimeError(pub String);
+
+impl From<&str> for NewsletterGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for NewsletterGraphqlRuntimeError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<NewsletterGraphqlRuntimeError> for String {
+    fn from(e: NewsletterGraphqlRuntimeError) -> Self {
+        e.0
+    }
+}
+
 /// Factory function to attach newsletter runtime data to the GraphQL context.
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> Result<Arc<NewsletterGraphqlRuntimeData>, String> {
+) -> Result<Arc<NewsletterGraphqlRuntimeData>, NewsletterGraphqlRuntimeError> {
     Ok(Arc::new(NewsletterGraphqlRuntimeData::new(
         inputs.db_clone(),
     )))

@@ -5,11 +5,42 @@ use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
 use crate::{
-    IndexMutationEventError, IndexSourceCatalog, SharedIndexMutationEventRegistry,
+    DomainError, IndexMutationEventError, IndexSourceAbsenceError, IndexSourceCatalog,
+    IndexSourceError, SharedIndexMutationEventRegistry,
     materialize_index_mutation_event_registry,
 };
 
 const MAX_FACTORY_ID_BYTES: usize = 128;
+
+#[derive(Debug, Clone, Error)]
+pub enum IndexSourceRegistrationError {
+    #[error(transparent)]
+    Source(#[from] IndexSourceError),
+    #[error(transparent)]
+    Absence(#[from] IndexSourceAbsenceError),
+    #[error(transparent)]
+    Domain(#[from] DomainError),
+    #[error("{0}")]
+    Custom(String),
+}
+
+impl IndexSourceRegistrationError {
+    pub fn custom(message: impl Into<String>) -> Self {
+        Self::Custom(message.into())
+    }
+}
+
+impl From<&str> for IndexSourceRegistrationError {
+    fn from(s: &str) -> Self {
+        Self::Custom(s.to_string())
+    }
+}
+
+impl From<String> for IndexSourceRegistrationError {
+    fn from(s: String) -> Self {
+        Self::Custom(s)
+    }
+}
 
 /// Host-database-aware constructor for one owner-published replay source.
 ///
@@ -31,7 +62,7 @@ pub trait PostgresIndexSourceFactory: Send + Sync {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
-    ) -> Result<(), String>;
+    ) -> Result<(), IndexSourceRegistrationError>;
 }
 
 #[derive(Clone)]
@@ -299,15 +330,15 @@ mod tests {
             &self,
             extensions: &mut ModuleRuntimeExtensions,
             _db: DatabaseConnection,
-        ) -> Result<(), String> {
+        ) -> Result<(), IndexSourceRegistrationError> {
             register_index_source(
                 extensions,
                 "factory_owner",
                 "factory-owner-primary",
                 [factory_schema()],
                 NoopSource,
-            )
-            .map_err(|error| error.to_string())
+            )?;
+            Ok(())
         }
     }
 
@@ -318,8 +349,10 @@ mod tests {
             &self,
             _extensions: &mut ModuleRuntimeExtensions,
             _db: DatabaseConnection,
-        ) -> Result<(), String> {
-            Err("owner details stay in startup logs".to_string())
+        ) -> Result<(), IndexSourceRegistrationError> {
+            Err(IndexSourceRegistrationError::custom(
+                "owner details stay in startup logs",
+            ))
         }
     }
 

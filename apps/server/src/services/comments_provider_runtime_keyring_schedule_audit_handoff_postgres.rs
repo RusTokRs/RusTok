@@ -145,6 +145,11 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
     /// Writes the canonical event and marks the exact Blog audit row published
     /// in one caller transaction. The source claim token and attempt count fence
     /// stale workers. Exact terminal replay returns the stored envelope UUID.
+    #[tracing::instrument(
+        skip(self),
+        fields(request_id = %claim.request_id, claim_token = %claim.claim_token),
+        err
+    )]
     pub async fn publish_claimed(
         &self,
         claim: CommentsTcpDelegationScheduleAuditHandoffClaim,
@@ -225,6 +230,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         }
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn publish_next(
         &self,
     ) -> std::result::Result<Option<Uuid>, CommentsTcpDelegationScheduleAuditHandoffError> {

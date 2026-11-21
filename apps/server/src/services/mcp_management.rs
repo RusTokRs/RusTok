@@ -118,6 +118,11 @@ const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 
 impl McpManagementService {
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, slug = %input.slug),
+        err
+    )]
     pub async fn create_client(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -340,6 +345,11 @@ impl McpManagementService {
         })
     }
 
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, client_id = %client_id),
+        err
+    )]
     pub async fn update_policy(
         db: &DatabaseConnection,
         tenant_id: Uuid,

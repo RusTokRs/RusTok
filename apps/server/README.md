@@ -104,10 +104,17 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result; recovery requires fencing and reconciliation of
-  actual effects, not automatic expiry.
-- OAuth manifest synchronization is not one atomic, serialized tenant-wide
-  reconciliation; built-in auth email delivery remains best effort.
+  persist the terminal result. HTTP and CLI now use unique host-generated
+  lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
+  Persistence blocks new applies while any unreconciled session has a
+  recorded owner, even after lease expiry; `recovery_required` remains blocking
+  until manual reconciliation. However, state/receipt writes do not yet
+  compare the owner on every mutation, and resumable execution plus effect
+  reconciliation remain unimplemented; do not reset stale jobs based only on
+  lease expiry.
+- OAuth manifest synchronization is atomic and serialized per tenant. The
+  all-tenants bootstrap pass commits one tenant at a time, not as a single
+  cross-tenant transaction. Built-in auth email delivery remains best effort.
 - Static module-settings changes use the canonical transactional outbox. The
   legacy in-process EventBus-to-Outbox bridge is still not crash-durable before
   its first outbox insert: a process crash or forced abort in that window can
@@ -116,12 +123,19 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   all failure modes; see the server implementation plan.
 - First-party in-place refresh rotation retains only the immediately previous
   token digest. Older revoked generations are rejected as unknown but cannot
-  trigger full-lineage theft revocation. The durable rotation-history and
-  incident-reconciliation contract remains open; see the implementation plan.
+  trigger full-lineage theft revocation. A replay inside the 30-second race
+  window is rejected without revoking the live session, but the server does
+  not replay the successful refresh response; if that response was lost, the
+  client cannot recover its replacement cookie from the old token. Durable
+  rotation history, idempotent response recovery, and incident reconciliation
+  remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
-  falsely reporting only an invalid grant. Durable incident/retry evidence and
-  two-replica failure-injection verification remain pending.
+  falsely reporting only an invalid grant. Its 30-second grace window suppresses
+  family revocation for a likely concurrent duplicate, but still returns
+  `invalid_grant` and does not replay the replacement token; a lost successful
+  response cannot be recovered from the old token. Durable incident/retry
+  evidence and two-replica failure-injection verification remain pending.
 
 ## Acknowledged sealed delivery (source only)
 

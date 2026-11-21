@@ -61,6 +61,11 @@ impl TopicFieldService {
     /// - max [`MAX_FIELDS_PER_TENANT`] active definitions
     ///
     /// Returns the created row and an event envelope ready for publishing.
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, field_key = %input.field_key),
+        err
+    )]
     pub async fn create(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -154,6 +159,11 @@ impl TopicFieldService {
     /// Update an existing field definition.
     ///
     /// Returns the updated row and an event envelope.
+    #[tracing::instrument(
+        skip(db, input),
+        fields(tenant_id = %tenant_id, id = %id),
+        err
+    )]
     pub async fn update(
         db: &DatabaseConnection,
         tenant_id: Uuid,

@@ -12,6 +12,9 @@ description = "Iggy event sink and source connector translating domain events to
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 rustok-core.workspace = true

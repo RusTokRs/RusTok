@@ -153,6 +153,7 @@ pub use infrastructure::postgres::{
     PostgresIndexSchemaReadinessStore, PostgresIndexSourceFactory,
     PostgresIndexSourceFactoryCatalog, PostgresIndexSourceFactoryDescriptor,
     PostgresIndexSourceFactoryError, PostgresMutationStore, PostgresSchemaLeaseStore,
+    IndexSourceRegistrationError,
     PostgresSchemaRegistrationStore, PostgresSecondaryIndexManager,
     RecoveryAwareIndexDriftRepairOwner, RecoveryAwareIndexDriftRepairStore, SchemaApplicationLease,
     SchemaApplicationLeaseRequest, SchemaLeaseAcquireOutcome, SchemaLeaseError,

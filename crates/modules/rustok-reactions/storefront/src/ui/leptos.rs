@@ -79,7 +79,7 @@ fn ReactionSession(
         },
     );
 
-    let session_owner = Owner::current().expect("ReactionSession requires a reactive owner");
+    let session_owner = Owner::current();
     let on_toggle = Callback::new(move |(reaction, action): (String, ReactionAction)| {
         if mutation_busy.get_untracked() || !is_current.run(()) {
             return;
@@ -88,7 +88,7 @@ fn ReactionSession(
         let subject = mutation_subject.clone();
         set_mutation_busy.set(true);
         set_mutation_error.set(false);
-        session_owner.with(|| {
+        let run_mutation = move || {
             spawn_local_scoped_with_cancellation(async move {
                 let write_context = context.clone();
                 let write_subject = subject.clone();
@@ -113,8 +113,13 @@ fn ReactionSession(
                     }
                 }
                 set_mutation_busy.set(false);
-            })
-        });
+            });
+        };
+        if let Some(owner) = session_owner.as_ref() {
+            owner.with(run_mutation);
+        } else {
+            run_mutation();
+        }
     });
 
     view! {

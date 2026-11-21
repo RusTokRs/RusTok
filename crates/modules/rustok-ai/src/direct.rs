@@ -158,7 +158,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
         let input: AiAlloyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         rustok_ai_alloy::validate_runtime_payload(input.runtime_payload_json.as_deref())
-            .map_err(AiError::Validation)?;
+            .map_err(|err| AiError::Validation(err.to_string()))?;
         let scoped = runtime
             .scoped_alloy_runtime(operator.tenant_id)
             .ok_or_else(|| AiError::Runtime("Alloy runtime is not initialized".to_string()))?;
@@ -1276,7 +1276,8 @@ pub(crate) async fn generate_product_attributes(
         },
     )
     .await?;
-    validate_product_attributes_payload(&generated).map_err(AiError::Validation)?;
+    validate_product_attributes_payload(&generated)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
@@ -1355,7 +1356,8 @@ async fn generate_product_copy(
         },
     )
     .await?;
-    validate_product_copy_payload(&generated).map_err(AiError::Validation)?;
+    validate_product_copy_payload(&generated)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
@@ -1464,7 +1466,7 @@ fn build_image_provider_request(
         prompt,
         negative_prompt: task_input.negative_prompt.clone(),
         size: rustok_ai_media::normalize_image_size(task_input.size.clone())
-            .map_err(AiError::Validation)?,
+            .map_err(|err| AiError::Validation(err.to_string()))?,
         locale: Some(resolved_locale.to_string()),
     })
 }
