@@ -91,6 +91,9 @@ supported surface is `ModuleControlPlane` and the services derived from it
 
 ## Invariants worth knowing before you change anything
 
+- **Stored identities are re-verified on read.** The active composition
+  snapshot's `manifest_hash` (the build `artifact_identity`) is recomputed
+  from the stored manifest on every owner read; a mismatch fails closed.
 - **Secrets are references.** The bindings table stores resolver
   alias/key pairs. If you find yourself persisting a secret value, you are
   in the wrong layer — resolution belongs to host-owned adapters.
