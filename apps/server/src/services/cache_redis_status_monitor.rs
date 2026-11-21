@@ -8,6 +8,7 @@ use rustok_cache::{CacheService, RedisCacheStatus};
 use tokio::task::JoinHandle;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 const CACHE_REDIS_STATUS_INTERVAL: Duration = Duration::from_secs(10);
 const CACHE_REDIS_STATUS_RESTART_DELAY: Duration = Duration::from_secs(1);
@@ -101,13 +102,11 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         tracing::error!("Cache Redis status monitor start lock is unavailable");
         return;
     };
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return;
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<CacheRedisStatusMonitorHandle>() {
         if existing.is_running() {
@@ -116,7 +115,10 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         tracing::warn!("Cache Redis status monitor stopped; replacing runtime");
         existing.abort();
         if let Some(task) = existing.take_task() {
-            if let Err(error) = task.await {
+            let Some(result) = await_worker_startup_or_stop(&stop, task).await else {
+                return;
+            };
+            if let Err(error) = result {
                 if !error.is_cancelled() {
                     tracing::warn!(
                         ?error,
@@ -127,14 +129,11 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         }
     }
 
-    let initial = cache.redis_status().await;
-    log_transition(None, &initial);
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let Some(initial) = await_worker_startup_or_stop(&stop, cache.redis_status()).await
+    else {
         return;
-    }
+    };
+    log_transition(None, &initial);
 
     let task = if cache.redis_configuration_present() {
         let first_previous = Arc::new(Mutex::new(Some(initial)));
