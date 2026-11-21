@@ -423,10 +423,7 @@ mod tests {
         let payload: serde_json::Value =
             serde_json::from_slice(&body).expect("transition error response should be valid JSON");
         assert_eq!(payload["message"], "Runner transition request is invalid");
-        assert_ne!(
-            payload["message"].as_str(),
-            Some("unsupported validation stage: private-stage-value")
-        );
+        assert_eq!(payload["message"], "Runner transition request is invalid");
     }
 
     #[tokio::test]
