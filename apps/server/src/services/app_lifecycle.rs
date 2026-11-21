@@ -280,7 +280,8 @@ impl SocialGraphObserverInitializationLock {
 /// the matching shutdown take. Do not hold this blocking gate across awaits or
 /// while joining tasks. One runtime-local gate covers the Product Search channel
 /// projection repair, three Notifications, Forum Search inbox/contract,
-/// Product Index and Social Graph Index workers.
+/// Product Index, Social Graph Index, Comments TCP listener, and Comments
+/// durable audit handoff workers.
 #[derive(Clone, Default)]
 pub(crate) struct DirectWorkerRegistrationLock(
     pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
@@ -1153,11 +1154,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-comments")]
     let comments_tcp_drain = async {
-        if let Some(listener_task) =
-            runtime_ctx
-                .shared_take::<crate::services::comments_provider_runtime::CommentsTcpListenerTask>(
-                )
-        {
+        if let Some(listener_task) = take_direct_worker_for_shutdown::<
+            crate::services::comments_provider_runtime::CommentsTcpListenerTask,
+        >(runtime_ctx) {
             await_runtime_worker_shutdown_with_timeout(
                 "Comments TCP listener",
                 Some(listener_task.task),
@@ -1174,9 +1173,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-comments")]
     let comments_schedule_audit_handoff_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<
+        if let Some(worker) = take_direct_worker_for_shutdown::<
             crate::services::comments_provider_runtime::CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
-        >() {
+        >(runtime_ctx) {
             await_runtime_worker_shutdown(
                 "Comments schedule audit handoff",
                 worker.take_task(),
