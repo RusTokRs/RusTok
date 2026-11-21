@@ -2291,3 +2291,23 @@ precisely while the dependency or cache was slow.
 
 Not run at the user's request. Verify with cargo fmt --all -- --check and
 cargo check -p rustok-server --lib before merge.
+
+
+## P31 — Bound Comments TCP listener concurrency and accept retries (2026-11-21)
+
+The opt-in Comments TCP listener accepted an arbitrary positive connection
+limit and passed it directly to Tokio's semaphore constructor. Tokio panics
+when the permit count exceeds its supported maximum, so a configuration typo
+could silently turn a successful bootstrap into a failed listener task. The
+accept loop also retried persistent TCP accept errors immediately, producing
+a CPU and logging hot loop for conditions such as descriptor exhaustion.
+
+- Added an explicit 1..=4096 connection bound and reject invalid values before
+  the listener task is spawned.
+- Added exponential accept-error backoff from 100 ms to 5 seconds.
+- The backoff wait is interrupted immediately by the shared shutdown signal.
+- Added tests for the configuration bound, retry progression/cap, and shutdown
+  interruption.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.

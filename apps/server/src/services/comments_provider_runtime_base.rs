@@ -51,6 +51,9 @@ pub const COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV: &str = "RUSTOK_COMMENTS_TCP_SHUTDO
 pub const COMMENTS_TCP_MAX_FRAME_BYTES_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_FRAME_BYTES";
 
 const DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS: usize = 64;
+const MAX_COMMENTS_TCP_MAX_CONNECTIONS: usize = 4_096;
+const COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
+const COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS: u64 = 5_000;
 const DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -145,10 +148,10 @@ impl CommentsTcpListenerConfig {
             ));
         }
 
-        let max_connections = parse_optional_positive_usize(
+        let max_connections = validate_max_connections(parse_optional_positive_usize(
             COMMENTS_TCP_MAX_CONNECTIONS_ENV,
             DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS,
-        )?;
+        )?)?;
         let pre_request_timeout_ms = parse_optional_positive_u64(
             COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV,
             DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS,
@@ -547,8 +550,11 @@ async fn run_comments_tcp_listener(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
     instance_id: u64,
 ) {
+    // Validate the operator-supplied limit before constructing the semaphore;
+    // Semaphore::new panics when the requested permit count exceeds Tokio's bound.
     let permits = Arc::new(Semaphore::new(config.max_connections));
     let mut connections = JoinSet::new();
+    let mut accept_error_attempts = 0_u32;
 
     loop {
         if *stop_rx.borrow() {
@@ -563,9 +569,22 @@ async fn run_comments_tcp_listener(
             }
             accepted = listener.accept() => {
                 let (stream, peer_addr) = match accepted {
-                    Ok(value) => value,
+                    Ok(value) => {
+                        accept_error_attempts = 0;
+                        value
+                    }
                     Err(error) => {
-                        tracing::warn!(instance_id, error = %error, "Comments TCP accept failed");
+                        accept_error_attempts = accept_error_attempts.saturating_add(1);
+                        let retry_delay = comments_tcp_accept_retry_delay(accept_error_attempts);
+                        tracing::warn!(
+                            instance_id,
+                            error = %error,
+                            retry_delay_ms = retry_delay.as_millis() as u64,
+                            "Comments TCP accept failed; retrying with bounded backoff"
+                        );
+                        if wait_for_accept_retry_or_shutdown(&mut stop_rx, retry_delay).await {
+                            break;
+                        }
                         continue;
                     }
                 };
@@ -639,6 +658,38 @@ async fn run_comments_tcp_listener(
         );
     } else {
         tracing::info!(instance_id, "Comments TCP listener drained all connections");
+    }
+}
+
+
+fn validate_max_connections(max_connections: usize) -> std::result::Result<usize, String> {
+    if !(1..=MAX_COMMENTS_TCP_MAX_CONNECTIONS).contains(&max_connections) {
+        return Err(format!(
+            "{COMMENTS_TCP_MAX_CONNECTIONS_ENV} must be within 1..={MAX_COMMENTS_TCP_MAX_CONNECTIONS}"
+        ));
+    }
+    Ok(max_connections)
+}
+
+fn comments_tcp_accept_retry_delay(attempt: u32) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(6);
+    let multiplier = 1_u64 << exponent;
+    COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY
+        .saturating_mul(multiplier as u32)
+        .min(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY)
+}
+
+async fn wait_for_accept_retry_or_shutdown(
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    delay: Duration,
+) -> bool {
+    if *stop_rx.borrow() {
+        return true;
+    }
+
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => false,
+        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
     }
 }
 
@@ -758,6 +809,9 @@ mod tests {
         let starter = start_comments_tcp_listener_if_enabled;
         let _ = starter;
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS, 64);
+        assert_eq!(MAX_COMMENTS_TCP_MAX_CONNECTIONS, 4_096);
+        assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY, Duration::from_millis(100));
+        assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS, 5_000);
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES, 8 * 1024 * 1024);
@@ -768,6 +822,10 @@ mod tests {
         assert!(!parse_bool_value("enabled", "off").unwrap());
         assert!(parse_positive_usize_value("limit", "0").is_err());
         assert!(parse_positive_u64_value("timeout", "0").is_err());
+        assert_eq!(validate_max_connections(1), Ok(1));
+        assert_eq!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS), Ok(4_096));
+        assert!(validate_max_connections(0).is_err());
+        assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
     }
 
     #[test]
@@ -792,4 +850,43 @@ mod tests {
         assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
     }
+
+    #[tokio::test]
+    async fn comments_tcp_accept_retry_wait_is_interruptible_by_shutdown() {
+        let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        let wait = tokio::spawn(async move {
+            wait_for_accept_retry_or_shutdown(&mut stop_rx, Duration::from_secs(5)).await
+        });
+
+        tokio::task::yield_now().await;
+        stop_tx.send(true).expect("shutdown receiver is alive");
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), wait)
+                .await
+                .expect("shutdown interrupts accept retry backoff")
+                .expect("retry wait task joins")
+        );
+    }
+
+    #[tokio::test]
+    async fn comments_tcp_accept_retry_backoff_is_exponential_and_bounded() {
+        assert_eq!(
+            comments_tcp_accept_retry_delay(1),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(2),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(3),
+            Duration::from_millis(400)
+        );
+        assert_eq!(
+            comments_tcp_accept_retry_delay(32),
+            Duration::from_secs(5)
+        );
+    }
+
 }
