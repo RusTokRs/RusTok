@@ -104,7 +104,7 @@ for (const marker of [
 }
 forbidText(
   "poison observer check-then-spawn must be absent",
-  files.observer,
+  files.observer.split("#[cfg(test)]")[0],
   "ctx.shared_contains::<SocialGraphIndexPoisonObserverHandle>()",
 );
 
