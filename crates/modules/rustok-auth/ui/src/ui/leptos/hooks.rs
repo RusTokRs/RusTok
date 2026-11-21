@@ -4,8 +4,10 @@ use super::context::AuthContext;
 use crate::model::{AuthSession, AuthUser};
 
 pub fn use_auth() -> AuthContext {
-    use_context::<AuthContext>()
-        .expect("AuthContext not found. Make sure to wrap your app with <AuthProvider>")
+    use_context::<AuthContext>().unwrap_or_else(|| {
+        tracing::warn!("AuthContext not found. Make sure to wrap your app with <AuthProvider>");
+        AuthContext::default()
+    })
 }
 
 pub fn use_current_user() -> Signal<Option<AuthUser>> {

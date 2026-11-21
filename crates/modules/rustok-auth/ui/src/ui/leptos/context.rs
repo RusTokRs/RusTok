@@ -111,8 +111,11 @@ impl Drop for ScopeTransition {
             if let Some(realm) = self.realm.as_mut() {
                 realm.poison();
             }
-            let _ = self.scope.try_update(ClientAuthScope::abandon);
-            let _ = notify_scope_change(&self.source, self.identity_change);
+            self.scope.update(ClientAuthScope::abandon);
+            let announced = notify_scope_change(&self.source, self.identity_change);
+            if !announced {
+                tracing::debug!("scope change notification was not delivered during drop");
+            }
         }
     }
 }
@@ -217,7 +220,7 @@ impl AuthContext {
         let realm = match super::realm::RealmTransition::acquire(&self.source) {
             Ok(realm) => realm,
             Err(error) => {
-                let _ = self.scope.try_update(|scope| {
+                self.scope.update(|scope| {
                     if *scope == started_scope {
                         scope.finish(false);
                     } else {
@@ -230,8 +233,10 @@ impl AuthContext {
         if !notify_scope_change(&self.source, identity_change) {
             // No request has started. A listener may have disposed or changed the scope.
             // Release only this lease and never finish a different transition.
-            let _ = realm.release();
-            let _ = self.scope.try_update(|scope| {
+            if !realm.release() {
+                tracing::debug!("failed to release realm transition");
+            }
+            self.scope.update(|scope| {
                 if *scope == started_scope {
                     scope.finish(false);
                 } else {
@@ -271,8 +276,12 @@ impl AuthContext {
 
         match result {
             Ok((user, session)) => {
-                let _ = storage::save_user(&user);
-                let _ = storage::save_session(&session);
+                if let Err(err) = storage::save_user(&user) {
+                    tracing::warn!(?err, "failed to cache user in local storage");
+                }
+                if let Err(err) = storage::save_session(&session) {
+                    tracing::warn!(?err, "failed to cache session in local storage");
+                }
                 self.user_state.set(Some(user));
                 self.session_state.set(Some(session));
                 self.loading_state.set(false);
@@ -313,8 +322,12 @@ impl AuthContext {
 
         match result {
             Ok((user, session)) => {
-                let _ = storage::save_user(&user);
-                let _ = storage::save_session(&session);
+                if let Err(err) = storage::save_user(&user) {
+                    tracing::warn!(?err, "failed to cache user in local storage");
+                }
+                if let Err(err) = storage::save_session(&session) {
+                    tracing::warn!(?err, "failed to cache session in local storage");
+                }
                 self.user_state.set(Some(user));
                 self.session_state.set(Some(session));
                 self.loading_state.set(false);
@@ -350,7 +363,7 @@ impl AuthContext {
         {
             return Err(AuthError::Network);
         }
-        let _ = self.error_state.try_update(|error| *error = None);
+        self.error_state.update(|error| *error = None);
         if !transition.is_current() {
             return Err(AuthError::Network);
         }
@@ -394,12 +407,10 @@ impl AuthContext {
             Err(error) => {
                 // Keep the old in-memory identity for an explicit retry. The cookie may
                 // still be live, so neither that identity nor guest scope is verified.
-                let _ = self
-                    .error_state
-                    .try_update(|slot| *slot = Some(error.to_string()));
+                self.error_state.update(|slot| *slot = Some(error.to_string()));
             }
         }
-        let _ = self.loading_state.try_update(|loading| *loading = false);
+        self.loading_state.update(|loading| *loading = false);
         if transition.complete(result.is_ok()) {
             result
         } else {
@@ -416,7 +427,7 @@ impl AuthContext {
             .try_get_untracked()
             .is_some_and(|scope| !scope.is_pending())
         {
-            let _ = self.loading_state.try_update(|loading| *loading = false);
+            self.loading_state.update(|loading| *loading = false);
         }
     }
 
@@ -483,8 +494,12 @@ impl AuthContext {
                 };
             }
         };
-        let _ = storage::save_session(&new_session);
-        let _ = storage::save_user(&new_user);
+        if let Err(err) = storage::save_session(&new_session) {
+            tracing::warn!(?err, "failed to cache refreshed session in local storage");
+        }
+        if let Err(err) = storage::save_user(&new_user) {
+            tracing::warn!(?err, "failed to cache refreshed user in local storage");
+        }
         self.session_state.set(Some(new_session));
         self.user_state.set(Some(new_user));
         if transition.complete(true) {
@@ -521,7 +536,9 @@ impl AuthContext {
         }
         match result {
             Ok(Some(user)) => {
-                let _ = storage::save_user(&user);
+                if let Err(err) = storage::save_user(&user) {
+                    tracing::warn!(?err, "failed to cache current user in local storage");
+                }
                 self.user_state.set(Some(user));
                 if transition.complete(true) {
                     Ok(())
@@ -605,7 +622,9 @@ pub fn AuthProvider(
                     {
                         return;
                     }
-                    let _ = auth.restore_session().await;
+                    if let Err(err) = auth.restore_session().await {
+                        tracing::debug!(?err, "initial session restore failed or session not present");
+                    }
                     auth.finish_initial_loading();
                 });
             }
@@ -621,9 +640,13 @@ pub fn AuthProvider(
                     }
                     let secs = auth.secs_until_expiry_untracked();
                     if secs <= 0 {
-                        let _ = auth.sign_out().await;
+                        if let Err(err) = auth.sign_out().await {
+                            tracing::warn!(?err, "session expiry background sign-out failed");
+                        }
                     } else if secs < 300 {
-                        let _ = auth.refresh_session().await;
+                        if let Err(err) = auth.refresh_session().await {
+                            tracing::warn!(?err, "proactive session refresh failed");
+                        }
                     }
                 });
             },

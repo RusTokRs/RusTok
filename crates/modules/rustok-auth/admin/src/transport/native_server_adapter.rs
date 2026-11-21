@@ -740,6 +740,10 @@ pub async fn list_user_invites_native(
     }
 }
 
+#[cfg(feature = "ssr")]
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(reqwest::Client::new);
+
 #[server(prefix = "/api/fn", endpoint = "admin/change-password")]
 pub async fn change_password_native(
     token: String,
@@ -756,8 +760,7 @@ pub async fn change_password_native(
             status: String,
         }
 
-        let client = reqwest::Client::new();
-        let response = client
+        let response = HTTP_CLIENT
             .post(format!("{}/api/auth/change-password", api_base_url()))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
@@ -818,8 +821,7 @@ pub async fn update_profile_native(
             role: String,
         }
 
-        let client = reqwest::Client::new();
-        let response = client
+        let response = HTTP_CLIENT
             .post(format!("{}/api/auth/profile", api_base_url()))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
