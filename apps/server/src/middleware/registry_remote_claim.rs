@@ -315,7 +315,7 @@ fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
     let RegistryRemoteTransitionError {
         category,
         code,
-        detail,
+        detail: _detail,
     } = error;
     match category {
         ModuleGovernanceErrorCategory::InvalidInput => response(
