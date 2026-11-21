@@ -2036,7 +2036,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-        QueryFilter, Schema, Set,
+        PaginatorTrait, QueryFilter, Schema, Set,
     };
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
@@ -2847,6 +2847,183 @@ mod tests {
         .insert(db)
         .await
         .expect("insert revocation token")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn authorization_code_issuance_rechecks_consent_and_revocation() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-consent-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-consent-fence@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create consent subject");
+        let redirect_uri = "https://partner.example.com/callback";
+        let scopes = vec!["openid".to_string()];
+        let issue = || {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                user.id,
+                tenant.id,
+                redirect_uri.to_string(),
+                scopes.clone(),
+                "challenge".to_string(),
+            )
+        };
+
+        let missing_consent = issue().await
+            .expect_err("third-party app must not issue without current consent");
+        assert!(matches!(missing_consent, Error::Unauthorized(_)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("grant consent");
+        let code = issue().await.expect("issue after consent");
+        use sha2::{Digest, Sha256};
+        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+        let pending = oauth_authorization_codes::Entity::find()
+            .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .one(&db)
+            .await
+            .expect("find pending code")
+            .expect("pending code exists");
+        assert_eq!(pending.app_id, app.id);
+        assert_eq!(pending.user_id, user.id);
+        assert!(pending.used_at.is_none());
+
+        OAuthAppService::revoke_user_consent(&db, app.id, user.id, tenant.id)
+            .await
+            .expect("revoke consent and pending codes");
+        assert!(matches!(issue().await, Err(Error::Unauthorized(_))));
+        let revoked_code = oauth_authorization_codes::Entity::find_by_id(pending.id)
+            .one(&db)
+            .await
+            .expect("reload prior code")
+            .expect("prior code survives for replay detection");
+        assert!(revoked_code.used_at.is_some());
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            1,
+            "no code may be admitted after consent revocation"
+        );
+
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            scopes.clone(),
+        )
+        .await
+        .expect("renew consent");
+        let _another_code = issue().await.expect("admit code after re-consent");
+        OAuthAppService::revoke_app(&db, tenant.id, app.id)
+            .await
+            .expect("revoke app and pending codes");
+        assert!(matches!(issue().await, Err(Error::NotFound)));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            2,
+            "app revocation cannot be followed by newly inserted auth codes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn authorization_code_issuance_rechecks_user_and_current_app_policy() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "issuance-user-policy-fence").await;
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "issuance-user-policy@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create authorization subject");
+        OAuthAppService::grant_consent_strict(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            vec!["openid".to_string()],
+        )
+        .await
+        .expect("grant active consent");
+
+        let issue = |tenant_id| OAuthAppService::generate_authorization_code(
+            &db,
+            app.id,
+            user.id,
+            tenant_id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()],
+            "challenge".to_string(),
+        );
+        assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
+
+        // A stale preflight cannot bind a code to a redirect the app no longer
+        // accepts, nor to scopes that were narrowed before the authoritative
+        // app-row lock.
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://new.example.com/callback"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("change registered redirect");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(serde_json::json!(["https://partner.example.com/callback"])),
+            )
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["profile"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("narrow allowed scopes");
+        assert!(matches!(issue(tenant.id).await, Err(Error::BadRequest(_))));
+
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(serde_json::json!(["openid"])),
+            )
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("restore app scopes");
+        let mut inactive = users::ActiveModel::from(user);
+        inactive.status = Set(rustok_core::UserStatus::Inactive);
+        inactive.update(&db).await.expect("deactivate subject");
+        assert!(matches!(issue(tenant.id).await, Err(Error::Unauthorized(_))));
+        assert_eq!(
+            oauth_authorization_codes::Entity::find().count(&db).await.expect("count codes"),
+            0,
+            "invalid tenant, redirect, scope and user decisions cannot persist codes"
+        );
     }
 
     #[tokio::test]
