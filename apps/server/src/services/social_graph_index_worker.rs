@@ -176,7 +176,14 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, SocialGraphIndexStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Social Graph Index worker startup is already in progress; retry".to_string(),
+        ));
     };
     if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
         return Ok(());
