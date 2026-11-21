@@ -6,6 +6,14 @@
 
 ## Responsibilities
 
+Public direct worker starters register Product Search channel repair,
+Notifications intake/candidate/fanout, Forum Search inbox/contract, Product
+Index refresh and Social Graph Index worker JoinHandles under one
+runtime-local lock also used when shutdown takes those handles. This closes
+check-stop/publication races without holding the lock during async broker,
+database or task-drain operations.
+
+
 - Compose platform modules into the live runtime.
 - Expose GraphQL, HTTP, and Leptos server-function surfaces.
 - Host runtime orchestration, background tasks, and platform-owned control planes.
