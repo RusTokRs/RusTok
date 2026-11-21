@@ -390,7 +390,7 @@ fn jwt_algorithm(config: &AuthConfig) -> Algorithm {
 /// also be constructed directly; fail closed at key materialization so no
 /// construction path can sign or verify with a weak secret.
 fn hs256_secret_bytes(config: &AuthConfig) -> Result<&[u8]> {
-    if config.secret.trim().len() < crate::config::MIN_HS256_SECRET_BYTES {
+    if !crate::config::hs256_secret_has_min_length(&config.secret) {
         return Err(AuthError::Internal(format!(
             "HS256 secret must contain at least {} non-whitespace bytes",
             crate::config::MIN_HS256_SECRET_BYTES
@@ -530,6 +530,25 @@ mod tests {
         )
         .unwrap();
         assert!(decode_access_token(&weak, &token).is_err());
+    }
+
+    #[test]
+    fn hs256_whitespace_padded_secret_fails_closed() {
+        // 31 real bytes with an interior space: `trim().len()` counts 32 and
+        // would pass, but whitespace must not credit toward the minimum.
+        let padded = AuthConfig::new(format!("{} {}", "a".repeat(16), "b".repeat(15)));
+        let encode = encode_access_token(
+            &padded,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        );
+        assert!(encode.is_err());
+        assert!(!crate::config::hs256_secret_has_min_length(&padded.secret));
+        assert!(crate::config::hs256_secret_has_min_length(
+            &"a".repeat(32)
+        ));
     }
 
     #[test]
