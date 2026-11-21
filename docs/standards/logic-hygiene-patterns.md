@@ -859,6 +859,106 @@ flowchart TD
 
 ---
 
+### Pattern 31: Infallible Integer Casts (`P-TRY-FROM-LEN-PANIC`)
+* **Category:** Reliability & Panic Prevention. **Dimension:** Zero runtime panics in production.
+* **Problem:** Production code converts container lengths via `u64::try_from(slice.len()).expect("bounded component length")` or `.unwrap()`. Converting `usize` to `u64` is infallible on 32-bit and 64-bit target architectures (`len as u64`). Using `try_from().expect()` introduces panic branches, pollutes code with pseudo-invariants, and increases runtime fragility.
+* **Pattern Solution:**
+  1. Use infallible native casts for widening integer conversions: `let length = value.len() as u64;`.
+  2. Reserve `try_from` only for narrowing integer conversions (e.g. `u64 -> u32` or `usize -> i32`), and always propagate or handle the resulting error without `expect` or `unwrap`.
+* **Detection:** Doctor rule `P-TRY-FROM-LEN-PANIC`: direct regex match on `(?:u64|usize|i64|u32)::try_from\s*\([^)]*\.len\(\)\s*\)\s*\.(?:expect|unwrap)`.
+
+---
+
+### Pattern 32: Non-Panicking Migration Failure Paths (`P-MIGRATION-PANIC`)
+* **Category:** Database & Migration Integrity. **Dimension:** Branch completeness and anti-swallowing.
+* **Problem:** Database migrations use `unreachable!()` or `panic!()` in dialect match branches (e.g. `match manager.get_database_backend() { DbBackend::Postgres => ..., _ => unreachable!(...) }`). When migrations are executed in an unsupported dialect or during dry-run validations, panicking aborts the process rather than reporting a typed `DbErr::Custom`.
+* **Pattern Solution:**
+  1. Always return a typed migration error: `_ => Err(DbErr::Custom("unsupported database backend".to_string()))`.
+  2. Ensure migration failure paths preserve rollback semantics without tearing down the host process.
+* **Detection:** Doctor rule `P-MIGRATION-PANIC`: flags `unreachable!()` and `panic!()` inside `src/migrations/*.rs`.
+
+---
+
+### Pattern 33: Unique Distributed Lease Ownership Token (`P-DISTRIBUTED-LEASE-OWNER`)
+* **Category:** Distributed Concurrency & Coordination. **Dimension:** Concurrency and TOCTOU.
+* **Problem:** Distributed lease claiming (e.g. for scheduled jobs, outbox relays, reconcilers) uses process-local counters (e.g. `worker-1` or `format!("worker-{}", id)`). When multiple replica instances run concurrently, multiple distinct replicas claim or renew leases under the identical owner token, leading to split-brain execution and concurrent mutation races.
+* **Pattern Solution:**
+  1. Include a globally unique instance token in every lease owner identifier: `format!("{worker_prefix}:{}:{}", instance_id, Uuid::new_v4())` or storage-issued fencing tokens.
+  2. Validate that the lease owner string fits the database column schema length without truncation.
+* **Detection:** Doctor rule `P-DISTRIBUTED-LEASE-OWNER`: flags `claim_lease` / `claim_execution` where the owner string uses static prefixes without instance-level entropy.
+
+---
+
+### Pattern 34: Atomic Backpressure Queue Reservation (`P-ATOMIC-BACKPRESSURE`)
+* **Category:** Concurrency & Resource Bounding. **Dimension:** Order of operations and concurrency.
+* **Problem:** A `load-then-increment` sequence on atomic counters (`capacity.load()` followed by `if capacity < max { capacity.fetch_add(1) }`) is a check-then-act race. Concurrent tasks can all observe capacity below the threshold and collectively overrun the buffer, leading to silent message drops in bounded broadcast rings.
+* **Pattern Solution:**
+  1. Reserve queue permits with an atomic compare-and-swap loop (`compare_exchange` or `fetch_update`).
+  2. Release reservations consistently on completion, send failure, and task cancellation.
+* **Detection:** Doctor rule `P-ATOMIC-BACKPRESSURE`: flags atomic `.load()` followed by conditional `.fetch_add()` within lexical window.
+
+---
+
+### Pattern 35: Background Worker Task-Handle Liveness (`P-WORKER-READINESS-LIVENESS`)
+* **Category:** Runtime Observability & Health. **Dimension:** State transition integrity.
+* **Problem:** Long-lived background workers (outbox relay, cache synchronizer, index reconciler) are spawned with `tokio::spawn`, but their `JoinHandle` is discarded or omitted from readiness probes. When a worker terminates unexpectedly, the HTTP host remains green (200 OK) while background operations have silently stopped.
+* **Pattern Solution:**
+  1. Retain worker `JoinHandle`s in health registries and verify `!handle.is_finished()` in readiness snapshots.
+  2. Mark optional workers as required once they are successfully initialized.
+* **Detection:** Manual review of startup lifecycle services; verify that spawned workers register liveness probes.
+
+---
+
+### Pattern 36: Critical Identity Fallback Leakage (`P-NIL-IDENTITY-FALLBACK`)
+* **Category:** Multi-Tenancy & Authorization. **Dimension:** Preconditions & bounds / Branch completeness.
+* **Problem:** Replacing `.expect()` with `.unwrap_or_default()` or `unwrap_or(Uuid::nil())` on critical entity identities (`seller_id`, `actor_id`, `user_id`, `channel_id`, `account_id`, `order_id`, `organization_id`). When the identity is absent or malformed, the operation silently proceeds with Nil UUID (`00000000-0000-0000-0000-000000000000`), polluting shared data stores or bypassing tenant isolation.
+* **Pattern Solution:**
+  1. Fail closed on missing required identities: `entity_id.ok_or(DomainError::IdentityRequired)?`.
+  2. If the field is truly optional in the domain, model it explicitly as `Option<Uuid>` and check `is_some()` rather than collapsing to Nil.
+* **Detection:** Doctor rule `P-NIL-IDENTITY-FALLBACK`: flags `.unwrap_or_default()` or `unwrap_or(Uuid::nil())` on critical identity identifiers.
+
+---
+
+### Pattern 37: SQLite Row Lock Bypass (`P-SQLITE-UNLOCKED-RACE`)
+* **Category:** Database Concurrency & Isolation. **Dimension:** Order of operations and concurrency.
+* **Problem:** Because SQLite does not support `SELECT ... FOR UPDATE`, dialect match arms discard locking (`DbBackend::Sqlite => query, _ => query.lock_exclusive()`). Under SQLite's default deferred transaction mode (`BEGIN DEFERRED`), omitting row locks allows concurrent transactions to interleave read-modify-write operations, leading to lost updates.
+* **Pattern Solution:**
+  1. Ensure transactions in SQLite are opened with immediate write locks (`BEGIN IMMEDIATE`) or serialized via an application mutex.
+  2. Document the concurrency contract explicitly: `// INVARIANT: SQLite transaction uses BEGIN IMMEDIATE isolation`.
+* **Detection:** Doctor rule `P-SQLITE-UNLOCKED-RACE`: flags SQLite dialect arms that discard `.lock_exclusive()` without an invariant comment.
+
+---
+
+### Pattern 38: Silent Domain Event Discard (`P-SILENT-EVENT-DISCARD`)
+* **Category:** Distributed State & Messaging. **Dimension:** Side-effect completeness / Anti-swallowing.
+* **Problem:** Domain events or outbox entries dispatched via `let _ = event_dispatcher.publish(event).await` or `.enqueue(event).await.ok()`. If the outbox table or message broker fails, the mutation commits while downstream consumers (search indexing, cache invalidation, billing, notifications) are never notified, causing silent state desynchronization.
+* **Pattern Solution:**
+  1. Atomically write outbox records in the same transaction as the primary mutation.
+  2. Propagate publication errors with `?` or initiate compensatory rollback.
+* **Detection:** Doctor rule `P-SILENT-EVENT-DISCARD`: flags `let _ =` or `.ok()` on event dispatcher / outbox publication calls.
+
+---
+
+### Pattern 39: Loop Helper Database Calls (`P-LOOP-HELPER-AWAIT`)
+* **Category:** Persistence & Performance. **Dimension:** Algorithmic correctness.
+* **Problem:** N+1 database queries hidden inside loop bodies by extracting the query into a helper method (e.g. `for item in items { self.load_item_details(txn, item.id).await?; }`). Static scanners that check only for direct `.all(&txn).await` miss these indirect query loops.
+* **Pattern Solution:**
+  1. Batch load related records before the loop: `let map = self.load_items_batch(txn, &ids).await?;`.
+  2. Lookup in-memory from the pre-fetched map inside the loop.
+* **Detection:** Doctor rule `P-LOOP-HELPER-AWAIT`: flags database helper method calls with transaction/db handles inside loop bodies.
+
+---
+
+### Pattern 40: Unchecked Slice Range Indexing (`P-BYTE-SLICE-PANIC`)
+* **Category:** Memory & Codec Safety. **Dimension:** Preconditions and bounds.
+* **Problem:** In binary decoders and token parsers, indexing byte slices with constant ranges (e.g. `&bytes[0..12]` or `&slice[1..5]`) without verifying length first. Malformed or truncated inputs cause runtime panics (out-of-bounds index).
+* **Pattern Solution:**
+  1. Check slice length up-front: `if bytes.len() < 12 { return Err(CodecError::TooShort); }`.
+  2. Or use safe slicing: `bytes.get(..12).ok_or(CodecError::TooShort)?`.
+* **Detection:** Doctor rule `P-BYTE-SLICE-PANIC`: flags direct range slicing on slice/buffer variables without length guards.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -913,6 +1013,16 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-CHECK-THEN-UNWRAP` | Reliability | Atomic pattern matching (if let / match) used instead of check-then-unwrap | High: if .is_some()/.is_ok() followed by .unwrap()/.expect() |
 | `P-COPY-DRIFT-MOUNT` | Module structure | The mounted path compiles the single owner file, not a hand-inlined copy | Manual: normalized duplicate-content match |
 | `P-BOUNDED-OWNER-FACTS` | Observability | Boundary adapters log bounded facts (presence, length, kind), not raw owner values | Manual: raw owner field in tracing macro beside bounded sibling shapes |
+| `P-TRY-FROM-LEN-PANIC` | Reliability | Infallible length conversions avoid panicking try_from | High: try_from on .len() followed by expect/unwrap |
+| `P-MIGRATION-PANIC` | Database integrity | Migrations return DbErr::Custom instead of crashing | High: unreachable! or panic! in migration files |
+| `P-DISTRIBUTED-LEASE-OWNER` | Distributed coordination | Lease tokens are unique across replicas | High: local worker counters without instance UUID in lease_owner |
+| `P-ATOMIC-BACKPRESSURE` | Concurrency | Queue capacity reservations use compare-and-swap | High: load-then-increment race on queue capacity atomics |
+| `P-WORKER-READINESS-LIVENESS` | Observability | Readiness probes verify task-handle liveness | Manual |
+| `P-NIL-IDENTITY-FALLBACK` | Authorization | Critical identities fail closed without Nil fallback | High: unwrap_or_default or Uuid::nil on entity IDs |
+| `P-SQLITE-UNLOCKED-RACE` | Concurrency | SQLite transactions document immediate lock semantics | High: SQLite arms bypassing lock_exclusive without invariant |
+| `P-SILENT-EVENT-DISCARD` | Reliability | Event and outbox dispatch failures propagate | High: let _ = or .ok() on outbox/event publish |
+| `P-LOOP-HELPER-AWAIT` | Performance | Queries in loops batched even through helper methods | Heuristic: database helper calls inside loop bodies |
+| `P-BYTE-SLICE-PANIC` | Reliability | Byte slice decoders verify length before constant range indexing | Heuristic: range index on buffer without bounds check |
 
 ---
 

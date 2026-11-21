@@ -122,7 +122,11 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
             values,
         ),
         // INVARIANT: SeaORM DbBackend is Postgres or Sqlite in RusToK migrations.
-        _ => unreachable!(),
+        _ => {
+            return Err(DbErr::Migration(format!(
+                "marketplace seller legacy prose backfill does not support {backend:?}"
+            )));
+        }
     };
     connection.execute_raw(statement).await?;
     Ok(())

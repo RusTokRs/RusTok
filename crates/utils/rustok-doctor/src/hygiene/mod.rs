@@ -73,7 +73,14 @@ impl Scan<'_> {
             pattern_id,
             rule_name,
             severity,
-            confidence: if pattern_id == "P-ZERO-INCLUDE" {
+            confidence: if pattern_id == "P-ZERO-INCLUDE"
+                || pattern_id == "P-TRY-FROM-LEN-PANIC"
+                || pattern_id == "P-MIGRATION-PANIC"
+                || pattern_id == "P-DISTRIBUTED-LEASE-OWNER"
+                || pattern_id == "P-NIL-IDENTITY-FALLBACK"
+                || pattern_id == "P-SQLITE-UNLOCKED-RACE"
+                || pattern_id == "P-SILENT-EVENT-DISCARD"
+            {
                 Confidence::High
             } else {
                 Confidence::Heuristic
@@ -553,6 +560,23 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             scan.add(line_number, "P-TRIGGER-ROW-CHANGE", "Column-Filtered Update Trigger", Severity::High,
                 "Column-filtered AFTER UPDATE trigger may miss changes made by a BEFORE trigger. Check the active migration chain and database semantics.",
                 "If another trigger derives a watched column, observe row changes with the owner-approved trigger predicate.");
+        }
+
+        if scan.migration
+            && !scan.test_file
+            && test_scopes.is_empty()
+            && !pending_test
+            && !test_attribute
+            && re!(r"\b(?:unreachable|panic)!\s*\(").is_match(code_part)
+        {
+            scan.add(
+                line_number,
+                "P-MIGRATION-PANIC",
+                "Panicking Migration Failure Path",
+                Severity::High,
+                "Calling unreachable!(...) or panic!(...) inside database migration. Migrations must return typed DbErr::Custom on unsupported dialects.",
+                "Replace with return Err(DbErr::Custom(\"unsupported database backend\".to_string())).",
+            );
         }
 
         if !scan.test_file
@@ -1174,6 +1198,120 @@ fn check_rules(
                 );
             }
         }
+
+        if re!(r"\b(?:u64|usize|i64|u32)\s*::\s*try_from\s*\([^)]*\.len\(\)\s*\)\s*\.(?:expect|unwrap)\b").is_match(text) {
+            scan.add(
+                number,
+                "P-TRY-FROM-LEN-PANIC",
+                "Infallible Length Cast Panic Risk",
+                Severity::High,
+                "Using fallible try_from().expect() on .len(). Casting 'len as u64' is infallible on 32- and 64-bit systems.",
+                "Replace with 'value.len() as u64' to eliminate panic paths.",
+            );
+        }
+
+        if re!(r"\b(?:as_i64|as_u64)\s*\(\s*\)[^;]*\bas\s+f64\b").is_match(text)
+            || re!(r"\blet\s+(?:mut\s+)?\w+\s*:\s*f64\s*=\s*[^;]*\b(?:as_i64|as_u64)\s*\(\s*\)").is_match(text)
+        {
+            scan.add(
+                number,
+                "P-LOSSY-JSON-NUMBER",
+                "Lossy Floating-Point Conversion of Integer",
+                Severity::High,
+                "Casting 64-bit integer JSON value to f64. Integers above 2^53 lose precision and round when converted to f64.",
+                "Compare integer values in integer domain (i64/i128) rather than converting to f64.",
+            );
+        }
+
+        if re!(r#"\b(?:claim_lease|claim_execution|acquire_lease)\s*\([^)]*format!\s*\(\s*"worker-[^"]*"\s*,[^)]*\)"#).is_match(text) {
+            scan.add(
+                number,
+                "P-DISTRIBUTED-LEASE-OWNER",
+                "Non-Unique Distributed Lease Owner",
+                Severity::High,
+                "Lease owner uses a process-local counter. Across concurrent replicas this causes split-brain and competing writers under the same owner token.",
+                "Include a per-instance Uuid::new_v4() or storage-issued fencing token in the lease_owner string.",
+            );
+        }
+
+        if (text.starts_with("if ") || text.starts_with("let "))
+            && re!(r"\b(?:capacity|permits|in_flight|queue_depth)\s*\.\s*load\s*\(").is_match(text)
+        {
+            let end = (index + 6).min(scan.lines.len());
+            let window = scan.lines[index..end]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if (window.contains("if ") || window.contains(" < ") || window.contains(" > ") || window.contains(" <= ") || window.contains(" >= "))
+                && window.contains(".fetch_add(")
+                && !window.contains("compare_exchange")
+                && !window.contains("fetch_update")
+            {
+                scan.add(
+                    number,
+                    "P-ATOMIC-BACKPRESSURE",
+                    "Non-Atomic Queue Capacity Reservation",
+                    Severity::High,
+                    "Load-then-increment sequence on queue capacity. Concurrent tasks can exceed capacity bounds.",
+                    "Use compare_exchange or fetch_update loop to reserve queue capacity atomically.",
+                );
+            }
+        }
+
+        if !test_context
+            && re!(r"\bDbBackend::Sqlite\s*=>\s*[A-Za-z_]\w*(?:\(\s*\))?\s*,").is_match(text)
+        {
+            let end = (index + 8).min(scan.lines.len());
+            let window = scan.lines[index..end]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if window.contains(".lock_exclusive()")
+                && !scan.has_invariant(index, text)
+            {
+                scan.add(
+                    number,
+                    "P-SQLITE-UNLOCKED-RACE",
+                    "SQLite Row Lock Bypass",
+                    Severity::High,
+                    "Bypassing lock_exclusive() for SQLite without documenting immediate transaction isolation.",
+                    "Verify that the SQLite transaction uses BEGIN IMMEDIATE or document '// INVARIANT: SQLite immediate transaction'.",
+                );
+            }
+        }
+
+        if !test_context
+            && (re!(r"\blet\s+_\s*=\s*[^;]*(?:event_dispatcher|outbox|events_port|event_sink)\s*\.\s*(?:dispatch|publish|enqueue)\s*\(").is_match(text)
+                || re!(r"[A-Za-z_]\w*\s*\.\s*(?:publish|enqueue)\s*\([^)]*\)\s*\.await\s*\.\s*ok\s*\(\s*\)\s*;").is_match(text))
+        {
+            scan.add(
+                number,
+                "P-SILENT-EVENT-DISCARD",
+                "Silent Domain Event Discard",
+                Severity::High,
+                "Silent discarding of event publication via 'let _ =' or '.ok()'. Failed event dispatch causes state desynchronization.",
+                "Propagate publication error with '?' or handle failure with transactional rollback.",
+            );
+        }
+
+        if !test_context
+            && !text.contains("digest")
+            && !text.contains("hasher")
+            && !scan.has_invariant(index, text)
+            && re!(r"\b(?:bytes|data|slice|payload|buf)\s*\[\s*\d+\s*\.\.\s*\d+\s*\]").is_match(text)
+            && !scan.lines.iter().take(index).rev().take(6).any(|prev| prev.syntax.contains(".len()"))
+        {
+            scan.add(
+                number,
+                "P-BYTE-SLICE-PANIC",
+                "Unchecked Slice Range Indexing",
+                Severity::High,
+                "Direct range indexing on byte buffer without length check. Truncated inputs will panic.",
+                "Use .get(start..end).ok_or(...) or check buffer.len() >= end before slicing.",
+            );
+        }
     }
 
     if !test_context && (re!(r"\b(?:[A-Z0-9_]+_)?SHORT_ID_LEN(?:GTH)?\s*(?::\s*usize)?\s*=\s*12\b|\.\s*simple\s*\(\s*\)\s*\.\s*to_string\s*\(\s*\)\s*\[\s*0?\s*\.\.\s*12\s*\]").is_match(text)
@@ -1248,6 +1386,14 @@ fn check_rules(
             "Suspected N+1 query: database query inside loop body. Batch with Column::Id.is_in(ids).all().",
             "Collect IDs and perform one Entity::find().filter(Column::Id.is_in(ids)).all(txn) before loop.");
     }
+    if loop_depth.is_some() && !test_context
+        && !re!(r"^\s*(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(text)
+        && re!(r"\b(?:self\.)?(?:fetch|load|get|find|select)_\w+\s*\([^)]*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)[^)]*\)\.await").is_match(text)
+    {
+        scan.add(number, "P-LOOP-HELPER-AWAIT", "N+1 Query in Loop Helper", Severity::High,
+            "Suspected hidden N+1 query: calling database helper function inside loop body. Batch before the loop.",
+            "Batch retrieve entities before the loop into a HashMap keyed by entity ID.");
+    }
     if !test_context
         && !scan.migration
         && re!(r"^#!\s*\[\s*allow\s*\([^)]*\b(?:dead_code|unused|unused_variables)\b")
@@ -1302,6 +1448,28 @@ fn check_rules(
             scan.add(number, "P-TENANT-FALLBACK-LEAK", "Post-Hoc In-Memory Tenant Isolation", Severity::Critical,
                 "Entity tenant checked in memory after query. Queries must filter by tenant_id at the database level to ensure fail-closed isolation.",
                 "Add .filter(Column::TenantId.eq(tenant_id)) directly to the database query.");
+        }
+        let identity_nil = re!(
+            r"\b(?:seller|actor|user|channel|account|order|organization|owner)(?:_id)?(?:\s*\.\s*(?:as_ref|as_deref|copied|cloned)\s*\(\s*\))*\s*\.\s*unwrap_or(?:_else\s*\(\s*(?:\|\|\s*)?(?:Uuid::nil|Uuid::default)\s*(?:\(\s*\))?\s*\)|\s*\(\s*(?:Uuid::nil|Uuid::default)\s*(?:\(\s*\))?\s*\))"
+        );
+        let identity_default = re!(
+            r"\b(?:seller|actor|user|channel|account|order|organization|owner)(?:_id)?(?:\s*\.\s*(?:as_ref|as_deref|copied|cloned)\s*\(\s*\))*\s*\.\s*unwrap_or_default\s*\(\s*\)"
+        );
+        let identity_binding_default = re!(
+            r"^\s*let\s+(?:mut\s+)?(?:seller|actor|user|channel|account|order|organization|owner)_id(?:\s*:\s*[^=;]+)?\s*=\s*(?:[A-Za-z_]\w*\s*\.\s*)*[A-Za-z_]\w*(?:\s*\.\s*(?:as_ref|as_deref|copied|cloned)\s*\(\s*\))*\s*\.\s*unwrap_or_default\s*\(\s*\)"
+        );
+        let is_ui = scan.file.contains("/admin/") || scan.file.contains("/storefront/");
+        if identity_nil.is_match(text)
+            || (!is_ui && (identity_default.is_match(text) || identity_binding_default.is_match(text)))
+        {
+            scan.add(
+                number,
+                "P-NIL-IDENTITY-FALLBACK",
+                "Critical Identity Fallback Leakage",
+                Severity::Critical,
+                "Defaulting critical identity to Nil/Default UUID. Missing entity authority must fail closed.",
+                "entity_id.ok_or(DomainError::IdentityRequired)?",
+            );
         }
         if publications
             .iter()
