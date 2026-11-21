@@ -408,6 +408,7 @@ where
     let executor_started = Arc::new(AtomicBool::new(false));
     let executor_started_in_task = Arc::clone(&executor_started);
     let persistence_for_recovery = persistence.clone();
+    let submitted_at_for_recovery = submitted_at.clone();
 
     let task = async move {
         let _guard = guard;
@@ -436,10 +437,14 @@ where
             }
 
             if stop.is_stopping() {
-                // No installer side effects have started yet, so failing this
-                // durable claim is safe and avoids a newly admitted orphan.
-                if let Err(_error) =
-                    finish_http_job_failed_with_retry(&persistence, job_id).await
+                // No installer side effects have started yet, so closing only
+                // this exact durable claim is safe during shutdown.
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence,
+                    job_id,
+                    submitted_at,
+                )
+                .await
                 {
                     tracing::error!(
                         %job_id,
@@ -458,8 +463,12 @@ where
         if task_result.is_err() {
             tracing::error!(%job_id, "Installer HTTP job task panicked outside the executor boundary");
             if !executor_started.load(Ordering::Acquire) {
-                if let Err(_error) =
-                    finish_http_job_failed_with_retry(&persistence_for_recovery, job_id).await
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence_for_recovery,
+                    job_id,
+                    submitted_at_for_recovery,
+                )
+                .await
                 {
                     tracing::error!(
                         %job_id,
