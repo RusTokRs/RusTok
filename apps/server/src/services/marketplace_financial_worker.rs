@@ -134,11 +134,11 @@ async fn adapt_reversal_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_provider_reversal_adaptation_failed",
                 "Marketplace provider reversal adaptation failed"
             );
         }
@@ -162,11 +162,11 @@ async fn sweep_reversal_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_reversal_recovery_sweep_failed",
                 "Marketplace reversal recovery sweep failed"
             );
         }
@@ -190,11 +190,11 @@ async fn sweep_paid_events(
             );
         }
         Ok(_) => {}
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
                 worker = "marketplace_financial_recovery",
                 instance_id,
-                error = %error,
+                error_code = "marketplace_paid_event_recovery_sweep_failed",
                 "Marketplace paid-event recovery sweep failed"
             );
         }

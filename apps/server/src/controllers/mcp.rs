@@ -611,8 +611,11 @@ async fn execute_remote_scaffold_tool(
             let request: ScaffoldModuleRequest = parse_tool_args(arguments)?;
             match draft_store.stage_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => {
-                    tracing::warn!(error = %error, "MCP scaffold stage failed");
+                Err(_error) => {
+                    tracing::warn!(
+                        failure_code = "mcp_scaffold_stage_failed",
+                        "MCP scaffold stage failed"
+                    );
                     envelope_value(McpToolResponse::<()>::error(
                         "scaffold_stage_failed",
                         "MCP scaffold stage request was invalid",
@@ -624,8 +627,11 @@ async fn execute_remote_scaffold_tool(
             let request: ReviewModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.review_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => {
-                    tracing::warn!(error = %error, "MCP scaffold review failed");
+                Err(_error) => {
+                    tracing::warn!(
+                        failure_code = "mcp_scaffold_review_failed",
+                        "MCP scaffold review failed"
+                    );
                     envelope_value(McpToolResponse::<()>::error(
                         "scaffold_review_failed",
                         "MCP scaffold review request failed",
@@ -637,8 +643,11 @@ async fn execute_remote_scaffold_tool(
             let request: ApplyModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.apply_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => {
-                    tracing::error!(error = %error, "MCP scaffold apply failed");
+                Err(_error) => {
+                    tracing::error!(
+                        failure_code = "mcp_scaffold_apply_failed",
+                        "MCP scaffold apply failed"
+                    );
                     envelope_value(McpToolResponse::<()>::error(
                         "scaffold_apply_failed",
                         "MCP scaffold apply failed",
@@ -1051,8 +1060,11 @@ fn map_mcp_authority_error(
         McpManagementAuthorityError::Invalid(message) => crate::error::Error::BadRequest(message),
         McpManagementAuthorityError::Forbidden(message) => crate::error::Error::Forbidden(message),
         McpManagementAuthorityError::NotFound(_) => crate::error::Error::NotFound,
-        McpManagementAuthorityError::Internal(error) => {
-            tracing::error!(error = %error, "MCP management authority validation failed");
+        McpManagementAuthorityError::Internal(_error) => {
+            tracing::error!(
+                error_code = "mcp_management_authority_validation_failed",
+                "MCP management authority validation failed"
+            );
             crate::error::Error::InternalServerError
         }
     }
@@ -1085,8 +1097,12 @@ fn map_policy(model: crate::models::mcp_policies::Model) -> Result<McpPolicyResp
             model.granted_scopes_list()?,
         ))
     })()
-    .map_err(|error| {
-        tracing::error!(%error, client_id = %model.client_id, "Persisted MCP policy is invalid");
+    .map_err(|_error| {
+        tracing::error!(
+            client_id = %model.client_id,
+            error_code = "mcp_persisted_policy_invalid",
+            "Persisted MCP policy is invalid"
+        );
         Error::InternalServerError
     })?;
     Ok(McpPolicyResponse {

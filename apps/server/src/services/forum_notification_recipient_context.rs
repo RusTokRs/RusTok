@@ -71,11 +71,11 @@ impl ForumNotificationRecipientContextPort for ServerForumNotificationRecipientC
             request.tenant_id,
         )
         .await
-        .map_err(|error| {
+        .map_err(|_error| {
             tracing::error!(
-                %error,
                 tenant_id = %request.tenant_id,
                 recipient_id = %request.recipient_id,
+                error_code = "forum_recipient_permission_availability_failed",
                 "Forum recipient module permission availability failed"
             );
             dependency_unavailable()

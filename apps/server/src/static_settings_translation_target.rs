@@ -264,10 +264,10 @@ impl StaticSettingsTranslationTargetProvider {
     }
 
     async fn fail_receipt(&self, lease: idempotency::Lease, error: &PortError) {
-        if let Err(receipt_error) = idempotency::fail(&self.db, lease, error).await {
+        if let Err(_receipt_error) = idempotency::fail(&self.db, lease, error).await {
             tracing::error!(
                 operation_id = %lease.operation_id,
-                error = %receipt_error.message,
+                error_code = "settings_translation_failure_receipt_persist_failed",
                 "Failed to persist Settings translation-target failure receipt"
             );
         }
@@ -853,8 +853,11 @@ fn source_not_translation_ready(error: &StaticSettingsTranslationReadError) -> b
     )
 }
 
-fn manifest_error_to_port_error(error: crate::modules::manifest::ManifestError) -> PortError {
-    tracing::error!(error = %error, "Settings translation package registry resolution failed");
+fn manifest_error_to_port_error(_error: crate::modules::manifest::ManifestError) -> PortError {
+    tracing::error!(
+        error_code = "settings_translation_package_registry_resolution_failed",
+        "Settings translation package registry resolution failed"
+    );
     PortError::unavailable(
         "settings.translation_registry_unavailable",
         "Settings translation package registry is unavailable",

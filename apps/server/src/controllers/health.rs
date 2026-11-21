@@ -32,7 +32,8 @@ use crate::middleware::tenant::{
 };
 use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle, additional_runtime_worker_snapshots,
+    RuntimeWorkerLifecycleState, StopHandle, additional_cache_reconciliation_worker_snapshots,
+    additional_runtime_worker_snapshots,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
@@ -388,6 +389,7 @@ async fn collect_readiness(
             checks.extend(check_runtime_workers(&ctx, settings));
         } else {
             checks.push(worker_host_mode_check());
+            checks.extend(check_cache_reconciliation_workers(&ctx));
         }
         #[cfg(feature = "mod-media")]
         {
@@ -682,6 +684,10 @@ fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static st
     required_tables
 }
 
+fn cache_recovery_readiness_reason(pending_generations: usize) -> String {
+    format!("cache recovery is incomplete ({pending_generations} generations pending)")
+}
+
 async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use rustok_cache::CacheService;
 
@@ -694,15 +700,7 @@ async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<
     } else if report.is_connected() {
         // Redis answered but recovery is incomplete. The two causes lead to different operator
         // actions, so the readiness payload must not report a transport outage.
-        Err(format!(
-            "cache recovery is incomplete ({} generations pending{})",
-            report.redis_recovery_pending,
-            report
-                .redis_recovery_error
-                .as_deref()
-                .map(|error| format!(": {error}"))
-                .unwrap_or_default()
-        ))
+        Err(cache_recovery_readiness_reason(report.redis_recovery_pending))
     } else {
         Err("cache backend is unhealthy".to_string())
     }
@@ -899,7 +897,7 @@ fn worker_host_mode_check() -> ReadinessCheck {
         status: ReadinessStatus::Ok,
         latency_ms: 0,
         reason: Some(
-            "surface host mode does not run local background workers; worker readiness is owned by the worker host"
+            "surface host mode does not run general background workers; local cache reconciliation readiness is still checked"
                 .to_string(),
         ),
     }
@@ -981,6 +979,24 @@ fn check_runtime_workers(
     checks
 }
 
+fn check_cache_reconciliation_workers(ctx: &ServerRuntimeContext) -> Vec<ReadinessCheck> {
+    let stop_requested = ctx
+        .shared_map::<StopHandle, _>(StopHandle::is_stopping)
+        .unwrap_or(false);
+
+    additional_cache_reconciliation_worker_snapshots(ctx)
+        .into_iter()
+        .map(|worker| {
+            runtime_worker_check(
+                &format!("worker:{}", worker.name),
+                worker.required,
+                worker.finished,
+                stop_requested,
+            )
+        })
+        .collect()
+}
+
 fn runtime_worker_check(
     name: &str,
     required: bool,
@@ -1017,7 +1033,7 @@ fn runtime_worker_check(
             Some("worker lifecycle state is stopping".to_string())
         }
         (_, RuntimeWorkerLifecycleState::Failed) => {
-            Some("required worker lifecycle state is failed; task has stopped".to_string())
+            Some("required worker lifecycle state is failed; task stopped or supervisor is not ready".to_string())
         }
         (_, RuntimeWorkerLifecycleState::Degraded) => {
             Some("worker lifecycle state is degraded".to_string())
@@ -1364,6 +1380,7 @@ mod tests {
             "worker:outbox_relay",
             "worker:outbox_retention",
             "worker:remote_executor_reaper",
+            "worker:field_definition_cache_generation",
         ] {
             assert_eq!(
                 checks.iter().filter(|check| check.name == name).count(),
@@ -1378,6 +1395,7 @@ mod tests {
                 "worker:seo_bulk",
                 "worker:seo_sitemap",
                 "worker:seo_index_repair",
+                "worker:seo_redirect_cache_reconciliation",
             ] {
                 assert_eq!(
                     checks.iter().filter(|check| check.name == name).count(),
@@ -1390,6 +1408,139 @@ mod tests {
                 "SEO readiness must use the configured canonical worker checks"
             );
         }
+    }
+
+    #[test]
+    fn event_forwarder_readiness_follows_event_bus_composition() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let check = || {
+            check_runtime_workers(&ctx, ctx.settings())
+                .into_iter()
+                .find(|check| check.name == "worker:event_forwarder")
+                .expect("event-forwarder readiness check")
+        };
+
+        let before_bus = check();
+        assert_eq!(before_bus.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(before_bus.status, ReadinessStatus::Ok);
+
+        ctx.shared_insert(crate::services::event_bus::SharedEventBus(
+            std::sync::Arc::new(rustok_core::EventBus::new()),
+        ));
+
+        let missing_forwarder = check();
+        assert_eq!(missing_forwarder.criticality, DependencyCriticality::Critical);
+        assert_eq!(missing_forwarder.status, ReadinessStatus::Unhealthy);
+        assert!(
+            missing_forwarder
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("missing")),
+            "a composed event bus without its forwarder must fail readiness"
+        );
+    }
+
+    #[test]
+    fn cache_reconciliation_readiness_covers_surface_hosts_without_general_workers() {
+        for host_mode in [
+            crate::common::settings::RuntimeHostMode::Api,
+            crate::common::settings::RuntimeHostMode::AdminSsr,
+            crate::common::settings::RuntimeHostMode::StorefrontSsr,
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = host_mode;
+            let ctx = ServerRuntimeContext::new(
+                sea_orm::DatabaseConnection::default(),
+                settings,
+            );
+
+            let checks = check_cache_reconciliation_workers(&ctx);
+            let field_cache = checks
+                .iter()
+                .find(|check| check.name == "worker:field_definition_cache_generation")
+                .expect("field-definition cache reconciliation check");
+            assert_eq!(field_cache.criticality, DependencyCriticality::Critical);
+            assert_eq!(field_cache.status, ReadinessStatus::Unhealthy);
+            assert!(
+                field_cache.reason.as_deref().is_some_and(|reason| reason.contains("missing")),
+                "missing field-definition cache reconciler must fail readiness"
+            );
+
+            #[cfg(feature = "mod-seo")]
+            {
+                let seo_cache = checks
+                    .iter()
+                    .find(|check| check.name == "worker:seo_redirect_cache_reconciliation")
+                    .expect("SEO redirect cache reconciliation check");
+                assert_eq!(seo_cache.criticality, DependencyCriticality::Critical);
+                assert_eq!(seo_cache.status, ReadinessStatus::Unhealthy);
+            }
+        }
+    }
+
+    #[cfg(feature = "mod-seo")]
+    #[test]
+    fn seo_redirect_cache_reconciliation_is_not_required_on_worker_hosts() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+
+        let check = check_cache_reconciliation_workers(&ctx)
+            .into_iter()
+            .find(|check| check.name == "worker:seo_redirect_cache_reconciliation")
+            .expect("SEO redirect cache reconciliation check");
+        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("disabled"))
+        );
+    }
+
+    #[tokio::test]
+    async fn readiness_route_includes_cache_reconciliation_for_surface_hosts() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory readiness database");
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Api;
+        settings.features.search_indexing = false;
+        settings.rate_limit.enabled = false;
+        let ctx = ServerRuntimeContext::new(db, settings);
+
+        let response = collect_readiness(ctx, ModuleRegistry::new()).await;
+
+        let field_cache = response
+            .checks
+            .iter()
+            .find(|check| check.name == "worker:field_definition_cache_generation")
+            .expect("surface readiness must include field-definition cache reconciliation");
+        assert_eq!(field_cache.criticality, DependencyCriticality::Critical);
+        assert_eq!(field_cache.status, ReadinessStatus::Unhealthy);
+
+        #[cfg(feature = "mod-seo")]
+        {
+            let seo_cache = response
+                .checks
+                .iter()
+                .find(|check| check.name == "worker:seo_redirect_cache_reconciliation")
+                .expect("surface readiness must include SEO redirect cache reconciliation");
+            assert_eq!(seo_cache.criticality, DependencyCriticality::Critical);
+            assert_eq!(seo_cache.status, ReadinessStatus::Unhealthy);
+        }
+
+        assert!(
+            response.checks.iter().any(|check| check.name == "worker_host_mode"),
+            "surface hosts must retain the general-worker ownership marker"
+        );
     }
 
     #[test]
@@ -1994,6 +2145,14 @@ mod tests {
         assert_eq!(
             super::readiness_http_status(ReadinessStatus::Unhealthy),
             StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn cache_readiness_reason_does_not_echo_backend_diagnostics() {
+        assert_eq!(
+            super::cache_recovery_readiness_reason(3),
+            "cache recovery is incomplete (3 generations pending)"
         );
     }
 

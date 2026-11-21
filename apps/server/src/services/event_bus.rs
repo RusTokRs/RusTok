@@ -362,12 +362,12 @@ async fn publish_event_with_retry(
                 }
                 return;
             }
-            Ok(Err(error)) => {
+            Ok(Err(_error)) => {
                 tracing::warn!(
                     event_id = %event_id,
                     event_type,
                     attempts = attempt,
-                    error = %error,
+                    error_code = "event_transport_publish_failed",
                     "Failed to persist domain event; retrying the same envelope"
                 );
             }

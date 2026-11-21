@@ -360,8 +360,11 @@ fn cookie_session_response(user: users::Model, tokens: AuthTokens, cookie: Strin
                 .headers_mut()
                 .append(axum::http::header::SET_COOKIE, value);
         }
-        Err(error) => {
-            tracing::error!(%error, "session cookie header could not be encoded");
+        Err(_error) => {
+            tracing::error!(
+                failure_code = "session_cookie_header_encoding_failed",
+                "Session cookie header could not be encoded"
+            );
         }
     }
     response

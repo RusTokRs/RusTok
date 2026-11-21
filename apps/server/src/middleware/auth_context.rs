@@ -69,11 +69,10 @@ pub async fn resolve_optional(
                 pages_inline_authoring_surface,
             );
         }
-        Err(error) => {
+        Err(_error) => {
             tracing::error!(
-                error = %error,
-                code = "host_authority.configuration_invalid",
-                "host authority credential configuration is invalid"
+                error_code = "host_authority_configuration_invalid",
+                "Host authority credential configuration is invalid"
             );
             return pages_inline_authoring_response(
                 auth_error_response(

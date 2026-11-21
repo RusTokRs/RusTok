@@ -75,8 +75,11 @@ impl IntoResponse for Error {
             Self::Database(sea_orm::DbErr::RecordNotFound(message)) => {
                 error_response(StatusCode::NOT_FOUND, "not_found", message)
             }
-            Self::Database(error) => {
-                tracing::error!(error = %error, "server database operation failed");
+            Self::Database(_error) => {
+                tracing::error!(
+                    error_code = "server_database_operation_failed",
+                    "Server database operation failed"
+                );
                 error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
@@ -88,8 +91,11 @@ impl IntoResponse for Error {
                 "internal_error",
                 "Internal server error",
             ),
-            Self::Cache(error) => {
-                tracing::error!(error = %error, "server cache operation failed");
+            Self::Cache(_error) => {
+                tracing::error!(
+                    error_code = "server_cache_operation_failed",
+                    "Server cache operation failed"
+                );
                 error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
@@ -115,8 +121,11 @@ impl IntoResponse for Error {
                 rustok_core::Error::Auth(msg) => {
                     error_response(StatusCode::UNAUTHORIZED, "unauthorized", msg)
                 }
-                other => {
-                    tracing::error!(error = %other, "server core operation failed");
+                _other => {
+                    tracing::error!(
+                        error_code = "server_core_operation_failed",
+                        "Server core operation failed"
+                    );
                     error_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "internal_error",
@@ -124,16 +133,22 @@ impl IntoResponse for Error {
                     )
                 }
             },
-            Self::Message(error) => {
-                tracing::error!(error = %error, "server host operation failed");
+            Self::Message(_error) => {
+                tracing::error!(
+                    error_code = "server_host_operation_failed",
+                    "Server host operation failed"
+                );
                 error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
                     "Internal server error",
                 )
             }
-            error => {
-                tracing::error!(error = %error, "server request failed");
+            _error => {
+                tracing::error!(
+                    error_code = "server_request_failed",
+                    "Server request failed"
+                );
                 error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",

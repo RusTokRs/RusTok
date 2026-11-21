@@ -62,8 +62,12 @@ fn parse_timeout_setting(
     };
     match raw.parse::<u64>() {
         Ok(value) => bounded_timeout_seconds(value, default, maximum, setting),
-        Err(error) => {
-            tracing::warn!(setting, %error, "Invalid HTTP timeout setting; using the default");
+        Err(_error) => {
+            tracing::warn!(
+                setting,
+                error_code = "http_timeout_setting_invalid",
+                "Invalid HTTP timeout setting; using the default"
+            );
             default
         }
     }

@@ -284,7 +284,6 @@ async fn notification_outbox_intake_loop(
                 tracing::error!(
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification outbox intake failed to select committed envelopes"
                 );
                 Vec::new()
@@ -319,7 +318,6 @@ async fn notification_outbox_intake_loop(
                     outbox_event_id = %outbox_event_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification outbox intake has no terminal record; envelope will be retried"
                 ),
             }
@@ -369,10 +367,10 @@ fn outbox_intake_enabled_from_environment() -> bool {
             }
         },
         Err(std::env::VarError::NotPresent) => false,
-        Err(error) => {
+        Err(_error) => {
             tracing::warn!(
                 variable = NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV,
-                error = %error,
+                failure_code = "notification_outbox_intake_flag_unreadable",
                 "Notification outbox intake flag is unreadable; keeping intake disabled"
             );
             false

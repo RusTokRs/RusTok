@@ -102,8 +102,12 @@ fn require_host_authority(_ctx: &Context<'_>, required: HostAuthority) -> Result
     Err(<FieldError as GraphQLError>::permission_denied("host-global authority required"))
 }
 
-fn graphql_system_internal_error(message: &'static str, error: impl Display) -> FieldError {
-    tracing::error!(%error, message, "GraphQL system query failed");
+fn graphql_system_internal_error(message: &'static str, _error: impl Display) -> FieldError {
+    tracing::error!(
+        error_code = "graphql_system_query_failed",
+        operation = message,
+        "GraphQL system query failed"
+    );
     <FieldError as GraphQLError>::internal_error(message)
 }
 

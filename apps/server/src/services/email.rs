@@ -305,8 +305,12 @@ where
             Ok(Ok(())) => {
                 tracing::debug!(task = task_name, "Background email delivered successfully");
             }
-            Ok(Err(error)) => {
-                tracing::warn!(task = task_name, error = %error, "Background email delivery failed");
+            Ok(Err(_error)) => {
+                tracing::warn!(
+                    task = task_name,
+                    error_code = "auth_email_delivery_failed",
+                    "Background email delivery failed"
+                );
             }
             Err(_) => {
                 tracing::error!(
@@ -371,15 +375,21 @@ pub fn spawn_email_verification(
         EMAIL_VERIFICATION_TOKEN_TTL_SECS,
     ) {
         Ok(token) => token,
-        Err(error) => {
-            tracing::warn!(%error, "failed to encode email verification token");
+        Err(_error) => {
+            tracing::warn!(
+                error_code = "email_verification_token_encode_failed",
+                "Failed to encode email verification token"
+            );
             return;
         }
     };
     let email_service = match email_service_from_ctx(ctx, locale) {
         Ok(service) => service,
-        Err(error) => {
-            tracing::warn!(%error, "failed to prepare email verification sender");
+        Err(_error) => {
+            tracing::warn!(
+                error_code = "email_verification_sender_unavailable",
+                "Failed to prepare email verification sender"
+            );
             return;
         }
     };
