@@ -1,5 +1,26 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — production CORS authorization (2026-11-21)
+
+Production CORS previously inserted `http://127.0.0.1:5150` whenever
+the allow-list was absent or unusable, even though credentialed
+cross-origin access was enabled. The `RUSTOK_HOST`/`APP_HOST` fallback
+could also silently treat a production bind address (such as
+`0.0.0.0:5150`) as trusted browser-origin configuration. A local page
+could therefore be granted a browser CORS permission which no operator
+explicitly approved.
+
+`build_cors_layer` now leaves the production allow-list empty without
+valid explicit origins; `resolve_cors_allowed_origins_from_env` applies
+bind-host fallback in development only. Configured entries are parsed
+as actual HTTP(S) origins; embedded URL credentials, paths, queries,
+fragments and other schemes are rejected instead of being treated as
+arbitrary header strings. Valid origins are canonicalized before being
+passed to `CorsLayer`. This does not reject same-origin HTTP traffic
+and does not substitute for normal authentication. Focused regression
+tests cover missing/invalid origins, loopback, credentials and
+production-versus-development host fallback. Unrun per maintainer request.
+
 ## Server audit continuation — bounded HTTP path diagnostics (2026-11-21)
 
 The edge `RusTokMakeSpan` traced `request.uri().path()` verbatim, and

@@ -218,6 +218,17 @@ REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
 
+Production CORS authorization has no implicit loopback fallback.
+`RUSTOK_HOST` and `APP_HOST` are bind-host hints, not browser-origin grants,
+and are used as a fallback only in development. Without a valid
+`RUSTOK_CORS_ALLOWED_ORIGINS` or `/rustok/cors/allowed_origins` list,
+the production CORS layer emits no `Access-Control-Allow-Origin` header,
+including for `http://127.0.0.1:5150`. Explicit origins must be valid
+HTTP(S) origins without URL credentials, paths, queries or fragments;
+invalid configuration entries are ignored with a bounded error code.
+This changes only cross-origin browser permission; it is not an HTTP
+authorization or same-origin request gate.
+
 HTTP edge tracing and middleware diagnostics now emit only a fixed
 `path_group` (for example `/api/:request`, `/admin/:request`,
 `/graphql`, or `/health/ready`) rather than the raw URI pathname. URL
