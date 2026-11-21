@@ -22,9 +22,10 @@ fi
 # Annotations can be read without downloading the complete runner logs.
 if [[ "$1" == cargo ]]; then
   detail=$(awk '
+    /^test .* \.\.\. FAILED$/ && ++failed_tests <= 32 { print substr($0, 1, 240); next }
+    /^test result: FAILED\./ { print substr($0, 1, 240); next }
     /^error(\[|:)/ || /^---- .* stdout ----$/ {
-      if (++blocks > 3) exit
-      remaining=8
+      remaining = ++blocks <= 3 ? 8 : 0
     }
     remaining > 0 { print substr($0, 1, 400); --remaining }
   ' "$log")

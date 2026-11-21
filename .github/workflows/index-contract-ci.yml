@@ -18,6 +18,7 @@ on:
       - "apps/server/src/services/app_router.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "Cargo.toml"
       - "apps/admin/Cargo.toml"
       - "apps/admin/src/app/auth_ssr.rs"
       - "apps/admin/src/main.rs"
@@ -68,6 +69,7 @@ on:
       - "apps/server/src/services/app_router.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "Cargo.toml"
       - "apps/admin/Cargo.toml"
       - "apps/admin/src/app/auth_ssr.rs"
       - "apps/admin/src/main.rs"
@@ -213,11 +215,13 @@ jobs:
         with:
           shared-key: index-contract-ci
       - name: Verify Index crate compilation
+        id: index_compile
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index --lib
       # Test schemas are isolated, but advisory lock keys are database-wide.
       - name: Run Index crate tests with PostgreSQL enabled
         run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --lib -- --test-threads=1
       - name: Run Index repair and recovery PostgreSQL integration tests
+        if: ${{ !cancelled() && steps.index_compile.outcome == 'success' }}
         run: >-
           bash scripts/ci/index-check.sh cargo test --locked -p rustok-index
           --test drift_repair_concrete_execution_postgres_test
@@ -256,6 +260,10 @@ jobs:
       fail-fast: false
       matrix:
         profile: [ssr, hydrate, csr]
+    env:
+      ADMIN_PROFILE: ${{ matrix.profile }}
+      # The full standalone host also builds the locked rig 0.46 graph (Rust 1.97.1).
+      RUSTUP_TOOLCHAIN: ${{ matrix.profile == 'ssr' && '1.97.1' || '1.96.0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -277,13 +285,23 @@ jobs:
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
       - name: Check Index admin in isolation
         if: matrix.profile != 'ssr'
-        env:
-          ADMIN_PROFILE: ${{ matrix.profile }}
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
+      - name: Reject Leptos SSR features in the admin browser graph
+        if: matrix.profile != 'ssr'
+        shell: bash
+        run: |
+          tree=$(bash scripts/ci/index-check.sh cargo tree --locked -p rustok-admin --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown --edges features,no-dev --invert leptos) || {
+            status=$?
+            printf '%s\n' "$tree"
+            exit "$status"
+          }
+          if grep -Fq 'leptos feature "ssr"' <<<"$tree"; then
+            echo '::error::The admin browser profile enables Leptos SSR. This selects native server-function bodies instead of browser clients.'
+            printf '%s\n' "$tree"
+            exit 1
+          fi
       - name: Check the admin browser profile
         if: matrix.profile != 'ssr'
-        env:
-          ADMIN_PROFILE: ${{ matrix.profile }}
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
 
   gate:

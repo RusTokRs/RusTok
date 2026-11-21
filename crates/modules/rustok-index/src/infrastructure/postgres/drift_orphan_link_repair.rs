@@ -1277,7 +1277,7 @@ mod tests {
     }
 
     #[test]
-    fn applied_absence_is_retryable_before_and_converged_after() {
+    fn applied_absence_is_not_a_fresh_repair_but_can_converge() {
         let (source, linked, link_name) = target();
         let target = OrphanLinkTargetRef {
             source_key: &source,
@@ -1298,6 +1298,8 @@ mod tests {
             exact_link_present: true,
         };
         let target_authority = OrphanTargetAuthority::Absent(9);
+        // capture() handles an exact applied delivery through read-only receipt recovery.
+        // The live-evidence classifier must never admit another destructive repair for it.
         assert_eq!(
             classify_evidence(
                 target,
@@ -1306,7 +1308,7 @@ mod tests {
                 materialized,
                 OrphanLinkEvidencePhase::Before,
             ),
-            IndexDriftRepairEvidenceState::Repairable,
+            IndexDriftRepairEvidenceState::Changed,
         );
         assert_eq!(
             classify_evidence(

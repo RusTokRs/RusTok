@@ -77,7 +77,7 @@ requireMarkers('crates/modules/rustok-index/src/application/aggregate_ordering_t
   'decimal_aggregate_uses_numeric_order_and_exact_string_wire',
   'registry(IndexValueType::Decimal)',
   'jsonb_build_object(\'type\', \'decimal\', \'value\', to_jsonb(((SELECT MAX(',
-  ')::text)) END AS \\"__order_0\\"',
+  ')::text)) END END AS \\"__order_0\\"',
   'aggregate_cursor_and_uuid_modes_fail_closed',
 ]);
 

@@ -68,6 +68,13 @@ const requireInJob = (id, markers) => {
   }
 };
 
+const workspaceCargo = read('Cargo.toml');
+for (const dependency of ['rustok-ui-leptos', 'rustok-forms-leptos']) {
+  if (!new RegExp(`^${dependency}\\s*=\\s*\\{[^\\n}]*default-features\\s*=\\s*false\\b`, 'm').test(workspaceCargo)) {
+    fail(`${dependency} must not enable default SSR features in browser packages`);
+  }
+}
+
 const runCheck = 'bash scripts/ci/index-check.sh';
 requireInJob('canonical-digest', [
   `${runCheck} cargo run --locked -p rustok-events --example event_contract_digests -- --write`,
@@ -75,6 +82,8 @@ requireInJob('canonical-digest', [
 ]);
 requireInJob('focused-cargo', [
   `${runCheck} cargo check --locked -p rustok-index --lib`,
+  'id: index_compile',
+  "!cancelled() && steps.index_compile.outcome == 'success'",
   'RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test',
   'services:',
   'image: postgres:16',
@@ -99,9 +108,12 @@ requireInJob('admin-profiles', [
   'profile: [ssr, hydrate, csr]',
   'toolchain: ${{ env.RUSTUP_TOOLCHAIN }}',
   installWasmTarget,
+  "RUSTUP_TOOLCHAIN: ${{ matrix.profile == 'ssr' && '1.97.1' || '1.96.0' }}",
   `${runCheck} cargo test --locked -p rustok-index-admin --no-default-features --features ssr`,
   `${runCheck} cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr`,
   `${runCheck} cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
+  `${runCheck} cargo tree --locked -p rustok-admin --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown --edges features,no-dev --invert leptos`,
+  `grep -Fq 'leptos feature "ssr"'`,
   `${runCheck} cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
 ]);
 const adminProfiles = job('admin-profiles');
@@ -143,6 +155,7 @@ for (const pathMarker of [
   '"crates/modules/rustok-distribution/src/product_index/**"',
   '"crates/modules/rustok-distribution/src/product_variant_index.rs"',
   '"crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"',
+  '"Cargo.toml"',
   '"apps/server/Cargo.toml"',
   '"apps/server/src/graphql/index_replay*.rs"',
   '"apps/server/src/services/app_router.rs"',

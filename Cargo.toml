@@ -259,11 +259,12 @@ leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
 rustok-auth-ui = { path = "crates/modules/rustok-auth/ui", default-features = false }
 rustok-ui = { path = "crates/ui/rustok-ui" }
-rustok-ui-leptos = { path = "crates/ui/rustok-ui/leptos" }
+# The host selects Leptos' SSR, hydrate or CSR mode; shared UI dependencies must not force SSR.
+rustok-ui-leptos = { path = "crates/ui/rustok-ui/leptos", default-features = false }
 rustok-ui-dioxus = { path = "crates/ui/rustok-ui/dioxus" }
 dioxus = { version = "0.7" }
 rustok-ui-forms = { path = "crates/ui/rustok-ui-forms" }
-rustok-forms-leptos = { path = "crates/ui/rustok-ui-forms/leptos" }
+rustok-forms-leptos = { path = "crates/ui/rustok-ui-forms/leptos", default-features = false }
 rustok-forms-dioxus = { path = "crates/ui/rustok-ui-forms/dioxus" }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
 leptos-use = "0.19.0"

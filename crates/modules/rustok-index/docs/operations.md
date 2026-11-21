@@ -120,12 +120,14 @@ owner contracts and are not established by Index tests.
 
 ## Maintainer validation
 
-[Index Contract CI](../../../../.github/workflows/index-contract-ci.yml) configures Rust 1.96 and
-an isolated PostgreSQL 16 service for Index crate, repair and recovery tests. It also runs the
+[Index Contract CI](../../../../.github/workflows/index-contract-ci.yml) pins Rust 1.96 for Index
+and its WASM checks and provides an isolated PostgreSQL 16 service for tests. It also runs the
 non-embedded operator transport fixtures and checks the admin host's SSR, hydrate and CSR profiles.
-The hydrate and CSR jobs check the Index admin crate before composing the entire host. For failed
-Cargo checks or event digest comparisons, see the `Index CI diagnostics` annotation and the full
-job log. These checks do not replace retained deployment evidence or an authenticated browser run.
+The standalone SSR profile uses Rust 1.97.1 for the host's locked dependencies. Hydrate and CSR
+compile the Index admin crate separately and reject Leptos SSR features in the browser host graph.
+For failed Cargo checks or event digest comparisons, see the `Index CI diagnostics` annotation
+and the full job log. These checks do not replace retained deployment evidence or an authenticated
+browser run.
 
 Run locally with the repository toolchain and a disposable PostgreSQL database. Without a
 PostgreSQL URL the real-engine tests skip. Keep the tests serial on a shared test database:

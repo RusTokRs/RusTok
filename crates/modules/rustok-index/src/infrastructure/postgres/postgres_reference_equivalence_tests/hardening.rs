@@ -397,20 +397,21 @@ async fn postgres_compiled_queries_use_owned_btree_and_gin_in_custom_and_generic
         )),
         vec![],
     ))?;
+    let membership_count = membership.exact_count.expect("exact count requested");
     let tx = test.db.begin().await?;
     tx.execute_unprepared(&format!("PREPARE score_query AS {}", range.sql))
         .await?;
-    tx.execute_unprepared(&format!("PREPARE tags_query AS {}", membership.sql))
+    // A small ordered page can favor a btree over GIN plus sorting. Use the real
+    // exact-count query to verify containment index use without that competing order.
+    tx.execute_unprepared(&format!("PREPARE tags_count AS {}", membership_count.sql))
         .await?;
+    let count = r#"tags_count('en-US', '[{"type":"string","value":"rare"}]'::jsonb)"#;
     for mode in ["force_custom_plan", "force_generic_plan"] {
         tx.execute_unprepared(&format!("SET LOCAL plan_cache_mode = {mode}"))
             .await?;
         for (field, execution) in [
             ("score", "score_query('en-US', 19990, 10)"),
-            (
-                "tags",
-                r#"tags_query('en-US', '[{"type":"string","value":"rare"}]'::jsonb, 10)"#,
-            ),
+            ("tags", count),
         ] {
             let row = tx
                 .query_one_raw(Statement::from_string(
@@ -425,8 +426,16 @@ async fn postgres_compiled_queries_use_owned_btree_and_gin_in_custom_and_generic
                 "{mode} {field}: {plan}"
             );
         }
+        let row = tx
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                format!("EXECUTE {count}"),
+            ))
+            .await?
+            .expect("exact count row");
+        assert_eq!(row.try_get::<i64>("", "__exact_count")?, 4, "{mode}");
     }
-    tx.execute_unprepared("DEALLOCATE score_query; DEALLOCATE tags_query")
+    tx.execute_unprepared("DEALLOCATE score_query; DEALLOCATE tags_count")
         .await?;
     tx.commit().await?;
     test.cleanup().await
