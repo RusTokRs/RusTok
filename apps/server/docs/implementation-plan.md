@@ -1,5 +1,45 @@
 # Server App — Implementation Plan
 
+## OAuth app mutation and RFC 7009 serialization follow-up (2026-11-21)
+
+Branch: `agent/server-oauth-app-mutation-fences-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`. Independent of
+pending auth-email, installer, OAuth secret-rotation and worker-startup PRs.
+
+### Confirmed defects and changes
+
+- The manual OAuth app update handler read `can_edit()` and the app's current
+  type outside a transaction, then persisted scopes/grants/redirect URIs and
+  translations later. Another replica could change app ownership, revoke or
+  alter security policy in between. The handler now begins a transaction,
+  acquires the same app-row mutation lock used by OAuth token issuance and
+  manifest sync, rechecks editability under that lock and commits the base
+  update, translations and authoritative response projection together.
+- Explicit app revocation similarly read `can_revoke()` before acquiring a
+  mutation lock. Revocation now checks current tenant-scoped app ownership
+  under the lock before deactivating the app and invalidating tokens, consents,
+  and authorization codes in the same transaction. The deactivation update
+  also matches tenant ID and fails closed if no row is changed.
+- RFC 7009 token-family revocation now reserves the app mutation fence before
+  looking up the presented token. It therefore serializes with authorization
+  code and refresh-token issuance that use the app-then-subject lock order,
+  rather than racing creation of a refresh successor after an unprotected read.
+  The scoped unknown-token path still succeeds without an existence oracle.
+- The family-revocation update changes only rows not previously revoked, so
+  repeated requests do not rewrite the original `revoked_at` timestamp.
+- A new SQLite integration regression simulates transfer of a manual app to
+  manifest-owned state and ensures manual edit/revocation are rejected without
+  altering its active status and redirect configuration. The existing RFC 7009
+  family replay test now asserts preserved revocation timestamps.
+
+**Verification not performed** (per maintainer instruction): no compilation,
+formatting, test execution, database migration or multi-replica exercise. Before
+merge run scoped `rustok-server` compile and OAuth integration tests, plus
+PostgreSQL interleaving tests for manifest synchronization, app edits,
+revocation and concurrent refresh/revocation operations. This patch does not
+claim durable multi-replica recovery or eliminate every possible stale-read
+in other app/service entrypoints.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
