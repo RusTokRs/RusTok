@@ -515,9 +515,9 @@ async fn wait_for_shutdown_signal() {
                 );
                 if let Err(_error) = tokio::signal::ctrl_c().await {
                     tracing::warn!(
-            failure_code = "host_shutdown_signal_failed",
-            "Failed to receive shutdown signal"
-        );
+                        failure_code = "host_shutdown_signal_failed",
+                        "Failed to receive shutdown signal"
+                    );
                 } else {
                     tracing::info!("RusTok Axum host received Ctrl-C");
                 }

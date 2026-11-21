@@ -866,7 +866,10 @@ mod tests {
             None,
             None,
             None,
-            Some("installer apply failed: postgres://root:sensitive-password@database/private".to_string()),
+            Some(
+                "installer apply failed: postgres://root:sensitive-password@database/private"
+                    .to_string(),
+            ),
         );
         let job_id = model.id;
 

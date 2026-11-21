@@ -602,7 +602,9 @@ pub async fn start_tenant_cache_generation_listener(
                                     }
                                     Err(_error) => {
                                         ready_state
-                                            .mark_subscriber_degraded("tenant cache generation post-subscribe recovery failed")
+                                            .mark_subscriber_degraded(
+                                                "tenant cache generation post-subscribe recovery failed",
+                                            )
                                             .await;
                                         tracing::warn!(
                                             error_code = "tenant_cache_generation_post_subscribe_recovery_failed",
@@ -667,7 +669,9 @@ pub async fn start_tenant_cache_generation_listener(
                     Ok(_) => reconcile_state.mark_reconciliation_healthy().await,
                     Err(_error) => {
                         reconcile_state
-                            .mark_reconciliation_degraded("periodic tenant cache generation reconciliation failed")
+                            .mark_reconciliation_degraded(
+                                "periodic tenant cache generation reconciliation failed",
+                            )
                             .await;
                         tracing::warn!(
                             error_code = "tenant_cache_generation_periodic_reconciliation_failed",
