@@ -68,7 +68,13 @@ const requireInJob = (id, markers) => {
   }
 };
 
+const runCheck = 'bash scripts/ci/index-check.sh';
+requireInJob('canonical-digest', [
+  `${runCheck} cargo run --locked -p rustok-events --example event_contract_digests -- --write`,
+  `${runCheck} git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json`,
+]);
 requireInJob('focused-cargo', [
+  `${runCheck} cargo check --locked -p rustok-index --lib`,
   'RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test',
   'services:',
   'image: postgres:16',
@@ -91,9 +97,10 @@ for (const [path, fixture] of [
 requireInJob('admin-profiles', [
   'profile: [ssr, hydrate, csr]',
   'wasm32-unknown-unknown',
-  'cargo test --locked -p rustok-index-admin --no-default-features --features ssr',
-  'cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr',
-  'cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown',
+  `${runCheck} cargo test --locked -p rustok-index-admin --no-default-features --features ssr`,
+  `${runCheck} cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr`,
+  `${runCheck} cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
+  `${runCheck} cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
 ]);
 requireInJob('gate', [
   'if: always()',
@@ -157,6 +164,7 @@ for (const pathMarker of [
   '"scripts/verify/verify-index-product-refresh-host-consumer.mjs"',
   '"scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"',
   '"scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"',
+  '"scripts/ci/index-check.sh"',
   '"scripts/verify/verify-index-contract-ci.mjs"',
   '".github/workflows/index-product-refresh-redelivery-evidence.yml"',
   '".github/workflows/index-product-current-schema-promotion-evidence.yml"',

@@ -43,6 +43,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - "scripts/ci/index-check.sh"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
@@ -92,6 +93,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - "scripts/ci/index-check.sh"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
@@ -175,9 +177,9 @@ jobs:
         with:
           shared-key: index-contract-ci
       - name: Regenerate canonical event digests
-        run: cargo run --locked -p rustok-events --example event_contract_digests -- --write
+        run: bash scripts/ci/index-check.sh cargo run --locked -p rustok-events --example event_contract_digests -- --write
       - name: Require committed canonical event digests
-        run: git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
+        run: bash scripts/ci/index-check.sh git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
 
   focused-cargo:
     name: Events Product Index cargo checks
@@ -210,58 +212,40 @@ jobs:
         with:
           shared-key: index-contract-ci
       - name: Verify Index crate compilation
-        shell: bash
-        env:
-          CARGO_TERM_COLOR: never
-        run: |
-          log="$(mktemp)"
-          trap 'rm -f "$log"' EXIT
-          status=0
-          cargo check --locked -p rustok-index --lib >"$log" 2>&1 || status=$?
-          cat "$log"
-          if (( status != 0 )); then
-            # Put the first Cargo error in the check annotation as well as the job log.
-            detail="$(awk '/^error(\[|:)/ { show=1 } show { print substr($0, 1, 400); if (++lines == 8) exit }' "$log")"
-            detail="${detail:-Cargo exited with status $status; see the job log.}"
-            detail="${detail//%/%25}"
-            detail="${detail//$'\r'/%0D}"
-            detail="${detail//$'\n'/%0A}"
-            printf '::error title=Index crate compilation::%s\n' "$detail"
-            exit "$status"
-          fi
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index --lib
       # Test schemas are isolated, but advisory lock keys are database-wide.
       - name: Run Index crate tests with PostgreSQL enabled
-        run: cargo test --locked -p rustok-index --lib -- --test-threads=1
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --lib -- --test-threads=1
       - name: Run Index repair and recovery PostgreSQL integration tests
         run: >-
-          cargo test --locked -p rustok-index
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-index
           --test drift_repair_concrete_execution_postgres_test
           --test drift_repair_recovery_postgres_test
           --test source_reconciliation_dead_letter_admission_postgres_test
           -- --test-threads=1
       - name: Check Events Product and Index targets
-        run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
       - name: Check selected Product distribution bridge
-        run: cargo check --locked -p rustok-distribution --features mod-product --lib
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-distribution --features mod-product --lib
       - name: Check Product current-schema promotion PostgreSQL evidence harness
-        run: cargo check --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres
       - name: Check Product refresh host consumer composition
-        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
       - name: Check Product refresh PostgreSQL/Iggy evidence harness
-        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
       - name: Run Index operator transport tests without embedded admin
         run: |
-          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
-          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
-          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
       - name: Verify canonical event contract test
-        run: cargo test --locked -p rustok-events --test canonical_contracts
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-events --test canonical_contracts
       - name: Verify generic source refresh commit-before-ack contract
-        run: cargo test --locked -p rustok-index source_refresh_event --lib
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index source_refresh_event --lib
       - name: Verify typed Product refresh delivery
-        run: cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib
       - name: Verify Product refresh host envelope projection and retry boundary
-        run: cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 
   admin-profiles:
     name: Index admin (${{ matrix.profile }})
@@ -284,15 +268,20 @@ jobs:
           key: index-admin-${{ matrix.profile }}
       - name: Run Index admin native adapter tests
         if: matrix.profile == 'ssr'
-        run: cargo test --locked -p rustok-index-admin --no-default-features --features ssr
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index-admin --no-default-features --features ssr
       - name: Check standalone admin server composition
         if: matrix.profile == 'ssr'
-        run: cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
+      - name: Check Index admin in isolation
+        if: matrix.profile != 'ssr'
+        env:
+          ADMIN_PROFILE: ${{ matrix.profile }}
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
       - name: Check the admin browser profile
         if: matrix.profile != 'ssr'
         env:
           ADMIN_PROFILE: ${{ matrix.profile }}
-        run: cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
 
   gate:
     name: Index Contract Gate

@@ -882,11 +882,12 @@ async fn postgres_mutation_and_checkpoint_rollback_if_lease_expires_during_write
         MutationStorageError::JobLeaseLost
     );
     let pool = test.db.get_postgres_connection_pool();
-    for table in ["index_entities", "index_inbox"] {
-        let rows: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
-            .fetch_one(pool)
-            .await?;
-        assert_eq!(rows, 0);
+    for count_sql in [
+        "SELECT COUNT(*) FROM index_entities",
+        "SELECT COUNT(*) FROM index_inbox",
+    ] {
+        let rows: i64 = sqlx::query_scalar(count_sql).fetch_one(pool).await?;
+        assert_eq!(rows, 0, "{count_sql}");
     }
     let IndexReplayJobAcquireOutcome::Acquired(second) = jobs.acquire(&request("second")?).await?
     else {

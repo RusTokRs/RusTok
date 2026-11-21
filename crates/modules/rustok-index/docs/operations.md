@@ -123,7 +123,9 @@ owner contracts and are not established by Index tests.
 [Index Contract CI](../../../../.github/workflows/index-contract-ci.yml) configures Rust 1.96 and
 an isolated PostgreSQL 16 service for Index crate, repair and recovery tests. It also runs the
 non-embedded operator transport fixtures and checks the admin host's SSR, hydrate and CSR profiles.
-These checks do not replace retained deployment evidence or an authenticated browser run.
+The hydrate and CSR jobs check the Index admin crate before composing the entire host. For failed
+Cargo checks or event digest comparisons, see the `Index CI diagnostics` annotation and the full
+job log. These checks do not replace retained deployment evidence or an authenticated browser run.
 
 Run locally with the repository toolchain and a disposable PostgreSQL database. Without a
 PostgreSQL URL the real-engine tests skip. Keep the tests serial on a shared test database:
@@ -138,11 +140,13 @@ RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... cargo test --locked -p rustok-inde
   -- --test-threads=1
 cargo test --locked -p rustok-index-admin --no-default-features --features ssr
 cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
-cargo check --locked -p rustok-admin --lib --no-default-features --features hydrate --target wasm32-unknown-unknown
-cargo check --locked -p rustok-admin --lib --no-default-features --features csr --target wasm32-unknown-unknown
-cargo test --locked -p rustok-server --lib --no-default-features index_native_json_routes_enforce_request_scope_without_embedded_admin
-cargo test --locked -p rustok-server --lib --no-default-features index_standalone_relay_preserves_scope_and_exact_recovery_kind
-cargo test --locked -p rustok-server --lib --no-default-features index_admin_csr_commands_validate_against_the_operator_schema
+for profile in hydrate csr; do
+  cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$profile" --target wasm32-unknown-unknown
+  cargo check --locked -p rustok-admin --lib --no-default-features --features "$profile" --target wasm32-unknown-unknown
+done
+cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
+cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
+cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
 ```
 
 Repeat the server fixtures with embedded-admin assets and features before validating the embedded

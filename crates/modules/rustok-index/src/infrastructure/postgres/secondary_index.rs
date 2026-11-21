@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use sea_orm::sqlx::{self, PgConnection};
+use sea_orm::sqlx::{self, AssertSqlSafe, PgConnection};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
@@ -1276,7 +1276,8 @@ async fn reserve_creation(
         "UPDATE index_jobs SET cursor = $5, updated_at = clock_timestamp()
          WHERE {fence} AND cursor IS NULL",
     );
-    let reserved = sqlx::query(&statement)
+    // The shared lease fence expands only fixed SQL tokens and placeholders.
+    let reserved = sqlx::query(AssertSqlSafe(statement))
         .bind(lease.tenant_id)
         .bind(lease.job_id)
         .bind(&lease.worker_id)
@@ -1352,10 +1353,12 @@ async fn execute_postgres_locked(
     let scratch = format!("index_definition_{}", Uuid::new_v4().simple());
     let scratch_table = format!("pg_temp.{}", quote_identifier(&scratch));
     // Preserve physical column numbers even if the owning table has had a dropped column.
-    sqlx::raw_sql(&format!(
+    // The DDL uses quoted names (including catalog-produced quote_ident projections), a
+    // validated schema definition, and an owner comment derived from its hash. No raw input.
+    sqlx::raw_sql(AssertSqlSafe(format!(
         "CREATE TEMP TABLE {} AS SELECT {column_projection} FROM {table} WITH NO DATA",
         quote_identifier(&scratch)
-    ))
+    )))
     .execute(&mut *session)
     .await
     .map_err(storage_error)?;
@@ -1363,7 +1366,7 @@ async fn execute_postgres_locked(
     let reference = create
         .replacen("CREATE INDEX CONCURRENTLY", "CREATE INDEX", 1)
         .replacen(" ON index_entities ", &format!(" ON {scratch_table} "), 1);
-    sqlx::raw_sql(&reference)
+    sqlx::raw_sql(AssertSqlSafe(reference))
         .execute(&mut *session)
         .await
         .map_err(storage_error)?;
@@ -1376,7 +1379,7 @@ async fn execute_postgres_locked(
         .await?
         .ok_or_else(ownership_error)?
         .definition;
-    sqlx::raw_sql(&format!("DROP TABLE {scratch_table}"))
+    sqlx::raw_sql(AssertSqlSafe(format!("DROP TABLE {scratch_table}")))
         .execute(&mut *session)
         .await
         .map_err(storage_error)?;
@@ -1402,10 +1405,12 @@ async fn execute_postgres_locked(
             // An interrupted concurrent build can leave an invalid physical index. Rebuild
             // only if it was marked by Index or this exact job reserved its absent name.
             if existing.as_ref().is_some_and(|state| !state.ready) {
-                sqlx::raw_sql(&format!("DROP INDEX CONCURRENTLY {qualified_index}"))
-                    .execute(&mut *session)
-                    .await
-                    .map_err(storage_error)?;
+                sqlx::raw_sql(AssertSqlSafe(format!(
+                    "DROP INDEX CONCURRENTLY {qualified_index}"
+                )))
+                .execute(&mut *session)
+                .await
+                .map_err(storage_error)?;
                 existing = None;
             }
             let created = existing.is_none();
@@ -1415,7 +1420,7 @@ async fn execute_postgres_locked(
                 }
                 remaining_lease_budget(session, lease).await?;
                 let ddl = create.replacen(" ON index_entities ", &format!(" ON {table} "), 1);
-                sqlx::raw_sql(&ddl)
+                sqlx::raw_sql(AssertSqlSafe(ddl))
                     .execute(&mut *session)
                     .await
                     .map_err(storage_error)?;
@@ -1435,10 +1440,10 @@ async fn execute_postgres_locked(
             }
             if state.comment.is_none() {
                 remaining_lease_budget(session, lease).await?;
-                sqlx::raw_sql(&format!(
+                sqlx::raw_sql(AssertSqlSafe(format!(
                     "COMMENT ON INDEX {qualified_index} IS {}",
                     quote_literal(&owner)
-                ))
+                )))
                 .execute(&mut *session)
                 .await
                 .map_err(storage_error)?;
@@ -1454,10 +1459,12 @@ async fn execute_postgres_locked(
             }
         }
         SecondaryIndexOperation::Reindex => {
-            sqlx::raw_sql(&format!("REINDEX INDEX CONCURRENTLY {qualified_index}"))
-                .execute(&mut *session)
-                .await
-                .map_err(storage_error)?;
+            sqlx::raw_sql(AssertSqlSafe(format!(
+                "REINDEX INDEX CONCURRENTLY {qualified_index}"
+            )))
+            .execute(&mut *session)
+            .await
+            .map_err(storage_error)?;
             verify_ready(
                 index_state(session, table_oid, name)
                     .await?
@@ -1468,10 +1475,12 @@ async fn execute_postgres_locked(
             }
         }
         SecondaryIndexOperation::Retire => {
-            sqlx::raw_sql(&format!("DROP INDEX CONCURRENTLY {qualified_index}"))
-                .execute(&mut *session)
-                .await
-                .map_err(storage_error)?;
+            sqlx::raw_sql(AssertSqlSafe(format!(
+                "DROP INDEX CONCURRENTLY {qualified_index}"
+            )))
+            .execute(&mut *session)
+            .await
+            .map_err(storage_error)?;
             if index_state(session, table_oid, name).await?.is_some() {
                 return Err(ownership_error());
             }
