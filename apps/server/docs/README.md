@@ -534,10 +534,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   exactly-once broker effects. The stable Iggy message ID alone is not proof
   of suppression of all duplicates.
 - The Comments schedule audit source-retry handoff checks the shared stop
-  signal before its expired-attempt sweep and before **each** new claim, not
-  only at the outer polling boundary. An already acquired claim is allowed to
-  complete its canonical outbox transaction and failure-state update before the
-  next shutdown check; this preserves attempt/receipt integrity.
+  signal before **each** expired-attempt dead-letter transition and each new
+  claim, not only at the outer polling boundary. Exhausted claims left by a
+  crash are now swept in bounded pages (up to the configured
+  `max_claims_per_cycle` per cycle, independently of the claim budget), rather
+  than one row per idle poll. A full sweep schedules an immediate bounded
+  follow-up cycle; failed sweeps retain the configured error backoff. An
+  already acquired claim completes its canonical outbox transaction and
+  failure-state update before the next shutdown check; receipt identity,
+  lease expiry, and PostgreSQL row fences remain authoritative.
 - Notification candidate and fanout workers recheck shutdown **after**
   asynchronous tenant capability/policy evaluation (including deferrals),
   immediately before starting their next candidate processing, source
