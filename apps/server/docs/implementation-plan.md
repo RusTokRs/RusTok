@@ -1,5 +1,52 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — dispatcher readiness and cancellation (2026-11-21)
+
+One accumulating draft PR: `agent/server-audit-continuation-20261121`,
+based on current main `b4ec15e92e8c328bd7ba32ed50347911cbbfac89`,
+after consolidated server fix PR #4771 merged as
+`ec4914cac06b19fb352e429c39e4ce044f81774a`.
+
+### Confirmed start-state and cleanup defects
+
+- `spawn_module_event_dispatcher` previously returned `Ok(())` when it
+  observed `ModuleEventDispatcherReservation` even if no worker handle
+  existed. The first caller could still fail or panic, so external callers
+  not using the host bootstrap mutex could treat an unstarted listener
+  registry as successfully initialized.
+- A published dispatcher handle was treated as success even while the
+  required listener flag had not yet been stored, or after the worker
+  terminated unexpectedly. Readiness must check both a live loop and a
+  required-listener flag rather than the presence of a typed value alone.
+- The dispatcher and three optional recovery worker starters manually
+  removed their reservation only in selected error branches. A panic while
+  constructing a dispatcher or a dependent worker could strand the
+  reservation and prevent subsequent retry in the same runtime.
+
+### Fix and tests
+
+- Introduced `claim_module_dispatcher_start`, which returns idempotent
+  success only for an already-published *running* dispatcher with a true
+  `ModuleEventDispatcherRequirement`. A competing in-flight startup
+  instead returns an explicit retryable initialization error. A finished
+  registered worker is not reported as ready.
+- Reused `ServerRuntimeStartReservation` for dispatcher startup, paid
+  order label, marketplace financial and payment provider recovery.
+  `Drop` releases a claim on ordinary error, dependency unavailability,
+  or unwind; successful publication uses `commit()` to retain ownership.
+- Added focused source tests proving contention is not readiness,
+  cancellation/error and panic release a claim, and a handle without its
+  required-listener flag is rejected. Existing startup tests cover
+  missing EventRuntime and module listener registration.
+
+**Validation handoff:** The user owns tests. No Cargo checks, tests, formatting,
+linters or live concurrency exercises have been run in this continuation.
+Recommended: `cargo check -p rustok-server --lib` and
+`cargo test -p rustok-server --lib services::module_event_dispatcher`,
+plus a multithreaded double-start/shutdown exercise. These guarantees
+remain per-runtime; the patch does not implement process restart,
+distributed leader election or broker exactly-once delivery.
+
 ## Installer HTTP admission cancellation follow-up (2026-11-21)
 
 Branch: `agent/server-installer-admission-cancellation-20261121`, based on
