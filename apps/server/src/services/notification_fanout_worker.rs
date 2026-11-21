@@ -100,7 +100,14 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, NotificationFanoutWorkerStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<NotificationFanoutWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Notification fanout worker startup is already in progress; retry".to_string(),
+        ));
     };
     // Another bootstrap may have committed the worker before this reservation
     // was created by an older caller. Never overwrite an existing JoinHandle.
