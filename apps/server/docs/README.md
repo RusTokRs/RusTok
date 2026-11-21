@@ -734,7 +734,17 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   `GET /api/install/jobs/{job_id}`, and
   `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` starts a
   background job and returns `202 Accepted` with `job_id`; the wizard must poll
-  the job status and read persisted receipts for progress UI. Mutating HTTP install
+  the job status and read persisted receipts for progress UI. The host reserves
+  the local installer slot only after validating the request and checking the
+  persisted running-job fence. A single detached task then owns both the durable
+  `running` row creation and its executor work; the HTTP response awaits the
+  creation acknowledgement, but disconnecting cannot interrupt the claim-to-run
+  handoff or leak the local slot. Failed claims release the slot and preserve the
+  409 conflict/500 storage-error mapping. New apply requests receive 503 while
+  host shutdown is active. Neither this mechanism nor the existing unique
+  running-job index recovers a job after process termination: ambiguous effects
+  must be reconciled against durable receipts before an operator releases the
+  global installer fence. Mutating HTTP install
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token
