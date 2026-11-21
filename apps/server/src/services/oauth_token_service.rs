@@ -270,7 +270,13 @@ fn require_grant(
     app: &oauth_apps::Model,
     grant_type: &'static str,
 ) -> Result<(), OAuthTokenProtocolError> {
-    if app.supports_grant_type(grant_type) {
+    let incompatible_app_type = match (app.app_type.as_str(), grant_type) {
+        ("service", AUTHORIZATION_CODE_GRANT | REFRESH_TOKEN_GRANT) => true,
+        ("mobile" | "third_party", CLIENT_CREDENTIALS_GRANT) => true,
+        _ => false,
+    };
+
+    if app.supports_grant_type(grant_type) && !incompatible_app_type {
         Ok(())
     } else {
         Err(OAuthTokenProtocolError::unauthorized_client(format!(
@@ -284,6 +290,13 @@ async fn authenticate_client(
     request: &TokenRequest,
     secret_required: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
+    // First-party clients intentionally combine a browser PKCE flow with a
+    // confidential SSR flow. PKCE proves the browser exchange; only the
+    // client_credentials grant authenticates with the optional client secret.
+    if matches!(app.app_type.as_str(), "first_party" | "mobile") && !secret_required {
+        return Ok(());
+    }
+
     let Some(secret_hash) = app.client_secret_hash.as_deref() else {
         return if secret_required {
             Err(OAuthTokenProtocolError::invalid_client(
@@ -1256,8 +1269,9 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, refresh_family_deadline,
-        require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
+        PreparedUserTokens, REFRESH_TOKEN_GRANT, authenticate_client, commit_refresh_rotation,
+        refresh_family_deadline, require_grant, resolve_client, scopes_for_refresh,
+        validate_requested_scopes,
     };
     use crate::models::{
         oauth_apps, oauth_authorization_codes as oauth_codes, oauth_consents, oauth_tokens,
@@ -1270,6 +1284,71 @@ mod tests {
         prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn first_party_pkce_does_not_require_secret_even_when_ssr_secret_exists() {
+        let mut app = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code", "refresh_token", "client_credentials"]),
+        );
+        app.app_type = "first_party".to_string();
+        app.client_secret_hash = Some("stored-ssr-secret-hash".to_string());
+
+        let request = TokenRequest {
+            grant_type: "authorization_code".to_string(),
+            client_id: Some(app.client_id.to_string()),
+            client_secret: None,
+            scope: None,
+            code: None,
+            redirect_uri: None,
+            code_verifier: None,
+            refresh_token: None,
+        };
+
+        assert!(authenticate_client(&app, &request, false).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn first_party_client_credentials_requires_a_provisioned_secret() {
+        let mut app = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code", "refresh_token", "client_credentials"]),
+        );
+        app.app_type = "first_party".to_string();
+        app.client_secret_hash = None;
+
+        let request = TokenRequest {
+            grant_type: "client_credentials".to_string(),
+            client_id: Some(app.client_id.to_string()),
+            client_secret: None,
+            scope: None,
+            code: None,
+            redirect_uri: None,
+            code_verifier: None,
+            refresh_token: None,
+        };
+
+        assert!(authenticate_client(&app, &request, true).await.is_err());
+    }
+
+    #[test]
+    fn grant_types_are_enforced_against_application_type_at_exchange_time() {
+        let mut third_party = app(
+            serde_json::json!(["catalog:read"]),
+            serde_json::json!(["client_credentials"]),
+        );
+        third_party.app_type = "third_party".to_string();
+        assert!(require_grant(&third_party, "client_credentials").is_err());
+
+        let mut mobile = third_party.clone();
+        mobile.app_type = "mobile".to_string();
+        assert!(require_grant(&mobile, "client_credentials").is_err());
+
+        let mut service = third_party;
+        service.app_type = "service".to_string();
+        service.grant_types = serde_json::json!(["authorization_code"]);
+        assert!(require_grant(&service, "authorization_code").is_err());
+    }
 
     fn app(scopes: serde_json::Value, grants: serde_json::Value) -> oauth_apps::Model {
         let now: DateTimeWithTimeZone = chrono::Utc::now().into();
