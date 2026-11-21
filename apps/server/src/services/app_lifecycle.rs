@@ -750,6 +750,20 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _bootstrap_guard = bootstrap_initialization.lock().await;
 
+    // Router bootstrap holds the lock above, but this public startup function
+    // can also be invoked directly. It uses the artifact maintenance lock
+    // across *all* additional worker registration. Wait for that caller to
+    // finish before the shutdown snapshot, or a late worker could publish its
+    // handle after the drain already took the old value.
+    //
+    // Lock order matches router bootstrap: bootstrap -> runtime workers.
+    // Release the workers lock before join! (the artifact worker's own drain
+    // acquires it again). New callers see the stop flag after acquiring it
+    // and do not start more workers.
+    let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
+    let _worker_initialization_guard = worker_initialization.0.lock().await;
+    drop(_worker_initialization_guard);
+
     let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
