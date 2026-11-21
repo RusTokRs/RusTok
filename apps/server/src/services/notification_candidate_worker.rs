@@ -215,7 +215,6 @@ async fn notification_candidate_worker_loop(
                     worker_id = worker.worker_id(),
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification candidate worker failed to select claimable items"
                 );
                 Vec::new()
@@ -266,7 +265,6 @@ async fn notification_candidate_worker_loop(
                     item_id = %work.item_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
-                    error = %error,
                     "Notification candidate processing completed with durable failure state"
                 ),
             }
@@ -323,7 +321,6 @@ async fn candidate_work_policy_observation(
                 item_id = %work.item_id,
                 error_code = error.stable_code(),
                 retryable = error.is_retryable(),
-                error = %error,
                 "Notification candidate tenant-policy deferral failed"
             );
         }
@@ -351,11 +348,11 @@ async fn tenant_notification_policy(
             );
             TenantNotificationPolicy::Disabled
         }
-        Err(error) => {
+        Err(_error) => {
             tracing::warn!(
                 tenant_id = %tenant_id,
                 module_slug = NOTIFICATIONS_MODULE_SLUG,
-                error = %error,
+                error_code = "notification_tenant_policy_lookup_failed",
                 "Notification candidate policy lookup failed closed"
             );
             TenantNotificationPolicy::Unavailable
