@@ -95,7 +95,9 @@ without evidence of a failure is recorded separately below.
   invalid, or derived from a wildcard bind address.
 - **Remediation:** Require explicit HTTP(S) browser origins in production,
   reject URL credentials and non-origin components, and leave the
-  allow-list empty when none is valid. Development host fallback remains
+  allow-list empty when none is valid. Reject unspecified IPv4/IPv6 bind
+  addresses even when entered explicitly, instead of converting them
+  into localhost browser authority. Development host fallback remains
   available, and same-origin HTTP requests are unaffected.
 - **Verification:** Regression scenarios for missing/invalid origins,
   loopback, explicit valid sites and configured bind-address fallback; unrun.

@@ -49,9 +49,18 @@ pub fn normalize_host_origin(host: &str) -> String {
 /// serialized as scheme + authority, so preserving a configured path would
 /// silently produce a non-matching or misleading allow-list entry.
 fn validated_cors_origin(configured: &str) -> Option<HeaderValue> {
+    let configured = configured.trim();
+    // The general development normalization maps an unspecified listener
+    // address to loopback. That is useful for local URLs but must not turn
+    // an explicitly supplied bind address into credentialed CORS authority.
+    if configured == "0.0.0.0" || configured.starts_with("0.0.0.0:") {
+        return None;
+    }
     let normalized = normalize_host_origin(configured);
     let url = url::Url::parse(&normalized).ok()?;
     if !matches!(url.scheme(), "http" | "https")
+        || matches!(url.host(), Some(url::Host::Ipv4(ip)) if ip.is_unspecified())
+        || matches!(url.host(), Some(url::Host::Ipv6(ip)) if ip.is_unspecified())
         || url.host().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -397,6 +406,10 @@ mod tests {
             "https://trusted.example.com/#fragment",
             "ftp://trusted.example.com",
             "javascript:alert(1)",
+            "0.0.0.0",
+            "0.0.0.0:5150",
+            "http://0.0.0.0:5150",
+            "http://[::]:5150",
         ] {
             assert!(
                 validated_cors_origin(invalid).is_none(),

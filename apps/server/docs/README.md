@@ -226,6 +226,9 @@ the production CORS layer emits no `Access-Control-Allow-Origin` header,
 including for `http://127.0.0.1:5150`. Explicit origins must be valid
 HTTP(S) origins without URL credentials, paths, queries or fragments;
 invalid configuration entries are ignored with a bounded error code.
+Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
+rejected even when supplied as explicit CORS entries: they are network
+listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 

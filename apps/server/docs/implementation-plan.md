@@ -81,7 +81,9 @@ valid explicit origins; `resolve_cors_allowed_origins_from_env` applies
 bind-host fallback in development only. Configured entries are parsed
 as actual HTTP(S) origins; embedded URL credentials, paths, queries,
 fragments and other schemes are rejected instead of being treated as
-arbitrary header strings. Valid origins are canonicalized before being
+arbitrary header strings. Wildcard listener addresses (`0.0.0.0`,
+`[::]`) are also rejected as explicit browser origins, rather than
+being normalized into localhost authorization. Valid origins are canonicalized before being
 passed to `CorsLayer`. This does not reject same-origin HTTP traffic
 and does not substitute for normal authentication. Focused regression
 tests cover missing/invalid origins, loopback, credentials and
