@@ -29,10 +29,12 @@ impl<'a> ReferenceFixture<'a> {
     pub(super) fn page(&self, query: &IndexQuery) -> IndexQueryPage {
         self.registry
             .validate_query(query)
+            // INVARIANT: equivalence query should validate
             .expect("equivalence query should validate");
         let plan = self
             .registry
             .plan_query(query)
+            // INVARIANT: equivalence query should plan
             .expect("equivalence query should plan");
 
         let mut records = self
@@ -56,7 +58,9 @@ impl<'a> ReferenceFixture<'a> {
             ..
         } = &query.pagination
         {
+            // INVARIANT: production cursor should decode in the reference fixture
             let cursor = CursorCodec::decode_scoped_for_query(encoded, query, self.registry)
+                // INVARIANT: production cursor should decode in the reference fixture
                 .expect("production cursor should decode in the reference fixture");
             records.retain(|record| {
                 self.compare_record_to_cursor(record, &cursor, query)
@@ -82,7 +86,9 @@ impl<'a> ReferenceFixture<'a> {
             .collect::<Vec<_>>();
         let next_cursor = if has_more && matches!(&query.pagination, Pagination::Cursor { .. }) {
             window.last().map(|record| {
+                // INVARIANT: reference cursor should encode
                 CursorCodec::encode_for_query(&self.cursor_for(record, query), query, self.registry)
+                    // INVARIANT: reference cursor should encode
                     .expect("reference cursor should encode")
             })
         } else {
@@ -131,6 +137,7 @@ impl<'a> ReferenceFixture<'a> {
                     .map(|chain| {
                         let terminal = chain
                             .last()
+                            // INVARIANT: many projection path should have a terminal record
                             .expect("many projection path should have a terminal record");
                         IndexNestedRelationItem {
                             relations: projection
@@ -358,6 +365,7 @@ impl<'a> ReferenceFixture<'a> {
         let schema = self
             .registry
             .get(&query.schema)
+            // INVARIANT: validated query schema should remain registered
             .expect("validated query schema should remain registered");
         crate::IndexCursor {
             tenant_id: query.scope.tenant_id,
@@ -434,6 +442,7 @@ fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {
     match direction.base_direction() {
         OrderDirection::Asc => ordering,
         OrderDirection::Desc => ordering.reverse(),
+        // INVARIANT: base_direction returns a physical direction
         _ => unreachable!("base_direction returns a physical direction"),
     }
 }

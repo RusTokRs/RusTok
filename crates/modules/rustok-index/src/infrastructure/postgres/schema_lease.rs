@@ -533,6 +533,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -541,6 +542,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -556,6 +558,7 @@ fn stored_uuid(
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -590,6 +593,7 @@ fn select_schema_jobs_sql(backend: DbBackend) -> String {
             "CAST(attempt_count AS INTEGER)",
             "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
         ),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -637,6 +641,7 @@ fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Sqlite => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

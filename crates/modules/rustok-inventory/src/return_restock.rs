@@ -162,27 +162,13 @@ pub async fn restock_returned_items(
         )
         .await?;
 
-        // INVARIANT: the item is tenant-proved. Include consumed history, but never select
-        // the oldest/first of several allocations or infer SKU-less from an absent row.
-        let reservation_query = reservation_item::Entity::find()
-            .filter(reservation_item::Column::InventoryItemId.eq(item.id))
-            .filter(reservation_item::Column::LineItemId.eq(line.order_line_item_id))
-            .limit(2);
-        let reservation_query = if txn.get_database_backend() == DbBackend::Sqlite {
-            reservation_query
-        } else {
-            reservation_query.lock_exclusive()
-        };
-        let mut reservations = reservation_query.all(&txn).await.map_err(|error| {
-            storage_unavailable_with_context(&context, RESTOCK_OPERATION, error)
-        })?;
-        if reservations.len() != 1 {
-            return Err(PortError::invariant_violation(
-                "inventory.return_restock_allocation_unverified",
-                "tracked return requires exactly one saved allocation; reconcile its history",
-            ));
-        }
-        let reservation = reservations.pop().ok_or_else(identity_conflict)?;
+        let reservation = fetch_return_reservation(
+            &txn,
+            &context,
+            item.id,
+            line.order_line_item_id,
+        )
+        .await?;
         validate_allocation(&reservation, line, item.id, variant_id)?;
         movements.insert(
             line.return_item_id,
@@ -204,32 +190,7 @@ pub async fn restock_returned_items(
         .collect::<BTreeSet<_>>();
     let mut levels = BTreeMap::new();
     for (item_id, location_id) in level_keys {
-        // INVARIANT: both the item and the saved location were tenant-proved above.
-        let level_query = inventory_level::Entity::find()
-            .filter(inventory_level::Column::InventoryItemId.eq(item_id))
-            .filter(inventory_level::Column::LocationId.eq(location_id))
-            .limit(2);
-        let level_query = if txn.get_database_backend() == DbBackend::Sqlite {
-            level_query
-        } else {
-            level_query.lock_exclusive()
-        };
-        let mut matching = level_query.all(&txn).await.map_err(|error| {
-            storage_unavailable_with_context(&context, RESTOCK_OPERATION, error)
-        })?;
-        if matching.len() != 1 {
-            return Err(PortError::invariant_violation(
-                "inventory.return_restock_level_unverified",
-                "saved return allocation requires exactly one inventory level",
-            ));
-        }
-        let level = matching.pop().ok_or_else(identity_conflict)?;
-        if level.stocked_quantity < 0
-            || level.reserved_quantity < 0
-            || level.incoming_quantity < 0
-        {
-            return Err(identity_conflict());
-        }
+        let level = fetch_return_level(&txn, &context, item_id, location_id).await?;
         levels.insert((item_id, location_id), level);
     }
 
@@ -365,6 +326,70 @@ fn validate_request(lines: &[ReturnRestockLine]) -> Result<(), PortError> {
         }
     }
     Ok(())
+}
+
+async fn fetch_return_reservation(
+    txn: &DatabaseTransaction,
+    context: &PortContext,
+    inventory_item_id: Uuid,
+    line_item_id: Uuid,
+) -> Result<reservation_item::Model, PortError> {
+    // INVARIANT: the item is tenant-proved. Include consumed history, but never select
+    // the oldest/first of several allocations or infer SKU-less from an absent row.
+    let reservation_query = reservation_item::Entity::find()
+        .filter(reservation_item::Column::InventoryItemId.eq(inventory_item_id))
+        .filter(reservation_item::Column::LineItemId.eq(line_item_id))
+        .limit(2);
+    let reservation_query = if txn.get_database_backend() == DbBackend::Sqlite {
+        reservation_query
+    } else {
+        reservation_query.lock_exclusive()
+    };
+    let mut reservations = reservation_query.all(txn).await.map_err(|error| {
+        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
+    })?;
+    if reservations.len() != 1 {
+        return Err(PortError::invariant_violation(
+            "inventory.return_restock_allocation_unverified",
+            "tracked return requires exactly one saved allocation; reconcile its history",
+        ));
+    }
+    reservations.pop().ok_or_else(identity_conflict)
+}
+
+async fn fetch_return_level(
+    txn: &DatabaseTransaction,
+    context: &PortContext,
+    item_id: Uuid,
+    location_id: Uuid,
+) -> Result<inventory_level::Model, PortError> {
+    // INVARIANT: both the item and the saved location were tenant-proved above.
+    let level_query = inventory_level::Entity::find()
+        .filter(inventory_level::Column::InventoryItemId.eq(item_id))
+        .filter(inventory_level::Column::LocationId.eq(location_id))
+        .limit(2);
+    let level_query = if txn.get_database_backend() == DbBackend::Sqlite {
+        level_query
+    } else {
+        level_query.lock_exclusive()
+    };
+    let mut matching = level_query.all(txn).await.map_err(|error| {
+        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
+    })?;
+    if matching.len() != 1 {
+        return Err(PortError::invariant_violation(
+            "inventory.return_restock_level_unverified",
+            "saved return allocation requires exactly one inventory level",
+        ));
+    }
+    let level = matching.pop().ok_or_else(identity_conflict)?;
+    if level.stocked_quantity < 0
+        || level.reserved_quantity < 0
+        || level.incoming_quantity < 0
+    {
+        return Err(identity_conflict());
+    }
+    Ok(level)
 }
 
 fn validate_allocation(

@@ -501,11 +501,13 @@ fn map_absence_error(error: IndexSourceAbsenceError) -> IndexDriftDependencyFail
 }
 
 fn retryable_failure(code: &'static str) -> IndexDriftDependencyFailure {
+    // INVARIANT: static Index drift snapshot retry code is valid: invariant validated at startup
     IndexDriftDependencyFailure::retryable(code)
         .expect("static Index drift snapshot retry code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &'static str) -> IndexDriftDependencyFailure {
+    // INVARIANT: static Index drift snapshot permanent code is valid: invariant validated at startup
     IndexDriftDependencyFailure::permanent(code).expect(
         "static Index drift snapshot permanent code is valid: invariant validated at startup",
     )
