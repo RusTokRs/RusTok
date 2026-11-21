@@ -1,5 +1,41 @@
 # Server App — Implementation Plan
 
+## Module event dispatcher and recovery worker single-owner follow-up (2026-11-21)
+
+Branch: `agent/server-module-worker-single-owner-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`. This is a bounded
+continuation of the server runtime audit, separate from pending auth-email,
+installer and OAuth rotation PRs.
+
+- The paid-order label, marketplace-financial and payment-provider event
+  recovery workers previously checked for a stored handle and then spawned
+  their own Tokio task before publishing a handle. Parallel composition could
+  pass both checks and overwrite a handle, leaving the earlier task running
+  without a shutdown owner. They now atomically reserve a distinct per-runtime
+  worker key before spawning. Missing optional provider/runtime prerequisites
+  release their reservation so later bootstrap retries may succeed.
+- The module event dispatcher also previously used a non-atomic handle check.
+  Its startup now reserves one dispatcher owner before assembling runtime
+  extensions or starting child workers. A failed dispatcher launch releases
+  its reservation and does not mark the required listener registry healthy.
+- The dependent Product media, Commerce paid-label, marketplace-financial and
+  Payment recovery workers start only after a successful dispatcher start.
+  Their individual gates reject new starts after the process stop signal;
+  Product media startup now also checks its existing handle before reserving.
+- Tests cover concurrent Payment worker composition and stable handle identity,
+  release on missing Fulfillment/financial runtime dependency, and refusal of
+  new recovery work after shutdown. Existing dispatcher startup tests remain.
+- **No formatting, build, Cargo tests, lints, migrations or multi-replica
+  execution occurred here.** Run focused server lifecycle tests for each
+  enabled feature and full/workflow host modes before merge.
+
+Remaining risks: these are per-process reservations, not distributed worker
+leases. External payment/shipping effects must remain idempotent and durable.
+A process crash still requires replay/recovery from owner receipts. The
+bootstrap lock serializes normal host initialization with shutdown, but callers
+bypassing it should not treat this reservation as a universal host lifecycle
+contract; short spawn/handle-publication windows require normal host ownership.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
