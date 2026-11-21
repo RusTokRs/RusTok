@@ -1295,6 +1295,87 @@ mod lifecycle_tests {
     }
 
     #[test]
+    fn concurrent_dispatcher_start_does_not_report_success_before_publication() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+
+        let first = claim_module_dispatcher_start(&ctx)
+            .expect("first starter may reserve")
+            .expect("first starter owns the in-flight claim");
+        assert!(ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+
+        let contender = claim_module_dispatcher_start(&ctx);
+        assert!(
+            matches!(contender, Err(Error::Message(message)) if message.contains("in progress")),
+            "the loser cannot report success before dispatcher publication"
+        );
+        drop(first);
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        let retry = claim_module_dispatcher_start(&ctx)
+            .expect("failed or cancelled bootstrap permits a retry")
+            .expect("the retry takes the released claim");
+        drop(retry);
+    }
+
+    #[test]
+    fn dispatcher_start_claim_is_released_on_unwind() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let cancelled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _reservation = claim_module_dispatcher_start(&ctx)
+                .expect("claim should work")
+                .expect("first owner");
+            panic!("simulate panic during synchronous extension construction");
+        }));
+        assert!(cancelled.is_err());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        let recovered = claim_module_dispatcher_start(&ctx)
+            .expect("retry after unwind")
+            .expect("claim was released by guard drop");
+        drop(recovered);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_start_requires_live_handle_and_published_listener_flag() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let reservation = claim_module_dispatcher_start(&ctx)
+            .expect("first admission")
+            .expect("first owner");
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Err(Error::Message(message)) if message.contains("not ready")),
+            "publishing a handle before the required listener flag is not success"
+        );
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Ok(None)),
+            "a live dispatcher and listener flag are idempotently ready"
+        );
+        reservation.commit();
+
+        let handle = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("mock dispatcher is present");
+        handle.request_stop();
+        handle.join().await.expect("mock dispatcher shuts down");
+        assert!(
+            ctx.shared_get::<ModuleEventDispatcherRequirement>()
+                .is_some_and(|value| value.0),
+            "the flag remains registered even after worker shutdown"
+        );
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Err(Error::Message(message)) if message.contains("in progress")),
+            "a committed claim without a worker cannot be treated as readiness"
+        );
+    }
+
+    #[test]
     fn module_event_dispatcher_runs_only_in_background_worker_profiles() {
         for mode in [RuntimeHostMode::Full, RuntimeHostMode::Worker] {
             let mut settings = RustokSettings::default();
