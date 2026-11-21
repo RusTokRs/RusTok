@@ -356,6 +356,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+  `connect_runtime_workers_with_runtime` can also be called directly, without
+  this router-bootstrap mutex. Its separate artifact/runtime-worker startup
+  mutex now fences shutdown's handle snapshot too: shutdown waits for the
+  direct initializer to finish before taking any worker handle. The mutex is
+  released *before* concurrent task drains, preventing a lock cycle with
+  artifact maintenance's own shutdown drain. New startup calls recheck the
+  signaled stop channel after acquiring the mutex and cannot admit more work.
+  The barrier prevents a live but detached late `JoinHandle`; it does not
+  provide a process-crash shutdown guarantee.
 - Once started, the opt-in Product Index, Social Graph Index, and Forum Search
   contract consumers are required readiness workers. Their durable broker
   offsets remain uncommitted on terminal delivery failure; the readiness probe
