@@ -1,5 +1,40 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — cache listener startup cancellation on shutdown (2026-11-22)
+
+Five cache/control-plane listeners serialized startup under their own
+per-runtime mutexes but performed potentially slow asynchronous setup while
+holding those locks. Channel and RBAC invalidation, tenant-locale and
+tenant-cache generation could wait on startup reconciliation or abandoned
+workers; Redis status monitoring could wait on its initial Redis status
+read. Shutdown's corresponding handle-take paths only waited five seconds
+for the start locks before returning without task handles. A slow direct
+initializer could therefore outlive the shutdown drain, even if it would
+eventually observe the stop flag before publishing its worker.
+
+The `stop_handle` owner now exposes `await_worker_startup_or_stop` for
+**unpublished/cancellable** initialization. The helper subscribes to the
+monotonic stop watch before inspecting its value, preventing a lost
+notification between precheck and subscription. It favors stop if both
+the setup result and stop are ready, and refuses to report setup success
+after stop becomes active. Channel, RBAC, locale, tenant generation and
+Redis-status starters use it while acquiring their startup lock,
+awaiting a previously aborted worker's join, and performing initial
+cache/readiness recovery. An interrupted setup drops its outstanding
+preparation future and releases the startup mutex; since completed
+worker publication is still synchronous under that mutex, the ordinary
+shutdown take/abort/join retains published task ownership.
+
+This helper MUST NOT be used for an already-claimed durable operation or
+a side effect with incomplete compensation; it is limited to cache
+bootstrap/reconciliation and prior aborted-task joins. It does not
+eliminate the five-second shutdown fallback for uncooperative blocking
+code, and process abort still provides no cleanup guarantee. Source
+regressions cover a never-completing setup future, an occupied
+registration mutex, and a stop signaled before initialization.
+Tests, builds and formatting were not run by the agent.
+
+
 ## Server audit continuation — Comments direct-worker shutdown registration (2026-11-22)
 
 The opt-in Comments TCP listener already had one startup reservation and
