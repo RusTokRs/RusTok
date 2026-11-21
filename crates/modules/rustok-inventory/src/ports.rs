@@ -13,7 +13,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use uuid::Uuid;
 
 const MAX_RESERVATION_EXTERNAL_ID_LENGTH: usize = 191;
@@ -920,6 +920,45 @@ where
                 "inventory variant was not found",
             )
         })
+}
+
+pub(super) async fn load_tenant_variants<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
+    conn: &C,
+    tenant_id: Uuid,
+    variant_ids: &[Uuid],
+) -> Result<BTreeMap<Uuid, crate::product_port::InventoryProductVariantInfo>, PortError>
+where
+    C: ConnectionTrait,
+{
+    if variant_ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let variants =
+        crate::product_port::get_variants_info_from_conn(conn, tenant_id, variant_ids).await?;
+
+    let mut map = BTreeMap::new();
+    for v in variants {
+        map.insert(v.variant_id, v);
+    }
+    for variant_id in variant_ids {
+        if !map.contains_key(variant_id) {
+            let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", *variant_id);
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.variant_not_found",
+                &facts,
+                false,
+            );
+            return Err(PortError::not_found(
+                "inventory.variant_not_found",
+                "inventory variant was not found",
+            ));
+        }
+    }
+    Ok(map)
 }
 
 pub(super) async fn load_inventory_item_for_update<C>(

@@ -1,5 +1,8 @@
 #[cfg(feature = "ssr")]
-fn map_search_preview_payload(
+use super::*;
+
+#[cfg(feature = "ssr")]
+pub(super) fn map_search_preview_payload(
     value: rustok_search::SearchResult,
     preset_key: Option<String>,
     query_log_id: Option<i64>,
@@ -49,7 +52,7 @@ fn map_search_preview_payload(
 }
 
 #[cfg(feature = "ssr")]
-fn map_diagnostics_payload(
+pub(super) fn map_diagnostics_payload(
     value: rustok_search::SearchDiagnosticsSnapshot,
 ) -> crate::model::SearchDiagnosticsPayload {
     crate::model::SearchDiagnosticsPayload {
@@ -69,7 +72,7 @@ fn map_diagnostics_payload(
 }
 
 #[cfg(feature = "ssr")]
-fn map_lagging_documents(
+pub(super) fn map_lagging_documents(
     rows: Vec<rustok_search::LaggingSearchDocument>,
 ) -> Vec<LaggingSearchDocumentPayload> {
     rows.into_iter()
@@ -90,7 +93,7 @@ fn map_lagging_documents(
 }
 
 #[cfg(feature = "ssr")]
-fn map_consistency_issues(
+pub(super) fn map_consistency_issues(
     rows: Vec<rustok_search::SearchConsistencyIssue>,
 ) -> Vec<SearchConsistencyIssuePayload> {
     rows.into_iter()
@@ -110,7 +113,7 @@ fn map_consistency_issues(
 }
 
 #[cfg(feature = "ssr")]
-fn map_analytics_payload(value: rustok_search::SearchAnalyticsSnapshot) -> SearchAnalyticsPayload {
+pub(super) fn map_analytics_payload(value: rustok_search::SearchAnalyticsSnapshot) -> SearchAnalyticsPayload {
     SearchAnalyticsPayload {
         summary: crate::model::SearchAnalyticsSummaryPayload {
             window_days: value.summary.window_days,
@@ -152,7 +155,7 @@ fn map_analytics_payload(value: rustok_search::SearchAnalyticsSnapshot) -> Searc
 }
 
 #[cfg(feature = "ssr")]
-fn map_analytics_rows(
+pub(super) fn map_analytics_rows(
     rows: Vec<rustok_search::SearchAnalyticsQueryRow>,
 ) -> Vec<crate::model::SearchAnalyticsQueryRowPayload> {
     rows.into_iter()
@@ -171,7 +174,7 @@ fn map_analytics_rows(
 }
 
 #[cfg(feature = "ssr")]
-fn map_dictionary_snapshot(
+pub(super) fn map_dictionary_snapshot(
     value: rustok_search::SearchDictionarySnapshot,
 ) -> SearchDictionarySnapshotPayload {
     SearchDictionarySnapshotPayload {
@@ -214,6 +217,6 @@ fn map_dictionary_snapshot(
 }
 
 #[cfg(feature = "ssr")]
-fn map_dictionary_mutation_payload(success: bool) -> SearchDictionaryMutationPayload {
+pub(super) fn map_dictionary_mutation_payload(success: bool) -> SearchDictionaryMutationPayload {
     SearchDictionaryMutationPayload { success }
 }

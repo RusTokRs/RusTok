@@ -19,7 +19,7 @@ use crate::ports::{
     InventoryIdentityReservationAdoptionSnapshot, MAX_RESERVATION_ADOPTION_ITEMS,
 };
 use crate::ports_impl::{
-    load_inventory_item_for_update, load_tenant_variant, normalize_external_id,
+    load_inventory_item_for_update, load_tenant_variants, normalize_external_id,
     parse_port_tenant_id, storage_unavailable_with_context, validate_non_nil_uuid,
 };
 
@@ -50,10 +50,8 @@ pub(super) async fn adopt_inventory_by_identity(
         .iter()
         .map(|binding| binding.variant_id)
         .collect::<BTreeSet<_>>();
-    for variant_id in &variant_ids {
-        // Tenant proof only: do not refresh Product publication, pricing or eligibility.
-        load_tenant_variant(&context, ADOPT_OPERATION, &txn, tenant_id, *variant_id).await?;
-    }
+    let variant_ids_vec = variant_ids.iter().copied().collect::<Vec<_>>();
+    load_tenant_variants(&context, ADOPT_OPERATION, &txn, tenant_id, &variant_ids_vec).await?;
     let mut locked_items = BTreeMap::new();
     for variant_id in variant_ids {
         // INVARIANT: every requested variant was tenant-scoped above. Lock only its item,

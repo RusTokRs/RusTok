@@ -11,9 +11,10 @@ GitNexus преобразует кодовую базу в обогащенны�
 ```mermaid
 flowchart TD
     subgraph Ingestion ["1. Входные данные"]
-        Code["Исходный код (Rust, TS/JS, Python)"]
+        Code["Исходный код (Rust 2024, TS/JS, Python)"]
         AsyncAPI["AsyncAPI 3.x Спецификации"]
         Diff["Git Diff & Worktree State"]
+        Groups["Multi-Repo group.yaml"]
     end
 
     subgraph Engine ["2. Движок GitNexus (LadybugDB / Kùzu)"]
@@ -22,7 +23,8 @@ flowchart TD
         PDG["PDG: CDG + REACHING_DEF"]
         Taint["Taint Layer: Sources -> Sinks"]
         ProcessGraph["Process & Community Layer"]
-        ContractGraph["API & Tool Contract Layer"]
+        ContractGraph["API, MCP Tools & Contract Layer"]
+        MiddlewareGraph["Wrapper & Interceptor Layer (WRAPS)"]
     end
 
     subgraph Interfaces ["3. Интерфейсы взаимодействия"]
@@ -40,13 +42,13 @@ flowchart TD
 
 1. **AST & Символьный слой (Syntax Layer):**
    * Узлы: файлы (`File`), папки (`Folder`), функции (`Function`), структуры (`Struct`), перечисления (`Enum`), трейты (`Trait`), реализации (`Impl`), модули (`Module`), методы (`Method`), классы (`Class`), интерфейсы (`Interface`).
-   * Рёбра: `DEFINES`, `CONTAINS`, `MEMBER_OF`, `HAS_METHOD`, `HAS_PROPERTY`, `EXTENDS`, `IMPLEMENTS`.
-2. **Слой вызовов и зависимостей (Call & Dependency Graph):**
-   * Рёбра: `CALLS`, `IMPORTS`, `ACCESSES`, `QUERIES`, `INJECTS`, `WRAPS`.
+   * Рёбра: `DEFINES`, `CONTAINS`, `MEMBER_OF`, `HAS_METHOD`, `HAS_PROPERTY`, `EXTENDS`, `IMPLEMENTS`, `METHOD_IMPLEMENTS`, `METHOD_OVERRIDES`.
+2. **Слой вызовов, внедрения и зависимостей (Call & Dependency Graph):**
+   * Рёбра: `CALLS`, `IMPORTS`, `ACCESSES`, `QUERIES`, `INJECTS`, `WRAPS` (middleware и интерцепторы).
 3. **Слой процессов и архитектурных сообществ (Community & Process Layer):**
    * Узлы: `Community` (кластеры связанного кода, вычисленные алгоритмом Louvain с оценкой cohesion score), `Process` (сквозные цепочки сценариев выполнения).
    * Рёбра: `STEP_IN_PROCESS`, `ENTRY_POINT_OF`.
-4. **Слой API и контрактов (Contract & Client-Server Layer):**
+4. **Слой API, инструментов и контрактов (Contract & Client-Server Layer):**
    * Узлы: `Route` (HTTP/GraphQL эндпоинты), `Tool` (MCP/RPC функции), `Destination` (топики и очереди брокеров сообщений из AsyncAPI).
    * Рёбра: `HANDLES_ROUTE`, `FETCHES`, `HANDLES_TOOL`, `CONTRACT_LINK`.
 5. **Слой потоков управления и данных (PDG Layer, флаг `--pdg`):**
@@ -107,7 +109,7 @@ node .gitnexus/run.cjs doctor
 
 ### 2.5. Анализ изменений и воздействий (`detect-changes` / `impact`)
 
-* `node .gitnexus/run.cjs detect-changes --scope all --repo .` — сопоставляет текущий незакоммиченный `git diff` с графом, определяя затронутые процессы и оценивая уровень риска (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+* `node .gitnexus/run.cjs detect-changes --scope all --repo .` — сопоставляет текущий незакоммиченный `git diff` с графом, определяя затронутые процессы и оценивая уровень риска (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`). Поддерживает флаг `--worktree <path>`.
 * `node .gitnexus/run.cjs impact <symbol> --direction upstream --repo .` — расчет радиуса поражения символа на глубину до 3 уровней.
 
 ### 2.6. Генерация архитектурной документации (`wiki`)
@@ -131,43 +133,31 @@ node .gitnexus/run.cjs wiki [options]
 
 ---
 
-## 3. Справочник 16 MCP-инструментов
-
-Все инструменты доступны AI-агенту через протокол MCP:
+## 3. Справочник всех 16 MCP-инструментов
 
 | Инструмент | Параметры | Что возвращает |
 |---|---|---|
 | `query` | `search_query`, `repo` | Семантический/концептуальный поиск, сгруппированный по бизнес-процессам (`Process`). |
 | `context` | `name`, `repo` | 360-градусный обзор символа: входящие/исходящие вызовы, методы, процессы. |
 | `impact` | `target`, `direction`, `maxDepth`, `minConfidence` | Радиус поражения при изменении символа (глубины $d=1, 2, 3$). |
-| `trace` | `from`, `to`, `maxDepth`, `includeTests` | Кратчайший направленный путь вызовов между двумя символами. Сообщает точное место разрыва при `no_path`. |
+| `trace` | `from`, `to`, `maxDepth`, `includeTests` | Кратчайший направленный путь вызовов между двумя символами. Сообщает точное место разрыва при `no_path`. Поддерживает cross-repo с `repo: "@group"`. |
 | `detect_changes` | `scope`, `worktree` | Анализ влияния текущего git diff на кодовую базу (с поддержкой `worktree`). |
 | `rename` | `symbol_name`, `new_name`, `dry_run` | Координированное безопасное переименование во всех файлах с разделением правок по уверенности (graph vs text). |
 | `cypher` | `statement`, `repo`, `limit` | Выполнение произвольного запроса на языке Cypher к базе LadybugDB. |
-| `explain` | `target`, `limit` | Отчёт о цепочках заражения (Taint findings): источник $\to$ путь $\to$ опасный сток (SQLi, XSS, Path Traversal). |
+| `explain` | `target`, `limit` | Отчёт о цепочках заражения (Taint findings): источник $\to$ путь $\to$ опасный сток (SQLi, XSS, Path Traversal, Command Injection). |
 | `pdg_query` | `mode` (`controls` / `flows`), `target`, `variable` | CDG (условия выполнения и гарды) или REACHING_DEF (поток значений переменной). |
 | `check` | `cycles: true` | Проверка структурных инвариантов графа на циклы. |
 | `route_map` | `repo` | Карта API маршрутов: клиентские компоненты $\leftrightarrow$ обработчики эндпоинтов. |
 | `shape_check` | `repo` | Поиск расхождений (`MISMATCH`) между ключами ответа сервера и ключами, читаемыми клиентом. |
 | `api_impact` | `route`, `method` | Оценка риска и список потребителей перед изменением API маршрута. |
-| `tool_map` | `repo` | Карта определений MCP/RPC инструментов и файлов-обработчиков. |
+| `tool_map` | `repo` | Карта определений MCP/RPC инструментов и файлов-обработчиков (`HANDLES_TOOL`). |
 | `group_list` | — | Список сконфигурированных мультирепозиторных групп. |
 | `group_sync` | — | Синхронизация реестра контрактов между репозиториями группы. |
+| `list_repos` | `limit`, `offset` | Пагинированное перечисление всех зарегистрированных репозиториев. |
 
 ---
 
-## 4. Переменные окружения и управление хранилищем
-
-| Переменная | Назначение |
-|---|---|
-| `GITNEXUS_STORAGE_PATH` | Точный абсолютный путь к внешней директории индекса (переопределяет локальный `.gitnexus/`). |
-| `GITNEXUS_STORAGE_ROOT` | Корневой каталог для хранения индексов изолированных слотов репозиториев (`<repo>-<hex>/`). |
-| `GITNEXUS_CONTENT_RETENTION` | Политика хранения содержимого файлов: `full` (весь текст), `symbol` (фрагменты символов), `none` (только топологический граф). |
-| `GITNEXUS_SKIP_FTS` | Отключение индекса полнотекстового поиска (ускоряет анализ на слабых машинах). |
-
----
-
-## 5. Кулинарная книга Cypher (Рецепты для поиска косяков)
+## 4. Кулинарная книга Cypher (Рецепты под специфические косяки RusToK)
 
 ### Рецепт 1: Поиск циклических зависимостей любой глубины
 ```cypher
@@ -194,7 +184,7 @@ RETURN fn.name, fn.filePath, table.name
 ```
 
 ### Рецепт 4: Утечка данных мультитенантности (Запросы без скоупа `tenant_id`)
-Поиск запросов к базе данных, где в цепочке аргументов или условий отсутствует обращение к `TenantContext` или `tenant_id`:
+Поиск запросов к базе данных, где в цепочке аргументов отсутствует `TenantContext` или `tenant_id`:
 ```cypher
 MATCH (fn:Function)-[:CodeRelation {type: 'QUERIES'}]->(entity:CodeElement)
 WHERE fn.filePath CONTAINS 'crates/modules/'
@@ -207,7 +197,6 @@ LIMIT 30
 ```
 
 ### Рецепт 5: Бесхозные события (Orphaned Events в Outbox / Iggy)
-Поиск событий домена, которые никем не публикуются либо никем не слушаются:
 ```cypher
 // 1. События без подписчиков (никто не слушает)
 MATCH (ev:Struct)
@@ -225,39 +214,39 @@ WHERE ev.filePath CONTAINS '/contracts/' AND ev.name ENDS WITH 'Event'
 RETURN ev.name AS unpublished_event, ev.filePath;
 ```
 
-### Рецепт 6: Мёртвый код (Функции без входящих вызовов)
+### Рецепт 6: Незащищенные роуты без Middleware-обертки (`WRAPS`)
+Поиск API роутов, которые не обернуты в аутентификационные или CORS-интерцепторы:
 ```cypher
-MATCH (f:Function)
-WHERE NOT (()-[:CodeRelation {type: 'CALLS'}]->(f))
-  AND NOT f.filePath CONTAINS '/tests/'
-  AND NOT f.filePath CONTAINS '/migrations/'
-  AND NOT f.name IN ['main', 'new', 'default', 'run', 'init']
-RETURN f.name, f.filePath
-ORDER BY f.filePath
-LIMIT 50
+MATCH (r:Route)
+WHERE NOT EXISTS {
+  MATCH (mw:Function)-[:CodeRelation {type: 'WRAPS'}]->(r)
+  WHERE mw.name CONTAINS 'auth' OR mw.name CONTAINS 'tenant' OR mw.name CONTAINS 'cors'
+}
+RETURN r.name, r.path, r.filePath
 ```
 
-### Рецепт 7: Раздутые узлы (God Functions с аномальным Fan-out)
+### Рецепт 7: MCP-инструменты без обработчиков (`HANDLES_TOOL`)
+Поиск инструментов агентов, у которых отсутствует файл-обработчик:
 ```cypher
-MATCH (f:Function)-[:CodeRelation {type: 'CALLS'}]->(callee)
-WITH f, count(DISTINCT callee) AS out_degree
-WHERE out_degree > 25
-RETURN f.name, f.filePath, out_degree
-ORDER BY out_degree DESC
+MATCH (t:Tool)
+WHERE NOT (()-[:CodeRelation {type: 'HANDLES_TOOL'}]->(t))
+RETURN t.name, t.filePath
 ```
 
-### Рецепт 8: Утечка инкапсуляции (Прямой доступ к полям структуры минуя методы)
+### Рецепт 8: Неполная реализация портов и трейтов (`todo!` / `unimplemented!`)
+Поиск структур, реализующих контрактные трейты из `ports/` или `contracts/`, у которых методы не вызывают реальную логику:
+```cypher
+MATCH (s:Struct)-[:CodeRelation {type: 'IMPLEMENTS'}]->(tr:Trait)
+WHERE tr.filePath CONTAINS '/ports/' OR tr.filePath CONTAINS '/contracts/'
+MATCH (s)-[:CodeRelation {type: 'METHOD_IMPLEMENTS'}]->(m:Method)
+WHERE m.name CONTAINS 'todo' OR m.name CONTAINS 'stub'
+RETURN s.name, tr.name, m.name, s.filePath
+```
+
+### Рецепт 9: Утечка инкапсуляции (Прямой доступ к полям структуры минуя методы)
 ```cypher
 MATCH (caller:Function)-[:CodeRelation {type: 'ACCESSES'}]->(prop:CodeElement)
 WHERE caller.filePath CONTAINS 'crates/modules/rustok-cart/'
   AND prop.filePath CONTAINS 'crates/modules/rustok-order/'
 RETURN caller.name, caller.filePath, prop.name
 ```
-
----
-
-## 6. Стратегии улучшения плана и поиск новых векторов аудита
-
-1. **Регулярный кластерный скрининг:** через ресурс `gitnexus://repo/{name}/clusters` отслеживать сообщества кода со снижающимся cohesion score ($< 0.45$).
-2. **Анализ временной связности (Temporal Coupling):** сопоставление Git-логов и графа позволяет находить куски кода, которые коммитятся вместе, но не имеют формальных зависимостей (признак логического дублирования).
-3. **Автоматический запуск перед слиянием PR:** проверка `detect-changes` в CI для пресечения непредвиденного расширения радиуса поражения.

@@ -959,6 +959,27 @@ flowchart TD
 
 ---
 
+### Pattern 41: Shadow Macro & Module Include Hijack (`P-SHADOW-MACRO-HIJACK`)
+* **Category:** Module Architecture & Maintainability. **Dimension:** Branch completeness & state transition.
+* **Problem:** Masking external crates or shadowing standard library macros (e.g. defining local `mod rustok_pricing_shim`, `macro_rules! format { ... }`, or `use self::shim as ...`) and then textually embedding target code via `include!("...")` to alter its compile-time behavior without explicit interfaces. This breaks language server navigation, rust-analyzer, incremental compilation, and creates confusing AST scoping bugs.
+* **Pattern Solution:**
+  1. Refactor underlying services to accept explicit typed parameters, configuration structs, or traits instead of ambient module names.
+  2. Implement proper error boundary wrappers with `thiserror` rather than hijacking macro expansions.
+* **Detection:** Doctor rule `P-SHADOW-MACRO-HIJACK`: flags local `macro_rules!` format/println or `..._shim` module definitions followed by `include!(...)`.
+
+---
+
+### Pattern 42: Inherent Impl Splitting via Textual Inclusion (`P-SPLIT-INHERENT-IMPL-HACK`)
+* **Category:** Code Structure & Clean Architecture. **Dimension:** Modular cohesion.
+* **Problem:** In Rust, inherent method blocks (`impl Foo { ... }`) must reside in the exact module where `struct Foo` is defined. To mechanically split large files without designing traits or free functions, authors cut methods into sibling `.rs` files and stitch them back together with multiple `include!("foo/subfile.rs")`. This produces bogus `unused import: super::*` warnings and prevents files from functioning as valid standalone Rust modules.
+* **Pattern Solution:**
+  1. Extract capabilities into domain traits: traits can be implemented in any module across the crate (`impl MyTrait for Foo`).
+  2. Or extract free helper functions in submodules (`pub(super) async fn do_work(service: &Foo, ...)`), with `impl Foo` serving as a clean dispatcher.
+  3. Keep coherent inherent methods in the parent module if state is tightly coupled.
+* **Detection:** Doctor rule `P-ZERO-INCLUDE` / `P-SPLIT-INHERENT-IMPL-HACK`: flags any `include!(...)` used to stitch source code files together.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -1023,6 +1044,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SILENT-EVENT-DISCARD` | Reliability | Event and outbox dispatch failures propagate | High: let _ = or .ok() on outbox/event publish |
 | `P-LOOP-HELPER-AWAIT` | Performance | Queries in loops batched even through helper methods | Heuristic: database helper calls inside loop bodies |
 | `P-BYTE-SLICE-PANIC` | Reliability | Byte slice decoders verify length before constant range indexing | Heuristic: range index on buffer without bounds check |
+| `P-SHADOW-MACRO-HIJACK` | Architecture | Modules and macros not shadowed before textual inclusion | High: local shims or macro_rules! before include! |
+| `P-SPLIT-INHERENT-IMPL-HACK` | Architecture | Inherent impl blocks not mechanically split across include! files | High: series of include! stitching struct impls |
 
 ---
 

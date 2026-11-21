@@ -128,10 +128,7 @@ impl MarketplaceListingService {
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
-        let mut items = Vec::with_capacity(models.len());
-        for model in models {
-            items.push(load_response_for_model(&self.db, model).await?);
-        }
+        let items = load_responses_for_models(&self.db, models).await?;
         Ok(MarketplaceListingListResponse { items, total })
     }
 
@@ -157,9 +154,9 @@ impl MarketplaceListingService {
             .order_by_asc(listing::Column::Id)
             .all(&self.db)
             .await?;
-        let mut output = Vec::with_capacity(models.len());
-        for model in models {
-            let response = load_response_for_model(&self.db, model).await?;
+        let responses = load_responses_for_models(&self.db, models).await?;
+        let mut output = Vec::with_capacity(responses.len());
+        for response in responses {
             let mut reasons = listing_reason_codes(&response);
             match self
                 .seller_reader
@@ -282,6 +279,41 @@ pub(crate) async fn load_response_for_model<C: ConnectionTrait>(
     )
     .await?;
     map_listing(model, terms)
+}
+
+pub(crate) async fn load_responses_for_models<C: ConnectionTrait>(
+    connection: &C,
+    models: Vec<listing::Model>,
+) -> MarketplaceListingResult<Vec<MarketplaceListingResponse>> {
+    if models.is_empty() {
+        return Ok(Vec::new());
+    }
+    let tenant_id = models[0].tenant_id;
+    let listing_ids: Vec<Uuid> = models.iter().map(|m| m.id).collect();
+
+    let all_terms = listing_terms::Entity::find()
+        .filter(listing_terms::Column::TenantId.eq(tenant_id))
+        .filter(listing_terms::Column::ListingId.is_in(listing_ids))
+        .all(connection)
+        .await?;
+
+    let mut terms_map: std::collections::HashMap<(Uuid, i32), listing_terms::Model> =
+        std::collections::HashMap::with_capacity(all_terms.len());
+    for term in all_terms {
+        terms_map.insert((term.listing_id, term.version), term);
+    }
+
+    let mut responses = Vec::with_capacity(models.len());
+    for model in models {
+        let terms = terms_map
+            .remove(&(model.id, model.current_terms_version))
+            .ok_or(MarketplaceListingError::TermsNotFound {
+                listing_id: model.id,
+                version: model.current_terms_version,
+            })?;
+        responses.push(map_listing(model, terms)?);
+    }
+    Ok(responses)
 }
 
 pub(crate) fn map_listing(

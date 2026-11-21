@@ -74,6 +74,8 @@ impl Scan<'_> {
             rule_name,
             severity,
             confidence: if pattern_id == "P-ZERO-INCLUDE"
+                || pattern_id == "P-SHADOW-MACRO-HIJACK"
+                || pattern_id == "P-SPLIT-INHERENT-IMPL-HACK"
                 || pattern_id == "P-TRY-FROM-LEN-PANIC"
                 || pattern_id == "P-MIGRATION-PANIC"
                 || pattern_id == "P-DISTRIBUTED-LEASE-OWNER"
@@ -916,6 +918,15 @@ fn check_rules(
             scan.add(number, "P-ZERO-INCLUDE", "Zero Include Slop", Severity::High,
                 format!("Forbidden file-stitching macro '{}'. Use canonical 'mod ...;' and public exports.", &found[0]),
                 format!("Declare mod {module}; and expose only the required items."));
+
+            let has_shadow_shim = scan.lines[..index]
+                .iter()
+                .any(|prev| prev.syntax.contains("_shim") || prev.syntax.contains("macro_rules! format"));
+            if has_shadow_shim {
+                scan.add(number, "P-SHADOW-MACRO-HIJACK", "Shadow Macro & Module Include Hijack", Severity::High,
+                    format!("Shadow module or macro hijacking before include!('{}'). Local shims or macros used to alter ambient scope.", included),
+                    "Refactor underlying code with explicit typed parameters, traits, or error boundaries.");
+            }
         }
     }
 

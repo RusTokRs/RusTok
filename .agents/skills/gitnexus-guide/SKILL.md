@@ -25,6 +25,7 @@ For any task involving code understanding, debugging, impact analysis, or refact
 | Blast radius / "What breaks if I change X?"  | `gitnexus-impact-analysis`   |
 | Trace bugs / "Why is X failing?"             | `gitnexus-debugging`         |
 | Rename / extract / split / refactor          | `gitnexus-refactoring`       |
+| Deep 18-vector graph audit ("план gitnexus") | `gitnexus-audit`             |
 | Tools, resources, schema reference           | `gitnexus-guide` (this file) |
 | Index, status, clean, wiki CLI commands      | `gitnexus-cli`               |
 

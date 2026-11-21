@@ -178,9 +178,17 @@ impl ForumOwnerCheckpointReconciler {
             ));
         }
 
+        let event_ids = revisions.iter().map(|r| r.event_id).collect::<Vec<_>>();
+        let coverage_map =
+            load_batch_delivery_coverage(&transaction, head.tenant_id, &event_ids).await?;
+
         let mut rebuild_required = false;
         for revision in &revisions {
-            match load_delivery_coverage(&transaction, head.tenant_id, revision.event_id).await? {
+            let coverage = coverage_map
+                .get(&revision.event_id)
+                .copied()
+                .unwrap_or(DeliveryCoverage::Missing);
+            match coverage {
                 DeliveryCoverage::Covered => {}
                 DeliveryCoverage::Missing => rebuild_required = true,
                 DeliveryCoverage::Pending => {
@@ -428,37 +436,58 @@ async fn has_non_terminal_inbox_work(
     row.try_get("", "has_work").map_err(Error::Database)
 }
 
-async fn load_delivery_coverage(
+async fn load_batch_delivery_coverage(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
-    event_id: Uuid,
-) -> Result<DeliveryCoverage> {
-    let row = transaction
-        .query_one_raw(Statement::from_sql_and_values(
+    event_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, DeliveryCoverage>> {
+    if event_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let placeholders = (2..=event_ids.len() + 1)
+        .map(|i| format!("${i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut values: Vec<sea_orm::Value> = Vec::with_capacity(event_ids.len() + 1);
+    values.push(tenant_id.into());
+    for id in event_ids {
+        values.push((*id).into());
+    }
+    let sql = format!(
+        r#"
+        SELECT event_id, status
+        FROM search_projection_inbox
+        WHERE tenant_id = $1
+          AND source_module = 'forum'
+          AND event_id IN ({placeholders})
+        "#
+    );
+    let rows = transaction
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            r#"
-            SELECT status
-            FROM search_projection_inbox
-            WHERE event_id = $1
-              AND tenant_id = $2
-              AND source_module = 'forum'
-            "#,
-            vec![event_id.into(), tenant_id.into()],
+            sql,
+            values,
         ))
         .await
         .map_err(Error::Database)?;
-    let Some(row) = row else {
-        return Ok(DeliveryCoverage::Missing);
-    };
-    let status: String = row.try_get("", "status").map_err(Error::Database)?;
-    match status.as_str() {
-        "completed" | "skipped" => Ok(DeliveryCoverage::Covered),
-        "dead_letter" => Ok(DeliveryCoverage::Missing),
-        "pending" | "processing" | "retryable_error" => Ok(DeliveryCoverage::Pending),
-        other => Err(Error::External(format!(
-            "Forum projection inbox returned unsupported status `{other}`"
-        ))),
+
+    let mut coverage_map = std::collections::HashMap::new();
+    for row in rows {
+        let event_id: Uuid = row.try_get("", "event_id").map_err(Error::Database)?;
+        let status: String = row.try_get("", "status").map_err(Error::Database)?;
+        let coverage = match status.as_str() {
+            "completed" | "skipped" => DeliveryCoverage::Covered,
+            "dead_letter" => DeliveryCoverage::Missing,
+            "pending" | "processing" | "retryable_error" => DeliveryCoverage::Pending,
+            other => {
+                return Err(Error::External(format!(
+                    "Forum projection inbox returned unsupported status `{other}`"
+                )));
+            }
+        };
+        coverage_map.insert(event_id, coverage);
     }
+    Ok(coverage_map)
 }
 
 async fn advance_checkpoint(
