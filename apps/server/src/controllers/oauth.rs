@@ -1046,7 +1046,11 @@ fn redirect_with_code(
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
         Err(err) => {
-            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_code");
+            tracing::error!(
+                error_code = "oauth.redirect_with_code.invalid_uri",
+                redirect_uri_length = redirect_uri.len(),
+                "Failed to parse redirect URI in redirect_with_code"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 [
@@ -1090,7 +1094,11 @@ fn redirect_with_error(
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
         Err(err) => {
-            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_error");
+            tracing::error!(
+                error_code = "oauth.redirect_with_error.invalid_uri",
+                redirect_uri_length = redirect_uri.len(),
+                "Failed to parse redirect URI in redirect_with_error"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 [
