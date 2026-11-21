@@ -75,16 +75,15 @@ impl ArtifactStagingFile {
 
 impl Drop for ArtifactStagingFile {
     fn drop(&mut self) {
-        if let Some(path) = self.path.as_ref() {
-            if let Err(error) = std::fs::remove_file(path) {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    tracing::warn!(
-                        path = %path.display(),
-                        error = %error,
-                        "Failed cleanup of artifact staging file during drop"
-                    );
-                }
-            }
+        if let Some(path) = self.path.as_ref()
+            && let Err(error) = std::fs::remove_file(path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "Failed cleanup of artifact staging file during drop"
+            );
         }
     }
 }

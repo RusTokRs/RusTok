@@ -1066,20 +1066,22 @@ async fn terminate_cargo_tree(
             // as a process-group leader above.
             let result = unsafe { libc::kill(-pid, libc::SIGKILL) };
             if result != 0 {
-                eprintln!(
-                    "warning: failed to kill Cargo process group {pid} for stage `{stage}`: {}",
-                    std::io::Error::last_os_error()
+                tracing::warn!(
+                    stage,
+                    pid,
+                    error = %std::io::Error::last_os_error(),
+                    "failed to kill Cargo process group for stage"
                 );
             }
         }
         None => {
             if let Err(error) = child.kill().await {
-                eprintln!("warning: failed to kill Cargo child for stage `{stage}`: {error}");
+                tracing::warn!(stage, %error, "failed to kill Cargo child for stage");
             }
         }
     }
     if let Err(error) = child.wait().await {
-        eprintln!("warning: failed to reap Cargo child for stage `{stage}`: {error}");
+        tracing::warn!(stage, %error, "failed to reap Cargo child for stage");
     }
 }
 
@@ -1090,10 +1092,10 @@ async fn terminate_cargo_tree(
     stage: &str,
 ) {
     if let Err(error) = child.kill().await {
-        eprintln!("warning: failed to kill Cargo child for stage `{stage}`: {error}");
+        tracing::warn!(stage, %error, "failed to kill Cargo child for stage");
     }
     if let Err(error) = child.wait().await {
-        eprintln!("warning: failed to reap Cargo child for stage `{stage}`: {error}");
+        tracing::warn!(stage, %error, "failed to reap Cargo child for stage");
     }
 }
 
@@ -1228,7 +1230,7 @@ where
             Err(error) => {
                 let message = format!("Cargo output read failed: {error}");
                 if let Err(send_err) = failure_sender.send(message.clone()).await {
-                    eprintln!("warning: failed to notify failure_sender of cargo read failure: {send_err}");
+                    tracing::warn!(%send_err, "failed to notify failure_sender of cargo read failure");
                 }
                 return Err(command_failed(message));
             }
@@ -1240,7 +1242,7 @@ where
         if previous.saturating_add(read) > MAX_LOCAL_CARGO_OUTPUT_BYTES {
             let message = "Cargo output exceeded the local authoring limit".to_string();
             if let Err(send_err) = failure_sender.send(message.clone()).await {
-                eprintln!("warning: failed to notify failure_sender of cargo limit exceeded: {send_err}");
+                tracing::warn!(%send_err, "failed to notify failure_sender of cargo limit exceeded");
             }
             return Err(command_failed(message));
         }

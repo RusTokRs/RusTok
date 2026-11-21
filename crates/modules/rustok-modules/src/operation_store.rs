@@ -1043,8 +1043,12 @@ impl ModuleOperationJournal {
             .await
             .map_err(database_error)?;
         let next_cursor = if rows.len() == limit {
-            let key: String = rows.last().expect("nonzero limit and full page").try_get("", "reap_cursor").map_err(database_error)?;
-            Some(ModuleOperationReapCursor { backend, key })
+            if let Some(last_row) = rows.last() {
+                let key: String = last_row.try_get("", "reap_cursor").map_err(database_error)?;
+                Some(ModuleOperationReapCursor { backend, key })
+            } else {
+                None
+            }
         } else {
             None
         };

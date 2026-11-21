@@ -684,6 +684,8 @@ async fn retry_failed_post_hook_operation_claimed(
             }
         });
     }
+    let expected_revision = request.expected_revision;
+    let idempotency_key = request.context.idempotency_key;
     db.transaction::<_, (), ModuleOperationRecoveryError>(|transaction| {
         Box::pin(async move {
             ModuleOperationJournal::mark_committed(transaction, operation.id)
@@ -708,8 +710,8 @@ async fn retry_failed_post_hook_operation_claimed(
                 transaction,
                 plan.tenant_id,
                 &plan.module_slug,
-                request.expected_revision,
-                request.context.idempotency_key,
+                expected_revision,
+                idempotency_key,
             )
             .await
             .map_err(map_lifecycle_claim_error)?
@@ -720,7 +722,7 @@ async fn retry_failed_post_hook_operation_claimed(
                 transaction,
                 plan.tenant_id,
                 &plan.module_slug,
-                request.context.idempotency_key,
+                idempotency_key,
             )
             .await
             .map_err(map_lifecycle_claim_error)?;

@@ -910,7 +910,7 @@ fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bo
                     // boundary must be exclusive.
                     number.fract() == 0.0
                         && number >= i64::MIN as f64
-                        && number < 18_446_744_073_709_551_616.0
+                        && number < 18_446_744_073_709_552_000.0
                 })
         }
         "number" => value.is_number(),
