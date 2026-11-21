@@ -19,9 +19,11 @@ const requireMarkers = (relative, markers) => {
 };
 
 const mountedPath = 'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs';
+// The mounted native transport reaches the owner through the module-owned read
+// port seam instead of constructing the concrete service inline.
 const mounted = requireMarkers(mountedPath, [
-  'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
-  '.list_published_products_with_query(',
+  'native_server_adapter::product_read_port(&scope)',
+  '.list_filtered_published_products(',
 ]);
 for (const forbidden of [
   'rustok_index',
@@ -45,7 +47,8 @@ requireMarkers('crates/modules/rustok-product/src/services/catalog/queries.rs', 
   '.unwrap_or_else(|| "Untitled product".to_string())',
   'let pattern = format!("%{search}%");',
   'pt.title LIKE $1',
-  'let offset = (page.saturating_sub(1)) * per_page;',
+  '.checked_sub(1)',
+  '.and_then(|page| page.checked_mul(per_page))',
 ]);
 requireMarkers('crates/modules/rustok-product/src/storefront_tag_read_port.rs', [
   'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
@@ -103,7 +106,8 @@ const budgeted = requireMarkers(budgetedPath, [
   '.map(project_product_storefront_index_page);',
   'tag_context.deadline_ms = Some(tag_hydration_budget_ms);',
   'Duration::from_millis(tag_hydration_budget_ms)',
-  '.hydrate_projected_tags(tag_context, fallback_locale, projected)',
+  'self.phases.hydrate_projected_tags(',
+  'params.fallback_locale,',
   'ProductStorefrontIndexBudgetedTagHydrationError::TimedOut',
   'compare_owner_and_projected(&authoritative, projected)',
 ]);

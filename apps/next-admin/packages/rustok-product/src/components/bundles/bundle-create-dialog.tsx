@@ -9,6 +9,7 @@
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -29,11 +30,12 @@ import {
 } from '@/shared/ui/shadcn/select';
 import { Loader2 } from 'lucide-react';
 import type { CreateBundleInput } from '../../api/types';
+import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
 
 interface BundleCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (input: CreateBundleInput) => Promise<void>;
+  onCreate: (input: CreateBundleInput, idempotencyKey: string) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -50,6 +52,14 @@ export function BundleCreateDialog({
   const [discountType, setDiscountType] = React.useState('none');
   const [discountValue, setDiscountValue] = React.useState('0');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // One idempotency key per submitted intent: an ambiguous (network-level)
+  // failure keeps it so a retry replays the owner receipt instead of creating
+  // a duplicate bundle; confirmed or definitively refused attempts rotate it.
+  const createAttemptKey = React.useRef<string | null>(null);
+
+  const resetCreateAttempt = () => {
+    createAttemptKey.current = null;
+  };
 
   React.useEffect(() => {
     if (open) {
@@ -59,10 +69,12 @@ export function BundleCreateDialog({
       setStatus('active');
       setDiscountType('none');
       setDiscountValue('0');
+      resetCreateAttempt();
     }
   }, [open]);
 
   const handleNameChange = (val: string) => {
+    resetCreateAttempt();
     setName(val);
     const autoSlug = val
       .toLowerCase()
@@ -77,18 +89,26 @@ export function BundleCreateDialog({
     if (!name.trim() || !slug.trim()) return;
 
     setIsSubmitting(true);
+    createAttemptKey.current ??= crypto.randomUUID();
     try {
-      await onCreate({
-        name: name.trim(),
-        slug: slug.trim(),
-        bundleType,
-        status,
-        discountType,
-        discountValue
-      });
+      await onCreate(
+        {
+          name: name.trim(),
+          slug: slug.trim(),
+          bundleType,
+          status,
+          discountType,
+          discountValue
+        },
+        createAttemptKey.current
+      );
+      resetCreateAttempt();
       onOpenChange(false);
     } catch (err) {
-      console.error('Failed to create bundle:', err);
+      if (isDefinitiveProductWriteRefusal(err)) resetCreateAttempt();
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create bundle.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -126,9 +146,10 @@ export function BundleCreateDialog({
                 id='bundle-create-slug'
                 placeholder='e.g. premium-starter-kit'
                 value={slug}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setSlug(e.target.value)
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  resetCreateAttempt();
+                  setSlug(e.target.value);
+                }}
                 required
                 disabled={isSubmitting || disabled}
               />
@@ -139,7 +160,10 @@ export function BundleCreateDialog({
                 <Label>Kit Type</Label>
                 <Select
                   value={bundleType}
-                  onValueChange={setBundleType}
+                  onValueChange={(value) => {
+                    resetCreateAttempt();
+                    setBundleType(value);
+                  }}
                   disabled={isSubmitting || disabled}
                 >
                   <SelectTrigger className='h-9'>
@@ -158,7 +182,10 @@ export function BundleCreateDialog({
                 <Label>Status</Label>
                 <Select
                   value={status}
-                  onValueChange={setStatus}
+                  onValueChange={(value) => {
+                    resetCreateAttempt();
+                    setStatus(value);
+                  }}
                   disabled={isSubmitting || disabled}
                 >
                   <SelectTrigger className='h-9'>
@@ -178,7 +205,10 @@ export function BundleCreateDialog({
                 <Label>Discount Type</Label>
                 <Select
                   value={discountType}
-                  onValueChange={setDiscountType}
+                  onValueChange={(value) => {
+                    resetCreateAttempt();
+                    setDiscountType(value);
+                  }}
                   disabled={isSubmitting || disabled}
                 >
                   <SelectTrigger className='h-9'>
@@ -199,9 +229,10 @@ export function BundleCreateDialog({
                   min={0}
                   step={discountType === 'percentage' ? 0.5 : 0.01}
                   value={discountValue}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setDiscountValue(e.target.value)
-                  }
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    resetCreateAttempt();
+                    setDiscountValue(e.target.value);
+                  }}
                   disabled={discountType === 'none' || isSubmitting || disabled}
                   className='h-9'
                 />

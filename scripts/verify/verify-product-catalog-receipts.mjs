@@ -101,7 +101,7 @@ export function verifyCatalogReceipts(sources) {
   ), 'catalog adapter must not complete success after commit');
   const productProjection = sources.projection.slice(
     sources.projection.indexOf('pub(super) async fn get_product_in'),
-    sources.projection.indexOf('pub async fn get_variant(')
+    sources.projection.indexOf('pub(super) async fn get_variant_in')
   );
   const variantProjection = sources.projection.slice(
     sources.projection.indexOf('pub(super) async fn get_variant_in'),

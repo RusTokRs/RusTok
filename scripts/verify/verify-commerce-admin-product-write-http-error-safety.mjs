@@ -59,7 +59,7 @@ const sharedContext = between(
 const portMapper = between(
   sharedProducts,
   'pub(crate) fn map_admin_product_port_error(',
-  '/// Shared admin product list handler.',
+  '/// Shared admin product delete handler.',
   'active Product owner-port mapper',
 );
 
@@ -103,7 +103,7 @@ for (const [value, label] of [
 for (const [value, label] of [
   ['pub(crate) fn admin_product_command_idempotency_key(', 'caller-owned identity helper'],
   ['headers: &HeaderMap', 'caller-owned header input'],
-  ['headers.get("Idempotency-Key")', 'caller-owned key extraction'],
+  ['.get("Idempotency-Key")', 'caller-owned key extraction'],
   ['"commerce_admin_idempotency_key_required"', 'missing-key public code'],
   ['"commerce_admin_idempotency_key_invalid"', 'invalid-key public code'],
   ['value.len() > MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH', 'key length bound'],
@@ -150,7 +150,7 @@ for (const [value, label] of [
 
 requireText(
   commandPort,
-  'require_policy(PortCallPolicy::write())',
+  'catalog_scope(context, operation, PortCallPolicy::write())',
   'Product owner command write admission',
 );
 

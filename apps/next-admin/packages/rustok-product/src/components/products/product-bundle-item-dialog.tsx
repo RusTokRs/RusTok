@@ -9,6 +9,7 @@
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { Label } from '@/shared/ui/shadcn/label';
 import { Switch } from '@/shared/ui/shadcn/switch';
 import { Search, Loader2, Package } from 'lucide-react';
 import type { AddBundleItemInput } from '../../api/types';
+import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
 
 interface SearchProductResult {
   id: string;
@@ -37,7 +39,7 @@ interface ProductBundleItemDialogProps {
   bundleId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (input: AddBundleItemInput) => Promise<void>;
+  onAdd: (input: AddBundleItemInput, idempotencyKey: string) => Promise<void>;
   onSearchProducts?: (query: string) => Promise<SearchProductResult[]>;
   currentItemsCount: number;
   disabled?: boolean;
@@ -60,21 +62,31 @@ export function ProductBundleItemDialog({
   const [selectedProduct, setSelectedProduct] =
     React.useState<SearchProductResult | null>(null);
 
-  const [quantity, setQuantity] = React.useState(1);
+  const [quantityInput, setQuantityInput] = React.useState('1');
   const [isOptional, setIsOptional] = React.useState(false);
   const [discountPercent, setDiscountPercent] = React.useState('');
   const [position, setPosition] = React.useState(currentItemsCount);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // One idempotency key per submitted intent: an ambiguous (network-level)
+  // failure keeps it so a retry replays the owner receipt instead of adding
+  // a duplicate bundle item; confirmed or definitively refused attempts
+  // rotate it.
+  const addAttemptKey = React.useRef<string | null>(null);
+
+  const resetAddAttempt = () => {
+    addAttemptKey.current = null;
+  };
 
   React.useEffect(() => {
     if (open) {
       setSearchQuery('');
       setSearchResults([]);
       setSelectedProduct(null);
-      setQuantity(1);
+      setQuantityInput('1');
       setIsOptional(false);
       setDiscountPercent('');
       setPosition(currentItemsCount);
+      resetAddAttempt();
     }
   }, [open, currentItemsCount]);
 
@@ -92,7 +104,9 @@ export function ProductBundleItemDialog({
         const results = await onSearchProducts(searchQuery);
         setSearchResults(results);
       } catch (err) {
-        console.error('Failed to search products:', err);
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to search products.'
+        );
       } finally {
         setIsSearching(false);
       }
@@ -104,24 +118,45 @@ export function ProductBundleItemDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
+    const quantity = Number.parseInt(quantityInput, 10);
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error('Quantity must be a whole number of at least 1.');
+      return;
+    }
+
+    let discountRate: string | undefined;
+    if (discountPercent.trim()) {
+      // Fail closed: an unparsable percentage must never reach the owner as
+      // the string "NaN".
+      const percent = Number.parseFloat(discountPercent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        toast.error('Item discount must be between 0 and 100.');
+        return;
+      }
+      discountRate = (percent / 100).toFixed(4);
+    }
 
     setIsSubmitting(true);
     try {
-      const discountRate = discountPercent
-        ? (parseFloat(discountPercent) / 100).toFixed(4)
-        : undefined;
-
-      await onAdd({
-        bundleId,
-        productId: selectedProduct.id,
-        quantity: Math.max(1, quantity),
-        isOptional,
-        discountRate,
-        position
-      });
+      addAttemptKey.current ??= crypto.randomUUID();
+      await onAdd(
+        {
+          bundleId,
+          productId: selectedProduct.id,
+          quantity,
+          isOptional,
+          discountRate,
+          position
+        },
+        addAttemptKey.current
+      );
+      resetAddAttempt();
       onOpenChange(false);
     } catch (err) {
-      console.error('Failed to add bundle item:', err);
+      if (isDefinitiveProductWriteRefusal(err)) resetAddAttempt();
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to add bundle item.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -163,7 +198,10 @@ export function ProductBundleItemDialog({
                   {searchResults.map((product) => (
                     <div
                       key={product.id}
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => {
+                        resetAddAttempt();
+                        setSelectedProduct(product);
+                      }}
                       className='hover:bg-accent hover:text-accent-foreground flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm'
                     >
                       <div className='flex items-center gap-2'>
@@ -224,7 +262,10 @@ export function ProductBundleItemDialog({
                     type='button'
                     variant='ghost'
                     size='sm'
-                    onClick={() => setSelectedProduct(null)}
+                    onClick={() => {
+                      resetAddAttempt();
+                      setSelectedProduct(null);
+                    }}
                     disabled={isSubmitting}
                   >
                     Change
@@ -243,10 +284,11 @@ export function ProductBundleItemDialog({
                       id='bundle-item-qty'
                       type='number'
                       min={1}
-                      value={quantity}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setQuantity(parseInt(e.target.value, 10) || 1)
-                      }
+                      value={quantityInput}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        resetAddAttempt();
+                        setQuantityInput(e.target.value);
+                      }}
                       disabled={isSubmitting || disabled}
                     />
                   </div>
@@ -263,9 +305,10 @@ export function ProductBundleItemDialog({
                       step={0.5}
                       placeholder='e.g. 10'
                       value={discountPercent}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setDiscountPercent(e.target.value)
-                      }
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        resetAddAttempt();
+                        setDiscountPercent(e.target.value);
+                      }}
                       disabled={isSubmitting || disabled}
                     />
                   </div>
@@ -281,7 +324,10 @@ export function ProductBundleItemDialog({
                   </div>
                   <Switch
                     checked={isOptional}
-                    onCheckedChange={setIsOptional}
+                    onCheckedChange={(checked) => {
+                      resetAddAttempt();
+                      setIsOptional(checked);
+                    }}
                     disabled={isSubmitting || disabled}
                   />
                 </div>

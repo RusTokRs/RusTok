@@ -31,9 +31,8 @@ Commerce admin consumer still returns only `PortError.message` through
 ## Framework diagnostics
 
 Context-extraction diagnostics retain consumer operation, context kind,
-correlation id, stable code, boundary, and the Rust error type. The complete
-framework extraction errors are not logged, including their debug or display
-text.
+correlation id, stable code, boundary, and the Rust error type; the
+complete framework extraction errors are not logged, including their debug or display text.
 
 The type-only `promotion_context_error`, `promotion_auth_context_error`, and
 `promotion_tenant_context_error` helpers no longer require a `Debug` bound. The

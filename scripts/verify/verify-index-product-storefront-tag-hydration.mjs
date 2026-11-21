@@ -54,8 +54,12 @@ const ownerTags = requireMarkers(ownerTagsPath, [
   'pub async fn load_product_tag_map(',
   'product_tag::Column::TenantId.eq(tenant_id)',
   'product_tag::Column::ProductId.is_in(product_ids.clone())',
-  'TaxonomyService::new(self.db.clone())',
-  '.resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)',
+  // Term hydration goes through the injected ProductTaxonomyPort; the caller
+  // passes the connection so in-transaction hydration reuses the caller's tx.
+  '.taxonomy()',
+  '.resolve_term_names(',
+  'conn.as_taxonomy_connection()',
+  '(&self.db).into()',
   'pub(crate) async fn load_product_tags_in<',
   'pub(crate) async fn sync_product_tags_in_tx(',
 ]);
@@ -91,9 +95,9 @@ requireMarkers(migrationPath, [
   'normalize_term_route_key',
   'TaxonomyScopeType::Module, PRODUCT_SCOPE_VALUE',
   'TaxonomyScopeType::Global, ""',
-  'taxonomy_term_route_key::Entity::find()',
-  'taxonomy_term_translation::ActiveModel',
-  'translation_change::ActiveModel',
+  'FROM taxonomy_term_route_keys',
+  'INSERT INTO taxonomy_term_translations (',
+  'INSERT INTO translation_changes (',
   'product_tag::ActiveModel',
   'object.remove("tags")',
   'ck_products_metadata_tags_absent',

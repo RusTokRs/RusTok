@@ -11,6 +11,7 @@
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -35,15 +36,40 @@ import {
   Trash2,
   ArrowLeft,
   ArrowRight,
+  Pencil,
   ExternalLink
 } from 'lucide-react';
 import type { ProductImage } from '../../api/types';
+import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
+import { SearchableSelect } from '../shared/searchable-select';
+
+/** Slim media-library entry for the in-dialog picker. */
+export interface ProductMediaLibraryItem {
+  id: string;
+  name: string;
+  url: string | null;
+}
+
+/** The Product owner accepts images by Media module asset UUID only. */
+const MEDIA_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface ProductMediaCardProps {
   images: ProductImage[];
-  onAddImage?: (input: { mediaId: string; altText?: string }) => Promise<void>;
+  onAddImage?: (
+    input: { mediaId: string; altText?: string; locale?: string },
+    idempotencyKey: string
+  ) => Promise<void>;
   onDeleteImage?: (id: string) => Promise<void>;
   onReorderImages?: (imageIds: string[]) => Promise<void>;
+  /** Edits the localized alt text (and optionally the position) of an image. */
+  onUpdateImage?: (
+    id: string,
+    input: { position?: number; altText?: string; locale?: string },
+    idempotencyKey: string
+  ) => Promise<void>;
+  /** Loads the tenant media library for the picker (first page, ~100 items). */
+  onListMedia?: () => Promise<ProductMediaLibraryItem[]>;
   disabled?: boolean;
 }
 
@@ -52,12 +78,88 @@ export function ProductMediaCard({
   onAddImage,
   onDeleteImage,
   onReorderImages,
+  onUpdateImage,
+  onListMedia,
   disabled = false
 }: ProductMediaCardProps) {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [mediaIdInput, setMediaIdInput] = React.useState('');
   const [altTextInput, setAltTextInput] = React.useState('');
   const [isBusy, setIsBusy] = React.useState(false);
+  // One idempotency key per submitted intent: an ambiguous (network-level)
+  // failure keeps it so a retry replays the owner receipt instead of attaching
+  // a duplicate image; confirmed or definitively refused attempts rotate it.
+  const addAttemptKey = React.useRef<string | null>(null);
+
+  const resetAddAttempt = () => {
+    addAttemptKey.current = null;
+  };
+
+  const [mediaItems, setMediaItems] = React.useState<
+    ProductMediaLibraryItem[] | null
+  >(null);
+  const [mediaLoading, setMediaLoading] = React.useState(false);
+  const [selectedMedia, setSelectedMedia] = React.useState<
+    ProductMediaLibraryItem | null
+  >(null);
+
+  const openAddDialog = () => {
+    resetAddAttempt();
+    setDialogOpen(true);
+    if (onListMedia && mediaItems === null) {
+      setMediaLoading(true);
+      onListMedia()
+        .then((items) => setMediaItems(items))
+        .catch(() => setMediaItems([]))
+        .finally(() => setMediaLoading(false));
+    }
+  };
+
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
+  const [editingImageId, setEditingImageId] = React.useState<string | null>(
+    null
+  );
+  const [editAltInput, setEditAltInput] = React.useState('');
+  const [editLocale, setEditLocale] = React.useState('en');
+  const [isEditing, setIsEditing] = React.useState(false);
+  // Same one-key-per-intent contract as the add dialog: an ambiguous failure
+  // keeps the key so a retry replays the owner receipt.
+  const editAttemptKey = React.useRef<string | null>(null);
+
+  const openEditDialog = (imageId: string, currentAlt: string | null) => {
+    editAttemptKey.current = null;
+    setEditingImageId(imageId);
+    setEditAltInput(currentAlt ?? '');
+    setEditLocale('en');
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateAlt = async () => {
+    if (!onUpdateImage || !editingImageId) return;
+    if (!editAltInput.trim()) {
+      toast.error('Alt text cannot be empty.');
+      return;
+    }
+    setIsEditing(true);
+    editAttemptKey.current ??= crypto.randomUUID();
+    try {
+      await onUpdateImage(
+        editingImageId,
+        { altText: editAltInput.trim(), locale: editLocale },
+        editAttemptKey.current
+      );
+      editAttemptKey.current = null;
+      setEditDialogOpen(false);
+      setEditingImageId(null);
+    } catch (err) {
+      if (isDefinitiveProductWriteRefusal(err)) editAttemptKey.current = null;
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update image alt text.'
+      );
+    } finally {
+      setIsEditing(false);
+    }
+  };
 
   const sortedImages = React.useMemo(() => {
     return [...images].sort((a, b) => a.position - b.position);
@@ -65,17 +167,45 @@ export function ProductMediaCard({
 
   const handleAddImage = async () => {
     if (!mediaIdInput.trim() || !onAddImage) return;
+    // The owner accepts a Media asset UUID only; rejecting anything else here
+    // gives the operator a clear message instead of a failed GraphQL request.
+    if (!MEDIA_UUID_PATTERN.test(mediaIdInput.trim())) {
+      toast.error('Media ID must be a Media module asset UUID.');
+      return;
+    }
     setIsBusy(true);
+    addAttemptKey.current ??= crypto.randomUUID();
     try {
-      await onAddImage({
-        mediaId: mediaIdInput.trim(),
-        altText: altTextInput.trim() || undefined
-      });
+      await onAddImage(
+        {
+          mediaId: mediaIdInput.trim(),
+          altText: altTextInput.trim() || undefined
+        },
+        addAttemptKey.current
+      );
+      resetAddAttempt();
       setMediaIdInput('');
       setAltTextInput('');
       setDialogOpen(false);
+    } catch (err) {
+      if (isDefinitiveProductWriteRefusal(err)) resetAddAttempt();
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to attach image.'
+      );
     } finally {
       setIsBusy(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!onDeleteImage) return;
+    if (!window.confirm('Remove this image from the product?')) return;
+    try {
+      await onDeleteImage(id);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to remove image.'
+      );
     }
   };
 
@@ -88,7 +218,13 @@ export function ProductMediaCard({
     const [moved] = reordered.splice(index, 1);
     reordered.splice(targetIndex, 0, moved);
 
-    await onReorderImages(reordered.map((img) => img.id));
+    try {
+      await onReorderImages(reordered.map((img) => img.id));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to reorder images.'
+      );
+    }
   };
 
   return (
@@ -110,7 +246,7 @@ export function ProductMediaCard({
             <Button
               type='button'
               size='sm'
-              onClick={() => setDialogOpen(true)}
+              onClick={openAddDialog}
               className='h-8 gap-1.5 self-start rounded-xl px-3 text-xs sm:self-auto'
               disabled={disabled}
             >
@@ -187,19 +323,34 @@ export function ProductMediaCard({
                     </Button>
                   </div>
 
-                  {onDeleteImage && (
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon'
-                      disabled={disabled}
-                      onClick={() => onDeleteImage(img.id)}
-                      className='h-6 w-6 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
-                      title='Remove image'
-                    >
-                      <Trash2 className='h-3 w-3' />
-                    </Button>
-                  )}
+                  <div className='flex items-center gap-0.5'>
+                    {onUpdateImage && (
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        disabled={disabled}
+                        onClick={() => openEditDialog(img.id, img.altText)}
+                        className='text-muted-foreground hover:text-foreground h-6 w-6 rounded'
+                        title='Edit alt text'
+                      >
+                        <Pencil className='h-3 w-3' />
+                      </Button>
+                    )}
+                    {onDeleteImage && (
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        disabled={disabled}
+                        onClick={() => handleDelete(img.id)}
+                        className='h-6 w-6 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
+                        title='Remove image'
+                      >
+                        <Trash2 className='h-3 w-3' />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -215,18 +366,63 @@ export function ProductMediaCard({
               Add Product Media
             </DialogTitle>
             <DialogDescription className='text-xs'>
-              Enter a Media module asset ID or direct image URL.
+              Enter a Media module asset UUID. Upload the file in Media first;
+              external image URLs are not supported.
             </DialogDescription>
           </DialogHeader>
 
           <div className='space-y-4 py-2 text-xs'>
+            {onListMedia && mediaItems !== null && mediaItems.length > 0 && (
+              <div className='space-y-1.5'>
+                <Label htmlFor='img-media-library'>Media library</Label>
+                <SearchableSelect
+                  id='img-media-library'
+                  options={mediaItems.map((item) => ({
+                    value: item.id,
+                    label: item.name
+                  }))}
+                  value={selectedMedia?.id ?? ''}
+                  emptyValue=''
+                  emptyLabel={
+                    mediaLoading ? 'Loading media…' : 'Choose from library…'
+                  }
+                  searchPlaceholder='Search media by name...'
+                  disabled={disabled || mediaLoading}
+                  onChange={(value) => {
+                    const item = mediaItems.find(
+                      (candidate) => candidate.id === value
+                    );
+                    resetAddAttempt();
+                    setSelectedMedia(item ?? null);
+                    setMediaIdInput(value);
+                  }}
+                />
+                {selectedMedia?.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={selectedMedia.url}
+                    alt={selectedMedia.name}
+                    className='border-border h-20 w-20 rounded-lg border object-cover'
+                  />
+                )}
+              </div>
+            )}
             <div className='space-y-1.5'>
-              <Label htmlFor='img-media-id'>Media ID or Image URL *</Label>
+              <Label htmlFor='img-media-id'>
+                Media asset UUID *
+                {onListMedia && mediaItems !== null && mediaItems.length > 0
+                  ? ' (or pick from the library above)'
+                  : ''}
+              </Label>
               <Input
                 id='img-media-id'
                 value={mediaIdInput}
-                onChange={(e) => setMediaIdInput(e.target.value)}
-                placeholder='e.g. 550e8400-e29b-41d4-a716-446655440000 or https://...'
+                onChange={(e) => {
+                  resetAddAttempt();
+                  setSelectedMedia(null);
+                  setMediaIdInput(e.target.value);
+                }}
+                placeholder='e.g. 550e8400-e29b-41d4-a716-446655440000'
                 className='h-9 rounded-xl font-mono text-xs'
               />
             </div>
@@ -235,7 +431,10 @@ export function ProductMediaCard({
               <Input
                 id='img-alt'
                 value={altTextInput}
-                onChange={(e) => setAltTextInput(e.target.value)}
+                onChange={(e) => {
+                  resetAddAttempt();
+                  setAltTextInput(e.target.value);
+                }}
                 placeholder='Front view of keyboard with RGB lighting'
                 className='h-9 rounded-xl text-xs'
               />
@@ -258,6 +457,63 @@ export function ProductMediaCard({
               className='h-9 rounded-xl text-xs font-semibold'
             >
               {isBusy ? 'Adding...' : 'Attach Image'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className='sm:max-w-[400px]'>
+          <DialogHeader>
+            <DialogTitle className='text-sm font-semibold'>
+              Edit Image Alt Text
+            </DialogTitle>
+            <DialogDescription>
+              Localized alt text improves storefront accessibility and SEO.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-3'>
+            <div className='space-y-1.5'>
+              <Label htmlFor='edit-image-locale'>Locale</Label>
+              <select
+                id='edit-image-locale'
+                value={editLocale}
+                onChange={(e) => setEditLocale(e.target.value)}
+                disabled={isEditing}
+                className='border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-1 focus-visible:outline-none disabled:opacity-50'
+              >
+                <option value='en'>English (EN)</option>
+                <option value='ru'>Русский (RU)</option>
+              </select>
+            </div>
+            <div className='space-y-1.5'>
+              <Label htmlFor='edit-image-alt'>Alt text</Label>
+              <Input
+                id='edit-image-alt'
+                value={editAltInput}
+                onChange={(e) => setEditAltInput(e.target.value)}
+                placeholder='Describe the image for screen readers'
+                disabled={isEditing}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setEditDialogOpen(false)}
+              disabled={isEditing}
+              className='h-9 rounded-xl text-xs'
+            >
+              Cancel
+            </Button>
+            <Button
+              type='button'
+              onClick={handleUpdateAlt}
+              disabled={isEditing || !editAltInput.trim()}
+              className='h-9 rounded-xl text-xs font-semibold'
+            >
+              {isEditing ? 'Saving...' : 'Save Alt Text'}
             </Button>
           </DialogFooter>
         </DialogContent>

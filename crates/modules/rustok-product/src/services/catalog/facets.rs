@@ -26,7 +26,9 @@ use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
 use super::attribute_filters::load_catalog_attribute_filter_conditions;
-use super::helpers::{product_channel_visibility_condition, sql_placeholder};
+use super::helpers::{
+    load_category_filter_subtree, product_channel_visibility_condition, sql_placeholder,
+};
 use super::queries::product_title_search_condition;
 use super::types::MAX_ATTRIBUTE_FILTERS;
 
@@ -218,6 +220,13 @@ pub(super) async fn load_catalog_facets(
     let definitions = load_facet_definitions(db, tenant_id, &codes).await?;
     let labels = load_facet_attribute_labels(db, &definitions, locale, fallback_locale).await?;
 
+    // Resolve the category filter's subtree once: every facet query aggregates by
+    // primary-category subtree, mirroring the storefront navigation tree.
+    let category_subtree = match filters.category_id {
+        Some(category_id) => Some(load_category_filter_subtree(db, tenant_id, category_id).await?),
+        None => None,
+    };
+
     let mut facets = Vec::with_capacity(definitions.len());
     let mut option_ids = Vec::<Uuid>::new();
     let mut option_bucket_slots = Vec::<(usize, Vec<Uuid>)>::new();
@@ -258,6 +267,7 @@ pub(super) async fn load_catalog_facets(
             scope,
             &filters,
             other_conditions,
+            category_subtree.as_deref(),
         );
 
         let total_products = load_facet_total(db, &definition.id, &products_condition).await?;
@@ -673,16 +683,28 @@ fn facet_products_condition(
     scope: CatalogFacetScope<'_>,
     filters: &CatalogFacetFilters<'_>,
     other_conditions: Vec<Condition>,
+    category_subtree: Option<&[Uuid]>,
 ) -> Condition {
     let mut condition = facet_scope_condition(backend, tenant_id, scope);
-    if let Some(category_id) = filters.category_id {
-        condition = condition.add(Expr::cust_with_values(
-            format!(
-                "products.primary_category_id = {}",
-                sql_placeholder(backend, 1)
-            ),
-            vec![sea_orm::Value::from(category_id)],
-        ));
+    if let Some(subtree) = category_subtree {
+        if subtree.is_empty() {
+            // Unknown or deleted category: the filter matches no products.
+            condition = condition.add(Expr::cust("1 = 0"));
+        } else {
+            let placeholders = subtree
+                .iter()
+                .enumerate()
+                .map(|(index, _)| sql_placeholder(backend, index + 1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            condition = condition.add(Expr::cust_with_values(
+                format!("products.primary_category_id IN ({placeholders})"),
+                subtree
+                    .iter()
+                    .map(|id| sea_orm::Value::from(*id))
+                    .collect::<Vec<_>>(),
+            ));
+        }
     }
     if let Some(search) = filters
         .search

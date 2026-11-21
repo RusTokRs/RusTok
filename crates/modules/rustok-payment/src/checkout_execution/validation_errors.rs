@@ -21,6 +21,7 @@ pub(super) fn persisted_provider_result(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::MissingNormalizedDurableResult,
+            "payment provider operation has no normalized durable result",
         )
     })?;
     let (provider_result_kind, provider_result_collection_length) = match &value {
@@ -54,6 +55,7 @@ pub(super) fn persisted_provider_result(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::MalformedDurableResult,
+            "payment provider operation durable result cannot be decoded",
         )
     })
 }
@@ -330,7 +332,9 @@ pub(super) fn manual_reconciliation(
     context: &PortContext,
     owner_operation: &'static str,
     reason: CheckoutPaymentExecutionReconciliationReason,
+    message: &'static str,
 ) -> PortError {
+    let reason: CheckoutPaymentExecutionReconciliationReason = reason;
     let context_facts = checkout_payment_execution_context_facts(context);
     let reconciliation_reason = reason.label();
     tracing::error!(
@@ -351,7 +355,7 @@ pub(super) fn manual_reconciliation(
     PortError::new(
         PortErrorKind::Conflict,
         "payment.checkout_execution_manual_reconciliation",
-        "payment checkout execution requires manual reconciliation",
+        message,
         false,
     )
 }
@@ -553,11 +557,13 @@ pub(super) fn payment_error_to_port_error(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::InvalidSuccessfulProviderResponse,
+            "payment provider returned an invalid successful response"
         ),
         PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
             context,
             owner_operation,
             CheckoutPaymentExecutionReconciliationReason::UnknownProviderOutcome,
+            "payment provider operation outcome is unknown"
         ),
         PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
             "payment.provider_not_configured",

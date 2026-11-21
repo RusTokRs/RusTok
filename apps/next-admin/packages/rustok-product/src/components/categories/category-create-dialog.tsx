@@ -24,6 +24,7 @@ import {
 import { Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CatalogCategorySummary } from '../../api/types';
+import { SearchableCategorySelect } from './searchable-category-select';
 
 interface CategoryCreateDialogProps {
   categories: CatalogCategorySummary[];
@@ -183,24 +184,20 @@ export function CategoryCreateDialog({
 
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-1.5'>
-                <Label>Parent Category</Label>
-                <Select
+                <Label htmlFor='cat-parent'>Parent Category</Label>
+                <SearchableCategorySelect
+                  id='cat-parent'
+                  options={categories.map((c) => ({
+                    id: c.id,
+                    label: c.path || c.name || c.code
+                  }))}
                   value={parentId}
-                  onValueChange={setParentId}
+                  emptyValue='none'
+                  emptyLabel='None (Root category)'
+                  searchPlaceholder='Search parent category...'
                   disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select parent...' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='none'>None (Root category)</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.path || c.name || c.code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={setParentId}
+                />
               </div>
 
               <div className='space-y-1.5'>

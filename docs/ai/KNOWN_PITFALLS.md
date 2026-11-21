@@ -64,6 +64,31 @@ Short list of typical mistakes before making code changes.
 - Do not return Entity directly from API — create separate DTOs (Input/Response).
 - Do not hard DELETE business entities (products, orders, nodes) — use soft delete via status = Archived.
 - Name migrations strictly: `mYYYYMMDD_<module>_<nnn>_<description>`.
+- The workspace pins sea-orm 2.0.x. In 2.0.4 `ConnectionTrait` is implemented for
+  `DatabaseConnection`, `DatabaseExecutor<'_>`, `RestrictedConnection`,
+  `RestrictedTransaction`, and `DatabaseTransaction` — but **not** for
+  `&DatabaseTransaction`. A generic `async fn f<C: ConnectionTrait>(conn: C)`
+  (the connection type itself as the parameter) therefore rejects `&txn`,
+  because `C` would have to be `&DatabaseTransaction`; pass the owned
+  `DatabaseTransaction`, or go through `DatabaseExecutor`/`RestrictedTransaction`.
+- In 2.0.4 `ExecResult.result` is private. `result.rows_affected != 1` (the 1.x
+  field style) does not compile; use the `rows_affected()` method.
+
+## Verification scripts (`scripts/verify/*.mjs`)
+
+- Verify pins are plain-text `includes()` matches against source files. A pin
+  phrase that rustfmt splits across lines (or one written with `\n` and exact
+  indentation) will not match the other layout. Before "fixing" a missing pin,
+  diff the pinned string byte-for-byte — including trailing commas and line
+  breaks — against the source.
+- `functionBody`-style helpers extract from the first `{` after the signature
+  to the balanced `}`. The signature is not part of the extracted body, so a pin
+  on a parameter type must be satisfied inside the body (for example a typed
+  identity binding) or it is unsatisfiable.
+- Run one gate with `node scripts/verify/<gate>.mjs`; it exits non-zero and
+  prints every failure. `RUSTOK_VERIFY_REPO_ROOT=<baseline worktree>` re-runs a
+  gate against a pristine checkout to classify a failure as born-red before
+  editing.
 
 ## State Machines
 

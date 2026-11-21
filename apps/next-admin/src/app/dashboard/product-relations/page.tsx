@@ -62,9 +62,9 @@ export default async function ProductRelationsRoute({
           <ProductRelationsCard
             productId={productId}
             relations={relations}
-            onAddRelation={async (input) => {
+            onAddRelation={async (input, idempotencyKey) => {
               'use server';
-              await addProductRelationAction(input);
+              await addProductRelationAction(input, idempotencyKey);
             }}
             onRemoveRelation={async (id) => {
               'use server';

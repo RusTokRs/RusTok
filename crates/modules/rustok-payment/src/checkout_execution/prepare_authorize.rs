@@ -129,6 +129,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::UnknownCollectionLifecycleBeforeAuthorization,
+                    "payment collection lifecycle must be resolved before authorization",
                 ));
             }
         }
@@ -236,6 +237,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::AuthorizationLocalPersistenceIncomplete,
+                    "payment authorization local persistence is incomplete",
                 ))
             }
         }

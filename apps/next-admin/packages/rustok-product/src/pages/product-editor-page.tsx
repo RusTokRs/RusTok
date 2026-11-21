@@ -36,6 +36,7 @@ import { ProductHeaderBar } from '../components/products/product-header-bar';
 import { ProductGeneralCard } from '../components/products/product-general-card';
 import { ProductCategoryCard } from '../components/products/product-category-card';
 import { ProductVariantsCard } from '../components/products/product-variants-card';
+import { ProductChannelPricingCard } from '../components/products/product-channel-pricing-card';
 import { InitialVariantsCard } from '../components/products/initial-variants-card';
 import {
   emptyInitialVariant,
@@ -62,6 +63,12 @@ import type {
   ProductVariant,
   ProductImage,
   CatalogCategorySummary,
+  ProductBrandItem,
+  BrandSummary,
+  ActivePriceList,
+  PricingAdjustmentPreview,
+  UpsertVariantPriceInput,
+  VariantDiscountInput,
   ProductEffectiveForm,
   ProductAttributeValuePatch,
   ProductAttributeValueItem,
@@ -80,6 +87,8 @@ export interface ProductEditorPageProps {
   recoveryOnly?: boolean;
   initialProduct?: ProductDetail | null;
   categories: CatalogCategorySummary[];
+  /** Brand directory for the brand picker; resolved by id against product brands. */
+  brands?: BrandSummary[];
   initialEffectiveForm?: ProductEffectiveForm | null;
   initialAttributeValues?: ProductAttributeValueItem[];
   initialRelations?: ProductRelation[];
@@ -106,6 +115,24 @@ export interface ProductEditorPageProps {
   ) => Promise<ProductWriteOutcome>;
   onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
+  onFetchPriceLists?: (
+    channelId?: string,
+    channelSlug?: string
+  ) => Promise<ActivePriceList[]>;
+  onUpsertVariantPrice?: (
+    productId: string,
+    variantId: string,
+    input: UpsertVariantPriceInput
+  ) => Promise<void>;
+  onPreviewVariantDiscount?: (
+    variantId: string,
+    input: VariantDiscountInput
+  ) => Promise<PricingAdjustmentPreview>;
+  onApplyVariantDiscount?: (
+    productId: string,
+    variantId: string,
+    input: VariantDiscountInput
+  ) => Promise<void>;
   onPreviewVariantAxes?: (
     productId: string,
     input: SetVariantAxesInput,
@@ -118,11 +145,24 @@ export interface ProductEditorPageProps {
   ) => Promise<ProductWriteOutcome>;
   onAddImage?: (
     productId: string,
-    input: { mediaId: string; altText?: string }
+    input: { mediaId: string; altText?: string; locale?: string },
+    idempotencyKey: string
   ) => Promise<void>;
   onDeleteImage?: (productId: string, id: string) => Promise<void>;
   onReorderImages?: (productId: string, imageIds: string[]) => Promise<void>;
-  onAddRelation?: (input: AddProductRelationInput) => Promise<void>;
+  onUpdateImage?: (
+    productId: string,
+    id: string,
+    input: { position?: number; altText?: string; locale?: string },
+    idempotencyKey: string
+  ) => Promise<void>;
+  onListMedia?: () => Promise<
+    Array<{ id: string; name: string; url: string | null }>
+  >;
+  onAddRelation?: (
+    input: AddProductRelationInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onRemoveRelation?: (id: string) => Promise<void>;
   onReorderRelations?: (
     productId: string,
@@ -135,12 +175,18 @@ export interface ProductEditorPageProps {
     locale: string
   ) => Promise<ProductEffectiveForm | null>;
   initialBundles?: ProductBundle[];
-  onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
+  onCreateBundle?: (
+    input: CreateBundleInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onUpdateBundle?: (
     bundleId: string,
     input: UpdateBundleInput
   ) => Promise<void>;
-  onAddBundleItem?: (input: AddBundleItemInput) => Promise<void>;
+  onAddBundleItem?: (
+    input: AddBundleItemInput,
+    idempotencyKey: string
+  ) => Promise<void>;
   onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
 }
 
@@ -153,6 +199,7 @@ export function ProductEditorPage({
   recoveryOnly = false,
   initialProduct,
   categories,
+  brands = [],
   initialEffectiveForm = null,
   initialAttributeValues = [],
   initialRelations = EMPTY_RELATIONS,
@@ -164,11 +211,17 @@ export function ProductEditorPage({
   onAddVariant,
   onUpdateVariant,
   onDeleteVariant,
+  onFetchPriceLists,
+  onUpsertVariantPrice,
+  onPreviewVariantDiscount,
+  onApplyVariantDiscount,
+  onListMedia,
   onPreviewVariantAxes,
   onSetVariantAxes,
   onAddImage,
   onDeleteImage,
   onReorderImages,
+  onUpdateImage,
   onAddRelation,
   onRemoveRelation,
   onReorderRelations,
@@ -299,6 +352,9 @@ export function ProductEditorPage({
     initialProduct?.shippingProfileSlug || ''
   );
   const [tags, setTags] = React.useState<string[]>(initialProduct?.tags || []);
+  const [productBrands, setProductBrands] = React.useState<ProductBrandItem[]>(
+    initialProduct?.brands ?? []
+  );
   const [status, setStatus] = React.useState(initialProduct?.status || 'DRAFT');
 
   // Category & Effective Form fields
@@ -420,6 +476,25 @@ export function ProductEditorPage({
     setSelectedCategoryId(categoryId);
     setEffectiveForm(null);
     setIsLoadingForm(Boolean(categoryId && fetchEffectiveForm));
+  };
+
+  const handleAddLocale = (locale: string) => {
+    setTranslations((prev) =>
+      prev[locale]
+        ? prev
+        : {
+            ...prev,
+            [locale]: {
+              locale,
+              title: '',
+              handle: '',
+              description: '',
+              metaTitle: '',
+              metaDescription: ''
+            }
+          }
+    );
+    setActiveLocale(locale);
   };
 
   const handleTranslationChange = (
@@ -709,6 +784,7 @@ export function ProductEditorPage({
           shippingProfileSlug: shippingProfileSlug.trim() || undefined,
           primaryCategoryId: selectedCategoryId || null,
           tags,
+          brands: isNew ? undefined : productBrands,
           status,
           revision: documentRevision,
           ...(isNew
@@ -1048,6 +1124,7 @@ export function ProductEditorPage({
                   translations={translations}
                   activeLocale={activeLocale}
                   onActiveLocaleChange={setActiveLocale}
+                  onAddLocale={handleAddLocale}
                   onTranslationChange={handleTranslationChange}
                   vendor={vendor}
                   onVendorChange={setVendor}
@@ -1059,6 +1136,10 @@ export function ProductEditorPage({
                   onShippingProfileSlugChange={setShippingProfileSlug}
                   tags={tags}
                   onTagsChange={setTags}
+                  brands={brands}
+                  productBrands={productBrands}
+                  onProductBrandsChange={setProductBrands}
+                  canManageBrands={!isNew && !recoveryOnly}
                   disabled={isSaving || pendingOperation !== null}
                 />
 
@@ -1216,6 +1297,47 @@ export function ProductEditorPage({
                   />
                 )}
 
+                {/* Channel Pricing (price lists & discounts via the Pricing owner) */}
+                {!isNew && initialProduct?.id && (
+                  <ProductChannelPricingCard
+                    variants={variants}
+                    onFetchPriceLists={onFetchPriceLists}
+                    onUpsertPrice={
+                      onUpsertVariantPrice
+                        ? async (variantId, input) => {
+                            assertEditorialWriteResolved();
+                            await onUpsertVariantPrice(
+                              initialProduct.id,
+                              variantId,
+                              input
+                            );
+                            router.refresh();
+                          }
+                        : undefined
+                    }
+                    onPreviewDiscount={onPreviewVariantDiscount}
+                    onApplyDiscount={
+                      onApplyVariantDiscount
+                        ? async (variantId, input) => {
+                            assertEditorialWriteResolved();
+                            await onApplyVariantDiscount(
+                              initialProduct.id,
+                              variantId,
+                              input
+                            );
+                            router.refresh();
+                          }
+                        : undefined
+                    }
+                    disabled={
+                      !recoveryReady ||
+                      !!recoveryError ||
+                      isSaving ||
+                      pendingOperation !== null
+                    }
+                  />
+                )}
+
                 {/* Product Relations (Cross-sell, Up-sell, Accessories, Alternatives) */}
                 {!isNew && initialProduct?.id && (
                   <ProductRelationsCard
@@ -1223,9 +1345,9 @@ export function ProductEditorPage({
                     relations={relations}
                     onAddRelation={
                       onAddRelation
-                        ? async (input) => {
+                        ? async (input, idempotencyKey) => {
                             assertEditorialWriteResolved();
-                            await onAddRelation(input);
+                            await onAddRelation(input, idempotencyKey);
                             router.refresh();
                           }
                         : undefined
@@ -1271,9 +1393,9 @@ export function ProductEditorPage({
                     }
                     onCreateBundle={
                       onCreateBundle
-                        ? async (input) => {
+                        ? async (input, idempotencyKey) => {
                             assertEditorialWriteResolved();
-                            await onCreateBundle(input);
+                            await onCreateBundle(input, idempotencyKey);
                             router.refresh();
                           }
                         : undefined
@@ -1289,9 +1411,9 @@ export function ProductEditorPage({
                     }
                     onAddBundleItem={
                       onAddBundleItem
-                        ? async (input) => {
+                        ? async (input, idempotencyKey) => {
                             assertEditorialWriteResolved();
-                            await onAddBundleItem(input);
+                            await onAddBundleItem(input, idempotencyKey);
                             router.refresh();
                           }
                         : undefined
@@ -1332,9 +1454,15 @@ export function ProductEditorPage({
                   images={images}
                   onAddImage={
                     initialProduct?.id && onAddImage
-                      ? async (img) => {
+                      ? async (img, idempotencyKey) => {
                           assertEditorialWriteResolved();
-                          await onAddImage(initialProduct.id, img);
+                          await onAddImage(
+                            initialProduct.id,
+                            // Alt text is authored against the active content
+                            // locale; the card itself stays locale-agnostic.
+                            { ...img, locale: activeLocale },
+                            idempotencyKey
+                          );
                           router.refresh();
                         }
                       : undefined
@@ -1357,6 +1485,21 @@ export function ProductEditorPage({
                         }
                       : undefined
                   }
+                  onUpdateImage={
+                    initialProduct?.id && onUpdateImage
+                      ? async (imageId, imageInput, idempotencyKey) => {
+                          assertEditorialWriteResolved();
+                          await onUpdateImage(
+                            initialProduct.id,
+                            imageId,
+                            imageInput,
+                            idempotencyKey
+                          );
+                          router.refresh();
+                        }
+                      : undefined
+                  }
+                  onListMedia={onListMedia}
                   disabled={isSaving || pendingOperation !== null}
                 />
 

@@ -76,24 +76,6 @@ impl ProductAttributeValidationRules {
             && self.required_locales.is_empty()
             && self.max_json_bytes.is_none()
     }
-
-    /// Value-level rules (existence is gated separately by `required`/`requiredLocales`).
-    #[expect(dead_code, reason = "helper predicate for schema rule classification")]
-    pub(crate) fn declares_value_rules(&self) -> bool {
-        self.min_length.is_some()
-            || self.max_length.is_some()
-            || self.pattern.is_some()
-            || self.min_number.is_some()
-            || self.max_number.is_some()
-            || self.min_date.is_some()
-            || self.max_date.is_some()
-            || self.min_datetime.is_some()
-            || self.max_datetime.is_some()
-            || self.min_selections.is_some()
-            || self.max_selections.is_some()
-            || self.allowed_option_ids.is_some()
-            || self.max_json_bytes.is_some()
-    }
 }
 
 fn schema_failure(rule: &str, detail: impl std::fmt::Display) -> CommerceError {
@@ -1011,7 +993,6 @@ mod tests {
             declared.required_locales,
             vec!["ru".to_string(), "en".to_string()]
         );
-        assert!(!declared.declares_value_rules());
         assert!(!declared.is_empty());
 
         let optional = rules(json!({ "minLength": 1 }));
@@ -1024,7 +1005,6 @@ mod tests {
         let declared = rules(json!({}));
 
         assert!(declared.is_empty());
-        assert!(!declared.declares_value_rules());
         assert_rules_pass(&declared, AttributeValueType::Text, &text("anything"));
     }
 }

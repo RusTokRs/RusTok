@@ -45,4 +45,8 @@ export * from './components/ShippingProfilesTemplate';
 export * from './components/CartPromotionsTemplate';
 export * from './components/OrderChangesTemplate';
 export * from './components/ReturnDecisionsTemplate';
+export * from './components/order-detail';
 export * from './components/orders-table';
+export * from './components/payments-table';
+export * from './components/refunds-table';
+export * from './components/fulfillments-table';

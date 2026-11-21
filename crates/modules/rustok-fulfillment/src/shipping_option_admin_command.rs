@@ -233,52 +233,57 @@ impl InProcessShippingOptionAdminCommandPort {
 
             let response = match command {
                 ShippingOptionAdminCommand::Create(request) => {
-                    self.service
-                        .create_shipping_option_in_txn(
-                            &txn,
-                            tenant_id,
-                            request.input,
-                            lease.operation_id,
-                        )
-                        .await
+                    let created = self.service.create_shipping_option_in_txn(
+                        &txn,
+                        tenant_id,
+                        request.input,
+                        lease.operation_id,
+                    )
+                    .await
+                    .map_err(|error| map_fulfillment_error(context, operation, error))?;
+                    idempotency::complete(&txn, lease, &created).await?;
+                    created
                 }
                 ShippingOptionAdminCommand::Update(request) => {
-                    self.service
-                        .update_shipping_option_in_txn(
-                            &txn,
-                            tenant_id,
-                            request.shipping_option_id,
-                            request.input,
-                            lease.operation_id,
-                        )
-                        .await
+                    let updated = self.service.update_shipping_option_in_txn(
+                        &txn,
+                        tenant_id,
+                        request.shipping_option_id,
+                        request.input,
+                        lease.operation_id,
+                    )
+                    .await
+                    .map_err(|error| map_fulfillment_error(context, operation, error))?;
+                    idempotency::complete(&txn, lease, &updated).await?;
+                    updated
                 }
                 ShippingOptionAdminCommand::Deactivate(request) => {
-                    self.service
-                        .set_shipping_option_active_in_txn(
-                            &txn,
-                            tenant_id,
-                            request.shipping_option_id,
-                            false,
-                            lease.operation_id,
-                        )
-                        .await
+                    let response = self.service.set_shipping_option_active_in_txn(
+                        &txn,
+                        tenant_id,
+                        request.shipping_option_id,
+                        false,
+                        lease.operation_id,
+                    )
+                    .await
+                    .map_err(|error| map_fulfillment_error(context, operation, error))?;
+                    idempotency::complete(&txn, lease, &response).await?;
+                    response
                 }
                 ShippingOptionAdminCommand::Reactivate(request) => {
-                    self.service
-                        .set_shipping_option_active_in_txn(
-                            &txn,
-                            tenant_id,
-                            request.shipping_option_id,
-                            true,
-                            lease.operation_id,
-                        )
-                        .await
+                    let response = self.service.set_shipping_option_active_in_txn(
+                        &txn,
+                        tenant_id,
+                        request.shipping_option_id,
+                        true,
+                        lease.operation_id,
+                    )
+                    .await
+                    .map_err(|error| map_fulfillment_error(context, operation, error))?;
+                    idempotency::complete(&txn, lease, &response).await?;
+                    response
                 }
-            }
-            .map_err(|error| map_fulfillment_error(context, operation, error))?;
-
-            idempotency::complete(&txn, lease, &response).await?;
+            };
 
             txn.commit().await.map_err(|error| {
                 map_fulfillment_error(context, operation, FulfillmentError::Database(error))
@@ -319,15 +324,15 @@ fn require_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context
-        .require_policy(PortCallPolicy::write())
-        .inspect_err(|error| {
-            log_port_error(context, operation, "policy", error);
-        })
+    if let Err(error) = context.require_policy(PortCallPolicy::write()) {
+        log_port_error(context, operation, "policy", &error);
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "fulfillment.tenant_id_invalid",
             "fulfillment command tenant context is invalid",

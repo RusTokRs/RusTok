@@ -58,7 +58,7 @@ for (const required of [
   "ProductCatalogSchemaWritePort",
   "schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>",
   "schema_write_port: None",
-  ".with_schema_write_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))",
+  ".with_schema_write_port(Arc::new(schema_service))",
   "pub fn with_schema_write_port(",
   "pub fn schema_write_port(&self) -> Option<Arc<dyn ProductCatalogSchemaWritePort>>",
 ]) {

@@ -54,8 +54,15 @@ for (const marker of [
   requireText(controls, marker, `${controlsPath}: missing typed control marker ${marker}`);
 }
 
+const portsTypesPath = "crates/modules/rustok-product/ports/src/types.rs";
+const portsTypes = read(portsTypesPath);
 for (const marker of [
+  "pub struct StorefrontProductListQuery",
   "pub category_id: Option<Uuid>",
+]) {
+  requireText(portsTypes, marker, `${portsTypesPath}: missing owner query marker ${marker}`);
+}
+for (const marker of [
   "StorefrontProductSortBy",
   "StorefrontProductSortDirection",
   "try_from_transport",
@@ -64,7 +71,7 @@ for (const marker of [
 }
 
 for (const marker of [
-  "PrimaryCategoryId.eq(category_id)",
+  "PrimaryCategoryId.is_in(subtree)",
   "StorefrontProductSortBy::PublishedAt",
   "StorefrontProductSortBy::CreatedAt",
   "StorefrontProductSortDirection::Asc",
@@ -95,7 +102,7 @@ for (const marker of [
   "pub struct StorefrontProductCatalogFilter",
   "pub category_id: Option<Uuid>",
   "StorefrontProductListQuery::try_new",
-  ".list_published_products_with_query(",
+  ".list_filtered_published_products(",
 ]) {
   requireText(graphqlResolver, marker, `${graphqlResolverPath}: missing GraphQL resolver marker ${marker}`);
 }

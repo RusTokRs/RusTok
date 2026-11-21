@@ -624,21 +624,9 @@ impl InProcessPaymentAdminCollectionCommandPort {
         }
 
         let provider_result = match provider_operation {
-            "authorize" => {
-                self.provider_registry
-                    .execute_authorize(provider_id, request)
-                    .await
-            }
-            "capture" => {
-                self.provider_registry
-                    .execute_capture(provider_id, request)
-                    .await
-            }
-            "cancel" => {
-                self.provider_registry
-                    .execute_cancel(provider_id, request)
-                    .await
-            }
+            "authorize" => self.provider_registry.execute_authorize(provider_id, request).await,
+            "capture" => self.provider_registry.execute_capture(provider_id, request).await,
+            "cancel" => self.provider_registry.execute_cancel(provider_id, request).await,
             _ => {
                 return Err(PortError::validation(
                     "payment.provider_operation_invalid",
@@ -937,11 +925,10 @@ fn require_admin_collection_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context
-        .require_policy(PortCallPolicy::write())
-        .inspect_err(|error| {
-            log_port_error(context, operation, "policy", error);
-        })?;
+    if let Err(error) = context.require_policy(PortCallPolicy::write()) {
+        log_port_error(context, operation, "policy", &error);
+        return Err(error);
+    }
     context.require_write_semantics().inspect_err(|error| {
         log_port_error(context, operation, "write_semantics", error);
     })

@@ -104,7 +104,7 @@
     "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
     "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
     "crates/modules/rustok-inventory/src/migrations/shared.rs": "80e89f26200fa065163621b62c73068cf73fdac7be4fc1ee2966a0c03a872d28",
-    "crates/libs/rustok-events/contracts/event-contract-digests.json": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121"
+    "crates/libs/rustok-events/contracts/event-contract-digests.json": "ffac583414ce80ce8a229f18f6ebc2399bd729fe5488c6c61f71ab6a88e367f0"
   },
   "compiled": false,
   "tests_executed": false,
@@ -145,7 +145,10 @@
         "output_sha256": "c669e2d1378affa7f4d5216a6fe86d72de6d84a4b2ce3c28da92a1c2e8e2365d"
       },
       {
-        "command": ["node", "scripts/verify/verify-product-catalog-schema.mjs"],
+        "command": [
+          "node",
+          "scripts/verify/verify-product-catalog-schema.mjs"
+        ],
         "exit_code": 0,
         "output_sha256": "18ca27d2eb73004e9eb6e349d047ac1c611f5092ea810be8a147f377c364347b"
       },
@@ -190,7 +193,10 @@
         "output_sha256": "b86c4fe6e62aac9d96ead05147a69c23d106db00415493b160b8e6791835e245"
       },
       {
-        "command": ["node", "scripts/verify/verify-inventory-stock-events.mjs"],
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-stock-events.mjs"
+        ],
         "exit_code": 0,
         "output_sha256": "266931937bd44f2fd8cb19b334d4f70472162ffd2e6a252f1cdb703c0afa7880"
       },
@@ -251,7 +257,10 @@
         "output_sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27"
       },
       {
-        "command": ["node", "scripts/verify/verify-product-atomic-save.mjs"],
+        "command": [
+          "node",
+          "scripts/verify/verify-product-atomic-save.mjs"
+        ],
         "exit_code": 0,
         "output_sha256": "b17a5119cf4f39acef6166216fc932818ceddce59d16726aefef8fac40248735"
       },
@@ -264,7 +273,10 @@
         "output_sha256": "a3d959a97b89a2682549167e5c23a58ab4e26496f3d6e3f8ce4a4134e0f87ac9"
       },
       {
-        "command": ["node", "scripts/verify/verify-product-admin-boundary.mjs"],
+        "command": [
+          "node",
+          "scripts/verify/verify-product-admin-boundary.mjs"
+        ],
         "exit_code": 0,
         "output_sha256": "a299f7ea53e7c3db534d60a159159c49ded8a5b34e69cc563ab502cbb071bf91"
       },

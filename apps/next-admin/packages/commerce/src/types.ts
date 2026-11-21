@@ -213,3 +213,216 @@ export type OrdersFilter = {
   page?: number;
   perPage?: number;
 };
+
+export type AdminOrderLineItem = {
+  id: string;
+  orderId: string;
+  productId: string | null;
+  variantId: string | null;
+  fulfillmentRequirement: string;
+  shippingProfileSlug: string | null;
+  sellerId: string | null;
+  sku: string | null;
+  title: string;
+  quantity: number;
+  unitPrice: string;
+  totalPrice: string;
+  currencyCode: string;
+  createdAt: string;
+};
+
+export type AdminOrderAdjustment = {
+  id: string;
+  orderId: string;
+  lineItemId: string | null;
+  sourceType: string;
+  sourceId: string | null;
+  amount: string;
+  currencyCode: string;
+  createdAt: string;
+};
+
+export type AdminOrderTaxLine = {
+  id: string;
+  orderId: string;
+  lineItemId: string | null;
+  shippingOptionId: string | null;
+  description: string | null;
+  providerId: string;
+  rate: string;
+  amount: string;
+  currencyCode: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminOrder = {
+  id: string;
+  tenantId: string;
+  channelId: string | null;
+  channelSlug: string | null;
+  customerId: string | null;
+  status: string;
+  currencyCode: string;
+  subtotalAmount: string;
+  adjustmentTotal: string;
+  shippingTotal: string;
+  totalAmount: string;
+  taxTotal: string;
+  taxIncluded: boolean;
+  paymentId: string | null;
+  paymentMethod: string | null;
+  trackingNumber: string | null;
+  carrier: string | null;
+  cancellationReason: string | null;
+  deliveredSignature: string | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  paidAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  lineItems: AdminOrderLineItem[];
+  adjustments: AdminOrderAdjustment[];
+  taxLines: AdminOrderTaxLine[];
+};
+
+export type AdminPayment = {
+  id: string;
+  paymentCollectionId: string;
+  providerId: string;
+  providerPaymentId: string;
+  status: string;
+  currencyCode: string;
+  amount: string;
+  capturedAmount: string;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  authorizedAt: string | null;
+  capturedAt: string | null;
+  cancelledAt: string | null;
+};
+
+export type AdminRefund = {
+  id: string;
+  tenantId: string;
+  paymentCollectionId: string;
+  status: string;
+  currencyCode: string;
+  amount: string;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  refundedAt: string | null;
+  cancelledAt: string | null;
+};
+
+export type AdminPaymentCollection = {
+  id: string;
+  tenantId: string;
+  cartId: string | null;
+  orderId: string | null;
+  customerId: string | null;
+  status: string;
+  currencyCode: string;
+  amount: string;
+  authorizedAmount: string;
+  capturedAmount: string;
+  refundedAmount: string;
+  providerId: string | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  authorizedAt: string | null;
+  capturedAt: string | null;
+  cancelledAt: string | null;
+  payments: AdminPayment[];
+  refunds: AdminRefund[];
+};
+
+export type AdminFulfillmentItem = {
+  id: string;
+  fulfillmentId: string;
+  orderLineItemId: string;
+  quantity: number;
+  shippedQuantity: number;
+  deliveredQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminFulfillment = {
+  id: string;
+  tenantId: string;
+  orderId: string;
+  shippingOptionId: string | null;
+  customerId: string | null;
+  status: string;
+  carrier: string | null;
+  trackingNumber: string | null;
+  deliveredNote: string | null;
+  cancellationReason: string | null;
+  items: AdminFulfillmentItem[];
+  createdAt: string;
+  updatedAt: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+};
+
+export type AdminOrderDetail = {
+  order: AdminOrder;
+  paymentCollection: AdminPaymentCollection | null;
+  fulfillment: AdminFulfillment | null;
+};
+
+export type PaymentCollectionsFilter = {
+  status?: string;
+  orderId?: string;
+  cartId?: string;
+  customerId?: string;
+  page?: number;
+  perPage?: number;
+};
+
+export type PaymentCollectionList = {
+  items: AdminPaymentCollection[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+};
+
+export type RefundsFilter = {
+  paymentCollectionId?: string;
+  orderId?: string;
+  status?: string;
+  page?: number;
+  perPage?: number;
+};
+
+export type RefundList = {
+  items: AdminRefund[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+};
+
+export type FulfillmentsFilter = {
+  status?: string;
+  orderId?: string;
+  customerId?: string;
+  page?: number;
+  perPage?: number;
+};
+
+export type FulfillmentList = {
+  items: AdminFulfillment[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+};

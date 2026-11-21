@@ -219,7 +219,7 @@ async fn advance_in(
         txn,
         tenant,
         request.after_variant_id,
-        request.limit,
+        request.limit + 1,
     )
     .await
     .map_err(|_| E::StateUnverified)?;

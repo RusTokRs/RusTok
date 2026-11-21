@@ -61,7 +61,7 @@ for (const required of [
   "ProductCatalogSchemaService::list_attribute_options(",
   "ProductCatalogSchemaService::load_product_attribute_values(",
   '"product.attribute_definition_missing"',
-  "correlation_id = %context.correlation_id",
+  "correlation_id_length = context_facts.correlation_id_length",
   '"product.database_unavailable"',
   '"product.validation"',
 ]) {
@@ -72,7 +72,7 @@ const runtime = read("crates/modules/rustok-product/src/runtime.rs");
 for (const required of [
   "schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>",
   "schema_read_port: None",
-  ".with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))",
+  ".with_schema_read_port(Arc::new(schema_service))",
   "pub fn with_schema_read_port(",
   "pub fn schema_read_port(&self)",
 ]) {

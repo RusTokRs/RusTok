@@ -147,17 +147,13 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
             fulfillment_id = %request.fulfillment_id,
             "reading fulfillment projection"
         );
-        let request_facts = fulfillment_lifecycle_read_request_facts(
+        execute_fulfillment_read(
+            &context,
+            "read_fulfillment_projection",
             Some(request.fulfillment_id),
             None,
             None,
             None,
-        );
-
-        execute_fulfillment_read(
-            &context,
-            "read_fulfillment_projection",
-            request_facts,
             self.inner
                 .get_fulfillment(tenant_id, request.fulfillment_id),
         )
@@ -183,14 +179,12 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
                 "customer_id must not be nil",
             ));
         }
-        let page = request.page.max(1);
-        let per_page = request.per_page.clamp(1, 100);
         tracing::debug!(
             owner = FULFILLMENT_OWNER,
             operation = "list_fulfillment_projections",
             correlation_id = %context.correlation_id,
-            page,
-            per_page,
+            page = request.page,
+            per_page = request.per_page,
             order_id = ?request.order_id,
             customer_id = ?request.customer_id,
             "listing fulfillment projections"
@@ -198,17 +192,18 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         let status_length = request.status.as_deref().map(str::len);
         let order_id = request.order_id;
         let customer_id = request.customer_id;
-        let request_facts =
-            fulfillment_lifecycle_read_request_facts(None, order_id, status_length, customer_id);
         let (items, total) = execute_fulfillment_read(
             &context,
             "list_fulfillment_projections",
-            request_facts,
+            None,
+            order_id,
+            status_length,
+            customer_id,
             self.inner.list_fulfillments(
                 tenant_id,
                 ListFulfillmentsInput {
-                    page,
-                    per_page,
+                    page: request.page,
+                    per_page: request.per_page,
                     status: request.status,
                     order_id,
                     customer_id,
@@ -240,13 +235,13 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
             order_id = %request.order_id,
             "finding latest fulfillment by order projection"
         );
-        let request_facts =
-            fulfillment_lifecycle_read_request_facts(None, Some(request.order_id), None, None);
-
         execute_fulfillment_read(
             &context,
             "find_latest_fulfillment_by_order_projection",
-            request_facts,
+            None,
+            Some(request.order_id),
+            None,
+            None,
             self.inner.find_by_order(tenant_id, request.order_id),
         )
         .await
@@ -256,7 +251,10 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
 async fn execute_fulfillment_read<T, F>(
     context: &PortContext,
     operation: &'static str,
-    request_facts: FulfillmentLifecycleReadRequestFacts,
+    fulfillment_id: Option<Uuid>,
+    order_id: Option<Uuid>,
+    status_length: Option<usize>,
+    customer_id: Option<Uuid>,
     future: F,
 ) -> Result<T, PortError>
 where
@@ -264,11 +262,25 @@ where
 {
     let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
     match tokio::time::timeout(deadline, future).await {
-        Ok(result) => {
-            result.map_err(|error| map_owner_error(context, operation, request_facts, error))
-        }
+        Ok(result) => result.map_err(|error| {
+            map_owner_error(
+                context,
+                operation,
+                fulfillment_id,
+                order_id,
+                status_length,
+                customer_id,
+                error,
+            )
+        }),
         Err(_) => {
             let context_facts = fulfillment_lifecycle_read_context_facts(context);
+            let request_facts = fulfillment_lifecycle_read_request_facts(
+                fulfillment_id,
+                order_id,
+                status_length,
+                customer_id,
+            );
             tracing::warn!(
                 owner = FULFILLMENT_OWNER,
                 operation,
@@ -485,9 +497,18 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 fn map_owner_error(
     context: &PortContext,
     operation: &'static str,
-    request_facts: FulfillmentLifecycleReadRequestFacts,
+    fulfillment_id: Option<Uuid>,
+    order_id: Option<Uuid>,
+    status_length: Option<usize>,
+    customer_id: Option<Uuid>,
     error: FulfillmentError,
 ) -> PortError {
+    let request_facts = fulfillment_lifecycle_read_request_facts(
+        fulfillment_id,
+        order_id,
+        status_length,
+        customer_id,
+    );
     let error_facts = fulfillment_lifecycle_owner_error_facts(&error);
     let (kind, code, message, retryable, technical_failure) = match &error {
         FulfillmentError::Validation(_) => (

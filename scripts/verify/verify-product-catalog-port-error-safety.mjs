@@ -16,6 +16,12 @@ const source = existsSync(filePath)
       .filter((file) => file.endsWith('.rs'))
       .map((file) => readFileSync(new URL(file, dirPath), 'utf8'))
       .join('\n');
+const commandPortPath = new URL(
+  'crates/modules/rustok-product/src/catalog_command_port.rs',
+  root,
+);
+const commandPort = readFileSync(commandPortPath, 'utf8');
+
 const failures = [];
 
 const requireText = (value, label) => {
@@ -38,6 +44,16 @@ for (const value of [
 ]) {
   forbidText(value, 'product catalog public error mapping');
 }
+
+const requireCommandText = (value, label) => {
+  if (!commandPort.includes(value)) failures.push(`${label}: missing ${value}`);
+};
+
+requireCommandText('code = "product.context_invalid"', 'context stable code');
+requireCommandText(
+  '"product operation could not be completed safely"',
+  'stable invariant message',
+);
 
 for (const [value, label] of [
   [
@@ -67,7 +83,6 @@ for (const [value, label] of [
   ['correlation_id = %context.correlation_id', 'correlation logging'],
   ['tenant_id_length = context_facts.tenant_id_length', 'tenant logging'],
   ['operation = owner_operation', 'owner operation logging'],
-  ['code = "product.context_invalid"', 'context stable code'],
   ['code = "product.database_unavailable"', 'database stable code'],
   ['code = "product.variant_not_found"', 'variant stable code'],
   ['"product request context is invalid"', 'stable context message'],
@@ -78,10 +93,6 @@ for (const [value, label] of [
   [
     '"product handle conflicts with an existing product"',
     'stable duplicate-handle message',
-  ],
-  [
-    '"product operation could not be completed safely"',
-    'stable invariant message',
   ],
   [
     'product_error_to_port_error(&context, owner_operation, error)',

@@ -71,7 +71,18 @@ impl CatalogService {
             query = query.filter(entities::product::Column::ProductType.eq(product_type));
         }
         if let Some(category_id) = list_query.category_id {
-            query = query.filter(entities::product::Column::PrimaryCategoryId.eq(category_id));
+            // An admin category filter selects the category and its live
+            // descendant subtree, mirroring the storefront navigation tree.
+            let subtree = load_category_filter_subtree(&self.db, tenant_id, category_id).await?;
+            query = if subtree.is_empty() {
+                // Unknown or deleted category: the filter matches no products.
+                query.filter(
+                    sea_orm::Condition::all()
+                        .add(sea_orm::sea_query::Expr::cust("1 = 0")),
+                )
+            } else {
+                query.filter(entities::product::Column::PrimaryCategoryId.is_in(subtree))
+            };
         }
         if let Some(search) = list_query.search.as_deref() {
             query = query.filter(admin_product_title_search_condition(

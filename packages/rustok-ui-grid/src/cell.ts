@@ -152,7 +152,8 @@ export function matchesFilterValue(filter: FilterValue | undefined, cell: CellVa
       const wanted = filter.value.trim();
       if (wanted.length === 0) return true;
       const current = cellTextOf(cell);
-      return current.length > 0 && equalsIgnoreAsciiCase(current, wanted);
+      // Blank cells match nothing, exactly like `!current.trim().is_empty()` in the Rust twin.
+      return current.trim().length > 0 && equalsIgnoreAsciiCase(current, wanted);
     }
     case 'number_range': {
       const value = cellNumberForFilter(cell);

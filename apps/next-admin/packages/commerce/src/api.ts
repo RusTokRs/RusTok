@@ -13,7 +13,14 @@ import type {
   ReturnDecisionResponse,
   OrderListItem,
   OrderList,
-  OrdersFilter
+  OrdersFilter,
+  AdminOrderDetail,
+  PaymentCollectionsFilter,
+  PaymentCollectionList,
+  RefundsFilter,
+  RefundList,
+  FulfillmentsFilter,
+  FulfillmentList
 } from './types';
 
 import {
@@ -608,4 +615,360 @@ export async function listOrders(
   );
 
   return response.orders;
+}
+
+export const ORDER_QUERY = `
+query CommerceAdminOrder($tenantId: UUID!, $id: UUID!) {
+  order(tenantId: $tenantId, id: $id) {
+    order {
+      id
+      tenantId
+      channelId
+      channelSlug
+      customerId
+      status
+      currencyCode
+      subtotalAmount
+      adjustmentTotal
+      shippingTotal
+      totalAmount
+      taxTotal
+      taxIncluded
+      paymentId
+      paymentMethod
+      trackingNumber
+      carrier
+      cancellationReason
+      deliveredSignature
+      createdAt
+      updatedAt
+      confirmedAt
+      paidAt
+      shippedAt
+      deliveredAt
+      cancelledAt
+      lineItems {
+        id
+        orderId
+        productId
+        variantId
+        fulfillmentRequirement
+        shippingProfileSlug
+        sellerId
+        sku
+        title
+        quantity
+        unitPrice
+        totalPrice
+        currencyCode
+        createdAt
+      }
+      adjustments {
+        id
+        orderId
+        lineItemId
+        sourceType
+        sourceId
+        amount
+        currencyCode
+        createdAt
+      }
+      taxLines {
+        id
+        orderId
+        lineItemId
+        shippingOptionId
+        description
+        providerId
+        rate
+        amount
+        currencyCode
+        createdAt
+        updatedAt
+      }
+    }
+    paymentCollection {
+      id
+      tenantId
+      cartId
+      orderId
+      customerId
+      status
+      currencyCode
+      amount
+      authorizedAmount
+      capturedAmount
+      refundedAmount
+      providerId
+      cancellationReason
+      createdAt
+      updatedAt
+      authorizedAt
+      capturedAt
+      cancelledAt
+      payments {
+        id
+        paymentCollectionId
+        providerId
+        providerPaymentId
+        status
+        currencyCode
+        amount
+        capturedAmount
+        errorMessage
+        createdAt
+        updatedAt
+        authorizedAt
+        capturedAt
+        cancelledAt
+      }
+      refunds {
+        id
+        tenantId
+        paymentCollectionId
+        status
+        currencyCode
+        amount
+        reason
+        createdAt
+        updatedAt
+        refundedAt
+        cancelledAt
+      }
+    }
+    fulfillment {
+      id
+      tenantId
+      orderId
+      shippingOptionId
+      customerId
+      status
+      carrier
+      trackingNumber
+      deliveredNote
+      cancellationReason
+      items {
+        id
+        fulfillmentId
+        orderLineItemId
+        quantity
+        shippedQuantity
+        deliveredQuantity
+        createdAt
+        updatedAt
+      }
+      createdAt
+      updatedAt
+      shippedAt
+      deliveredAt
+      cancelledAt
+    }
+  }
+}
+`;
+
+export async function getOrderDetail(
+  opts: GqlOpts,
+  id: string
+): Promise<AdminOrderDetail | null> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to view orders.');
+  }
+
+  const response = await (opts.graphql ?? graphqlRequest)<
+    { tenantId: string; id: string },
+    { order: AdminOrderDetail | null }
+  >(
+    ORDER_QUERY,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return response.order;
+}
+
+export const PAYMENT_COLLECTIONS_QUERY = `
+query CommerceAdminPaymentCollections($tenantId: UUID!, $filter: PaymentCollectionsFilter) {
+  paymentCollections(tenantId: $tenantId, filter: $filter) {
+    total
+    page
+    perPage
+    hasNext
+    items {
+      id
+      tenantId
+      cartId
+      orderId
+      customerId
+      status
+      currencyCode
+      amount
+      authorizedAmount
+      capturedAmount
+      refundedAmount
+      providerId
+      cancellationReason
+      createdAt
+      updatedAt
+      authorizedAt
+      capturedAt
+      cancelledAt
+      payments {
+        id
+        paymentCollectionId
+        providerId
+        providerPaymentId
+        status
+        currencyCode
+        amount
+        capturedAmount
+        errorMessage
+        createdAt
+        updatedAt
+        authorizedAt
+        capturedAt
+        cancelledAt
+      }
+      refunds {
+        id
+        tenantId
+        paymentCollectionId
+        status
+        currencyCode
+        amount
+        reason
+        createdAt
+        updatedAt
+        refundedAt
+        cancelledAt
+      }
+    }
+  }
+}
+`;
+
+export async function listPaymentCollections(
+  opts: GqlOpts,
+  filter?: PaymentCollectionsFilter
+): Promise<PaymentCollectionList> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage payments.');
+  }
+
+  const response = await (opts.graphql ?? graphqlRequest)<
+    { tenantId: string; filter?: PaymentCollectionsFilter },
+    { paymentCollections: PaymentCollectionList }
+  >(
+    PAYMENT_COLLECTIONS_QUERY,
+    { tenantId: opts.tenantId, filter },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return response.paymentCollections;
+}
+
+export const REFUNDS_QUERY = `
+query CommerceAdminRefunds($tenantId: UUID!, $filter: RefundsFilter) {
+  refunds(tenantId: $tenantId, filter: $filter) {
+    total
+    page
+    perPage
+    hasNext
+    items {
+      id
+      tenantId
+      paymentCollectionId
+      status
+      currencyCode
+      amount
+      reason
+      createdAt
+      updatedAt
+      refundedAt
+      cancelledAt
+    }
+  }
+}
+`;
+
+export async function listRefunds(
+  opts: GqlOpts,
+  filter?: RefundsFilter
+): Promise<RefundList> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage refunds.');
+  }
+
+  const response = await (opts.graphql ?? graphqlRequest)<
+    { tenantId: string; filter?: RefundsFilter },
+    { refunds: RefundList }
+  >(
+    REFUNDS_QUERY,
+    { tenantId: opts.tenantId, filter },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return response.refunds;
+}
+
+export const FULFILLMENTS_QUERY = `
+query CommerceAdminFulfillments($tenantId: UUID!, $filter: FulfillmentsFilter) {
+  fulfillments(tenantId: $tenantId, filter: $filter) {
+    total
+    page
+    perPage
+    hasNext
+    items {
+      id
+      tenantId
+      orderId
+      shippingOptionId
+      customerId
+      status
+      carrier
+      trackingNumber
+      deliveredNote
+      cancellationReason
+      items {
+        id
+        fulfillmentId
+        orderLineItemId
+        quantity
+        shippedQuantity
+        deliveredQuantity
+        createdAt
+        updatedAt
+      }
+      createdAt
+      updatedAt
+      shippedAt
+      deliveredAt
+      cancelledAt
+    }
+  }
+}
+`;
+
+export async function listFulfillments(
+  opts: GqlOpts,
+  filter?: FulfillmentsFilter
+): Promise<FulfillmentList> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage fulfillments.');
+  }
+
+  const response = await (opts.graphql ?? graphqlRequest)<
+    { tenantId: string; filter?: FulfillmentsFilter },
+    { fulfillments: FulfillmentList }
+  >(
+    FULFILLMENTS_QUERY,
+    { tenantId: opts.tenantId, filter },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return response.fulfillments;
 }
