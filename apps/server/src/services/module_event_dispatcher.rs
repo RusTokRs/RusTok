@@ -31,6 +31,16 @@ pub struct ModuleEventDispatcherRequirement(pub bool);
 /// request a cooperative drain and join the receive loop instead of leaking it
 /// past the server. Abort remains the emergency fallback after the host drain
 /// deadline.
+// A separate type per worker makes registration atomic without requiring a
+// Clone implementation for a JoinHandle or publishing a provisional handle.
+#[cfg(feature = "mod-commerce")]
+struct PaidOrderLabelWorkerReservation;
+#[cfg(feature = "commerce-marketplace-financial")]
+struct MarketplaceFinancialWorkerReservation;
+#[cfg(feature = "mod-payment")]
+struct PaymentProviderEventWorkerReservation;
+struct ModuleEventDispatcherReservation;
+
 pub struct ModuleEventDispatcherHandle {
     running: rustok_core::RunningDispatcher,
 }
@@ -204,61 +214,73 @@ fn enrich_runtime_extensions_after_event_start(
 
 #[cfg(feature = "mod-commerce")]
 fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(PaidOrderLabelWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     if let Some(handle) =
         crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         )
     {
         ctx.shared_insert(handle);
+    } else {
+        // The dependent fulfillment registry is not ready. Do not permanently
+        // reserve a worker that never started: a later composition may retry.
+        ctx.shared_remove::<PaidOrderLabelWorkerReservation>();
     }
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
 fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(MarketplaceFinancialWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     if let Some(handle) =
         crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         )
     {
         ctx.shared_insert(handle);
+    } else {
+        ctx.shared_remove::<MarketplaceFinancialWorkerReservation>();
     }
 }
 
 #[cfg(feature = "mod-payment")]
 fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
         || ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >()
+        || !ctx.shared_insert_if_absent(PaymentProviderEventWorkerReservation)
     {
         return;
     }
 
-    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     ctx.shared_insert(
         crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
             ctx.clone(),
-            stop_rx,
+            stop.subscribe(),
         ),
     );
 }
@@ -783,13 +805,17 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
     use crate::services::product_media_release_worker::spawn_product_media_release_worker;
     // Reserve before spawning: concurrent composition must not create two workers.
     struct ProductMediaReleaseWorkerReservation;
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if !ctx.settings().runtime.runs_background_workers()
+        || stop.is_stopping()
+        || ctx.shared_contains::<
+            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+        >()
         || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
     {
         return;
     }
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop.subscribe()));
 }
 
 #[cfg(test)]
