@@ -166,6 +166,10 @@ if (!pushBranches?.includes('      - "arena/**"')) {
 for (const pathMarker of [
   '"crates/libs/rustok-events/**"',
   '"crates/libs/rustok-outbox-storage/**"',
+  '"crates/modules/rustok-ai/src/direct.rs"',
+  '"crates/modules/rustok-ai/src/direct_order_generation.rs"',
+  '"crates/modules/rustok-ai/src/service/mcp.rs"',
+  '"crates/modules/rustok-auth/src/graphql/rate_limit.rs"',
   '"crates/modules/rustok-channel/admin/**"',
   '"crates/modules/rustok-product/**"',
   '"crates/modules/rustok-index/**"',
