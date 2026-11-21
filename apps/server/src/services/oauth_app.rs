@@ -3514,6 +3514,86 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn manual_oauth_edit_and_revoke_reject_newly_manifest_owned_app() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Pending ownership change".to_string(),
+                    slug: "pending-ownership-change".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+        let app_id = created.app.id;
+        assert!(created.app.can_edit() && created.app.can_revoke());
+
+        // Model the ownership transfer performed by a manifest reconciliation:
+        // a different writer acquires the canonical row fence and commits new
+        // ownership before either manual mutation is admitted.
+        let tx = db.begin().await.expect("ownership transaction");
+        let before = lock_oauth_app_for_mutation(&tx, app_id, tenant.id)
+            .await
+            .expect("lock app")
+            .expect("manual app still exists");
+        assert!(before.can_edit());
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::AutoCreated, Expr::value(true))
+            .col_expr(
+                oauth_apps::Column::ManifestRef,
+                Expr::value(Some("manifest-owned".to_string())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&tx)
+            .await
+            .expect("manifest claims ownership");
+        tx.commit().await.expect("ownership commits");
+
+        let edit = OAuthAppService::update_app(
+            &db,
+            tenant.id,
+            app_id,
+            UpdateOAuthAppInput {
+                name: "Unexpected manual edit".to_string(),
+                description: None,
+                icon_url: None,
+                redirect_uris: vec!["https://attacker.example.com/callback".to_string()],
+                scopes: vec!["catalog:write".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: vec![],
+            },
+        )
+        .await;
+        assert!(matches!(edit, Err(Error::BadRequest(_))));
+        let revoke = OAuthAppService::revoke_app(&db, tenant.id, app_id).await;
+        assert!(matches!(revoke, Err(Error::BadRequest(_))));
+
+        let stored = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .one(&db)
+            .await
+            .expect("reload claimed app")
+            .expect("app remains");
+        assert!(stored.is_active());
+        assert!(stored.managed_by_manifest());
+        assert_eq!(stored.redirect_uris_list(), vec!["https://partner.example.com/callback"]);
+        assert!(stored.revoked_at.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manifest_managed_apps_are_read_only_but_secret_rotation_still_works() {
         let (db, tenant) = test_db_with_tenant().await;
         let secret = generate_client_secret().expect("generate client secret");
