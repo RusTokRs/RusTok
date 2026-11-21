@@ -346,7 +346,9 @@ impl FromRef<ServerAuthRuntime> for Arc<RustokSettings> {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerSharedValues;
+    use super::{ServerRuntimeContext, ServerSharedValues};
+    use crate::common::settings::RustokSettings;
+    use sea_orm::DatabaseConnection;
 
     #[test]
     fn shared_take_returns_and_removes_the_typed_value() {
