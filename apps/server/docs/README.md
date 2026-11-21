@@ -477,7 +477,11 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   code from being inserted after a competing app/consent revocation already
   invalidated the then-pending codes. App, consent, password, and user-status
   revocation also invalidate outstanding authorization codes, preventing
-  pending credentials from surviving a later reactivation.
+  pending credentials from surviving a later reactivation. When an
+  authoritative issuance check rejects a stale HTTP preflight, the
+  controller returns a redacted `invalid_client`, `invalid_request` or
+  `access_denied` protocol error instead of incorrectly reporting a
+  persistence failure; unexpected database failures remain `server_error`.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
