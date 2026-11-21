@@ -1,5 +1,29 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — global DLQ observer lifecycle (2026-11-21)
+
+The physical Event DLQ duplicate-alert observer and its telemetry companion
+were separate check-then-spawn paths: both called
+`shared_contains::<...Handle>()` before unconditionally publishing a
+`shared_insert`, without fencing shutdown. Concurrent direct invocations
+could orphan one live Tokio task or overwrite the handle, and a late caller
+could publish after shutdown had snapshotted workers. Repeated startup also
+silently treated a retained but exited handle as an active observer.
+
+The two starters now share an `EventDlqObserverInitializationLock`
+(`std::sync::Mutex`; neither startup function suspends while holding it).
+Shutdown takes the same lock after signaling stop and before taking its
+handle snapshot, preserving the bootstrap → runtime-workers → observer lock
+order. After acquisition, starters reject already-stopping hosts and check
+whether any retained task finished. An exited task remains registered for
+shutdown and emits a stable error diagnostic instead of being overwritten.
+Static no-task modes remain idempotent, and startup errors remain
+non-blocking for event delivery. Focused tests exercise completed handles
+and post-stop startup for each companion.
+
+No tests, compiler checks or rustfmt were executed; the maintainer owns
+verification and runtime contention evidence.
+
 ## Server audit continuation — Social Graph observer lifecycle (2026-11-21)
 
 Two independent Social Graph Index operational observers (consumer position and

@@ -6,6 +6,16 @@ Status: **bounded Prometheus telemetry and identifier-free health companion sour
 
 The physical DLQ duplicate observer already publishes a latest-value, count-free alert evaluation. A separate server-owned companion projects that public handle into the shared telemetry registry and an in-process health snapshot without changing scanner, retry, cursor, or event-delivery behavior.
 
+## Task lifecycle
+
+The companion shares the physical scanner's process-local initialization
+mutex. Shutdown takes this mutex before collecting both task handles, so a
+direct companion start cannot publish after the shutdown snapshot. A
+previously registered finished task is retained for join accounting and
+logged with a stable diagnostic; a stopped runtime admits no new companion.
+Disabled, not-applicable and unavailable modes still project a static
+health state without starting background telemetry work.
+
 ## Health projection
 
 `EventDlqDuplicateAlertObservabilityHandle::current()` returns only:

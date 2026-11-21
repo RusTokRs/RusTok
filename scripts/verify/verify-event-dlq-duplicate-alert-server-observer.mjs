@@ -237,9 +237,21 @@ const expectedIggyTests = [
   "invalid_partition_count_fails_closed",
   "stable_errors_expose_no_connection_details",
 ];
+for (const marker of [
+  "EventDlqObserverInitializationLock::ensure(ctx)",
+  "event_dlq_duplicate_alert_task_exited",
+  "event_dlq_duplicate_alert_start_stopping",
+  "exited_dlq_scan_task_is_not_replaced_by_repeat_startup",
+  "dlq_scan_does_not_register_after_shutdown",
+]) {
+  requireText("server DLQ observer lifecycle", serverSource, marker);
+}
+
 const expectedServerTests = [
   "every_event_delivery_profile_has_an_explicit_observer_mode",
   "startup_unavailable_state_has_no_task_or_snapshot",
+  "exited_dlq_scan_task_is_not_replaced_by_repeat_startup",
+  "dlq_scan_does_not_register_after_shutdown",
   "scan_mode_parser_preserves_global_default_and_explicit_opt_in_modes",
   "moving_window_configuration_is_explicit_and_fail_closed",
   "boolean_parser_is_bounded",

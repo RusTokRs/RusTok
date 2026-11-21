@@ -243,6 +243,21 @@ impl ModuleArtifactMaintenanceInitializationLock {
     }
 }
 
+/// Serializes the physical DLQ duplicate scanner and its companion's
+/// admission with shutdown's JoinHandle snapshot. Only synchronous operations
+/// run while this lock is held, including the async scanner starter (which has
+/// no await points); it is distinct from the router bootstrap mutex.
+#[derive(Clone, Default)]
+pub(crate) struct EventDlqObserverInitializationLock(
+    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
+);
+
+impl EventDlqObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
 /// Serializes both Social Graph operational observers' handle publication
 /// against the runtime shutdown snapshot. This lock is independent of the
 /// bootstrap lock: direct observer starters also use it without needing to
@@ -949,6 +964,15 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let _observer_initialization_guard = observer_initialization.0.lock().await;
     #[cfg(feature = "mod-social_graph")]
     drop(_observer_initialization_guard);
+
+    // Direct DLQ observer/projection startup may bypass router bootstrap.
+    // Synchronize both check-stop -> publish paths with the shutdown snapshot.
+    let dlq_observer_initialization = EventDlqObserverInitializationLock::ensure(runtime_ctx);
+    let _dlq_observer_guard = dlq_observer_initialization
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    drop(_dlq_observer_guard);
 
     let timeout_duration = Duration::from_secs(5);
 

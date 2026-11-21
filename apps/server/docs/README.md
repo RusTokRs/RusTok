@@ -414,6 +414,14 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
+- The global Event DLQ physical duplicate-alert scanner and identifier-free
+  telemetry companion share a shutdown-aware registration lock. Their
+  `shared_contains` / `shared_insert` race could spawn duplicate tasks,
+  overwrite the only shutdown `JoinHandle`, or publish a new task after the
+  shutdown snapshot. Repeated startup of a terminated task now emits a stable
+  error diagnostic and retains the old handle for shutdown accounting; modes
+  without tasks (`Disabled`, `Unavailable`, `NotApplicableOutbox`) remain
+  idempotent and do not impede event delivery.
 - Social Graph Index position and poison-receipt observers have independent
   single-owner startup reservations and a shared admission lock that the
   shutdown drain also acquires before snapshotting observer JoinHandles.
