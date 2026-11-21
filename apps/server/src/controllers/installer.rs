@@ -19,6 +19,7 @@ use rustok_installer_persistence::{
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::panic::AssertUnwindSafe;
+use std::future::Future;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -193,6 +194,49 @@ impl Drop for InstallerJobRuntimeGuard {
     }
 }
 
+/// The HTTP request may be cancelled while the durable running claim is
+/// being written. Give both the claim and its execution to the same spawned
+/// task *before* awaiting the claim result, so disconnects cannot strand a
+/// running row whose installer task was never launched.
+fn spawn_persisted_installer_job<F>(
+    ctx: ServerRuntimeContext,
+    persistence: InstallerPersistenceService,
+    job_id: Uuid,
+    submitted_at: DateTime<Utc>,
+    execute: F,
+) -> tokio::sync::oneshot::Receiver<std::result::Result<(), sea_orm::DbErr>>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        // Own the reservation from the first poll until the job terminates.
+        // Cancellation of the caller does not drop this guard or the task.
+        let _guard = InstallerJobRuntimeGuard { ctx };
+        let creation = persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .map(|_| ());
+        let created = creation.is_ok();
+        let _ = ready_tx.send(creation);
+        if created {
+            execute.await;
+        }
+    });
+    ready_rx
+}
+
+fn require_installer_not_stopping(ctx: &ServerRuntimeContext) -> Result<()> {
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(http_error(HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "installer_stopping",
+            "Installer is unavailable while the server is stopping",
+        )));
+    }
+    Ok(())
+}
+
 fn validate_http_lock_ttl_secs(requested: Option<i64>) -> Result<i64> {
     let ttl_secs = requested.unwrap_or(DEFAULT_INSTALL_LOCK_TTL_SECS);
     if !is_valid_install_lock_ttl_secs(ttl_secs) {
@@ -215,6 +259,7 @@ async fn apply(
     tracing::debug!(environment = ?request.plan.environment, "Handling installer apply request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
+    require_installer_not_stopping(&ctx)?;
     let lock_ttl_secs = validate_http_lock_ttl_secs(request.lock_ttl_secs)?;
 
     if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
@@ -231,15 +276,6 @@ async fn apply(
 
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
-
-    if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
-        return Err(http_error(HttpError::new(
-            StatusCode::CONFLICT,
-            "installer_running",
-            "An installation job is already running",
-        )));
-    }
-
     let submitted_at = Utc::now();
     let attempt_id = Uuid::new_v4();
     let lock_owner = build_install_lock_owner(
@@ -263,36 +299,27 @@ async fn apply(
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .ok_or_else(|| {
-            ctx.shared_take::<ActiveInstallerJobHandle>();
             Error::Message(
                 "static module registry is unavailable before installer execution".to_string(),
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    if let Err(error) = persistence
-        .create_http_job(job_id, job_id, submitted_at)
-        .await
-    {
-        ctx.shared_take::<ActiveInstallerJobHandle>();
-        if matches!(
-            error.sql_err(),
-            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-        ) {
-            // The database (not a process-local precheck) arbitrates the
-            // single running claim across concurrent installer replicas.
-            return Err(http_error(HttpError::new(
-                StatusCode::CONFLICT,
-                "installer_running",
-                "An installation job is already running",
-            )));
-        }
-        tracing::error!(job_id = %job_id, "Failed to create durable installer HTTP job");
-        return Err(internal_error("failed to create installer job"));
+
+    // All fallible preparation ends before the local reservation. The durable
+    // claim and its execution are then owned by one detached task, never by
+    // the cancelable HTTP request future.
+    require_installer_not_stopping(&ctx)?;
+    if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
+        return Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        )));
     }
 
-    let job_ctx = ctx.clone();
-    let _job_task = tokio::spawn(async move {
-        let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
+    let persisted_for_execution = persistence.clone();
+    let execution_task = async move {
+        let persistence = persisted_for_execution;
         let execution = AssertUnwindSafe(async { executor.apply(plan, apply_options).await })
             .catch_unwind()
             .await;
@@ -332,7 +359,27 @@ async fn apply(
                 }
             }
         }
-    });
+    };
+    let ready = spawn_persisted_installer_job(ctx, persistence, job_id, submitted_at, execution_task);
+    let created = ready.await.map_err(|_| {
+        tracing::error!(%job_id, "Installer claim task exited before acknowledging durable job creation");
+        internal_error("installer job creation did not complete")
+    })?;
+    if let Err(error) = created {
+        if matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            // The database arbitrates the single running claim across replicas.
+            return Err(http_error(HttpError::new(
+                StatusCode::CONFLICT,
+                "installer_running",
+                "An installation job is already running",
+            )));
+        }
+        tracing::error!(%job_id, "Failed to create durable installer HTTP job");
+        return Err(internal_error("failed to create installer job"));
+    }
 
     Ok((
         StatusCode::ACCEPTED,
