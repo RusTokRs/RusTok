@@ -464,6 +464,16 @@ async fn abort_and_join_incoming_forwarder(task: tokio::task::JoinHandle<()>) {
     }
 }
 
+fn strip_ws_bearer_scheme(value: &str) -> &str {
+    let value = value.trim();
+    if let Some((scheme, token)) = value.split_once(' ')
+        && scheme.eq_ignore_ascii_case("bearer")
+    {
+        return token.trim();
+    }
+    value
+}
+
 async fn bounded_ws_connection_init<F>(
     validation: F,
     timeout: Duration,
@@ -723,16 +733,14 @@ async fn build_ws_connection_data(
     let tenant_ctx = tenant::resolve_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
         .map_err(|error| {
-            tracing::warn!(error = %error, "GraphQL WebSocket tenant resolution failed");
+            tracing::warn!(
+                failure_code = "graphql_ws_tenant_resolution_failed",
+                "GraphQL WebSocket tenant resolution failed"
+            );
             async_graphql::Error::new(error.client_message())
         })?;
     ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
-    let access_token = token
-        .trim()
-        .strip_prefix("Bearer ")
-        .or_else(|| token.trim().strip_prefix("bearer "))
-        .unwrap_or(token.trim())
-        .to_string();
+    let access_token = strip_ws_bearer_scheme(token.trim()).to_string();
     let current_user =
         resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
             .await
@@ -1788,5 +1796,21 @@ mod incoming_forwarder_shutdown_tests {
         super::abort_and_join_incoming_forwarder(task).await;
 
         assert!(dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn websocket_bearer_scheme_is_case_insensitive() {
+        for value in [
+            "Bearer access-token",
+            "bearer access-token",
+            "BEARER access-token",
+            "bEaReR access-token",
+        ] {
+            assert_eq!(super::strip_ws_bearer_scheme(value), "access-token");
+        }
+        assert_eq!(
+            super::strip_ws_bearer_scheme("raw-access-token"),
+            "raw-access-token"
+        );
     }
 }
