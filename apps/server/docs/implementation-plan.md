@@ -1,5 +1,23 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — registry publish middleware parity (2026-11-21)
+
+The outer `registry_remote_claim::claim_atomic` middleware delegated only
+the exact `POST /v2/catalog/publish` pathname to the host publication
+metadata policy; the owning `registry_publish_policy::is_publish_path`
+explicitly accepted trailing slash variants. A routed alias could therefore
+reach the registry handler without the same ownership, trust-level and
+session-authority checks. Both boundaries now share the policy's canonical
+path recognizer; a focused regression covers exact and trailing slash
+variants and rejects non-publish/mismatched methods.
+
+The metadata policy also previously rewrote the JSON request body while
+retaining the incoming `Transfer-Encoding` header. The normalized-body
+constructor now drops both stale `Content-Length` and
+`Transfer-Encoding`, matching the already-correct MCP body-normalization
+pattern. A regression checks that unrelated headers survive.
+Source/runtime tests, builds and formatting remain maintainer-run.
+
 ## Server audit continuation — production CORS authorization (2026-11-21)
 
 Production CORS previously inserted `http://127.0.0.1:5150` whenever

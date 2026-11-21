@@ -868,6 +868,14 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
 - For server-composed static enable, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this does not fence static rollouts. Existing semantic lifecycle replays preserve the original operation result.
 - Schema lookup rejects unknown modules and missing or unmaterialized package manifests, including inline settings declarations without package evidence. Exact lifecycle replays are checked before a schema lookup failure blocks new enable or enable-direction compensation commands. The filesystem lookup is not release-bound; release images without these files reject fresh settings and enable commands until release-owned schema evidence is wired.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
+- Registry publication request classification now has one canonical path
+  recognizer shared by the outer atomic-claim middleware and the inner
+  metadata/authorization policy. Trailing-slash variants of
+  `POST /v2/catalog/publish` cannot bypass the ownership/trust-level
+  validation and `modules:manage` session requirement just because the
+  middleware layers disagree on the URL shape. Rewritten JSON bodies also
+  discard their obsolete `Content-Length` and `Transfer-Encoding` headers,
+  preserving the verified principal and non-framing headers.
 - Registry publish-request translations are written only through the owner create/publication transactions; the server no longer retains a parallel translation upsert helper.
 - Registry audit payload no longer holds historical runtime fallback: `registry_governance_events.details` is normalized to a typed shape (`stage_key`, nested `owner_transition`, structured principal objects), and the controller maps lifecycle failures from typed `RegistryGovernanceError`, not from substring matching.
 - Final registry publication at `POST /v2/catalog/publish/{request_id}/approve` requires a non-nil UUID `Idempotency-Key` header when `dry_run=false`. The session-backed transport derives one platform-scoped `ModuleCommandContext`; the owner binds its actor UUID to the structured approval principal and persists actor, trace, correlation, idempotency, and approval facts with the resulting release. It replays only an identical retry and rejects changed context, changed approval data, or a published row without a receipt.
