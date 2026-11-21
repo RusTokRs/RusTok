@@ -483,7 +483,7 @@ async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
     let submitted_at = Utc::now();
 
     service
-        .create_http_job(job_id, job_id, submitted_at)
+        .create_http_job(job_id, job_id, submitted_at.clone())
         .await
         .expect("persist the job whose insert acknowledgement could be lost");
 
