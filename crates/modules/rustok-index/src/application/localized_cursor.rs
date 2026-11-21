@@ -213,9 +213,9 @@ fn validate_cursor(
     registry: &SchemaRegistry,
 ) -> Result<(), LocalizedCursorValidationError> {
     registry.validate_localized_entity_query(query)?;
-    let requested_locale = query
-        .requested_locale()
-        .ok_or(LocalizedCursorValidationError::InvalidFormat)?;
+    let Some(requested_locale) = query.requested_locale() else {
+        return Err(LocalizedCursorValidationError::RequestedLocaleMismatch);
+    };
     if cursor.tenant_id != query.query.scope.tenant_id {
         return Err(LocalizedCursorValidationError::TenantMismatch);
     }

@@ -1080,7 +1080,7 @@ fn hash_linked_key(hasher: &mut Sha256, key: &LinkedEntityKey) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length = u64::try_from(value.len()).expect("bounded orphan-link repair digest component");
+    let length = value.len() as u64;
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }
@@ -1115,11 +1115,13 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<(), IndexDriftRepairFailur
 }
 
 fn retryable_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static orphan-link repair code is valid: invariant validated at startup
     IndexDriftRepairFailure::retryable(code)
         .expect("static orphan-link repair code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static orphan-link repair code is valid: invariant validated at startup
     IndexDriftRepairFailure::permanent(code)
         .expect("static orphan-link repair code is valid: invariant validated at startup")
 }

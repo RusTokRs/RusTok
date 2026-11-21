@@ -899,6 +899,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -907,6 +908,7 @@ pub(super) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -922,6 +924,7 @@ fn stored_uuid(
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -972,6 +975,7 @@ fn select_replay_job_history_sql(backend: DbBackend, include_cancelled: bool) ->
             "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
             format!("locale_key IS {prefix}6"),
         ),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     let state_filter = if include_cancelled {
@@ -1020,6 +1024,7 @@ fn active_lease_sql(backend: DbBackend) -> String {
     let lock = match backend {
         DbBackend::Postgres => " FOR UPDATE",
         DbBackend::Sqlite => "",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -1032,6 +1037,7 @@ fn complete_checkpoint_sql(backend: DbBackend) -> String {
     let lock = match backend {
         DbBackend::Postgres => " FOR UPDATE",
         DbBackend::Sqlite => "",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -1048,6 +1054,7 @@ fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Sqlite => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
