@@ -251,6 +251,53 @@ async fn sweep_paid_events(
 mod tests {
     use super::*;
 
+    async fn simulated_recovery_cycle(stop_during: Option<u8>) -> (bool, Vec<u8>) {
+        use std::sync::{Arc, Mutex};
+
+        let (stop, stop_rx) = crate::services::stop_handle::StopHandle::new();
+        let phases = Arc::new(Mutex::new(Vec::new()));
+        if stop_during == Some(0) {
+            stop.stop().await;
+        }
+        let make_phase = |phase: u8| {
+            let stop = stop.clone();
+            let phases = Arc::clone(&phases);
+            move || async move {
+                phases.lock().expect("phase recorder lock").push(phase);
+                if stop_during == Some(phase) {
+                    stop.stop().await;
+                }
+            }
+        };
+        let completed = run_recovery_phases(
+            &stop_rx,
+            make_phase(1),
+            make_phase(2),
+            make_phase(3),
+        )
+        .await;
+        let recorded = phases.lock().expect("phase recorder lock").clone();
+        (completed, recorded)
+    }
+
+    #[tokio::test]
+    async fn recovery_finishes_current_operation_but_never_admits_next_after_stop() {
+        for (stop_during, expected_phases, expected_completed) in [
+            (Some(0), vec![], false),
+            (Some(1), vec![1], false),
+            (Some(2), vec![1, 2], false),
+            (Some(3), vec![1, 2, 3], false),
+            (None, vec![1, 2, 3], true),
+        ] {
+            let (completed, phases) = simulated_recovery_cycle(stop_during).await;
+            assert_eq!(phases, expected_phases, "stop during phase {stop_during:?}");
+            assert_eq!(
+                completed, expected_completed,
+                "cycle completion after stop during phase {stop_during:?}"
+            );
+        }
+    }
+
     #[test]
     fn worker_contract_is_bounded() {
         assert_eq!(MARKETPLACE_FINANCIAL_SWEEP_BATCH, 100);
