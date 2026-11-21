@@ -95,8 +95,21 @@ but by itself does not mean the process should be removed from service discovery
 
 ### Runtime worker checks
 
-In `full` and `worker` host modes `/health/ready` additionally verifies mandatory
-background workers with actual handles in the server runtime shared store.
+Every non-registry runtime host also verifies the cache-reconciliation supervisors
+that protect its local schema and routing caches. These checks run in `api`,
+`admin_ssr`, and `storefront_ssr` modes even though those hosts do not run the
+general background-worker set:
+
+- `worker:field_definition_cache_generation` — critical in non-registry runtime
+  modes; the GraphQL field-definition cache must reconcile the durable generation
+  and invalidate stale schemas after missed events or database recovery;
+- `worker:seo_redirect_cache_reconciliation` — critical when `mod-seo` is
+  compiled and the host serves requests (`full`, `api`, `admin_ssr`,
+  `storefront_ssr`); it is not required in worker-only or registry-only mode.
+
+In `full` and `worker` host modes `/health/ready` additionally verifies the
+mandatory general background workers with actual handles in the server runtime
+shared store.
 
 Checks are published in `checks` with `kind = "worker"`:
 
@@ -195,9 +208,11 @@ Worker/readiness metrics:
 
 - `rustok_runtime_worker_state{worker}`: `-1 = missing`, `0 = disabled`,
   `1 = running`, `2 = stopped`. Worker labels include the readiness workers above
-  (using underscores instead of the `worker:` prefix), retention, and enabled SEO
-  variants. Newly covered worker labels are also emitted as disabled for host modes
-  that do not run local workers; feature-gated labels exist only when compiled in.
+  (using underscores instead of the `worker:` prefix), including
+  `field_definition_cache_generation` and the feature-gated
+  `seo_redirect_cache_reconciliation`, retention, and enabled SEO variants.
+  Newly covered worker labels are also emitted as disabled for host modes
+  that do not require them; feature-gated labels exist only when compiled in.
 - `rustok_runtime_worker_lifecycle_state{worker,state}`:
   `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.
 - `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — number of restart cycles for relay supervisor

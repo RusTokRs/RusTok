@@ -330,6 +330,31 @@ pub(crate) struct RuntimeWorkerSnapshot {
     pub finished: Option<bool>,
 }
 
+pub(crate) fn additional_cache_reconciliation_worker_snapshots(
+    ctx: &ServerRuntimeContext,
+) -> Vec<RuntimeWorkerSnapshot> {
+    let mut snapshots = vec![RuntimeWorkerSnapshot {
+        name: "field_definition_cache_generation",
+        required: true,
+        finished: ctx.shared_map::<
+            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    }];
+
+    #[cfg(feature = "mod-seo")]
+    snapshots.push(RuntimeWorkerSnapshot {
+        name: "seo_redirect_cache_reconciliation",
+        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+        finished: ctx.shared_map::<
+            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+            _,
+        >(|worker| !worker.is_ready()),
+    });
+
+    snapshots
+}
+
 pub(crate) fn additional_runtime_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
@@ -377,7 +402,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         .map(|requirement| requirement.0)
         // Before work registrations have been inspected, fail closed.
         .unwrap_or(true);
-    vec![
+    let mut snapshots = vec![
         RuntimeWorkerSnapshot {
             name: "module_work_scheduler",
             required: local && module_work_required,
@@ -544,7 +569,9 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 WorkflowCronSchedulerHandle::is_finished,
             ),
         },
-    ]
+    ];
+    snapshots.extend(additional_cache_reconciliation_worker_snapshots(ctx));
+    snapshots
 }
 
 /// Start runtime workers from framework-neutral server runtime state.
