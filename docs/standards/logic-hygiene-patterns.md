@@ -29,6 +29,7 @@ without evidence of a failure is recorded separately below.
 | `P-LOCALE-GENERATION-TRANSITION-RACE` | Local, Redis and periodic tenant-locale listeners shared a bounded generation map and readiness flag but could concurrently read, invalidate, acknowledge and update readiness. They now share one async gate across the entire effect/ack/readiness transition. A Tokio contention regression is authored but unrun. | [Tenant locale listener](../../apps/server/src/services/tenant_locale_generation.rs), [Regression](../../apps/server/src/services/tenant_locale_generation_tests.rs) |
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
 | `P-CORS-IMPLICIT-LOOPBACK` | Credentialed production CORS previously trusted a synthesized localhost origin with an empty/invalid allow-list, and mapped a wildcard bind host to the same trusted origin. Production now allows only explicit valid HTTP(S) browser origins; developer bind-host fallback remains local-only. Source/regressions are authored but unrun. | [CORS middleware](../../apps/server/src/middleware/cors.rs), [Router composition](../../apps/server/src/services/app_router.rs), [Server docs](../../apps/server/docs/README.md) |
+| `P-DISPATCHER-SHUTDOWN-REGISTRATION-RACE` | A direct module dispatcher starter could pass a stop check and publish its `JoinHandle` after shutdown had taken the task snapshot. Dispatcher start and shutdown now share one registration lock and check stop under it; targeted concurrent tests authored but unrun. | [Dispatcher](../../apps/server/src/services/module_event_dispatcher.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
 | `P-EVENT-TRANSPORT-LOSING-INSERT` | Transactional EventBus fallback ignored a failed `shared_insert_if_absent` and returned a private `OutboxTransport`, diverging from the registered runtime transport. Both forwarder and transactional publishers now use the same atomic singleton resolver; tests cover contention and configured transport identity but are unrun. | [EventBus transport](../../apps/server/src/services/event_bus.rs), [Runtime singleton](../../apps/server/src/services/server_runtime_context.rs) |
 | `P-TENANT-ERROR-INPUT-REFLECTION` | Tenant resolution mapped typed errors to public HTTP messages through Display, interpolating raw Host, slug, header names and validator details. Public messages now use fixed bounded text while keeping HTTP status and machine code; a response-level regression is authored but not run. | [Tenant error mapping](../../apps/server/src/middleware/tenant_resolution.rs), [Tenant middleware](../../apps/server/src/middleware/tenant.rs) |
 | `P-HTTP-UNBOUNDED-TRACE-CONTEXT` | The outer HTTP span still logged raw client-supplied request/correlation IDs, traceparent and extension methods after URI path bounding. Root-span diagnostics now validate fixed-size UUID/trace IDs and W3C version-00 traceparent, redact other input and bucket nonstandard methods; headers are unchanged. Regression authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Server docs](../../apps/server/docs/README.md) |
@@ -105,6 +106,19 @@ without evidence of a failure is recorded separately below.
   available, and same-origin HTTP requests are unaffected.
 - **Verification:** Regression scenarios for missing/invalid origins,
   loopback, explicit valid sites and configured bind-address fallback; unrun.
+
+### P-DISPATCHER-SHUTDOWN-REGISTRATION-RACE — shutdown owns each published task
+
+- **Category:** Background task lifecycle, startup admission and graceful shutdown.
+- **Observed defect:** A worker startup reservation fenced competing
+  initializers but did not serialize the final check-stop/spawn/handle
+  publication with the shutdown snapshot. A direct entrypoint outside
+  router bootstrap could leak a late background dispatcher.
+- **Remediation:** Share one per-runtime synchronous registration
+  mutex between dispatcher publication and shutdown handle take;
+  recheck stop with the mutex held, and release it before joining.
+- **Verification:** Concurrent stop-vs-start and snapshot-vs-registration
+  Tokio regressions were authored but have not been executed.
 
 ### P-EVENT-TRANSPORT-LOSING-INSERT — losing CAS must use the owner
 

@@ -1087,9 +1087,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let module_event_dispatcher_drain = async {
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>(
-        ) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_module_dispatcher_for_shutdown(runtime_ctx)
+        {
             // Request a cooperative drain first; the bounded helper aborts and
             // joins the dispatcher if an in-flight handler exceeds the deadline.
             worker.request_stop();

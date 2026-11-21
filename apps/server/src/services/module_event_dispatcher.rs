@@ -41,6 +41,27 @@ struct MarketplaceFinancialWorkerReservation;
 struct PaymentProviderEventWorkerReservation;
 struct ModuleEventDispatcherReservation;
 
+/// One synchronous check-stop -> spawn -> publish boundary shared with
+/// shutdown's dispatcher-handle snapshot. A startup reservation alone only
+/// serializes competing starters; it cannot prevent a late shutdown orphan.
+#[derive(Clone, Default)]
+struct ModuleEventDispatcherRegistrationLock(Arc<std::sync::Mutex<()>>);
+
+fn dispatcher_registration_lock(ctx: &ServerRuntimeContext) -> ModuleEventDispatcherRegistrationLock {
+    ctx.shared_get_or_insert_with(ModuleEventDispatcherRegistrationLock::default)
+}
+
+pub(crate) fn take_module_dispatcher_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<ModuleEventDispatcherHandle> {
+    let lock = dispatcher_registration_lock(ctx);
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<ModuleEventDispatcherHandle>()
+}
+
 pub struct ModuleEventDispatcherHandle {
     running: rustok_core::RunningDispatcher,
 }
@@ -220,6 +241,19 @@ fn start_module_event_dispatcher(
     dispatcher: EventDispatcher,
     handler_count: usize,
 ) -> Result<()> {
+    let lock = dispatcher_registration_lock(ctx);
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The previous stop check in spawn_module_event_dispatcher does not
+    // fence concurrent shutdown. Recheck while holding the same lock used
+    // to take the handle for the shutdown drain.
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started during module dispatcher registration".to_string(),
+        ));
+    }
     // The listener registry is part of the transport contract even when it is
     // intentionally empty: remote-only sealed events may proceed, while
     // required local families still fail closed when no handler is registered.
@@ -1339,6 +1373,86 @@ mod lifecycle_tests {
             .expect("retry after unwind")
             .expect("claim was released by guard drop");
         drop(recovered);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_registration_rechecks_stop_after_waiting_for_shutdown_gate() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let registration = super::dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let startup_ctx = ctx.clone();
+        let startup = tokio::task::spawn_blocking(move || {
+            let _ = entered_tx.send(());
+            super::start_module_event_dispatcher(
+                &startup_ctx,
+                EventDispatcher::new(EventBus::new()),
+                0,
+            )
+        });
+        entered_rx.await.expect("startup attempt entered blocking thread");
+        tokio::task::yield_now().await;
+        assert!(
+            !startup.is_finished(),
+            "registration cannot publish while shutdown holds its snapshot gate"
+        );
+
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        drop(registration_guard);
+
+        assert!(
+            matches!(startup.await.expect("startup thread joins"), Err(Error::Message(message)) if message.contains("shutdown")),
+            "late direct dispatcher start must fail after stop was requested"
+        );
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherRequirement>());
+    }
+
+    #[tokio::test]
+    async fn dispatcher_shutdown_snapshot_waits_for_registration_gate() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::dispatcher_registration_lock(&ctx);
+        let registration_guard = registration
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let handle = ModuleEventDispatcherHandle::for_test();
+        ctx.shared_insert(handle);
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let snapshot_ctx = ctx.clone();
+        let snapshot = tokio::task::spawn_blocking(move || {
+            let _ = entered_tx.send(());
+            super::take_module_dispatcher_for_shutdown(&snapshot_ctx)
+        });
+        entered_rx.await.expect("shutdown snapshot thread entered");
+        tokio::task::yield_now().await;
+        assert!(
+            !snapshot.is_finished(),
+            "shutdown must not take a dispatcher handle midway through registration"
+        );
+        drop(registration_guard);
+
+        let handle = snapshot
+            .await
+            .expect("shutdown snapshot task joins")
+            .expect("published dispatcher remains owned by shutdown");
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        handle.request_stop();
+        handle.join().await.expect("dispatcher drains after snapshot");
     }
 
     #[tokio::test]

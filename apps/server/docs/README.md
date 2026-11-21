@@ -232,6 +232,16 @@ listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 
+The module event dispatcher now shares a per-runtime synchronous
+registration lock with the shutdown handle snapshot. A direct
+`spawn_module_event_dispatcher` caller can no longer publish a new
+dispatcher after the stop signal has been issued and shutdown has
+already inspected its handles. The stop condition is checked under
+the same lock that guards dispatcher start, publication and take.
+Concurrently started dispatchers are still protected by the existing
+typed startup reservation. The change does not restart failed
+dispatchers or alter the optional downstream worker contracts.
+
 The in-process `EventBus` forwarder and `TransactionalEventBus`
 now obtain their `Arc<dyn EventTransport>` from one atomic,
 process-local runtime singleton resolver. A caller that loses a

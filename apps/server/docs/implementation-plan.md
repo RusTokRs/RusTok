@@ -1,5 +1,31 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — module dispatcher shutdown ownership (2026-11-22)
+
+The host startup reservation prevented two module dispatchers from
+starting, but not a different race: `spawn_module_event_dispatcher`
+could check the global stop signal, then lose a scheduling race
+against `shutdown_runtime_workers` taking
+`ModuleEventDispatcherHandle`. The direct startup API can be called
+outside `ServerBootstrapInitializationLock`, and shutdown previously
+took the dispatcher handle without an additional registration gate.
+If the direct caller then spawned and published after the snapshot,
+the dispatcher task was left running without a shutdown join owner.
+
+A new process-local `ModuleEventDispatcherRegistrationLock` guards
+the final check-stop → spawn → publish sequence and the shutdown
+snapshot. The stop check now occurs within that gate, so either
+shutdown takes and joins an already-published dispatcher, or a late
+starter fails before publishing. The existing startup reservation
+continues to exclude simultaneous publishers. The lock is released
+before awaiting the handle's graceful drain, so it cannot deadlock
+with handler teardown.
+
+Two regression scenarios cover a held registration gate during
+concurrent shutdown and a stop signal arriving while a direct
+startup waits for the gate. These tests are authored but unrun.
+No build, formatting or runtime verification was executed.
+
 ## Server audit continuation — EventBus transport registration race (2026-11-21)
 
 The server had two transport registration paths using
