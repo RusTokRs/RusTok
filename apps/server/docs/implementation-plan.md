@@ -2349,3 +2349,24 @@ Not run at the user's request. Verify with `cargo fmt --all -- --check`,
 `comments_provider_runtime_base::tests` and
 `comments_provider_runtime_keyring_schedule_audit_handoff_worker::source_retry::source_retry_worker_tests`
 suites.
+
+
+## P33 — Repair Redis rate-limit counters without expiry (2026-11-21)
+
+The Redis fixed-window script set `EXPIRE` only when `INCR` returned 1.
+A pre-existing or restored counter key without a TTL therefore remained
+permanent: subsequent requests kept incrementing it, while the middleware
+reported a one-second retry delay forever.
+
+- The atomic script now checks the key TTL on every increment and attaches the
+  configured window whenever the key exists without an expiry.
+- If Redis still reports a negative TTL after the repair attempt, the script
+  returns an error. The middleware treats that as backend unavailable (503),
+  preserving fail-closed behavior instead of silently creating a permanent
+  rate-limit lockout.
+- Added a regression assertion for the script's expiry-repair and fail-closed
+  contract. No Redis server is required by this source-level test.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::rate_limit_base::diagnostic_tests::redis_rate_limit_script_repairs_counters_without_expiry`.
