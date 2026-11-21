@@ -156,7 +156,8 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
     }
 
     /// Records a failed publication attempt only while the exact source claim
-    /// is still authoritative. A replaced or terminal claim is a closed no-op.
+    /// is still authoritative and its lease has not expired. A replaced,
+    /// expired, or terminal claim is a closed no-op.
     pub async fn record_failure(
         &self,
         claim: CommentsTcpDelegationScheduleAuditHandoffClaim,
@@ -364,6 +365,7 @@ fn record_failure_statement(
                AND handoff_dead_lettered_at IS NULL \
                AND handoff_claim_token = $2 \
                AND handoff_attempt_count = $3 \
+               AND handoff_claim_expires_at > NOW() \
              RETURNING request_id, handoff_attempt_count, \
                        handoff_dead_lettered_at IS NOT NULL AS dead_lettered",
             table = postgres_audit::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE,
@@ -469,6 +471,7 @@ mod tests {
         let sql = statement.sql.as_str();
         assert!(sql.contains("handoff_claim_token = $2"));
         assert!(sql.contains("handoff_attempt_count = $3"));
+        assert!(sql.contains("handoff_claim_expires_at > NOW()"));
         assert!(sql.contains("handoff_attempt_count >= $5"));
         assert!(sql.contains("handoff_next_attempt_at"));
         assert!(sql.contains("attempt_budget_exhausted"));
