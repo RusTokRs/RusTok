@@ -23,6 +23,7 @@
   - `has_running_http_job() -> Result<bool, DbErr>`
   - `finish_http_job_succeeded(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set on `status = running`)
   - `finish_http_job_failed(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set with bounded error message)
+  - `finish_unstarted_http_job_failed(job_id, session_id, submitted_at) -> Result<bool, DbErr>` (exact identity + `running` CAS, for a host that has not entered execution)
   - `create_session(plan: &InstallPlan, tenant_id: Option<Uuid>, created_by: Option<Uuid>) -> Result<install_session::Model, DbErr>`
   - `record_receipt(receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
   - `acquire_lock(session: install_session::Model, owner: &str, ttl: Duration) -> Result<install_session::Model, DbErr>`
