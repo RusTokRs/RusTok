@@ -18,17 +18,17 @@
 ### Primary Services & Port Adapters
 - `InstallerPersistenceService`: SeaORM-backed persistence manager for installer jobs, sessions, and step receipts.
   - `new(db: DatabaseConnection) -> Self`
-  - `create_http_job(job_id: Uuid, submitted_at: DateTime<Utc>) -> Result<install_http_job::Model, DbErr>`
+  - `create_http_job(job_id: Uuid, session_id: Uuid, submitted_at: DateTime<Utc>) -> Result<install_http_job::Model, DbErr>`
   - `get_http_job(job_id: Uuid) -> Result<Option<install_http_job::Model>, DbErr>`
   - `has_running_http_job() -> Result<bool, DbErr>`
   - `finish_http_job_succeeded(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set on `status = running`)
   - `finish_http_job_failed(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set with bounded error message)
   - `finish_unstarted_http_job_failed(job_id, session_id, submitted_at) -> Result<bool, DbErr>` (exact identity + `running` CAS, for a host that has not entered execution)
   - `create_session(plan: &InstallPlan, tenant_id: Option<Uuid>, created_by: Option<Uuid>) -> Result<install_session::Model, DbErr>`
-  - `record_receipt(receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
+  - `record_receipt(session: &InstallSessionRecord, receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
   - `acquire_lock(session: install_session::Model, owner: &str, ttl: Duration) -> Result<install_session::Model, DbErr>`
-  - `set_state(session_id: Uuid, state: InstallState) -> Result<install_session::Model, DbErr>`
-  - `set_tenant_id(session_id: Uuid, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
+  - `set_state(session: &InstallSessionRecord, state: InstallState) -> Result<install_session::Model, DbErr>`
+  - `set_tenant_id(session: &InstallSessionRecord, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
   - `get_session(session_id: Uuid) -> Result<Option<install_session::Model>, DbErr>`
   - `latest_session() -> Result<Option<install_session::Model>, DbErr>`
   - `has_completed_session() -> Result<bool, DbErr>`
