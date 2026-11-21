@@ -5,12 +5,12 @@ use super::*;
 use crate::{
     EntityKey, FieldCardinality, FieldName, IndexField, IndexJobOperatorAuthority,
     IndexJobRequeueOutcome, IndexModule, IndexMutation, IndexRecord, IndexReplayCancelOutcome,
-    IndexReplayJobEnqueueRequest, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexValue, IndexValueType, LocaleMode, PostgresIndexReplayJobStore,
-    PostgresSchemaRegistrationStore, materialize_index_schema_registry,
-    materialize_index_source_registry, materialize_postgres_index_replay_runtime,
-    register_index_schema_source, register_index_source,
+    IndexReplayJobEnqueueOutcome, IndexReplayJobEnqueueRequest, IndexSchema, IndexSource,
+    IndexSourceCursor, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
+    IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LocaleMode,
+    PostgresIndexReplayJobStore, PostgresSchemaRegistrationStore,
+    materialize_index_schema_registry, materialize_index_source_registry,
+    materialize_postgres_index_replay_runtime, register_index_schema_source, register_index_source,
 };
 use rustok_core::MigrationSource;
 use sea_orm::Database;
@@ -285,7 +285,12 @@ async fn owner_failure_parks_original_job_without_claiming_success_or_rotating_i
         .unwrap()
         .unwrap();
     let outcome = fixture.adapter.execute(item.clone()).await.unwrap();
-    assert!(matches!(outcome, ModuleWorkOutcome::Retryable { .. }));
+    assert_eq!(
+        outcome,
+        ModuleWorkOutcome::Retryable {
+            message: "index.replay_retry_scheduled".into(),
+        }
+    );
     assert!(
         fixture
             .adapter
@@ -302,21 +307,70 @@ async fn owner_failure_parks_original_job_without_claiming_success_or_rotating_i
             .unwrap()
             .is_none()
     );
-    assert!(
-        fixture
-            .jobs
-            .enqueue(
-                &IndexReplayJobEnqueueRequest::new(
-                    TENANT,
-                    ORIGINAL,
-                    fixture.schema.reference,
-                    SOURCE
-                )
-                .unwrap()
-            )
+
+    let parked_job = || async {
+        let mut rows = fixture
+            .adapter
+            .db
+            .query_all_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT job_id, state, attempt_count, failure_count, retry_epoch, available_at, \
+                 lease_owner, lease_expires_at, completed_at, last_error_code, updated_at \
+                 FROM index_jobs WHERE kind = 'rebuild'",
+            ))
             .await
-            .is_err()
+            .unwrap();
+        assert_eq!(rows.len(), 1, "only the original replay job may exist");
+        rows.pop().unwrap()
+    };
+    let before = parked_job().await;
+    assert_eq!(
+        before.try_get::<String>("", "job_id").unwrap(),
+        ORIGINAL.to_string()
     );
+    assert_eq!(before.try_get::<String>("", "state").unwrap(), "pending");
+    assert_eq!(before.try_get::<i64>("", "attempt_count").unwrap(), 1);
+    assert_eq!(before.try_get::<i64>("", "failure_count").unwrap(), 1);
+    assert_eq!(before.try_get::<i64>("", "retry_epoch").unwrap(), 0);
+    for field in ["lease_owner", "lease_expires_at", "completed_at"] {
+        assert_eq!(before.try_get::<Option<String>>("", field).unwrap(), None);
+    }
+
+    let request = IndexReplayJobEnqueueRequest::new(
+        TENANT,
+        ORIGINAL,
+        fixture.schema.reference.clone(),
+        SOURCE,
+    )
+    .unwrap();
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await.unwrap(),
+        IndexReplayJobEnqueueOutcome::AlreadyRequested { job_id: ORIGINAL }
+    );
+    let after = parked_job().await;
+    for field in [
+        "job_id",
+        "state",
+        "available_at",
+        "lease_owner",
+        "lease_expires_at",
+        "completed_at",
+        "last_error_code",
+        "updated_at",
+    ] {
+        assert_eq!(
+            after.try_get::<Option<String>>("", field).unwrap(),
+            before.try_get::<Option<String>>("", field).unwrap(),
+            "duplicate enqueue changed {field}",
+        );
+    }
+    for field in ["attempt_count", "failure_count", "retry_epoch"] {
+        assert_eq!(
+            after.try_get::<i64>("", field).unwrap(),
+            before.try_get::<i64>("", field).unwrap(),
+            "duplicate enqueue changed {field}",
+        );
+    }
 }
 
 #[tokio::test]

@@ -58,6 +58,11 @@ The existing replay acquisition contract already treats a pending row as unavail
 polls no table, and starts no task. The next successful claim keeps the same job UUID and
 increments the durable attempt count in the existing job store.
 
+Enqueueing the same original request while it waits for that backoff returns `AlreadyRequested`.
+This confirms the durable request, not successful replay or a new lease. It leaves `available_at`,
+the job identity, attempt count, failure budget, and checkpoint unchanged. A terminal `failed`
+job still returns the dead-letter error; duplicate enqueue is not operator requeue.
+
 ## Bounded diagnostics
 
 `last_error_details` uses the stable `index_replay_retry_v1` contract and contains only:

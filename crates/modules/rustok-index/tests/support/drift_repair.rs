@@ -24,8 +24,8 @@ use rustok_index::{
     IndexSourceAbsenceCatalog, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
     IndexSourceCatalog, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
     IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName,
-    LinkedEntityKey, LocaleMode, ModuleName, PostgresIndexOrphanLinkAuthorityFence, SchemaRef,
-    SchemaVersion, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+    LinkedEntityKey, LocaleKey, LocaleMode, ModuleName, PostgresIndexOrphanLinkAuthorityFence,
+    SchemaRef, SchemaVersion, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
     infrastructure::postgres::{
         IndexDriftDigestFindingRequest, IndexDriftFindingScope, IndexDriftFindingSeverity,
         MutationDelivery, PostgresIndexDriftFindingWriter,
@@ -358,11 +358,22 @@ pub struct FixtureRuntime {
     pub absence: SharedIndexSourceAbsenceRegistry,
     pub authority: FixtureAuthority,
     pub contracts: FixtureSchemas,
+    missing_locale: Option<LocaleKey>,
 }
 
 impl FixtureRuntime {
     pub async fn setup(database: &TestDatabase) -> TestResult<Self> {
-        let contracts = FixtureSchemas::new()?;
+        Self::setup_with_missing_locale(database, None).await
+    }
+
+    pub async fn setup_with_missing_locale(
+        database: &TestDatabase,
+        missing_locale: Option<LocaleKey>,
+    ) -> TestResult<Self> {
+        let mut contracts = FixtureSchemas::new()?;
+        if missing_locale.is_some() {
+            contracts.missing.locale_mode = LocaleMode::Required;
+        }
         let mut schema_catalog = IndexSchemaSourceCatalog::new();
         for schema in contracts.all() {
             schema_catalog.register(SOURCE_OWNER, schema)?;
@@ -412,6 +423,7 @@ impl FixtureRuntime {
             absence,
             authority,
             contracts,
+            missing_locale,
         })
     }
 
@@ -420,7 +432,7 @@ impl FixtureRuntime {
             tenant_id,
             schema: self.contracts.missing.reference.clone(),
             entity_id,
-            locale: None,
+            locale: self.missing_locale.clone(),
         }
     }
 
@@ -549,14 +561,22 @@ pub async fn create_missing_finding(
         absence_source_version,
         b"index_present",
     );
+    let scope = match key.locale {
+        Some(locale) => IndexDriftFindingScope::Entity {
+            schema: key.schema,
+            entity_id: key.entity_id,
+            locale,
+        },
+        None => IndexDriftFindingScope::EntityWithoutLocale {
+            schema: key.schema,
+            entity_id: key.entity_id,
+        },
+    };
     let request = IndexDriftDigestFindingRequest::new(
         database.tenant_id,
         MISSING_CHECK,
         IndexDriftFindingSeverity::Error,
-        IndexDriftFindingScope::EntityWithoutLocale {
-            schema: key.schema.clone(),
-            entity_id: key.entity_id,
-        },
+        scope,
         expected,
         actual,
     )?;

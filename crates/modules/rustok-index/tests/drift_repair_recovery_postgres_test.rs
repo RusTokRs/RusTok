@@ -8,6 +8,7 @@ use rustok_index::{
     IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
     IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairNotStartedReason,
     IndexDriftRepairOutcome, IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryOutcome,
+    LocaleKey,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -52,7 +53,11 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
     let Some(database) = TestDatabase::setup("repair_recovery").await? else {
         return Ok(());
     };
-    let runtime = FixtureRuntime::setup(&database).await?;
+    // The same finding survives to the down migration, which restores required locale scope.
+    // Use a valid localized finding rather than deleting it or weakening the old constraint.
+    let runtime =
+        FixtureRuntime::setup_with_missing_locale(&database, Some(LocaleKey::new("en-US")?))
+            .await?;
 
     let key = runtime.missing_key(database.tenant_id, Uuid::new_v4());
     support::apply_record(
@@ -248,6 +253,7 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         .await?
     );
     assert!(!table_exists(&database, "index_consistency_finding_repair_commands").await?);
+    assert!(!table_exists(&database, "index_consistency_findings").await?);
     database.cleanup().await
 }
 
