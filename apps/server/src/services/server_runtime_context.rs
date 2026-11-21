@@ -145,7 +145,10 @@ pub(crate) struct ServerRuntimeStartReservation<'a, T: 'static + Send + Sync> {
 
 impl<'a, T: 'static + Send + Sync> ServerRuntimeStartReservation<'a, T> {
     pub(crate) fn try_claim(ctx: &'a ServerRuntimeContext, marker: T) -> Option<Self> {
-        ctx.shared_insert_if_absent(marker).then_some(Self {
+        // Build the cleanup guard only for a successful atomic claim.
+        // Eager construction on failure would drop the losing temporary
+        // guard and erroneously remove the winner's reservation.
+        ctx.shared_insert_if_absent(marker).then(|| Self {
             ctx,
             claimed: true,
             _type: PhantomData,
