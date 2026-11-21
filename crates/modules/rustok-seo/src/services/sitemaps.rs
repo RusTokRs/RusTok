@@ -235,7 +235,7 @@ impl SeoService {
                 tenant.id,
                 completed_job.id,
                 settings.sitemap_submission_endpoints.len() as i32,
-                submission_error,
+                submission_error.map(|err| err.to_string()),
             )
             .await?;
         }
@@ -840,11 +840,20 @@ impl SeoService {
                         .alternates
                         .into_iter()
                         .filter_map(|alternate| {
-                            let alternate_locale = normalize_effective_locale(
+                            let alternate_locale = match normalize_effective_locale(
                                 alternate.locale.as_str(),
                                 tenant.default_locale.as_str(),
-                            )
-                            .ok()?;
+                            ) {
+                                Ok(loc) => loc,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        %err,
+                                        locale = %alternate.locale,
+                                        "Skipping invalid alternate locale in sitemap candidate"
+                                    );
+                                    return None;
+                                }
+                            };
                             let alternate_route = sitemap_locale_path(
                                 alternate_locale.as_str(),
                                 alternate.route.as_str(),
@@ -884,18 +893,18 @@ impl SeoService {
     }
 }
 
-#[allow(dead_code)]
 impl SeoService {
     async fn submit_sitemap_endpoints(
         &self,
         public_origin: &PublicOrigin,
         settings: &crate::dto::SeoModuleSettings,
-    ) -> Result<(), String> {
+    ) -> SeoResult<()> {
         if settings.sitemap_submission_endpoints.is_empty() {
             return Ok(());
         }
         let sitemap_index_url = format!("{}/sitemap.xml", public_origin.as_str());
-        let runtime = SitemapSubmissionRuntime::default_with_timeout(SITEMAP_SUBMIT_TIMEOUT_SECS)?;
+        let runtime = SitemapSubmissionRuntime::default_with_timeout(SITEMAP_SUBMIT_TIMEOUT_SECS)
+            .map_err(|err| SeoError::validation(err.to_string()))?;
         self.submit_sitemap_endpoints_with_adapter(
             settings.sitemap_submission_endpoints.as_slice(),
             sitemap_index_url.as_str(),
@@ -909,7 +918,7 @@ impl SeoService {
         endpoints: &[String],
         sitemap_index_url: &str,
         adapter: &dyn SitemapSubmissionAdapter,
-    ) -> Result<(), String> {
+    ) -> SeoResult<()> {
         let summary = self
             .collect_submission_summary(endpoints, sitemap_index_url, adapter)
             .await;
@@ -923,7 +932,7 @@ impl SeoService {
             "SEO sitemap endpoint submission finished"
         );
         match summary.into_error() {
-            Some(message) => Err(message),
+            Some(message) => Err(SeoError::validation(message)),
             None => Ok(()),
         }
     }
@@ -947,8 +956,8 @@ impl SeoService {
             };
             match adapter.submit_sitemap_index(request).await {
                 Ok(()) => record_submission_success(&mut summary, endpoint.as_str()),
-                Err(message) => {
-                    record_submission_failure(&mut summary, endpoint.as_str(), message);
+                Err(error) => {
+                    record_submission_failure(&mut summary, endpoint.as_str(), error.to_string());
                 }
             }
         }
@@ -956,7 +965,6 @@ impl SeoService {
     }
 }
 
-#[allow(dead_code)]
 fn sitemap_file_count(url_count: usize, chunk_size: usize) -> usize {
     if url_count == 0 {
         1
@@ -965,7 +973,6 @@ fn sitemap_file_count(url_count: usize, chunk_size: usize) -> usize {
     }
 }
 
-#[allow(dead_code)]
 fn sitemap_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String {
     let mut payload = format!("{scope}|{tenant_id}");
     for part in parts {
@@ -975,7 +982,6 @@ fn sitemap_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String {
     format!("{scope}:{:016x}", simple_hash(payload.as_str()))
 }
 
-#[allow(dead_code)]
 fn transactional_event_error(context: &str, error: rustok_core::Error) -> SeoError {
     SeoError::Database(sea_orm::DbErr::Custom(format!(
         "failed to enqueue {context} transactionally: {error}"
@@ -1152,7 +1158,6 @@ fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
     render_robots_body_with_settings(base_url, &settings)
 }
 
-#[allow(dead_code)]
 fn build_sitemap_submission_url(endpoint: &str, sitemap_index_url: &str) -> Option<String> {
     let normalized = endpoint.trim();
     if normalized.is_empty() {

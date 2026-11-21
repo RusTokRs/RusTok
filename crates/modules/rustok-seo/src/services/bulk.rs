@@ -327,7 +327,6 @@ fn limit_job_message(value: String) -> String {
     rustok_core::truncate(value.trim(), 2048)
 }
 
-#[allow(dead_code)]
 fn parse_bulk_csv(
     expected_kind: SeoTargetSlug,
     expected_locale: &str,
@@ -471,7 +470,6 @@ fn sanitize_csv_cell(value: String) -> String {
     }
 }
 
-#[allow(dead_code)]
 fn export_csv_row(
     target_kind: SeoTargetSlug,
     target_id: Uuid,
@@ -1479,6 +1477,7 @@ impl SeoService {
             .map_err(Into::into)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn execute_next_bulk_job(&self) -> SeoResult<Option<SeoBulkJobRecord>> {
         let Some(job) = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
@@ -2595,7 +2594,7 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "preserved for verification script compatibility")]
     pub(super) async fn queue_bulk_export_batched(
         &self,
         tenant: &TenantContext,
@@ -2641,7 +2640,8 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "preserved for verification script compatibility")]
+    #[tracing::instrument(skip(self))]
     pub(super) async fn execute_next_bulk_job_batched(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -2971,7 +2971,7 @@ impl SeoService {
         Ok(())
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "preserved for verification script compatibility")]
     async fn execute_export_job_batched(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
         let tenant = self.load_tenant_context(job.tenant_id).await?;
         let input = serde_json::from_value::<SeoBulkExportInput>(job.input_payload.clone())
@@ -3261,7 +3261,8 @@ impl SeoService {
             .ok_or(SeoError::NotFound)
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "preserved for verification script compatibility")]
+    #[tracing::instrument(skip(self))]
     pub(super) async fn execute_next_bulk_job_fully_bounded(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -4020,7 +4021,8 @@ mod bounded_io_execution_tests {
     }
 }
 impl SeoService {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "preserved for verification script compatibility")]
+    #[tracing::instrument(skip(self))]
     pub(super) async fn execute_next_bulk_job_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -4053,6 +4055,7 @@ impl SeoService {
         Ok(bulk_job)
     }
 
+    #[tracing::instrument(skip(self))]
     pub(super) async fn execute_next_bulk_job_only_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -4358,6 +4361,7 @@ impl SeoService {
         self.sitemap_status(tenant).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub(super) async fn execute_next_sitemap_job_background(
         &self,
     ) -> SeoResult<Option<crate::dto::SeoSitemapJobRecord>> {
@@ -4573,7 +4577,7 @@ impl SeoService {
             }
         };
 
-        self.record_background_sitemap_submission(job, endpoint_count, error)
+        self.record_background_sitemap_submission(job, endpoint_count, error.map(|e| e.to_string()))
             .await
     }
 
@@ -4961,10 +4965,11 @@ impl SeoService {
 async fn submit_background_sitemap_endpoints(
     endpoints: &[String],
     sitemap_index_url: &str,
-) -> Result<(), String> {
+) -> SeoResult<()> {
     let runtime = submission_adapters::SitemapSubmissionRuntime::default_with_timeout(
         SITEMAP_BACKGROUND_SUBMIT_TIMEOUT_SECS,
-    )?;
+    )
+    .map_err(|err| SeoError::validation(err.to_string()))?;
     let mut summary = submission_aggregation::SitemapSubmissionSummary::default();
     for endpoint in endpoints {
         let Some(request_url) =
@@ -4981,11 +4986,11 @@ async fn submit_background_sitemap_endpoints(
             Ok(()) => {
                 submission_aggregation::record_submission_success(&mut summary, endpoint.as_str())
             }
-            Err(message) => {
+            Err(error) => {
                 submission_aggregation::record_submission_failure(
                     &mut summary,
                     endpoint.as_str(),
-                    message,
+                    error.to_string(),
                 );
             }
         }
@@ -5000,7 +5005,7 @@ async fn submit_background_sitemap_endpoints(
         "background SEO sitemap endpoint submission finished"
     );
     match summary.into_error() {
-        Some(message) => Err(message),
+        Some(message) => Err(SeoError::validation(message)),
         None => Ok(()),
     }
 }
@@ -5208,6 +5213,7 @@ mod index_repair_background_impl {
             }
         }
 
+        #[tracing::instrument(skip(self))]
         pub(crate) async fn execute_next_index_repair_replay_job_background(
             &self,
         ) -> SeoResult<Option<crate::dto::SeoIndexRepairReplayResultRecord>> {

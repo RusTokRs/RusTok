@@ -422,6 +422,12 @@ impl SeoTargetSlug {
     }
 }
 
+impl Default for SeoTargetSlug {
+    fn default() -> Self {
+        Self(builtin_slug::PAGE.to_string())
+    }
+}
+
 impl fmt::Display for SeoTargetSlug {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

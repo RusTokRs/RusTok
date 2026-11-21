@@ -22,16 +22,22 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use super::submission_adapters::SitemapSubmissionError;
+
 struct TestSitemapSubmissionAdapter {
-    outcomes: Arc<Mutex<HashMap<String, Result<(), String>>>>,
+    outcomes: Arc<Mutex<HashMap<String, Result<(), SitemapSubmissionError>>>>,
     submitted_endpoints: Arc<Mutex<Vec<String>>>,
     submitted_request_urls: Arc<Mutex<Vec<String>>>,
 }
 
 impl TestSitemapSubmissionAdapter {
     fn new(outcomes: HashMap<String, Result<(), String>>) -> Self {
+        let mapped = outcomes
+            .into_iter()
+            .map(|(k, v)| (k, v.map_err(SitemapSubmissionError::Custom)))
+            .collect();
         Self {
-            outcomes: Arc::new(Mutex::new(outcomes)),
+            outcomes: Arc::new(Mutex::new(mapped)),
             submitted_endpoints: Arc::new(Mutex::new(Vec::new())),
             submitted_request_urls: Arc::new(Mutex::new(Vec::new())),
         }
@@ -48,7 +54,10 @@ impl TestSitemapSubmissionAdapter {
 
 #[async_trait::async_trait]
 impl SitemapSubmissionAdapter for TestSitemapSubmissionAdapter {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String> {
+    async fn submit_sitemap_index(
+        &self,
+        endpoint: SitemapSubmitEndpoint,
+    ) -> Result<(), SitemapSubmissionError> {
         self.submitted_endpoints
             .lock()
             .await
@@ -566,7 +575,7 @@ async fn submit_sitemap_endpoints_reports_success_failure_and_invalid() {
         )
         .await;
 
-    let message = result.expect_err("must return aggregate error");
+    let message = result.expect_err("must return aggregate error").to_string();
     assert!(message.contains("1 success(es) and 2 failure(s)"));
     assert!(message.contains("endpoint `https://fail.example.com/ping` responded with status 500"));
     assert!(message.contains("invalid endpoint: invalid endpoint"));
@@ -664,7 +673,7 @@ async fn submit_sitemap_endpoints_whitespace_only_endpoint_is_counted_as_invalid
         )
         .await;
 
-    let message = result.expect_err("whitespace endpoint must be invalid");
+    let message = result.expect_err("whitespace endpoint must be invalid").to_string();
     assert!(message.contains("0 success(es) and 1 failure(s)"));
     assert!(message.contains("invalid endpoint:"));
     assert!(adapter.submitted_endpoints().await.is_empty());
@@ -685,7 +694,7 @@ async fn submit_sitemap_endpoints_invalid_endpoint_is_not_submitted() {
         )
         .await;
 
-    let message = result.expect_err("invalid endpoint should fail");
+    let message = result.expect_err("invalid endpoint should fail").to_string();
     assert!(message.contains("0 success(es) and 1 failure(s)"));
     assert!(message.contains("invalid endpoint: not a valid url"));
     let submitted = adapter.submitted_endpoints().await;
@@ -772,7 +781,7 @@ async fn submit_sitemap_endpoints_timeout_and_failure_messages_are_bounded() {
         )
         .await;
 
-    let message = result.expect_err("aggregated bounded error expected");
+    let message = result.expect_err("aggregated bounded error expected").to_string();
     assert!(message.contains("0 success(es) and 2 failure(s)"));
     assert!(message.contains("errors:"));
     assert!(message.contains("timeouts:"));
@@ -822,7 +831,7 @@ async fn submit_sitemap_endpoints_truncates_timeout_and_failure_details_determin
         )
         .await;
 
-    let message = result.expect_err("expected aggregate error");
+    let message = result.expect_err("expected aggregate error").to_string();
     assert!(message.contains("0 success(es) and 28 failure(s)"));
     assert!(message.contains(&format!(
         "errors omitted: {}",

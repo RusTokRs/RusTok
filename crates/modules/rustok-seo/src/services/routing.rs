@@ -324,6 +324,7 @@ impl SeoService {
     /// formula for render, diagnostics, and previews: canonical host/slash/
     /// protocol normalization, metadata suffix/limits, OG settings, hreflang
     /// gating, and rich-snippet gating all live here so consumers cannot drift.
+    #[tracing::instrument(skip(self, tenant, state, explicit), fields(tenant_id = %tenant.id))]
     pub(super) async fn merge_page_context(
         &self,
         tenant: &TenantContext,
