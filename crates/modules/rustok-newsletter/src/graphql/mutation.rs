@@ -21,10 +21,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::public_tenant_id(ctx, tenant_id)?;
 
         let service = SubscriberService::new(runtime.db.clone());
         let response = service
@@ -43,10 +40,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::public_tenant_id(ctx, tenant_id)?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -68,10 +62,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::public_tenant_id(ctx, tenant_id)?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -94,10 +85,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_UPDATE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -119,10 +107,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_DELETE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -144,10 +129,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_CREATE])?;
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
@@ -167,10 +149,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_UPDATE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -193,10 +172,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_UPDATE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -222,10 +198,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_UPDATE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
@@ -247,10 +220,7 @@ impl NewsletterMutation {
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
-        let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
-        if tenant_id.is_nil() {
-            return Err(Error::new("tenant_id must not be nil"));
-        }
+        let tenant_id = super::require_newsletter_admin(ctx, tenant_id, &[rustok_api::Permission::NEWSLETTER_DELETE])?;
         if id.is_nil() {
             return Err(Error::new("id must not be nil"));
         }
