@@ -151,10 +151,11 @@ If a worker is disabled by settings, check remains `ok` and `non_critical` with 
 `worker disabled by runtime settings`. If a mandatory worker is not registered in `shared_store`
 or its task has already finished, check becomes `critical` + `unhealthy`. This prevents considering full
 runtime ready until mandatory relay/worker lifecycle is started.
-These checks only establish local task liveness: a live task may be stuck or repeatedly
-fail its work. They do not measure successful progress, backlog age, or remote workers,
-and do not yet cover every background worker. Monitor the relevant queues and errors
-separately; a green readiness result is not proof that recovery is progressing.
+Most checks establish local task liveness; the cache-reconciliation checks also
+require the supervisor's latest reconciliation state to be healthy. They do not
+measure continuous progress, backlog age, or remote workers, and do not yet cover
+every background worker. Monitor the relevant queues and errors separately; a green
+readiness result is not proof that every recovery queue is draining.
 
 ### Registry-only mode
 

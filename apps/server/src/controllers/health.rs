@@ -1033,7 +1033,7 @@ fn runtime_worker_check(
             Some("worker lifecycle state is stopping".to_string())
         }
         (_, RuntimeWorkerLifecycleState::Failed) => {
-            Some("required worker lifecycle state is failed; task has stopped".to_string())
+            Some("required worker lifecycle state is failed; task stopped or supervisor is not ready".to_string())
         }
         (_, RuntimeWorkerLifecycleState::Degraded) => {
             Some("worker lifecycle state is degraded".to_string())

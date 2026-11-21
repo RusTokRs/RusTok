@@ -322,7 +322,7 @@ impl WorkflowCronSchedulerHandle {
 }
 
 /// One host-owned worker observation, shared by readiness and Prometheus.
-/// It reports task liveness only, not backlog drainage or recent progress.
+/// It reports local task availability and supervisor health, not backlog drainage or recent progress.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RuntimeWorkerSnapshot {
     pub name: &'static str,
