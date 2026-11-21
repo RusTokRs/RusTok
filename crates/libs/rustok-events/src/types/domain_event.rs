@@ -990,6 +990,7 @@ impl DomainEvent {
                 | Self::ModuleArtifactNodeAssignmentObserved { .. }
                 | Self::ModuleArtifactNodeReconciliationStatusChanged { .. }
                 | Self::ModuleArtifactSecurityStateChanged { .. }
+                | Self::ModuleGuestEventEmitted { .. }
                 | Self::BuildRequested { .. }
         )
     }

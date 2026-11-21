@@ -11,7 +11,7 @@ pub mod validation;
 
 pub use backpressure::{
     BackpressureConfig, BackpressureController, BackpressureError, BackpressureMetrics,
-    BackpressureState,
+    BackpressureOwnership, BackpressureState,
 };
 pub use bus::{EventBus, EventBusStats};
 pub use consumer::EventConsumerRuntime;

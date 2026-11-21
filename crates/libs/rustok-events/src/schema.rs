@@ -65,7 +65,14 @@ fn field_json_schema(data_type: &str) -> serde_json::Value {
             "minimum": i64::MIN,
             "maximum": i64::MAX,
         }),
+        "uint32" => serde_json::json!({
+            "type": "integer",
+            "minimum": 0,
+            "maximum": u32::MAX,
+        }),
         "uint64" => serde_json::json!({ "type": "integer", "minimum": 0 }),
+        // Arbitrary guest-supplied JSON payload; any JSON value is admissible.
+        "json" => serde_json::json!(true),
         "bool" => serde_json::json!({ "type": "boolean" }),
         "string" => serde_json::json!({ "type": "string" }),
         "array" => serde_json::json!({ "type": "array", "items": true }),
@@ -756,6 +763,38 @@ const MODULE_ARTIFACT_SECURITY_STATE_CHANGED_FIELDS: &[FieldSchema] = &[
     field!("status", "string"),
     field!("policy_revision", "string"),
     field!("reason_code", "string"),
+];
+const MODULE_ARTIFACT_NODE_RECONCILIATION_REQUESTED_FIELDS: &[FieldSchema] = &[
+    field!("reconciliation_id", "uuid"),
+    field!("predecessor_reconciliation_id", "uuid", optional),
+    field!("reconciliation_revision", "uint64"),
+    field!("reconciliation_state_revision", "uint64"),
+    field!("topology_digest", "string"),
+    field!("policy_revision", "string"),
+    field!("target_assignments", "uint32"),
+];
+const MODULE_ARTIFACT_NODE_ASSIGNMENT_OBSERVED_FIELDS: &[FieldSchema] = &[
+    field!("reconciliation_id", "uuid"),
+    field!("node_id", "uuid"),
+    field!("installation_id", "uuid"),
+    field!("release_digest", "string"),
+    field!("reporter_id", "string"),
+    field!("observation_revision", "uint64"),
+    field!("phase", "string"),
+    field!("report_digest", "string"),
+];
+const MODULE_ARTIFACT_NODE_RECONCILIATION_STATUS_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("reconciliation_id", "uuid"),
+    field!("reconciliation_revision", "uint64"),
+    field!("reconciliation_state_revision", "uint64"),
+    field!("status", "string"),
+    field!("observed_reconciliation_id", "uuid", optional),
+    field!("failure_code", "string", optional),
+];
+const MODULE_GUEST_EVENT_EMITTED_FIELDS: &[FieldSchema] = &[
+    field!("module_slug", "string"),
+    field!("topic", "string"),
+    field!("payload", "json"),
 ];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 const MESSENGER_MESSAGE_DISPATCHED_FIELDS: &[FieldSchema] = &[
@@ -1855,6 +1894,30 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "An effective module policy revision changed.",
         fields: MODULE_EFFECTIVE_POLICY_REVISION_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact_node.reconciliation_requested",
+        version: 1,
+        description: "Desired dynamic artifact/sandbox assignments were durably selected for node reconciliation.",
+        fields: MODULE_ARTIFACT_NODE_RECONCILIATION_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact_node.assignment_observed",
+        version: 1,
+        description: "One authenticated node agent observed the exact immutable assignment identity it was given.",
+        fields: MODULE_ARTIFACT_NODE_ASSIGNMENT_OBSERVED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact_node.reconciliation_status_changed",
+        version: 1,
+        description: "The durable dynamic-artifact reconciliation head changed state.",
+        fields: MODULE_ARTIFACT_NODE_RECONCILIATION_STATUS_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.guest.event_emitted",
+        version: 1,
+        description: "A sandboxed guest module emitted a dynamic event under the platform.events capability.",
+        fields: MODULE_GUEST_EVENT_EMITTED_FIELDS,
     },
     EventSchema {
         event_type: "platform_settings.changed",

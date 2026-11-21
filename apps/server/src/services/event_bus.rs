@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use futures_util::FutureExt;
 use rustok_core::events::{
-    BackpressureConfig, BackpressureController, EventEnvelope, EventTransport,
+    BackpressureConfig, BackpressureController, BackpressureOwnership, EventEnvelope,
+    EventTransport,
 };
 use rustok_core::{EventBus, EventConsumerRuntime};
 use rustok_outbox::TransactionalEventBus;
@@ -173,7 +174,7 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     // Subscribe before returning the bus to publishers. Spawning a task and
     // subscribing inside it leaves a startup window where broadcast::send
     // reports no receivers and the first accepted domain event is rejected.
-    let initial_receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+    let initial_receiver = EventForwarderReceiver::new_primary(bus.subscribe(), &bus);
     let task = tokio::spawn(supervise_event_forwarder(
         bus,
         transport,
@@ -208,7 +209,7 @@ async fn supervise_event_forwarder(
     loop {
         let mut receiver = next_receiver
             .take()
-            .unwrap_or_else(|| EventForwarderReceiver::new(bus.subscribe(), bus.backpressure()));
+            .unwrap_or_else(|| EventForwarderReceiver::new_primary(bus.subscribe(), &bus));
         let outcome = AssertUnwindSafe(run_event_forwarder_with_receiver(
             &mut receiver,
             Arc::clone(&transport),
@@ -278,9 +279,36 @@ async fn wait_for_forwarder_restart(
     }
 }
 
+/// Who may release backpressure slots for envelopes this receiver drains.
+///
+/// A publish acquires one slot per bus, but every broadcast subscriber sees a
+/// copy. Only the primary owner (this forwarder, after durable persistence)
+/// releases slots; a receiver whose primary claim failed releases nothing.
+#[derive(Clone)]
+enum SlotRelease {
+    None,
+    Legacy(Arc<BackpressureController>),
+    Owned(Arc<BackpressureOwnership>),
+    Suppressed,
+}
+
+impl SlotRelease {
+    fn release_slots(&self, count: usize) {
+        match self {
+            SlotRelease::None | SlotRelease::Suppressed => {}
+            SlotRelease::Legacy(backpressure) => {
+                for _ in 0..count {
+                    backpressure.release();
+                }
+            }
+            SlotRelease::Owned(ownership) => ownership.release_slots(count),
+        }
+    }
+}
+
 struct EventForwarderReceiver {
     receiver: broadcast::Receiver<EventEnvelope>,
-    backpressure: Option<Arc<BackpressureController>>,
+    slot_release: SlotRelease,
 }
 
 impl EventForwarderReceiver {
@@ -290,7 +318,24 @@ impl EventForwarderReceiver {
     ) -> Self {
         Self {
             receiver,
-            backpressure,
+            slot_release: match backpressure {
+                Some(backpressure) => SlotRelease::Legacy(backpressure),
+                None => SlotRelease::None,
+            },
+        }
+    }
+
+    /// Production receiver: claims primary backpressure ownership of the bus
+    /// so this durable gate is the only consumer releasing slots, whatever
+    /// order consumers started in. If another primary owner already exists,
+    /// this receiver persists events without releasing foreign slots.
+    fn new_primary(receiver: broadcast::Receiver<EventEnvelope>, bus: &EventBus) -> Self {
+        Self {
+            receiver,
+            slot_release: match bus.claim_primary_backpressure_ownership() {
+                Some(ownership) => SlotRelease::Owned(Arc::new(ownership)),
+                None => SlotRelease::Suppressed,
+            },
         }
     }
 
@@ -309,37 +354,24 @@ impl EventForwarderReceiver {
 
 impl Drop for EventForwarderReceiver {
     fn drop(&mut self) {
-        release_backpressure_slots(&self.backpressure, self.receiver.len());
+        self.slot_release.release_slots(self.receiver.len());
     }
 }
 
-struct BackpressureSlotGuard(Option<Arc<BackpressureController>>);
+struct BackpressureSlotGuard(SlotRelease);
 
 impl Drop for BackpressureSlotGuard {
     fn drop(&mut self) {
-        if let Some(backpressure) = &self.0 {
-            backpressure.release();
-        }
-    }
-}
-
-fn release_backpressure_slots(
-    backpressure: &Option<Arc<BackpressureController>>,
-    count: usize,
-) {
-    if let Some(backpressure) = backpressure {
-        for _ in 0..count {
-            backpressure.release();
-        }
+        self.0.release_slots(1);
     }
 }
 
 async fn publish_event_with_retry(
     envelope: EventEnvelope,
     transport: Arc<dyn EventTransport>,
-    backpressure: Option<Arc<BackpressureController>>,
+    slot_release: SlotRelease,
 ) {
-    let _slot = BackpressureSlotGuard(backpressure);
+    let _slot = BackpressureSlotGuard(slot_release);
     let event_id = envelope.id;
     let event_type = envelope.event.event_type();
     let mut attempt = 0_u64;
@@ -412,12 +444,12 @@ async fn run_event_forwarder_with_receiver(
                     publish_event_with_retry(
                         envelope,
                         Arc::clone(&transport),
-                        receiver.backpressure.clone(),
+                        receiver.slot_release.clone(),
                     )
                     .await;
                 }
                 Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
-                    release_backpressure_slots(&receiver.backpressure, skipped as usize);
+                    receiver.slot_release.release_slots(skipped as usize);
                     consumer_runtime.lagged(skipped);
                     tracing::warn!(
                         skipped,
@@ -452,12 +484,12 @@ async fn run_event_forwarder_with_receiver(
                         publish_event_with_retry(
                             envelope,
                             Arc::clone(&transport),
-                            receiver.backpressure.clone(),
+                            receiver.slot_release.clone(),
                         )
                         .await;
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        release_backpressure_slots(&receiver.backpressure, skipped as usize);
+                        receiver.slot_release.release_slots(skipped as usize);
                         consumer_runtime.lagged(skipped);
                         tracing::warn!(
                             skipped,

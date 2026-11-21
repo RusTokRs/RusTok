@@ -136,7 +136,11 @@ impl EventDispatcher {
         let config = self.config;
         let mut receiver = self.bus.subscribe();
         let bus = self.bus.clone();
-        let backpressure = bus.backpressure();
+        // The dispatcher releases backpressure slots only while it owns the
+        // bus. When a durable gate (the server event forwarder) holds primary
+        // ownership, it alone releases slots after persistence; this
+        // dispatcher then consumes without touching the shared counter.
+        let backpressure = bus.claim_backpressure_ownership().map(Arc::new);
         let consumer_runtime = EventConsumerRuntime::new("event_dispatcher");
         let (stop_tx, mut stop_rx) = watch::channel(false);
 
@@ -203,11 +207,10 @@ impl EventDispatcher {
                                 // Accepted envelopes that were overwritten by the
                                 // broadcast ring still consumed backpressure slots.
                                 // Release every skipped reservation or capacity
-                                // remains permanently over-counted.
+                                // remains permanently over-counted. The ownership
+                                // guard no-ops when a primary owner preempted us.
                                 if let Some(backpressure) = &backpressure {
-                                    for _ in 0..skipped {
-                                        backpressure.release();
-                                    }
+                                    backpressure.release_slots(skipped as usize);
                                 }
                                 consumer_runtime.lagged(skipped);
                                 continue;
@@ -275,7 +278,7 @@ impl EventDispatcher {
         handlers: Arc<Vec<Arc<dyn EventHandler>>>,
         config: DispatcherConfig,
         semaphore: Arc<Semaphore>,
-        backpressure: Option<Arc<super::backpressure::BackpressureController>>,
+        backpressure: Option<Arc<super::backpressure::BackpressureOwnership>>,
         consumer_runtime: EventConsumerRuntime,
         queue_permit: Arc<tokio::sync::OwnedSemaphorePermit>,
     ) {
@@ -811,7 +814,9 @@ mod tests {
             Arc::new(Vec::new()),
             DispatcherConfig::default(),
             Arc::new(Semaphore::new(1)),
-            Some(Arc::clone(&controller)),
+            Some(Arc::new(
+                controller.claim_ownership().expect("ownership claim"),
+            )),
             EventConsumerRuntime::new("test_dispatcher"),
             queue_permit,
         )
@@ -877,7 +882,9 @@ mod tests {
                 ..DispatcherConfig::default()
             },
             Arc::new(Semaphore::new(2)),
-            Some(Arc::clone(&controller)),
+            Some(Arc::new(
+                controller.claim_ownership().expect("ownership claim"),
+            )),
             EventConsumerRuntime::new("test_dispatcher"),
             queue_permit,
         ));

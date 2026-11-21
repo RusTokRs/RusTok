@@ -54,6 +54,40 @@ pub trait EventTransport: Send + Sync {
         Ok(())
     }
 
+    /// Whether this transport can append envelopes inside a caller-owned
+    /// transaction (the outbox transport can; streaming and in-memory
+    /// transports cannot). Callers check this before handing over an
+    /// envelope so "not supported" never consumes the value, and wrappers
+    /// that delegate to a transactional transport must forward it together
+    /// with the two write methods below. This replaces downcasting to a
+    /// concrete transport type at transactional call sites.
+    fn supports_transactional_writes(&self) -> bool {
+        false
+    }
+
+    /// Appends a root envelope inside the caller's transaction. Only
+    /// invoked when [`Self::supports_transactional_writes`] is `true`.
+    async fn write_root_in_transaction(
+        &self,
+        _transaction: &DatabaseTransaction,
+        _envelope: EventEnvelope,
+    ) -> Result<()> {
+        Err(Error::Validation(
+            "event transport does not support transactional writes".to_string(),
+        ))
+    }
+
+    /// Contract-envelope counterpart of [`Self::write_root_in_transaction`].
+    async fn write_contract_in_transaction(
+        &self,
+        _transaction: &DatabaseTransaction,
+        _envelope: ContractEventEnvelope,
+    ) -> Result<()> {
+        Err(Error::Validation(
+            "event transport does not support transactional writes".to_string(),
+        ))
+    }
+
     fn reliability_level(&self) -> ReliabilityLevel;
 
     fn as_any(&self) -> &dyn Any;
