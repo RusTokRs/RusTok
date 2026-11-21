@@ -414,6 +414,13 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
+- Product Index refresh, Social Graph Index and Forum Search typed broker
+  consumers check shutdown again **after** broker receive completes but before
+  invoking projection, semantic decode handling or poison DLQ publication.
+  `tokio::select!` can choose a delivery when the stop signal becomes ready at
+  the same time; the recheck prevents a new durable effect from being admitted.
+  A delivery returned during shutdown is not acknowledged, so its persistent
+  broker offset remains available for redelivery after restart.
 - Social Graph Index raw-poison DLQ publication keeps the source offset
   **uncommitted** after all transport retries fail; its worker reports a stable
   failure diagnostic without embedding untrusted broker error text. The

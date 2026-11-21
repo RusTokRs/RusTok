@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -209,7 +209,7 @@ async fn notification_fanout_worker_loop(
             }
             // Source policy evaluation can await storage after shutdown
             // starts. A new materialization is not an in-flight operation.
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification fanout worker stopped after source policy evaluation"
@@ -268,7 +268,7 @@ async fn notification_fanout_worker_loop(
             }
             // Respect shutdown even when a delayed tenant-policy lookup
             // completed after the preceding loop-entry stop check.
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification fanout worker stopped after job policy evaluation"

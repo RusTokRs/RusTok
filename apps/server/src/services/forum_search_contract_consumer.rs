@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -271,6 +271,15 @@ async fn forum_search_contract_consumer_loop(
             tracing::info!("Forum Search typed invalidation consumer stopped before receive");
             return;
         };
+        // The broker receive and shutdown notification may become ready
+        // simultaneously. Never admit a new projection/DLQ side effect after
+        // stop, even if select returned the delivery branch.
+        if !may_admit_next_worker_operation(&stop_rx) {
+            tracing::info!(
+                "Forum Search typed consumer received a broker delivery during shutdown; source offset remains uncommitted"
+            );
+            return;
+        }
 
         let keep_running = match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {

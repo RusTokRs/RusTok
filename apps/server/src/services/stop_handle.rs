@@ -2,7 +2,18 @@
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
+/// Stored in `ServerRuntimeContext`; shutdown signals workers, which drain their current operation.
+/// A shutdown signal is an admission fence for new durable worker work.
+///
+//// Do not cancel operations already claimed; recheck this immediately after
+//// any awaited preparation (broker receive, tenant policy, retry transition)
+//// and before the next effectful owner call.
+pub(crate) fn may_admit_next_worker_operation(
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
+) -> bool {
+    !*stop_rx.borrow()
+}
+
 #[derive(Clone)]
 pub struct StopHandle {
     stop_tx: tokio::sync::watch::Sender<bool>,
@@ -47,5 +58,33 @@ impl StopHandle {
                 ctx.shared_get::<Self>().unwrap_or(handle)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StopHandle, may_admit_next_worker_operation};
+
+    #[tokio::test]
+    async fn stopped_while_receiving_does_not_admit_delivered_work() {
+        let (stop, receiver) = StopHandle::new();
+        assert!(may_admit_next_worker_operation(&receiver));
+
+        let (receiving_tx, receiving_rx) = tokio::sync::oneshot::channel();
+        let (deliver_tx, deliver_rx) = tokio::sync::oneshot::channel::<u32>();
+        let consumer = tokio::spawn(async move {
+            receiving_tx.send(()).expect("receive began");
+            let item = deliver_rx.await.expect("receive completed");
+            may_admit_next_worker_operation(&receiver).then_some(item)
+        });
+        receiving_rx.await.expect("consumer awaiting delivery");
+
+        stop.stop().await;
+        deliver_tx.send(42).expect("deliver after shutdown");
+        assert_eq!(
+            consumer.await.expect("consumer joins"),
+            None,
+            "a delivered but unacknowledged item stays for recovery"
+        );
     }
 }

@@ -483,7 +483,10 @@ mod source_retry_worker_tests {
             calls: 1,
             ..Default::default()
         };
-        assert!(outcome.can_claim_next(32, &receiver), "next claim is allowed before stop");
+        assert!(
+            outcome.can_claim_next(32, &receiver),
+            "next claim is allowed before stop"
+        );
 
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
@@ -497,11 +500,18 @@ mod source_retry_worker_tests {
         // The in-flight operation is finished before checking for a successor.
         release_tx.send(()).expect("release previous operation");
         prior_operation.await.expect("previous operation joins");
-        assert!(!outcome.can_claim_next(32, &receiver), "no more claims after shutdown");
-        assert!(!SourceRetryHandoffWorkerCycleOutcome {
+        assert!(
+            !outcome.can_claim_next(32, &receiver),
+            "no more claims after shutdown"
+        );
+        let exhausted = SourceRetryHandoffWorkerCycleOutcome {
             calls: 32,
             ..Default::default()
-        }.can_claim_next(32, &receiver), "cycle claim budget also applies");
+        };
+        assert!(
+            !exhausted.can_claim_next(32, &receiver),
+            "cycle claim budget also applies"
+        );
         receiver.changed().await.expect("stop update remains observable");
     }
 

@@ -25,7 +25,7 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
-| `P-WORKER-SHUTDOWN-ADMISSION` | Comments source-retry handoff checked shutdown only outside a bounded multi-claim cycle; Notifications candidate/fanout could begin a new durable action after an async policy check returned despite a stop request. The host now rechecks stop between durable claims and after policy observation, without cancelling an already claimed operation. Source-level fix and regression authored, unrun. | [Comments handoff loop](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs), [candidate worker](../../apps/server/src/services/notification_candidate_worker.rs), [fanout worker](../../apps/server/src/services/notification_fanout_worker.rs) |
+| `P-WORKER-SHUTDOWN-ADMISSION` | Comments source-retry handoff checked shutdown only outside a bounded multi-claim cycle; Notifications candidate/fanout could begin a new durable action after an async policy check; three broker consumers could process a delivery selected concurrently with shutdown. The host now rechecks stop between durable claims and after policy observation, without cancelling an already claimed operation. Source-level fix and regression authored, unrun. | [Comments handoff loop](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs), [stop admission](../../apps/server/src/services/stop_handle.rs), [broker consumer](../../apps/server/src/services/social_graph_index_worker.rs), [candidate worker](../../apps/server/src/services/notification_candidate_worker.rs), [fanout worker](../../apps/server/src/services/notification_fanout_worker.rs) |
 | `P-WORKER-STARTUP-LIVENESS` | Thirteen server worker starters reported idempotent startup when only a terminated Tokio `JoinHandle` remained registered. Repeated bootstrap now distinguishes live/absent/exited handles at the relevant checks, rejecting terminated tasks without orphaning the shutdown handle. No runtime tests have been executed for this patch. | [Shared guard](../../apps/server/src/services/server_runtime_context.rs), [Host worker startup](../../apps/server/src/services/app_lifecycle.rs), [Notifications intake](../../apps/server/src/services/notification_outbox_intake_worker.rs), [Forum contract consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Product Index refresh](../../apps/server/src/services/product_index_refresh_worker.rs) |
 | `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
 | `P-OWNER-READ-BOUNDARY` | Distribution queried private Product and Channel tables. Change `8cc68c8fa2` moved the read contracts to their owners while retaining one PostgreSQL snapshot for admission. | [Decision](../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md), [Product projection](../../crates/modules/rustok-product/src/index_projection.rs), [Channel projection](../../crates/modules/rustok-channel/src/index_projection.rs) |
@@ -44,14 +44,18 @@ without evidence of a failure is recorded separately below.
 - **Observed failure:** Checking a stop flag only at an outer polling-loop
   boundary allows a bounded inner loop to claim more durable items after the
   stop request. Similarly, an `await` between a batch entry's stop check and
-  its first effectful operation makes the earlier admission obsolete.
+  its first effectful operation makes the earlier admission obsolete. A broker
+  consumer's `tokio::select!` may also return the delivery branch when receive
+  and shutdown become ready simultaneously.
 - **Correct handling:** Finish the operation whose claim/effect boundary was
   already entered, including its transactional receipt or failure transition.
-  Before the next claim, retry phase or new effect after a policy `await`,
-  re-read the subscribed stop flag and exit if signaled. Do **not** cancel a
+  Before the next claim, retry phase, newly received broker message, or effect
+  after a policy `await`, re-read the subscribed stop flag and exit if
+  signaled. Leave a broker delivery unacknowledged if received after stop. Do **not** cancel a
   transaction halfway through its owner-managed recovery semantics.
 - **Detection:** Inspect `for` / `while` batches and the awaited steps
-  between `stop_rx.borrow()` and effectful service calls; start with
+  between `stop_rx.borrow()` and effectful service calls, including
+  `tokio::select!` receive branches; start with
   `rg -n 'claim_next|process_candidate|materialize_source_inbox|process_fanout_job|stop_rx.borrow' apps/server/src/services`.
   The existence of a stop check at the top of the outer worker loop is not
   proof of a shutdown boundary inside a cycle.

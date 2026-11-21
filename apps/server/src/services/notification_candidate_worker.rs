@@ -17,7 +17,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -286,7 +286,7 @@ async fn notification_candidate_worker_loop(
 
             // The asynchronous policy lookup (or deferral) may have run
             // through shutdown. Do not acquire a fresh durable claim afterward.
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification candidate worker stopped after policy observation"

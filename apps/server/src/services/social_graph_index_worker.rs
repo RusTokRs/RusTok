@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -285,6 +285,17 @@ async fn social_graph_index_worker_loop(
             );
             return;
         };
+        // The broker receive and shutdown notification may become ready
+        // simultaneously. Never admit a new projection/DLQ side effect after
+        // stop, even if select returned the delivery branch.
+        if !may_admit_next_worker_operation(&stop_rx) {
+            record_worker_termination("shutdown");
+            tracing::info!(
+                worker = METRICS_CONSUMER,
+                "Broker delivery arrived during shutdown; leaving its source offset uncommitted"
+            );
+            return;
+        }
 
         match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {

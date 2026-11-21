@@ -1,5 +1,26 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — post-receive broker shutdown fence (2026-11-21)
+
+Forum Search typed contract consumer, Product Index refresh and Social Graph
+Index consumer previously awaited broker delivery and shutdown in the same
+`tokio::select!`. When both futures were ready, Tokio could choose the receive
+branch even after the stop signal was already visible. The worker then started
+projection or raw-poison DLQ publication instead of draining. The durable
+broker cursor is not acknowledged by receive, so a returned-but-unprocessed
+delivery should remain recoverable after process restart.
+
+All three loops now perform a second stop check immediately after receiving,
+before *any* event or decode-failure handling. A shared helper in
+`stop_handle.rs` documents operation admission and has a deterministic
+post-await/stop-signal regression. The existing stop branches and durable
+acknowledgement contracts are unchanged.
+
+The new checks cannot guarantee that shutdown and effect execution are a
+cross-thread atomic operation; effect owners remain responsible for durable
+replay, attempt fencing and idempotency. Tests, cargo compilation and
+formatting were not run per maintainer request.
+
 ## Server audit continuation — retry/shutdown operation admission (2026-11-21)
 
 Following the startup-liveness fixes in draft PR #4777, inspected the Comments
