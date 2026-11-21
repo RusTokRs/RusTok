@@ -647,9 +647,12 @@ impl OAuthAppService {
 
     /// Revoke an OAuth access or refresh token and its family by hash (RFC 7009).
     ///
-    /// The lookup and family-wide revocation share one transaction. The token
-    /// predicate is scoped by client and tenant, and unknown tokens succeed
-    /// without revealing whether a hash existed. Access JWTs are registered
+    /// The app mutation fence, lookup and family-wide revocation share one
+    /// transaction. Token issuance/refresh takes the app lock first too: this
+    /// prevents revocation from missing a fresh refresh-family successor that
+    /// commits concurrently. The token predicate is scoped by client and
+    /// tenant, and unknown tokens succeed without revealing existence.
+    /// Access JWTs are registered
     /// as `token_kind = access` rows, so revocation fences an already-issued
     /// JWT before its signed TTL; refresh rows fence the rotation lineage.
     pub async fn revoke_token_by_hash(
@@ -659,6 +662,14 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Acquire the same app-row fence as refresh rotation and token issuance
+        // BEFORE reading the revocation target. Otherwise a refresh can commit
+        // its replacement after this lookup but before the family update.
+        // A missing app is not an existence oracle: still complete the normal
+        // scoped unknown-token path without a distinct public result.
+        let _app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         let token = OAuthTokens::find()
             .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
             .filter(oauth_tokens::Column::AppId.eq(app_id))
