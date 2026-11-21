@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::{MatchedPath, Request};
-use axum::http::{HeaderName, Method, StatusCode, header};
+use axum::http::{HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceBuilder;
@@ -150,31 +150,83 @@ pub fn resolve_upload_timeout_seconds() -> u64 {
     )
 }
 
-/// Custom [`MakeSpan`] that attaches the request's `x-request-id` and `x-correlation-id`
-/// directly to the root HTTP tracing span for complete end-to-end trace correlation.
+/// Fixed log vocabulary for HTTP methods. Extension methods are accepted
+/// by the router but may be arbitrarily long and are not safe trace fields.
+fn trace_method_family(method: &Method) -> &'static str {
+    match method.as_str() {
+        "GET" => "GET",
+        "POST" => "POST",
+        "PUT" => "PUT",
+        "PATCH" => "PATCH",
+        "DELETE" => "DELETE",
+        "HEAD" => "HEAD",
+        "OPTIONS" => "OPTIONS",
+        "CONNECT" => "CONNECT",
+        "TRACE" => "TRACE",
+        _ => "OTHER",
+    }
+}
+
+/// Request/correlation identifiers originate in untrusted HTTP headers.
+/// Preserve canonical UUIDs and 32-digit hex trace IDs for cross-service
+/// correlation; never render arbitrary strings (including bearer-like or
+/// malformed IDs) into the root span. HTTP propagation remains unchanged.
+fn trace_safe_request_id(value: Option<&HeaderValue>) -> &str {
+    let Some(value) = value else {
+        return "-";
+    };
+    if value.as_bytes().len() > 36 {
+        return "-";
+    }
+    let Ok(value) = value.to_str() else {
+        return "-";
+    };
+    let shape = value.len() == 36
+        || (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    if shape && uuid::Uuid::parse_str(value).is_ok() {
+        value
+    } else {
+        "-"
+    }
+}
+
+/// W3C trace-context version 00 has a fixed 55-byte ASCII grammar. Invalid,
+/// all-zero or future-version strings stay available to the downstream
+/// transport but are not reflected into diagnostic spans.
+fn trace_safe_traceparent(value: Option<&HeaderValue>) -> &str {
+    let Some(value) = value else {
+        return "-";
+    };
+    let bytes = value.as_bytes();
+    if bytes.len() != 55
+        || &bytes[0..3] != b"00-"
+        || bytes[35] != b'-'
+        || bytes[52] != b'-'
+        || !bytes[3..35].iter().all(|byte| byte.is_ascii_hexdigit())
+        || !bytes[36..52].iter().all(|byte| byte.is_ascii_hexdigit())
+        || !bytes[53..55].iter().all(|byte| byte.is_ascii_hexdigit())
+        || bytes[3..35].iter().all(|byte| *byte == b'0')
+        || bytes[36..52].iter().all(|byte| *byte == b'0')
+    {
+        return "-";
+    }
+    value.to_str().unwrap_or("-")
+}
+
+/// Custom [`MakeSpan`] that attaches validated, bounded tracing identifiers
+/// to the root HTTP span. Untrusted custom header content never becomes a
+/// log field, but routing and response-header propagation are unchanged.
 #[derive(Clone, Debug)]
 pub struct RusTokMakeSpan;
 
 impl<B> MakeSpan<B> for RusTokMakeSpan {
     fn make_span(&mut self, request: &axum::http::Request<B>) -> tracing::Span {
-        let request_id = request
-            .headers()
-            .get("x-request-id")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("-");
-        let correlation_id = request
-            .headers()
-            .get("x-correlation-id")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("-");
-        let traceparent = request
-            .headers()
-            .get("traceparent")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("-");
+        let request_id = trace_safe_request_id(request.headers().get("x-request-id"));
+        let correlation_id = trace_safe_request_id(request.headers().get("x-correlation-id"));
+        let traceparent = trace_safe_traceparent(request.headers().get("traceparent"));
         tracing::info_span!(
             "http_request",
-            method = %request.method(),
+            method = trace_method_family(request.method()),
             path_group = trace_path_family(request.uri().path()),
             version = ?request.version(),
             request_id = %request_id,
@@ -751,6 +803,62 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn trace_fields_reject_unbounded_or_malformed_client_identifiers() {
+        use axum::http::HeaderValue;
+
+        let generated = HeaderValue::from_static("550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(
+            trace_safe_request_id(Some(&generated)),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        let trace_id = HeaderValue::from_static("463ac35c9f6413ad48485a3953bb6124");
+        assert_eq!(
+            trace_safe_request_id(Some(&trace_id)),
+            "463ac35c9f6413ad48485a3953bb6124"
+        );
+        let overlong = "a".repeat(4096);
+        for invalid in [
+            "Bearer secret",
+            "hello\\nsecret",
+            "secret",
+            "https://user:password@example.org",
+            overlong.as_str(),
+        ] {
+            let header = HeaderValue::from_str(invalid).expect("valid HTTP header bytes");
+            assert_eq!(
+                trace_safe_request_id(Some(&header)),
+                "-",
+                "untrusted request/correlation header values must not reach logs"
+            );
+        }
+        assert_eq!(trace_safe_request_id(None), "-");
+
+        let valid_parent = HeaderValue::from_static(
+            "00-463ac35c9f6413ad48485a3953bb6124-0020000000000001-01"
+        );
+        assert_eq!(
+            trace_safe_traceparent(Some(&valid_parent)),
+            valid_parent.to_str().unwrap()
+        );
+        for invalid in [
+            "00-00000000000000000000000000000000-0020000000000001-01",
+            "00-463ac35c9f6413ad48485a3953bb6124-0000000000000000-01",
+            "ff-463ac35c9f6413ad48485a3953bb6124-0020000000000001-01",
+            "00-secret-value",
+        ] {
+            let header = HeaderValue::from_str(invalid).unwrap();
+            assert_eq!(trace_safe_traceparent(Some(&header)), "-");
+        }
+        assert_eq!(trace_safe_traceparent(None), "-");
+
+        assert_eq!(trace_method_family(&Method::GET), "GET");
+        assert_eq!(
+            trace_method_family(&Method::from_bytes(b"UNTRUSTED-CUSTOM-METHOD").unwrap()),
+            "OTHER"
+        );
     }
 
     #[test]

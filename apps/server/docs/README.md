@@ -232,6 +232,15 @@ listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 
+The HTTP root trace span now rejects malformed or oversized
+client-supplied `x-request-id`, `x-correlation-id` and W3C
+`traceparent` values. Only canonical UUID/32-hex correlation
+identifiers and valid fixed-format W3C version-00 trace context appear
+in logs; all others render as `-`. Unrecognized HTTP extension
+methods are reported as `OTHER`, preventing user-controlled method
+bytes from entering traces. This does not rewrite the original
+headers or change downstream request-ID propagation.
+
 HTTP edge tracing and middleware diagnostics now emit only a fixed
 `path_group` (for example `/api/:request`, `/admin/:request`,
 `/graphql`, or `/health/ready`) rather than the raw URI pathname. URL

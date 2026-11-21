@@ -1,5 +1,24 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — bounded HTTP trace identifiers (2026-11-21)
+
+The edge `RusTokMakeSpan` already used bounded `path_group` after
+earlier audit changes, but it still copied arbitrary
+`x-request-id`, `x-correlation-id`, `traceparent` headers and
+custom HTTP method names into the root span as-is. Those fields are
+client-controlled and could be unbounded or contain credential-like
+strings even when no route matches.
+
+The trace-span boundary now accepts only canonical UUIDs or
+32-character hex trace IDs for request/correlation identifiers and
+strict W3C version-00 traceparent syntax with nonzero trace/span IDs.
+Missing, malformed and overlong values map to `-`, and extension
+HTTP methods map to `OTHER`. The validated fields retain ordinary
+correlation for UUID-based callers. No HTTP headers are rewritten;
+downstream request/response ID propagation remains unchanged.
+The focused unit test exercises accepted and rejected values and
+the fixed method vocabulary. Tests, build and formatting not run.
+
 ## Server audit continuation — tenant cache-generation recovery semantics (2026-11-21)
 
 The tenant cache-generation listener already reconciled the shared backend
