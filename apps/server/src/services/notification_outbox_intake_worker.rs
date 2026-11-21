@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED";
@@ -161,6 +161,10 @@ impl NotificationOutboxIntakeReceiptPort for ServerNotificationOutboxIntakeRecei
     }
 }
 
+// The registration and durable receipt backfill are one startup lifecycle.
+// A concurrent bootstrap must not run another backfill before this one ends.
+struct NotificationOutboxIntakeStartupReservation;
+
 pub struct NotificationOutboxIntakeWorkerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -201,6 +205,14 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
 
     let stop = StopHandle::ensure(ctx);
     ensure_intake_bootstrap_not_stopping(&stop)?;
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, NotificationOutboxIntakeStartupReservation)
+    else {
+        return Ok(());
+    };
+    if ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>() {
+        return Ok(());
+    }
 
     let decoder = Arc::new(ServerNotificationOutboxEnvelopeDecoder);
     let accepted_event_types = decoder.accepted_event_types();
@@ -273,6 +285,7 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         instance_id,
         _handle: tokio::spawn(notification_outbox_intake_loop(worker, stop_rx)),
     });
+    reservation.commit();
     Ok(())
 }
 
