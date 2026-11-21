@@ -406,7 +406,8 @@ mod tests {
         assert!(super::ensure_intake_bootstrap_not_stopping(&stop).is_ok());
         stop.stop().await;
         assert!(super::ensure_intake_bootstrap_not_stopping(&stop).is_err());
-        assert!(stop.subscribe().borrow().to_owned());
+        let late_subscriber = stop.subscribe();
+        assert!(*late_subscriber.borrow());
     }
 
     use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope, ForumMentionEvent};
