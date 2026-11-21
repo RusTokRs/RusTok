@@ -268,6 +268,17 @@ fn same_contract_publication(
     Ok(stored.payload()? == expected.payload()?)
 }
 
+fn same_root_publication(stored: &EventEnvelope, expected: &EventEnvelope) -> bool {
+    stored.id == expected.id
+        && stored.correlation_id == expected.correlation_id
+        && stored.causation_id == expected.causation_id
+        && stored.tenant_id == expected.tenant_id
+        && stored.actor_id == expected.actor_id
+        && stored.event_type == expected.event_type
+        && stored.schema_version == expected.schema_version
+        && stored.event == expected.event
+}
+
 fn write_once_unavailable(
     envelope_id: Uuid,
     event_type: &str,

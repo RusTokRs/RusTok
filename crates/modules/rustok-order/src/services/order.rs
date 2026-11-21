@@ -987,18 +987,15 @@ impl OrderService {
             .await
     }
 
-    async fn publish_status_changed<C>(
+    async fn publish_status_changed(
         &self,
-        txn: &C,
+        txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Uuid,
         order_id: Uuid,
         old_status: &str,
         new_status: &str,
-    ) -> OrderResult<()>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> OrderResult<()> {
         self.event_bus
             .publish_in_tx(
                 txn,

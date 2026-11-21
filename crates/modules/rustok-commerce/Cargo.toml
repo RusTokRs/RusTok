@@ -22,6 +22,9 @@ marketplace-financial = [
     "dep:rustok-marketplace-balance",
 ]
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow.workspace = true
 async-graphql = { workspace = true, features = ["decimal"] }

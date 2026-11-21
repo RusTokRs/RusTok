@@ -123,7 +123,10 @@ impl CommerceHttpRuntime {
             .with_shipping_profile_port(std::sync::Arc::new(crate::ShippingProfileService::new(
                 db.clone(),
             )))
-            .expect("embedded Product owner accepts Shipping Profile admission");
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "failed to configure shipping profile port in product catalog command runtime; using unconfigured runtime");
+                rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone())
+            });
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime =
             crate::MarketplaceFinancialRuntime::in_process(db.clone());
@@ -320,15 +323,19 @@ impl CommerceHttpRuntime {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CommerceControllerError {
+    #[error("Commerce HTTP routes require {0} in HostRuntimeContext")]
+    MissingHostDependency(&'static str),
+}
+
 impl CommerceHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, CommerceControllerError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "TransactionalEventBus",
+            ))?;
         let payment_provider_registry = runtime
             .shared_get::<PaymentProviderRegistry>()
             .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
@@ -337,11 +344,9 @@ impl CommerceHttpRuntime {
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
         let shipping_option_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceShippingOptionReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require CommerceShippingOptionReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "CommerceShippingOptionReadRuntime",
+            ))?;
         let shipping_option_admin_command_runtime = runtime
             .shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
             .unwrap_or_else(|| {
@@ -351,18 +356,14 @@ impl CommerceHttpRuntime {
             });
         let fulfillment_lifecycle_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "CommerceFulfillmentLifecycleReadRuntime",
+            ))?;
         let order_read_runtime = runtime
             .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require CommerceOrderReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "CommerceOrderReadRuntime",
+            ))?;
         let fulfillment_admin_command_runtime = runtime
             .shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()
             .unwrap_or_else(|| {
@@ -387,11 +388,9 @@ impl CommerceHttpRuntime {
             });
         let order_admin_command_runtime = runtime
             .shared_get::<rustok_order::OrderAdminCommandRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require OrderAdminCommandRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "OrderAdminCommandRuntime",
+            ))?;
         // Admin cancellation must unwind fulfillments and payments, not only flip the status.
         let order_admin_command_runtime = crate::orchestrated_order_admin_command_runtime(
             order_admin_command_runtime,
@@ -407,32 +406,24 @@ impl CommerceHttpRuntime {
         );
         let order_post_order_command_runtime = runtime
             .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require OrderPostOrderCommandRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "OrderPostOrderCommandRuntime",
+            ))?;
         let payment_order_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require PaymentOrderReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentOrderReadRuntime",
+            ))?;
         let payment_cart_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentCartReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require PaymentCartReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentCartReadRuntime",
+            ))?;
         let payment_collection_runtime = runtime
             .shared_get::<rustok_payment::PaymentCollectionRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require PaymentCollectionRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentCollectionRuntime",
+            ))?;
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
             .unwrap_or_else(|| {
@@ -457,26 +448,20 @@ impl CommerceHttpRuntime {
             });
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "ProductCatalogReadRuntime",
+            ))?;
         let product_catalog_command_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require ProductCatalogCommandRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "ProductCatalogCommandRuntime",
+            ))?;
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce marketplace-financial HTTP routes require MarketplaceFinancialRuntime in HostRuntimeContext"
-                )
-            })?;
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "MarketplaceFinancialRuntime",
+            ))?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -504,7 +489,7 @@ impl CommerceHttpRuntime {
     }
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, CommerceControllerError> {
     let state = CommerceHttpRuntime::from_host(runtime)?;
     let router = axum::Router::new()
         .nest("/store", store::axum_router())

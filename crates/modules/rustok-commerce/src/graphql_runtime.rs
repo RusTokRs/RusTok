@@ -331,13 +331,18 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
         .try_with(Clone::clone)
         .unwrap_or_else(|_| {
             let pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
-            ProductCatalogCommandRuntime::in_process_with_pricing(
+            let runtime = ProductCatalogCommandRuntime::in_process_with_pricing(
                 db.clone(),
                 event_bus,
                 Some(pricing),
-            )
-            .with_shipping_profile_port(std::sync::Arc::new(crate::ShippingProfileService::new(db)))
-            .expect("embedded Product owner accepts Shipping Profile admission")
+            );
+            runtime
+                .clone()
+                .with_shipping_profile_port(std::sync::Arc::new(crate::ShippingProfileService::new(db)))
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "failed to configure shipping profile port; falling back to unconfigured catalog runtime");
+                    runtime
+                })
         })
 }
 
@@ -424,16 +429,24 @@ impl CommerceGraphqlRuntimeData {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CommerceGraphqlRuntimeError {
+    #[error("commerce GraphQL requires {0} in host composition")]
+    MissingHostDependency(&'static str),
+    #[cfg(feature = "marketplace-financial")]
+    #[error("commerce marketplace-financial GraphQL requires MarketplaceFinancialRuntime in host composition")]
+    MissingMarketplaceFinancialRuntime,
+}
+
 /// Capability-owned factory consumed by manifest-generated schema composition.
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-) -> Result<CommerceGraphqlRuntimeData, String> {
-    let payment_provider_registry =
-        inputs
-            .shared_get::<PaymentProviderRegistry>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires PaymentProviderRegistry in host composition".to_string()
-            })?;
+) -> Result<CommerceGraphqlRuntimeData, CommerceGraphqlRuntimeError> {
+    let payment_provider_registry = inputs
+        .shared_get::<PaymentProviderRegistry>()
+        .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+            "PaymentProviderRegistry",
+        ))?;
     let fulfillment_provider_registry = inputs
         .shared_get::<FulfillmentProviderRegistry>()
         .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
@@ -464,9 +477,9 @@ pub fn attach_schema_data(
         .unwrap_or_else(|| CommercePaymentCommandRuntime::from_graphql_inputs(inputs));
     let order_read_runtime = inputs
         .shared_get::<CommerceOrderReadRuntime>()
-        .ok_or_else(|| {
-            "commerce GraphQL requires CommerceOrderReadRuntime in host composition".to_string()
-        })?;
+        .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+            "CommerceOrderReadRuntime",
+        ))?;
     let fulfillment_command_runtime = inputs
         .shared_get::<CommerceFulfillmentCommandRuntime>()
         .unwrap_or_else(|| {
@@ -485,49 +498,42 @@ pub fn attach_schema_data(
         #[cfg(feature = "marketplace-financial")]
         marketplace_financial_runtime: inputs
             .shared_get::<crate::MarketplaceFinancialRuntime>()
-            .ok_or_else(|| {
-                "commerce marketplace-financial GraphQL requires MarketplaceFinancialRuntime in host composition"
-                    .to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingMarketplaceFinancialRuntime)?,
         payment_read_runtime,
         payment_command_runtime,
         fulfillment_command_runtime,
         shipping_option_read_runtime: inputs
             .shared_get::<CommerceShippingOptionReadRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires CommerceShippingOptionReadRuntime in host composition"
-                    .to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "CommerceShippingOptionReadRuntime",
+            ))?,
         shipping_option_admin_command_runtime: inputs
             .shared_get::<ShippingOptionAdminCommandRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires ShippingOptionAdminCommandRuntime in host composition"
-                    .to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "ShippingOptionAdminCommandRuntime",
+            ))?,
         fulfillment_lifecycle_read_runtime,
         order_read_runtime,
         order_admin_command_runtime: inputs
             .shared_get::<OrderAdminCommandRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires OrderAdminCommandRuntime in host composition".to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "OrderAdminCommandRuntime",
+            ))?,
         order_post_order_command_runtime: inputs
             .shared_get::<OrderPostOrderCommandRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires OrderPostOrderCommandRuntime in host composition"
-                    .to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "OrderPostOrderCommandRuntime",
+            ))?,
         product_catalog_read_runtime: inputs
             .shared_get::<ProductCatalogReadRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires ProductCatalogReadRuntime in host composition".to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "ProductCatalogReadRuntime",
+            ))?,
         product_catalog_command_runtime: inputs
             .shared_get::<ProductCatalogCommandRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires ProductCatalogCommandRuntime in host composition"
-                    .to_string()
-            })?,
+            .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(
+                "ProductCatalogCommandRuntime",
+            ))?,
     })
 }
 

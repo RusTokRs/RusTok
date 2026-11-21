@@ -841,7 +841,7 @@ impl CatalogService {
                             entities::variant_translation::Entity::find()
                                 .filter(
                                     entities::variant_translation::Column::VariantId
-                                        .is_in(variant_ids),
+                                        .is_in(variant_ids.clone()),
                                 )
                                 .filter(entities::variant_translation::Column::Locale.eq(&locale))
                                 .all(&txn)
@@ -2339,7 +2339,7 @@ async fn variant_auto_titles_by_locale_in_tx(
     let variant_ids = [variant_id];
     let mut titles = HashMap::with_capacity(locales.len());
     for locale in locales {
-        let by_variant = super::projection::load_variant_display_titles(
+        let mut by_variant = super::projection::load_variant_display_titles(
             txn,
             tenant_id,
             product_id,

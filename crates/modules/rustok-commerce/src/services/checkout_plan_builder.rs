@@ -342,12 +342,14 @@ impl CheckoutPlanBuilder {
                 )?;
             }
         }
+        let channel_slug_for_inventory = public_channel_slug.clone();
         let inventory_futures = demands.iter().map(|demand| {
             let variant_id = demand.variant_id;
             let quantity = demand.quantity;
             let port = self.inventory_availability_port.clone();
+            let channel_slug = channel_slug_for_inventory.clone();
             let inventory_context =
-                inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
+                inventory_context(tenant_id, actor_id, cart, channel_slug_for_inventory.as_deref());
             async move {
                 let availability = port
                     .check_availability(
@@ -355,7 +357,7 @@ impl CheckoutPlanBuilder {
                         InventoryAvailabilityRequest {
                             variant_id,
                             requested_quantity: demand.quantity,
-                            channel_slug: public_channel_slug.clone(),
+                            channel_slug,
                         },
                     )
                     .await

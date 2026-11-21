@@ -95,12 +95,13 @@ pub struct GqlProduct {
     pub brands: Vec<GqlProductBrand>,
 }
 
-#[derive(SimpleObject)]
+#[derive(SimpleObject, Clone)]
 pub struct GqlProductBrand {
     pub brand_id: Uuid,
     pub is_primary: bool,
     pub role: String,
     pub position: i32,
+    pub brand: Option<GqlBrand>,
 }
 
 impl From<dto::ProductBrandResponse> for GqlProductBrand {
@@ -110,6 +111,7 @@ impl From<dto::ProductBrandResponse> for GqlProductBrand {
             is_primary: brand.is_primary,
             role: brand.role,
             position: brand.position,
+            brand: None,
         }
     }
 }
@@ -3367,15 +3369,6 @@ pub struct GqlBrandListResponse {
     pub total: u64,
     pub page: u64,
     pub per_page: u64,
-}
-
-#[derive(SimpleObject, Clone)]
-pub struct GqlProductBrand {
-    pub brand_id: Uuid,
-    pub is_primary: bool,
-    pub role: String,
-    pub position: i32,
-    pub brand: Option<GqlBrand>,
 }
 
 #[derive(InputObject, Clone, Default)]

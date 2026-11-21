@@ -277,7 +277,11 @@ impl MarketplaceProviderReversalEventAdapter {
                     collection_id,
                 )
             }
-            _ => unreachable!("supported event checked above"),
+            other => {
+                return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                    format!("unsupported reversal event: {other}"),
+                ));
+            }
         };
 
         let collection = self

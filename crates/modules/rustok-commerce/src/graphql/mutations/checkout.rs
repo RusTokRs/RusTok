@@ -323,7 +323,7 @@ impl CommerceCheckoutMutation {
         validate_shipping_option_profile_inputs(
             db,
             tenant_id,
-            input.allowed_shipping_profile_slugs.as_ref(),
+            input.allowed_shipping_profile_slugs.as_deref(),
         )
         .await?;
         let request = CreateAdminShippingOptionRequest {
@@ -382,7 +382,7 @@ impl CommerceCheckoutMutation {
         validate_shipping_option_profile_inputs(
             db,
             tenant_id,
-            input.allowed_shipping_profile_slugs.as_ref(),
+            input.allowed_shipping_profile_slugs.as_deref(),
         )
         .await?;
         let request = UpdateAdminShippingOptionRequest {

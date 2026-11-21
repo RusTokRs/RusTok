@@ -229,31 +229,25 @@ impl TransactionalEventBus {
         OutboxTransport::write_contract_envelope_once_in_tx(txn, envelope).await
     }
 
-    pub async fn publish_in_tx<C>(
+    pub async fn publish_in_tx(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         event: DomainEvent,
-    ) -> Result<()>
-    where
-        C: ConnectionTrait,
-    {
+    ) -> Result<()> {
         self.publish_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
             .await
             .map(|_| ())
     }
 
-    pub async fn publish_in_tx_with_envelope_id<C>(
+    pub async fn publish_in_tx_with_envelope_id(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         event: DomainEvent,
-    ) -> Result<Uuid>
-    where
-        C: ConnectionTrait,
-    {
+    ) -> Result<Uuid> {
         let envelope = self.build_envelope(tenant_id, actor_id, event)?;
         let envelope_id = envelope.id;
 
@@ -278,15 +272,14 @@ impl TransactionalEventBus {
     /// Unlike the legacy root `DomainEvent` API, this supports module event families
     /// without reopening a platform-wide enum. External crates cannot implement
     /// `EventContract`, so arbitrary event names remain impossible.
-    pub async fn publish_contract_in_tx<C, E>(
+    pub async fn publish_contract_in_tx<E>(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         event: E,
     ) -> Result<()>
     where
-        C: ConnectionTrait,
         E: EventContract,
     {
         self.publish_contract_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
@@ -294,15 +287,14 @@ impl TransactionalEventBus {
             .map(|_| ())
     }
 
-    pub async fn publish_contract_in_tx_with_envelope_id<C, E>(
+    pub async fn publish_contract_in_tx_with_envelope_id<E>(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         event: E,
     ) -> Result<Uuid>
     where
-        C: ConnectionTrait,
         E: EventContract,
     {
         let envelope = build_contract_envelope(tenant_id, actor_id, None, event)?;
@@ -311,16 +303,15 @@ impl TransactionalEventBus {
 
     /// Publishes a sealed typed contract caused by one exact predecessor
     /// envelope and discards only the new typed envelope identity.
-    pub async fn publish_contract_in_tx_with_causation<C, E>(
+    pub async fn publish_contract_in_tx_with_causation<E>(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         causation_id: Uuid,
         event: E,
     ) -> Result<()>
     where
-        C: ConnectionTrait,
         E: EventContract,
     {
         self.publish_contract_in_tx_with_causation_and_envelope_id(
@@ -337,16 +328,15 @@ impl TransactionalEventBus {
     /// Publishes a sealed typed contract caused by one exact predecessor
     /// envelope and returns the typed envelope identity written by the same
     /// transaction.
-    pub async fn publish_contract_in_tx_with_causation_and_envelope_id<C, E>(
+    pub async fn publish_contract_in_tx_with_causation_and_envelope_id<E>(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         causation_id: Uuid,
         event: E,
     ) -> Result<Uuid>
     where
-        C: ConnectionTrait,
         E: EventContract,
     {
         let envelope = build_contract_envelope(tenant_id, actor_id, Some(causation_id), event)?;
@@ -392,14 +382,11 @@ impl TransactionalEventBus {
         Ok(EventEnvelope::new(tenant_id, actor_id, event))
     }
 
-    async fn write_contract_envelope_in_tx<C>(
+    async fn write_contract_envelope_in_tx(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         envelope: ContractEventEnvelope,
-    ) -> Result<Uuid>
-    where
-        C: ConnectionTrait,
-    {
+    ) -> Result<Uuid> {
         let envelope_id = envelope.id();
         if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
             outbox.write_contract_to_outbox(txn, envelope).await?;

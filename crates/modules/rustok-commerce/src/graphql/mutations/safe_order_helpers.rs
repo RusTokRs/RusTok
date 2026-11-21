@@ -353,7 +353,7 @@ pub(crate) async fn ensure_storefront_order_access(
 pub(crate) async fn validate_shipping_option_profile_inputs(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
-    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+    allowed_shipping_profile_slugs: Option<&[String]>,
 ) -> Result<()> {
     let Some(slugs) = allowed_shipping_profile_slugs else {
         return Ok(());

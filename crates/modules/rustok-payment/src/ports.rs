@@ -139,6 +139,50 @@ impl PaymentCollectionPort for crate::PaymentService {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PaymentCollectionCreateOrReuseRequest {
+    pub cart_id: Option<Uuid>,
+    pub order_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaymentCollectionStatusRequest {
+    pub collection_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PaymentCollectionStatusSnapshot {
+    pub collection_id: Uuid,
+    pub status: String,
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub authorized_amount: Decimal,
+    pub captured_amount: Decimal,
+    pub provider_id: Option<String>,
+}
+
+impl PaymentCollectionStatusSnapshot {
+    pub fn from_response(response: &PaymentCollectionResponse) -> Self {
+        Self {
+            collection_id: response.id,
+            status: response.status.clone(),
+            currency_code: response.currency_code.clone(),
+            amount: response.amount,
+            authorized_amount: response.authorized_amount,
+            captured_amount: response.captured_amount,
+            provider_id: response.provider_id.clone(),
+        }
+    }
+
+    pub fn status_kind(&self) -> PaymentCollectionStatusKind {
+        PaymentCollectionStatusKind::from_raw(self.status.as_str())
+    }
+}
+
 /// Transport-neutral owner boundary for payment collection create/reuse flows.
 #[async_trait]
 pub trait PaymentCollectionPort: Send + Sync {
