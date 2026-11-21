@@ -467,8 +467,7 @@ impl GroupsService {
         )
         .await?;
 
-        let feature_key =
-            normalize_feature_key(&request.feature_key).map_err(GroupsError::Validation)?;
+        let feature_key = normalize_feature_key(&request.feature_key)?;
         let owner_module = feature_key
             .split_once('.')
             .map(|(owner, _)| owner.to_string())

@@ -9,6 +9,9 @@ description = "Leptos admin FFA package for social group administration"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 

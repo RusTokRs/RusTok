@@ -390,14 +390,13 @@ async fn lock_group(
                 .await?
                 .ok_or(GroupsError::NotFound)
         }
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => group::Entity::find()
+        DatabaseBackend::Postgres | DatabaseBackend::MySql | _ => group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(group_id))
             .lock_exclusive()
             .one(transaction)
             .await?
             .ok_or(GroupsError::NotFound),
-        _ => unreachable!("unsupported SeaORM database backend"),
     }
 }
 
