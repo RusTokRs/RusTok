@@ -1,7 +1,8 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
@@ -632,14 +633,12 @@ impl CheckoutOperationJournal {
     /// The park decision is made by the state machine, not by a human, so the
     /// envelope carries no actor; the operation row records who held the lease
     /// and why the compensation stopped.
-    async fn publish_parked<C>(
+    async fn publish_parked(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         operation: &checkout_operation::Model,
         reason: &'static str,
     ) -> CheckoutOperationResult<()>
-    where
-        C: ConnectionTrait,
     {
         self.event_bus
             .publish_contract_in_tx(
@@ -657,15 +656,13 @@ impl CheckoutOperationJournal {
     }
 
     /// Publishes `checkout.operation.reconciled` in the writer's transaction.
-    async fn publish_reconciled<C>(
+    async fn publish_reconciled(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         operation: &checkout_operation::Model,
         outcome: &'static str,
         operator_id: Uuid,
     ) -> CheckoutOperationResult<()>
-    where
-        C: ConnectionTrait,
     {
         self.event_bus
             .publish_contract_in_tx(
@@ -693,14 +690,12 @@ impl CheckoutOperationJournal {
     /// the new level becomes visible: a claim that was decided under the
     /// previous generation fails its own conditional write instead of racing the
     /// park, and a claim that already committed is ordered before it.
-    async fn publish_admission_changed<C>(
+    async fn publish_admission_changed(
         &self,
-        txn: &C,
+        txn: &DatabaseTransaction,
         operation: &checkout_operation::Model,
         previous_admission: Option<CheckoutExecutionAdmission>,
     ) -> CheckoutOperationResult<()>
-    where
-        C: ConnectionTrait,
     {
         let admission = CheckoutExecutionAdmission::parse(operation.execution_admission.as_str())
             .ok_or_else(|| {

@@ -1,0 +1,13 @@
+## Slice 72 — authenticated Comments TCP bearer envelope
+
+Status: source_verified_no_compile / source-ready / maintainer execution pending.
+Compile policy: not_run_by_request. Runtime status: not_run.
+This retained source artifact records the static contract only. Tests, Cargo, formatting, and CI were not run by the implementation agent; no runtime result is claimed.
+
+## Retained source contract
+
+- The resolver's safe default admits exactly three read operations
+- Plaintext bearer mode remains loopback-only
+- Status: `source_verified_no_compile`.
+- Compile policy: `not_run_by_request`.
+- Runtime status: `not_run`.

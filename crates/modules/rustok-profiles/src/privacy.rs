@@ -58,9 +58,10 @@ pub fn evaluate_profile_access(
         ProfileVisibility::Authenticated if audience.is_authenticated() => {
             ProfilePrivacyDecision::Allow
         }
-        ProfileVisibility::Authenticated
-        | ProfileVisibility::FollowersOnly
-        | ProfileVisibility::Private => ProfilePrivacyDecision::Restricted,
+        ProfileVisibility::Authenticated => ProfilePrivacyDecision::Restricted,
+        ProfileVisibility::FollowersOnly | ProfileVisibility::Private => {
+            ProfilePrivacyDecision::Restricted
+        }
     }
 }
 

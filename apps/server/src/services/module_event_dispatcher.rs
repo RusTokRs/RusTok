@@ -126,7 +126,7 @@ pub fn spawn_module_event_dispatcher(
 
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
 
-    let Some(event_bus) = event_bus else {
+    let Some(bus) = event_bus else {
         tracing::info!(
             host_mode = ?ctx.settings().runtime.host_mode,
             "Module event dispatcher disabled for the current runtime profile"
@@ -134,7 +134,7 @@ pub fn spawn_module_event_dispatcher(
         return Ok(());
     };
     let db = ctx.db_clone();
-    let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
+    let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
 
     let handler_count = dispatcher.handler_count();
     if handler_count == 0 {
@@ -843,7 +843,10 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
     {
         return;
     }
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop.subscribe()));
+    ctx.shared_insert(spawn_product_media_release_worker(
+        ctx.clone(),
+        crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe(),
+    ));
 }
 
 #[cfg(test)]

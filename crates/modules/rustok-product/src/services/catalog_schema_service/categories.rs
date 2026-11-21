@@ -484,8 +484,7 @@ fn taxonomy_category_hierarchy_order(
     let sort_siblings = |category_ids: &mut Vec<Uuid>| {
         category_ids.sort_by(|left_id, right_id| {
             match (owners.get(left_id), owners.get(right_id)) {
-                (Some(left), Some(right)) => left
-                    .position
+                (Some(left), Some(right)) => left.position
                     .cmp(&right.position)
                     .then_with(|| left.canonical_key.cmp(&right.canonical_key))
                     .then_with(|| left.id.cmp(&right.id)),

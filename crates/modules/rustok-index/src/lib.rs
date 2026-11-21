@@ -178,6 +178,7 @@ pub use infrastructure::postgres::{
     register_postgres_index_source_factory,
 };
 pub use module::IndexModule;
+pub use replay_dry_run::*;
 pub use replay_dry_run::{
     IndexReplayDryRunError, IndexReplayDryRunOutcome, IndexReplayDryRunRequest,
     IndexReplayDryRunRuntimeCompositionError, IndexReplayDryRunStatus,

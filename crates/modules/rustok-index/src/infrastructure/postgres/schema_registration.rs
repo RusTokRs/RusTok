@@ -207,16 +207,16 @@ impl PostgresSchemaRegistrationStore {
 
 fn registration_contract(
     tenant_id: Uuid,
-    schema: &IndexSchema,
+    index_schema: &IndexSchema,
 ) -> Result<(SchemaFingerprint, JsonValue), SchemaRegistrationError> {
     if tenant_id.is_nil() {
         return Err(SchemaRegistrationError::NilTenantId);
     }
-    let fingerprint = schema
+    let fingerprint = index_schema
         .fingerprint()
         .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
-    let canonical = schema.canonical();
-    let schema_json = serde_json::to_value(&canonical)
+    let schema = index_schema.canonical();
+    let schema_json = serde_json::to_value(schema)
         .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
     Ok((fingerprint, schema_json))
 }

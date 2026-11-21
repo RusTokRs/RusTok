@@ -58,7 +58,7 @@ impl OutboxRelayPort for crate::OutboxRelay {
         request: OutboxRelayRunOnceRequest,
     ) -> Result<OutboxRelayRunOnceProjection, PortError> {
         require_outbox_relay_policy(&context)?;
-        let before = self.metrics();
+        let baseline = self.metrics();
         // The deadline is enforced, not merely required to be present: a
         // pass that overruns it is aborted and its claimed rows become
         // eligible again when their claim leases expire.
@@ -79,16 +79,16 @@ impl OutboxRelayPort for crate::OutboxRelay {
             }
             _ => run.await.map_err(map_outbox_error)?,
         };
-        let after = self.metrics();
+        let metrics = self.metrics();
         Ok(OutboxRelayRunOnceProjection {
             claimed_count,
-            success_total: after.success_total.saturating_sub(before.success_total),
-            failure_total: after.failure_total.saturating_sub(before.failure_total),
-            retry_total: after.retry_total.saturating_sub(before.retry_total),
-            dlq_total: after.dlq_total.saturating_sub(before.dlq_total),
-            processed_total: after
+            success_total: metrics.success_total.saturating_sub(baseline.success_total),
+            failure_total: metrics.failure_total.saturating_sub(baseline.failure_total),
+            retry_total: metrics.retry_total.saturating_sub(baseline.retry_total),
+            dlq_total: metrics.dlq_total.saturating_sub(baseline.dlq_total),
+            processed_total: metrics
                 .processed_total
-                .saturating_sub(before.processed_total),
+                .saturating_sub(baseline.processed_total),
         })
     }
 }

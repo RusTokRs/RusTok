@@ -16,7 +16,8 @@ use rustok_translation_targets::{
     TranslationTargetCapability, TranslationTargetProvider, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
+    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter,
+    Set, TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use serde::{Deserialize, Serialize};
@@ -1915,16 +1916,13 @@ impl TranslationWorkflowService {
         Ok(())
     }
 
-    async fn complete_job_if_terminal<C>(
+    async fn complete_job_if_terminal(
         &self,
-        database: &C,
+        database: &DatabaseTransaction,
         tenant_id: Uuid,
         job_id: Uuid,
         event_actor_id: Option<Uuid>,
-    ) -> TranslationResult<bool>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> TranslationResult<bool> {
         let items = job_item::Entity::find()
             .filter(job_item::Column::TenantId.eq(tenant_id))
             .filter(job_item::Column::JobId.eq(job_id))

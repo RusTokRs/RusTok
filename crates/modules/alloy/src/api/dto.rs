@@ -133,8 +133,10 @@ fn default_per_page() -> u32 {
 
 /// Error indicating an unsupported or invalid script status filter.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("Unsupported script status filter: {0}")]
-pub struct ScriptStatusFilterError(pub String);
+#[error("Unsupported script status filter: {status}")]
+pub struct ScriptStatusFilterError {
+    pub status: String,
+}
 
 impl From<ScriptStatusFilterError> for String {
     fn from(error: ScriptStatusFilterError) -> Self {
@@ -148,7 +150,7 @@ impl ListScriptsQuery {
             .as_deref()
             .map(|status| {
                 ScriptStatus::parse(status)
-                    .ok_or_else(|| ScriptStatusFilterError(status.to_string()))
+                    .ok_or_else(|| ScriptStatusFilterError { status: status.to_string() })
             })
             .transpose()
     }
@@ -583,7 +585,7 @@ mod tests {
 
         assert_eq!(
             invalid.status_filter(),
-            Err(ScriptStatusFilterError("retired".to_string()))
+            Err(ScriptStatusFilterError { status: "retired".to_string() })
         );
     }
 

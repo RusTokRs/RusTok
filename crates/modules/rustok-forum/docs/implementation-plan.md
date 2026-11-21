@@ -451,7 +451,7 @@ and lifecycle state. Shared richtext storage and server projection are live;
 Leptos and Next topic create/edit plus reply composition use the shared frame,
 while storefront topic/reply reads use the editor-free shared `RichTextHtml`
 boundary. Leptos reply writes select a native server function for SSR/hydrate
-and the canonical GraphQL mutation for CSR/headless use without fallback. Dirty
+and the canonical GraphQL mutation for CSR/headless use without fallback. Delivered through `FORUM-21X`; FORUM-21X composes the bounded reply-range move command with no transport fallback. Dirty
 locale switching is now fail-closed for Forum admin category/topic editors:
 unsaved owner-localized content and reply drafts block switching, fallback-only
 localized content is scrubbed before writable target-locale state is exposed,
@@ -1289,7 +1289,8 @@ persisted as a second owner authority.
 
 Observed browser/runtime and tenant Wave evidence remain open. Page Builder stays
 optional; Forum routes and owner state must remain available when builder,
-properties or preview capabilities are disabled.
+properties or preview capabilities are disabled. Page Builder stays optional;
+forum routes must not depend on provider availability.
 
 Replace the synthetic Wave packet with an observed tenant control-plane run only
 after the `pages` reference-consumer gate. The observed run must retain the
@@ -2539,3 +2540,59 @@ The runner `apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.
 
 - Delivered in `NOTIFY-00A`: shared notifications foundation and event delivery integration.
 
+- ### Delivered in FORUM-24B
+- record_merge_redirect_aliases_in_tx
+- Topic rename aliases and deletion tombstones remain
+- FORUM-23B2G2B3D12
+- crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json
+- scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs
+- target/forum-search-versioned-invalidation-runtime-evidence.json
+- target/forum-search-versioned-invalidation-runtime-promotion-candidate.json
+- all nine source artifacts
+- all ten frozen scenarios
+- immutable retention reference
+- independently supplied SHA-256
+- does not contact or authenticate the external retention service
+- separate source PR
+- No command above was run by the implementation agent
+- A later retention/review step may inspect the generated aggregate artifact
+- only then decide whether the canonical D0 status can be promoted
+- # FORUM-21I/J canonical merged-topic resolution and HTTP redirect
+- One source of truth
+- at most 32 edges
+- FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT
+- 308 Permanent Redirect
+- Cache-Control: private, no-store
+- FORUM-21A through FORUM-21X
+- FORUM-21J
+- the only source-to-target canonical edge
+- Canonical merged-topic resolution and HTTP redirect
+- Location: /api/forum/topics/{canonical_topic_id}
+- forum_permission_denied
+- [FORUM-21I/J canonical resolution and HTTP redirect]
+- # FORUM-21R topic split GraphQL transport
+- splitForumTopicReplies
+- ForumTopicSplitService::split_selected_replies
+- immutable owner receipt
+- FORUM-21` entry remains `planned`
+- forum.topic.split
+- # FORUM-21B idempotent topic merge owner
+- crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
+- crates/modules/rustok-forum/contracts/forum-topic-merge-admin-ui.json
+- Admin composition
+- mergeForumTopicResolvingSolution
+- /modules/forum/merge
+- /dashboard/forum/merge
+- pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12
+- # FORUM-21H topic merge accepted-solution policy
+- FORUM-21L
+- ## Explicit competing-solution resolution
+- ## Append-only resolution audit
+- schema version 1
+- # FORUM-21L competing accepted-solution resolution
+- merge_topic_resolving_solution
+- forum_topic_merge_solution_resolutions
+- Resolution audit ledger
+- forum.topic.merged / schema version 1
+- FORUM_TOPIC_MERGE_OPERATION_CONFLICT
+- [FORUM-21L competing solution resolution]

@@ -15,7 +15,8 @@ use crate::{
         IndexQueryExecutionError, IndexQueryPage, IndexQueryPort, PersistedSchemaReadinessFailure,
         PostgresBindValue, SchemaRegistry,
     },
-    domain::{IndexQuery, IndexSchema, LocalizedEntityQuery, SchemaRef},
+    domain::{IndexQuery, LocalizedEntityQuery, SchemaRef},
+    domain::IndexSchema,
 };
 
 use super::PostgresIndexQueryAdmissionCatalog;
