@@ -1107,7 +1107,7 @@ fn hash_locale(hasher: &mut Sha256, locale: Option<&LocaleKey>) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length = u64::try_from(value.len()).expect("bounded repair recovery digest component");
+    let length = value.len() as u64;
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }
@@ -1138,21 +1138,25 @@ fn ensure_postgres_repair(db: &DatabaseConnection) -> Result<(), IndexDriftRepai
 }
 
 fn retryable_recovery_failure(code: &str) -> IndexDriftRepairRecoveryFailure {
+    // INVARIANT: static repair recovery failure code is valid: invariant validated at startup
     IndexDriftRepairRecoveryFailure::retryable(code)
         .expect("static repair recovery failure code is valid: invariant validated at startup")
 }
 
 fn permanent_recovery_failure(code: &str) -> IndexDriftRepairRecoveryFailure {
+    // INVARIANT: static repair recovery failure code is valid: invariant validated at startup
     IndexDriftRepairRecoveryFailure::permanent(code)
         .expect("static repair recovery failure code is valid: invariant validated at startup")
 }
 
 fn retryable_repair_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static repair failure code is valid: invariant validated at startup
     IndexDriftRepairFailure::retryable(code)
         .expect("static repair failure code is valid: invariant validated at startup")
 }
 
 fn permanent_repair_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static repair failure code is valid: invariant validated at startup
     IndexDriftRepairFailure::permanent(code)
         .expect("static repair failure code is valid: invariant validated at startup")
 }

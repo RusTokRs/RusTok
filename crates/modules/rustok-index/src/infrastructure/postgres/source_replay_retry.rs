@@ -132,6 +132,7 @@ impl IndexReplayRetryPolicy {
 impl Default for IndexReplayRetryPolicy {
     fn default() -> Self {
         Self::new(5, Duration::from_secs(5), Duration::from_secs(300))
+            // INVARIANT: default replay retry policy must be valid
             .expect("default replay retry policy must be valid")
     }
 }
@@ -356,6 +357,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -364,6 +366,7 @@ fn uuid_value(value: uuid::Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -377,6 +380,7 @@ fn available_at_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Sqlite => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

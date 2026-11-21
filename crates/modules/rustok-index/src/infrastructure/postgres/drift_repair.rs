@@ -779,7 +779,7 @@ fn hash_locale(hasher: &mut Sha256, locale: Option<&LocaleKey>) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length = u64::try_from(value.len()).expect("bounded repair digest component length");
+    let length = value.len() as u64;
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }
@@ -836,11 +836,13 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<(), IndexDriftRepairFailur
 }
 
 fn retryable_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static repair retryable code is valid: invariant validated at startup
     IndexDriftRepairFailure::retryable(code)
         .expect("static repair retryable code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &str) -> IndexDriftRepairFailure {
+    // INVARIANT: static repair permanent code is valid: invariant validated at startup
     IndexDriftRepairFailure::permanent(code)
         .expect("static repair permanent code is valid: invariant validated at startup")
 }

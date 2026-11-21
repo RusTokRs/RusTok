@@ -1064,6 +1064,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1072,6 +1073,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1087,6 +1089,7 @@ fn stored_uuid(
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1118,6 +1121,7 @@ fn select_active_jobs_sql(backend: DbBackend) -> String {
             "CAST(attempt_count AS INTEGER)",
             "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
         ),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -1179,6 +1183,7 @@ fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
         DbBackend::Sqlite => {
             format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1187,6 +1192,7 @@ fn inspect_index_sql(backend: DbBackend) -> String {
     match backend {
         DbBackend::Postgres => "SELECT index_data.indisready AS is_ready, index_data.indisvalid AS is_valid, obj_description(index_class.oid, 'pg_class') AS index_comment FROM pg_class AS index_class JOIN pg_index AS index_data ON index_data.indexrelid = index_class.oid JOIN pg_class AS table_class ON table_class.oid = index_data.indrelid JOIN pg_namespace AS namespace ON namespace.oid = table_class.relnamespace WHERE table_class.relname = 'index_entities' AND index_class.relname = $1 LIMIT 1".to_owned(),
         DbBackend::Sqlite if cfg!(test) => "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?1 LIMIT 1".to_owned(),
+        // INVARIANT: unsupported backend {backend:?} was validated
         backend => unreachable!("unsupported backend {backend:?} was validated"),
 }
 }

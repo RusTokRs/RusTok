@@ -723,6 +723,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -731,6 +732,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -749,6 +751,7 @@ fn select_cancel_job_sql(backend: DbBackend) -> String {
     let lock = match backend {
         DbBackend::Postgres => " FOR UPDATE",
         DbBackend::Sqlite => "",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -782,6 +785,7 @@ fn finish_success_sql(backend: DbBackend) -> String {
     let complete_cursor = match backend {
         DbBackend::Postgres => "checkpoint.cursor = 'null'::jsonb",
         DbBackend::Sqlite => "json_type(checkpoint.cursor) = 'null'",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(

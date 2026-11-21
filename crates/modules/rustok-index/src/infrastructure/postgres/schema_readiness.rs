@@ -289,6 +289,7 @@ fn readiness_sql(backend: DbBackend, schema_count: usize) -> String {
             DbBackend::Sqlite => format!(
                 "(module_name = ?{first} AND entity_name = ?{second} AND schema_version = ?{third})"
             ),
+            // INVARIANT: unsupported backend rejected before SQL selection
             _ => unreachable!("unsupported backend rejected before SQL selection"),
         });
     }
@@ -296,6 +297,7 @@ fn readiness_sql(backend: DbBackend, schema_count: usize) -> String {
     let tenant_placeholder = match backend {
         DbBackend::Postgres => "$1",
         DbBackend::Sqlite => "?1",
+        // INVARIANT: unsupported backend rejected before SQL selection
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     };
     format!(
