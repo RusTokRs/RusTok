@@ -6,8 +6,9 @@ Local documentation for the main RusToK backend host application. This file capt
 
 Direct worker starters for Product Search channel repair, Notifications
 outbox intake/candidate/fanout, Forum Search inbox/contract, Product Index
-refresh and Social Graph Index now serialize their final stop-check → task
-spawn → JoinHandle publication with the corresponding shutdown handle take,
+refresh, Social Graph Index, Comments TCP listener and Comments durable
+source-retry audit handoff serialize their final stop-check → task spawn →
+JoinHandle publication with the corresponding shutdown handle take,
 via a process-local runtime registration lock. Durable broker opening, receipt
 backfill and shutdown joins remain outside that lock. Product Search channel
 repair also rejects stale/finished published workers and concurrent duplicate
