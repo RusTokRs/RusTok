@@ -326,7 +326,18 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Module event dispatcher startup requires `EventRuntime` before launching any
   dependent Product Media release, Commerce paid-order label, marketplace financial,
   or Payment provider recovery workers. A missing event runtime fails bootstrap
-  without leaving detached module-owned recovery tasks running.
+  without leaving detached module-owned recovery tasks running. An atomic
+  per-runtime reservation prevents concurrent dispatcher startup from replacing
+  its shutdown handle. The required-listener flag is set only after the
+  dispatcher starts successfully; optional module recovery loops start only
+  after that success, so a failed required dispatcher cannot leave those loops
+  running. Product-media, paid-order-label, marketplace-financial and payment
+  provider worker admission each uses its own atomic reservation, preventing
+  concurrent composition from spawning and losing duplicate worker handles.
+  Missing optional dependencies release the corresponding reservation for a
+  later retry; already stopping hosts do not admit new recovery workers.
+  These are **process-local** startup fences, not cross-replica singleton
+  leases or a replacement for owner-level idempotency and durable recovery.
 - Event runtime construction completes fallible transport, projector, and relay
   configuration work before it adds tenant-generation or Redis-status listener
   tasks. The RBAC invalidation listener may already be started by early server
