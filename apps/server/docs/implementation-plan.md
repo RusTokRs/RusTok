@@ -16,7 +16,8 @@ follow-up independent of the pending installer and auth-email PRs.
   backend-specific app mutation fence, rechecks every authoritative condition,
   and writes the secret hash in the same database transaction.
 - A prepared rotation records the previous hash and rejects a commit when the
-  current persisted hash changed during preparation. Two competing rotations
+  current persisted hash changed during preparation (typed conflict, not a
+  generic validation error). Two competing rotations
   against the same old secret can no longer both report successful issuance of
   their own new secret: the stale candidate must retry.
 - A SQLite regression test prepares a rotation, commits a competing hash
