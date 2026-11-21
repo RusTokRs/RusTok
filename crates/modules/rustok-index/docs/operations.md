@@ -131,11 +131,12 @@ browser run.
 
 Run locally with the repository toolchain and a disposable PostgreSQL database. Without a
 PostgreSQL URL the real-engine tests skip. Keep the tests serial on a shared test database:
-the test schemas are separate, but PostgreSQL advisory lock keys are database-wide.
+the test schemas are separate, but PostgreSQL advisory lock keys are database-wide. The three
+integration targets still run if one fails; Cargo returns a failing status for the combined step.
 
 ```sh
 RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... cargo test --locked -p rustok-index --lib -- --test-threads=1
-RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... cargo test --locked -p rustok-index \
+RUSTOK_INDEX_TEST_DATABASE_URL=postgres://... cargo test --locked -p rustok-index --no-fail-fast \
   --test drift_repair_concrete_execution_postgres_test \
   --test drift_repair_recovery_postgres_test \
   --test source_reconciliation_dead_letter_admission_postgres_test \

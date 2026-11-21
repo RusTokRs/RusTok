@@ -91,6 +91,7 @@ requireInJob('focused-cargo', [
   '5432:5432',
   'pg_isready -U postgres -d rustok_index_test',
   'cargo test --locked -p rustok-index --lib -- --test-threads=1',
+  `${runCheck} cargo test --locked -p rustok-index --no-fail-fast`,
   '--test drift_repair_concrete_execution_postgres_test',
   '--test drift_repair_recovery_postgres_test',
   '--test source_reconciliation_dead_letter_admission_postgres_test',

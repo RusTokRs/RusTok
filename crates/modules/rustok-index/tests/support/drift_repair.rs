@@ -1082,13 +1082,25 @@ fn hash_entity_key(hasher: &mut Sha256, key: &EntityKey) {
     hash_component(hasher, key.tenant_id.as_bytes());
     hash_schema(hasher, &key.schema);
     hash_component(hasher, key.entity_id.as_bytes());
-    hash_component(hasher, b"no_locale");
+    hash_locale(hasher, key.locale.as_ref());
 }
 
 fn hash_linked_key(hasher: &mut Sha256, key: &LinkedEntityKey) {
     hash_schema(hasher, &key.schema);
     hash_component(hasher, key.entity_id.as_bytes());
-    hash_component(hasher, b"no_locale");
+    hash_locale(hasher, key.locale.as_ref());
+}
+
+fn hash_locale(hasher: &mut Sha256, locale: Option<&LocaleKey>) {
+    // The confirmed-finding commitment distinguishes a localized key from an
+    // absent locale; the reservation rejects evidence for any other identity.
+    match locale {
+        Some(locale) => {
+            hash_component(hasher, b"locale");
+            hash_component(hasher, locale.as_str().as_bytes());
+        }
+        None => hash_component(hasher, b"no_locale"),
+    }
 }
 
 fn hash_schema(hasher: &mut Sha256, schema: &SchemaRef) {

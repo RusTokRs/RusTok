@@ -222,8 +222,9 @@ jobs:
         run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --lib -- --test-threads=1
       - name: Run Index repair and recovery PostgreSQL integration tests
         if: ${{ !cancelled() && steps.index_compile.outcome == 'success' }}
+        # Collect all three target results without hiding a failure in any of them.
         run: >-
-          bash scripts/ci/index-check.sh cargo test --locked -p rustok-index
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --no-fail-fast
           --test drift_repair_concrete_execution_postgres_test
           --test drift_repair_recovery_postgres_test
           --test source_reconciliation_dead_letter_admission_postgres_test
