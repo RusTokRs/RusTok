@@ -2331,8 +2331,8 @@ running worker.
 - Replaced manual marker cleanup with `ServerRuntimeStartReservation`; failed
   or cancelled preparation releases only its own claim, while successful
   publication retains the process-local owner marker.
-- Concurrent callers now return an explicit retryable startup-in-progress
-  error unless a live handle has already been published.
+- Concurrent callers now return an explicit startup-in-progress error with
+  retry guidance unless a live handle has already been published.
 - Both workers reject startup after the shared stop signal and recheck it
   immediately before spawning.
 - A finished published task is reported as exited, not as a successful
