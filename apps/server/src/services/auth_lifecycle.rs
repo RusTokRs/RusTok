@@ -12,8 +12,8 @@ use sea_orm::{
 
 use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
-    hash_refresh_token, normalize_display_name, normalize_email, validate_password_policy,
-    verify_password_async,
+    hash_refresh_token, normalize_display_name, normalize_email, password_hash_needs_rehash,
+    validate_password_policy, verify_password_async,
 };
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -563,6 +563,21 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailNotVerified);
         }
 
+        // Transparently upgrade a stored hash whose Argon2id parameters
+        // predate the current target: the plaintext is only available here,
+        // at a successful verification. The new hash is computed before the
+        // transaction opens and applied inside it only after the locked row
+        // proves the credential did not rotate in the meantime.
+        let upgraded_password_hash = if password_hash_needs_rehash(&user.password_hash) {
+            Some(
+                hash_password_async(password.to_string())
+                    .await
+                    .map_err(AuthLifecycleError::from)?,
+            )
+        } else {
+            None
+        };
+
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, &email)
             .await?
@@ -584,6 +599,9 @@ impl AuthLifecycleService {
 
         let now = Utc::now();
         let mut user_active: users::ActiveModel = locked_user.into();
+        if let Some(upgraded_password_hash) = upgraded_password_hash {
+            user_active.password_hash = Set(upgraded_password_hash);
+        }
         user_active.last_login_at = Set(Some(now.into()));
         user_active.failed_login_count = Set(0);
         user_active.locked_until = Set(None);
