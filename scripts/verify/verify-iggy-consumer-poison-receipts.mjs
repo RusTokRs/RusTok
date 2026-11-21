@@ -28,6 +28,10 @@ const files = {
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
+  forumWorker: readFileSync(
+    "apps/server/src/services/forum_search_contract_consumer.rs",
+    "utf8",
+  ),
 };
 
 const failures = [];
@@ -187,6 +191,19 @@ for (const marker of [
 ]) {
   requireText("Social Graph raw poison worker", files.worker, marker);
 }
+
+for (const marker of [
+  "forum_search_dlq_publication_ambiguous",
+  "forum_search_poison_reconciliation_required",
+  "ConsumerPoisonPublishClaim::ReconciliationRequired",
+]) {
+  requireText("Forum Search raw poison worker", files.forumWorker, marker);
+}
+forbidText(
+  "Forum Search ambiguous DLQ send must retain its publishing claim",
+  files.forumWorker,
+  ".release_claim(",
+);
 
 const deliveryLookup = files.receipts.indexOf(
   "select_receipt_by_delivery_id_sql(backend, true)",
