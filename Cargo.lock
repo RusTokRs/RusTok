@@ -15617,6 +15617,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 1.1.6+spec-1.1.0",
+ "tracing",
  "uuid",
 ]
 
@@ -16389,7 +16390,6 @@ dependencies = [
 name = "rustok-messenger"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
@@ -16418,7 +16418,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "leptos",
- "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
  "rustok-api",
@@ -16443,7 +16442,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "leptos",
- "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
  "rustok-api",
@@ -16453,7 +16451,6 @@ dependencies = [
  "rustok-messenger",
  "rustok-ui-core",
  "rustok-ui-i18n",
- "rustok-ui-leptos",
  "rustok-ui-transport",
  "serde",
  "serde_json",
