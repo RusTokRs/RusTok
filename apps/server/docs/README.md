@@ -479,6 +479,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fence used by token issuance and consent before their security-sensitive configuration changes.
   Reactivation also revokes dependent credentials left live by older versions. The all-tenants bootstrap
   sweep is sequential and does not provide one global cross-tenant transaction.
+- OAuth client-secret rotation performs a tenant-scoped, permission-checked
+  preflight **without** holding a SQL transaction while generating and Argon2-
+  hashing the replacement secret. The commit phase locks the current app row,
+  repeats the permission and rotation-admission checks, and rejects a prepared
+  rotation when another operation has already changed the secret hash. Thus
+  expensive hashing does not hold an app mutation lock, and simultaneous
+  rotations from the same original secret cannot both report success while
+  one silently invalidates the other. A stale preparation must be retried;
+  rotation still does not by itself imply delivery or credential revocation.
 - Explicit OAuth app revocation deactivates the app and revokes its active access/refresh tokens, user
   consents, and pending authorization codes in the same transaction.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
