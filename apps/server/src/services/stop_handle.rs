@@ -13,6 +13,32 @@ pub(crate) fn may_admit_next_worker_operation(
     !*stop_rx.borrow()
 }
 
+/// Await a cancellable, pre-publication worker bootstrap step. Startup often
+/// holds its registration mutex while resolving cache state or joining old
+/// workers; if that I/O stalls, shutdown's bounded handle snapshot must not
+/// wait for the underlying database or Redis call to complete. On stop, drop
+/// the *unpublished* preparation future and release its startup mutex.
+///
+/// Never use this helper around an already claimed durable operation or
+/// externally visible effect that requires completion/compensation on cancel.
+pub(crate) async fn await_worker_startup_or_stop<F>(
+    stop: &StopHandle,
+    preparation: F,
+) -> Option<F::Output>
+where
+    F: std::future::Future,
+{
+    if stop.is_stopping() {
+        return None;
+    }
+    let mut stopped = stop.subscribe();
+    tokio::select! {
+        biased;
+        _ = stopped.changed() => None,
+        value = preparation => (!stop.is_stopping()).then_some(value),
+    }
+}
+
 /// Stored in `ServerRuntimeContext`; shutdown signals each worker so it can
 /// complete its current durable operation and stop before the next one.
 #[derive(Clone)]
@@ -64,7 +90,55 @@ impl StopHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::{StopHandle, may_admit_next_worker_operation};
+    use super::{StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation};
+
+    #[tokio::test]
+    async fn stop_interrupts_a_stalled_unpublished_bootstrap() {
+        let (stop, _receiver) = StopHandle::new();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+
+        struct CancellationMarker(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for CancellationMarker {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let stop_for_start = stop.clone();
+        let startup = tokio::spawn(async move {
+            let marker = CancellationMarker(Some(cancelled_tx));
+            await_worker_startup_or_stop(&stop_for_start, async move {
+                let _marker = marker;
+                started_tx.send(()).expect("preparation started");
+                std::future::pending::<u64>().await
+            })
+            .await
+        });
+        started_rx.await.expect("preparation polled");
+        stop.stop().await;
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), startup)
+                .await
+                .expect("shutdown interrupts pending preparation")
+                .expect("startup task joins"),
+            None
+        );
+        cancelled_rx.await.expect("unpublished preparation dropped");
+    }
+
+    #[tokio::test]
+    async fn completed_bootstrap_is_not_reported_after_stop() {
+        let (stop, _receiver) = StopHandle::new();
+        assert_eq!(await_worker_startup_or_stop(&stop, async { 7 }).await, Some(7));
+        stop.stop().await;
+        assert_eq!(
+            await_worker_startup_or_stop(&stop, async { 8 }).await,
+            None
+        );
+    }
 
     #[tokio::test]
     async fn stopped_while_receiving_does_not_admit_delivered_work() {
