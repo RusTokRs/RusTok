@@ -1043,7 +1043,7 @@ The default `rustok-rbac` crate compiled on exact PR #2747 head
 The server owns the process-level watchdog that reconciles the authoritative
 RBAC database generation with the generation applied to local permission
 snapshots. The cycle-001 RBAC source slice instruments that existing worker; it
-does not create a second counter, cache authority, listener or recovery path.
+does not create a second counter, cache authority, listener or recovery path; it remains the only recovery path.
 
 The host adapter now reports through the canonical `rustok-telemetry` registry:
 

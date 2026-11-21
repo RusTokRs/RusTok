@@ -74,16 +74,14 @@ impl PersistentContractConsumerGroup {
 
         let raw_payload = message.payload;
         let connector_metadata = message.metadata;
-        let envelope = match self
-            .serializer
-            .deserialize_contract(&raw_payload)
-            .or_else(|_| {
+        let decoded = self.serializer.deserialize_contract(&raw_payload).or_else(|_| {
                 // The shared topic also carries canonical root envelopes. Preserve
                 // their broker offset and identity so consumers can skip them safely.
                 let root = self.serializer.deserialize(&raw_payload)?;
                 ContractEventEnvelope::from_root_envelope(root)
                     .map_err(|error| rustok_core::Error::Validation(error.to_string()))
-            }) {
+            });
+        let envelope = match decoded {
             Ok(envelope) => envelope,
             Err(_) => {
                 return Ok(Some(PersistentContractDelivery::DecodeFailure(Box::new(

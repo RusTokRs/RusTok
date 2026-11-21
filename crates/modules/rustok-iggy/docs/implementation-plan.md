@@ -17,7 +17,7 @@ server on loopback and `External` connects to an independently managed broker.
 metadata before decoding and returns either a validated `ConsumedContractEvent` or an
 exact-byte `ConsumedContractDecodeFailure`. Deserialization and registered-schema
 failures retain partition, offset, opaque acknowledgement token, and exact payload but
-do not invent a tenant or domain event id. The compatibility `receive` API maps that
+do not invent a tenant or domain event id. The decode-failure path does not invent a tenant or domain event id. The compatibility `receive` API maps that
 typed result to a bounded validation error and leaves the offset uncommitted.
 
 A decode failure derives one versioned RFC 9562 UUIDv8 from length-framed stream,

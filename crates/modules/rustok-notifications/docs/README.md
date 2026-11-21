@@ -387,3 +387,20 @@ These commands were not run while publishing
 - [Fanout worker contract](../contracts/notifications-fanout-worker.json)
 - [Candidate worker contract](../contracts/notifications-candidate-worker.json)
 - Canonical roadmap: `crates/modules/rustok-forum/docs/implementation-plan.md`
+- [forum-20am-plan-sync.md](./forum-20am-plan-sync.md) — synchronized owner note; runtime execution remains maintainer-owned.
+
+## Forum owner notes
+
+- [forum-20ab-selected-state.md](./forum-20ab-selected-state.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ac-group-listing.md](./forum-20ac-group-listing.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ad-group-key-population.md](./forum-20ad-group-key-population.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ae-group-summaries.md](./forum-20ae-group-summaries.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20af-group-state.md](./forum-20af-group-state.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ag-storefront-port.md](./forum-20ag-storefront-port.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ah-native-storefront-adapter.md](./forum-20ah-native-storefront-adapter.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ai-grouped-storefront-ui.md](./forum-20ai-grouped-storefront-ui.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20aj-navigation-badge.md](./forum-20aj-navigation-badge.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ak-grouped-graphql.md](./forum-20ak-grouped-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20al-open-graphql.md](./forum-20al-open-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20am-plan-sync.md](./forum-20am-plan-sync.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20an-group-state-graphql.md](./forum-20an-group-state-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.

@@ -30,7 +30,7 @@ pub fn NotificationsView() -> impl IntoView {
     let (refresh_feedback, set_refresh_feedback) = signal(Option::<String>::None);
     let transport_context = Memo::new(move |_| current_notification_storefront_transport_context());
     Effect::new(move |_| {
-        transport_context.track();
+        let _ = transport_context.get();
         set_refresh_feedback.set(None);
     });
     let bootstrap = Resource::new_blocking(

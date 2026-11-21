@@ -142,3 +142,121 @@ asset against deletion.
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+
+## Source owner notes
+
+- [forum-12-postgres-runtime-proof.md](./forum-12-postgres-runtime-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-16-postgres-runtime-proof.md](./forum-16-postgres-runtime-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20ap-topic-descriptor-materialization.md](./forum-20ap-topic-descriptor-materialization.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20aq-category-topic-create-audience.md](./forum-20aq-category-topic-create-audience.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20av-reply-create-audience-enforcement.md](./forum-20av-reply-create-audience-enforcement.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20aw-reply-create-audience-transport-composition.md](./forum-20aw-reply-create-audience-transport-composition.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20ax-topic-reply-create-audience.md](./forum-20ax-topic-reply-create-audience.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20ay-moderation-audience-policy.md](./forum-20ay-moderation-audience-policy.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20az-moderation-audience-transport-composition.md](./forum-20az-moderation-audience-transport-composition.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20ba-audience-plan-sync.md](./forum-20ba-audience-plan-sync.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20bb-topic-audience-exact-read.md](./forum-20bb-topic-audience-exact-read.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20bc-topic-audience-transport-composition.md](./forum-20bc-topic-audience-transport-composition.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-20bm-search-rebuild-scope-preservation.md](./forum-20bm-search-rebuild-scope-preservation.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23a8-profile-service-mutation-boundary.md](./forum-23a8-profile-service-mutation-boundary.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23a9-profile-event-aware-mutation-api.md](./forum-23a9-profile-event-aware-mutation-api.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g1-search-durable-ingest-sequence.md](./forum-23b2g1-search-durable-ingest-sequence.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g1a-search-ingest-sequence-index.md](./forum-23b2g1a-search-ingest-sequence-index.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2a-search-owner-revision-ledger.md](./forum-23b2g2a-search-owner-revision-ledger.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2a1-search-owner-revision-counter-hardening.md](./forum-23b2g2a1-search-owner-revision-counter-hardening.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b1-search-owner-revision-source.md](./forum-23b2g2b1-search-owner-revision-source.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3b2-versioned-invalidation-publisher.md](./forum-23b2g2b3b2-versioned-invalidation-publisher.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3c-versioned-invalidation-consumer.md](./forum-23b2g2b3c-versioned-invalidation-consumer.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24h-topic-route-storefront-graphql.md](./forum-24h-topic-route-storefront-graphql.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24o-category-route-storefront-mount.md](./forum-24o-category-route-storefront-mount.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24p-canonical-route-seo-policy.md](./forum-24p-canonical-route-seo-policy.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24q-search-canonical-route-cutover.md](./forum-24q-search-canonical-route-cutover.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26a-user-trust-state.md](./forum-26a-user-trust-state.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26c-posting-policy-contract.md](./forum-26c-posting-policy-contract.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26d-posting-policy-evaluator.md](./forum-26d-posting-policy-evaluator.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26e-posting-policy-facts.md](./forum-26e-posting-policy-facts.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26g-topic-reading-posting-facts.md](./forum-26g-topic-reading-posting-facts.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26h-approved-posts-posting-facts.md](./forum-26h-approved-posts-posting-facts.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26i-approved-posts-index-hardening.md](./forum-26i-approved-posts-index-hardening.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-26j-create-window-posting-facts.md](./forum-26j-create-window-posting-facts.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- # FORUM-21T reply-range move GraphQL transport
+- `source_ready_maintainer_execution_pending`
+- ForumReplyRangeMoveService::move_reply_range
+- immutable owner receipt
+- FORUM-21` entry remains `planned`
+- No command above was run by the implementation agent
+- forum.topic.reply_range_moved
+- # FORUM-21I/J canonical merged-topic resolution and HTTP redirect
+- One source of truth
+- at most 32 edges
+- FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT
+- 308 Permanent Redirect
+- Cache-Control: private, no-store
+- FORUM-21A through FORUM-21X
+- FORUM-21J
+- the only source-to-target canonical edge
+- Canonical merged-topic resolution and HTTP redirect
+- Location: /api/forum/topics/{canonical_topic_id}
+- forum_permission_denied
+- [FORUM-21I/J canonical resolution and HTTP redirect]
+- # FORUM-24E historical topic-merge route backfill
+- [FORUM-24E historical merge route backfill](./forum-24e-topic-merge-route-backfill.md)
+- # FORUM-24G topic slug rename admin UI
+- `renameForumTopicSlug`
+- `forum_topics:update`
+- `/modules/forum/rename-slug`
+- `/dashboard/forum/rename-slug`
+- # FORUM-21R topic split GraphQL transport
+- ForumTopicSplitService::split_selected_replies
+- forum.topic.split
+- [forum-21a-topic-move-owner.md](./forum-21a-topic-move-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21b-topic-merge-owner.md](./forum-21b-topic-merge-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21c-topic-merge-subscription-reconciliation.md](./forum-21c-topic-merge-subscription-reconciliation.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21i-topic-canonical-resolution.md](./forum-21i-topic-canonical-resolution.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21m-topic-merge-cross-category.md](./forum-21m-topic-merge-cross-category.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21n-topic-merge-admin-ui.md](./forum-21n-topic-merge-admin-ui.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21o-topic-merge-native-admin.md](./forum-21o-topic-merge-native-admin.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21p-topic-split-owner.md](./forum-21p-topic-split-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21r-topic-split-graphql-transport.md](./forum-21r-topic-split-graphql-transport.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21s-reply-range-move-owner.md](./forum-21s-reply-range-move-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21t-reply-range-move-graphql-transport.md](./forum-21t-reply-range-move-graphql-transport.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d10-normal-delivery-proof.md](./forum-23b2g2b3d10-normal-delivery-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d11-aggregate-evidence-assembler.md](./forum-23b2g2b3d11-aggregate-evidence-assembler.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d12-retained-evidence-promotion.md](./forum-23b2g2b3d12-retained-evidence-promotion.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d13-link-forum-03-evidence-assembler.md](./forum-23b2g2b3d13-link-forum-03-evidence-assembler.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d17-complete-link-evidence-assembler.md](./forum-23b2g2b3d17-complete-link-evidence-assembler.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d18-complete-link-evidence-promotion.md](./forum-23b2g2b3d18-complete-link-evidence-promotion.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d19-link-forum-03-canonical-promotion-packet.md](./forum-23b2g2b3d19-link-forum-03-canonical-promotion-packet.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d2-postgres-ingress-proof.md](./forum-23b2g2b3d2-postgres-ingress-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d3-ack-restart-proof.md](./forum-23b2g2b3d3-ack-restart-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d4-raw-poison-proof.md](./forum-23b2g2b3d4-raw-poison-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-23b2g2b3d5-semantic-poison-proof.md](./forum-23b2g2b3d5-semantic-poison-proof.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24b-topic-merge-route-aliases.md](./forum-24b-topic-merge-route-aliases.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24g-topic-slug-rename-admin-ui.md](./forum-24g-topic-slug-rename-admin-ui.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-moderation-effect-postgres-contract.md](./forum-moderation-effect-postgres-contract.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-moderation-revision-concurrency-contract.md](./forum-moderation-revision-concurrency-contract.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-moderation-terminal-concurrency-contract.md](./forum-moderation-terminal-concurrency-contract.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- publish_contract_in_tx_with_causation<C, E>
+- MAX_FORUM_TOPIC_FORK_REPLIES: usize = 500
+- # FORUM-21H topic merge accepted-solution policy
+- FORUM-21L
+- ## Explicit competing-solution resolution
+- ## Append-only resolution audit
+- schema version 1
+- # FORUM-21L competing accepted-solution resolution
+- merge_topic_resolving_solution
+- forum_topic_merge_solution_resolutions
+- Resolution audit ledger
+- forum.topic.merged / schema version 1
+- FORUM_TOPIC_MERGE_OPERATION_CONFLICT
+- [FORUM-21L competing solution resolution]
+- pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12
+- # FORUM-24F topic slug rename GraphQL transport
+- TopicService::rename_slug
+- # FORUM-24D topic slug rename owner
+- Topic slug changed
+- [forum-21h-topic-merge-solution-policy.md](./forum-21h-topic-merge-solution-policy.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-21l-topic-merge-solution-resolution.md](./forum-21l-topic-merge-solution-resolution.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24a-topic-route-identity-owner.md](./forum-24a-topic-route-identity-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24d-topic-slug-rename-owner.md](./forum-24d-topic-slug-rename-owner.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.
+- [forum-24f-topic-slug-rename-graphql-transport.md](./forum-24f-topic-slug-rename-graphql-transport.md) — source-ready owner note; runtime execution and admission remain maintainer-owned.

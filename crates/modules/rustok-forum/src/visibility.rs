@@ -34,15 +34,15 @@ pub enum ForumCategoryVisibility {
 impl ForumCategoryVisibility {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Public => "public",
-            Self::Authenticated => "authenticated",
+            ForumCategoryVisibility::Public => "public",
+            ForumCategoryVisibility::Authenticated => "authenticated",
         }
     }
 
     pub const fn allows(self, is_authenticated: bool) -> bool {
         match self {
-            Self::Public => true,
-            Self::Authenticated => is_authenticated,
+            ForumCategoryVisibility::Public => true,
+            ForumCategoryVisibility::Authenticated => is_authenticated,
         }
     }
 }

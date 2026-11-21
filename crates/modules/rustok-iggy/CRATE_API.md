@@ -53,6 +53,7 @@
 - `to_dlq_entry()` uses the connector delivery UUID in the transport-required event-shaped field and as the explicit broker message ID. It does not claim that the UUID is a decoded domain event ID.
 - No tenant-scoped durable receipt can be selected before decoding establishes trusted tenant/event facts. Owners must choose a connector-level persistence/publication contract before acknowledging.
 - The new contract does not itself wire Social Graph or another worker to automatic raw-byte DLQ publication.
+- Acknowledge a decode failure before a connector-level terminal result exists.
 
 ## Deterministic DLQ publication
 - A `DlqEntry` may carry a non-nil stable broker message UUID while retaining the original event ID, payload, source metadata, error code, and retry count separately.

@@ -95,16 +95,12 @@ impl PostgresIndexReconciliationRecoveryStore {
         let result = requeue_in_transaction(&transaction, &request).await;
         match result {
             Ok(outcome) => {
-                transaction
-                    .commit()
-                    .await
+                transaction.commit().await
                     .map_err(|_| IndexReconciliationRecoveryError::Storage)?;
                 Ok(outcome)
             }
             Err(error) => {
-                transaction
-                    .rollback()
-                    .await
+                transaction.rollback().await
                     .map_err(|_| IndexReconciliationRecoveryError::Storage)?;
                 Err(error)
             }

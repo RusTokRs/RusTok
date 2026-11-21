@@ -24,6 +24,7 @@ Profiles never reads relation tables and never authorizes from events, Index
 state, DLQ receipts, broker identifiers, offsets, lag, poison health,
 PostgreSQL/Iggy evidence, deduplication observations, duplicate-scan modes,
 alert levels, duplicate-observer health, or Prometheus metrics.
+In particular, it never authorizes from an event and never authorizes visibility.
 
 Media descriptors remain Media-owned. Profiles validates tenant, uploader, and
 MIME constraints and exposes only Media-selected descriptors; storage keys,
@@ -52,7 +53,8 @@ mutation retry.
 - Runtime consumers are default-off, require a worker host plus `outbox_iggy`,
   and reuse the single `Arc<IggyTransport>` owned by `EventRuntime`.
 - Index/search projections can improve discovery but never authorize profile
-  visibility.
+  visibility: an event, Index state, or broker observation can never authorize visibility.
+  Index/search projections may use sealed owner events only as observational input; the boundary is checked by `node scripts/verify/verify-social-graph-index-consumer.mjs`.
 
 ### Raw decode failures and poison receipts
 

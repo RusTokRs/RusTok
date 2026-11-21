@@ -77,8 +77,7 @@ impl PostgresIndexReplayRunner {
                 }
             }
 
-            let page_future =
-                worker.run_next_page_interruptible(request.page_request().clone(), || {
+            let page_future = worker.run_next_page_interruptible(request.page_request().clone(), || {
                     let interrupted = should_interrupt();
                     async move { Ok::<bool, crate::IndexReplayFailure>(interrupted) }
                 });
