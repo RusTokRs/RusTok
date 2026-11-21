@@ -95,6 +95,8 @@ for (const marker of [
   "stored_payload != identity.payload",
   "select_receipt_by_delivery_id_sql",
   "lease_expires_at <= CURRENT_TIMESTAMP",
+  "ConsumerPoisonPublishClaim::ReconciliationRequired",
+  "expired_publishing_lease_cannot_authorize_second_broker_send",
   "retained.stable_error_code",
   "retained.first_delivery_attempt_count",
   "identity_is_immutable_and_empty_payload_is_valid",
@@ -104,6 +106,16 @@ for (const marker of [
 }
 
 const productionReceipts = files.receipts.split("#[cfg(test)]")[0];
+requireText(
+  "Iggy poison claim must allow only fresh reservations",
+  productionReceipts,
+  "AND state = 'reserved'",
+);
+forbidText(
+  "Iggy poison claim must never take over expired publishing attempts",
+  productionReceipts,
+  "OR (state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP)",
+);
 for (const forbidden of [
   "pub delivery_id:",
   "pub consumer_group:",
@@ -211,6 +223,16 @@ const rawPublish = rawFlow.indexOf(
   "transport.move_to_dlq(failure.to_dlq_entry(1)).await",
 );
 const rawMarkCall = rawFlow.indexOf("mark_raw_poison_published(", rawPublish);
+forbidText(
+  "Social Graph DLQ ambiguous send must retain its receipt",
+  rawFlow,
+  "poison_receipts.release_claim(&identity, poison_publisher_id)",
+);
+requireText(
+  "Social Graph DLQ ambiguous send must report reconciliation",
+  rawFlow,
+  "social_graph.index.dlq_publish_ambiguous",
+);
 const rawAcknowledgeCall = rawFlow.indexOf(
   "acknowledge_raw_poison_result(",
   rawMarkCall,

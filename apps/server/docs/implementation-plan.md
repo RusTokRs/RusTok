@@ -1,5 +1,33 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — ambiguous poison DLQ results (2026-11-21)
+
+Confirmed in `ConsumerPoisonReceiptStore` and the Forum Search/Social Graph
+raw-poison consumers: `claim_receipt_sql` reclaimed expired `publishing`
+receipts based only on time, while both consumers released the claim and
+reissued the same external Iggy send after a transport error. A broker send
+may have succeeded despite a missing response; lease expiry/release cannot
+prove non-delivery. This violates the durable-effect recovery decision.
+
+The connector now claims only `reserved` receipts; a still-active
+`publishing` receipt returns `Busy`, and an expired one reports
+`ReconciliationRequired` without updating its existing immutable identity,
+first-error diagnostics or publisher token. The original owner can still
+settle `published` after its lease expiry. The two consumers no longer
+release a `publishing` receipt or perform an automatic second broker send
+after an ambiguous send failure. The source offset remains uncommitted.
+
+Regression coverage includes SQLite expiry and PostgreSQL late-publisher
+reconciliation, and the existing retained execution/evidence contract and
+static guards were updated to assert this safer invariant. Runtime tests
+and format/compile checks remain unexecuted per maintainer instruction.
+
+**Limit:** This deliberately fails closed until an effect owner/operator
+verifies whether the external send committed. Neither generic lease expiry
+nor a deterministic Iggy message ID is enough to authorize replay. An
+authenticated operator reconciliation workflow with auditable evidence is
+still a separate required owner capability, not implemented in this patch.
+
 ## Server audit continuation — post-receive broker shutdown fence (2026-11-21)
 
 Forum Search typed contract consumer, Product Index refresh and Social Graph

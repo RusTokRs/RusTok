@@ -25,6 +25,7 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
+| `P-DLQ-AMBIGUOUS-PUBLISH` | The neutral poison receipt allowed automatic takeover of expired `publishing` leases, while Forum Search and Social Graph retried external DLQ sends after ambiguous transport errors. The connector now retains ambiguous claims and reports `ReconciliationRequired` on expiry; server workers leave their offsets uncommitted for evidence-based reconciliation. Source/regression changes are authored but unrun. | [Poison receipt](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Forum Search consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Social Graph consumer](../../apps/server/src/services/social_graph_index_worker.rs), [Recovery decision](../../DECISIONS/2026-11-12-durable-side-effect-recovery.md) |
 | `P-WORKER-SHUTDOWN-ADMISSION` | Comments source-retry handoff checked shutdown only outside a bounded multi-claim cycle; Notifications candidate/fanout could begin a new durable action after an async policy check; three broker consumers could process a delivery selected concurrently with shutdown. The host now rechecks stop between durable claims and after policy observation, without cancelling an already claimed operation. Source-level fix and regression authored, unrun. | [Comments handoff loop](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs), [stop admission](../../apps/server/src/services/stop_handle.rs), [broker consumer](../../apps/server/src/services/social_graph_index_worker.rs), [candidate worker](../../apps/server/src/services/notification_candidate_worker.rs), [fanout worker](../../apps/server/src/services/notification_fanout_worker.rs) |
 | `P-WORKER-STARTUP-LIVENESS` | Thirteen server worker starters reported idempotent startup when only a terminated Tokio `JoinHandle` remained registered. Repeated bootstrap now distinguishes live/absent/exited handles at the relevant checks, rejecting terminated tasks without orphaning the shutdown handle. No runtime tests have been executed for this patch. | [Shared guard](../../apps/server/src/services/server_runtime_context.rs), [Host worker startup](../../apps/server/src/services/app_lifecycle.rs), [Notifications intake](../../apps/server/src/services/notification_outbox_intake_worker.rs), [Forum contract consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Product Index refresh](../../apps/server/src/services/product_index_refresh_worker.rs) |
 | `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
@@ -35,6 +36,26 @@ without evidence of a failure is recorded separately below.
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
 | `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 | `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
+
+### P-DLQ-AMBIGUOUS-PUBLISH — lease expiration is not proof of failure
+
+- **Category:** Durable external side effects, retry and crash recovery.
+- **Observed failure:** `publishing` poison receipts were automatically
+  reclaimable after lease expiry; on an Iggy publish error, the server would
+  release its claim and resend. A broker can accept a message and lose its
+  response, so neither the transport error nor lease expiry proves that an
+  earlier publish did not happen.
+- **Remediation:** Preserve the pending publishing receipt and stable source
+  identity; return `Busy` while the attempt remains leased and
+  `ReconciliationRequired` after expiry. Do not release or repeat the
+  external send after an uncertain outcome. Retain the original source offset
+  until a persisted confirmed publish allows acknowledgment. A late
+  publisher can still settle the original claim. Operator recovery requires
+  effect-owner evidence and an audited, fenced decision.
+- **Verification:** Exercise an expired claim and concurrent publisher in
+  SQLite and PostgreSQL; ensure the second publisher cannot publish and the
+  original can still persist the confirmed result. Existing tests and
+  verification contracts were updated but have not been executed.
 
 ### P-WORKER-SHUTDOWN-ADMISSION — stop after awaits, before new effects
 

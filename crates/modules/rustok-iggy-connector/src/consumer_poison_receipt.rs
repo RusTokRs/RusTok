@@ -126,6 +126,9 @@ pub struct ConsumerPoisonReceipt {
 pub enum ConsumerPoisonPublishClaim {
     Claimed,
     Busy,
+    /// A send may have completed before its response or receipt was persisted.
+    /// Lease expiry is not a safe authorization to publish the effect again.
+    ReconciliationRequired,
     AlreadyPublished,
     AlreadyAcknowledged,
 }
@@ -326,7 +329,14 @@ impl ConsumerPoisonReceiptStore {
             ConsumerPoisonReceiptState::Acknowledged => {
                 return Ok(ConsumerPoisonPublishClaim::AlreadyAcknowledged);
             }
-            ConsumerPoisonReceiptState::Reserved | ConsumerPoisonReceiptState::Publishing => {}
+            ConsumerPoisonReceiptState::Publishing => {
+                return if publishing_claim_expired(&row)? {
+                    Ok(ConsumerPoisonPublishClaim::ReconciliationRequired)
+                } else {
+                    Ok(ConsumerPoisonPublishClaim::Busy)
+                };
+            }
+            ConsumerPoisonReceiptState::Reserved => {}
         }
 
         let mut values = vec![
@@ -370,12 +380,21 @@ impl ConsumerPoisonReceiptStore {
             ConsumerPoisonReceiptState::Acknowledged => {
                 ConsumerPoisonPublishClaim::AlreadyAcknowledged
             }
-            ConsumerPoisonReceiptState::Reserved | ConsumerPoisonReceiptState::Publishing => {
-                ConsumerPoisonPublishClaim::Busy
+            ConsumerPoisonReceiptState::Reserved => ConsumerPoisonPublishClaim::Busy,
+            ConsumerPoisonReceiptState::Publishing => {
+                if publishing_claim_expired(&current)? {
+                    ConsumerPoisonPublishClaim::ReconciliationRequired
+                } else {
+                    ConsumerPoisonPublishClaim::Busy
+                }
             }
         })
     }
 
+    /// Releases a claim only if the caller has definitive evidence that no
+    /// external publication was attempted. Never call this after an Iggy send
+    /// returned an error or lost its response: that outcome is ambiguous and
+    /// needs effect-owner reconciliation instead of automatic retry.
     pub async fn release_claim(
         &self,
         identity: &ConsumerPoisonIdentity,
@@ -611,11 +630,16 @@ fn insert_receipt_sql(backend: DbBackend) -> String {
     )
 }
 
+fn publishing_claim_expired(row: &QueryResult) -> Result<bool, ConsumerPoisonReceiptError> {
+    row.try_get("", "publishing_claim_expired")
+        .map_err(storage_error)
+}
+
 fn select_receipt_by_source_sql(backend: DbBackend, lock: bool) -> String {
     let prefix = placeholder_prefix(backend);
     let lock = row_lock(backend, lock);
     format!(
-        "SELECT delivery_id, consumer_group, source_stream, source_topic, source_partition, source_offset, payload, stable_error_code, delivery_attempt_count, state FROM iggy_consumer_poison_receipts WHERE consumer_group = {prefix}1 AND source_stream = {prefix}2 AND source_topic = {prefix}3 AND source_partition = {prefix}4 AND source_offset = {prefix}5 LIMIT 1{lock}"
+        "SELECT delivery_id, consumer_group, source_stream, source_topic, source_partition, source_offset, payload, stable_error_code, delivery_attempt_count, state, COALESCE(state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP, FALSE) AS publishing_claim_expired FROM iggy_consumer_poison_receipts WHERE consumer_group = {prefix}1 AND source_stream = {prefix}2 AND source_topic = {prefix}3 AND source_partition = {prefix}4 AND source_offset = {prefix}5 LIMIT 1{lock}"
     )
 }
 
@@ -635,11 +659,15 @@ fn row_lock(backend: DbBackend, lock: bool) -> &'static str {
     }
 }
 
+// Only unissued reservations may be claimed. The lease on 'publishing'
+// bounds ownership observation, but its expiry is NOT proof that an external
+// Iggy send failed or that its previous publisher stopped. Recovering an
+// ambiguous send requires owner reconciliation, never lease-based replay.
 fn claim_receipt_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     let lease_expires = lease_expires_expression(backend, 2);
     format!(
-        "UPDATE iggy_consumer_poison_receipts SET state = 'publishing', publisher_id = {prefix}1, lease_expires_at = {lease_expires}, updated_at = CURRENT_TIMESTAMP WHERE consumer_group = {prefix}3 AND source_stream = {prefix}4 AND source_topic = {prefix}5 AND source_partition = {prefix}6 AND source_offset = {prefix}7 AND (state = 'reserved' OR (state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE iggy_consumer_poison_receipts SET state = 'publishing', publisher_id = {prefix}1, lease_expires_at = {lease_expires}, updated_at = CURRENT_TIMESTAMP WHERE consumer_group = {prefix}3 AND source_stream = {prefix}4 AND source_topic = {prefix}5 AND source_partition = {prefix}6 AND source_offset = {prefix}7 AND state = 'reserved'"
     )
 }
 
@@ -805,6 +833,75 @@ mod tests {
                 .await
                 .unwrap(),
             ConsumerPoisonPublishClaim::AlreadyAcknowledged
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_publishing_lease_cannot_authorize_second_broker_send() {
+        use sea_orm::ConnectionTrait;
+
+        let store = sqlite_store().await;
+        let delivery = identity(Uuid::new_v4(), 1, 37, vec![4, 5, 6]);
+        let first_publisher = Uuid::new_v4();
+        let other_publisher = Uuid::new_v4();
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &delivery,
+                    "iggy.contract.decode_invalid",
+                    1,
+                    first_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            ConsumerPoisonPublishClaim::Claimed
+        );
+
+        // Simulate a crash after the broker accepted an external send but
+        // before the worker persisted its acknowledgement of that send.
+        // The lease alone cannot distinguish such a send from a failed one.
+        store
+            .db
+            .execute_unprepared(
+                "UPDATE iggy_consumer_poison_receipts SET lease_expires_at = '2000-01-01 00:00:00' WHERE state = 'publishing'",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &delivery,
+                    "iggy.contract.decode_invalid",
+                    2,
+                    other_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            ConsumerPoisonPublishClaim::ReconciliationRequired,
+            "expired claim must require reconciliation rather than duplicate a broker effect"
+        );
+
+        // A late response for the original fenced publisher can still settle
+        // the source receipt, so a subsequent delivery can be acknowledged.
+        store
+            .mark_published(&delivery, first_publisher)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .reserve_and_claim(
+                    &delivery,
+                    "iggy.contract.decode_invalid",
+                    3,
+                    other_publisher,
+                    Duration::from_secs(30),
+                )
+                .await
+                .unwrap(),
+            ConsumerPoisonPublishClaim::AlreadyPublished
         );
     }
 

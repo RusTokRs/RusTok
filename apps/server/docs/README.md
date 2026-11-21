@@ -421,14 +421,18 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   the same time; the recheck prevents a new durable effect from being admitted.
   A delivery returned during shutdown is not acknowledged, so its persistent
   broker offset remains available for redelivery after restart.
-- Social Graph Index raw-poison DLQ publication keeps the source offset
-  **uncommitted** after all transport retries fail; its worker reports a stable
-  failure diagnostic without embedding untrusted broker error text. The
-  durable poison receipt claim is released on a failed publish (or expires by
-  lease after a failed release) so a restarted worker can retry the same
-  source identity. A successful DLQ publication is recorded durably before
-  broker source acknowledgement; a crash between these steps retries the
-  receipt/offset path rather than dropping the source message.
+- Social Graph Index and Forum Search poison DLQ publishers treat an external
+  send error as **ambiguous**: the broker may already have accepted it.
+  The workers retain the durable `publishing` receipt and leave the source
+  offset uncommitted. Connector receipt storage prohibits automatic reclaim
+  of a `publishing` receipt after its lease expires, reporting
+  `ReconciliationRequired`. Redelivery of a previously confirmed `published`
+  result can acknowledge its source without a second DLQ send. A late
+  confirmation from the original claim owner can still mark it published.
+  Unresolved sends after a crash require an explicit, evidence-based operator
+  reconciliation; this patch does not supply a recovery API or guarantee
+  exactly-once broker effects. The stable Iggy message ID alone is not proof
+  of suppression of all duplicates.
 - The Comments schedule audit source-retry handoff checks the shared stop
   signal before its expired-attempt sweep and before **each** new claim, not
   only at the outer polling boundary. An already acquired claim is allowed to
