@@ -35,8 +35,9 @@ const testPath = 'crates/modules/rustok-index/src/infrastructure/postgres/postgr
 const test = requireMarkers(testPath, [
   'RUSTOK_INDEX_TEST_DATABASE_URL',
   'CREATE SCHEMA',
-  'SET search_path',
+  'set_schema_search_path(schema_name.clone())',
   'IndexModule.migrations()',
+  'mod hardening;',
   'PostgresSchemaRegistrationStore',
   'PostgresMutationStore',
   'PostgresIndexQueryPort',
@@ -59,6 +60,13 @@ for (const forbidden of [
 ]) {
   if (test.includes(forbidden)) fail(`${testPath} contains forbidden marker ${forbidden}`);
 }
+
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/hardening.rs', [
+  'postgres_timestamp_and_decimal_keys_match_reference_through_null_pages',
+  'postgres_nested_locale_identity_and_target_admission_agree_in_page_and_count',
+  'postgres_compiled_queries_use_owned_btree_and_gin_in_custom_and_generic_plans',
+  'postgres_mutation_and_checkpoint_rollback_if_lease_expires_during_write',
+]);
 
 const referencePath = 'crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs';
 requireMarkers(referencePath, [

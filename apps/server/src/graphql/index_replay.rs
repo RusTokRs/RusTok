@@ -13,8 +13,9 @@ use uuid::Uuid;
 use crate::context::{AuthContext, TenantContext};
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::index_replay_runtime_composition::{
-    IndexReplayOperatorContext, IndexReplayOperatorError, IndexReplayOperatorRuntime,
-    IndexReplayShadowOperatorError, IndexReplayShadowTransportError,
+    IndexReconciliationOperatorContext, IndexReconciliationOperatorError,
+    IndexReconciliationOperatorRuntime, IndexReplayOperatorContext, IndexReplayOperatorError,
+    IndexReplayOperatorRuntime, IndexReplayShadowOperatorError, IndexReplayShadowTransportError,
     IndexReplayShadowTransportOutcome, IndexReplayShadowTransportRuntime,
     IndexReplayTargetedOperatorError,
 };
@@ -88,12 +89,16 @@ pub enum IndexReplayGraphqlRunStatus {
     Complete,
     Cancelled,
     Yielded,
+    RetryScheduled,
+    FailedPermanent,
+    FailedExhausted,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
 pub struct IndexReplayRunPayload {
     pub status: IndexReplayGraphqlRunStatus,
     pub job_id: Option<Uuid>,
+    pub retry_after_seconds: Option<i32>,
     pub pages_processed: i32,
     pub mutations_processed: i32,
     pub applied_count: i32,
@@ -118,8 +123,24 @@ impl TryFrom<rustok_index::IndexReplayRunOutcome> for IndexReplayRunPayload {
                     IndexReplayGraphqlRunStatus::Cancelled
                 }
                 rustok_index::IndexReplayRunStatus::Yielded => IndexReplayGraphqlRunStatus::Yielded,
+                rustok_index::IndexReplayRunStatus::RetryScheduled => {
+                    IndexReplayGraphqlRunStatus::RetryScheduled
+                }
+                rustok_index::IndexReplayRunStatus::FailedPermanent => {
+                    IndexReplayGraphqlRunStatus::FailedPermanent
+                }
+                rustok_index::IndexReplayRunStatus::FailedExhausted => {
+                    IndexReplayGraphqlRunStatus::FailedExhausted
+                }
             },
             job_id: outcome.job_id(),
+            retry_after_seconds: outcome
+                .retry_after()
+                .map(|delay| i32::try_from(delay.as_secs()))
+                .transpose()
+                .map_err(|_| {
+                    <FieldError as GraphQLError>::internal_error("Index retry delay overflow")
+                })?,
             pages_processed: bounded_count(outcome.pages_processed())?,
             mutations_processed: bounded_count(outcome.mutation_count())?,
             applied_count: bounded_count(outcome.applied_count())?,
@@ -248,6 +269,92 @@ enum IndexReplayTransportPreparationError {
     InvalidInput { field: &'static str },
 }
 
+#[derive(Debug, Clone, InputObject)]
+pub struct IndexJobRequeueInput {
+    pub job_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum IndexJobRequeueStatus {
+    Requeued,
+    NotFound,
+    NotFailed,
+    ScopeUnavailable,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct IndexJobRequeuePayload {
+    pub status: IndexJobRequeueStatus,
+    pub retry_epoch: Option<i32>,
+    pub audit_id: Option<Uuid>,
+}
+
+impl TryFrom<rustok_index::IndexJobRequeueOutcome> for IndexJobRequeuePayload {
+    type Error = FieldError;
+
+    fn try_from(outcome: rustok_index::IndexJobRequeueOutcome) -> Result<Self, Self::Error> {
+        use rustok_index::IndexJobRequeueOutcome;
+        let (status, retry_epoch, audit_id) = match outcome {
+            IndexJobRequeueOutcome::Requeued {
+                retry_epoch,
+                audit_id,
+                ..
+            } => (
+                IndexJobRequeueStatus::Requeued,
+                Some(i32::try_from(retry_epoch).map_err(|_| {
+                    <FieldError as GraphQLError>::internal_error("Index retry epoch overflow")
+                })?),
+                Some(audit_id),
+            ),
+            IndexJobRequeueOutcome::NotFound => (IndexJobRequeueStatus::NotFound, None, None),
+            IndexJobRequeueOutcome::NotFailed => (IndexJobRequeueStatus::NotFailed, None, None),
+            IndexJobRequeueOutcome::ScopeUnavailable => {
+                (IndexJobRequeueStatus::ScopeUnavailable, None, None)
+            }
+        };
+        Ok(Self {
+            status,
+            retry_epoch,
+            audit_id,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum IndexSecondaryOperation {
+    Ensure,
+    Reindex,
+    Retire,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct IndexSecondaryMaintenanceInput {
+    pub module_name: String,
+    pub entity_name: String,
+    pub schema_version: String,
+    pub field_name: String,
+    pub operation: IndexSecondaryOperation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum IndexSecondaryMaintenanceStatus {
+    Busy,
+    Ready,
+    Reindexed,
+    Retired,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct IndexSecondaryMaintenancePayload {
+    pub status: IndexSecondaryMaintenanceStatus,
+    pub index_name: Option<String>,
+    pub changed: bool,
+}
+
 #[derive(Default)]
 pub struct IndexReplayMutation;
 
@@ -259,13 +366,10 @@ impl IndexReplayMutation {
         ctx: &Context<'_>,
         input: IndexReplayRunInput,
     ) -> GraphqlResult<IndexReplayRunPayload> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (tenant_id, actor_id) = request_scope(ctx)?;
 
-        let (operator_context, request) = prepare_authorized_run(tenant.id, auth.user_id, input)
-            .map_err(map_preparation_error)?;
+        let (operator_context, request) =
+            prepare_authorized_run(tenant_id, actor_id, input).map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
         let stop_handle = ctx.data::<StopHandle>()?.clone();
         runtime
@@ -281,13 +385,10 @@ impl IndexReplayMutation {
         ctx: &Context<'_>,
         input: IndexReplayTargetedRunInput,
     ) -> GraphqlResult<IndexReplayTargetedRunPayload> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (tenant_id, actor_id) = request_scope(ctx)?;
 
         let (operator_context, request) =
-            prepare_authorized_targeted_run(tenant.id, auth.user_id, input)
+            prepare_authorized_targeted_run(tenant_id, actor_id, input)
                 .map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
         runtime
@@ -303,13 +404,10 @@ impl IndexReplayMutation {
         ctx: &Context<'_>,
         input: IndexReplayShadowRunInput,
     ) -> GraphqlResult<IndexReplayShadowRunPayload> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (tenant_id, actor_id) = request_scope(ctx)?;
 
         let (operator_context, schema, locale, continuation) =
-            prepare_authorized_shadow_run(tenant.id, auth.user_id, input)
+            prepare_authorized_shadow_run(tenant_id, actor_id, input)
                 .map_err(map_preparation_error)?;
         let runtime = shadow_replay_runtime(ctx)?;
         runtime
@@ -332,13 +430,10 @@ impl IndexReplayMutation {
         ctx: &Context<'_>,
         input: IndexReplayCancelInput,
     ) -> GraphqlResult<IndexReplayCancelPayload> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (tenant_id, actor_id) = request_scope(ctx)?;
 
-        let (operator_context, job_id) = prepare_authorized_cancel(tenant.id, auth.user_id, input)
-            .map_err(map_preparation_error)?;
+        let (operator_context, job_id) =
+            prepare_authorized_cancel(tenant_id, actor_id, input).map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
         runtime
             .request_cancel(operator_context, job_id)
@@ -346,6 +441,126 @@ impl IndexReplayMutation {
             .map(IndexReplayCancelPayload::from)
             .map_err(map_operator_error)
     }
+
+    /// Resume the original failed Full replay from its last committed checkpoint.
+    async fn requeue_index_replay(
+        &self,
+        ctx: &Context<'_>,
+        input: IndexJobRequeueInput,
+    ) -> GraphqlResult<IndexJobRequeuePayload> {
+        let (tenant_id, actor_id) = request_scope(ctx)?;
+        let operator = authorize(tenant_id, actor_id).map_err(map_preparation_error)?;
+        let outcome = replay_runtime(ctx)?
+            .requeue_failed(operator, input.job_id, input.reason)
+            .await
+            .map_err(map_operator_error)?;
+        outcome.try_into()
+    }
+
+    /// Requeue one failed reconciliation job; replay IDs are not accepted by this command.
+    async fn requeue_index_reconciliation(
+        &self,
+        ctx: &Context<'_>,
+        input: IndexJobRequeueInput,
+    ) -> GraphqlResult<IndexJobRequeuePayload> {
+        let (tenant_id, actor_id) = request_scope(ctx)?;
+        authorize(tenant_id, actor_id).map_err(map_preparation_error)?;
+        let operator = IndexReconciliationOperatorContext::new(tenant_id, actor_id)
+            .map_err(map_reconciliation_requeue_error)?;
+        let runtime = ctx
+            .data_opt::<Arc<ModuleRuntimeExtensions>>()
+            .and_then(|extensions| extensions.get::<IndexReconciliationOperatorRuntime>())
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Index reconciliation runtime is not available",
+                )
+            })?;
+        runtime
+            .requeue_dead_letter(operator, input.job_id, input.reason)
+            .await
+            .map_err(map_reconciliation_requeue_error)?
+            .try_into()
+    }
+
+    /// Explicitly maintain one schema-derived PostgreSQL secondary index for this tenant.
+    async fn maintain_index_secondary_index(
+        &self,
+        ctx: &Context<'_>,
+        input: IndexSecondaryMaintenanceInput,
+    ) -> GraphqlResult<IndexSecondaryMaintenancePayload> {
+        use IndexSecondaryMaintenanceStatus as Status;
+        use rustok_index::{
+            SecondaryIndexError, SecondaryIndexExecutionOutcome, SecondaryIndexOperation,
+            SharedIndexSecondaryIndexRuntime,
+        };
+        let (tenant_id, actor_id) = request_scope(ctx)?;
+        let operator = authorize(tenant_id, actor_id).map_err(map_preparation_error)?;
+        let authority = operator
+            .authorize_for(tenant_id)
+            .map_err(map_operator_error)?;
+        let schema = parse_schema(input.module_name, input.entity_name, input.schema_version)
+            .map_err(map_preparation_error)?;
+        let field = rustok_index::FieldName::new(input.field_name).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input("Invalid Index field name")
+        })?;
+        let operation = match input.operation {
+            IndexSecondaryOperation::Ensure => SecondaryIndexOperation::Ensure,
+            IndexSecondaryOperation::Reindex => SecondaryIndexOperation::Reindex,
+            IndexSecondaryOperation::Retire => SecondaryIndexOperation::Retire,
+        };
+        let runtime = ctx
+            .data::<Arc<ModuleRuntimeExtensions>>()?
+            .get::<SharedIndexSecondaryIndexRuntime>()
+            .cloned()
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Index secondary maintenance is unavailable",
+                )
+            })?;
+        let outcome = runtime.maintain(authority, &schema, &field, operation).await.map_err(|error| {
+            if matches!(error, SecondaryIndexError::SchemaNotSelected(_) | SecondaryIndexError::UnsupportedField) {
+                return <FieldError as GraphQLError>::bad_user_input("No secondary index is defined for the selected schema field");
+            }
+            tracing::warn!(%tenant_id, schema = %schema, field = %field, %error, "Index secondary maintenance failed");
+            <FieldError as GraphQLError>::internal_error("Index secondary maintenance did not complete")
+        })?;
+        let (status, name, changed) = match outcome {
+            None => (Status::Busy, None, false),
+            Some(SecondaryIndexExecutionOutcome::Ready {
+                index_name,
+                created,
+            }) => (Status::Ready, Some(index_name), created),
+            Some(SecondaryIndexExecutionOutcome::Reindexed { index_name }) => {
+                (Status::Reindexed, Some(index_name), true)
+            }
+            Some(SecondaryIndexExecutionOutcome::Retired {
+                index_name,
+                dropped,
+            }) => (Status::Retired, Some(index_name), dropped),
+        };
+        Ok(IndexSecondaryMaintenancePayload {
+            status,
+            index_name: name,
+            changed,
+        })
+    }
+}
+
+fn request_scope(ctx: &Context<'_>) -> GraphqlResult<(Uuid, Uuid)> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>()?;
+    if auth.user_id.is_nil()
+        || auth.tenant_id.is_nil()
+        || auth.tenant_id != tenant.id
+        || !tenant.is_active
+    {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Index request tenant does not match the authenticated tenant",
+        ));
+    }
+    Ok((tenant.id, auth.user_id))
 }
 
 fn replay_runtime(ctx: &Context<'_>) -> GraphqlResult<IndexReplayOperatorRuntime> {
@@ -511,7 +726,7 @@ fn parse_schema(
     let schema_version = bounded_text("schema_version", &schema_version, MAX_SCHEMA_VERSION_BYTES)?
         .parse::<u32>()
         .ok()
-        .filter(|value| *value > 0)
+        .filter(|value| (1..=i32::MAX as u32).contains(value))
         .ok_or(IndexReplayTransportPreparationError::InvalidInput {
             field: "schema_version",
         })?;
@@ -593,9 +808,39 @@ fn map_operator_error(error: IndexReplayOperatorError) -> FieldError {
         IndexReplayOperatorError::Replay(
             rustok_index::IndexReplayRunError::UnknownSchemaSource(_),
         ) => <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema"),
-        IndexReplayOperatorError::Replay(_) => {
-            <FieldError as GraphQLError>::internal_error("Index replay command failed")
+        IndexReplayOperatorError::Recovery(
+            rustok_index::IndexJobRecoveryError::InvalidReason(_)
+            | rustok_index::IndexJobRecoveryError::NilJobId,
+        ) => <FieldError as GraphQLError>::bad_user_input("Invalid Index recovery input"),
+        IndexReplayOperatorError::Replay(rustok_index::IndexReplayRunError::Job(
+            rustok_index::IndexReplayJobError::DeadLettered { .. },
+        )) => FieldError::new(
+            "Replay is dead-lettered; requeue the original job after resolving the failure",
+        )
+        .extend_with(|_, extensions| {
+            extensions.set("code", "INDEX_REPLAY_DEAD_LETTERED");
+        }),
+        IndexReplayOperatorError::Replay(_) | IndexReplayOperatorError::Recovery(_) => {
+            <FieldError as GraphQLError>::internal_error("Index command did not complete")
         }
+    }
+}
+
+fn map_reconciliation_requeue_error(error: IndexReconciliationOperatorError) -> FieldError {
+    use IndexReconciliationOperatorError as Error;
+    match error {
+        Error::InvalidContext | Error::MissingRequestAuthority => {
+            <FieldError as GraphQLError>::unauthenticated()
+        }
+        Error::TenantMismatch | Error::Forbidden => {
+            <FieldError as GraphQLError>::permission_denied(
+                "Permission denied: modules:manage required",
+            )
+        }
+        Error::Recovery(error) => map_operator_error(IndexReplayOperatorError::Recovery(error)),
+        _ => <FieldError as GraphQLError>::internal_error(
+            "Index reconciliation recovery did not complete",
+        ),
     }
 }
 
@@ -738,6 +983,111 @@ mod tests {
         prepare_authorized_shadow_run, prepare_authorized_targeted_run,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+
+    #[tokio::test]
+    async fn index_admin_csr_commands_validate_against_the_operator_schema() {
+        use async_graphql::{EmptySubscription, Object, Request, Schema, Value, Variables};
+        use serde_json::json;
+
+        struct Query;
+        #[Object]
+        impl Query {
+            async fn ready(&self) -> bool {
+                true
+            }
+        }
+        let schema = Schema::build(Query, super::IndexReplayMutation, EmptySubscription)
+            .data(std::sync::Arc::new(
+                rustok_core::ModuleRuntimeExtensions::default(),
+            ))
+            .finish();
+        let tenant = crate::context::TenantContext {
+            id: Uuid::new_v4(),
+            slug: "fixture".into(),
+            name: "Fixture".into(),
+            domain: None,
+            default_locale: "en".into(),
+            settings: json!({}),
+            is_active: true,
+        };
+        let auth = crate::context::AuthContext {
+            tenant_id: tenant.id,
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            permissions: vec![Permission::MODULES_MANAGE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "user".into(),
+        };
+        let scope = |permission| {
+            RbacRequestScope::new(tenant.id, auth.user_id, vec![permission], UserRole::Admin)
+        };
+        let mut other_tenant = tenant.clone();
+        other_tenant.id = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let recovery = json!({ "jobId": id, "reason": "Reviewed failure" });
+        for (document, input) in [
+            (
+                include_str!(
+                    "../../../../crates/modules/rustok-index/admin/src/transport/graphql/run.graphql"
+                ),
+                json!({ "moduleName": "product", "entityName": "product", "schemaVersion": "1", "locale": "en-US" }),
+            ),
+            (
+                include_str!(
+                    "../../../../crates/modules/rustok-index/admin/src/transport/graphql/cancel.graphql"
+                ),
+                json!({ "jobId": id }),
+            ),
+            (
+                include_str!(
+                    "../../../../crates/modules/rustok-index/admin/src/transport/graphql/requeue_replay.graphql"
+                ),
+                recovery.clone(),
+            ),
+            (
+                include_str!(
+                    "../../../../crates/modules/rustok-index/admin/src/transport/graphql/requeue_reconciliation.graphql"
+                ),
+                recovery,
+            ),
+        ] {
+            let request =
+                || Request::new(document).variables(Variables::from_json(json!({"input": input})));
+            let admitted = || request().data(tenant.clone()).data(auth.clone());
+            for (request, scope, expected) in [
+                (request(), None, "UNAUTHENTICATED"),
+                (
+                    request().data(other_tenant.clone()).data(auth.clone()),
+                    Some(scope(Permission::MODULES_MANAGE)),
+                    "PERMISSION_DENIED",
+                ),
+                (
+                    admitted(),
+                    Some(scope(Permission::SETTINGS_READ)),
+                    "PERMISSION_DENIED",
+                ),
+                // All four documents reach the unavailable runtime only with request-bound
+                // authority. This fixture deliberately performs no domain write.
+                (
+                    admitted(),
+                    Some(scope(Permission::MODULES_MANAGE)),
+                    "INTERNAL_ERROR",
+                ),
+            ] {
+                let response = with_rbac_request_scope(scope, schema.execute(request)).await;
+                assert_eq!(response.errors.len(), 1, "{response:?}");
+                assert_eq!(
+                    response.errors[0]
+                        .extensions
+                        .as_ref()
+                        .and_then(|extensions| extensions.get("code")),
+                    Some(&Value::String(expected.into())),
+                    "CSR command did not reach the expected authorization/runtime boundary: {response:?}",
+                );
+            }
+        }
+    }
 
     fn malformed_run() -> IndexReplayRunInput {
         IndexReplayRunInput {

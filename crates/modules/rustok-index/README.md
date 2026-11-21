@@ -199,14 +199,14 @@ after takeover. SQLite support remains contract-test-only.
 
 `SecondaryIndexPlan` derives one deterministic index specification for every
 filterable or sortable field. Scalar fields use typed partial B-tree expressions;
-filterable `many` fields use field-local JSONB containment GIN. Expressions follow
-the production tagged `IndexValue` payload contract through each field's `value`
-member. Stable names bind tenant, schema reference, schema fingerprint, field type,
-cardinality, and index kind. `PostgresSecondaryIndexManager` coordinates ensure,
-reindex, and retirement through fenced `secondary_index` jobs, executes PostgreSQL
-`CONCURRENTLY` DDL, records owner definition comments, and verifies `indisready`
-and `indisvalid` before completion. Retire remains available for retired schemas;
-SQLite is contract-test-only.
+filterable `many` fields use field-local JSONB containment GIN when membership is
+compatible with the tagged JSON representation (not Decimal lists). The query compiler
+and DDL share the expressions and partial predicates. Stable names bind tenant, schema
+reference, schema fingerprint, field type, cardinality, and index kind. The guarded
+`maintainIndexSecondaryIndex` command coordinates `Ensure`, `Reindex`, and `Retire`
+through fenced `secondary_index` jobs, validates ownership and the physical definition,
+and uses PostgreSQL `CONCURRENTLY` DDL. SQLite is contract-test-only. See the
+[operations guide](docs/operations.md) for interrupted DDL and replay recovery procedures.
 
 `evaluate_partition_admission` keeps the canonical tables unpartitioned unless one
 explicit policy is satisfied by one exact SHA-256 evidence packet. Admission checks

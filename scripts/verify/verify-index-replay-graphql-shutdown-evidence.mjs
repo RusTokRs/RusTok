@@ -29,7 +29,7 @@ const packet = requireMarkers(packetPath, [
   'with_rbac_request_scope(',
   'Permission::MODULES_MANAGE',
   'tokio::spawn(async move {',
-  'gate.started.notified().await;',
+  'tokio::time::timeout(std::time::Duration::from_secs(15), gate.started.notified())',
   'first.stop_handle.stop().await;',
   'gate.release.notify_one();',
   'assert_eq!(first_run["status"], "YIELDED");',
@@ -72,7 +72,7 @@ for (const forbidden of [
 const spawn = packet.indexOf('tokio::spawn(async move {');
 const scope = packet.indexOf('with_rbac_request_scope(', spawn);
 const execute = packet.indexOf('first_schema.execute(replay_request())', scope);
-const started = packet.indexOf('gate.started.notified().await;', execute);
+const started = packet.indexOf('gate.started.notified())', execute);
 const stop = packet.indexOf('first.stop_handle.stop().await;', started);
 const release = packet.indexOf('gate.release.notify_one();', stop);
 if (spawn < 0 || scope <= spawn || execute <= scope || started <= execute || stop <= started || release <= stop) {
@@ -99,22 +99,23 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'pub async fn run_interruptible<Check>(',
   'context.authorize_for(request.page_request().tenant_id())?;',
-  '.run_interruptible(request, should_interrupt)',
+  '.run_operator(authority, request, should_interrupt)',
 ]);
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
-  'pub async fn run_interruptible<Check>(',
+  'pub async fn run_operator<Check>(',
+  'authority.require_tenant(request.page_request().tenant_id())?;',
   '.run_interruptible(request, should_interrupt)',
 ]);
-requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs', [
-  'let lease_request = lease_request_for_run(&request, source_name)?;',
-  'Err(crate::IndexReplayError::Interrupted) => {',
-  'yield_after_host_interruption(&self.db, &lease, aggregate).await',
-  'match yield_for_resume(db, lease).await?',
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs', [
+  'let lease_request = lease_request_for_run(&request, source_name)?',
+  'Err(IndexReplayError::Interrupted) => break,',
+  'yield_for_resume(&self.db, &lease).await?',
+  'match yield_for_resume(&self.db, &lease).await?',
 ]);
 requireMarkers('apps/server/src/services/graphql_schema.rs', [
   'let stop_handle = stop_handle_from_context(ctx);',
   'IndexReplayStopKeepalive',
-  'avoid a zero-receiver window',
+  'Keeps at least one watch receiver alive for API-only hosts',
 ]);
 
 requireMarkers('apps/server/docs/index-replay-graphql-shutdown-evidence.md', [

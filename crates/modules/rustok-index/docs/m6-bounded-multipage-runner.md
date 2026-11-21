@@ -139,28 +139,22 @@ its late stable delivery is duplicate-safe and its stale checkpoint path returns
 
 ## Failure boundary
 
-Source, mutation, and checkpoint failures are recorded as one bounded
-`index.replay_page_failed` terminal job error with an `index_replay_run_failure_v1`
-detail object containing only the dependency code and retryable classification. No raw
-database, transport, or source-domain message is persisted.
+Source, mutation, and checkpoint failures retain their bounded dependency code and retryable
+classification. A retryable failure schedules finite backoff on the original job; permanent or
+exhausted failures dead-letter it. `attempt_count` fences writes and is not the failure budget.
+Checkpoint read, mutation persistence, and checkpoint commit retain distinct 30-second timeout
+codes. A separate 90-second page deadline prevents an indefinitely uncheckpointed page from
+renewing its lease forever. See [Index operations](./operations.md) for the recovery contract.
 
-Checkpoint read, mutation persistence and checkpoint commit each retain their own retryable
-30-second timeout code. There is deliberately no generic whole-page timeout that could mask
-one of those dependency identities.
-
-Cancellation takes precedence when it races with page failure. Checkpoint failures
-classified as `checkpoint_lease_lost`, heartbeat loss, terminal completion loss, yield
-loss, and cancellation ownership loss return explicit `IndexReplayRunError::LeaseLost`
-instead of attempting a stale state write.
-
-Host interruption is not a page failure and does not enter this failure path.
+Cancellation takes precedence over failure publication. Mutation/checkpoint ownership loss,
+heartbeat loss, terminal completion loss, and yield loss are not fresh dependency failures;
+a stale worker cannot reschedule a new owner's job. Host interruption yields without spending
+retry budget or setting `cancel_requested`.
 
 ## Still open
 
 - execute/admit retained interruption/restart, page lease-heartbeat, multi-host reclaim and end-to-end server-shutdown evidence;
-- automatic bounded retry/backoff and dead-letter scheduling remains a separate owner policy;
 - operator-visible scheduler health and metrics;
-- explicit targeted/full/shadow rebuild modes;
 - partition replay scope only after a real partition-capable source contract exists;
 - retained PostgreSQL/process-level cancellation, crash, lease-expiry, restart and timing evidence beyond the deterministic SQLite packets where deployment admission requires it.
 

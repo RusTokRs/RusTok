@@ -77,7 +77,7 @@ pub enum IndexReconciliationOperatorError {
         #[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError,
     ),
     #[error(transparent)]
-    Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),
+    Recovery(#[from] rustok_index::infrastructure::postgres::IndexJobRecoveryError),
 }
 
 /// Server-owned guarded operator boundary over the canonical PostgreSQL Index reconciliation
@@ -94,7 +94,6 @@ pub struct IndexReconciliationOperatorRuntime {
     dead_letters:
         rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
     drift_findings: rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector,
-    recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
 }
 
 impl IndexReconciliationOperatorRuntime {
@@ -102,13 +101,11 @@ impl IndexReconciliationOperatorRuntime {
         inner: rustok_index::PostgresIndexReconciliationRunner,
         dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
         drift_findings: rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector,
-        recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
     ) -> Self {
         Self {
             inner,
             dead_letters,
             drift_findings,
-            recovery,
         }
     }
 
@@ -175,21 +172,17 @@ impl IndexReconciliationOperatorRuntime {
         job_id: Uuid,
         reason: impl Into<String>,
     ) -> std::result::Result<
-        rustok_index::infrastructure::postgres::IndexReconciliationRequeueOutcome,
+        rustok_index::infrastructure::postgres::IndexJobRequeueOutcome,
         IndexReconciliationOperatorError,
     > {
         context.authorize_for(context.tenant_id())?;
-        let request =
-            rustok_index::infrastructure::postgres::IndexReconciliationRequeueRequest::new(
-                context.tenant_id(),
-                job_id,
-                context.actor_id(),
-                reason,
-            )?;
-        self.recovery
-            .requeue_failed(request)
-            .await
-            .map_err(Into::into)
+        let request = rustok_index::infrastructure::postgres::IndexJobRequeueRequest::new(
+            context.tenant_id(),
+            job_id,
+            context.actor_id(),
+            reason,
+        )?;
+        self.inner.requeue_failed(request).await.map_err(Into::into)
     }
 }
 
@@ -232,10 +225,6 @@ pub(super) fn materialize_index_reconciliation_operator(
             )
         })?;
 
-    let recovery =
-        rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore::new(
-            db.clone(),
-        );
     let dead_letters =
         rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector::new(
             db.clone(),
@@ -248,7 +237,6 @@ pub(super) fn materialize_index_reconciliation_operator(
         runner,
         dead_letters,
         drift_findings,
-        recovery,
     ));
     Ok(())
 }
@@ -676,7 +664,7 @@ mod tests {
         assert!(matches!(
             delegated,
             IndexReconciliationOperatorError::Recovery(
-                rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError::NilJobId
+                rustok_index::infrastructure::postgres::IndexJobRecoveryError::NilJobId
             )
         ));
 
@@ -694,7 +682,7 @@ mod tests {
         assert!(matches!(
             reason,
             IndexReconciliationOperatorError::Recovery(
-                rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError::InvalidReason(_)
+                rustok_index::infrastructure::postgres::IndexJobRecoveryError::InvalidReason(_)
             )
         ));
     }

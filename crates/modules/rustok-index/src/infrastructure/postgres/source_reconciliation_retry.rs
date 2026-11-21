@@ -5,7 +5,11 @@ use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
-const MAX_RECONCILIATION_ATTEMPTS: u32 = 100;
+use super::source_job_failure::{FailureCountError, next_failure_count};
+
+use super::source_job_lease::{deadline_after_seconds, live_lease_where, placeholder_prefix};
+
+const MAX_RECONCILIATION_FAILURES: u32 = 100;
 const MAX_BACKOFF_SECONDS: u64 = 86_400;
 const MAX_FAILURE_CODE_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 191;
@@ -106,20 +110,20 @@ impl IndexReconciliationRetryFailure {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexReconciliationRetryPolicy {
-    max_attempts: u32,
+    max_failures: u32,
     base_backoff_seconds: u64,
     max_backoff_seconds: u64,
 }
 
 impl IndexReconciliationRetryPolicy {
     pub fn new(
-        max_attempts: u32,
+        max_failures: u32,
         base_backoff: Duration,
         max_backoff: Duration,
     ) -> Result<Self, IndexReconciliationRetryError> {
-        if !(1..=MAX_RECONCILIATION_ATTEMPTS).contains(&max_attempts) {
+        if !(1..=MAX_RECONCILIATION_FAILURES).contains(&max_failures) {
             return Err(IndexReconciliationRetryError::InvalidPolicy(
-                "max attempts must be between 1 and 100",
+                "max failures must be between 1 and 100",
             ));
         }
         let base_backoff_seconds = validate_backoff(base_backoff)?;
@@ -130,14 +134,14 @@ impl IndexReconciliationRetryPolicy {
             ));
         }
         Ok(Self {
-            max_attempts,
+            max_failures,
             base_backoff_seconds,
             max_backoff_seconds,
         })
     }
 
-    pub fn max_attempts(&self) -> u32 {
-        self.max_attempts
+    pub fn max_failures(&self) -> u32 {
+        self.max_failures
     }
 
     pub fn base_backoff(&self) -> Duration {
@@ -150,23 +154,23 @@ impl IndexReconciliationRetryPolicy {
 
     pub fn evaluate(
         &self,
-        attempt_count: u32,
+        failure_count: u32,
         failure_kind: IndexReconciliationRetryFailureKind,
     ) -> Result<IndexReconciliationRetryDisposition, IndexReconciliationRetryError> {
-        if attempt_count == 0 {
+        if failure_count == 0 {
             return Err(IndexReconciliationRetryError::InvalidAttemptCount);
         }
         if failure_kind == IndexReconciliationRetryFailureKind::Permanent {
             return Ok(IndexReconciliationRetryDisposition::TerminalPermanent {
-                attempts: attempt_count,
+                failures: failure_count,
             });
         }
-        if attempt_count >= self.max_attempts {
+        if failure_count >= self.max_failures {
             return Ok(IndexReconciliationRetryDisposition::TerminalExhausted {
-                attempts: attempt_count,
+                failures: failure_count,
             });
         }
-        let shift = attempt_count.saturating_sub(1).min(63);
+        let shift = failure_count.saturating_sub(1).min(63);
         let multiplier = 1_u64.checked_shl(shift).unwrap_or(u64::MAX);
         let retry_after_seconds = self
             .base_backoff_seconds
@@ -174,7 +178,7 @@ impl IndexReconciliationRetryPolicy {
             .min(self.max_backoff_seconds);
         Ok(IndexReconciliationRetryDisposition::RetryScheduled {
             retry_after: Duration::from_secs(retry_after_seconds),
-            next_attempt: attempt_count
+            next_failure_ordinal: failure_count
                 .checked_add(1)
                 .ok_or(IndexReconciliationRetryError::InvalidAttemptCount)?,
         })
@@ -192,13 +196,13 @@ impl Default for IndexReconciliationRetryPolicy {
 pub enum IndexReconciliationRetryDisposition {
     RetryScheduled {
         retry_after: Duration,
-        next_attempt: u32,
+        next_failure_ordinal: u32,
     },
     TerminalPermanent {
-        attempts: u32,
+        failures: u32,
     },
     TerminalExhausted {
-        attempts: u32,
+        failures: u32,
     },
 }
 
@@ -257,11 +261,25 @@ impl PostgresIndexReconciliationRetryStore {
         lease: &IndexReconciliationRetryLease,
         failure: &IndexReconciliationRetryFailure,
     ) -> Result<IndexReconciliationRetryDisposition, IndexReconciliationRetryError> {
-        let disposition = self
-            .policy
-            .evaluate(lease.attempt_count(), failure.kind())?;
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
+        let failure_count = next_failure_count(
+            &self.db,
+            backend,
+            "reconcile",
+            vec![
+                uuid_value(lease.tenant_id(), backend),
+                uuid_value(lease.job_id(), backend),
+                lease.worker_id().to_owned().into(),
+                i64::from(lease.attempt_count()).into(),
+            ],
+        )
+        .await
+        .map_err(|error| match error {
+            FailureCountError::LeaseLost => IndexReconciliationRetryError::LeaseLost,
+            FailureCountError::Storage => IndexReconciliationRetryError::Storage,
+        })?;
+        let disposition = self.policy.evaluate(failure_count, failure.kind())?;
         let details = failure_details(failure);
 
         let rows_affected = match disposition {
@@ -379,14 +397,6 @@ fn storage_error(_error: impl std::fmt::Display) -> IndexReconciliationRetryErro
     IndexReconciliationRetryError::Storage
 }
 
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
@@ -395,31 +405,20 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     }
 }
 
-fn available_at_expression(backend: DbBackend, parameter: usize) -> String {
-    let prefix = placeholder_prefix(backend);
-    match backend {
-        DbBackend::Postgres => {
-            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
-        }
-        DbBackend::Sqlite => {
-            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
-        }
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 fn schedule_retry_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "reconcile", 1, false);
     let prefix = placeholder_prefix(backend);
-    let available_at = available_at_expression(backend, 5);
+    let available_at = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET state = 'pending', available_at = {available_at}, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = {prefix}6, last_error_details = {prefix}7, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'pending', failure_count = failure_count + 1, available_at = {available_at}, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = {prefix}6, last_error_details = {prefix}7, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn terminal_failure_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "reconcile", 1, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'failed', failure_count = failure_count + 1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
@@ -430,14 +429,16 @@ mod tests {
     #[test]
     fn default_policy_uses_bounded_exponential_backoff() {
         let policy = IndexReconciliationRetryPolicy::default();
-        for (attempt, seconds, next_attempt) in [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)] {
+        for (attempt, seconds, next_failure_ordinal) in
+            [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
+        {
             assert_eq!(
                 policy
                     .evaluate(attempt, IndexReconciliationRetryFailureKind::Retryable)
                     .unwrap(),
                 IndexReconciliationRetryDisposition::RetryScheduled {
                     retry_after: Duration::from_secs(seconds),
-                    next_attempt,
+                    next_failure_ordinal,
                 }
             );
         }
@@ -445,7 +446,7 @@ mod tests {
             policy
                 .evaluate(5, IndexReconciliationRetryFailureKind::Retryable)
                 .unwrap(),
-            IndexReconciliationRetryDisposition::TerminalExhausted { attempts: 5 }
+            IndexReconciliationRetryDisposition::TerminalExhausted { failures: 5 }
         );
     }
 
@@ -455,7 +456,7 @@ mod tests {
             IndexReconciliationRetryPolicy::default()
                 .evaluate(1, IndexReconciliationRetryFailureKind::Permanent)
                 .unwrap(),
-            IndexReconciliationRetryDisposition::TerminalPermanent { attempts: 1 }
+            IndexReconciliationRetryDisposition::TerminalPermanent { failures: 1 }
         );
     }
 
@@ -490,11 +491,11 @@ mod tests {
     fn retry_sql_is_lease_fenced_and_preserves_job_identity() {
         let retry = schedule_retry_sql(DbBackend::Postgres);
         assert!(retry.contains("state = 'pending'"));
-        assert!(retry.contains("available_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second')"));
+        assert!(retry.contains("available_at = clock_timestamp() + ($5 * INTERVAL '1 second')"));
         assert!(retry.contains("kind = 'reconcile'"));
         assert!(retry.contains("lease_owner = $3"));
         assert!(retry.contains("attempt_count = $4"));
-        assert!(retry.contains("lease_expires_at > CURRENT_TIMESTAMP"));
+        assert!(retry.contains("lease_expires_at > clock_timestamp()"));
         assert!(retry.contains("cancel_requested = FALSE"));
         assert!(!retry.contains("INSERT INTO index_jobs"));
 

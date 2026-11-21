@@ -1,0 +1,5 @@
+mutation IndexAdminCancelReplay($input: IndexReplayCancelInput!) {
+  result: cancelIndexReplay(input: $input) {
+    status
+  }
+}

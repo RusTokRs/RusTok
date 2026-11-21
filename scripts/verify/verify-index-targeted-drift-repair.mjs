@@ -202,7 +202,7 @@ requireMarkers('orphanDoc', [
   'Status: `source_complete_owner_execution_pending`.',
   '`PostgresIndexOrphanLinkMutationStore`',
   '`index_drift_repair_orphan_link`',
-  'applied delivery is the durable proof',
+  'It authorizes recovery of the receipt, not a second deletion.',
 ]);
 requireMarkers('recoveryDoc', [
   'Status: `source_complete_owner_execution_pending`.',

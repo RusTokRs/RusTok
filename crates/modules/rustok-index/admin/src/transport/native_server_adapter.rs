@@ -4,653 +4,384 @@ use crate::model::{
     CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult, RetryActionResult,
     RetryJobInput, TriggerReplayInput,
 };
-#[cfg(feature = "ssr")]
-use crate::model::{
-    IndexInboxMetricsSnapshot, IndexJobMetricsSnapshot, IndexModuleSnapshot,
-    IndexOperationsSnapshot, IndexQueryDiagnosticsSnapshot, IndexSchemaSnapshot,
-    IndexSourceDescriptorSnapshot, IndexStorageSnapshot, IndexTableSnapshot, IndexTenantSnapshot,
-};
 
 #[cfg(feature = "ssr")]
-fn require_index_admin_tenant_scope(
+mod snapshot;
+
+#[cfg(feature = "ssr")]
+use super::native_http::{IndexAdminUpstream, IndexEndpoint};
+
+/// Host-owned graceful-stop probe for replay; never supplied by a server-function caller.
+#[cfg(feature = "ssr")]
+#[derive(Clone)]
+pub struct IndexAdminReplayStop(std::sync::Arc<dyn Fn() -> bool + Send + Sync>);
+
+#[cfg(feature = "ssr")]
+impl IndexAdminReplayStop {
+    pub fn new(is_stopping: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self(std::sync::Arc::new(is_stopping))
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn authenticated_context()
+-> Result<(rustok_api::AuthContext, rustok_api::TenantContext), ServerFnError> {
+    use rustok_api::{AuthContext, TenantContext};
+
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    validate_request_scope(&auth, &tenant)?;
+    Ok((auth, tenant))
+}
+
+#[cfg(feature = "ssr")]
+fn validate_request_scope(
     auth: &rustok_api::AuthContext,
-    resolved_tenant_id: uuid::Uuid,
+    tenant: &rustok_api::TenantContext,
 ) -> Result<(), ServerFnError> {
-    if auth.tenant_id.is_nil() || resolved_tenant_id.is_nil() || auth.user_id.is_nil() {
-        tracing::warn!(
-            auth_tenant_id = %auth.tenant_id,
-            resolved_tenant_id = %resolved_tenant_id,
-            user_id = %auth.user_id,
-            code = "index.admin_tenant_scope_invalid",
-            boundary = "index_admin_native_transport",
-            "index admin requires non-nil tenant and user scope"
-        );
+    if auth.tenant_id.is_nil()
+        || tenant.id.is_nil()
+        || auth.user_id.is_nil()
+        || auth.tenant_id != tenant.id
+        || !tenant.is_active
+    {
+        tracing::warn!(auth_tenant_id = %auth.tenant_id, resolved_tenant_id = %tenant.id,
+            code = "index.admin_invalid_tenant_scope", "Denied Index admin request");
         return Err(ServerFnError::new("Index admin access is denied"));
     }
-
-    if auth.tenant_id == resolved_tenant_id {
-        return Ok(());
-    }
-
-    tracing::warn!(
-        auth_tenant_id = %auth.tenant_id,
-        resolved_tenant_id = %resolved_tenant_id,
-        code = "index.admin_tenant_scope_mismatch",
-        boundary = "index_admin_native_transport",
-        "index admin permissions cannot cross the resolved tenant boundary"
-    );
-    Err(ServerFnError::new("Index admin access is denied"))
+    Ok(())
 }
 
-#[server(prefix = "/api/fn", endpoint = "index/bootstrap")]
+#[cfg(feature = "ssr")]
+fn authorize_bootstrap(auth: &rustok_api::AuthContext) -> Result<bool, ServerFnError> {
+    use rustok_api::{Permission, has_effective_permission};
+    if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+        return Err(ServerFnError::new(
+            "settings:read required to inspect Index",
+        ));
+    }
+    Ok(has_effective_permission(
+        &auth.permissions,
+        &Permission::MODULES_MANAGE,
+    ))
+}
+
+#[cfg(feature = "ssr")]
+fn authorize_operator(
+    auth: &rustok_api::AuthContext,
+    tenant: &rustok_api::TenantContext,
+) -> Result<rustok_index::IndexJobOperatorAuthority, ServerFnError> {
+    rustok_index::IndexJobOperatorAuthority::authorize(
+        tenant.id,
+        auth.tenant_id,
+        auth.user_id,
+        &auth.permissions,
+    )
+    .map_err(operator_error)
+}
+
+#[cfg(feature = "ssr")]
+fn replay_runtime(
+    host: &rustok_api::HostRuntimeContext,
+) -> Result<rustok_index::SharedIndexReplayRuntime, ServerFnError> {
+    host.shared_get::<rustok_index::SharedIndexReplayRuntime>()
+        .ok_or_else(|| ServerFnError::new("Index replay runtime is unavailable"))
+}
+
+#[cfg(feature = "ssr")]
+fn host_context() -> Result<rustok_api::HostRuntimeContext, ServerFnError> {
+    use_context::<rustok_api::HostRuntimeContext>()
+        .ok_or_else(|| ServerFnError::new("Index host runtime is unavailable"))
+}
+
+#[cfg(feature = "ssr")]
+async fn operator_context() -> Result<
+    (
+        rustok_index::IndexJobOperatorAuthority,
+        rustok_index::SharedIndexReplayRuntime,
+        uuid::Uuid,
+    ),
+    ServerFnError,
+> {
+    let (auth, tenant) = authenticated_context().await?;
+    let authority = authorize_operator(&auth, &tenant)?;
+    let runtime = replay_runtime(&host_context()?)?;
+    Ok((authority, runtime, tenant.id))
+}
+
+#[cfg(feature = "ssr")]
+fn operator_error(error: rustok_index::IndexJobOperatorError) -> ServerFnError {
+    use rustok_index::{IndexJobOperatorError as Operator, IndexJobRecoveryError as Recovery};
+    let message = match error {
+        Operator::Forbidden => "modules:manage required for Index jobs",
+        Operator::Recovery(Recovery::InvalidReason(_) | Recovery::NilJobId) => {
+            "Invalid job ID or recovery reason"
+        }
+        Operator::Replay(rustok_index::IndexReplayRunError::Job(
+            rustok_index::IndexReplayJobError::DeadLettered { .. },
+        )) => "Replay is dead-lettered; resolve the failure and requeue the original job",
+        Operator::Replay(rustok_index::IndexReplayRunError::UnknownSchemaSource(_)) => {
+            "No selected replay source owns this schema"
+        }
+        error => {
+            tracing::warn!(%error, "Index job operation failed");
+            "Index command result unavailable; refresh status before retrying"
+        }
+    };
+    ServerFnError::new(message)
+}
+
+#[cfg(feature = "ssr")]
+fn exact_job_id(input: &str) -> Result<uuid::Uuid, ServerFnError> {
+    uuid::Uuid::parse_str(input.trim())
+        .ok()
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| ServerFnError::new("Job ID must be a non-nil UUID"))
+}
+
+#[server(prefix = "/api/fn", endpoint = "index/bootstrap", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::{AuthContext, Permission, TenantContext, has_effective_permission};
-        use rustok_core::RusToKModule;
+    if let Some(upstream) = use_context::<IndexAdminUpstream>() {
+        return upstream
+            .relay(IndexEndpoint::Bootstrap, serde_json::json!({}))
+            .await;
+    }
 
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(&auth, tenant.id)?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(ServerFnError::new(
-                "settings:read required to inspect index administration state",
-            ));
-        }
-
-        let module = rustok_index::IndexModule;
-
-        let tables = vec![
-            IndexTableSnapshot {
-                name: "index_entities".to_string(),
-                role: "Materialized entity records with JSONB payload & source versions"
-                    .to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_links".to_string(),
-                role: "Deterministic directional relational graph links".to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_schemas".to_string(),
-                role: "Tenant-scoped registered schemas and SHA-256 fingerprints".to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_inbox".to_string(),
-                role: "Idempotent mutation delivery state & inbox deduplication log".to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_jobs".to_string(),
-                role: "Schema-scoped durable rebuild jobs & attempt fences".to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_checkpoints".to_string(),
-                role: "Durable worker replay cursor checkpoints".to_string(),
-            },
-            IndexTableSnapshot {
-                name: "index_schema_leases".to_string(),
-                role: "Durable schema application & coordination leases".to_string(),
-            },
-        ];
-
-        let db = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
-            .map(|ctx| ctx.db_clone())
-            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>);
-
-        let mut schemas = Vec::new();
-        if let Some(ref conn) = db {
-            use sea_orm::{ConnectionTrait, DbBackend, Statement};
-            let backend = conn.get_database_backend();
-            let schema_query = match backend {
-                DbBackend::Sqlite => {
-                    "SELECT module_name, entity_name, schema_version, schema_fingerprint, schema_json FROM index_schemas WHERE tenant_id = ?1 AND status = 'active' ORDER BY module_name, entity_name, schema_version DESC"
-                }
-                _ => {
-                    "SELECT module_name, entity_name, schema_version, schema_fingerprint, schema_json FROM index_schemas WHERE tenant_id = $1 AND status = 'active' ORDER BY module_name, entity_name, schema_version DESC"
-                }
-            };
-            if let Ok(rows) = conn
-                .query_all_raw(Statement::from_sql_and_values(
-                    backend,
-                    schema_query,
-                    vec![tenant.id.into()],
-                ))
-                .await
-            {
-                for row in rows {
-                    if let (
-                        Ok(module_name),
-                        Ok(entity_name),
-                        Ok(schema_version),
-                        Ok(fingerprint),
-                        Ok(schema_json),
-                    ) = (
-                        row.try_get::<String>("", "module_name"),
-                        row.try_get::<String>("", "entity_name"),
-                        row.try_get::<i32>("", "schema_version"),
-                        row.try_get::<String>("", "schema_fingerprint"),
-                        row.try_get::<serde_json::Value>("", "schema_json"),
-                    ) {
-                        let field_count = schema_json
-                            .get("fields")
-                            .and_then(|v| v.as_array())
-                            .map_or(0, |a| a.len());
-                        let link_count = schema_json
-                            .get("links")
-                            .and_then(|v| v.as_array())
-                            .map_or(0, |a| a.len());
-                        let owner_module = match module_name.as_str() {
-                            "rustok-product" | "rustok-channel" => {
-                                "rustok-distribution".to_string()
-                            }
-                            "rustok-social-graph" => "rustok-social-graph".to_string(),
-                            other => other.to_string(),
-                        };
-                        schemas.push(IndexSchemaSnapshot {
-                            module: module_name,
-                            entity: entity_name,
-                            version: schema_version.max(1) as u32,
-                            fingerprint,
-                            field_count,
-                            link_count,
-                            owner_module,
-                        });
-                    }
-                }
-            }
-        }
-
-        if schemas.is_empty() {
-            schemas = vec![
-                IndexSchemaSnapshot {
-                    module: "rustok-product".to_string(),
-                    entity: "product".to_string(),
-                    version: 4,
-                    fingerprint: "a9d8f37b019e42ac8e51df2a68c091bc".to_string(),
-                    field_count: 12,
-                    link_count: 2,
-                    owner_module: "rustok-distribution".to_string(),
-                },
-                IndexSchemaSnapshot {
-                    module: "rustok-product".to_string(),
-                    entity: "product_variant".to_string(),
-                    version: 2,
-                    fingerprint: "e481b94d7620a3bc95cf1032df785612".to_string(),
-                    field_count: 13,
-                    link_count: 0,
-                    owner_module: "rustok-distribution".to_string(),
-                },
-                IndexSchemaSnapshot {
-                    module: "rustok-channel".to_string(),
-                    entity: "sales_channel".to_string(),
-                    version: 1,
-                    fingerprint: "67df890123ab45cdef78901234567890".to_string(),
-                    field_count: 4,
-                    link_count: 0,
-                    owner_module: "rustok-distribution".to_string(),
-                },
-                IndexSchemaSnapshot {
-                    module: "rustok-social-graph".to_string(),
-                    entity: "relation".to_string(),
-                    version: 1,
-                    fingerprint: "01bc23de45fa678901bc23de45fa6789".to_string(),
-                    field_count: 3,
-                    link_count: 0,
-                    owner_module: "rustok-social-graph".to_string(),
-                },
-            ];
-        }
-
-        let registered_sources = vec![
-            IndexSourceDescriptorSnapshot {
-                name: "product-postgres-primary".to_string(),
-                entity: "rustok-product.product".to_string(),
-                mode: "scan_and_load".to_string(),
-            },
-            IndexSourceDescriptorSnapshot {
-                name: "product-variant-postgres-primary".to_string(),
-                entity: "rustok-product.product_variant".to_string(),
-                mode: "scan_and_load".to_string(),
-            },
-            IndexSourceDescriptorSnapshot {
-                name: "sales-channel-postgres-primary".to_string(),
-                entity: "rustok-channel.sales_channel".to_string(),
-                mode: "scan_and_load".to_string(),
-            },
-        ];
-
-        let mut inbox_metrics = IndexInboxMetricsSnapshot::default();
-        let mut job_metrics = IndexJobMetricsSnapshot::default();
-
-        if let Some(ref conn) = db {
-            use sea_orm::{ConnectionTrait, DbBackend, Statement};
-            let backend = conn.get_database_backend();
-
-            let inbox_query = match backend {
-                DbBackend::Sqlite => {
-                    "SELECT state, COUNT(*) as cnt FROM index_inbox WHERE tenant_id = ?1 GROUP BY state"
-                }
-                _ => {
-                    "SELECT state, COUNT(*) as cnt FROM index_inbox WHERE tenant_id = $1 GROUP BY state"
-                }
-            };
-            if let Ok(rows) = conn
-                .query_all_raw(Statement::from_sql_and_values(
-                    backend,
-                    inbox_query,
-                    vec![tenant.id.into()],
-                ))
-                .await
-            {
-                for row in rows {
-                    if let (Ok(state), Ok(cnt)) = (
-                        row.try_get::<String>("", "state"),
-                        row.try_get::<i64>("", "cnt"),
-                    ) {
-                        let count = cnt.max(0) as u64;
-                        inbox_metrics.total_messages =
-                            inbox_metrics.total_messages.saturating_add(count);
-                        match state.as_str() {
-                            "pending" => inbox_metrics.pending_messages = count,
-                            "processing" => inbox_metrics.processing_messages = count,
-                            "completed" => inbox_metrics.completed_messages = count,
-                            "failed" => inbox_metrics.failed_messages = count,
-                            "dead_letter" => inbox_metrics.dead_letter_messages = count,
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            let lag_query = match backend {
-                DbBackend::Sqlite => {
-                    "SELECT CAST((strftime('%s', 'now') - strftime('%s', MIN(created_at))) AS INTEGER) as lag FROM index_inbox WHERE tenant_id = ?1 AND state = 'pending'"
-                }
-                _ => {
-                    "SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::BIGINT as lag FROM index_inbox WHERE tenant_id = $1 AND state = 'pending'"
-                }
-            };
-            if let Ok(Some(row)) = conn
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
-                    lag_query,
-                    vec![tenant.id.into()],
-                ))
-                .await
-            {
-                inbox_metrics.oldest_pending_age_seconds = row
-                    .try_get::<Option<i64>>("", "lag")
-                    .ok()
-                    .flatten()
-                    .and_then(|lag| u64::try_from(lag).ok());
-            }
-
-            let jobs_query = match backend {
-                DbBackend::Sqlite => {
-                    "SELECT state, COUNT(*) as cnt FROM index_jobs WHERE tenant_id = ?1 GROUP BY state"
-                }
-                _ => {
-                    "SELECT state, COUNT(*) as cnt FROM index_jobs WHERE tenant_id = $1 GROUP BY state"
-                }
-            };
-            if let Ok(rows) = conn
-                .query_all_raw(Statement::from_sql_and_values(
-                    backend,
-                    jobs_query,
-                    vec![tenant.id.into()],
-                ))
-                .await
-            {
-                for row in rows {
-                    if let (Ok(state), Ok(cnt)) = (
-                        row.try_get::<String>("", "state"),
-                        row.try_get::<i64>("", "cnt"),
-                    ) {
-                        let count = cnt.max(0) as u64;
-                        job_metrics.total_jobs = job_metrics.total_jobs.saturating_add(count);
-                        match state.as_str() {
-                            "pending" => job_metrics.pending_jobs = count,
-                            "running" => job_metrics.running_jobs = count,
-                            "succeeded" => job_metrics.succeeded_jobs = count,
-                            "failed" => job_metrics.failed_jobs = count,
-                            "cancelled" => job_metrics.cancelled_jobs = count,
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            let recovery_query = match backend {
-                DbBackend::Sqlite => {
-                    "SELECT COUNT(*) as cnt FROM index_reconciliation_recovery_audits WHERE tenant_id = ?1"
-                }
-                _ => {
-                    "SELECT COUNT(*) as cnt FROM index_reconciliation_recovery_audits WHERE tenant_id = $1"
-                }
-            };
-            if let Ok(Some(row)) = conn
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
-                    recovery_query,
-                    vec![tenant.id.into()],
-                ))
-                .await
-            {
-                let cnt = row.try_get::<i64>("", "cnt").unwrap_or(0);
-                job_metrics.retry_recovery_count = u64::try_from(cnt.max(0)).unwrap_or_default();
-            }
-        }
-
-        let query_diagnostics = IndexQueryDiagnosticsSnapshot {
-            catalog_status: "Active (Catalog & Social Graph rules governed)".to_string(),
-            admission_rules_count: 2,
-            link_availability_rules_count: 1,
-            partition_strategy: "fail_closed_shadow_only".to_string(),
-        };
-
-        Ok(IndexAdminBootstrap {
-            tenant: IndexTenantSnapshot {
-                id: tenant.id.to_string(),
-                slug: tenant.slug,
-                name: tenant.name,
-                default_locale: tenant.default_locale,
-            },
-            module: IndexModuleSnapshot {
-                slug: module.slug().to_string(),
-                name: module.name().to_string(),
-                description: module.description().to_string(),
-                rewrite_status: "in_progress".to_string(),
-                current_milestone: "M7 (Product / Variant / SalesChannel Graph)".to_string(),
-                engine_type: "PostgreSQL JSONB".to_string(),
-            },
-            storage: IndexStorageSnapshot {
-                backend: "PostgreSQL".to_string(),
-                layout: "JSONB (Accepted in M2 ADR)".to_string(),
-                tables,
-                partition_status: "fail_closed_shadow_only".to_string(),
-            },
-            schemas,
-            operations: IndexOperationsSnapshot {
-                replay_runner: "bounded_1024_pages".to_string(),
-                reconciliation_mode: "multi_pass_cursor".to_string(),
-                drift_repair: "recovery_aware_candidate_persistence".to_string(),
-                registered_sources,
-                inbox_metrics,
-                job_metrics,
-                query_diagnostics,
-            },
+    let (auth, tenant) = authenticated_context().await?;
+    let can_manage = authorize_bootstrap(&auth)?;
+    let runtime = host_context()?;
+    snapshot::read(&runtime, tenant, can_manage)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "Index admin snapshot failed");
+            ServerFnError::new("Index storage snapshot is unavailable")
         })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "rustok-index-admin requires the `ssr` feature for native bootstrap",
-        ))
-    }
 }
 
-#[server(prefix = "/api/fn", endpoint = "index/trigger-replay")]
+#[server(prefix = "/api/fn", endpoint = "index/trigger-replay", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 pub async fn trigger_replay_native(
     input: TriggerReplayInput,
 ) -> Result<ReplayActionResult, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::{
-            AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission,
-        };
-        use std::time::Duration;
-
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(&auth, tenant.id)?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
-            return Err(ServerFnError::new(
-                "modules:manage required to trigger index replay",
-            ));
-        }
-
-        let schema_ref = rustok_index::SchemaRef {
-            module: rustok_index::ModuleName::new(input.schema_module.trim())
-                .map_err(|e| ServerFnError::new(format!("invalid schema module: {e}")))?,
-            entity: rustok_index::EntityName::new(input.schema_entity.trim())
-                .map_err(|e| ServerFnError::new(format!("invalid schema entity: {e}")))?,
-            version: rustok_index::SchemaVersion::new(input.schema_version),
-        };
-
-        let worker_id = format!("admin-replay-{}", uuid::Uuid::new_v4().simple());
-        let request = if let Some(loc) = input
-            .locale
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            let locale_key = rustok_index::LocaleKey::new(loc)
-                .map_err(|e| ServerFnError::new(format!("invalid locale: {e}")))?;
-            rustok_index::IndexReplayRunRequest::for_locale(
-                tenant.id,
-                schema_ref,
-                locale_key,
-                worker_id,
-                100,
-                8,
-                1,
-                Duration::from_secs(60),
+    if let Some(upstream) = use_context::<IndexAdminUpstream>() {
+        return upstream
+            .relay(
+                IndexEndpoint::Trigger,
+                serde_json::json!({ "input": input }),
             )
-        } else {
-            rustok_index::IndexReplayRunRequest::new(
-                tenant.id,
-                schema_ref,
-                worker_id,
-                100,
-                8,
-                1,
-                Duration::from_secs(60),
-            )
-        }
-        .map_err(|e| ServerFnError::new(format!("failed to construct replay request: {e}")))?;
-
-        let runtime = leptos::prelude::use_context::<rustok_index::SharedIndexReplayRuntime>()
-            .or_else(|| {
-                leptos::prelude::use_context::<HostRuntimeContext>()
-                    .and_then(|ctx| ctx.shared_get::<rustok_index::SharedIndexReplayRuntime>())
-            })
-            .ok_or_else(|| {
-                ServerFnError::new("Index replay runtime is not available in host context")
-            })?;
-
-        match runtime.run(request).await {
-            Ok(outcome) => Ok(ReplayActionResult {
-                success: true,
-                job_id: outcome.job_id().map(|id| id.to_string()),
-                status: match outcome.status() {
-                    rustok_index::IndexReplayRunStatus::Busy => "busy".to_string(),
-                    rustok_index::IndexReplayRunStatus::AlreadyComplete => {
-                        "already_complete".to_string()
-                    }
-                    rustok_index::IndexReplayRunStatus::Complete => "complete".to_string(),
-                    rustok_index::IndexReplayRunStatus::Cancelled => "cancelled".to_string(),
-                    rustok_index::IndexReplayRunStatus::Yielded => "yielded".to_string(),
-                },
-                pages_processed: outcome.pages_processed() as u64,
-                mutations_applied: outcome.applied_count() as u64,
-                message: "Replay completed successfully".to_string(),
-            }),
-            Err(err) => Err(ServerFnError::new(format!("Replay execution error: {err}"))),
-        }
+            .await;
     }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = input;
-        Err(ServerFnError::new(
-            "rustok-index-admin requires the `ssr` feature for trigger-replay",
-        ))
+
+    use crate::model::ReplayActionStatus;
+    use rustok_index::IndexReplayRunStatus;
+    use std::time::Duration;
+
+    let (authority, runtime, tenant_id) = operator_context().await?;
+    let stop = host_context()?
+        .shared_get::<IndexAdminReplayStop>()
+        .ok_or_else(|| ServerFnError::new("Index replay shutdown signal is unavailable"))?;
+    if !(1..=i32::MAX as u32).contains(&input.schema_version) {
+        return Err(ServerFnError::new("Invalid Index schema version"));
     }
+    let schema = rustok_index::SchemaRef {
+        module: rustok_index::ModuleName::new(input.schema_module.trim())
+            .map_err(|_| ServerFnError::new("Invalid Index schema module"))?,
+        entity: rustok_index::EntityName::new(input.schema_entity.trim())
+            .map_err(|_| ServerFnError::new("Invalid Index schema entity"))?,
+        version: rustok_index::SchemaVersion::new(input.schema_version),
+    };
+    let worker_id = format!("admin-replay-{}", uuid::Uuid::new_v4().simple());
+    let lease_duration = Duration::from_secs(60);
+    let request = if let Some(locale) = input.locale {
+        let locale = rustok_index::LocaleKey::new(locale)
+            .map_err(|_| ServerFnError::new("Invalid Index replay locale"))?;
+        rustok_index::IndexReplayRunRequest::for_locale(
+            tenant_id,
+            schema,
+            locale,
+            worker_id,
+            100,
+            8,
+            1,
+            lease_duration,
+        )
+    } else {
+        rustok_index::IndexReplayRunRequest::new(
+            tenant_id,
+            schema,
+            worker_id,
+            100,
+            8,
+            1,
+            lease_duration,
+        )
+    }
+    .map_err(|_| ServerFnError::new("Invalid Index replay request"))?;
+    let outcome = runtime
+        .run_operator(authority, request, || (stop.0)())
+        .await
+        .map_err(operator_error)?;
+    Ok(ReplayActionResult {
+        job_id: outcome.job_id().map(|id| id.to_string()),
+        status: match outcome.status() {
+            IndexReplayRunStatus::Busy => ReplayActionStatus::Busy,
+            IndexReplayRunStatus::AlreadyComplete => ReplayActionStatus::AlreadyComplete,
+            IndexReplayRunStatus::Complete => ReplayActionStatus::Complete,
+            IndexReplayRunStatus::Cancelled => ReplayActionStatus::Cancelled,
+            IndexReplayRunStatus::Yielded => ReplayActionStatus::Yielded,
+            IndexReplayRunStatus::RetryScheduled => ReplayActionStatus::RetryScheduled,
+            IndexReplayRunStatus::FailedPermanent => ReplayActionStatus::FailedPermanent,
+            IndexReplayRunStatus::FailedExhausted => ReplayActionStatus::FailedExhausted,
+        },
+        retry_after_seconds: outcome.retry_after().map(|delay| delay.as_secs()),
+        pages_processed: outcome.pages_processed() as u64,
+        mutations_applied: outcome.applied_count() as u64,
+    })
 }
 
-#[server(prefix = "/api/fn", endpoint = "index/cancel-job")]
+#[server(prefix = "/api/fn", endpoint = "index/cancel-job", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 pub async fn cancel_job_native(input: CancelJobInput) -> Result<CancelActionResult, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::{
-            AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission,
-        };
-
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(&auth, tenant.id)?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
-            return Err(ServerFnError::new(
-                "modules:manage required to cancel index job",
-            ));
-        }
-
-        let job_uuid = uuid::Uuid::parse_str(input.job_id.trim())
-            .map_err(|_| ServerFnError::new("invalid job_id: must be a valid UUID"))?;
-        if job_uuid.is_nil() {
-            return Err(ServerFnError::new("invalid job_id: must not be nil"));
-        }
-
-        let runtime = leptos::prelude::use_context::<rustok_index::SharedIndexReplayRuntime>()
-            .or_else(|| {
-                leptos::prelude::use_context::<HostRuntimeContext>()
-                    .and_then(|ctx| ctx.shared_get::<rustok_index::SharedIndexReplayRuntime>())
-            })
-            .ok_or_else(|| {
-                ServerFnError::new("Index replay runtime is not available in host context")
-            })?;
-
-        match runtime.request_cancel(tenant.id, job_uuid).await {
-            Ok(outcome) => {
-                let outcome_str = match outcome {
-                    rustok_index::IndexReplayCancelOutcome::Requested => "requested",
-                    rustok_index::IndexReplayCancelOutcome::Cancelled => "cancelled",
-                    rustok_index::IndexReplayCancelOutcome::AlreadyTerminal(
-                        rustok_index::IndexReplayTerminalState::Succeeded,
-                    ) => "already_succeeded",
-                    rustok_index::IndexReplayCancelOutcome::AlreadyTerminal(
-                        rustok_index::IndexReplayTerminalState::Failed,
-                    ) => "already_failed",
-                    rustok_index::IndexReplayCancelOutcome::AlreadyTerminal(
-                        rustok_index::IndexReplayTerminalState::Cancelled,
-                    ) => "already_cancelled",
-                    rustok_index::IndexReplayCancelOutcome::NotFound => "not_found",
-                };
-                Ok(CancelActionResult {
-                    success: true,
-                    job_id: input.job_id,
-                    outcome: outcome_str.to_string(),
-                    message: "Cancellation request processed".to_string(),
-                })
-            }
-            Err(err) => Err(ServerFnError::new(format!("Failed to cancel job: {err}"))),
-        }
+    if let Some(upstream) = use_context::<IndexAdminUpstream>() {
+        return upstream
+            .relay(IndexEndpoint::Cancel, serde_json::json!({ "input": input }))
+            .await;
     }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = input;
-        Err(ServerFnError::new(
-            "rustok-index-admin requires the `ssr` feature for cancel-job",
-        ))
-    }
+
+    use crate::model::CancelActionStatus;
+    use rustok_index::{IndexReplayCancelOutcome as Cancel, IndexReplayTerminalState as Terminal};
+
+    let (authority, runtime, _) = operator_context().await?;
+    let job_id = exact_job_id(&input.job_id)?;
+    let outcome = runtime
+        .cancel_operator_replay(authority, job_id)
+        .await
+        .map_err(operator_error)?;
+    Ok(CancelActionResult {
+        job_id: job_id.to_string(),
+        outcome: match outcome {
+            Cancel::Requested => CancelActionStatus::Requested,
+            Cancel::Cancelled => CancelActionStatus::Cancelled,
+            Cancel::AlreadyTerminal(Terminal::Succeeded) => CancelActionStatus::AlreadySucceeded,
+            Cancel::AlreadyTerminal(Terminal::Failed) => CancelActionStatus::AlreadyFailed,
+            Cancel::AlreadyTerminal(Terminal::Cancelled) => CancelActionStatus::AlreadyCancelled,
+            Cancel::NotFound => CancelActionStatus::NotFound,
+        },
+    })
 }
 
-#[server(prefix = "/api/fn", endpoint = "index/retry-job")]
+#[server(prefix = "/api/fn", endpoint = "index/retry-job", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::{
-            AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission,
-        };
-        use rustok_index::{
-            IndexReconciliationRequeueOutcome, IndexReconciliationRequeueRequest,
-            PostgresIndexReconciliationRecoveryStore,
-        };
+    if let Some(upstream) = use_context::<IndexAdminUpstream>() {
+        return upstream
+            .relay(IndexEndpoint::Retry, serde_json::json!({ "input": input }))
+            .await;
+    }
 
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(&auth, tenant.id)?;
+    use crate::model::{RetryActionStatus, RetryJobKind};
+    use rustok_index::IndexJobRequeueOutcome;
 
-        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
-            return Err(ServerFnError::new(
-                "modules:manage required to retry or requeue index job",
-            ));
+    let (authority, runtime, _) = operator_context().await?;
+    let job_id = exact_job_id(&input.job_id)?;
+    let reason = input.reason.trim();
+    let outcome = match input.kind {
+        RetryJobKind::Replay => {
+            runtime
+                .requeue_operator_replay(authority, job_id, reason)
+                .await
         }
-
-        let job_uuid = uuid::Uuid::parse_str(input.job_id.trim())
-            .map_err(|_| ServerFnError::new("invalid job_id: must be a valid UUID"))?;
-        if job_uuid.is_nil() {
-            return Err(ServerFnError::new("invalid job_id: must not be nil"));
-        }
-
-        let db = leptos::prelude::use_context::<HostRuntimeContext>()
-            .map(|ctx| ctx.db_clone())
-            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>)
-            .ok_or_else(|| {
-                ServerFnError::new("Database connection is not available in host context")
-            })?;
-
-        let reason = input
-            .reason
-            .filter(|r| !r.trim().is_empty())
-            .unwrap_or_else(|| "Operator manual retry via admin console".to_string());
-
-        let request =
-            IndexReconciliationRequeueRequest::new(tenant.id, job_uuid, auth.user_id, reason)
-                .map_err(|e| ServerFnError::new(format!("invalid retry request: {e}")))?;
-
-        let store = PostgresIndexReconciliationRecoveryStore::new(db);
-        match store.requeue_failed(request).await {
-            Ok(outcome) => match outcome {
-                IndexReconciliationRequeueOutcome::Requeued { retry_epoch, .. } => {
-                    Ok(RetryActionResult {
-                        success: true,
-                        job_id: input.job_id,
-                        outcome: "requeued".to_string(),
-                        retry_epoch: Some(retry_epoch),
-                        message: format!("Job successfully requeued (epoch {retry_epoch})"),
-                    })
-                }
-                IndexReconciliationRequeueOutcome::NotFailed => Ok(RetryActionResult {
-                    success: false,
-                    job_id: input.job_id,
-                    outcome: "not_failed".to_string(),
-                    retry_epoch: None,
-                    message: "Job is not in a failed state and cannot be requeued".to_string(),
-                }),
-                IndexReconciliationRequeueOutcome::NotFound => Ok(RetryActionResult {
-                    success: false,
-                    job_id: input.job_id,
-                    outcome: "not_found".to_string(),
-                    retry_epoch: None,
-                    message: "Job not found for this tenant".to_string(),
-                }),
-            },
-            Err(err) => Err(ServerFnError::new(format!("Failed to requeue job: {err}"))),
+        RetryJobKind::Reconciliation => {
+            runtime
+                .requeue_operator_reconciliation(authority, job_id, reason)
+                .await
         }
     }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = input;
-        Err(ServerFnError::new(
-            "rustok-index-admin requires the `ssr` feature for retry-job",
-        ))
+    .map_err(operator_error)?;
+    let (outcome, retry_epoch) = match outcome {
+        IndexJobRequeueOutcome::Requeued { retry_epoch, .. } => {
+            (RetryActionStatus::Requeued, Some(retry_epoch))
+        }
+        IndexJobRequeueOutcome::NotFound => (RetryActionStatus::NotFound, None),
+        IndexJobRequeueOutcome::NotFailed => (RetryActionStatus::NotFailed, None),
+        IndexJobRequeueOutcome::ScopeUnavailable => (RetryActionStatus::ScopeUnavailable, None),
+    };
+    Ok(RetryActionResult {
+        job_id: job_id.to_string(),
+        outcome,
+        retry_epoch,
+    })
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn scope(permissions: Vec<Permission>) -> (AuthContext, TenantContext) {
+        let tenant_id = Uuid::new_v4();
+        let auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: vec![],
+            grant_type: "user".into(),
+        };
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Fixture".into(),
+            slug: "fixture".into(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".into(),
+            is_active: true,
+        };
+        (auth, tenant)
+    }
+
+    #[test]
+    fn native_read_and_operator_permissions_are_separate() {
+        let (mut auth, tenant) = scope(vec![Permission::SETTINGS_READ]);
+        assert!(validate_request_scope(&auth, &tenant).is_ok());
+        assert!(!authorize_bootstrap(&auth).unwrap());
+        assert!(authorize_operator(&auth, &tenant).is_err());
+        auth.permissions = vec![Permission::MODULES_MANAGE];
+        assert!(authorize_bootstrap(&auth).is_err());
+        assert!(authorize_operator(&auth, &tenant).is_ok());
+        auth.permissions.push(Permission::SETTINGS_READ);
+        assert!(authorize_bootstrap(&auth).unwrap());
+    }
+
+    #[test]
+    fn native_rejects_cross_tenant_nil_actor_and_inactive_requests() {
+        let (mut auth, mut tenant) =
+            scope(vec![Permission::SETTINGS_READ, Permission::MODULES_MANAGE]);
+        tenant.id = Uuid::new_v4();
+        assert!(validate_request_scope(&auth, &tenant).is_err());
+        assert!(authorize_operator(&auth, &tenant).is_err());
+        tenant.id = auth.tenant_id;
+        tenant.is_active = false;
+        assert!(validate_request_scope(&auth, &tenant).is_err());
+        tenant.is_active = true;
+        auth.user_id = Uuid::nil();
+        assert!(validate_request_scope(&auth, &tenant).is_err());
+    }
+
+    #[test]
+    fn native_reports_absent_runtime_without_building_a_fallback() {
+        let host = HostRuntimeContext::new(sea_orm::DatabaseConnection::default());
+        let Err(error) = replay_runtime(&host) else {
+            panic!("missing selected runtime must fail closed");
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("Index replay runtime is unavailable")
+        );
     }
 }

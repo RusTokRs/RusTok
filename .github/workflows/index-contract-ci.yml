@@ -1,4 +1,4 @@
-﻿name: Index Contract CI
+name: Index Contract CI
 
 on:
   workflow_dispatch:
@@ -8,9 +8,20 @@ on:
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/lib.rs"
+      - "crates/modules/rustok-distribution/src/tests.rs"
       - "crates/modules/rustok-distribution/src/product_index/**"
       - "crates/modules/rustok-distribution/src/product_variant_index.rs"
       - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/graphql/index_replay*.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/services/index_reconciliation_operator.rs"
+      - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "apps/admin/Cargo.toml"
+      - "apps/admin/src/app/auth_ssr.rs"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/src/shared/api/mod.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -24,6 +35,7 @@ on:
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
       - "scripts/verify/verify-index-source-replay-contract.mjs"
+      - "scripts/verify/verify-index-source-refresh-event.mjs"
       - "scripts/verify/verify-index-replay-locale-job-scope.mjs"
       - "scripts/verify/verify-index-replay-locale-checkpoint-worker.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
@@ -45,9 +57,20 @@ on:
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/lib.rs"
+      - "crates/modules/rustok-distribution/src/tests.rs"
       - "crates/modules/rustok-distribution/src/product_index/**"
       - "crates/modules/rustok-distribution/src/product_variant_index.rs"
       - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/graphql/index_replay*.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/services/index_reconciliation_operator.rs"
+      - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "apps/admin/Cargo.toml"
+      - "apps/admin/src/app/auth_ssr.rs"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/src/shared/api/mod.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -61,6 +84,7 @@ on:
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
       - "scripts/verify/verify-index-source-replay-contract.mjs"
+      - "scripts/verify/verify-index-source-refresh-event.mjs"
       - "scripts/verify/verify-index-replay-locale-job-scope.mjs"
       - "scripts/verify/verify-index-replay-locale-checkpoint-worker.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
@@ -118,6 +142,8 @@ jobs:
         run: node scripts/verify/verify-index-schema-scoped-source-event-id.mjs
       - name: Verify Index source replay contract
         run: node scripts/verify/verify-index-source-replay-contract.mjs
+      - name: Verify Index source refresh commit-before-ack contract
+        run: node scripts/verify/verify-index-source-refresh-event.mjs
       - name: Verify Index replay locale job scope contract
         run: node scripts/verify/verify-index-replay-locale-job-scope.mjs
       - name: Verify event digest admission contract
@@ -157,6 +183,22 @@ jobs:
     name: Events Product Index cargo checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -168,9 +210,35 @@ jobs:
         with:
           shared-key: index-contract-ci
       - name: Verify Index crate compilation
-        run: cargo check --locked -p rustok-index --lib
-      - name: Verify complete Index crate unit tests
-        run: cargo test --locked -p rustok-index --lib
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: never
+        run: |
+          log="$(mktemp)"
+          trap 'rm -f "$log"' EXIT
+          status=0
+          cargo check --locked -p rustok-index --lib >"$log" 2>&1 || status=$?
+          cat "$log"
+          if (( status != 0 )); then
+            # Put the first Cargo error in the check annotation as well as the job log.
+            detail="$(awk '/^error(\[|:)/ { show=1 } show { print substr($0, 1, 400); if (++lines == 8) exit }' "$log")"
+            detail="${detail:-Cargo exited with status $status; see the job log.}"
+            detail="${detail//%/%25}"
+            detail="${detail//$'\r'/%0D}"
+            detail="${detail//$'\n'/%0A}"
+            printf '::error title=Index crate compilation::%s\n' "$detail"
+            exit "$status"
+          fi
+      # Test schemas are isolated, but advisory lock keys are database-wide.
+      - name: Run Index crate tests with PostgreSQL enabled
+        run: cargo test --locked -p rustok-index --lib -- --test-threads=1
+      - name: Run Index repair and recovery PostgreSQL integration tests
+        run: >-
+          cargo test --locked -p rustok-index
+          --test drift_repair_concrete_execution_postgres_test
+          --test drift_repair_recovery_postgres_test
+          --test source_reconciliation_dead_letter_admission_postgres_test
+          -- --test-threads=1
       - name: Check Events Product and Index targets
         run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
       - name: Check selected Product distribution bridge
@@ -181,6 +249,11 @@ jobs:
         run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
       - name: Check Product refresh PostgreSQL/Iggy evidence harness
         run: cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
+      - name: Run Index operator transport tests without embedded admin
+        run: |
+          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
+          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
+          cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
       - name: Verify canonical event contract test
         run: cargo test --locked -p rustok-events --test canonical_contracts
       - name: Verify generic source refresh commit-before-ack contract
@@ -190,6 +263,37 @@ jobs:
       - name: Verify Product refresh host envelope projection and retry boundary
         run: cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 
+  admin-profiles:
+    name: Index admin (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ssr, hydrate, csr]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.profile != 'ssr' && 'wasm32-unknown-unknown' || '' }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: index-admin-${{ matrix.profile }}
+      - name: Run Index admin native adapter tests
+        if: matrix.profile == 'ssr'
+        run: cargo test --locked -p rustok-index-admin --no-default-features --features ssr
+      - name: Check standalone admin server composition
+        if: matrix.profile == 'ssr'
+        run: cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
+      - name: Check the admin browser profile
+        if: matrix.profile != 'ssr'
+        env:
+          ADMIN_PROFILE: ${{ matrix.profile }}
+        run: cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
+
   gate:
     name: Index Contract Gate
     if: always()
@@ -197,6 +301,7 @@ jobs:
       - source-contracts
       - canonical-digest
       - focused-cargo
+      - admin-profiles
     runs-on: ubuntu-latest
     steps:
       - name: Require all focused checks
@@ -204,7 +309,8 @@ jobs:
         run: |
           if [[ "${{ needs.source-contracts.result }}" != "success" ]] || \
              [[ "${{ needs.canonical-digest.result }}" != "success" ]] || \
-             [[ "${{ needs.focused-cargo.result }}" != "success" ]]; then
+             [[ "${{ needs.focused-cargo.result }}" != "success" ]] || \
+             [[ "${{ needs.admin-profiles.result }}" != "success" ]]; then
             echo "::error::Index contract CI did not complete successfully."
             exit 1
           fi

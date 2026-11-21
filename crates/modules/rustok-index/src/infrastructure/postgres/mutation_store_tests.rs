@@ -430,3 +430,53 @@ async fn tenant_and_locale_identity_do_not_collide() {
         3
     );
 }
+
+#[tokio::test]
+async fn materialized_link_repair_does_not_change_source_revision_identity() {
+    let fixture = Fixture::new(true).await;
+    let entity_id = Uuid::new_v4();
+    let record = fixture.record(TENANT_A, entity_id, 7, Uuid::new_v4());
+    let first = upsert_delivery("owner", "first", record.clone());
+    fixture
+        .store
+        .apply(&fixture.registry, &first)
+        .await
+        .unwrap();
+    // A local repair removes the edge, not the authoritative record fingerprint.
+    fixture
+        .db
+        .execute_unprepared("DELETE FROM index_links")
+        .await
+        .unwrap();
+    let replay = upsert_delivery("owner", "replayed", record.clone());
+    assert_eq!(
+        fixture
+            .store
+            .apply(&fixture.registry, &replay)
+            .await
+            .unwrap(),
+        MutationApplyOutcome::Duplicate { source_version: 7 }
+    );
+    assert_eq!(
+        scalar_i64(&fixture.db, "SELECT COUNT(*) AS value FROM index_links").await,
+        0
+    );
+
+    let changed = upsert_delivery(
+        "owner",
+        "contradictory",
+        fixture.record(TENANT_A, entity_id, 7, Uuid::new_v4()),
+    );
+    assert_eq!(
+        fixture
+            .store
+            .apply(&fixture.registry, &changed)
+            .await
+            .unwrap_err(),
+        MutationStorageError::SourceRevisionConflict
+    );
+    assert_eq!(
+        scalar_i64(&fixture.db, "SELECT COUNT(*) AS value FROM index_inbox").await,
+        2
+    );
+}

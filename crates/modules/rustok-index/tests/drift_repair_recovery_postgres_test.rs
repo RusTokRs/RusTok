@@ -59,8 +59,8 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         "repair-evidence-missing-seed",
     )
     .await?;
-    runtime.authority.clear_mutation(&key);
-    runtime.authority.set_absence(key.clone(), 9);
+    runtime.authority.clear_mutation(&key).await;
+    runtime.authority.set_absence(key.clone(), 9).await;
     let (finding_id, target) = create_missing_finding(&database, &runtime, key, 7, 9).await?;
 
     let command_a = repair_command(

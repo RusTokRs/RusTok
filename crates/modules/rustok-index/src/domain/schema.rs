@@ -80,6 +80,9 @@ impl IndexSchema {
         if self.reference.version.get() == 0 {
             return Err(DomainError::ZeroSchemaVersion);
         }
+        if i32::try_from(self.reference.version.get()).is_err() {
+            return Err(DomainError::SchemaVersionTooLarge);
+        }
         if self.fields.is_empty() {
             return Err(DomainError::EmptySchema);
         }

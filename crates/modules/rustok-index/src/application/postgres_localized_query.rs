@@ -5,8 +5,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::domain::{
-    FieldPath, FilterExpr, IndexValue, IndexValueType, LocalizedEntityQuery, OrderDirection,
-    Pagination,
+    FieldPath, FilterExpr, IndexValue, LocalizedEntityQuery, OrderDirection, Pagination,
 };
 
 use super::{
@@ -14,6 +13,11 @@ use super::{
     LocalizedCursorCodec, LocalizedCursorValidationError, LocalizedEntityQueryValidationError,
     LocalizedIndexCursor, PlannedField, PostgresBindValue, PostgresQueryCompileError,
     QueryPlanError, QueryPlanFingerprint, SchemaRegistry, postgres_compiler::quote_identifier,
+};
+
+use super::postgres_value_sql::{
+    Bindings, FieldSql, bound_projected_value, contains_predicate, field_sql_for_alias,
+    scalar_bind, schema_scope_sql,
 };
 
 const ROOT_ALIAS: &str = "t0";
@@ -143,12 +147,16 @@ fn compile_localized_page(
 
     for (index, field) in plan.projection.iter().enumerate() {
         let raw = if query.is_localized_projection_path(&field.path) {
-            localized_projection_sql(query, field, &mut bindings)
+            localized_projection_sql(query, field)
         } else {
-            field_sql_for_alias(field, ROOT_ALIAS, &mut bindings).raw
+            field_sql_for_alias(field, ROOT_ALIAS).raw
         };
         let output_alias = format!("f{index}");
-        select.push(format!("{raw} AS {}", quote_identifier(&output_alias)));
+        select.push(format!(
+            "{} AS {}",
+            bound_projected_value(&raw),
+            quote_identifier(&output_alias)
+        ));
         columns.push(CompiledQueryColumn::Field {
             output_alias,
             field: field.clone(),
@@ -156,11 +164,11 @@ fn compile_localized_page(
     }
 
     for (index, order) in plan.order_by.iter().enumerate() {
-        let sql = field_sql_for_alias(&order.field, ROOT_ALIAS, &mut bindings);
+        let sql = field_sql_for_alias(&order.field, ROOT_ALIAS);
         let output_alias = format!("__order_{index}");
         select.push(format!(
             "{} AS {}",
-            sql.raw,
+            bound_projected_value(&sql.raw),
             quote_identifier(&output_alias)
         ));
         columns.push(CompiledQueryColumn::OrderValue {
@@ -190,7 +198,7 @@ fn compile_localized_page(
         predicates.push(compile_keyset(query, plan, cursor, &mut bindings)?);
     }
 
-    let order = compile_order(query, plan, &mut bindings)?;
+    let order = compile_order(query, plan)?;
     let pagination = compile_pagination_with_lookahead(&plan.pagination, &mut bindings)?;
     let sql = format!(
         "SELECT {} {} WHERE {} {order} {pagination}",
@@ -208,7 +216,7 @@ fn compile_localized_page(
     Ok(CompiledPostgresLocalizedPageQuery {
         compiled: CompiledPostgresQuery {
             sql,
-            binds: bindings.values,
+            binds: bindings.finish()?,
             columns,
             many_relations: Vec::new(),
             exact_count,
@@ -254,16 +262,12 @@ fn compile_base(
     include_projection_rows: bool,
 ) -> Result<LocalizedBase, PostgresQueryCompileError> {
     let root = quote_identifier(ROOT_ALIAS);
-    let tenant = bindings.push(PostgresBindValue::Uuid(plan.scope.tenant_id));
-    let module = bindings.push(PostgresBindValue::Text(
-        plan.root_schema.module.as_str().to_owned(),
-    ));
-    let entity = bindings.push(PostgresBindValue::Text(
-        plan.root_schema.entity.as_str().to_owned(),
-    ));
-    let version = bindings.push(PostgresBindValue::Integer(i64::from(
-        plan.root_schema.version.get(),
-    )));
+    let scope = schema_scope_sql(
+        &format!("{root}."),
+        plan.scope.tenant_id,
+        &plan.root_schema,
+        plan.root_fingerprint,
+    );
 
     let mut from_sql = format!("FROM index_entities AS {root}");
     if include_projection_rows {
@@ -276,7 +280,7 @@ fn compile_base(
                 .to_owned(),
         ));
         from_sql.push_str(&format!(
-            " LEFT JOIN index_entities AS {requested} ON {} AND {requested}.locale_key = {requested_locale} AND {requested}.is_deleted = FALSE",
+            " LEFT JOIN index_entities AS {requested} ON {} AND {requested}.locale_key = {requested_locale} AND {requested}.is_deleted = FALSE AND {requested}.schema_fingerprint = {root}.schema_fingerprint",
             same_identity_predicate(REQUESTED_ALIAS, ROOT_ALIAS),
         ));
         if let Some(fallback) = query.canonical_fallback_locale() {
@@ -284,18 +288,16 @@ fn compile_base(
             let fallback_locale =
                 bindings.push(PostgresBindValue::Text(fallback.as_str().to_owned()));
             from_sql.push_str(&format!(
-                " LEFT JOIN index_entities AS {fallback_alias} ON {} AND {fallback_alias}.locale_key = {fallback_locale} AND {fallback_alias}.is_deleted = FALSE",
+                " LEFT JOIN index_entities AS {fallback_alias} ON {} AND {fallback_alias}.locale_key = {fallback_locale} AND {fallback_alias}.is_deleted = FALSE AND {fallback_alias}.schema_fingerprint = {root}.schema_fingerprint",
                 same_identity_predicate(FALLBACK_ALIAS, ROOT_ALIAS),
             ));
         }
     }
 
     let earlier = quote_identifier(EARLIER_ANCHOR_ALIAS);
-    let root_predicate = format!(
-        "{root}.tenant_id = {tenant} AND {root}.module_name = {module} AND {root}.entity_name = {entity} AND {root}.schema_version = {version} AND {root}.locale_key IS NOT NULL AND {root}.is_deleted = FALSE"
-    );
+    let root_predicate = format!("{scope} AND {root}.locale_key <> ''");
     let anchor_predicate = format!(
-        "NOT EXISTS (SELECT 1 FROM index_entities AS {earlier} WHERE {} AND {earlier}.locale_key IS NOT NULL AND {earlier}.locale_key < {root}.locale_key AND {earlier}.is_deleted = FALSE)",
+        "NOT EXISTS (SELECT 1 FROM index_entities AS {earlier} WHERE {} AND {earlier}.locale_key <> '' AND {earlier}.locale_key COLLATE \"C\" < {root}.locale_key COLLATE \"C\" AND {earlier}.is_deleted = FALSE AND {earlier}.schema_fingerprint = {root}.schema_fingerprint)",
         same_identity_predicate(EARLIER_ANCHOR_ALIAS, ROOT_ALIAS),
     );
 
@@ -313,17 +315,13 @@ fn same_identity_predicate(candidate: &str, root: &str) -> String {
     )
 }
 
-fn localized_projection_sql(
-    query: &LocalizedEntityQuery,
-    field: &PlannedField,
-    bindings: &mut Bindings,
-) -> String {
+fn localized_projection_sql(query: &LocalizedEntityQuery, field: &PlannedField) -> String {
     let requested = quote_identifier(REQUESTED_ALIAS);
-    let requested_raw = field_sql_for_alias(field, REQUESTED_ALIAS, bindings).raw;
+    let requested_raw = field_sql_for_alias(field, REQUESTED_ALIAS).raw;
     match query.canonical_fallback_locale() {
         Some(_) => {
             let fallback = quote_identifier(FALLBACK_ALIAS);
-            let fallback_raw = field_sql_for_alias(field, FALLBACK_ALIAS, bindings).raw;
+            let fallback_raw = field_sql_for_alias(field, FALLBACK_ALIAS).raw;
             format!(
                 "CASE WHEN {requested}.entity_id IS NOT NULL THEN {requested_raw} WHEN {fallback}.entity_id IS NOT NULL THEN {fallback_raw} ELSE NULL::jsonb END"
             )
@@ -341,9 +339,10 @@ fn compile_any_locale_exists(
     bindings: &mut Bindings,
 ) -> Result<String, PostgresQueryCompileError> {
     let any_alias = quote_identifier(ANY_LOCALE_ALIAS);
+    let root_alias = quote_identifier(&root_plan.root_alias);
     let filter = compile_filter_for_alias(any_locale_plan, filter, ANY_LOCALE_ALIAS, bindings)?;
     Ok(format!(
-        "EXISTS (SELECT 1 FROM index_entities AS {any_alias} WHERE {} AND {any_alias}.locale_key IS NOT NULL AND {any_alias}.is_deleted = FALSE AND ({filter}))",
+        "EXISTS (SELECT 1 FROM index_entities AS {any_alias} WHERE {} AND {any_alias}.locale_key <> '' AND {any_alias}.is_deleted = FALSE AND {any_alias}.schema_fingerprint = {root_alias}.schema_fingerprint AND ({filter}))",
         same_identity_predicate(ANY_LOCALE_ALIAS, &root_plan.root_alias),
     ))
 }
@@ -358,16 +357,16 @@ fn compile_filter_for_alias(
         FilterExpr::And(children) => compile_logical(plan, children, alias, "AND", bindings),
         FilterExpr::Or(children) => compile_logical(plan, children, alias, "OR", bindings),
         FilterExpr::Not(child) => Ok(format!(
-            "NOT ({})",
+            "({}) IS NOT TRUE",
             compile_filter_for_alias(plan, child, alias, bindings)?
         )),
         FilterExpr::Eq(path, value) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let sql = field_sql_for_path(plan, path, alias)?;
             let value = bindings.push(scalar_bind(path, value)?);
-            Ok(format!("COALESCE({} = {value}, FALSE)", sql.scalar))
+            Ok(format!("{} = {value}", sql.scalar))
         }
         FilterExpr::Ne(path, value) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let sql = field_sql_for_path(plan, path, alias)?;
             let value = bindings.push(scalar_bind(path, value)?);
             Ok(format!(
                 "({} IS NOT NULL AND {} <> {value})",
@@ -375,32 +374,23 @@ fn compile_filter_for_alias(
             ))
         }
         FilterExpr::In(path, values) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let sql = field_sql_for_path(plan, path, alias)?;
             let values = values
                 .iter()
                 .map(|value| Ok(bindings.push(scalar_bind(path, value)?)))
                 .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;
-            Ok(format!(
-                "COALESCE({} IN ({}), FALSE)",
-                sql.scalar,
-                values.join(", ")
-            ))
+            Ok(format!("{} IN ({})", sql.scalar, values.join(", ")))
         }
         FilterExpr::Gt(path, value) => compile_range(plan, path, value, alias, ">", bindings),
         FilterExpr::Gte(path, value) => compile_range(plan, path, value, alias, ">=", bindings),
         FilterExpr::Lt(path, value) => compile_range(plan, path, value, alias, "<", bindings),
         FilterExpr::Lte(path, value) => compile_range(plan, path, value, alias, "<=", bindings),
         FilterExpr::Contains(path, value) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
-            let encoded = serde_json::to_value(vec![value.clone()])?;
-            let value = bindings.push(PostgresBindValue::Json(encoded));
-            Ok(format!(
-                "COALESCE({} @> {value}::jsonb, FALSE)",
-                sql.list_values
-            ))
+            let sql = field_sql_for_path(plan, path, alias)?;
+            contains_predicate(&sql, value, bindings)
         }
         FilterExpr::IsNull(path, expected_null) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let sql = field_sql_for_path(plan, path, alias)?;
             if *expected_null {
                 Ok(format!("({})", sql.null_predicate))
             } else {
@@ -408,12 +398,9 @@ fn compile_filter_for_alias(
             }
         }
         FilterExpr::TextLike(path, pattern) => {
-            let sql = field_sql_for_path(plan, path, alias, bindings)?;
+            let sql = field_sql_for_path(plan, path, alias)?;
             let pattern = bindings.push(PostgresBindValue::Text(pattern.clone()));
-            Ok(format!(
-                "COALESCE({} LIKE {pattern} ESCAPE E'\\\\', FALSE)",
-                sql.scalar
-            ))
+            Ok(format!("{} LIKE {pattern} ESCAPE E'\\\\'", sql.scalar))
         }
     }
 }
@@ -440,24 +427,20 @@ fn compile_range(
     operator: &str,
     bindings: &mut Bindings,
 ) -> Result<String, PostgresQueryCompileError> {
-    let sql = field_sql_for_path(plan, path, alias, bindings)?;
+    let sql = field_sql_for_path(plan, path, alias)?;
     let value = bindings.push(scalar_bind(path, value)?);
-    Ok(format!(
-        "COALESCE({} {operator} {value}, FALSE)",
-        sql.scalar
-    ))
+    Ok(format!("{} {operator} {value}", sql.scalar))
 }
 
 fn field_sql_for_path(
     plan: &ExecutableQueryPlan,
     path: &FieldPath,
     alias: &str,
-    bindings: &mut Bindings,
 ) -> Result<FieldSql, PostgresQueryCompileError> {
     let field = plan
         .field(path)
         .ok_or_else(|| PostgresQueryCompileError::MissingFieldPlan(path.clone()))?;
-    Ok(field_sql_for_alias(field, alias, bindings))
+    Ok(field_sql_for_alias(field, alias))
 }
 
 fn compile_keyset(
@@ -469,7 +452,7 @@ fn compile_keyset(
     let mut equalities = Vec::new();
     let mut disjuncts = Vec::new();
     for (order, cursor_value) in plan.order_by.iter().zip(&cursor.order_values) {
-        let sql = field_sql_for_alias(&order.field, ROOT_ALIAS, bindings);
+        let sql = field_sql_for_alias(&order.field, ROOT_ALIAS);
         let (equal, after) = cursor_field_predicates(
             &order.field.path,
             &sql,
@@ -532,13 +515,12 @@ fn conjunction(prefix: &[String], final_predicate: &str) -> String {
 fn compile_order(
     query: &LocalizedEntityQuery,
     plan: &ExecutableQueryPlan,
-    bindings: &mut Bindings,
 ) -> Result<String, PostgresQueryCompileError> {
     let mut terms = plan
         .order_by
         .iter()
         .map(|order| {
-            let sql = field_sql_for_alias(&order.field, ROOT_ALIAS, bindings);
+            let sql = field_sql_for_alias(&order.field, ROOT_ALIAS);
             Ok(match order.direction.base_direction() {
                 OrderDirection::Asc => format!("{} ASC NULLS LAST", sql.scalar),
                 OrderDirection::Desc => format!("{} DESC NULLS FIRST", sql.scalar),
@@ -607,7 +589,7 @@ fn compile_exact_count(
             base.from_sql,
             predicates.join(" AND "),
         ),
-        binds: bindings.values,
+        binds: bindings.finish()?,
     })
 }
 
@@ -615,75 +597,6 @@ fn page_size(pagination: &Pagination) -> u32 {
     match pagination {
         Pagination::Cursor { first, .. } => *first,
         Pagination::Offset { limit, .. } => *limit,
-    }
-}
-
-struct FieldSql {
-    raw: String,
-    scalar: String,
-    list_values: String,
-    null_predicate: String,
-}
-
-fn field_sql_for_alias(
-    field: &PlannedField,
-    relation_alias: &str,
-    bindings: &mut Bindings,
-) -> FieldSql {
-    let relation_alias = quote_identifier(relation_alias);
-    let field_name = bindings.push(PostgresBindValue::Text(
-        field.path.field().as_str().to_owned(),
-    ));
-    let raw = format!("jsonb_extract_path({relation_alias}.payload, {field_name}::text)");
-    let scalar_text =
-        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'value')");
-    let type_text =
-        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'type')");
-    let scalar = match field.value_type {
-        IndexValueType::Boolean => format!("({scalar_text})::boolean"),
-        IndexValueType::Integer => format!("({scalar_text})::bigint"),
-        IndexValueType::Decimal => format!("({scalar_text})::numeric"),
-        IndexValueType::String => format!("({scalar_text} COLLATE \"C\")"),
-        IndexValueType::Uuid => format!("({scalar_text})::uuid"),
-        IndexValueType::Timestamp => format!("({scalar_text})::timestamptz"),
-    };
-    let null_predicate = format!("{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'");
-    FieldSql {
-        raw,
-        scalar,
-        list_values: format!(
-            "jsonb_extract_path({relation_alias}.payload, {field_name}::text, 'value')"
-        ),
-        null_predicate,
-    }
-}
-
-fn scalar_bind(
-    path: &FieldPath,
-    value: &IndexValue,
-) -> Result<PostgresBindValue, PostgresQueryCompileError> {
-    match value {
-        IndexValue::Boolean(value) => Ok(PostgresBindValue::Boolean(*value)),
-        IndexValue::Integer(value) => Ok(PostgresBindValue::Integer(*value)),
-        IndexValue::Decimal(value) => Ok(PostgresBindValue::Decimal(value.to_owned())),
-        IndexValue::String(value) => Ok(PostgresBindValue::Text(value.clone())),
-        IndexValue::Uuid(value) => Ok(PostgresBindValue::Uuid(*value)),
-        IndexValue::Timestamp(value) => Ok(PostgresBindValue::Timestamp(value.to_owned())),
-        IndexValue::Null | IndexValue::List(_) => {
-            Err(PostgresQueryCompileError::InvalidScalarValue(path.clone()))
-        }
-    }
-}
-
-#[derive(Default)]
-struct Bindings {
-    values: Vec<PostgresBindValue>,
-}
-
-impl Bindings {
-    fn push(&mut self, value: PostgresBindValue) -> String {
-        self.values.push(value);
-        format!("${}", self.values.len())
     }
 }
 
@@ -695,7 +608,8 @@ mod tests {
     use crate::PostgresQueryEntityAdmission;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope,
-        IndexSchema, LocaleKey, LocaleMode, ModuleName, OrderExpr, SchemaRef, SchemaVersion,
+        IndexSchema, IndexValueType, LocaleKey, LocaleMode, ModuleName, OrderExpr, SchemaRef,
+        SchemaVersion,
     };
 
     fn schema() -> IndexSchema {
@@ -790,7 +704,7 @@ mod tests {
         assert!(sql.contains("index_entities AS \"t2\""));
         assert!(sql.contains("index_entities AS \"t3\""));
         assert!(sql.contains("index_entities AS \"t4\""));
-        assert!(sql.contains("\"t4\".locale_key < \"t0\".locale_key"));
+        assert!(sql.contains("\"t4\".locale_key COLLATE \"C\" < \"t0\".locale_key"));
         assert!(sql.contains("CASE WHEN \"t1\".entity_id IS NOT NULL"));
         assert!(sql.contains("WHEN \"t2\".entity_id IS NOT NULL"));
         assert!(sql.contains(" LIKE "));

@@ -149,7 +149,8 @@ The detailed concrete contract is documented in `m6-missing-entity-repair-compos
 ## Concrete orphan-link composition
 
 `materialize_postgres_index_drift_orphan_link_repair_service` requires an explicit repair authorizer,
-a frozen source registry, a frozen absence registry, and PostgreSQL.
+a frozen source registry, a frozen absence registry, PostgreSQL, and an owner-provided
+`PostgresIndexOrphanLinkAuthorityFence` using the mutation transaction.
 
 The concrete path:
 
@@ -199,8 +200,9 @@ A `prepared` reservation intentionally survives source, owner, evidence, seriali
 failure. Missing-entity deletion and orphan-link removal both retain command-bound inbox identity for
 exact retry.
 
-For orphan-link repair, link deletion and inbox completion share one serializable transaction. An
-absent link without the exact applied delivery is never accepted as convergence. For missing-entity
+For orphan-link repair, deletion and inbox completion share one read-committed transaction with
+transactional owner and Index fences. The exact applied delivery can recover a historical receipt;
+without current authority and materialized evidence it is not convergence. For missing-entity
 repair, the entity tombstone and mutation inbox provide the existing monotonic duplicate path.
 
 Recovery decisions are immutable and never derived from elapsed time. Pause is an admission fence,

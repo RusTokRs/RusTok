@@ -171,6 +171,14 @@ fn render_compiled(
                 output_alias,
                 relation_alias,
             } => lines.push(format!("column:entity_id|{output_alias}|{relation_alias}")),
+            CompiledQueryColumn::RelationIdentity {
+                output_alias,
+                relation_alias,
+            } => {
+                lines.push(format!(
+                    "column:relation_identity|{output_alias}|{relation_alias}"
+                ));
+            }
             CompiledQueryColumn::Field {
                 output_alias,
                 field,

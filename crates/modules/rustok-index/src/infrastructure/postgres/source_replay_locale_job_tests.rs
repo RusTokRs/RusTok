@@ -148,7 +148,7 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
             .acquire(&fixture.locale_request("en-US", "other-en-worker"))
             .await
             .unwrap(),
-        IndexReplayJobAcquireOutcome::Busy
+        IndexReplayJobAcquireOutcome::Busy { .. }
     );
 
     let rows = fixture

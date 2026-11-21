@@ -34,8 +34,10 @@ const job = requireMarkers(jobPath, [
   "kind = 'rebuild'",
   'scope_kind',
   "state IN ('pending', 'running', 'succeeded', 'failed')",
-  'attempt_count.checked_add(1)',
-  'lease_expires_at > CURRENT_TIMESTAMP',
+  '.checked_add(1)',
+  'live_lease_where(backend, "rebuild", 1, false)',
+  'live_lease_where(backend, "rebuild", 4, false)',
+  'due_job_where(backend, "rebuild")',
   'pub(super) async fn assert_active_replay_job_lease(',
   'FOR UPDATE',
   'require_complete_checkpoint(',
@@ -73,6 +75,20 @@ for (const marker of [
 if (lockBody.includes('request.source_name')) {
   fail('replay claims must serialize the complete schema scope before source-owner validation');
 }
+
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_job_lease.rs', [
+  'WITH locked_job AS MATERIALIZED',
+  'AND {guard} FOR NO KEY UPDATE',
+  'SELECT 1 FROM locked_job WHERE {timing}',
+  'lease_expires_at > {clock}',
+  'attempt_count = {prefix}{} AND cancel_requested = {cancel_requested}',
+  'clock_timestamp()',
+]);
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/hardening.rs', [
+  'postgres_waiting_checkpoint_and_heartbeat_cannot_use_an_expired_lease',
+  'pg_blocking_pids(pid)',
+  'waiter must be blocked before expiry',
+]);
 
 const checkpointPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const checkpoint = requireMarkers(checkpointPath, [

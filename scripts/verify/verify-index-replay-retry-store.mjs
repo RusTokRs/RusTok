@@ -21,7 +21,7 @@ const requireMarkers = (relative, markers) => {
 const retryPath =
   'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_retry.rs';
 const retryStore = requireMarkers(retryPath, [
-  'const MAX_REPLAY_ATTEMPTS: u32 = 100;',
+  'const MAX_REPLAY_FAILURES: u32 = 100;',
   'const MAX_BACKOFF_SECONDS: u64 = 86_400;',
   'const RETRY_DETAILS_CONTRACT: &str = "index_replay_retry_v1";',
   'pub struct IndexReplayRetryPolicy',
@@ -35,10 +35,8 @@ const retryStore = requireMarkers(retryPath, [
   'state = \'pending\'',
   'available_at = {available_at}',
   'state = \'failed\'',
-  'lease_owner = {prefix}3',
-  'attempt_count = {prefix}4',
-  'lease_expires_at > CURRENT_TIMESTAMP',
-  'cancel_requested = FALSE',
+  'live_lease_where(backend, "rebuild", 1, false)',
+  'failure_count = failure_count + 1',
   'default_policy_uses_bounded_exponential_backoff',
   'permanent_failure_is_terminal_on_the_current_attempt',
   'retry_sql_is_lease_fenced_and_preserves_existing_job_identity',
@@ -74,10 +72,11 @@ for (const marker of [
   '"dependency_code": failure.code()',
   '"failure_kind":',
   '"attempt_count": lease.attempt_count()',
-  '"max_attempts": policy.max_attempts()',
+  '"failure_count": failure_count',
+  '"max_failures": policy.max_failures()',
   '"disposition": disposition',
   '"retry_after_seconds": retry_after_seconds',
-  '"next_attempt": next_attempt',
+  '"next_failure_ordinal": next_failure_ordinal',
 ]) {
   if (!details.includes(marker)) fail(`${retryPath} retry details are missing ${marker}`);
 }
@@ -104,33 +103,27 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
 ]);
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs', [
-  "state = 'pending' AND available_at <= CURRENT_TIMESTAMP",
-  'attempt_count = stored.attempt_count.checked_add(1)',
+  'due_job_where(backend, "rebuild")',
+  '.checked_add(1)',
 ]);
 
 const runnerPath =
   'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
-const runner = requireMarkers(runnerPath, [
-  'let details = replay_failure_details(&error);',
-  'match finish_failure(&self.db, &lease, details).await?',
+requireMarkers(runnerPath, [
+  'let failure = replay_retry_failure(&error)?;',
+  'store.record_failure(&lease, &failure).await',
+  'IndexReplayRunStatus::RetryScheduled',
+  'IndexReplayRunStatus::FailedPermanent',
+  'IndexReplayRunStatus::FailedExhausted',
 ]);
-for (const premature of [
-  'PostgresIndexReplayRetryStore',
-  'IndexReplayRetryFailure',
-  '.record_failure(',
-]) {
-  if (runner.includes(premature)) {
-    fail(`${runnerPath} prematurely claims retry-store wiring through ${premature}`);
-  }
-}
 
 requireMarkers('crates/modules/rustok-index/docs/m6-replay-retry-transition-store.md', [
-  'Status: `source_complete_runner_wiring_pending`',
-  'maximum attempts: `5`',
+  'Status: `source_complete_execution_pending`',
+  'maximum failures: `5`',
   'running -> pending',
   'running -> failed',
   '`index_replay_retry_v1`',
-  'current `PostgresIndexReplayRunner` still terminalizes page failures',
+  '`PostgresIndexReplayRunner` records failure through the original job lease',
   'scope-level failed-job admission',
   'canonical implementation-plan item',
   'maintainer-run',

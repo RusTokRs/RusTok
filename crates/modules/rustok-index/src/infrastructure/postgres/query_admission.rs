@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     CompiledPostgresQuery, IndexQuery, PostgresQueryEntityAdmission,
-    PostgresQueryEntityAdmissionError, SchemaRef,
+    PostgresQueryEntityAdmissionError, SchemaFingerprint, SchemaRef, SchemaRegistry,
 };
 
 const ENTITY_ALIAS_TOKEN: &str = "{{entity}}";
@@ -135,6 +135,7 @@ impl PostgresIndexQueryAdmissionCatalog {
         &self,
         query: &IndexQuery,
         compiled: &mut CompiledPostgresQuery,
+        registry: &SchemaRegistry,
     ) -> Result<(), PostgresIndexQueryLinkAvailabilityApplyError> {
         if !self.required_link_targets.contains_key(&query.schema) {
             return Ok(());
@@ -144,11 +145,27 @@ impl PostgresIndexQueryAdmissionCatalog {
             return Ok(());
         }
 
+        let root = registry
+            .get(&query.schema)
+            .ok_or(PostgresIndexQueryLinkAvailabilityApplyError::MissingLinkContract)?;
+        let mut targets = BTreeMap::new();
+        for name in &link_names {
+            let target = root
+                .schema
+                .links
+                .iter()
+                .find(|link| link.name.as_str() == name)
+                .and_then(|link| registry.get(&link.target_schema))
+                .ok_or(PostgresIndexQueryLinkAvailabilityApplyError::MissingLinkContract)?;
+            targets.insert(
+                name.clone(),
+                (target.schema.reference.clone(), target.fingerprint),
+            );
+        }
         let owner_rules = self.owner_rules();
         let target_owner_admission =
             owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS);
-        let predicate =
-            require_requested_link_targets_predicate(&link_names, &target_owner_admission);
+        let predicate = require_requested_link_targets_predicate(&targets, &target_owner_admission);
         apply_root_predicate(&mut compiled.sql, &predicate)?;
         if let Some(exact_count) = compiled.exact_count.as_mut() {
             apply_root_predicate(&mut exact_count.sql, &predicate)?;
@@ -238,6 +255,8 @@ pub enum PostgresIndexQueryAdmissionError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub(crate) enum PostgresIndexQueryLinkAvailabilityApplyError {
+    #[error("selected Index schema is missing a referenced link target contract")]
+    MissingLinkContract,
     #[error(
         "compiled PostgreSQL query root admission anchor count is {actual}, expected exactly one"
     )]
@@ -282,16 +301,20 @@ fn apply_root_predicate(
 }
 
 fn require_requested_link_targets_predicate(
-    link_names: &BTreeSet<String>,
+    targets: &BTreeMap<String, (SchemaRef, SchemaFingerprint)>,
     target_owner_admission: &str,
 ) -> String {
-    let requested_links = link_names
-        .iter()
+    let requested_links = targets
+        .keys()
         .map(|link| format!("'{}'", sql_literal(link)))
         .collect::<Vec<_>>()
         .join(", ");
+    let target_contracts = targets.iter().map(|(link, (schema, fingerprint))| {
+        let guard = schema_guard_for_alias(schema, AVAILABILITY_TARGET_ALIAS);
+        format!("({AVAILABILITY_LINK_ALIAS}.link_name = '{}' AND {guard} AND {AVAILABILITY_TARGET_ALIAS}.schema_fingerprint = '{fingerprint}')", sql_literal(link))
+    }).collect::<Vec<_>>().join(" OR ");
     format!(
-        "NOT EXISTS (SELECT 1 FROM index_links AS {link} WHERE {link}.tenant_id = {root}.tenant_id AND {link}.source_module = {root}.module_name AND {link}.source_entity = {root}.entity_name AND {link}.source_schema_version = {root}.schema_version AND {link}.source_entity_id = {root}.entity_id AND {link}.source_locale_key = {root}.locale_key AND {link}.source_version = {root}.source_version AND {link}.link_name IN ({requested_links}) AND NOT EXISTS (SELECT 1 FROM index_entities AS {target} WHERE {target}.tenant_id = {link}.tenant_id AND {target}.module_name = {link}.target_module AND {target}.entity_name = {link}.target_entity AND {target}.schema_version = {link}.target_schema_version AND {target}.entity_id = {link}.target_entity_id AND {target}.locale_key = {link}.target_locale_key AND {target}.is_deleted = FALSE AND ({target_owner_admission})))",
+        "NOT EXISTS (SELECT 1 FROM index_links AS {link} WHERE {link}.tenant_id = {root}.tenant_id AND {link}.source_module = {root}.module_name AND {link}.source_entity = {root}.entity_name AND {link}.source_schema_version = {root}.schema_version AND {link}.source_entity_id = {root}.entity_id AND {link}.source_locale_key = {root}.locale_key AND {link}.source_version = {root}.source_version AND {link}.link_name IN ({requested_links}) AND NOT EXISTS (SELECT 1 FROM index_entities AS {target} WHERE {target}.tenant_id = {link}.tenant_id AND {target}.module_name = {link}.target_module AND {target}.entity_name = {link}.target_entity AND {target}.schema_version = {link}.target_schema_version AND {target}.entity_id = {link}.target_entity_id AND {target}.locale_key = {link}.target_locale_key AND {target}.is_deleted = FALSE AND ({target_contracts}) AND ({target_owner_admission})))",
         link = AVAILABILITY_LINK_ALIAS,
         root = ROOT_ALIAS,
         target = AVAILABILITY_TARGET_ALIAS,
@@ -386,6 +409,43 @@ mod tests {
         }
     }
 
+    fn registry() -> SchemaRegistry {
+        use crate::{
+            FieldCardinality, IndexField, IndexLink, IndexSchema, IndexValueType, LinkCardinality,
+            LocaleMode,
+        };
+        let field = FieldName::new("sku").unwrap();
+        let target = IndexSchema {
+            reference: schema("product_variant"),
+            locale_mode: LocaleMode::Required,
+            fields: vec![IndexField {
+                name: field.clone(),
+                value_type: IndexValueType::String,
+                cardinality: FieldCardinality::One,
+                nullable: false,
+                selectable: true,
+                sortable: true,
+                filterable: true,
+            }],
+            links: vec![],
+        };
+        let root = IndexSchema {
+            reference: schema("product"),
+            locale_mode: LocaleMode::Required,
+            fields: target.fields.clone(),
+            links: vec![IndexLink {
+                name: LinkName::new("variants").unwrap(),
+                source_fields: vec![field.clone()],
+                target_schema: target.reference.clone(),
+                target_fields: vec![field],
+                cardinality: LinkCardinality::Many,
+            }],
+        };
+        let mut registry = SchemaRegistry::new();
+        registry.register_batch([root, target]).unwrap();
+        registry
+    }
+
     fn compiled() -> CompiledPostgresQuery {
         CompiledPostgresQuery {
             sql: "SELECT 1 FROM index_entities AS \"t0\" WHERE \"t0\".is_deleted = FALSE"
@@ -463,7 +523,7 @@ mod tests {
         let query = query_with_fields(vec![FieldPath::new(FieldName::new("title").unwrap())]);
         let mut compiled = compiled();
         catalog
-            .apply_link_target_availability(&query, &mut compiled)
+            .apply_link_target_availability(&query, &mut compiled, &registry())
             .unwrap();
         assert!(!compiled.sql.contains("availability_link"));
         assert!(
@@ -501,7 +561,7 @@ mod tests {
         )]);
         let mut compiled = compiled();
         catalog
-            .apply_link_target_availability(&query, &mut compiled)
+            .apply_link_target_availability(&query, &mut compiled, &registry())
             .unwrap();
         for sql in [
             compiled.sql.as_str(),
@@ -541,9 +601,14 @@ mod tests {
 
     #[test]
     fn availability_predicate_uses_current_source_link_and_owner_admitted_target() {
-        let mut links = BTreeSet::new();
-        links.insert("variants".to_owned());
-        let sql = require_requested_link_targets_predicate(&links, "target.active = TRUE");
+        let registry = registry();
+        let variant = schema("product_variant");
+        let fingerprint = registry.get(&variant).unwrap().fingerprint;
+        let targets = BTreeMap::from([("variants".to_owned(), (variant, fingerprint))]);
+        let sql = require_requested_link_targets_predicate(&targets, "target.active = TRUE");
+        assert!(sql.contains(&format!(
+            "availability_target.schema_fingerprint = '{fingerprint}'"
+        )));
         assert!(sql.contains("availability_link.source_version = \"t0\".source_version"));
         assert!(sql.contains("availability_link.link_name IN ('variants')"));
         assert!(sql.contains("target.active = TRUE"));
@@ -575,7 +640,7 @@ mod tests {
         )]);
         let mut compiled = compiled();
         catalog
-            .apply_link_target_availability(&query, &mut compiled)
+            .apply_link_target_availability(&query, &mut compiled, &registry())
             .unwrap();
         assert!(compiled.sql.contains("availability_link"));
         assert!(

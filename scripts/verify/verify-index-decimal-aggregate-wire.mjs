@@ -51,9 +51,15 @@ requireMarkers(compilerPath, [
   '| IndexValueType::Timestamp',
 ]);
 
+const valuePath = 'crates/modules/rustok-index/src/application/postgres_value_sql.rs';
+const value = requireMarkers(valuePath, [
+  'IndexValueType::Decimal => format!("({text}::numeric)")',
+  "(member.value->>'value')::numeric = {value}",
+]);
+forbidMarkers(valuePath, value, ['::double precision', '::real', 'f64']);
+
 const sqlPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
-  'IndexValueType::Decimal => format!("({scalar_text})::numeric")',
   'fn aggregate_order_wire_value(',
   'IndexValueType::Decimal => format!("to_jsonb(({scalar})::text)")',
   '_ => format!("to_jsonb({scalar})")',

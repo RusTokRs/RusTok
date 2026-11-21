@@ -13,11 +13,13 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+rustok-api = { workspace = true, default-features = false }
 rustok-core.workspace = true
 rustok-runtime.workspace = true
 
 # Module metadata and M3 persistence
 async-trait.workspace = true
+futures-util.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tokio.workspace = true
@@ -40,5 +42,6 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 proptest.workspace = true
 rustok-events.workspace = true

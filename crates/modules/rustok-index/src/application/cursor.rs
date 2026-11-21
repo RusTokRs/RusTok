@@ -86,7 +86,11 @@ pub enum CursorValidationError {
     OrderArityMismatch { expected: usize, actual: usize },
     #[error("cursor order field contract is missing at position {index}")]
     OrderFieldContractMissing { index: usize },
-    #[error("cursor order value at position {index} has type {actual:?}, expected {expected:?}")]
+    #[error("cursor order value at position {index} is not representable in Index storage")]
+    InvalidOrderValue { index: usize },
+    #[error(
+        "cursor order value type mismatch at position {index}: expected {expected:?}, got {actual:?}"
+    )]
     OrderValueTypeMismatch {
         index: usize,
         expected: IndexValueType,
@@ -262,6 +266,9 @@ fn validate_cursor(
                 expected,
                 actual,
             });
+        }
+        if !value.is_storable_scalar() {
+            return Err(CursorValidationError::InvalidOrderValue { index });
         }
     }
 

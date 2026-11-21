@@ -222,28 +222,39 @@ fn root_query(tenant_id: Uuid) -> IndexQuery {
 }
 
 #[test]
-fn compiles_root_projection_with_bound_scope_and_limit() {
+fn compiles_root_projection_with_indexable_scope_and_bound_paging() {
     let registry = registry(LinkCardinality::One);
     let tenant_id = Uuid::new_v4();
     let plan = registry.plan_query(&root_query(tenant_id)).unwrap();
     let compiled = plan.compile_postgres().unwrap();
 
-    assert!(compiled.sql.starts_with(
-        "SELECT \"t0\".entity_id AS \"__t0_entity_id\", jsonb_extract_path(\"t0\".payload, $6::text) AS \"f0\" FROM index_entities AS \"t0\""
-    ));
     assert!(
         compiled
             .sql
-            .ends_with("ORDER BY \"t0\".entity_id ASC LIMIT $7")
+            .starts_with("SELECT \"t0\".entity_id AS \"__t0_entity_id\", CASE WHEN")
     );
-    assert!(!compiled.sql.contains(&tenant_id.to_string()));
+    assert!(compiled.sql.contains("(\"t0\".payload -> 'id')"));
+    assert!(
+        compiled
+            .sql
+            .contains(&format!("\"t0\".tenant_id = '{tenant_id}'::uuid"))
+    );
+    assert!(compiled.sql.contains(&format!(
+        "\"t0\".schema_fingerprint = '{}'",
+        plan.root_fingerprint
+    )));
+    assert!(
+        compiled
+            .sql
+            .ends_with("ORDER BY \"t0\".entity_id ASC LIMIT $2")
+    );
     assert_eq!(compiled.columns.len(), 2);
     assert!(compiled.many_relations.is_empty());
     assert_eq!(compiled.plan_fingerprint, plan.fingerprint().unwrap());
 }
 
 #[test]
-fn compiles_one_link_projection_without_interpolating_contract_values() {
+fn compiles_one_link_projection_with_bound_link_name_and_literal_schema() {
     let registry = registry(LinkCardinality::One);
     let mut query = root_query(Uuid::new_v4());
     query
@@ -259,7 +270,17 @@ fn compiles_one_link_projection_without_interpolating_contract_values() {
             .contains("\"l1\".source_version = \"t0\".source_version")
     );
     assert!(compiled.sql.contains("LEFT JOIN index_entities AS \"t1\""));
-    assert!(!compiled.sql.contains("sales_channel"));
+    assert!(
+        compiled
+            .sql
+            .contains("\"t1\".entity_name = 'sales_channel'")
+    );
+    assert!(
+        compiled
+            .sql
+            .contains("jsonb_build_array(\"t1\".entity_id, \"t1\".locale_key)")
+    );
+    assert!(!compiled.sql.contains(".link_name = 'sales_channel'"));
     assert!(
         compiled
             .binds
@@ -466,7 +487,8 @@ fn compiles_grouped_many_projection_as_row_preserving_json_aggregate() {
     let compiled = registry.compile_postgres_query(&query).unwrap();
 
     assert!(compiled.sql.contains("jsonb_agg("));
-    assert!(compiled.sql.contains("'entity_ids'"));
+    assert!(compiled.sql.contains("'identities'"));
+    assert!(compiled.sql.contains("LIMIT 257"));
     assert!(compiled.sql.contains("'values'"));
     assert!(compiled.sql.contains("\"mp0_l1\".ordinal ASC"));
     assert!(!compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));

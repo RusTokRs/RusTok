@@ -56,13 +56,13 @@ This target is retained source evidence only; it was not executed by the impleme
 
 Automatic retry wiring changes only the first invocation's typed failure outcome and retryable state transition. Dead-letter selection, privacy, permanent/exhausted terminal rows, cancellation, lease fencing, success behavior, schema/source ownership, mutation identity, migrations, and server authorization remain compatible.
 
-The guarded server reconciliation runtime can surface typed runner outcomes only after its existing request-bound tenant/actor and `modules:manage` authorization. This slice does not add a transport or operator recovery command.
+The guarded server reconciliation runtime checks request-bound tenant/actor and `modules:manage`
+authority. Ordinary admission does not requeue a failed job. See the separate
+[audited requeue contract](./m6-reconciliation-dead-letter-requeue.md) for native and GraphQL commands.
 
 ## Explicitly open
 
-- host scheduling of due pending retries;
-- fleet-wide polling, takeover discovery, and graceful shutdown;
-- retained multi-attempt and multi-instance PostgreSQL evidence;
+- retained PostgreSQL evidence for retries, takeover, graceful shutdown, and multi-host scheduling;
 - source/index digest comparison and orphan diagnosis;
 - targeted, full, or shadow repair admission;
 - locale or partition checkpoint dimensions;
@@ -72,4 +72,4 @@ The canonical M6 retry/global-scheduling and drift-diagnosis/targeted-repair roa
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript verifiers, PostgreSQL scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.
+Cargo checks/tests, source verifiers, PostgreSQL scenarios, and CI are maintainer-run.

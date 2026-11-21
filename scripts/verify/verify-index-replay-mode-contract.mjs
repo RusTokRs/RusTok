@@ -151,7 +151,7 @@ const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphql = requireMarkers(graphqlPath, [
   'pub struct IndexReplayTargetedRunInput',
   'async fn run_index_replay_targeted(',
-  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_targeted_run(tenant_id, actor_id, input)',
   '.run_targeted(operator_context, request)',
   'pub struct IndexReplayShadowRunInput',
   'pub locale: Option<String>',

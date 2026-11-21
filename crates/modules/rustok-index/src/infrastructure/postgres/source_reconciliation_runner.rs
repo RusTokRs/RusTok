@@ -20,11 +20,19 @@ use super::{
     IndexReconciliationRetryFailure, IndexReconciliationRetryLease,
     PostgresIndexReconciliationRetryStore, PostgresMutationStore,
 };
+use super::{
+    mutation_store::JobMutationFence, source_job_discovery::DiscoveredJobVersion,
+    source_job_page::drive_page,
+};
 
-const RECONCILIATION_JOB_REQUEST_CONTRACT: &str = "index_reconciliation_job_v1";
+use super::source_job_lease::{
+    deadline_after_seconds, due_job_where, job_is_due, live_lease_where, placeholder_prefix,
+};
+
+pub(super) const RECONCILIATION_JOB_REQUEST_CONTRACT: &str = "index_reconciliation_job_v1";
 const RECONCILIATION_JOB_CURSOR_CONTRACT: &str = "index_reconciliation_cursor_v1";
 const MAX_PAGES_PER_RUN: usize = 1_024;
-const MAX_PASSES: u32 = 8;
+pub(super) const MAX_PASSES: u32 = 8;
 const MAX_SOURCE_NAME_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 191;
 const MAX_ERROR_CODE_BYTES: usize = 128;
@@ -67,6 +75,8 @@ pub struct IndexReconciliationRunRequest {
     heartbeat_every_pages: usize,
     pass_count: u32,
     lease_seconds: u64,
+    job_id: Option<Uuid>,
+    discovered_version: Option<DiscoveredJobVersion>,
 }
 
 impl IndexReconciliationRunRequest {
@@ -104,10 +114,11 @@ impl IndexReconciliationRunRequest {
             });
         }
         let worker_id = worker_id.into();
-        validate_storage_text(&worker_id, MAX_WORKER_ID_BYTES)
-            .map_err(|reason| IndexReconciliationRunError::InvalidWorkerId {
+        validate_storage_text(&worker_id, MAX_WORKER_ID_BYTES).map_err(|reason| {
+            IndexReconciliationRunError::InvalidWorkerId {
                 reason: reason.as_str(),
-            })?;
+            }
+        })?;
         let lease_seconds = validate_lease_duration(lease_duration)?;
         Ok(Self {
             tenant_id,
@@ -118,7 +129,22 @@ impl IndexReconciliationRunRequest {
             heartbeat_every_pages,
             pass_count,
             lease_seconds,
+            job_id: None,
+            discovered_version: None,
         })
+    }
+
+    pub(super) fn for_discovered_job(
+        mut self,
+        job_id: Uuid,
+        version: DiscoveredJobVersion,
+    ) -> Result<Self, IndexReconciliationRunError> {
+        if job_id.is_nil() {
+            return Err(IndexReconciliationRunError::InvalidJobIdentity);
+        }
+        self.job_id = Some(job_id);
+        self.discovered_version = Some(version);
+        Ok(self)
     }
 
     pub fn tenant_id(&self) -> Uuid {
@@ -172,7 +198,7 @@ pub struct IndexReconciliationRunOutcome {
     job_id: Option<Uuid>,
     attempt_count: Option<u32>,
     retry_after: Option<Duration>,
-    next_attempt: Option<u32>,
+    next_failure_ordinal: Option<u32>,
     pages_processed: usize,
     passes_completed: u32,
     heartbeat_count: usize,
@@ -199,8 +225,8 @@ impl IndexReconciliationRunOutcome {
         self.retry_after
     }
 
-    pub fn next_attempt(&self) -> Option<u32> {
-        self.next_attempt
+    pub fn next_failure_ordinal(&self) -> Option<u32> {
+        self.next_failure_ordinal
     }
 
     pub fn pages_processed(&self) -> usize {
@@ -292,6 +318,16 @@ impl PostgresIndexReconciliationRunner {
         }
     }
 
+    /// Requeue an original failed reconciliation using the current selected owner contracts.
+    pub async fn requeue_failed(
+        &self,
+        request: super::IndexJobRequeueRequest,
+    ) -> Result<super::IndexJobRequeueOutcome, super::IndexJobRecoveryError> {
+        super::PostgresIndexJobRecoveryStore::new(self.db.clone())
+            .requeue_reconciliation(request, &self.sources, &self.schema_registry)
+            .await
+    }
+
     pub async fn run(
         &self,
         request: IndexReconciliationRunRequest,
@@ -313,13 +349,21 @@ impl PostgresIndexReconciliationRunner {
             worker_id: request.worker_id.clone(),
             pass_count: request.pass_count,
             lease_seconds: request.lease_seconds,
+            job_id: request.job_id,
+            discovered_version: request.discovered_version,
         };
-        let acquired = acquire_reconciliation_job(&self.db, &acquire_request).await?;
+        let registered = self
+            .schema_registry
+            .get(&acquire_request.schema)
+            .ok_or_else(|| {
+                IndexReconciliationRunError::SchemaNotRegistered(acquire_request.schema.clone())
+            })?;
+        let acquired = acquire_reconciliation_job(&self.db, &acquire_request, registered).await?;
         let (lease, mut state) = match acquired {
-            ReconciliationAcquireOutcome::Busy => {
+            ReconciliationAcquireOutcome::Busy { job_id } => {
                 return Ok(empty_outcome(
                     IndexReconciliationRunStatus::Busy,
-                    None,
+                    Some(job_id),
                     None,
                     0,
                 ));
@@ -338,13 +382,22 @@ impl PostgresIndexReconciliationRunner {
             ReconciliationAcquireOutcome::Acquired { lease, state } => (lease, state),
         };
 
-        let sink = PostgresMutationStore::new(self.db.clone());
+        let sink = PostgresMutationStore::new(self.db.clone()).with_job_fence(JobMutationFence {
+            tenant_id: lease.tenant_id,
+            job_id: lease.job_id,
+            schema: lease.schema.clone(),
+            locale: None,
+            source_name: lease.source_name.clone(),
+            worker_id: lease.worker_id.clone(),
+            attempt_count: lease.attempt_count,
+            kind: "reconcile",
+        });
         let mut outcome = IndexReconciliationRunOutcome {
             status: IndexReconciliationRunStatus::Yielded,
             job_id: Some(lease.job_id),
             attempt_count: Some(lease.attempt_count),
             retry_after: None,
-            next_attempt: None,
+            next_failure_ordinal: None,
             pages_processed: 0,
             passes_completed: state.completed_passes,
             heartbeat_count: 0,
@@ -360,7 +413,13 @@ impl PostgresIndexReconciliationRunner {
                 return Ok(outcome);
             }
             if page_index > 0 && page_index % request.heartbeat_every_pages == 0 {
-                heartbeat(&self.db, &lease, request.lease_duration()).await?;
+                if let Err(error) = heartbeat(&self.db, &lease, request.lease_duration()).await {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        outcome.status = IndexReconciliationRunStatus::Cancelled;
+                        return Ok(outcome);
+                    }
+                    return Err(error);
+                }
                 outcome.heartbeat_count += 1;
                 if cancel_if_requested(&self.db, &lease).await? {
                     outcome.status = IndexReconciliationRunStatus::Cancelled;
@@ -375,50 +434,86 @@ impl PostgresIndexReconciliationRunner {
                 request.page_limit,
             )
             .map_err(IndexReconciliationRunError::InvalidPageRequest)?;
-            let page = match self.sources.scan(scan_request).await {
-                Ok(page) => page,
-                Err(error) => {
-                    let run_error = IndexReconciliationRunError::Source(error);
-                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
-                }
-            };
-
-            let mut event_ids = BTreeSet::new();
-            for (position, mutation) in page.mutations().iter().enumerate() {
-                let event_id = mutation.event_id();
-                if event_id.is_nil() {
-                    let run_error = IndexReconciliationRunError::NilEventId { position };
-                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
-                }
-                if !event_ids.insert(event_id) {
-                    let run_error =
-                        IndexReconciliationRunError::DuplicateEventId { position, event_id };
-                    return finish_page_error(&self.db, &lease, outcome, run_error).await;
-                }
-            }
-
-            let mut page_applied = 0usize;
-            let mut page_duplicates = 0usize;
-            let mut page_stale = 0usize;
-            for (position, mutation) in page.mutations().iter().enumerate() {
-                let result = sink
-                    .apply_replay_mutation(
-                        self.schema_registry.as_ref(),
-                        lease.source_name.as_str(),
-                        mutation,
-                    )
-                    .await;
-                match result {
-                    Ok(IndexReplayMutationOutcome::Applied) => page_applied += 1,
-                    Ok(IndexReplayMutationOutcome::Duplicate) => page_duplicates += 1,
-                    Ok(IndexReplayMutationOutcome::StaleIgnored) => page_stale += 1,
-                    Err(failure) => {
-                        let run_error =
-                            IndexReconciliationRunError::MutationFailed { position, failure };
-                        return finish_page_error(&self.db, &lease, outcome, run_error).await;
+            let page_work = async {
+                let page = self
+                    .sources
+                    .scan(scan_request)
+                    .await
+                    .map_err(IndexReconciliationRunError::Source)?;
+                let mut event_ids = BTreeSet::new();
+                for (position, mutation) in page.mutations().iter().enumerate() {
+                    let event_id = mutation.event_id();
+                    if event_id.is_nil() {
+                        return Err(IndexReconciliationRunError::NilEventId { position });
+                    }
+                    if !event_ids.insert(event_id) {
+                        return Err(IndexReconciliationRunError::DuplicateEventId {
+                            position,
+                            event_id,
+                        });
                     }
                 }
-            }
+                let mut applied = 0usize;
+                let mut duplicate = 0usize;
+                let mut stale = 0usize;
+                for (position, mutation) in page.mutations().iter().enumerate() {
+                    let result = sink
+                        .apply_replay_mutation(&self.schema_registry, &lease.source_name, mutation)
+                        .await
+                        .map_err(|failure| IndexReconciliationRunError::MutationFailed {
+                            position,
+                            failure,
+                        })?;
+                    match result {
+                        IndexReplayMutationOutcome::Applied => applied += 1,
+                        IndexReplayMutationOutcome::Duplicate => duplicate += 1,
+                        IndexReplayMutationOutcome::StaleIgnored => stale += 1,
+                    }
+                }
+                Ok((page, applied, duplicate, stale))
+            };
+            let driven = drive_page(request.lease_duration(), page_work, || {
+                heartbeat(&self.db, &lease, request.lease_duration())
+            })
+            .await;
+            let (page_result, heartbeats) = match driven {
+                Ok(result) => result,
+                Err(error) => {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        outcome.status = IndexReconciliationRunStatus::Cancelled;
+                        return Ok(outcome);
+                    }
+                    return Err(error);
+                }
+            };
+            outcome.heartbeat_count += heartbeats;
+            let (page, page_applied, page_duplicates, page_stale) = match page_result {
+                Some(Ok(page)) => page,
+                Some(Err(IndexReconciliationRunError::MutationFailed { failure, .. }))
+                    if failure.code() == "job_lease_lost" =>
+                {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        outcome.status = IndexReconciliationRunStatus::Cancelled;
+                        return Ok(outcome);
+                    }
+                    return Err(IndexReconciliationRunError::LeaseLost {
+                        job_id: lease.job_id,
+                        attempt_count: lease.attempt_count,
+                    });
+                }
+                Some(Err(error)) => {
+                    return finish_page_error(&self.db, &lease, outcome, error).await;
+                }
+                None => {
+                    return finish_page_error(
+                        &self.db,
+                        &lease,
+                        outcome,
+                        IndexReconciliationRunError::PageDeadline,
+                    )
+                    .await;
+                }
+            };
 
             let page_mutations = page.mutations().len();
             let (_, next_cursor) = page.into_parts();
@@ -491,6 +586,8 @@ struct ReconciliationAcquireRequest {
     worker_id: String,
     pass_count: u32,
     lease_seconds: u64,
+    job_id: Option<Uuid>,
+    discovered_version: Option<DiscoveredJobVersion>,
 }
 
 #[derive(Debug, Clone)]
@@ -505,18 +602,18 @@ struct ReconciliationLease {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ReconciliationJobRequest {
-    contract: String,
-    source_name: String,
-    pass_count: u32,
+pub(super) struct ReconciliationJobRequest {
+    pub(super) contract: String,
+    pub(super) source_name: String,
+    pub(super) pass_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ReconciliationCursor {
+pub(super) struct ReconciliationCursor {
     contract: String,
-    completed_passes: u32,
-    source_cursor: Option<IndexSourceCursor>,
+    pub(super) completed_passes: u32,
+    pub(super) source_cursor: Option<IndexSourceCursor>,
     pages_processed: u64,
     mutation_count: u64,
     applied_count: u64,
@@ -538,7 +635,7 @@ impl ReconciliationCursor {
         }
     }
 
-    fn validate(&self, pass_count: u32) -> Result<(), IndexReconciliationRunError> {
+    pub(super) fn validate(&self, pass_count: u32) -> Result<(), IndexReconciliationRunError> {
         if self.contract != RECONCILIATION_JOB_CURSOR_CONTRACT {
             return Err(IndexReconciliationRunError::InvalidStoredJob(
                 "cursor contract is invalid".to_owned(),
@@ -564,7 +661,9 @@ enum ReconciliationAcquireOutcome {
         lease: ReconciliationLease,
         state: ReconciliationCursor,
     },
-    Busy,
+    Busy {
+        job_id: Uuid,
+    },
     AlreadyComplete {
         job_id: Uuid,
         completed_passes: u32,
@@ -591,9 +690,10 @@ enum LeaseWriteOutcome {
 async fn acquire_reconciliation_job(
     db: &DatabaseConnection,
     request: &ReconciliationAcquireRequest,
+    registered: &crate::application::RegisteredSchema,
 ) -> Result<ReconciliationAcquireOutcome, IndexReconciliationRunError> {
     let transaction = db.begin().await.map_err(storage_error)?;
-    let result = acquire_in_transaction(&transaction, request).await;
+    let result = acquire_in_transaction(&transaction, request, registered).await;
     match result {
         Ok(outcome) => {
             transaction.commit().await.map_err(storage_error)?;
@@ -609,11 +709,12 @@ async fn acquire_reconciliation_job(
 async fn acquire_in_transaction(
     transaction: &DatabaseTransaction,
     request: &ReconciliationAcquireRequest,
+    registered: &crate::application::RegisteredSchema,
 ) -> Result<ReconciliationAcquireOutcome, IndexReconciliationRunError> {
     let backend = transaction.get_database_backend();
     ensure_supported_backend(backend)?;
     lock_reconciliation_scope(transaction, request, backend).await?;
-    verify_schema_registration(transaction, request, backend).await?;
+    verify_schema_registration(transaction, request, registered, backend).await?;
 
     let rows = transaction
         .query_all_raw(Statement::from_sql_and_values(
@@ -626,6 +727,22 @@ async fn acquire_in_transaction(
     let mut claimable = None;
     if let Some(row) = rows.into_iter().next() {
         let stored = stored_job(&row, backend)?;
+        if request
+            .job_id
+            .is_some_and(|expected| expected != stored.job_id)
+        {
+            return Err(IndexReconciliationRunError::InvalidJobIdentity);
+        }
+        if let Some(version) = request.discovered_version {
+            let retry_epoch: i64 = row
+                .try_get("", "retry_epoch_value")
+                .map_err(storage_error)?;
+            if !version.matches(stored.attempt_count, retry_epoch) {
+                return Ok(ReconciliationAcquireOutcome::Busy {
+                    job_id: stored.job_id,
+                });
+            }
+        }
         validate_stored_request(&stored, request)?;
         match stored.state.as_str() {
             "succeeded" => {
@@ -642,7 +759,9 @@ async fn acquire_in_transaction(
                 });
             }
             "running" | "pending" if !stored.claimable => {
-                return Ok(ReconciliationAcquireOutcome::Busy);
+                return Ok(ReconciliationAcquireOutcome::Busy {
+                    job_id: stored.job_id,
+                });
             }
             "running" | "pending" => {
                 claimable = Some(stored);
@@ -666,6 +785,7 @@ async fn acquire_in_transaction(
         let attempt_count = stored
             .attempt_count
             .checked_add(1)
+            .filter(|count| i32::try_from(*count).is_ok())
             .ok_or(IndexReconciliationRunError::CounterOverflow)?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -691,6 +811,9 @@ async fn acquire_in_transaction(
         }
         (stored.job_id, attempt_count, stored.cursor)
     } else {
+        if request.job_id.is_some() {
+            return Err(IndexReconciliationRunError::InvalidJobIdentity);
+        }
         let job_id = Uuid::new_v4();
         let state = ReconciliationCursor::initial();
         let job_request = ReconciliationJobRequest {
@@ -821,6 +944,7 @@ async fn lock_reconciliation_scope(
 async fn verify_schema_registration(
     transaction: &DatabaseTransaction,
     request: &ReconciliationAcquireRequest,
+    registered: &crate::application::RegisteredSchema,
     backend: DbBackend,
 ) -> Result<(), IndexReconciliationRunError> {
     let row = transaction
@@ -835,6 +959,18 @@ async fn verify_schema_registration(
     let status: String = row.try_get("", "status").map_err(storage_error)?;
     if status != "active" {
         return Err(IndexReconciliationRunError::SchemaRetired(
+            request.schema.clone(),
+        ));
+    }
+    let fingerprint: String = row
+        .try_get("", "schema_fingerprint")
+        .map_err(storage_error)?;
+    let schema_json: JsonValue = row.try_get("", "schema_json").map_err(storage_error)?;
+    if fingerprint != registered.fingerprint.to_string()
+        || !serde_json::from_value::<crate::IndexSchema>(schema_json)
+            .is_ok_and(|schema| schema.canonical() == registered.schema.canonical())
+    {
+        return Err(IndexReconciliationRunError::SchemaContractMismatch(
             request.schema.clone(),
         ));
     }
@@ -934,11 +1070,11 @@ async fn finish_page_error(
     match retry_store.record_failure(&retry_lease, &failure).await {
         Ok(IndexReconciliationRetryDisposition::RetryScheduled {
             retry_after,
-            next_attempt,
+            next_failure_ordinal,
         }) => {
             outcome.status = IndexReconciliationRunStatus::RetryScheduled;
             outcome.retry_after = Some(retry_after);
-            outcome.next_attempt = Some(next_attempt);
+            outcome.next_failure_ordinal = Some(next_failure_ordinal);
             Ok(outcome)
         }
         Ok(IndexReconciliationRetryDisposition::TerminalPermanent { .. }) => {
@@ -1081,6 +1217,9 @@ fn retry_failure(
     error: &IndexReconciliationRunError,
 ) -> Result<IndexReconciliationRetryFailure, IndexReconciliationRunError> {
     let failure = match error {
+        IndexReconciliationRunError::PageDeadline => {
+            IndexReconciliationRetryFailure::retryable("reconciliation_page_deadline")
+        }
         IndexReconciliationRunError::Source(IndexSourceError::SourceFailure {
             failure, ..
         }) => match failure.kind() {
@@ -1118,7 +1257,7 @@ fn empty_outcome(
         job_id,
         attempt_count,
         retry_after: None,
-        next_attempt: None,
+        next_failure_ordinal: None,
         pages_processed: 0,
         passes_completed,
         heartbeat_count: 0,
@@ -1215,14 +1354,6 @@ fn storage_error(error: impl std::fmt::Display) -> IndexReconciliationRunError {
     IndexReconciliationRunError::Storage(error.to_string())
 }
 
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
@@ -1266,71 +1397,69 @@ fn lease_values(lease: &ReconciliationLease, backend: DbBackend) -> Vec<SqlValue
 
 fn select_schema_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
+    let lock = if backend == DbBackend::Postgres {
+        " FOR SHARE"
+    } else {
+        ""
+    };
     format!(
-        "SELECT status FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1"
+        "SELECT status, schema_fingerprint, schema_json FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1{lock}"
     )
 }
 
-fn select_jobs_sql(backend: DbBackend) -> String {
+pub(super) fn select_jobs_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    let (attempt_count, claimable) = match backend {
-        DbBackend::Postgres => (
-            "CAST(attempt_count AS BIGINT)",
-            "((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))",
-        ),
-        DbBackend::Sqlite => (
-            "CAST(attempt_count AS INTEGER)",
-            "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
-        ),
-        _ => unreachable!("unsupported database backend was validated"),
-    };
+    let claimable = job_is_due(backend);
     format!(
-        "SELECT job_id, state, request, cursor, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'reconcile' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded', 'failed') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
+        "SELECT job_id, state, request, cursor, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, CAST(retry_epoch AS BIGINT) AS retry_epoch_value, CASE WHEN {claimable} THEN TRUE ELSE FALSE END AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'reconcile' AND scope_kind = 'schema' AND state IN ('pending', 'running', 'succeeded', 'failed') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC LIMIT 1"
     )
 }
 
 fn insert_job_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 9);
+    let lease_expires = deadline_after_seconds(backend, 9);
     format!(
         "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, request, cursor, attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at) VALUES ({prefix}1, {prefix}2, 'reconcile', 'running', 'schema', {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, 1, CURRENT_TIMESTAMP, {prefix}8, {lease_expires}, CURRENT_TIMESTAMP)"
     )
 }
 
 fn claim_job_sql(backend: DbBackend) -> String {
+    let due = due_job_where(backend, "reconcile");
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE {due}"
     )
 }
 
 fn heartbeat_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease = live_lease_where(backend, "reconcile", 1, false);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn persist_progress_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "reconcile", 1, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET cursor = {prefix}5, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET cursor = {prefix}5, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn finish_success_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "reconcile", 1, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = 'succeeded', cursor = {prefix}5, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'succeeded', cursor = {prefix}5, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE {lease}"
     )
 }
 
 fn yield_job_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let lease = live_lease_where(backend, "reconcile", 1, false);
     format!(
-        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
@@ -1361,27 +1490,18 @@ fn request_running_cancel_sql(backend: DbBackend) -> String {
 }
 
 fn cancel_active_job_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let lease = live_lease_where(backend, "reconcile", 1, true);
     format!(
-        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'reconcile' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = TRUE"
+        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE {lease}"
     )
-}
-
-fn lease_expires_expression(backend: DbBackend, seconds_parameter: usize) -> String {
-    let prefix = placeholder_prefix(backend);
-    match backend {
-        DbBackend::Postgres => {
-            format!("CURRENT_TIMESTAMP + ({prefix}{seconds_parameter} * INTERVAL '1 second')")
-        }
-        DbBackend::Sqlite => {
-            format!("datetime(CURRENT_TIMESTAMP, '+' || {prefix}{seconds_parameter} || ' seconds')")
-        }
-        _ => unreachable!("unsupported database backend was validated"),
-    }
 }
 
 #[derive(Debug, Error)]
 pub enum IndexReconciliationRunError {
+    #[error("the original reconciliation job no longer owns the requested scope")]
+    InvalidJobIdentity,
+    #[error("Index reconciliation exceeded its page deadline")]
+    PageDeadline,
     #[error("Index reconciliation page request is invalid")]
     InvalidPageRequest(#[source] IndexSourceError),
     #[error("Index reconciliation max pages is invalid: actual={actual}, max={max}")]
@@ -1404,6 +1524,8 @@ pub enum IndexReconciliationRunError {
     SchemaNotRegistered(SchemaRef),
     #[error("Index reconciliation schema is retired: {0}")]
     SchemaRetired(SchemaRef),
+    #[error("persisted Index reconciliation schema does not match the selected contract: {0}")]
+    SchemaContractMismatch(SchemaRef),
     #[error(
         "Index reconciliation scope is blocked by failed job {job_id} after attempt {attempt_count}"
     )]

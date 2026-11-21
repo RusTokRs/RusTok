@@ -32,6 +32,9 @@ const store = requireMarkers(storePath, [
   'FOR UPDATE',
   'incoming_source_version',
   'current_source_version',
+  'record_fingerprint',
+  'SourceRevisionConflict',
+  'JobMutationFence',
   'WHERE excluded.source_version > index_entities.source_version',
   'DELETE FROM index_links WHERE tenant_id =',
   'INSERT INTO index_links',
@@ -42,8 +45,8 @@ const store = requireMarkers(storePath, [
   'return Err(MutationStorageError::ConcurrentMutationConflict)',
 ]);
 
-const lockPosition = store.indexOf('self.lock_entity_key(transaction, mutation, backend)');
-const readPosition = store.indexOf('.current_source_version(transaction, mutation, backend)');
+const lockPosition = store.indexOf('lock_entity_key(transaction, key, backend)');
+const readPosition = store.indexOf('.current_record(transaction, mutation');
 const deletePosition = store.indexOf('self.delete_existing_links(transaction, mutation, backend)');
 const entityPosition = store.indexOf('.upsert_entity(');
 if (
@@ -73,6 +76,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mutation
   'exact_redelivery_is_duplicate_but_payload_reuse_conflicts',
   'tombstone_and_source_version_guards_prevent_stale_resurrection',
   'failed_entity_write_rolls_back_the_inbox_claim',
+  'SourceRevisionConflict',
   'tenant_and_locale_identity_do_not_collide',
 ]);
 

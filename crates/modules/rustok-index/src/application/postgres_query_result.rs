@@ -5,7 +5,9 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{FieldCardinality, FieldPath, IndexQuery, IndexValue, LinkName, Pagination};
+use crate::domain::{
+    FieldCardinality, FieldPath, IndexQuery, IndexValue, LinkName, LocaleKey, Pagination,
+};
 
 use super::{
     CompiledManyRelationColumn, CompiledPostgresQuery, CompiledQueryColumn, CursorCodec,
@@ -52,6 +54,10 @@ impl CompiledPostgresRow {
     pub fn get(&self, output_alias: &str) -> Option<&CompiledPostgresCell> {
         self.values.get(output_alias)
     }
+
+    pub(crate) fn serialized_size(&self) -> Result<usize, serde_json::Error> {
+        serde_json::to_vec(self).map(|bytes| bytes.len())
+    }
 }
 
 /// Opaque page-execution contract produced only by `SchemaRegistry`.
@@ -88,6 +94,8 @@ pub struct IndexProjectedValue {
 pub struct IndexRelationIdentity {
     pub path: Vec<LinkName>,
     pub entity_id: Option<Uuid>,
+    /// Locale of the exact target. `None` represents an unlocalized or missing target.
+    pub locale: Option<LocaleKey>,
 }
 
 /// One row reached through a projection path that crosses a many-cardinality link.
@@ -160,7 +168,7 @@ pub enum PostgresQueryDecodeError {
         alias: String,
         expected: &'static str,
     },
-    #[error("root entity identity column {0} is null")]
+    #[error("root entity identity column {0} is null or nil")]
     NullRootIdentity(String),
     #[error("compiled column references unknown relation alias {0}")]
     UnknownRelationAlias(String),
@@ -176,6 +184,10 @@ pub enum PostgresQueryDecodeError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("nested relation column {alias} exceeds its projection budget")]
+    NestedProjectionBudgetExceeded { alias: String },
+    #[error("relation identity column {0} is not a canonical UUID/locale pair")]
+    InvalidRelationIdentity(String),
     #[error("compiled row column {alias} contains invalid nested relation JSON")]
     InvalidNestedRelation {
         alias: String,
@@ -362,8 +374,8 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
     });
     columns.extend(
         plan.outer_joins()
-            .map(|join| CompiledQueryColumn::EntityId {
-                output_alias: identity_alias(&join.alias),
+            .map(|join| CompiledQueryColumn::RelationIdentity {
+                output_alias: format!("__{}_identity", join.alias),
                 relation_alias: join.alias.clone(),
             }),
     );
@@ -400,6 +412,7 @@ fn expected_many_relations(plan: &ExecutableQueryPlan) -> Vec<CompiledManyRelati
 fn column_output_alias(column: &CompiledQueryColumn) -> &str {
     match column {
         CompiledQueryColumn::EntityId { output_alias, .. }
+        | CompiledQueryColumn::RelationIdentity { output_alias, .. }
         | CompiledQueryColumn::Field { output_alias, .. }
         | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
     }
@@ -430,31 +443,54 @@ fn decode_row(
     let mut relations = Vec::new();
 
     for column in &compiled.columns {
-        let CompiledQueryColumn::EntityId {
-            output_alias,
-            relation_alias,
-        } = column
-        else {
-            continue;
-        };
-        let identity = decode_identity(row, output_alias, relation_alias == &plan.root_alias)?;
-        identities.insert(relation_alias.clone(), identity);
-        if relation_alias == &plan.root_alias {
-            root_entity_id = identity;
-        } else {
-            let join = plan
-                .joins
-                .iter()
-                .find(|join| join.alias == *relation_alias)
-                .ok_or_else(|| {
-                    PostgresQueryDecodeError::UnknownRelationAlias(relation_alias.clone())
-                })?;
-            if join_is_projected(plan, &join.path) {
-                relations.push(IndexRelationIdentity {
-                    path: join.path.clone(),
-                    entity_id: identity,
-                });
+        match column {
+            CompiledQueryColumn::EntityId {
+                output_alias,
+                relation_alias,
+            } => {
+                let identity = decode_root_identity(row, output_alias)?;
+                root_entity_id = Some(identity);
+                identities.insert(relation_alias.clone(), Some(identity));
             }
+            CompiledQueryColumn::RelationIdentity {
+                output_alias,
+                relation_alias,
+            } => {
+                let target = match required_cell(row, output_alias)? {
+                    CompiledPostgresCell::Null => None,
+                    CompiledPostgresCell::Json(value) => {
+                        let wire: (Uuid, String) =
+                            serde_json::from_value(value.clone()).map_err(|_| {
+                                PostgresQueryDecodeError::InvalidRelationIdentity(
+                                    output_alias.clone(),
+                                )
+                            })?;
+                        Some(decode_target_identity(wire, output_alias)?)
+                    }
+                    _ => {
+                        return Err(PostgresQueryDecodeError::InvalidRelationIdentity(
+                            output_alias.clone(),
+                        ));
+                    }
+                };
+                let entity_id = target.as_ref().map(|(id, _)| *id);
+                identities.insert(relation_alias.clone(), entity_id);
+                let join = plan
+                    .joins
+                    .iter()
+                    .find(|join| join.alias == *relation_alias)
+                    .ok_or_else(|| {
+                        PostgresQueryDecodeError::UnknownRelationAlias(relation_alias.clone())
+                    })?;
+                if join_is_projected(plan, &join.path) {
+                    relations.push(IndexRelationIdentity {
+                        path: join.path.clone(),
+                        entity_id,
+                        locale: target.and_then(|(_, locale)| locale),
+                    });
+                }
+            }
+            _ => {}
         }
     }
 
@@ -476,7 +512,8 @@ fn decode_row(
                 output_alias,
                 field,
             } => order_values.push(decode_field(row, output_alias, field, &identities)?),
-            CompiledQueryColumn::EntityId { .. } => {}
+            CompiledQueryColumn::EntityId { .. } | CompiledQueryColumn::RelationIdentity { .. } => {
+            }
         }
     }
     let nested_relations = compiled
@@ -496,20 +533,18 @@ fn decode_row(
     })
 }
 
-fn decode_identity(
+pub(super) fn decode_root_identity(
     row: &CompiledPostgresRow,
     output_alias: &str,
-    is_root: bool,
-) -> Result<Option<Uuid>, PostgresQueryDecodeError> {
+) -> Result<Uuid, PostgresQueryDecodeError> {
     match required_cell(row, output_alias)? {
-        CompiledPostgresCell::Uuid(value) => Ok(Some(*value)),
-        CompiledPostgresCell::Null if is_root => Err(PostgresQueryDecodeError::NullRootIdentity(
-            output_alias.to_owned(),
-        )),
-        CompiledPostgresCell::Null => Ok(None),
+        CompiledPostgresCell::Uuid(value) if !value.is_nil() => Ok(*value),
+        CompiledPostgresCell::Uuid(_) | CompiledPostgresCell::Null => Err(
+            PostgresQueryDecodeError::NullRootIdentity(output_alias.to_owned()),
+        ),
         _ => Err(PostgresQueryDecodeError::UnexpectedCellType {
             alias: output_alias.to_owned(),
-            expected: "a UUID or SQL null",
+            expected: "a non-nil UUID",
         }),
     }
 }
@@ -540,8 +575,32 @@ fn decode_field(
 
 #[derive(Debug, Deserialize)]
 struct CompiledNestedRelationItem {
-    entity_ids: Vec<Uuid>,
+    identities: Vec<(Uuid, String)>,
     values: Vec<JsonValue>,
+}
+
+fn decode_target_identity(
+    (entity_id, stored_locale): (Uuid, String),
+    alias: &str,
+) -> Result<(Uuid, Option<LocaleKey>), PostgresQueryDecodeError> {
+    if entity_id.is_nil() {
+        return Err(PostgresQueryDecodeError::InvalidRelationIdentity(
+            alias.to_owned(),
+        ));
+    }
+    let locale = if stored_locale.is_empty() {
+        None
+    } else {
+        Some(
+            LocaleKey::new(&stored_locale)
+                .ok()
+                .filter(|locale| locale.as_str() == stored_locale)
+                .ok_or_else(|| {
+                    PostgresQueryDecodeError::InvalidRelationIdentity(alias.to_owned())
+                })?,
+        )
+    };
+    Ok((entity_id, locale))
 }
 
 fn decode_nested_relation(
@@ -551,6 +610,11 @@ fn decode_nested_relation(
 ) -> Result<IndexNestedRelationProjection, PostgresQueryDecodeError> {
     let payload = match required_cell(row, output_alias)? {
         CompiledPostgresCell::Json(value) => value.clone(),
+        CompiledPostgresCell::Null => {
+            return Err(PostgresQueryDecodeError::NestedProjectionBudgetExceeded {
+                alias: output_alias.to_owned(),
+            });
+        }
         _ => {
             return Err(PostgresQueryDecodeError::UnexpectedCellType {
                 alias: output_alias.to_owned(),
@@ -565,15 +629,20 @@ fn decode_nested_relation(
                 source,
             }
         })?;
+    if wire_items.len() > super::postgres_value_sql::MAX_MANY_PROJECTION_ITEMS {
+        return Err(PostgresQueryDecodeError::NestedProjectionBudgetExceeded {
+            alias: output_alias.to_owned(),
+        });
+    }
     let mut identity_chains = BTreeSet::new();
     let mut items = Vec::with_capacity(wire_items.len());
 
     for wire in wire_items {
-        if wire.entity_ids.len() != projection.identity_paths.len() {
+        if wire.identities.len() != projection.identity_paths.len() {
             return Err(PostgresQueryDecodeError::NestedIdentityArity {
                 alias: output_alias.to_owned(),
                 expected: projection.identity_paths.len(),
-                actual: wire.entity_ids.len(),
+                actual: wire.identities.len(),
             });
         }
         if wire.values.len() != projection.fields.len() {
@@ -583,12 +652,17 @@ fn decode_nested_relation(
                 actual: wire.values.len(),
             });
         }
-        if wire.entity_ids.iter().any(Uuid::is_nil) {
+        if wire.identities.iter().any(|(id, _)| id.is_nil()) {
             return Err(PostgresQueryDecodeError::NilNestedIdentity {
                 alias: output_alias.to_owned(),
             });
         }
-        if !identity_chains.insert(wire.entity_ids.clone()) {
+        let chain = wire
+            .identities
+            .into_iter()
+            .map(|target| decode_target_identity(target, output_alias))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !identity_chains.insert(chain.clone()) {
             return Err(PostgresQueryDecodeError::DuplicateNestedIdentity {
                 alias: output_alias.to_owned(),
             });
@@ -598,10 +672,11 @@ fn decode_nested_relation(
             .identity_paths
             .iter()
             .cloned()
-            .zip(wire.entity_ids)
-            .map(|(path, entity_id)| IndexRelationIdentity {
+            .zip(chain)
+            .map(|(path, (entity_id, locale))| IndexRelationIdentity {
                 path,
                 entity_id: Some(entity_id),
+                locale,
             })
             .collect();
         let fields = projection
@@ -666,12 +741,13 @@ fn valid_field_value(field: &PlannedField, value: &IndexValue, missing_relation:
         IndexValue::Null => field.nullable || missing_relation,
         IndexValue::List(values) => {
             field.cardinality == FieldCardinality::Many
-                && values
-                    .iter()
-                    .all(|value| value.value_type() == Some(field.value_type))
+                && values.iter().all(|value| {
+                    value.is_storable_scalar() && value.value_type() == Some(field.value_type)
+                })
         }
         value => {
             field.cardinality == FieldCardinality::One
+                && value.is_storable_scalar()
                 && value.value_type() == Some(field.value_type)
         }
     }

@@ -1,0 +1,6 @@
+mutation IndexAdminRequeueReplay($input: IndexJobRequeueInput!) {
+  result: requeueIndexReplay(input: $input) {
+    status
+    retryEpoch
+  }
+}

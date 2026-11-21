@@ -99,11 +99,11 @@ const mutationStorePath = 'crates/modules/rustok-index/src/infrastructure/postgr
 requireMarkers(mutationStorePath, [
   '"applied" => Ok(MutationApplyOutcome::Duplicate {',
   'source_version: stored_source_version,',
-  'if source_version <= current_source_version',
+  'if current_source_version >= source_version',
   'MutationApplyOutcome::StaleIgnored {',
   'incoming_source_version: source_version,',
   'current_source_version,',
-  'self.lock_entity_key(transaction, mutation, backend).await?',
+  'lock_entity_key(transaction, key, backend).await?',
   'self.delete_existing_links(transaction, mutation, backend)',
 ]);
 requireMarkers('crates/modules/rustok-index/src/application/source_replay_tests.rs', [

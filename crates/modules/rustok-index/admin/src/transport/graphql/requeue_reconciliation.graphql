@@ -1,0 +1,6 @@
+mutation IndexAdminRequeueReconciliation($input: IndexJobRequeueInput!) {
+  result: requeueIndexReconciliation(input: $input) {
+    status
+    retryEpoch
+  }
+}

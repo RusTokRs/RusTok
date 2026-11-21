@@ -30,7 +30,7 @@ GraphQL, HTTP, CLI, MCP, and admin transports remain open.
 
 The module-owned host scheduler changes no inspector SQL or returned data. Retryable jobs remain pending and are not inspectable. Permanent or exhausted jobs become failed through the canonical retry store and retain the strict inspection-compatible diagnostic.
 
-Manual audited requeue remains separately owned by `PostgresIndexReconciliationRecoveryStore`.
+Manual audited requeue remains separately owned by `PostgresIndexJobRecoveryStore`.
 
 ## Explicitly open
 

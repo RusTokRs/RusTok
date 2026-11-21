@@ -9,12 +9,13 @@ use rustok_runtime::{
     HostRuntimeContext, ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome,
     ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler, ModuleWorkSource,
 };
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::source_job_discovery::{
+    DiscoveredJobVersion, MAX_DISCARDED_CANDIDATES_PER_POLL, defer_due_job, discovery_scope,
+};
 use super::source_replay_job::stored_job;
 use crate::{
     EntityName, IndexReplayJobLeaseRequest, IndexReplayRunRequest, IndexReplayRunStatus, LocaleKey,
@@ -93,6 +94,8 @@ struct ReplayWorkPayload {
     contract: String,
     schema: SchemaRef,
     locale: Option<LocaleKey>,
+    lease_generation: i64,
+    retry_epoch: i64,
 }
 
 impl PostgresIndexReplayWorkAdapter {
@@ -105,6 +108,8 @@ impl PostgresIndexReplayWorkAdapter {
             serde_json::from_value(item.payload.clone()).map_err(|_| unverified())?;
         if invocation.is_nil()
             || payload.contract != WORK_CONTRACT
+            || payload.lease_generation < 0
+            || payload.retry_epoch < 0
             || self.sources.source_for_schema(&payload.schema).is_none()
         {
             return Err(unverified());
@@ -123,79 +128,75 @@ impl ModuleWorkSource for PostgresIndexReplayWorkAdapter {
         if backend != DbBackend::Postgres && !(cfg!(test) && backend == DbBackend::Sqlite) {
             return Err(unverified());
         }
-        // Restrict discovery to immutable, actually selected bindings. An earlier retained job
-        // for a removed/unselected source must not starve work for another tenant/source.
-        let mut scopes = Vec::new();
-        let mut values: Vec<SqlValue> = Vec::new();
-        let source_name = match backend {
-            DbBackend::Postgres => "request->>'source_name'",
-            DbBackend::Sqlite => "json_extract(request, '$.source_name')",
-            _ => return Err(unverified()),
-        };
-        for registered in self.schemas.registry().iter() {
-            let reference = &registered.schema.reference;
-            let Some(source) = self.sources.source_for_schema(reference) else {
-                continue;
+        let (scope, values) = discovery_scope(backend, self.schemas.registry(), &self.sources);
+        for _ in 0..MAX_DISCARDED_CANDIDATES_PER_POLL {
+            let row = self.db.query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!("WITH ranked AS (
+                    SELECT tenant_id, job_id, module_name, entity_name, schema_version, scope_kind,
+                        locale_key, state, request, last_error_code, available_at, lease_expires_at,
+                        created_at, attempt_count, retry_epoch,
+                        ROW_NUMBER() OVER (PARTITION BY tenant_id, module_name, entity_name,
+                            schema_version, scope_kind, locale_key
+                            ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1
+                            WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC) AS scope_rank
+                    FROM index_jobs WHERE kind = 'rebuild' AND scope_kind IN ('schema', 'locale')
+                        AND state IN ('pending', 'running', 'succeeded', 'failed')
+                ) SELECT tenant_id, job_id, module_name, entity_name, schema_version, scope_kind,
+                      locale_key, state, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value,
+                      CAST(retry_epoch AS BIGINT) AS retry_epoch_value, TRUE AS claimable
+                  FROM ranked AS j WHERE scope_rank = 1 AND {scope} AND available_at <= CURRENT_TIMESTAMP
+                      AND (state = 'pending' OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))
+                  ORDER BY available_at, created_at, tenant_id, job_id LIMIT 1"),
+                values.clone(),
+            )).await.map_err(|_| unverified())?;
+            let Some(row) = row else {
+                return Ok(None);
             };
-            let offset = values.len();
-            scopes.push(format!(
-                "(module_name = ${} AND entity_name = ${} AND schema_version = ${} AND {source_name} = ${})",
-                offset + 1, offset + 2, offset + 3, offset + 4,
-            ));
-            values.extend([
-                reference.module.as_str().to_owned().into(),
-                reference.entity.as_str().to_owned().into(),
-                i64::from(reference.version.get()).into(),
-                source.source_name().to_owned().into(),
-            ]);
+            let tenant_id = stored_uuid(&row, "tenant_id", backend)?;
+            let job_id = stored_uuid(&row, "job_id", backend)?;
+            let lease_generation: i64 = row
+                .try_get("", "attempt_count_value")
+                .map_err(|_| unverified())?;
+            let retry_epoch: i64 = row
+                .try_get("", "retry_epoch_value")
+                .map_err(|_| unverified())?;
+            let (schema, locale) = match decode_discovery(&row, backend, &self.sources, tenant_id) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    defer_due_job(
+                        &self.db,
+                        tenant_id,
+                        job_id,
+                        "rebuild",
+                        lease_generation,
+                        retry_epoch,
+                        "index.replay_scheduler.invalid_stored_job",
+                    )
+                    .await
+                    .map_err(|_| unverified())?;
+                    tracing::warn!(%tenant_id, %job_id, %error, "Deferred malformed Index replay job");
+                    continue;
+                }
+            };
+            // Discovery is not a lease. A distinct invocation token and the exact original job UUID
+            // reach the canonical runner, whose scope lock/attempt fence arbitrate concurrent hosts.
+            return Ok(Some(ModuleWorkItem {
+                id: job_id,
+                tenant_id,
+                worker_slug: INDEX_REPLAY_WORKER.into(),
+                lease_token: Uuid::new_v4().to_string(),
+                payload: serde_json::to_value(ReplayWorkPayload {
+                    contract: WORK_CONTRACT.into(),
+                    schema,
+                    locale,
+                    lease_generation,
+                    retry_epoch,
+                })
+                .map_err(|_| unverified())?,
+            }));
         }
-        if scopes.is_empty() {
-            return Ok(None);
-        }
-        let row = self.db.query_one_raw(Statement::from_sql_and_values(backend,
-            format!("SELECT tenant_id, job_id, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value, scope_kind, locale_key, state, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, TRUE AS claimable FROM index_jobs WHERE kind = 'rebuild' AND ({}) AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP)) ORDER BY available_at, created_at, job_id LIMIT 1", scopes.join(" OR ")),
-            values,
-        )).await.map_err(|_| unverified())?;
-        let Some(row) = row else {
-            return Ok(None);
-        };
-        let tenant_id = stored_uuid(&row, "tenant_id", backend)?;
-        let saved = stored_job(&row, backend).map_err(|_| unverified())?;
-        let module: String = row.try_get("", "module_name").map_err(|_| unverified())?;
-        let entity: String = row.try_get("", "entity_name").map_err(|_| unverified())?;
-        let version: i64 = row
-            .try_get("", "schema_version_value")
-            .map_err(|_| unverified())?;
-        let version = u32::try_from(version).map_err(|_| unverified())?;
-        if tenant_id.is_nil() || saved.job_id.is_nil() || version == 0 {
-            return Err(unverified());
-        }
-        let schema = SchemaRef {
-            module: ModuleName::new(module).map_err(|_| unverified())?,
-            entity: EntityName::new(entity).map_err(|_| unverified())?,
-            version: SchemaVersion::new(version),
-        };
-        let source = self
-            .sources
-            .source_for_schema(&schema)
-            .ok_or_else(unverified)?;
-        if source.source_name() != saved.source_name {
-            return Err(unverified());
-        }
-        // Discovery is not a lease. A distinct invocation token and the exact original job UUID
-        // reach the canonical runner, whose scope lock/attempt fence arbitrate concurrent hosts.
-        Ok(Some(ModuleWorkItem {
-            id: saved.job_id,
-            tenant_id,
-            worker_slug: INDEX_REPLAY_WORKER.into(),
-            lease_token: Uuid::new_v4().to_string(),
-            payload: serde_json::to_value(ReplayWorkPayload {
-                contract: WORK_CONTRACT.into(),
-                schema,
-                locale: saved.locale,
-            })
-            .map_err(|_| unverified())?,
-        }))
+        Ok(None)
     }
 
     async fn complete(
@@ -207,10 +208,13 @@ impl ModuleWorkSource for PostgresIndexReplayWorkAdapter {
         let backend = self.db.get_database_backend();
         let row = self.db.query_one_raw(Statement::from_sql_and_values(
             backend,
-            "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, FALSE AS claimable, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value FROM index_jobs WHERE tenant_id = $1 AND job_id = $2 AND kind = 'rebuild'",
+            "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, CAST(retry_epoch AS BIGINT) AS retry_epoch_value, FALSE AS claimable, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value FROM index_jobs WHERE tenant_id = $1 AND job_id = $2 AND kind = 'rebuild'",
             vec![super::source_replay_job::uuid_value(item.tenant_id, backend), super::source_replay_job::uuid_value(item.id, backend)],
         )).await.map_err(|_| unverified())?.ok_or_else(unverified)?;
         let saved = stored_job(&row, backend).map_err(|_| unverified())?;
+        let retry_epoch: i64 = row
+            .try_get("", "retry_epoch_value")
+            .map_err(|_| unverified())?;
         let module: String = row.try_get("", "module_name").map_err(|_| unverified())?;
         let entity: String = row.try_get("", "entity_name").map_err(|_| unverified())?;
         let version: i64 = row
@@ -229,27 +233,15 @@ impl ModuleWorkSource for PostgresIndexReplayWorkAdapter {
         {
             return Err(unverified());
         }
-        // No independent ACK ledger: verify the runner's durable result rather than manufacture
-        // success. Another host may already have advanced a yielded/busy job by this point.
-        let verified = match outcome {
-            ModuleWorkOutcome::Completed => saved.state == "succeeded",
-            ModuleWorkOutcome::Cancelled => saved.state == "cancelled",
-            ModuleWorkOutcome::Held { .. } => matches!(
-                saved.state.as_str(),
-                "pending" | "running" | "succeeded" | "failed" | "cancelled"
-            ),
-            ModuleWorkOutcome::Retryable { .. } => {
-                saved.attempt_count > 0
-                    && matches!(
-                        saved.state.as_str(),
-                        "pending" | "running" | "succeeded" | "failed" | "cancelled"
-                    )
-            }
-            ModuleWorkOutcome::Rejected { .. } => {
-                matches!(saved.state.as_str(), "failed" | "cancelled")
-            }
+        let discovered = DiscoveredJobVersion {
+            generation: payload.lease_generation,
+            retry_epoch: payload.retry_epoch,
         };
-        if !verified {
+        let persisted = DiscoveredJobVersion {
+            generation: i64::from(saved.attempt_count),
+            retry_epoch,
+        };
+        if !discovered.verifies_outcome(persisted, &saved.state, outcome) {
             return Err(unverified());
         }
         if saved.state == "succeeded" {
@@ -311,9 +303,41 @@ impl ModuleWorkHandler for PostgresIndexReplayWorkAdapter {
                 Duration::from_secs(300),
             ),
         }
-        .and_then(|request| request.for_job(item.id))
-        .map_err(|_| unverified())?;
-        let result = self.runtime.run(request).await.map_err(|_| unverified())?;
+        .and_then(|request| {
+            request.for_discovered_job(
+                item.id,
+                DiscoveredJobVersion {
+                    generation: payload.lease_generation,
+                    retry_epoch: payload.retry_epoch,
+                },
+            )
+        });
+        let run = match request {
+            Ok(request) => self
+                .runtime
+                .run(request)
+                .await
+                .map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        };
+        let result = match run {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(job_id = %item.id, tenant_id = %item.tenant_id, %error, "Index replay dispatch failed");
+                defer_due_job(
+                    &self.db,
+                    item.tenant_id,
+                    item.id,
+                    "rebuild",
+                    payload.lease_generation,
+                    payload.retry_epoch,
+                    "index.replay_scheduler.run_failed",
+                )
+                .await
+                .map_err(|_| unverified())?;
+                return Err(unverified());
+            }
+        };
         Ok(match result.status() {
             IndexReplayRunStatus::Cancelled => ModuleWorkOutcome::Cancelled,
             IndexReplayRunStatus::Busy => ModuleWorkOutcome::Held {
@@ -322,11 +346,49 @@ impl ModuleWorkHandler for PostgresIndexReplayWorkAdapter {
             IndexReplayRunStatus::Yielded => ModuleWorkOutcome::Retryable {
                 message: "index.replay_page_budget_yielded".into(),
             },
+            IndexReplayRunStatus::RetryScheduled => ModuleWorkOutcome::Retryable {
+                message: "index.replay_retry_scheduled".into(),
+            },
+            IndexReplayRunStatus::FailedPermanent | IndexReplayRunStatus::FailedExhausted => {
+                ModuleWorkOutcome::Rejected {
+                    message: "index.replay_dead_lettered".into(),
+                }
+            }
             IndexReplayRunStatus::AlreadyComplete | IndexReplayRunStatus::Complete => {
                 ModuleWorkOutcome::Completed
             }
         })
     }
+}
+
+fn decode_discovery(
+    row: &QueryResult,
+    backend: DbBackend,
+    sources: &SharedIndexSourceRegistry,
+    tenant_id: Uuid,
+) -> Result<(SchemaRef, Option<LocaleKey>), ModuleWorkError> {
+    let saved = stored_job(row, backend).map_err(|_| unverified())?;
+    let module: String = row.try_get("", "module_name").map_err(|_| unverified())?;
+    let entity: String = row.try_get("", "entity_name").map_err(|_| unverified())?;
+    let version: i32 = row
+        .try_get("", "schema_version")
+        .map_err(|_| unverified())?;
+    let version = u32::try_from(version).map_err(|_| unverified())?;
+    if tenant_id.is_nil() || saved.job_id.is_nil() || version == 0 {
+        return Err(unverified());
+    }
+    let schema = SchemaRef {
+        module: ModuleName::new(module).map_err(|_| unverified())?,
+        entity: EntityName::new(entity).map_err(|_| unverified())?,
+        version: SchemaVersion::new(version),
+    };
+    if !sources
+        .source_for_schema(&schema)
+        .is_some_and(|source| source.source_name() == saved.source_name)
+    {
+        return Err(unverified());
+    }
+    Ok((schema, saved.locale))
 }
 
 fn stored_uuid(

@@ -90,9 +90,20 @@ const distribution = requireMarkers(distributionPath, [
   'materialize_index_schema_registry(extensions)',
   'SharedIndexSchemaRegistry',
   'shared Index schema registry is already materialized',
-  'source_schema_catalog_materializes_after_all_modules_register',
-  'empty_source_catalog_does_not_publish_false_query_registry',
+  'mod tests;',
 ]);
+requireMarkers('crates/modules/rustok-distribution/src/tests.rs', [
+  'fn source_schema_catalog_materializes_after_all_modules_register()',
+  'fn empty_source_catalog_does_not_publish_false_query_registry()',
+]);
+const registrations = [
+  'registry.build_runtime_extensions()?;',
+  'register_selected_index_bridges(&mut extensions)?;',
+  'materialize_index_schema_sources(&mut extensions)?;',
+].map((marker) => distribution.indexOf(marker));
+if (registrations[0] < 0 || registrations[1] <= registrations[0] || registrations[2] <= registrations[1]) {
+  fail(`${distributionPath} must materialize the catalog after module and selected bridge registration`);
+}
 const productionDistribution = distribution.split('#[cfg(test)]')[0];
 for (const forbidden of [
   'social_graph_relation_index_schema',

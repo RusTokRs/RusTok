@@ -105,7 +105,9 @@ requireMarkers('execution', [
   'absence-moved',
   'normal-mutation',
   'before_not_repairable',
-  'index_drift_repair_owner_unavailable',
+  'index_drift_repair_source_changed',
+  'orphan_fence_survives_commit_and_crash_recovery_preserves_restored_edge',
+  'after_not_converged',
 ]);
 
 for (const name of ['support', 'environment', 'recovery', 'execution']) {

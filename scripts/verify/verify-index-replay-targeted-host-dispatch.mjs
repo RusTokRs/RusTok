@@ -109,7 +109,7 @@ const graphql = requireMarkers(graphqlPath, [
   'pub struct IndexReplayTargetedRunInput',
   'pub struct IndexReplayTargetedKeyInput',
   'async fn run_index_replay_targeted(',
-  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_targeted_run(tenant_id, actor_id, input)',
   '.run_targeted(operator_context, request)',
   '.map_err(map_targeted_operator_error)?',
   'IndexReplayTargetedOperatorError::Authorization(error) => map_operator_error(error)',

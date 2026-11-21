@@ -1,3 +1,5 @@
+#[path = "postgres_reference_equivalence_tests/hardening.rs"]
+mod hardening;
 mod reference_fixture;
 
 use std::{collections::BTreeMap, sync::Arc};
@@ -47,9 +49,13 @@ impl PostgresTestDb {
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
 
-        let db = connect(&database_url).await?;
-        db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
-            .await?;
+        let mut db_options = ConnectOptions::new(database_url);
+        db_options
+            .max_connections(4)
+            .min_connections(1)
+            .sqlx_logging(false)
+            .set_schema_search_path(schema_name.clone());
+        let db = Database::connect(db_options).await?;
         db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
             .await?;
         db.execute_raw(Statement::from_sql_and_values(

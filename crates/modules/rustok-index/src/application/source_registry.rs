@@ -615,6 +615,10 @@ impl SharedIndexSourceRegistry {
         self.0.sources.get(source_name)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &IndexSourceDescriptor> {
+        self.0.sources.values()
+    }
+
     pub fn source_for_schema(&self, schema: &SchemaRef) -> Option<&IndexSourceDescriptor> {
         self.0
             .schema_sources

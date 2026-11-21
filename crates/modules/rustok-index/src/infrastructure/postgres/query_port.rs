@@ -1,14 +1,16 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use async_trait::async_trait;
+use futures_util::TryStreamExt;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, QueryResult,
+    RuntimeErr, Statement, StreamTrait, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::{
+    application::postgres_value_sql::PROJECTION_LIMIT_TAG,
     application::{
         CompiledPostgresCell, CompiledPostgresCount, CompiledPostgresLocalizedPageQuery,
         CompiledPostgresPageQuery, CompiledPostgresQuery, CompiledPostgresRow, CompiledQueryColumn,
@@ -23,6 +25,10 @@ use super::PostgresIndexQueryAdmissionCatalog;
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
 const READ_ONLY_SNAPSHOT_SQL: &str = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
 const SELECT_SCHEMA_READINESS_SQL: &str = "SELECT schema_fingerprint, schema_json, status FROM index_schemas WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4";
+
+const PAGE_STATEMENT_TIMEOUT: &str = "SET LOCAL statement_timeout = '2000ms'";
+const COUNT_STATEMENT_TIMEOUT: &str = "SET LOCAL statement_timeout = '1000ms'";
+const MAX_PAGE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug)]
 struct RequiredSchemaContract {
@@ -98,7 +104,7 @@ impl PostgresIndexQueryPort {
         compiled: &mut CompiledPostgresQuery,
     ) -> Result<(), IndexQueryExecutionError> {
         self.admissions
-            .apply_link_target_availability(query, compiled)
+            .apply_link_target_availability(query, compiled, &self.registry)
             .map_err(|error| {
                 IndexQueryExecutionError::contract_preparation(query.schema.clone(), error)
             })?;
@@ -121,6 +127,10 @@ impl PostgresIndexQueryPort {
             .map_err(|error| {
                 IndexQueryExecutionError::storage("configure read-only snapshot", error)
             })?;
+        transaction
+            .execute_unprepared(PAGE_STATEMENT_TIMEOUT)
+            .await
+            .map_err(|error| IndexQueryExecutionError::storage("configure page budget", error))?;
         verify_persisted_schemas(transaction, query, required_schemas).await
     }
 
@@ -293,9 +303,7 @@ async fn verify_persisted_schemas(
                 ],
             ))
             .await
-            .map_err(|error| {
-                IndexQueryExecutionError::storage("load persisted schema readiness", error)
-            })?
+            .map_err(|error| query_error("load persisted schema readiness", error))?
             .ok_or_else(|| IndexQueryExecutionError::SchemaNotReady {
                 reference: required.reference.clone(),
                 reason: PersistedSchemaReadinessFailure::Missing,
@@ -344,17 +352,48 @@ async fn verify_persisted_schemas(
     Ok(())
 }
 
+fn query_error(stage: &'static str, error: DbErr) -> IndexQueryExecutionError {
+    if let DbErr::Query(RuntimeErr::SqlxError(driver)) | DbErr::Exec(RuntimeErr::SqlxError(driver)) =
+        &error
+        && driver
+            .as_database_error()
+            .and_then(|error| error.code())
+            .as_deref()
+            == Some("57014")
+    {
+        return IndexQueryExecutionError::BudgetExceeded { stage };
+    }
+    IndexQueryExecutionError::storage(stage, error)
+}
+
 async fn execute_page_rows(
     transaction: &DatabaseTransaction,
     compiled: &CompiledPostgresQuery,
 ) -> Result<Vec<CompiledPostgresRow>, IndexQueryExecutionError> {
-    transaction
-        .query_all_raw(compiled_statement(compiled))
+    let stream = transaction
+        .stream_raw(compiled_statement(compiled))
         .await
-        .map_err(|error| IndexQueryExecutionError::storage("execute page statement", error))?
-        .into_iter()
-        .map(|row| map_page_row(row, compiled))
-        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| query_error("page", error))?;
+    futures_util::pin_mut!(stream);
+    let mut rows = Vec::new();
+    let mut bytes = 0usize;
+    while let Some(row) = stream
+        .try_next()
+        .await
+        .map_err(|error| query_error("page", error))?
+    {
+        let row = map_page_row(row, compiled)?;
+        bytes = bytes.saturating_add(row.serialized_size().map_err(|error| {
+            IndexQueryExecutionError::invalid_row_column("page", "a serializable row", error)
+        })?);
+        if bytes > MAX_PAGE_BYTES {
+            return Err(IndexQueryExecutionError::BudgetExceeded {
+                stage: "page bytes",
+            });
+        }
+        rows.push(row);
+    }
+    Ok(rows)
 }
 
 fn compiled_statement(compiled: &CompiledPostgresQuery) -> Statement {
@@ -390,7 +429,6 @@ fn postgres_bind_value(value: PostgresBindValue) -> SqlValue {
         PostgresBindValue::Decimal(value) => value.into(),
         PostgresBindValue::Text(value) => value.into(),
         PostgresBindValue::Uuid(value) => value.into(),
-        PostgresBindValue::Timestamp(value) => value.into(),
         PostgresBindValue::Json(value) => SqlValue::Json(Some(Box::new(value))),
     }
 }
@@ -408,7 +446,8 @@ fn map_page_row(
                     optional_uuid_cell(&row, output_alias)?,
                 ));
             }
-            CompiledQueryColumn::Field { output_alias, .. }
+            CompiledQueryColumn::RelationIdentity { output_alias, .. }
+            | CompiledQueryColumn::Field { output_alias, .. }
             | CompiledQueryColumn::OrderValue { output_alias, .. } => {
                 values.push((
                     output_alias.clone(),
@@ -420,7 +459,14 @@ fn map_page_row(
     for column in &compiled.many_relations {
         values.push((
             column.output_alias.clone(),
-            optional_json_cell(&row, &column.output_alias)?,
+            match optional_json_cell(&row, &column.output_alias)? {
+                CompiledPostgresCell::Null => {
+                    return Err(IndexQueryExecutionError::BudgetExceeded {
+                        stage: "nested projection",
+                    });
+                }
+                cell => cell,
+            },
         ));
     }
     Ok(CompiledPostgresRow::from_values(values))
@@ -443,6 +489,16 @@ fn optional_json_cell(
     let value: Option<JsonValue> = row.try_get("", alias).map_err(|error| {
         IndexQueryExecutionError::invalid_row_column(alias, "JSONB or SQL null", error)
     })?;
+    if value
+        .as_ref()
+        .and_then(|json| json.get("type"))
+        .and_then(JsonValue::as_str)
+        == Some(PROJECTION_LIMIT_TAG)
+    {
+        return Err(IndexQueryExecutionError::BudgetExceeded {
+            stage: "projected value",
+        });
+    }
     Ok(value.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Json))
 }
 
@@ -450,10 +506,16 @@ async fn execute_exact_count(
     transaction: &DatabaseTransaction,
     count: &CompiledPostgresCount,
 ) -> Result<CompiledPostgresRow, IndexQueryExecutionError> {
+    transaction
+        .execute_unprepared(COUNT_STATEMENT_TIMEOUT)
+        .await
+        .map_err(|error| {
+            IndexQueryExecutionError::storage("configure exact-count budget", error)
+        })?;
     let row = transaction
         .query_one_raw(count_statement(count))
         .await
-        .map_err(|error| IndexQueryExecutionError::storage("execute exact-count statement", error))?
+        .map_err(|error| query_error("exact count", error))?
         .ok_or(IndexQueryExecutionError::MissingExactCountRow)?;
     let value: i64 = row.try_get("", EXACT_COUNT_ALIAS).map_err(|error| {
         IndexQueryExecutionError::invalid_row_column(

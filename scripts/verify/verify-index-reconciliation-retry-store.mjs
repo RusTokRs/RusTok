@@ -32,7 +32,7 @@ const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 const retry = requireMarkers(retryPath, [
-  'const MAX_RECONCILIATION_ATTEMPTS: u32 = 100;',
+  'const MAX_RECONCILIATION_FAILURES: u32 = 100;',
   'const MAX_BACKOFF_SECONDS: u64 = 86_400;',
   'const RECONCILIATION_FAILURE_CONTRACT: &str = "index_reconciliation_run_failure_v1";',
   'const RECONCILIATION_PAGE_FAILURE_CODE: &str = "index.reconciliation_page_failed";',
@@ -53,8 +53,7 @@ for (const forbidden of [
 for (const marker of [
   "state = 'pending'", 'available_at = {available_at}',
   "state = 'failed'", 'completed_at = CURRENT_TIMESTAMP',
-  'lease_owner = {prefix}3', 'attempt_count = {prefix}4',
-  'lease_expires_at > CURRENT_TIMESTAMP', 'cancel_requested = FALSE',
+  'live_lease_where(backend, "reconcile", 1, false)',
   '"contract": RECONCILIATION_FAILURE_CONTRACT',
   '"dependency_code": failure.code()',
 ]) {
@@ -77,8 +76,8 @@ requireMarkers(schedulerPath, [
 ]);
 requireMarkers(docsPath, [
   'Status: `host_scheduler_source_complete_owner_execution_pending`.',
-  'maximum attempts: `5`',
-  'delays after attempts 1-4: `5`, `10`, `20`, and `40` seconds',
+  'maximum recorded failures per retry epoch: `5`',
+  'delays after failures 1–4: `5`, `10`, `20`, and `40` seconds',
   'Fleet duplicates remain safe',
   'maintainer-run',
 ]);

@@ -108,26 +108,20 @@ requireMarkers(
 
 const runnerPath =
   'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
-const runner = requireMarkers(runnerPath, [
-  'match finish_failure(&self.db, &lease, details).await?',
+requireMarkers(runnerPath, [
+  'store.record_failure(&lease, &failure).await',
+  'IndexReplayRetryDisposition::TerminalPermanent',
+  'IndexReplayRetryDisposition::TerminalExhausted',
 ]);
-for (const premature of [
-  'PostgresIndexReplayRetryStore',
-  'IndexReplayRetryFailure',
-  '.record_failure(',
-]) {
-  if (runner.includes(premature)) {
-    fail(`${runnerPath} prematurely claims retry-store wiring through ${premature}`);
-  }
-}
 
 requireMarkers('crates/modules/rustok-index/docs/m6-replay-dead-letter-admission.md', [
-  'Status: `source_complete_operator_requeue_pending`',
+  'Status: source complete; execution verification pending.',
   '`failed` rebuild job becomes the ordinary replay admission barrier',
   '`IndexReplayJobError::DeadLettered`',
   'The SELECT does not load `last_error_details`',
   'ordinary acquisition cannot bypass it with a new job UUID',
-  'authorized requeue or a failed-to-pending transition',
+  'preserves its lease generation and checkpoint',
+  'resets its failure budget, advances the epoch',
   'canonical implementation-plan item',
   'maintainer-run',
 ]);

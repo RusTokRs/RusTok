@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::{
-    EntityKey, FieldCardinality, FieldName, IndexField, IndexModule, IndexMutation, IndexRecord,
+    EntityKey, FieldCardinality, FieldName, IndexField, IndexJobOperatorAuthority,
+    IndexJobRequeueOutcome, IndexModule, IndexMutation, IndexRecord, IndexReplayCancelOutcome,
     IndexReplayJobEnqueueRequest, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
     IndexValue, IndexValueType, LocaleMode, PostgresIndexReplayJobStore,
@@ -193,6 +194,13 @@ async fn worker_yields_original_job_with_durable_checkpoint_then_finishes_withou
     assert!(
         fixture
             .adapter
+            .complete(&first, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .adapter
             .claim(INDEX_REPLAY_WORKER)
             .await
             .unwrap()
@@ -276,7 +284,8 @@ async fn owner_failure_parks_original_job_without_claiming_success_or_rotating_i
         .await
         .unwrap()
         .unwrap();
-    assert!(fixture.adapter.execute(item.clone()).await.is_err());
+    let outcome = fixture.adapter.execute(item.clone()).await.unwrap();
+    assert!(matches!(outcome, ModuleWorkOutcome::Retryable { .. }));
     assert!(
         fixture
             .adapter
@@ -284,16 +293,7 @@ async fn owner_failure_parks_original_job_without_claiming_success_or_rotating_i
             .await
             .is_err()
     );
-    fixture
-        .adapter
-        .complete(
-            &item,
-            ModuleWorkOutcome::Retryable {
-                message: "fixture_native_failure".into(),
-            },
-        )
-        .await
-        .unwrap();
+    fixture.adapter.complete(&item, outcome).await.unwrap();
     assert!(
         fixture
             .adapter
@@ -317,6 +317,231 @@ async fn owner_failure_parks_original_job_without_claiming_success_or_rotating_i
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn audited_requeue_resumes_original_replay_checkpoint_and_rejects_stale_dispatch() {
+    let fixture = Fixture::new(false).await;
+    let db = &fixture.adapter.db;
+    let first = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        fixture.adapter.execute(first).await.unwrap(),
+        ModuleWorkOutcome::Retryable { .. }
+    ));
+    let stale = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    let checkpoint_sql = "SELECT cursor FROM index_checkpoints";
+    let checkpoint = db
+        .query_one_raw(Statement::from_string(DbBackend::Sqlite, checkpoint_sql))
+        .await
+        .unwrap()
+        .unwrap();
+    let continuation: serde_json::Value = checkpoint.try_get("", "cursor").unwrap();
+    assert!(!continuation.is_null());
+
+    db.execute_unprepared("UPDATE index_jobs SET state='failed', failure_count=3, completed_at=CURRENT_TIMESTAMP WHERE kind='rebuild'")
+        .await.unwrap();
+    let actor = Uuid::new_v4();
+    let auth = |tenant| {
+        IndexJobOperatorAuthority::authorize(
+            tenant,
+            tenant,
+            actor,
+            &[rustok_api::Permission::MODULES_MANAGE],
+        )
+        .unwrap()
+    };
+    let runtime = &fixture.adapter.runtime;
+    let reason = "Owner repaired; resume from checkpoint";
+    assert_eq!(
+        runtime
+            .requeue_operator_replay(auth(Uuid::new_v4()), ORIGINAL, reason)
+            .await
+            .unwrap(),
+        IndexJobRequeueOutcome::NotFound
+    );
+    assert_eq!(
+        runtime
+            .requeue_operator_reconciliation(auth(TENANT), ORIGINAL, reason)
+            .await
+            .unwrap(),
+        IndexJobRequeueOutcome::NotFound
+    );
+    let requeued = runtime
+        .requeue_operator_replay(auth(TENANT), ORIGINAL, reason)
+        .await
+        .unwrap();
+    assert!(matches!(
+        requeued,
+        IndexJobRequeueOutcome::Requeued {
+            job_id: ORIGINAL,
+            retry_epoch: 1,
+            ..
+        }
+    ));
+    let after = db
+        .query_one_raw(Statement::from_string(DbBackend::Sqlite, checkpoint_sql))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.try_get::<serde_json::Value>("", "cursor").unwrap(),
+        continuation
+    );
+
+    assert!(matches!(
+        fixture.adapter.execute(stale.clone()).await.unwrap(),
+        ModuleWorkOutcome::Held { .. }
+    ));
+    let current = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.id, ORIGINAL);
+    let result = fixture.adapter.execute(current.clone()).await.unwrap();
+    assert_eq!(result, ModuleWorkOutcome::Completed);
+    fixture.adapter.complete(&current, result).await.unwrap();
+    // The generation is exactly one higher but it belongs to the new retry epoch.
+    assert!(
+        fixture
+            .adapter
+            .complete(&stale, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    let row = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "SELECT state, attempt_count, failure_count, retry_epoch FROM index_jobs WHERE kind='rebuild'"))
+        .await.unwrap().unwrap();
+    assert_eq!(row.try_get::<String>("", "state").unwrap(), "succeeded");
+    assert_eq!(row.try_get::<i64>("", "attempt_count").unwrap(), 2);
+    assert_eq!(row.try_get::<i64>("", "failure_count").unwrap(), 0);
+    assert_eq!(row.try_get::<i64>("", "retry_epoch").unwrap(), 1);
+    let audit = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT job_id, actor_id, job_kind, reason FROM index_job_recovery_audits",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        audit.try_get::<String>("", "job_id").unwrap(),
+        ORIGINAL.to_string()
+    );
+    assert_eq!(
+        audit.try_get::<String>("", "actor_id").unwrap(),
+        actor.to_string()
+    );
+    assert_eq!(audit.try_get::<String>("", "job_kind").unwrap(), "rebuild");
+    assert_eq!(audit.try_get::<String>("", "reason").unwrap(), reason);
+}
+
+#[tokio::test]
+async fn dispatch_rechecks_registration_and_cannot_run_a_later_generation() {
+    let fixture = Fixture::with_pages(false, 0).await;
+    let db = &fixture.adapter.db;
+    let stale = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    db.execute_unprepared("UPDATE index_schemas SET schema_json='{}'")
+        .await
+        .unwrap();
+    assert!(fixture.adapter.execute(stale.clone()).await.is_err());
+    let stored = serde_json::to_string(&fixture.schema).unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE index_schemas SET schema_json = ?1",
+        [stored.into()],
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared("UPDATE index_jobs SET available_at=CURRENT_TIMESTAMP, attempt_count=2")
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture.adapter.execute(stale).await.unwrap(),
+        ModuleWorkOutcome::Held { .. }
+    ));
+    let current = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fixture.adapter.execute(current).await.unwrap(),
+        ModuleWorkOutcome::Completed
+    );
+}
+
+#[tokio::test]
+async fn malformed_due_replay_does_not_block_a_different_tenant() {
+    let fixture = Fixture::with_pages(false, 0).await;
+    let db = &fixture.adapter.db;
+    let next_tenant = Uuid::from_u128(2);
+    let next_job = Uuid::from_u128(901);
+    db.execute_unprepared(&format!("INSERT INTO tenants VALUES ('{next_tenant}')"))
+        .await
+        .unwrap();
+    PostgresSchemaRegistrationStore::new(db.clone())
+        .register(next_tenant, &fixture.schema)
+        .await
+        .unwrap();
+    fixture
+        .jobs
+        .enqueue(
+            &IndexReplayJobEnqueueRequest::new(
+                next_tenant,
+                next_job,
+                fixture.schema.reference.clone(),
+                SOURCE,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    db.execute_unprepared(&format!(
+        "UPDATE index_jobs SET request=json_set(request, '$.contract', 'bad'),
+        available_at=datetime('now', '-1 hour') WHERE job_id='{ORIGINAL}'"
+    ))
+    .await
+    .unwrap();
+    let work = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((work.tenant_id, work.id), (next_tenant, next_job));
+    let parked = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "SELECT last_error_code, failure_count FROM index_jobs WHERE job_id='{ORIGINAL}'",
+            ),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parked.try_get::<String>("", "last_error_code").unwrap(),
+        "index.replay_scheduler.invalid_stored_job"
+    );
+    assert_eq!(parked.try_get::<i64>("", "failure_count").unwrap(), 0);
 }
 
 #[test]
@@ -378,4 +603,146 @@ async fn empty_initial_source_still_completes_original_job_only_after_durable_nu
         .unwrap()
         .unwrap();
     assert_eq!(count.try_get::<i64>("", "n").unwrap(), 0);
+}
+
+#[tokio::test]
+async fn cancel_between_discovery_and_acquisition_is_not_a_terminal_ack_for_that_dispatch() {
+    let fixture = Fixture::with_pages(false, 0).await;
+    let item = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    let authority = IndexJobOperatorAuthority::authorize(
+        TENANT,
+        TENANT,
+        Uuid::new_v4(),
+        &[rustok_api::Permission::MODULES_MANAGE],
+    )
+    .unwrap();
+    assert_eq!(
+        fixture
+            .adapter
+            .runtime
+            .cancel_operator_replay(authority, item.id)
+            .await
+            .unwrap(),
+        IndexReplayCancelOutcome::Cancelled
+    );
+    let error = fixture.adapter.execute(item.clone()).await.unwrap_err();
+    // The generic scheduler converts execution errors before calling `complete`.
+    fixture
+        .adapter
+        .complete(
+            &item,
+            ModuleWorkOutcome::Retryable {
+                message: error.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .adapter
+            .complete(&item, ModuleWorkOutcome::Cancelled)
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .adapter
+            .claim(INDEX_REPLAY_WORKER)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let job = fixture
+        .adapter
+        .db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT job_id, state, attempt_count, retry_epoch, failure_count FROM index_jobs",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        job.try_get::<String>("", "job_id").unwrap(),
+        ORIGINAL.to_string()
+    );
+    assert_eq!(job.try_get::<String>("", "state").unwrap(), "cancelled");
+    for counter in ["attempt_count", "retry_epoch", "failure_count"] {
+        assert_eq!(job.try_get::<i64>("", counter).unwrap(), 0);
+    }
+}
+
+#[tokio::test]
+async fn completion_rejects_a_succeeded_row_with_a_missing_checkpoint_or_wrong_scope() {
+    let fixture = Fixture::with_pages(false, 0).await;
+    let item = fixture
+        .adapter
+        .claim(INDEX_REPLAY_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fixture.adapter.execute(item.clone()).await.unwrap(),
+        ModuleWorkOutcome::Completed
+    );
+    fixture
+        .adapter
+        .complete(&item, ModuleWorkOutcome::Completed)
+        .await
+        .unwrap();
+
+    // Replay can also report AlreadyComplete without a new lease. The acknowledgment must
+    // accept that exact persisted generation only while the terminal checkpoint is present.
+    let mut completed_generation = item.clone();
+    completed_generation.payload["lease_generation"] = json!(1);
+    let already_complete = fixture
+        .adapter
+        .execute(completed_generation.clone())
+        .await
+        .unwrap();
+    assert_eq!(already_complete, ModuleWorkOutcome::Completed);
+    fixture
+        .adapter
+        .complete(&completed_generation, already_complete)
+        .await
+        .unwrap();
+
+    let mut invalid = item.clone();
+    invalid.tenant_id = Uuid::new_v4();
+    assert!(
+        fixture
+            .adapter
+            .complete(&invalid, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    invalid = item.clone();
+    invalid.payload["locale"] = serde_json::json!("fr");
+    assert!(
+        fixture
+            .adapter
+            .complete(&invalid, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+
+    fixture
+        .adapter
+        .db
+        .execute_unprepared("DELETE FROM index_checkpoints")
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .adapter
+            .complete(&completed_generation, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
 }

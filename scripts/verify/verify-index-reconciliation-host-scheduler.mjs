@@ -97,13 +97,14 @@ const claimStart = production.indexOf('    async fn claim(');
 const completeStart = production.indexOf('    async fn complete(', claimStart);
 const claim = production.slice(claimStart, completeStart);
 const slugCheck = claim.indexOf('worker_slug != INDEX_RECONCILIATION_WORKER');
-const discovery = claim.indexOf('discover_due_reconciliation(&self.db, &self.sources).await?');
+const discovery = claim.indexOf('discover_due_reconciliation(&self.db, &self.sources, &self.schemas).await?');
 if (slugCheck < 0 || discovery <= slugCheck) {
   fail(`${schedulerPath} must reject the wrong worker slug before database discovery`);
 }
 
 const sqlStart = production.indexOf('fn due_reconciliation_sql(');
-const sqlEnd = production.indexOf('\nfn invalid_stored_job(', sqlStart);
+const sqlEnd = production.indexOf('\nfn unverified(', sqlStart);
+if (sqlStart < 0 || sqlEnd <= sqlStart) fail(`${schedulerPath} read-only due SQL is missing`);
 const sql = production.slice(sqlStart, sqlEnd);
 for (const marker of [
   'ROW_NUMBER() OVER',
@@ -114,10 +115,10 @@ for (const marker of [
   "kind = 'reconcile'",
   "scope_kind = 'schema'",
   "state IN ('pending', 'running', 'succeeded', 'failed')",
-  'scope_rank = 1',
-  "state = 'pending' AND available_at <= CURRENT_TIMESTAMP",
+  'scope_rank = 1 AND {scope} AND available_at <= CURRENT_TIMESTAMP',
+  "available_at <= CURRENT_TIMESTAMP",
   "state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP",
-  "CASE state WHEN 'running' THEN 0 ELSE 1 END",
+  'ORDER BY available_at, created_at, tenant_id, job_id',
   'LIMIT 1',
 ]) {
   if (!sql.includes(marker)) fail(`${schedulerPath} due discovery SQL is missing ${marker}`);
@@ -160,18 +161,50 @@ for (const marker of [
   'IndexReconciliationRunStatus::FailedPermanent',
   'IndexReconciliationRunStatus::FailedExhausted',
   'ModuleWorkOutcome::Completed',
-  'RUN_FAILED_CODE.to_owned()',
+  'for_discovered_job(',
+  'defer_due_job(',
 ]) {
   if (!execute.includes(marker)) fail(`${schedulerPath} handler is missing ${marker}`);
 }
-for (const forbidden of ['error.to_string()', 'format!("{error', 'last_error_details']) {
+for (const forbidden of ['format!("{error', 'last_error_details']) {
   if (execute.includes(forbidden)) fail(`${schedulerPath} handler exposes ${forbidden}`);
 }
 
 const complete = production.slice(completeStart, production.indexOf('\n}\n\n#[async_trait]', completeStart));
-if (!complete.includes('The canonical reconciliation runner owns every durable transition.')) {
-  fail(`${schedulerPath} completion boundary must remain runner-owned`);
+for (const marker of [
+  'discovered.verifies_outcome(persisted, &state, outcome)',
+  "WHERE tenant_id = $1 AND job_id = $2 AND kind = 'reconcile' AND scope_kind = 'schema'",
+  'request.pass_count != payload.pass_count',
+  'cursor.completed_passes != request.pass_count || cursor.source_cursor.is_some()',
+]) {
+  if (!complete.includes(marker)) fail(`${schedulerPath} completion fence is missing ${marker}`);
 }
+for (const forbidden of ['.execute_raw(', 'defer_due_job(', 'INSERT ', 'UPDATE ', 'DELETE ']) {
+  if (complete.includes(forbidden)) fail(`${schedulerPath} completion must be read-only: ${forbidden}`);
+}
+
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_job_discovery.rs', [
+  'self.generation == i64::from(generation) && self.retry_epoch == retry_epoch',
+  'let same_epoch = persisted.retry_epoch == self.retry_epoch;',
+  'let acquired = self.generation.checked_add(1) == Some(persisted.generation);',
+  'state == "succeeded" && same_epoch && (acquired || persisted == self)',
+  'ModuleWorkOutcome::Cancelled => state == "cancelled" && same_epoch && acquired',
+  'ModuleWorkOutcome::Rejected { .. } => state == "failed" && same_epoch && acquired',
+  'sources.source_for_schema(reference)',
+  "s.status = 'active'",
+  'AND s.schema_fingerprint = ${}',
+  'AND {source_name} = ${}',
+  'AND attempt_count = {prefix}3 AND retry_epoch = {prefix}4',
+  'due_job_where(backend, kind)',
+  'deadline_after_seconds(backend, 6)',
+]);
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/hardening.rs', [
+  'postgres_concurrent_reconciliation_requeue_keeps_generation_and_one_immutable_audit',
+  'adapter.claim(INDEX_RECONCILIATION_WORKER)',
+  'adapter.complete(&item, result)',
+  '&stale("retry_epoch", 2)',
+  '&stale("lease_generation", 4)',
+]);
 
 requireMarkers(runnerPath, [
   'lock_reconciliation_scope(transaction, request, backend).await?;',
@@ -185,7 +218,8 @@ requireMarkers(runnerPath, [
 requireMarkers(postgresPath, [
   'mod source_reconciliation_scheduler;',
   'pub use source_reconciliation_scheduler::{',
-  'INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerPolicy,',
+  'INDEX_RECONCILIATION_WORKER,',
+  'IndexReconciliationSchedulerPolicy,',
   'PostgresIndexReconciliationWorkAdapter,',
   'pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;',
 ]);
@@ -228,7 +262,9 @@ requireMarkers(docsPath, [
   'Status: `source_complete_owner_execution_pending`.',
   'The generic host scheduler remains the only polling and lifecycle owner',
   'Only rank one may become work',
-  'Discovery performs no insert, update, delete, lease acquisition',
+  'The discovery SELECT is read-only and is not lease acquisition.',
+  'original generation, epoch and due state match',
+  'outcomes require the same retry epoch and the exact lease generation',
   'Multiple hosts may discover the same due row',
   'The canonical retry/backoff/dead-letter/global-scheduling plan item remains open',
   'maintainer-run',

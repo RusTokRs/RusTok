@@ -5,8 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const workflowPath = '.github/workflows/index-contract-ci.yml';
-const workflow = fs.readFileSync(path.join(root, workflowPath), 'utf8');
+const workflow = read(workflowPath);
 
 const fail = (message) => {
   console.error(`[verify-index-contract-ci] ${message}`);
@@ -30,6 +31,7 @@ for (const marker of [
   'node scripts/verify/verify-index-schema-supersession.mjs',
   'node scripts/verify/verify-index-schema-scoped-source-event-id.mjs',
   'node scripts/verify/verify-index-source-replay-contract.mjs',
+  'node scripts/verify/verify-index-source-refresh-event.mjs',
   'node scripts/verify/verify-index-replay-locale-job-scope.mjs',
   'node scripts/verify/verify-event-contract-digest-admission.mjs',
   'node scripts/verify/verify-index-product-refresh-event-family.mjs',
@@ -53,6 +55,53 @@ for (const marker of [
   if (!workflow.includes(marker)) fail(`${workflowPath} is missing ${marker}`);
 }
 
+const jobs = `\n${workflow.split('\njobs:\n')[1] ?? ''}`;
+const job = (id) => {
+  const source = jobs.split(`\n  ${id}:\n`)[1];
+  if (!source) fail(`${workflowPath} is missing job ${id}`);
+  return source.split(/\n  [\w-]+:\n/u, 1)[0];
+};
+const requireInJob = (id, markers) => {
+  const source = job(id);
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(`${id} is missing ${marker}`);
+  }
+};
+
+requireInJob('focused-cargo', [
+  'RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test',
+  'services:',
+  'image: postgres:16',
+  'POSTGRES_DB: rustok_index_test',
+  '5432:5432',
+  'pg_isready -U postgres -d rustok_index_test',
+  'cargo test --locked -p rustok-index --lib -- --test-threads=1',
+  '--test drift_repair_concrete_execution_postgres_test',
+  '--test drift_repair_recovery_postgres_test',
+  '--test source_reconciliation_dead_letter_admission_postgres_test',
+]);
+for (const [path, fixture] of [
+  ['services/app_router.rs', 'index_native_json_routes_enforce_request_scope_without_embedded_admin'],
+  ['services/app_router.rs', 'index_standalone_relay_preserves_scope_and_exact_recovery_kind'],
+  ['graphql/index_replay.rs', 'index_admin_csr_commands_validate_against_the_operator_schema'],
+]) {
+  requireInJob('focused-cargo', [`cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
+  if (!read(`apps/server/src/${path}`).includes(`async fn ${fixture}()`)) fail(`${fixture} is not a server test`);
+}
+requireInJob('admin-profiles', [
+  'profile: [ssr, hydrate, csr]',
+  'wasm32-unknown-unknown',
+  'cargo test --locked -p rustok-index-admin --no-default-features --features ssr',
+  'cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr',
+  'cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown',
+]);
+requireInJob('gate', [
+  'if: always()',
+  'needs:',
+  '- admin-profiles',
+  'needs.admin-profiles.result',
+]);
+
 for (const forbidden of [
   'contents: write',
   'pull-requests: write',
@@ -67,14 +116,29 @@ for (const forbidden of [
   }
 }
 
+const [pullRequestPaths, pushPaths] = workflow
+  .split('  pull_request:\n')[1]
+  .split('\npermissions:')[0]
+  .split('  push:\n');
 for (const pathMarker of [
   '"crates/libs/rustok-events/**"',
   '"crates/modules/rustok-product/**"',
   '"crates/modules/rustok-index/**"',
   '"crates/modules/rustok-social-graph/**"',
+  '"crates/modules/rustok-distribution/src/lib.rs"',
+  '"crates/modules/rustok-distribution/src/tests.rs"',
   '"crates/modules/rustok-distribution/src/product_index/**"',
   '"crates/modules/rustok-distribution/src/product_variant_index.rs"',
   '"crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"',
+  '"apps/server/Cargo.toml"',
+  '"apps/server/src/graphql/index_replay*.rs"',
+  '"apps/server/src/services/app_router.rs"',
+  '"apps/server/src/services/index_reconciliation_operator.rs"',
+  '"apps/server/src/services/index_replay_runtime_composition.rs"',
+  '"apps/admin/Cargo.toml"',
+  '"apps/admin/src/app/auth_ssr.rs"',
+  '"apps/admin/src/main.rs"',
+  '"apps/admin/src/shared/api/mod.rs"',
   '"apps/server/src/services/product_index_refresh_worker.rs"',
   '"apps/server/src/services/server_bootstrap.rs"',
   '"apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"',
@@ -87,6 +151,7 @@ for (const pathMarker of [
   '"scripts/verify/verify-index-schema-supersession.mjs"',
   '"scripts/verify/verify-index-schema-scoped-source-event-id.mjs"',
   '"scripts/verify/verify-index-source-replay-contract.mjs"',
+  '"scripts/verify/verify-index-source-refresh-event.mjs"',
   '"scripts/verify/verify-index-replay-locale-job-scope.mjs"',
   '"scripts/verify/verify-index-product-refresh-delivery.mjs"',
   '"scripts/verify/verify-index-product-refresh-host-consumer.mjs"',
@@ -97,7 +162,9 @@ for (const pathMarker of [
   '".github/workflows/index-product-current-schema-promotion-evidence.yml"',
   '".github/workflows/index-contract-ci.yml"',
 ]) {
-  if (!workflow.includes(pathMarker)) fail(`${workflowPath} does not trigger for ${pathMarker}`);
+  if (!pullRequestPaths?.includes(pathMarker) || !pushPaths?.includes(pathMarker)) {
+    fail(`${workflowPath} must include ${pathMarker} in pull_request and push paths`);
+  }
 }
 
 console.log('[verify-index-contract-ci] focused Index contract workflow verified');

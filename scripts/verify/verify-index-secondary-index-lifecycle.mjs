@@ -26,26 +26,28 @@ const lifecycle = requireMarkers(lifecyclePath, [
   'pub struct SecondaryIndexRequest',
   'pub struct SecondaryIndexLease',
   'pub struct PostgresSecondaryIndexManager',
-  'tagged_index_value_v1',
+  'tagged_index_expression_v1',
   'FieldCardinality::One => SecondaryIndexKind::Scalar',
   'FieldCardinality::Many => SecondaryIndexKind::JsonContainment',
   'field.filterable || field.sortable',
   'CREATE INDEX CONCURRENTLY',
-  "(payload -> {field}) ->> 'value'",
-  "USING gin (((payload -> {field}) -> 'value') jsonb_path_ops)",
-  'regexp_replace({value}',
-  'COLLATE \\"C\\"',
+  'scalar_expression("payload", &self.field_name, self.value_type)',
+  'list_expression("payload", &self.field_name)',
+  'jsonb_path_ops',
+  'IndexValueType::Decimal',
   'REINDEX INDEX CONCURRENTLY',
   'DROP INDEX CONCURRENTLY IF EXISTS',
-  'schema_fingerprint =',
-  'is_deleted = FALSE',
   'kind = \'secondary_index\'',
   'scope_kind = \'schema\'',
-  'pg_advisory_xact_lock(hashtextextended($1, 0))',
-  'lease_expires_at <= CURRENT_TIMESTAMP',
-  'lease_expires_at > CURRENT_TIMESTAMP',
+  'pg_try_advisory_xact_lock(hashtextextended($1, 0))',
+  'due_job_where(backend, "secondary_index")',
+  'live_lease_where(backend, "secondary_index", 4, false)',
   'attempt_count =',
-  'obj_description(index_class.oid, \'pg_class\')',
+  "obj_description(c.oid, 'pg_class')",
+  'connection.close_on_drop()',
+  'pg_try_advisory_lock(hashtextextended($1, 0))',
+  'creating_index',
+  'table_oid',
   'indisready',
   'indisvalid',
   'rustok-index:',
@@ -56,7 +58,45 @@ const lifecycle = requireMarkers(lifecyclePath, [
   'DbBackend::Sqlite if cfg!(test)',
 ]);
 
-const lockPosition = lifecycle.indexOf('self.lock_index(transaction, request.spec(), backend)');
+requireMarkers('crates/modules/rustok-index/src/application/postgres_value_sql.rs', [
+  'pub(crate) fn scalar_expression(',
+  'left({text}, -1)',
+  'pub(crate) fn schema_scope_sql(',
+  'schema_fingerprint =',
+  'is_deleted = FALSE',
+]);
+requireMarkers('apps/server/src/graphql/index_replay.rs', [
+  'async fn maintain_index_secondary_index(',
+  'SharedIndexSecondaryIndexRuntime',
+  'runtime.maintain(authority, &schema, &field, operation)',
+]);
+
+const startSession = lifecycle.indexOf('async fn execute_postgres(');
+const closeOnDrop = lifecycle.indexOf('connection.close_on_drop()', startSession);
+const sessionLock = lifecycle.indexOf('pg_try_advisory_lock(hashtextextended($1, 0))', closeOnDrop);
+const ddl = lifecycle.indexOf('execute_postgres_locked(&mut connection, lease)', sessionLock);
+if (startSession < 0 || closeOnDrop <= startSession || sessionLock <= closeOnDrop || ddl <= sessionLock) {
+  fail('PostgreSQL DDL needs one non-reusable session, even if the request is dropped');
+}
+requireMarkers(lifecyclePath, [
+  'if stored.creation_reserved {',
+  'Some(cursor) if cursor == creation_intent(lease, table_oid)',
+  'index.definition != expected',
+  'reserve_creation(session, lease, table_oid, &qualified_index)',
+  'live_lease_where(DbBackend::Postgres, "secondary_index", 1, false)',
+  'WHERE {fence} AND cursor IS NULL',
+  'WHERE {due} AND cursor IS NULL',
+]);
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/hardening.rs', [
+  'postgres_ensure_only_recovers_unmarked_create_with_original_job_intent',
+  'dropped_postgres_ensure_can_be_reclaimed_without_reusing_its_ddl_session',
+  'SELECT j.job_id, l.pid FROM index_jobs AS j',
+  'pg_catalog.pg_stat_activity WHERE pid = $1',
+  '.bind(discarded_pid)',
+  'postgres_compiled_queries_use_owned_btree_and_gin_in_custom_and_generic_plans',
+]);
+
+const lockPosition = lifecycle.indexOf('.lock_index(transaction, request.spec(), backend)');
 const schemaPosition = lifecycle.indexOf('self.verify_schema_registration(');
 const jobPosition = lifecycle.indexOf('select_active_jobs_sql(backend)');
 if (

@@ -32,10 +32,10 @@ const catalog = requireMarkers(catalogPath, [
   'pub fn register_postgres_index_query_link_target_availability(',
   'pub(crate) fn apply_link_target_availability(',
   'fn referenced_first_hop_links(query: &IndexQuery)',
-  'query.referenced_paths()',
+  '.referenced_paths()',
   'path.links().first()',
   'if link_names.is_empty()',
-  'require_requested_link_targets_predicate(&link_names, &target_owner_admission)',
+  'require_requested_link_targets_predicate(&targets, &target_owner_admission)',
   'apply_root_predicate(&mut compiled.sql, &predicate)?',
   'compiled.exact_count.as_mut()',
   '{link}.source_version = {root}.source_version',
@@ -43,6 +43,9 @@ const catalog = requireMarkers(catalogPath, [
   '{target}.entity_id = {link}.target_entity_id',
   '{target}.locale_key = {link}.target_locale_key',
   '{target}.is_deleted = FALSE',
+  'target.fingerprint',
+  '{AVAILABILITY_TARGET_ALIAS}.schema_fingerprint =',
+  'MissingLinkContract',
   'owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS)',
   'scalar_only_query_has_no_referenced_link_targets',
   'linked_query_collects_only_first_hop_link_names',
@@ -62,13 +65,13 @@ forbidMarkers(catalogPath, catalog, [
 const portPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs';
 const port = requireMarkers(portPath, [
   'let mut compiled = page_query.compiled().clone()',
-  '.apply_link_target_availability(query, compiled)',
+  '.apply_link_target_availability(query, compiled, &self.registry)',
   'if let Some(descriptor) = self.admissions.get(&query.schema)',
   '.admission()',
   '.apply(compiled)',
   'verify_persisted_schemas(transaction, query, required_schemas).await',
 ]);
-const availabilityOffset = port.indexOf('.apply_link_target_availability(query, compiled)');
+const availabilityOffset = port.indexOf('.apply_link_target_availability(query, compiled, &self.registry)');
 const entityOffset = port.indexOf('if let Some(descriptor) = self.admissions.get(&query.schema)');
 if (availabilityOffset < 0 || entityOffset < 0 || availabilityOffset >= entityOffset) {
   fail('query_port.rs must apply link availability before generic entity admission');

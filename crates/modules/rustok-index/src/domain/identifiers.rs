@@ -1,6 +1,7 @@
 use std::fmt;
 
 use icu_locale::{Locale, LocaleCanonicalizer};
+use rustok_api::locale::MAX_LOCALE_TAG_LEN;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use uuid::Uuid;
 
@@ -123,7 +124,14 @@ impl LocaleKey {
             })?;
         LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
 
-        Ok(Self(locale.to_string()))
+        let canonical = locale.to_string();
+        if canonical.len() > MAX_LOCALE_TAG_LEN {
+            return Err(DomainError::IdentifierTooLong {
+                kind: "locale",
+                max: MAX_LOCALE_TAG_LEN,
+            });
+        }
+        Ok(Self(canonical))
     }
 
     pub fn as_str(&self) -> &str {

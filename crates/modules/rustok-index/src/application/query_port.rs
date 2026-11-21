@@ -33,6 +33,8 @@ impl fmt::Display for PersistedSchemaReadinessFailure {
 /// Transport-neutral failure contract for executing one validated Index query.
 #[derive(Debug, Error)]
 pub enum IndexQueryExecutionError {
+    #[error("Index query exceeded the execution budget for {stage}")]
+    BudgetExceeded { stage: &'static str },
     #[error(transparent)]
     Plan(#[from] QueryPlanError),
     #[error(transparent)]

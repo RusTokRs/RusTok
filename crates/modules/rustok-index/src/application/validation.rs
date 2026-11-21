@@ -546,15 +546,7 @@ fn valid_field_value(field: &IndexField, value: &IndexValue) -> bool {
 }
 
 fn scalar_matches_type(value: &IndexValue, expected: IndexValueType) -> bool {
-    matches!(
-        (value, expected),
-        (IndexValue::Boolean(_), IndexValueType::Boolean)
-            | (IndexValue::Integer(_), IndexValueType::Integer)
-            | (IndexValue::Decimal(_), IndexValueType::Decimal)
-            | (IndexValue::String(_), IndexValueType::String)
-            | (IndexValue::Uuid(_), IndexValueType::Uuid)
-            | (IndexValue::Timestamp(_), IndexValueType::Timestamp)
-    )
+    value.is_storable_scalar() && value.value_type() == Some(expected)
 }
 
 fn is_ordered_type(value_type: IndexValueType) -> bool {

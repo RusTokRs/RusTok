@@ -103,13 +103,14 @@ impl<'a> ReferenceFixture<'a> {
                     !field.traverses_many && field.path.links().starts_with(&join.path)
                 })
             })
-            .map(|join| IndexRelationIdentity {
-                path: join.path.clone(),
-                entity_id: self
-                    .relation_chains(root, &join.path)
-                    .first()
-                    .and_then(|chain| chain.last())
-                    .map(|record| record.key.entity_id),
+            .map(|join| {
+                let chains = self.relation_chains(root, &join.path);
+                let record = chains.first().and_then(|chain| chain.last());
+                IndexRelationIdentity {
+                    path: join.path.clone(),
+                    entity_id: record.map(|record| record.key.entity_id),
+                    locale: record.and_then(|record| record.key.locale.clone()),
+                }
             })
             .collect();
         let fields = plan
@@ -139,6 +140,7 @@ impl<'a> ReferenceFixture<'a> {
                                 .map(|(path, record)| IndexRelationIdentity {
                                     path,
                                     entity_id: Some(record.key.entity_id),
+                                    locale: record.key.locale.clone(),
                                 })
                                 .collect(),
                             fields: projection
