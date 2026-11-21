@@ -474,3 +474,71 @@ async fn empty_or_whitespace_lock_owner_is_rejected() {
         .expect_err("empty lock owner must be rejected");
     assert!(err.to_string().contains("must not be empty"));
 }
+
+#[tokio::test]
+async fn unstarted_http_job_cleanup_is_identity_fenced_and_terminal() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let job_id = Uuid::new_v4();
+    let submitted_at = Utc::now();
+
+    service
+        .create_http_job(job_id, job_id, submitted_at)
+        .await
+        .expect("persist the job whose insert acknowledgement could be lost");
+
+    assert!(
+        !service
+            .finish_unstarted_http_job_failed(
+                job_id,
+                Uuid::new_v4(),
+                submitted_at,
+            )
+            .await
+            .expect("wrong session is a no-op"),
+        "a different session must not be finalized"
+    );
+    assert!(
+        !service
+            .finish_unstarted_http_job_failed(
+                job_id,
+                job_id,
+                submitted_at + chrono::Duration::seconds(1),
+            )
+            .await
+            .expect("wrong submission time is a no-op"),
+        "an unrelated HTTP submission must not be finalized"
+    );
+    assert_eq!(
+        service
+            .get_http_job(job_id)
+            .await
+            .expect("job read")
+            .expect("job exists")
+            .status,
+        "running"
+    );
+
+    assert!(
+        service
+            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at)
+            .await
+            .expect("exact claim may be safely closed before execution")
+    );
+    let finished = service
+        .get_http_job(job_id)
+        .await
+        .expect("job read")
+        .expect("job exists");
+    assert_eq!(finished.status, "failed");
+    assert!(finished.finished_at.is_some());
+    assert!(finished.error_message.is_some());
+    assert!(finished.output.is_none());
+    assert!(
+        !service
+            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at)
+            .await
+            .expect("terminal cleanup is idempotent"),
+        "a terminal receipt must never be overwritten"
+    );
+}
