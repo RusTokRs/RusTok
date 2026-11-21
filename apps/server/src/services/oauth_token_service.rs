@@ -2244,6 +2244,10 @@ mod tests {
         );
         client.id = app_id;
         client.tenant_id = tenant_id;
+        // Replay cleanup must also work for an already deactivated app; the
+        // app lock is a mutation fence, not a requirement that it is active.
+        client.is_active = false;
+        client.revoked_at = Some(Utc::now().into());
         let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.into();
         active_app.insert(&db).await.expect("insert OAuth app");
         let now = Utc::now();
