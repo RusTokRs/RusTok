@@ -134,7 +134,15 @@ fn localized_auth_templates(
     en: AuthTemplateTriple,
     ru: AuthTemplateTriple,
 ) -> AuthTemplateTriple {
-    if locale.starts_with("ru") { ru } else { en }
+    // Match the BCP 47 language subtag, not an arbitrary string prefix.
+    // Values such as "ruby" are not Russian locales; case variants such as
+    // "RU-RU" are valid and should still use the Russian templates.
+    let language = locale.split(['-', '_']).next().unwrap_or("");
+    if language.eq_ignore_ascii_case("ru") {
+        ru
+    } else {
+        en
+    }
 }
 
 /// Render the password-reset email for the given locale.
@@ -407,6 +415,7 @@ where
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if stop_handle.is_stopping() || state.closed {
         drop(state);
+        record_email_send_skipped();
         tracing::warn!(
             task = task_name,
             "Server runtime is stopping; skipping background email delivery"
@@ -638,6 +647,21 @@ mod tests {
         assert_eq!(regional.subject, base.subject);
         assert_eq!(regional.text, base.text);
         assert_eq!(regional.html, base.html);
+    }
+
+    #[test]
+    fn auth_email_locale_matches_the_primary_language_not_a_prefix() {
+        let en = render_password_reset("en", "https://example.test/reset").unwrap();
+        for locale in ["ruby", "russian", "rus", "ruin"] {
+            let rendered = render_password_reset(locale, "https://example.test/reset").unwrap();
+            assert_eq!(rendered.subject, en.subject, "{locale} is not Russian");
+        }
+
+        let ru = render_password_reset("ru", "https://example.test/reset").unwrap();
+        for locale in ["RU", "RU-RU", "ru_RU"] {
+            let rendered = render_password_reset(locale, "https://example.test/reset").unwrap();
+            assert_eq!(rendered.subject, ru.subject, "{locale} is Russian");
+        }
     }
 
     #[test]
