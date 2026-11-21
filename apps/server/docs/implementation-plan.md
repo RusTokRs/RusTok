@@ -1,5 +1,31 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — Social Graph observer lifecycle (2026-11-21)
+
+Two independent Social Graph Index operational observers (consumer position and
+neutral poison-receipt aggregate) used a check-then-spawn `shared_contains`
+check followed by an unconditional `shared_insert`. Concurrent external
+starters could each spawn a task and overwrite the other's shutdown handle.
+Repeated startup also returned success for a completed observer task, leaving
+health/metrics stale. Neither observer fenced startup during host shutdown.
+
+Both paths now reuse typed `ServerRuntimeStartReservation` and
+`published_worker_running` with initial, contended and post-reservation
+checks, then verify the common `StopHandle` before publishing and committing
+the reservation. A shared `SocialGraphObserverInitializationLock` serializes
+both direct observer starters with shutdown's handle snapshot. The startup
+lock order remains bootstrap → runtime worker initialization → observer;
+an observer never acquires an outer lock while owning its registration lock. A failed/invalid optional poll configuration releases the
+reservation; no broker offset or durable receipt is mutated.
+Unit regressions cover exited Tokio tasks and competing startup reservations.
+
+Also corrected the Social Graph raw-poison publication diagnostic unit test
+to match the previous fail-closed change: an ambiguous external send is
+`reconciliation required`, not a proven failed send.
+
+These tests were authored but not executed; no compilation, formatting or
+integration runs were performed per maintainer instruction.
+
 ## Server audit continuation — ambiguous poison DLQ results (2026-11-21)
 
 Confirmed in `ConsumerPoisonReceiptStore` and the Forum Search/Social Graph

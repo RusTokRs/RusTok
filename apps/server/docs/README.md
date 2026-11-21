@@ -414,6 +414,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
+- Social Graph Index position and poison-receipt observers have independent
+  single-owner startup reservations and a shared admission lock that the
+  shutdown drain also acquires before snapshotting observer JoinHandles.
+  Concurrent direct/bootstrap callers cannot spawn duplicate observers,
+  publish after shutdown's snapshot, or overwrite their only shutdown handle.
+  A retained handle whose task exited is an explicit repeated-start failure,
+  not a false `Ok(())`; a contending caller receives an in-progress error
+  until publication. Both observers reject startup after shutdown begins,
+  and optional invalid poll configuration still leaves projection active.
 - Product Index refresh, Social Graph Index and Forum Search typed broker
   consumers check shutdown again **after** broker receive completes but before
   invoking projection, semantic decode handling or poison DLQ publication.

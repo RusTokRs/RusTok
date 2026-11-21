@@ -243,6 +243,23 @@ impl ModuleArtifactMaintenanceInitializationLock {
     }
 }
 
+/// Serializes both Social Graph operational observers' handle publication
+/// against the runtime shutdown snapshot. This lock is independent of the
+/// bootstrap lock: direct observer starters also use it without needing to
+/// acquire the bootstrap lock recursively.
+#[cfg(feature = "mod-social_graph")]
+#[derive(Clone, Default)]
+pub(crate) struct SocialGraphObserverInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+#[cfg(feature = "mod-social_graph")]
+impl SocialGraphObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
 /// Serializes the complete server bootstrap against competing bootstraps and
 /// the shutdown drain. Several worker starters intentionally use a
 /// check-then-insert sequence; this host-level fence makes that sequence
@@ -920,6 +937,18 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
     let _worker_initialization_guard = worker_initialization.0.lock().await;
     drop(_worker_initialization_guard);
+
+    // Direct observer startup can bypass router bootstrap. Wait for each
+    // observer's check-stop -> spawn -> publish sequence to complete before
+    // taking the shutdown JoinHandle snapshot. Lock order is bootstrap ->
+    // runtime workers -> observer; observer starters never acquire either
+    // outer lock while holding this one.
+    #[cfg(feature = "mod-social_graph")]
+    let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
+    #[cfg(feature = "mod-social_graph")]
+    let _observer_initialization_guard = observer_initialization.0.lock().await;
+    #[cfg(feature = "mod-social_graph")]
+    drop(_observer_initialization_guard);
 
     let timeout_duration = Duration::from_secs(5);
 

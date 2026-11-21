@@ -1071,7 +1071,7 @@ mod tests {
         let reason = raw_poison_publish_failure(3);
         assert_eq!(
             reason,
-            "exact-byte raw poison publication failed after 3 attempt(s); source offset remains uncommitted"
+            "exact-byte raw poison publication outcome unknown after 3 attempt(s); reconciliation required; source offset remains uncommitted"
         );
         assert!(!reason.contains("password"));
         assert!(!reason.contains("token"));
