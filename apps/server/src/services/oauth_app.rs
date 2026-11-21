@@ -293,9 +293,12 @@ impl OAuthAppService {
         input: UpdateOAuthAppInput,
     ) -> Result<oauth_apps::Model> {
         let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        // The authorization decision and security-sensitive OAuth configuration
+        // mutation must observe the same app version. Manifest reconciliation,
+        // token issuance and consent use this app-row fence too. On SQLite it
+        // reserves the writer before reading to avoid read-to-write races.
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -337,15 +340,15 @@ impl OAuthAppService {
         active.updated_at = Set(Utc::now().into());
 
         let mut updated = active
-            .update(db)
+            .update(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
         // The ActiveModel update deliberately leaves these columns NotSet.
-        // Refresh their projection after commit so the response does not
-        // report a stale secret/lifecycle/use snapshot from the initial read.
+        // Read their projection under the same lock/transaction so the response
+        // represents the committed mutation, not a stale preflight snapshot.
         let current = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+            .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
@@ -353,6 +356,7 @@ impl OAuthAppService {
         updated.is_active = current.is_active;
         updated.revoked_at = current.revoked_at;
         updated.last_used_at = current.last_used_at;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(updated)
     }
 
@@ -474,12 +478,13 @@ impl OAuthAppService {
         app_id: Uuid,
     ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+        // Check revocation eligibility only after acquiring the app mutation
+        // fence. A manifest sync may claim the app after an unprotected read;
+        // the old path could then revoke newly manifest-managed credentials.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
+            .ok_or(Error::NotFound)?;
 
         if !app.can_revoke() {
             return Err(Error::BadRequest(
@@ -491,14 +496,18 @@ impl OAuthAppService {
         let now = Utc::now();
 
         // Deactivate the app (column-scoped; see update_app)
-        oauth_apps::Entity::update_many()
+        let deactivated = oauth_apps::Entity::update_many()
             .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
             .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now.clone())))
             .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now.clone()))
             .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if deactivated.rows_affected != 1 {
+            return Err(Error::NotFound);
+        }
 
         let updated = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
