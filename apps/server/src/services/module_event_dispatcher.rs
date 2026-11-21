@@ -1137,6 +1137,97 @@ mod lifecycle_tests {
     use super::*;
     use crate::common::settings::RuntimeHostMode;
 
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_payment_recovery_starts_only_one_runtime_worker() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let arrivals = Arc::new(tokio::sync::Barrier::new(16));
+        let mut calls = Vec::new();
+        for _ in 0..16 {
+            let ctx = ctx.clone();
+            let arrivals = Arc::clone(&arrivals);
+            calls.push(tokio::spawn(async move {
+                arrivals.wait().await;
+                spawn_payment_provider_event_worker_if_enabled(&ctx);
+            }));
+        }
+        for call in calls {
+            call.await.expect("worker composition should not panic");
+        }
+        let first_instance = ctx
+            .shared_map::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+                _,
+            >(|worker| worker.instance_id())
+            .expect("one payment recovery worker must be registered");
+        assert!(ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
+        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert_eq!(
+            ctx.shared_map::<
+                crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+                _,
+            >(|worker| worker.instance_id()),
+            Some(first_instance),
+            "repeated startup cannot overwrite the owner handle"
+        );
+
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        if let Some(worker) = ctx.shared_take::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >() {
+            tokio::time::timeout(std::time::Duration::from_secs(3), worker.join())
+                .await
+                .expect("payment recovery should stop cooperatively")
+                .expect("payment recovery join should succeed");
+        }
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    #[test]
+    fn unavailable_fulfillment_registry_does_not_poison_worker_admission() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        spawn_paid_order_label_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<PaidOrderLabelWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >());
+    }
+
+    #[cfg(feature = "commerce-marketplace-financial")]
+    #[test]
+    fn unavailable_financial_runtime_does_not_poison_worker_admission() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        spawn_marketplace_financial_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<MarketplaceFinancialWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >());
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn stopped_host_does_not_register_payment_recovery_worker() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert!(!ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
+        assert!(!ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+    }
+
     #[test]
     fn module_event_dispatcher_runs_only_in_background_worker_profiles() {
         for mode in [RuntimeHostMode::Full, RuntimeHostMode::Worker] {
