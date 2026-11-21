@@ -28,10 +28,13 @@ pub(crate) async fn await_worker_startup_or_stop<F>(
 where
     F: std::future::Future,
 {
-    if stop.is_stopping() {
+    // Subscribe before inspecting the current value: a stop sent between a
+    // separate check and subscription would otherwise be considered already
+    // observed by watch::Receiver::changed(), leaving pending setup stuck.
+    let mut stopped = stop.subscribe();
+    if *stopped.borrow() {
         return None;
     }
-    let mut stopped = stop.subscribe();
     tokio::select! {
         biased;
         _ = stopped.changed() => None,
