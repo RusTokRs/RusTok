@@ -1,7 +1,9 @@
 use crate::error::{Error, Result};
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle, JoinSet};
 
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
@@ -736,6 +738,136 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     Ok(())
 }
 
+const INSTALLER_JOB_SHUTDOWN_GRACE: Duration = Duration::from_secs(60);
+const INSTALLER_JOB_ABORT_JOIN_GRACE: Duration = Duration::from_secs(5);
+
+struct InstallerJobTaskRegistry {
+    state: Mutex<InstallerJobTaskRegistryState>,
+}
+
+struct InstallerJobTaskRegistryState {
+    closed: bool,
+    tasks: JoinSet<()>,
+}
+
+impl Default for InstallerJobTaskRegistry {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(InstallerJobTaskRegistryState {
+                closed: false,
+                tasks: JoinSet::new(),
+            }),
+        }
+    }
+}
+
+impl InstallerJobTaskRegistry {
+    fn spawn<F>(&self, task: F) -> bool
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            return false;
+        }
+
+        // Reap completed jobs before admitting another one. The JoinSet keeps
+        // ownership of every live task and makes panics observable.
+        while let Some(result) = state.tasks.try_join_next() {
+            observe_installer_job_task_result(result);
+        }
+        let _abort_handle = state.tasks.spawn(task);
+        true
+    }
+
+    async fn drain(&self) {
+        self.drain_with_timeout(INSTALLER_JOB_SHUTDOWN_GRACE, INSTALLER_JOB_ABORT_JOIN_GRACE)
+            .await;
+    }
+
+    async fn drain_with_timeout(&self, grace: Duration, abort_join_grace: Duration) {
+        let mut tasks = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.closed = true;
+            std::mem::replace(&mut state.tasks, JoinSet::new())
+        };
+
+        if tasks.is_empty() {
+            return;
+        }
+
+        let pending = tasks.len();
+        tracing::info!(pending, "Draining accepted installer HTTP jobs");
+        let drained = tokio::time::timeout(grace, async {
+            while let Some(result) = tasks.join_next().await {
+                observe_installer_job_task_result(result);
+            }
+        })
+        .await;
+
+        if drained.is_err() {
+            let pending = tasks.len();
+            tracing::error!(
+                pending,
+                "Installer HTTP job shutdown grace expired; aborting in-flight work and preserving its durable running claim for operator reconciliation"
+            );
+            tasks.abort_all();
+            let joined = tokio::time::timeout(abort_join_grace, async {
+                while let Some(result) = tasks.join_next().await {
+                    observe_installer_job_task_result(result);
+                }
+            })
+            .await;
+            if joined.is_err() {
+                tracing::error!(
+                    pending = tasks.len(),
+                    "Installer HTTP job tasks did not finish after abort; dropping the JoinSet will abort remaining tasks"
+                );
+            }
+        }
+    }
+}
+
+fn observe_installer_job_task_result(result: std::result::Result<(), JoinError>) {
+    if let Err(error) = result {
+        if error.is_cancelled() {
+            tracing::warn!("Installer HTTP job task was cancelled during shutdown");
+        } else {
+            tracing::error!(
+                panicked = error.is_panic(),
+                "Installer HTTP job task exited without completing normally"
+            );
+        }
+    }
+}
+
+/// Register an HTTP installer job in the runtime-owned JoinSet.
+///
+/// The registry's close operation is serialized with task admission, so a
+/// request racing shutdown is either included in the drain or rejected.
+pub(crate) fn spawn_installer_job_task<F>(ctx: &ServerRuntimeContext, task: F) -> bool
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let registry =
+        ctx.shared_get_or_insert_with(|| std::sync::Arc::new(InstallerJobTaskRegistry::default()));
+    registry.spawn(task)
+}
+
+/// Close installer-job admission and join all accepted tasks before the event
+/// forwarder is drained.
+pub(crate) async fn drain_installer_job_tasks(ctx: &ServerRuntimeContext) {
+    let registry =
+        ctx.shared_get_or_insert_with(|| std::sync::Arc::new(InstallerJobTaskRegistry::default()));
+    registry.drain().await
+}
+
 /// Stops all runtime workers that were registered during server bootstrap.
 pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // Publish shutdown even when startup has not created a stop handle yet.
@@ -806,6 +938,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // task ownership after HTTP callers discard JoinHandles, and closes new
     // admission while allowing a bounded grace period for accepted sends.
     let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
+    let installer_job_drain = drain_installer_job_tasks(runtime_ctx);
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
@@ -1236,6 +1369,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         retention_drain,
         auth_retention_drain,
         auth_email_drain,
+        installer_job_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -2539,5 +2673,83 @@ mod tests {
 
         assert!(!runtime_ctx.shared_contains::<super::ModuleWorkSchedulerHandle>());
         assert!(super::StopHandle::ensure(&runtime_ctx).is_stopping());
+    }
+}
+
+
+#[cfg(test)]
+mod installer_job_task_registry_tests {
+    use super::{
+        drain_installer_job_tasks, spawn_installer_job_task, InstallerJobTaskRegistry,
+    };
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn installer_job_tasks_are_drained_and_admission_closes() {
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        assert!(spawn_installer_job_task(&ctx, async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+        }));
+        started_rx.await.expect("installer task started");
+
+        let drain_ctx = ctx.clone();
+        let drain = tokio::spawn(async move {
+            drain_installer_job_tasks(&drain_ctx).await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!drain.is_finished(), "shutdown must join accepted installer work");
+
+        release_tx.send(()).expect("release installer task");
+        tokio::time::timeout(Duration::from_secs(2), drain)
+            .await
+            .expect("installer drain completes")
+            .expect("installer drain task joins");
+
+        assert!(
+            !spawn_installer_job_task(&ctx, async {}),
+            "shutdown must permanently close installer task admission"
+        );
+    }
+
+    #[tokio::test]
+    async fn stuck_installer_job_tasks_are_aborted_after_the_grace_timeout() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let registry = InstallerJobTaskRegistry::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let task_dropped = Arc::clone(&dropped);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        assert!(registry.spawn(async move {
+            let _drop_flag = DropFlag(task_dropped);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        }));
+        started_rx.await.expect("installer task started");
+
+        registry
+            .drain_with_timeout(Duration::from_millis(5), Duration::from_secs(1))
+            .await;
+
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "aborting the timed-out JoinSet must drop the in-flight task"
+        );
+        assert!(!registry.spawn(async {}), "drained registry stays closed");
     }
 }

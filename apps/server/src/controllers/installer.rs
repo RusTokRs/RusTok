@@ -20,6 +20,9 @@ use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -30,6 +33,10 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const INSTALLER_JOB_FAILURE_MESSAGE: &str =
     "installer apply failed; inspect durable installer receipts for recovery details";
+const INSTALLER_HTTP_JOB_CREATE_MAX_ATTEMPTS: u32 = 3;
+const INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS: u32 = 5;
+const INSTALLER_HTTP_JOB_RETRY_BASE_DELAY_MS: u64 = 100;
+const INSTALLER_HTTP_JOB_RETRY_MAX_DELAY_MS: u64 = 1_000;
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -186,58 +193,212 @@ impl ActiveInstallerJobHandle {
 
 struct InstallerJobRuntimeGuard {
     ctx: ServerRuntimeContext,
+    job_id: Uuid,
 }
 
 impl Drop for InstallerJobRuntimeGuard {
     fn drop(&mut self) {
-        self.ctx.shared_take::<ActiveInstallerJobHandle>();
+        if self
+            .ctx
+            .shared_get::<ActiveInstallerJobHandle>()
+            .is_some_and(|active| active.id() == self.job_id)
+        {
+            self.ctx.shared_remove::<ActiveInstallerJobHandle>();
+        }
     }
 }
 
-/// The HTTP request may be cancelled while the durable running claim is
-/// being written. Give both the claim and its execution to the same spawned
-/// task *before* awaiting the claim result, so disconnects cannot strand a
-/// running row whose installer task was never launched.
+fn installer_http_job_retry_delay(attempt: u32) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(4);
+    let multiplier = 1_u64 << exponent;
+    Duration::from_millis(
+        INSTALLER_HTTP_JOB_RETRY_BASE_DELAY_MS
+            .saturating_mul(multiplier)
+            .min(INSTALLER_HTTP_JOB_RETRY_MAX_DELAY_MS),
+    )
+}
+
+/// A lost database response after INSERT is ambiguous. Retry the same job ID
+/// and reconcile by reading the exact row before deciding the claim failed.
+async fn create_http_job_with_retry(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+    submitted_at: DateTime<Utc>,
+) -> std::result::Result<InstallHttpJobModel, sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_CREATE_MAX_ATTEMPTS {
+        match persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+        {
+            Ok(job) => return Ok(job),
+            Err(error) => match persistence.get_http_job(job_id).await {
+                Ok(Some(existing))
+                    if existing.status == "running"
+                        && existing.session_id == Some(job_id)
+                        && existing.submitted_at == submitted_at =>
+                {
+                    return Ok(existing);
+                }
+                Ok(Some(_)) => return Err(error),
+                Ok(None) => last_error = Some(error),
+                Err(read_error) => last_error = Some(read_error),
+            },
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_CREATE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom("installer HTTP job creation exhausted its retry budget".to_string())
+    }))
+}
+
+/// Terminal state writes are idempotent at the HTTP-job boundary. If a commit
+/// response is lost, a read-after-error recognizes the already committed state;
+/// if the row remains running, the safe CAS is retried with bounded backoff.
+async fn finish_http_job_succeeded_with_retry(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+    output: &InstallApplyOutput,
+) -> std::result::Result<(), sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+        match persistence
+            .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, output)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error) => match persistence.get_http_job(job_id).await {
+                Ok(Some(job))
+                    if job.status == "succeeded"
+                        && job.session_id == Some(output.session_id)
+                        && job.tenant_id == output.tenant_id =>
+                {
+                    return Ok(());
+                }
+                Ok(Some(job)) if job.status == "running" => last_error = Some(error),
+                Ok(Some(_)) | Ok(None) => return Err(error),
+                Err(read_error) => last_error = Some(read_error),
+            },
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom("installer HTTP job success finalization exhausted its retry budget".to_string())
+    }))
+}
+
+async fn finish_http_job_failed_with_retry(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+) -> std::result::Result<(), sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+        match persistence
+            .finish_http_job_failed(job_id, INSTALLER_JOB_FAILURE_MESSAGE)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error) => match persistence.get_http_job(job_id).await {
+                Ok(Some(job)) if job.status == "failed" => return Ok(()),
+                Ok(Some(job)) if job.status == "running" => last_error = Some(error),
+                Ok(Some(_)) | Ok(None) => return Err(error),
+                Err(read_error) => last_error = Some(read_error),
+            },
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom("installer HTTP job failure finalization exhausted its retry budget".to_string())
+    }))
+}
+
+/// The request may be cancelled after admission. The runtime JoinSet owns the
+/// claim-to-execution task and the shutdown drain joins it before the event
+/// forwarder is stopped.
 fn spawn_persisted_installer_job<F>(
     ctx: ServerRuntimeContext,
     persistence: InstallerPersistenceService,
     job_id: Uuid,
     submitted_at: DateTime<Utc>,
     execute: F,
-) -> tokio::sync::oneshot::Receiver<std::result::Result<(), sea_orm::DbErr>>
+) -> Option<tokio::sync::oneshot::Receiver<std::result::Result<(), sea_orm::DbErr>>>
 where
     F: Future<Output = ()> + Send + 'static,
 {
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        // Own the reservation from the first poll until the job terminates.
-        // Cancellation of the caller does not drop this guard or the task.
-        let stop = crate::services::app_lifecycle::StopHandle::ensure(&ctx);
-        let _guard = InstallerJobRuntimeGuard { ctx };
-        let creation = persistence
-            .create_http_job(job_id, job_id, submitted_at)
-            .await
-            .map(|_| ());
-        let created = creation.is_ok();
-        let _ = ready_tx.send(creation);
-        if !created {
-            return;
-        }
-        if stop.is_stopping() {
-            // The claim may have been committed while shutdown began. No
-            // installer side effects have started yet, so this transition is
-            // safe; never leave a newly admitted but unstarted running job.
-            if let Err(_error) = persistence
-                .finish_http_job_failed(job_id, "server shutdown before installer execution")
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(&ctx);
+    let guard = InstallerJobRuntimeGuard {
+        ctx: ctx.clone(),
+        job_id,
+    };
+    let executor_started = Arc::new(AtomicBool::new(false));
+    let executor_started_in_task = Arc::clone(&executor_started);
+    let persistence_for_recovery = persistence.clone();
+
+    let task = async move {
+        let _guard = guard;
+        let task_result = AssertUnwindSafe(async move {
+            let creation = create_http_job_with_retry(&persistence, job_id, submitted_at)
                 .await
-            {
-                tracing::error!(%job_id, "Failed to mark unstarted installer job as failed during shutdown");
+                .map(|_| ());
+            let created = creation.is_ok();
+            let _ = ready_tx.send(creation);
+            if !created {
+                return;
             }
-            return;
+
+            if stop.is_stopping() {
+                // No installer side effects have started yet, so failing this
+                // durable claim is safe and avoids a newly admitted orphan.
+                if let Err(_error) =
+                    finish_http_job_failed_with_retry(&persistence, job_id).await
+                {
+                    tracing::error!(
+                        %job_id,
+                        "Failed to mark unstarted installer job as failed during shutdown"
+                    );
+                }
+                return;
+            }
+
+            executor_started_in_task.store(true, Ordering::Release);
+            execute.await;
+        })
+        .catch_unwind()
+        .await;
+
+        if task_result.is_err() {
+            tracing::error!(%job_id, "Installer HTTP job task panicked outside the executor boundary");
+            if !executor_started.load(Ordering::Acquire) {
+                if let Err(_error) =
+                    finish_http_job_failed_with_retry(&persistence_for_recovery, job_id).await
+                {
+                    tracing::error!(
+                        %job_id,
+                        "Failed to persist the interrupted pre-execution installer job state"
+                    );
+                }
+            }
         }
-        execute.await;
-    });
-    ready_rx
+    };
+
+    if crate::services::app_lifecycle::spawn_installer_job_task(&ctx, task) {
+        Some(ready_rx)
+    } else {
+        None
+    }
 }
 
 fn require_installer_not_stopping(ctx: &ServerRuntimeContext) -> Result<()> {
@@ -320,8 +481,8 @@ async fn apply(
     let executor = ServerInstallExecutor::new(registry);
 
     // All fallible preparation ends before the local reservation. The durable
-    // claim and its execution are then owned by one detached task, never by
-    // the cancelable HTTP request future.
+    // claim and its execution are then owned by the runtime task registry, never
+    // by the cancelable HTTP request future.
     require_installer_not_stopping(&ctx)?;
     if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
         return Err(http_error(HttpError::new(
@@ -340,42 +501,51 @@ async fn apply(
 
         match execution {
             Ok(Ok(output)) => {
-                if let Err(_error) = persistence
-                    .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
-                    .await
+                if let Err(_error) =
+                    finish_http_job_succeeded_with_retry(&persistence, job_id, &output).await
                 {
-                    tracing::error!(job_id = %job_id, "Failed to finalize durable installer HTTP job");
+                    tracing::error!(job_id = %job_id, "Failed to finalize durable installer HTTP job after bounded retries");
                 }
             }
             Ok(Err(_error)) => {
-                let error_message = INSTALLER_JOB_FAILURE_MESSAGE;
                 tracing::error!(%job_id, "Installer apply job failed; error details redacted");
-                if let Err(_update_error) = persistence
-                    .finish_http_job_failed(job_id, error_message)
-                    .await
+                if let Err(_update_error) =
+                    finish_http_job_failed_with_retry(&persistence, job_id).await
                 {
                     tracing::error!(
                         %job_id,
-                        "Failed to persist installer HTTP job failure state"
+                        "Failed to persist installer HTTP job failure state after bounded retries"
                     );
                 }
             }
             Err(_panic) => {
                 tracing::error!(%job_id, "Installer apply job panicked unexpectedly");
-                if let Err(_update_error) = persistence
-                    .finish_http_job_failed(job_id, "installer apply panicked unexpectedly")
-                    .await
+                if let Err(_update_error) =
+                    finish_http_job_failed_with_retry(&persistence, job_id).await
                 {
                     tracing::error!(
                         %job_id,
-                        "Failed to persist installer HTTP job panic failure state"
+                        "Failed to persist installer HTTP job panic failure state after bounded retries"
                     );
                 }
             }
         }
     };
-    let ready =
-        spawn_persisted_installer_job(ctx, persistence, job_id, submitted_at, execution_task);
+    let ready = spawn_persisted_installer_job(
+        ctx,
+        persistence,
+        job_id,
+        submitted_at,
+        execution_task,
+    )
+    .ok_or_else(|| {
+        tracing::warn!(%job_id, "Installer job was rejected because shutdown closed task admission");
+        http_error(HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "installer_stopping",
+            "Installer is unavailable while the server is stopping",
+        ))
+    })?;
     let created = ready.await.map_err(|_| {
         tracing::error!(%job_id, "Installer claim task exited before acknowledging durable job creation");
         internal_error("installer job creation did not complete")
@@ -819,7 +989,8 @@ mod tests {
                 let _ = started_tx.send(());
                 release_rx.await.expect("release installer task");
             },
-        );
+        )
+        .expect("runtime accepts installer job task");
         // Simulate HTTP client disconnecting before the claim was acknowledged.
         drop(ready);
         tokio::time::timeout(Duration::from_secs(2), started_rx)
@@ -866,7 +1037,8 @@ mod tests {
             async move {
                 let _ = ran_tx.send(()).await;
             },
-        );
+        )
+        .expect("runtime accepts installer job task");
         ready.await.expect("claim reply").expect("claim persisted");
         tokio::time::timeout(Duration::from_secs(2), async {
             while ctx.shared_contains::<ActiveInstallerJobHandle>() {
@@ -903,7 +1075,8 @@ mod tests {
             async move {
                 let _ = ran_tx.send(()).await;
             },
-        );
+        )
+        .expect("runtime accepts installer job task");
         assert!(ready.await.expect("claim task replies").is_err());
         tokio::time::timeout(Duration::from_secs(2), async {
             while ctx.shared_contains::<ActiveInstallerJobHandle>() {
@@ -1227,4 +1400,56 @@ mod tests {
         assert!(!validate_setup_token_value(None, "secret123"));
         assert!(!validate_setup_token_value(Some("secret123"), "   "));
     }
+
+    #[tokio::test]
+    async fn installer_http_job_creation_reconciles_an_ambiguous_duplicate_insert() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("initial durable claim");
+
+        let recovered = create_http_job_with_retry(&persistence, job_id, submitted_at)
+            .await
+            .expect("an already committed claim is an idempotent success");
+        assert_eq!(recovered.id, job_id);
+        assert_eq!(recovered.session_id, Some(job_id));
+        assert_eq!(recovered.status, "running");
+        assert_eq!(recovered.submitted_at, submitted_at);
+    }
+
+    #[tokio::test]
+    async fn installer_http_job_failure_finalization_accepts_an_already_committed_state() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("durable claim");
+
+        persistence
+            .finish_http_job_failed(job_id, "first terminal write")
+            .await
+            .expect("first terminal write");
+
+        finish_http_job_failed_with_retry(&persistence, job_id)
+            .await
+            .expect("already committed failed state is idempotent");
+
+        let stored = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("read terminal job")
+            .expect("job exists");
+        assert_eq!(stored.status, "failed");
+    }
+
+
 }

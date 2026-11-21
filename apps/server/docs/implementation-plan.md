@@ -2223,3 +2223,53 @@ cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_c
 cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
 cargo test -p rustok-server --lib services::oauth_admin_guard::tests::guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling
 ```
+
+
+## P29 — Supervise HTTP installer jobs and retry durable claim finalization (2026-11-21)
+
+The HTTP installer already persisted its job before executing the plan, but the
+claim-to-execution task was a raw tokio::spawn. The global shutdown drain did not
+own or join it. A transient database error or a lost commit response during job
+creation/finalization could also leave a durable running row even when the
+corresponding write had committed.
+
+### Implemented
+
+- Added a runtime-owned installer task registry backed by JoinSet. Admission
+  and shutdown closure share one mutex fence: a racing request is either
+  registered before the drain snapshot or rejected after admission closes.
+- Shutdown now waits up to 60 seconds for accepted installer work, then aborts
+  and joins remaining tasks. The drain runs with other producers and completes
+  before the event forwarder is stopped.
+- The installer reservation guard now releases only the matching job ID.
+- Job creation retries the same generated ID and reconciles an ambiguous insert
+  by reading back the exact persisted running row (ID, session, status, and
+  submitted timestamp).
+- Success and failure terminal writes use bounded exponential backoff and
+  read-after-error reconciliation. A terminal state already committed is
+  treated as success; a still-running row receives another safe compare-and-set
+  attempt.
+- Added regression coverage for registry shutdown admission/draining, bounded
+  abort, ambiguous create recovery, and idempotent failure finalization.
+
+### Remaining crash-recovery boundary
+
+A hard process crash, or a shutdown timeout after executor entry, can still
+leave the durable HTTP job in running. The patch deliberately does not replay
+an installer automatically: external side effects may have happened even when
+the final receipt or HTTP-job transition was not observed. The session's
+attempt-generation/receipt fence remains authoritative; an operator must
+reconcile durable receipts and session state before releasing the global
+installer fence. A separate ADR is still required for a durable job lease,
+heartbeat, and safe operator reconciliation workflow.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+- cargo fmt --all -- --check
+- cargo check -p rustok-server --lib
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_creation_reconciles_an_ambiguous_duplicate_insert
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_failure_finalization_accepts_an_already_committed_state
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::installer_job_tasks_are_drained_and_admission_closes
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::stuck_installer_job_tasks_are_aborted_after_the_grace_timeout
