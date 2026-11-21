@@ -156,7 +156,7 @@ impl GuardedOAuthAdminProvider {
         // retryable conflict instead of returning a secret that has already
         // been superseded by the other successful request.
         if app.client_secret_hash != prepared.prior_secret_hash {
-            return Err(AuthAdminMutationError::Validation(
+            return Err(AuthAdminMutationError::Conflict(
                 "OAuth client secret changed during rotation; retry".to_string(),
             ));
         }
@@ -616,7 +616,7 @@ mod tests {
         };
         assert!(matches!(
             error,
-            AuthAdminMutationError::Validation(message)
+            AuthAdminMutationError::Conflict(message)
                 if message.contains("changed during rotation")
         ));
         let current = oauth_apps::Entity::find_by_id(app_id)
