@@ -61,11 +61,11 @@ pub(crate) async fn handle(request: Request) -> Response {
 
     let body = match to_bytes(request.into_body(), MAX_CSP_REPORT_BYTES).await {
         Ok(body) => body,
-        Err(error) => {
+        Err(_error) => {
             record_invalid_report("payload_too_large");
             tracing::warn!(
                 target: "rustok.security.csp",
-                %error,
+                error_code = "csp_report_body_unreadable_or_oversized",
                 max_bytes = MAX_CSP_REPORT_BYTES,
                 "Rejected oversized or unreadable CSP report body"
             );

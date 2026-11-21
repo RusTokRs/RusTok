@@ -329,7 +329,10 @@ fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
         }
         ModuleGovernanceErrorCategory::Conflict => response(StatusCode::CONFLICT, code, &detail),
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(error = %detail, "Atomic registry runner transition failed");
+            tracing::error!(
+                error_code = code,
+                "Atomic registry runner transition failed"
+            );
             response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
