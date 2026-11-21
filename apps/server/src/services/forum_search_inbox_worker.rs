@@ -112,7 +112,14 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, ForumSearchInboxStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Forum Search inbox worker startup is already in progress; retry".to_string(),
+        ));
     };
     if ctx.shared_contains::<ForumSearchInboxWorkerHandle>() {
         return Ok(());
