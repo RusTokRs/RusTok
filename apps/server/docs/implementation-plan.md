@@ -1,5 +1,35 @@
 # Server App — Implementation Plan
 
+## Server runtime follow-up (2026-11-21)
+
+This bounded continuation follows merged PR #4759 and stays on
+`agent/server-runtime-lifecycle-followup-20261121`.
+The pass examined remaining host services, controller request boundaries,
+middleware admission, transaction outcomes, and cooperative shutdown of
+registered background workers; it is **not** a claim that every server path
+has been exhaustively verified or that the full-stack audit gates are closed.
+
+- Generic settings writes now reject both missing and nil actor UUIDs before
+  opening a transaction. This preserves the documented non-nil actor identity
+  for persisted settings rows and their transactional outbox events.
+- CSP reporting batches count only actual CSP violations against the bounded
+  processing limit, so unrelated Reporting API entry types cannot suppress
+  CSP reports that appear later in the same batch.
+- The search-backend readiness TCP target now parses URL authorities instead
+  of splitting strings at slashes. Query strings/fragments no longer become
+  hostname bytes; invalid ports and schemes fail consistently, with legacy
+  bare `host:port` configuration retained.
+- Observability authentication rejects **all** duplicate Authorization fields,
+  including identical copies; this avoids intermediary-dependent token parsing.
+- Focused regression tests were added for each change. **Cargo tests, format,
+  integration, and multi-replica concurrency tests were not run** in the
+  GitHub-API-only editing environment, per maintainer request.
+
+Unclosed owner-level work remains, including durable delivery/retry for
+password-reset and verification email tasks, crash reconciliation of HTTP
+installer jobs, and stronger lifecycle fences across process and replica
+boundaries. This change does not assert those contracts are solved.
+
 ## Focus
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
