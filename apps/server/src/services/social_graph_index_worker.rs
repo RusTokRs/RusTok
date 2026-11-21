@@ -746,9 +746,7 @@ async fn process_decode_failure(
                         // expire), and the source offset stays uncommitted for
                         // recovery. Report a stable diagnostic without relying
                         // on a deliberately discarded transport error binding.
-                        return Err(format!(
-                            "exact-byte raw poison publication failed after {attempt} attempt(s); source offset remains uncommitted"
-                        ));
+                        return Err(raw_poison_publish_failure(attempt));
                     }
                 }
             }
@@ -796,6 +794,15 @@ async fn process_decode_failure(
         recovered,
     )
     .await
+}
+
+/// Stable diagnostic for the last DLQ transport attempt. Never put the
+/// transport's raw error string on worker error surfaces: its content is
+/// controlled by a remote broker and may include sensitive connection data.
+fn raw_poison_publish_failure(attempt: u32) -> String {
+    format!(
+        "exact-byte raw poison publication failed after {attempt} attempt(s); source offset remains uncommitted"
+    )
 }
 
 async fn mark_raw_poison_published(
@@ -1027,6 +1034,17 @@ mod tests {
         assert_eq!(parse_bool(ENABLE_ENV, "true"), Ok(true));
         assert_eq!(parse_bool(ENABLE_ENV, "0"), Ok(false));
         assert!(parse_bool(ENABLE_ENV, "enabled").is_err());
+    }
+
+    #[test]
+    fn raw_poison_publication_failure_is_bounded_and_preserves_retry_state() {
+        let reason = raw_poison_publish_failure(3);
+        assert_eq!(
+            reason,
+            "exact-byte raw poison publication failed after 3 attempt(s); source offset remains uncommitted"
+        );
+        assert!(!reason.contains("password"));
+        assert!(!reason.contains("token"));
     }
 
     #[test]
