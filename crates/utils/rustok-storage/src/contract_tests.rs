@@ -156,6 +156,45 @@ fn test_scope_segment_nil_uuid_rejection() {
         ObjectKey::chronological(
             "media",
             ObjectZone::Objects,
+            ObjectScope::Tenant(nil_id),
+            now,
+            valid_id,
+            "bin",
+        ),
+        Err(KeyError::InvalidTenantIdentity)
+    );
+
+    assert_eq!(
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::TenantModule {
+                tenant_id: nil_id,
+                module: "catalog".to_string(),
+            },
+            now,
+            valid_id,
+            "bin",
+        ),
+        Err(KeyError::InvalidTenantIdentity)
+    );
+
+    assert_eq!(
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(valid_id),
+            now,
+            nil_id,
+            "bin",
+        ),
+        Err(KeyError::InvalidObjectIdentity)
+    );
+
+    assert_eq!(
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
             ObjectScope::Namespace {
                 tenant_id: nil_id,
                 owner_id: valid_id,

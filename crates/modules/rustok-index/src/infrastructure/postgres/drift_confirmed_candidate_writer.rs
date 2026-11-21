@@ -310,8 +310,7 @@ fn hash_locale(hasher: &mut Sha256, locale: Option<&crate::LocaleKey>) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length =
-        u64::try_from(value.len()).expect("bounded confirmed-candidate evidence component");
+    let length = value.len() as u64;
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }

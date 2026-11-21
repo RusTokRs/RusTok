@@ -275,7 +275,7 @@ fn storefront_cache_variant(
         fallback_locale.trim(),
         channel_slug.unwrap_or_default(),
     ))
-    .expect("serializing a tuple of strings cannot fail")
+    .unwrap_or_default()
 }
 
 /// Projects the published landing artifact for the storefront: the stored body markup and

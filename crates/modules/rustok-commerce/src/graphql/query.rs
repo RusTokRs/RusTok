@@ -705,7 +705,7 @@ impl CommerceQuery {
         super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let _tenant = ctx.data::<TenantContext>()?;
         let tenant_id = current_tenant_scope(ctx, tenant_id, "storefront_me")?;
         let auth = ctx
             .data::<AuthContext>()

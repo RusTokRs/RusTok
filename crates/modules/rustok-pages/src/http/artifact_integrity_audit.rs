@@ -1,4 +1,4 @@
-use anyhow::Context;
+// use anyhow removed
 use axum::{
     Json,
     extract::{Path, State},
@@ -25,11 +25,17 @@ pub struct PagesArtifactAuditHttpRuntime {
     event_bus: TransactionalEventBus,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PagesAuditHttpError {
+    #[error("Pages artifact audit HTTP route requires {0}")]
+    MissingHostDependency(&'static str),
+}
+
 impl PagesArtifactAuditHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesAuditHttpError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("Pages artifact audit HTTP route requires TransactionalEventBus")?;
+            .ok_or(PagesAuditHttpError::MissingHostDependency("TransactionalEventBus"))?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -68,7 +74,7 @@ pub async fn audit_page_artifacts(
         .map_err(map_artifact_audit_error)
 }
 
-pub(super) fn router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub(super) fn router(runtime: &HostRuntimeContext) -> Result<axum::Router, PagesAuditHttpError> {
     Ok(axum::Router::new()
         .route(
             "/api/admin/pages/{id}/artifacts/audit",

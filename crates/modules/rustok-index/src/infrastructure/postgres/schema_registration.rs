@@ -477,6 +477,7 @@ fn insert_schema_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active') ON CONFLICT (tenant_id, module_name, entity_name, schema_version) DO NOTHING"
         }
+        // INVARIANT: unsupported backend rejected before SQL selection
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     }
 }
@@ -489,6 +490,7 @@ fn select_exact_schema_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "SELECT schema_fingerprint, schema_json, status FROM index_schemas WHERE tenant_id = ?1 AND module_name = ?2 AND entity_name = ?3 AND schema_version = ?4"
         }
+        // INVARIANT: unsupported backend rejected before SQL selection
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     }
 }
@@ -501,6 +503,7 @@ fn select_latest_version_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "SELECT schema_version FROM index_schemas WHERE tenant_id = ?1 AND module_name = ?2 AND entity_name = ?3 ORDER BY schema_version DESC LIMIT 1"
         }
+        // INVARIANT: unsupported backend rejected before SQL selection
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     }
 }
@@ -513,6 +516,7 @@ fn retire_lower_active_schemas_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "UPDATE index_schemas SET status = 'retired', updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND module_name = ?2 AND entity_name = ?3 AND schema_version < ?4 AND status = 'active'"
         }
+        // INVARIANT: unsupported backend rejected before SQL selection
         _ => unreachable!("unsupported backend rejected before SQL selection"),
     }
 }

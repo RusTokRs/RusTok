@@ -6,6 +6,7 @@ use super::super::keyring_schedule_audit_source_retry_postgres::{
     PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
 };
 use super::*;
+use crate::services::server_runtime_context::ServerRuntimeStartReservation;
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS_ENV: &str =
     "RUSTOK_COMMENTS_TCP_DELEGATION_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS";
@@ -159,23 +160,65 @@ pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_r
         ));
     }
 
-    if !runtime_ctx.shared_insert_if_absent(
-        CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation,
-    ) {
+    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_schedule_audit_handoff_start_not_stopping(&stop_handle)?;
+    if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
         return Ok(());
     }
 
-    let result = start_source_retry_handoff_worker(runtime_ctx, config);
-    if result.is_err() {
-        let _ = runtime_ctx
-            .shared_take::<CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation>();
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        runtime_ctx,
+        CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation,
+    ) else {
+        if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Comments schedule audit handoff worker startup is already in progress; retry"
+                .to_string(),
+        ));
+    };
+
+    if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
+        return Ok(());
     }
-    result
+
+    start_source_retry_handoff_worker(runtime_ctx, config, &stop_handle)?;
+    reservation.commit();
+    Ok(())
+}
+
+fn existing_comments_schedule_audit_handoff_worker(
+    runtime_ctx: &ServerRuntimeContext,
+) -> Result<bool> {
+    match runtime_ctx.shared_map::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, _>(
+        |worker| worker.is_finished(),
+    ) {
+        Some(false) => Ok(true),
+        Some(true) => Err(Error::Message(
+            "Comments schedule audit handoff worker has exited; automatic restart is not configured"
+                .to_string(),
+        )),
+        None => Ok(false),
+    }
+}
+
+fn ensure_comments_schedule_audit_handoff_start_not_stopping(
+    stop_handle: &StopHandle,
+) -> Result<()> {
+    if stop_handle.is_stopping() {
+        return Err(Error::Message(
+            "Comments schedule audit handoff worker startup interrupted by server shutdown"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn start_source_retry_handoff_worker(
     runtime_ctx: &ServerRuntimeContext,
     config: CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
+    stop_handle: &StopHandle,
 ) -> Result<()> {
     let writer: SharedCommentsTcpDelegationScheduleAuditCanonicalWriter =
         Arc::new(RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter);
@@ -194,7 +237,7 @@ fn start_source_retry_handoff_worker(
     )
     .map_err(Error::BadRequest)?;
 
-    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_schedule_audit_handoff_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
     let instance_id = HANDOFF_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let task = tokio::spawn(run_source_retry_handoff_worker(
@@ -376,6 +419,31 @@ mod source_retry_worker_tests {
             source_max_attempts: 8,
             source_retry_delay: Duration::from_secs(30),
         }
+    }
+
+    #[tokio::test]
+    async fn source_retry_worker_start_rejects_a_signaled_shutdown() {
+        let (stop, _receiver) = StopHandle::new();
+        stop.stop().await;
+        assert!(ensure_comments_schedule_audit_handoff_start_not_stopping(&stop).is_err());
+    }
+
+    #[tokio::test]
+    async fn source_retry_worker_does_not_report_a_finished_task_as_live() {
+        use crate::common::settings::RustokSettings;
+
+        let runtime_ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        runtime_ctx.shared_insert(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task),
+        );
+        assert!(existing_comments_schedule_audit_handoff_worker(&runtime_ctx).is_err());
     }
 
     #[test]

@@ -1,5 +1,69 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — dispatcher readiness and cancellation (2026-11-21)
+
+One accumulating draft PR: `agent/server-audit-continuation-20261121`,
+based on current main `b4ec15e92e8c328bd7ba32ed50347911cbbfac89`,
+after consolidated server fix PR #4771 merged as
+`ec4914cac06b19fb352e429c39e4ce044f81774a`.
+
+### Confirmed start-state and cleanup defects
+
+- `spawn_module_event_dispatcher` previously returned `Ok(())` when it
+  observed `ModuleEventDispatcherReservation` even if no worker handle
+  existed. The first caller could still fail or panic, so external callers
+  not using the host bootstrap mutex could treat an unstarted listener
+  registry as successfully initialized.
+- A published dispatcher handle was treated as success even while the
+  required listener flag had not yet been stored, or after the worker
+  terminated unexpectedly. Readiness must check both a live loop and a
+  required-listener flag rather than the presence of a typed value alone.
+- The dispatcher and three optional recovery worker starters manually
+  removed their reservation only in selected error branches. A panic while
+  constructing a dispatcher or a dependent worker could strand the
+  reservation and prevent subsequent retry in the same runtime.
+- `connect_runtime_workers_with_runtime` is also exposed directly, outside
+  router bootstrap's `ServerBootstrapInitializationLock`. It holds an
+  independent artifact-maintenance initialization mutex while spawning other
+  host workers. Shutdown previously awaited only router-bootstrap admission
+  before taking its handle snapshot, so a direct initializer already inside
+  that independent mutex could publish a fresh handle *after* shutdown had
+  taken its corresponding slot. The newly spawned task would then have no
+  remaining host-owned `JoinHandle` to drain.
+
+### Fix and tests
+
+- Introduced `claim_module_dispatcher_start`, which returns idempotent
+  success only for an already-published *running* dispatcher with a true
+  `ModuleEventDispatcherRequirement`. A competing in-flight startup
+  instead returns an explicit retryable initialization error. A finished
+  registered worker is not reported as ready.
+- Reused `ServerRuntimeStartReservation` for dispatcher startup, paid
+  order label, marketplace financial and payment provider recovery.
+  `Drop` releases a claim on ordinary error, dependency unavailability,
+  or unwind; successful publication uses `commit()` to retain ownership.
+- Added focused source tests proving contention is not readiness,
+  cancellation/error and panic release a claim, and a handle without its
+  required-listener flag is rejected. Existing startup tests cover
+  missing EventRuntime and module listener registration.
+- Shutdown now waits for any direct runtime-worker initializer under the
+  existing `ModuleArtifactMaintenanceInitializationLock` after signaling
+  `StopHandle` and taking the router-bootstrap mutex. Both initializers
+  observe consistent lock ordering. The lock is released before `tokio::join!`
+  so artifact-maintenance drain can reacquire it without deadlock. A
+  regression simulates a direct initializer that registers an auth retention
+  task *after* the stop signal and verifies shutdown still removes/drains
+  the resulting handle after the initializer releases its mutex.
+
+**Validation handoff:** The user owns tests. No Cargo checks, tests, formatting,
+linters or live concurrency exercises have been run in this continuation.
+Recommended: `cargo check -p rustok-server --lib`,
+`cargo test -p rustok-server --lib services::module_event_dispatcher`, and
+`cargo test -p rustok-server --lib services::app_lifecycle::tests`,
+plus a multithreaded double-start/shutdown exercise. These guarantees
+remain per-runtime; the patch does not implement process restart,
+distributed leader election or broker exactly-once delivery.
+
 ## Installer HTTP admission cancellation follow-up (2026-11-21)
 
 Branch: `agent/server-installer-admission-cancellation-20261121`, based on
@@ -2159,3 +2223,173 @@ cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_c
 cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
 cargo test -p rustok-server --lib services::oauth_admin_guard::tests::guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling
 ```
+
+
+## P29 — Supervise HTTP installer jobs and retry durable claim finalization (2026-11-21)
+
+The HTTP installer already persisted its job before executing the plan, but the
+claim-to-execution task was a raw tokio::spawn. The global shutdown drain did not
+own or join it. A transient database error or a lost commit response during job
+creation/finalization could also leave a durable running row even when the
+corresponding write had committed.
+
+### Implemented
+
+- Added a runtime-owned installer task registry backed by JoinSet. Admission
+  and shutdown closure share one mutex fence: a racing request is either
+  registered before the drain snapshot or rejected after admission closes.
+- Shutdown now waits up to 60 seconds for accepted installer work, then aborts
+  and joins remaining tasks. The drain runs with other producers and completes
+  before the event forwarder is stopped.
+- The installer reservation guard now releases only the matching job ID.
+- Job creation retries the same generated ID and reconciles an ambiguous insert
+  by reading back the exact persisted running row (ID, session, status, and
+  submitted timestamp).
+- Success and failure terminal writes use bounded exponential backoff and
+  read-after-error reconciliation. A terminal state already committed is
+  treated as success; a still-running row receives another safe compare-and-set
+  attempt.
+- Added regression coverage for registry shutdown admission/draining, bounded
+  abort, ambiguous create recovery, and idempotent failure finalization.
+
+### Remaining crash-recovery boundary
+
+A hard process crash, or a shutdown timeout during an ambiguous claim write or
+after executor entry, can still leave the durable HTTP job in running. The patch deliberately does not replay
+an installer automatically: external side effects may have happened even when
+the final receipt or HTTP-job transition was not observed. The session's
+attempt-generation/receipt fence remains authoritative; an operator must
+reconcile durable receipts and session state before releasing the global
+installer fence. A separate ADR is still required for a durable job lease,
+heartbeat, and safe operator reconciliation workflow.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+- cargo fmt --all -- --check
+- cargo check -p rustok-server --lib
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_creation_reconciles_an_ambiguous_duplicate_insert
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_failure_finalization_accepts_an_already_committed_state
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::installer_job_tasks_are_drained_and_admission_closes
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::stuck_installer_job_tasks_are_aborted_after_the_grace_timeout
+
+
+## P30 — Prevent catch-up bursts in maintenance timers (2026-11-21)
+
+A final pass over periodic server maintenance loops found two intervals still
+using Tokio's default Burst missed-tick policy: Redis status monitoring and
+rate-limit cache cleanup. If either operation ran longer than its interval,
+the next loop iterations could execute immediately to catch up, adding load
+precisely while the dependency or cache was slow.
+
+- Set both timers to MissedTickBehavior::Delay. Their first-tick behavior is
+  unchanged; after a delayed run, the next poll is scheduled relative to the
+  completed tick instead of replaying missed intervals.
+- Other audited periodic workers already use Delay or Skip, or use a sleep
+  after each completed cycle; no retry/replay semantics were changed.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.
+
+
+## P31 — Bound Comments TCP listener concurrency and accept retries (2026-11-21)
+
+The opt-in Comments TCP listener accepted an arbitrary positive connection
+limit and passed it directly to Tokio's semaphore constructor. Tokio panics
+when the permit count exceeds its supported maximum, so a configuration typo
+could silently turn a successful bootstrap into a failed listener task. The
+accept loop also retried persistent TCP accept errors immediately, producing
+a CPU and logging hot loop for conditions such as descriptor exhaustion.
+
+- Added explicit bounds for 1..=128 concurrent connections and 1..=8 MiB
+  frames, preventing an operator setting from multiplying unbounded per-frame
+  allocations across thousands of connections.
+- Bounded the pre-request timeout and shutdown grace to 1..=60,000 ms, and made
+  the runtime join budget equal to the configured grace plus a five-second
+  abort/join margin.
+- Added exponential accept-error backoff from 100 ms to 5 seconds.
+- The backoff wait is interrupted immediately by the shared shutdown signal.
+- Added tests for the configuration bounds, retry progression/cap, and shutdown
+  interruption.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.
+
+
+## P32 — Make Comments worker startup cancellation-safe and truthful (2026-11-21)
+
+A lifecycle pass found two opt-in Comments workers that did not follow the
+server's shared startup-reservation contract. The TCP listener manually removed
+its marker only after a returned error, so cancellation while awaiting bind
+could strand the marker permanently. Both the listener and source-retry handoff
+worker returned `Ok(())` to a competing starter while the first startup was
+still in progress. They also admitted a task after shutdown had already been
+signalled, and an already-finished task handle was treated as an idempotently
+running worker.
+
+- Replaced manual marker cleanup with `ServerRuntimeStartReservation`; failed
+  or cancelled preparation releases only its own claim, while successful
+  publication retains the process-local owner marker.
+- Concurrent callers now return an explicit startup-in-progress error with
+  retry guidance unless a live handle has already been published.
+- Both workers reject startup after the shared stop signal and recheck it
+  immediately before spawning.
+- A finished published task is reported as exited, not as a successful
+  running worker; automatic restart remains intentionally unsupported and
+  readiness continues to report the failed required worker.
+- Corrected the Comments TCP max-connections regression assertion: the bound
+  is 128, not the unrelated value 4096.
+- Added focused lifecycle regressions for shutdown admission and finished
+  task handles. Existing `ServerRuntimeStartReservation` tests cover
+  cancellation cleanup and single-owner contention.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and the focused
+`comments_provider_runtime_base::tests` and
+`comments_provider_runtime_keyring_schedule_audit_handoff_worker::source_retry::source_retry_worker_tests`
+suites.
+
+
+## P33 — Repair Redis rate-limit counters without expiry (2026-11-21)
+
+The Redis fixed-window script set `EXPIRE` only when `INCR` returned 1.
+A pre-existing or restored counter key without a TTL therefore remained
+permanent: subsequent requests kept incrementing it, while the middleware
+reported a one-second retry delay forever.
+
+- The atomic script now checks the key TTL in milliseconds on every increment
+  and attaches the configured window whenever the key exists without an expiry.
+  Reset and Retry-After values round up to whole seconds, avoiding early retry
+  instructions from floor-rounded TTLs.
+- If Redis still reports a negative TTL after the repair attempt, the script
+  returns an error. The middleware treats that as backend unavailable (503),
+  preserving fail-closed behavior instead of silently creating a permanent
+  rate-limit lockout.
+- Added a regression assertion for the script's expiry-repair and fail-closed
+  contract. No Redis server is required by this source-level test.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::rate_limit_base::diagnostic_tests::redis_rate_limit_script_repairs_counters_without_expiry`.
+
+
+## P34 — Preserve verified runner access across artifact download dispatch (2026-11-21)
+
+The composed router validates the host-only runner token in
+`registry_artifact_access` and strips the secret header before controllers run.
+The artifact-download controller then attempted to validate the removed header
+again, so a correctly authenticated remote runner received 401 instead of the
+private artifact.
+
+- Added an internal `VerifiedRegistryRunnerAccess` request extension only for
+  artifact downloads whose runner token passed constant-time validation.
+- The controller trusts that marker, while retaining its user-authority check
+  and direct-handler fallback. The shared secret remains absent from controller
+  headers and downstream request processing.
+- Added an Axum middleware regression test proving that the verified marker
+  reaches the download handler while the token header does not.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.

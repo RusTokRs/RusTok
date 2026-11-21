@@ -206,7 +206,11 @@ clamped with a warning. Only exact `multipart/form-data` requests to
 `/api/media` and PUT requests to the registry artifact route receive the
 upload timeout budget. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends; disabled limiters remain
-disabled.
+disabled. Redis rate-limit counters without an expiry are repaired in the
+atomic script; if an expiry still cannot be established, the request fails
+closed with backend unavailable instead of leaving a permanent counter lockout.
+Redis uses millisecond TTLs, and memory/Redis reset headers round up to whole
+seconds so clients are not instructed to retry before the window actually ends.
 
 Database pool settings are validated before connecting: an omitted
 `max_connections` uses the pool default of 10, explicit values may not exceed
@@ -338,6 +342,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   later retry; already stopping hosts do not admit new recovery workers.
   These are **process-local** startup fences, not cross-replica singleton
   leases or a replacement for owner-level idempotency and durable recovery.
+  Concurrent module-dispatcher callers now distinguish a **published, live**
+  dispatcher plus its required-listener flag from an in-flight initialization.
+  Contention before publication returns an explicit error to the bootstrap
+  caller rather than a false successful start, and an unexpectedly finished
+  dispatcher is not reported as healthy. Dispatcher and dependent paid-order
+  label, marketplace-financial and payment-event startup claims are managed
+  by cancellation/unwind-safe RAII guards. A failed or panicking preparation
+  releases its claim for retry; a published handle retains ownership for
+  the process lifetime. This is not automatic restart after a worker exits.
 - Event runtime construction completes fallible transport, projector, and relay
   configuration work before it adds tenant-generation or Redis-status listener
   tasks. The RBAC invalidation listener may already be started by early server
@@ -347,6 +360,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+  `connect_runtime_workers_with_runtime` can also be called directly, without
+  this router-bootstrap mutex. Its separate artifact/runtime-worker startup
+  mutex now fences shutdown's handle snapshot too: shutdown waits for the
+  direct initializer to finish before taking any worker handle. The mutex is
+  released *before* concurrent task drains, preventing a lock cycle with
+  artifact maintenance's own shutdown drain. New startup calls recheck the
+  signaled stop channel after acquiring the mutex and cannot admit more work.
+  The barrier prevents a live but detached late `JoinHandle`; it does not
+  provide a process-crash shutdown guarantee.
 - Once started, the opt-in Product Index, Social Graph Index, and Forum Search
   contract consumers are required readiness workers. Their durable broker
   offsets remain uncommitted on terminal delivery failure; the readiness probe
@@ -417,7 +439,8 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   language subtag rather than an arbitrary `ru` prefix. This improves graceful
   shutdown **only**: email delivery remains best-effort, without a durable
   queue, retry lease, or crash recovery.
-- `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
+- `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. The optional Comments TCP listener and schedule-audit handoff worker use cancellation-safe startup reservations, reject a concurrent in-flight start rather than reporting false success, recheck shutdown before task admission, and do not treat an already-exited task as live. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. HTTP installer jobs are also held in a runtime-owned `JoinSet` and drained
+before the event forwarder. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
 - Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.
@@ -837,10 +860,13 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   background job and returns `202 Accepted` with `job_id`; the wizard must poll
   the job status and read persisted receipts for progress UI. The host reserves
   the local installer slot only after validating the request and checking the
-  persisted running-job fence. A single detached task then owns both the durable
-  `running` row creation and its executor work; the HTTP response awaits the
+  persisted running-job fence. A single runtime-supervised task then owns both the durable
+  `running` row creation and its executor work; the runtime retains its `JoinSet`
+  handle and closes admission during shutdown. The HTTP response awaits the
   creation acknowledgement, but disconnecting cannot interrupt the claim-to-run
-  handoff or leak the local slot. Failed claims release the slot and preserve the
+  handoff or leak the local slot. Shutdown waits up to 60 seconds for accepted
+  installer work, then aborts and joins it while leaving any still-running
+  durable claim in place for operator reconciliation. Failed claims release the slot and preserve the
   409 conflict/500 storage-error mapping. New apply requests receive 503 while
   host shutdown is active. Neither this mechanism nor the existing unique
   running-job index recovers a job after process termination: ambiguous effects

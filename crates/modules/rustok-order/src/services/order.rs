@@ -989,7 +989,7 @@ impl OrderService {
 
     async fn publish_status_changed(
         &self,
-        txn: &DatabaseTransaction,
+        txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
         actor_id: Uuid,
         order_id: Uuid,

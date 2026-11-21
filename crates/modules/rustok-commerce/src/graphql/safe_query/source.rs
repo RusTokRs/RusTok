@@ -79,8 +79,8 @@ use self::rustok_payment_shim as rustok_payment;
 // typed region message owns the public payload; every other format! invocation keeps
 // the standard library behavior through the generic fallback arm.
 macro_rules! format {
-    ("{}: {}", error.code, error.message) => {
-        super::query_error_boundary::RegionGraphqlMessage::new(error)
+    ("{}: {}", $error:ident.code, $error_msg:ident.message) => {
+        super::query_error_boundary::RegionGraphqlMessage::new($error)
     };
     ($($tokens:tt)*) => {
         ::std::format!($($tokens)*)

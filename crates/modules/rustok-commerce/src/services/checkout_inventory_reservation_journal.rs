@@ -461,7 +461,12 @@ impl CheckoutInventoryReservationJournal {
                 checkout_inventory_reservation::Column::ConsumedAt,
                 Expr::current_timestamp(),
             ),
-            _ => unreachable!("terminal reservation disposition must be released or consumed"),
+            other => {
+                return Err(CheckoutInventoryReservationError::Validation(format!(
+                    "terminal reservation disposition must be released or consumed, got {}",
+                    other.as_str()
+                )));
+            }
         };
         let result = update.exec(&self.db).await?;
         if result.rows_affected != 1 {

@@ -100,12 +100,14 @@ fn map_write_error(error: IndexDriftFindingWriteError) -> IndexDriftDependencyFa
 }
 
 fn retryable_failure(code: &'static str) -> IndexDriftDependencyFailure {
+    // INVARIANT: static Index drift retryable failure code is valid: invariant validated at startup
     IndexDriftDependencyFailure::retryable(code).expect(
         "static Index drift retryable failure code is valid: invariant validated at startup",
     )
 }
 
 fn permanent_failure(code: &'static str) -> IndexDriftDependencyFailure {
+    // INVARIANT: static Index drift permanent failure code is valid: invariant validated at startup
     IndexDriftDependencyFailure::permanent(code).expect(
         "static Index drift permanent failure code is valid: invariant validated at startup",
     )

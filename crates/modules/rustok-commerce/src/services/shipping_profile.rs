@@ -70,7 +70,7 @@ impl ShippingProfileService {
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
                     let requested_slug = slug.clone();
-                    self.ensure_slug_available(txn, tenant_id, slug.clone(), None)
+                    Self::ensure_slug_available(txn, tenant_id, slug.clone(), None)
                         .await?;
 
                     let now = Utc::now();
@@ -159,7 +159,7 @@ impl ShippingProfileService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> CommerceResult<ShippingProfileResponse> {
-        let row = self.load_shipping_profile(&self.db, tenant_id, shipping_profile_id).await?;
+        let row = Self::load_shipping_profile(&self.db, tenant_id, shipping_profile_id).await?;
         let items = load_profiles_with_translations(
             &self.db,
             vec![row],
@@ -204,12 +204,12 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    let row = self.load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
+                    let row = Self::load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
                     let mut active: shipping_profile::ActiveModel = row.into();
                     let requested_slug = normalized_slug.clone();
 
                     if let Some(slug) = normalized_slug {
-                        self.ensure_slug_available(txn, tenant_id, slug.clone(), Some(shipping_profile_id))
+                        Self::ensure_slug_available(txn, tenant_id, slug.clone(), Some(shipping_profile_id))
                             .await?;
                         active.slug = Set(slug);
                     }
@@ -304,7 +304,6 @@ impl ShippingProfileService {
     }
 
     async fn ensure_slug_available<C: ConnectionTrait>(
-        &self,
         db: &C,
         tenant_id: Uuid,
         slug: String,
@@ -324,7 +323,6 @@ impl ShippingProfileService {
     }
 
     async fn load_shipping_profile<C: ConnectionTrait>(
-        &self,
         db: &C,
         tenant_id: Uuid,
         shipping_profile_id: Uuid,
@@ -342,7 +340,7 @@ impl ShippingProfileService {
         shipping_profile_id: Uuid,
         active: bool,
     ) -> CommerceResult<ShippingProfileResponse> {
-        let row = self.load_shipping_profile(&self.db, tenant_id, shipping_profile_id).await?;
+        let row = Self::load_shipping_profile(&self.db, tenant_id, shipping_profile_id).await?;
         let mut model: shipping_profile::ActiveModel = row.into();
         model.active = Set(active);
         model.updated_at = Set(Utc::now().into());

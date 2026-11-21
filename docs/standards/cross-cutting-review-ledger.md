@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13 (13/17 completed — 76.5%)
+- **Active Phase:** CC-16: CQRS Read Projections, Search & Index Synchronization
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15 (15/17 completed — 88.2%)
 - **Active Branch:** `main`
 
 ---
@@ -68,8 +68,8 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed)
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed)
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed)
-- [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
-- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
+- [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed)
+- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
@@ -496,25 +496,57 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `flex`, `alloy`, `crates/workers/rustok-sandbox`.
 - **CodeGraph Target:** `FieldDefinitionService FieldDefRegistry flex_attached_localized_values RhaiEngine AlloyScript`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-14.01 — Unified Donor Opt-in**
-- [ ] **CC-14.02 — Attached Multilingual Separation**
-- [ ] **CC-14.03 — Fail-Closed Data Classification & AI Export**
-- [ ] **CC-14.04 — Rhai/Alloy Sandbox Safety**
+- [x] **CC-14.01 — Unified Donor Opt-in**
+  - Audited attached donor registry (`FieldDefRegistry`, `FieldDefinitionService`, `apps/server/src/services/field_definition_registry_bootstrap.rs`).
+  - Confirmed intentional product opt-in: `user`, `order`, `product`, `topic` are registered attached donors; `taxonomy.category` uses generic attached donor adapter (`GenericAttachedFieldDefinitionService`).
+  - Re-exported `impl_field_definition_source` from `flex::registry` and synchronized contract tests across `verify-flex-standalone-contract.mjs` and `verify-taxonomy-category-flex-donor.mjs`.
+- [x] **CC-14.02 — Attached Multilingual Separation**
+  - Audited multilingual attached and standalone value separation: shared values remain in donor `metadata` / `flex_entries.data`, while localized values are stored in `flex_attached_localized_values` / `flex_entry_localized_values` / `product_attached_localized_values` with `VARCHAR(32)` normalized locale columns.
+  - Verified portable attached values helpers in `crates/libs/rustok-core/src/field_schema/attached_values.rs`: authoring rejects invalid locale tags via `FlexError::InvalidLocale` instead of falling back to defaults; resolution fallback only consults existing localized rows.
+  - Verified with `node scripts/verify/verify-flex-multilingual-contract.mjs` (PASSED).
+- [x] **CC-14.03 — Fail-Closed Data Classification & AI Export**
+  - Audited attached field policy governance in `crates/modules/flex/src/attached_field_policy.rs` and `flex_ports`.
+  - Confirmed fail-closed invariant: missing policies always resolve to `TenantPrivate` with `ai_export_allowed = false` and `explicit = false`.
+  - Invariant enforced: `Secret` and `ImmutableTransaction` classifications strictly prohibit AI export (`policy.validate()?`).
+  - Synchronized `verify-ai-alloy-policy.mjs` with central module registry.
+- [x] **CC-14.04 — Rhai/Alloy Sandbox Safety**
+  - Audited Rhai execution sandbox in `rustok-sandbox`: verified strict limits (`max_operations`, `timeout`, `max_call_depth`, `max_string_size`, `max_array_size`, `max_map_size`).
+  - Progress callback interrupts execution upon timeout; native Rhai errors cleanly converted into typed domain variants (`OperationLimit`, `ResourceLimit`, `Timeout`).
+  - Fixed SeaORM 2.x test regression in `alloy::storage::sea_orm::tests` (`entities::*` in scope), fixed outbox storage idempotency comparison (`same_root_publication`), and resolved clippy `let_underscore_must_use` in evolution runner and engine tests.
+  - Verified with `verify-alloy-runtime-contract.mjs`, `verify-alloy-seaorm-compat.mjs`, `verify-sandbox-worker-deployment.mjs`, `verify-sandbox-worker-isolation.mjs`.
+  - Scoped checks: `cargo test -p flex --lib` (93 passed), `cargo test -p alloy --lib` (128 passed), `cargo test -p rustok-sandbox --lib` (26 passed), `cargo test -p rustok-outbox-storage --lib` (21 passed). Clean gatekeeper diff verified via `verify-remediation-gate.py`.
 
 ---
 
 ### CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
 
 - **Canonical Documents:** [crates/utils/rustok-storage/README.md](../../crates/utils/rustok-storage/README.md), [crates/modules/rustok-media/docs/README.md](../../crates/modules/rustok-media/docs/README.md), [DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md](../../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md).
-- **Primary Owner Crates:** `rustok-storage`, `rustok-media`, `crates/modules/rustok-media-transport`.
+- **Primary Owner Crates:** `rustok-storage`, `rustok-media`, `crates/modules/rustok-media/ports`.
 - **CodeGraph Target:** `ObjectStorage StorageBackend generate_presigned_url MediaService CanonicalObjectKey`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-15.01 — Tenant-Scoped Object Keys**
-- [ ] **CC-15.02 — Path Traversal Prevention**
-- [ ] **CC-15.03 — Presigned Upload Expiration & Verification**
-- [ ] **CC-15.04 — Media Extraction SSRF Guard**
+- [x] **CC-15.01 — Tenant-Scoped Object Keys**
+  - Audited canonical object keys in `crates/utils/rustok-storage/src/key.rs` (`ObjectKey::chronological`, `DigestObjectKey::sha256`).
+  - Enforced non-nil tenant and object identity invariants across all object scopes (`ObjectScope::Tenant`, `ObjectScope::TenantModule`, `ObjectScope::Namespace`): nil tenant and object UUIDs are rejected with typed `KeyError::InvalidTenantIdentity` and `KeyError::InvalidObjectIdentity`.
+  - Verified tenant isolation and calendar-sharded key layout (`media/objects/tenants/{tenant_id}/YYYY/MM/DD/{shard}/{id}.{ext}`).
+- [x] **CC-15.02 — Path Traversal Prevention**
+  - Audited key segment and extension sanitization in `rustok-storage/src/key.rs` (`validated_segment`, `validated_extension`): restricted to ASCII lowercase alphanumeric and hyphen, prohibiting path traversal sequences (`..`, `/`, `\`), null bytes, or spaces.
+  - Audited file name normalization in `rustok-media/src/service.rs` (`normalize_original_name`): cleans path separators, strips control characters and null bytes, trims dots, ensuring clean storage and display names.
+  - Verified capability public image access in `rustok-media/src/public_image.rs` (`read_public_image`): enforces 64-char lowercase SHA-256 hex checksum validation, tenant binding, and direct-storage path decoupling.
+- [x] **CC-15.03 — Presigned Upload Expiration & Verification**
+  - Audited direct upload session lifecycle in `rustok-media/src/service.rs` (`prepare_upload_session`, `complete_upload_session`).
+  - Enforced bounded session expiry (1 sec to 15 mins) and state transition integrity via atomic CAS conditional update (`Pending` -> `Finalizing`), eliminating TOCTOU concurrency races and duplicate asset creation across concurrent finalize calls.
+  - Verified staging object cleanup upon completion/expiration and background reconciliation (`reconcile_upload_sessions`, `reconcile_storage`).
+- [x] **CC-15.04 — Media Extraction SSRF Guard**
+  - Audited remote gRPC transport security for extracted Media pilots in `crates/modules/rustok-media/ports/src/grpc/connection.rs` (`GrpcMediaPublicImageConnectionConfig`).
+  - Enforced fail-closed SSRF guards: external plaintext endpoints (`http://`) are strictly rejected with `InsecureEndpointForbidden`; plaintext loopback requires explicit opt-in (`allow_insecure_loopback = true`); connect timeout is bounded (max 30s).
+  - Added unit test matrix in `connection.rs` locking in SSRF defenses.
+  - Synchronized verification scripts (`verify-profiles-media-provider-composition.mjs`, `verify-ai-media-fba.mjs`). Scoped checks passed: `cargo test -p rustok-storage --lib` (12 passed), `cargo test -p rustok-media-ports --features grpc-client --lib` (22 passed), `cargo test -p rustok-media --lib` (48 passed). Clean gatekeeper diff approved via `verify-remediation-gate.py`.
 
 ---
 

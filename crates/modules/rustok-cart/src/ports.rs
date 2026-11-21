@@ -111,9 +111,6 @@ pub trait CartPromotionPort: Send + Sync {
     ) -> Result<CartResponse, PortError>;
 }
 
-/// The module and root import paths expose the same admitted owner provider.
-pub use crate::guarded_ports::guarded_cart_storefront_port as in_process_cart_storefront_port;
-
 /// Builds the owner-managed in-process storefront provider for explicit consumers.
 pub fn in_process_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
     crate::guarded_ports::guarded_cart_storefront_port(db)

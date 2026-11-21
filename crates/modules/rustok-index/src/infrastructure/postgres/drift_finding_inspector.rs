@@ -334,6 +334,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -342,6 +343,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -372,6 +374,7 @@ fn select_open_finding_sql(backend: DbBackend) -> String {
     let schema_version = match backend {
         DbBackend::Postgres => "CAST(schema_version AS BIGINT)",
         DbBackend::Sqlite => "CAST(schema_version AS INTEGER)",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(

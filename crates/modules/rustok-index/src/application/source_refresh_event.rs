@@ -238,7 +238,12 @@ where
     // The registry reports the owner-visible revision for this key as the source version.
     let source_version = batch
         .refresh_revision_at(0)
-        .expect("the batch contains exactly one mutation");
+        .ok_or_else(|| {
+            IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
+                event_domain: event_domain.clone(),
+                actual: 0,
+            }
+        })?;
     if source_version < minimum_source_version {
         return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
             event_domain,

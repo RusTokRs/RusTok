@@ -658,8 +658,11 @@ fn map_reconciliation_orchestration_error(
                     "Fulfillment operation requires reconciliation",
                     "reconciliation_required",
                 ),
-                FulfillmentOrchestrationError::Fulfillment(_) => unreachable!(
-                    "nested fulfillment errors are handled before orchestration mapping"
+                FulfillmentOrchestrationError::Fulfillment(_) => (
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "commerce_admin_fulfillment_provider_error",
+                    "Fulfillment provider error",
+                    "provider",
                 ),
             };
             let context = AdminReconciliationDiagnosticContext::from(&context);

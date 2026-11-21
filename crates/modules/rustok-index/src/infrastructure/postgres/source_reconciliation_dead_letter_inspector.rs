@@ -186,6 +186,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -194,6 +195,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -203,6 +205,7 @@ fn select_failed_job_sql(backend: DbBackend) -> String {
     let attempt_count = match backend {
         DbBackend::Postgres => "CAST(attempt_count AS BIGINT)",
         DbBackend::Sqlite => "CAST(attempt_count AS INTEGER)",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(

@@ -18,9 +18,15 @@ pub struct PagesGraphqlRuntimeData {
     cache: Option<PagesCacheReadRuntime>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PagesGraphqlRuntimeError {
+    #[error("pages GraphQL runtime initialization failed: {0}")]
+    Initialization(String),
+}
+
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
-) -> Result<PagesGraphqlRuntimeData, String> {
+) -> Result<PagesGraphqlRuntimeData, PagesGraphqlRuntimeError> {
     Ok(PagesGraphqlRuntimeData {
         provider_health_authority: inputs.shared_get::<SharedPagesProviderHealthAuthority>(),
         cache: inputs.shared_get::<PagesCacheReadRuntime>(),

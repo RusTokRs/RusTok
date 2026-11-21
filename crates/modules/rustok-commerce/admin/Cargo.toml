@@ -27,6 +27,7 @@ ssr = [
     "dep:rustok-order",
     "dep:rustok-outbox",
     "dep:rust_decimal",
+    "dep:rustok-api",
     "rustok-api/server",
 ]
 
@@ -37,7 +38,7 @@ leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 rustok-cart = { workspace = true, optional = true }
-rustok-api = { workspace = true, default-features = false }
+rustok-api = { workspace = true, optional = true, default-features = false }
 
 rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
@@ -57,3 +58,7 @@ rustok-fulfillment.workspace = true
 rustok-order.workspace = true
 sea-orm.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true
+

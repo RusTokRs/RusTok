@@ -1,4 +1,5 @@
 use super::*;
+use super::entities::*;
 use crate::model::*;
 use rustok_core::RetentionPolicy;
 use rustok_modules::{

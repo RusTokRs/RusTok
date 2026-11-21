@@ -90,7 +90,7 @@ impl TenantService {
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
-        let model = match TenantActiveModel {
+        let model = match (TenantActiveModel {
             id: Set(id),
             name: Set(name),
             slug: Set(slug.clone()),
@@ -100,7 +100,7 @@ impl TenantService {
             is_active: Set(true),
             created_at: Set(now),
             updated_at: Set(now),
-        }
+        })
         .insert(&txn)
         .await
         {
@@ -726,13 +726,12 @@ impl TenantService {
     }
 }
 
-/// Backend-portable unique-constraint detection, following the precedent in
-/// `rustok-rbac` GraphQL mutations: SQLx surfaces constraint failures in the
-/// error text on every supported backend ("UNIQUE constraint failed",
-/// "duplicate key value violates unique constraint", "Duplicate entry").
+/// Backend-portable unique-constraint detection using SeaORM's SQLSTATE discriminator.
 fn is_unique_violation(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string().to_lowercase();
-    message.contains("unique") || message.contains("duplicate")
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 /// Reject a host name that another tenant already claims.

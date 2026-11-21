@@ -306,14 +306,14 @@ impl QuantityPlan {
             return Err(QuantityWriteBlocker::IdentityUnavailable.into());
         }
         // A nonlocking parent proof preserves Product's parent-before-variant lock order.
-        let parent = product::Entity::find_by_id(product_id)
+        let parent = product::Entity::find_by_id(variant.product_id)
             .select_only()
             .column(product::Column::Id)
             .filter(product::Column::TenantId.eq(tenant_id))
             .into_tuple::<Uuid>()
             .one(txn)
             .await?;
-        if parent != Some(product_id) {
+        if parent != Some(variant.product_id) {
             return Err(QuantityWriteBlocker::IdentityUnavailable.into());
         }
         // INVARIANT: Variant/parent tenant identity precedes every tenant-less item query.

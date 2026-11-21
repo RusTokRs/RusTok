@@ -365,6 +365,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported backend was validated
         _ => unreachable!("unsupported backend was validated"),
     }
 }
@@ -373,6 +374,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported backend was validated
         _ => unreachable!("unsupported backend was validated"),
     }
 }

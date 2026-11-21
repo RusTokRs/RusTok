@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 use crate::entities;
 use rustok_api::{PortError, TenantLocale, sha256_digest};

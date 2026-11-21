@@ -142,6 +142,8 @@ pub fn pages_server_preview_response(html: &str) -> Result<axum::response::Respo
 #[cfg(feature = "ssr")]
 fn pages_server_preview_response_with_policy(html: &str, policy: &str) -> axum::response::Response {
     use axum::http::{StatusCode, header};
+    use axum::response::IntoResponse;
+    // INVARIANT: All static HTTP headers and status code passed to builder are well-formed.
     axum::response::Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
@@ -151,7 +153,7 @@ fn pages_server_preview_response_with_policy(html: &str, policy: &str) -> axum::
         .header(header::REFERRER_POLICY, "strict-origin-when-cross-origin")
         .header("x-content-type-options", "nosniff")
         .body(axum::body::Body::from(html.to_string()))
-        .expect("preview response headers are valid")
+        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "failed to build preview response").into_response())
 }
 
 /// Why a preview document could not be served.

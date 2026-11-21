@@ -352,7 +352,7 @@ fn map_admin_shipping_option_port_error(
 async fn validate_shipping_option_profile_inputs(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
-    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+    allowed_shipping_profile_slugs: Option<&[String]>,
 ) -> HttpResult<()> {
     let Some(slugs) = allowed_shipping_profile_slugs else {
         return Ok(());
@@ -819,7 +819,7 @@ pub async fn create_shipping_option(
     validate_shipping_option_profile_inputs(
         runtime.db(),
         tenant.id,
-        input.allowed_shipping_profile_slugs.as_ref(),
+        input.allowed_shipping_profile_slugs.as_deref(),
     )
     .await?;
 
@@ -979,7 +979,7 @@ pub async fn update_shipping_option(
     validate_shipping_option_profile_inputs(
         runtime.db(),
         tenant.id,
-        input.allowed_shipping_profile_slugs.as_ref(),
+        input.allowed_shipping_profile_slugs.as_deref(),
     )
     .await?;
 

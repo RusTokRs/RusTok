@@ -351,8 +351,10 @@ mod tests {
         let engine = create_default_engine();
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
 
-        let _ = engine.execute("script1", "1", &ctx).unwrap();
-        let _ = engine.execute("script2", "2", &ctx).unwrap();
+        let r1 = engine.execute("script1", "1", &ctx).unwrap();
+        assert_eq!(r1.as_int().unwrap(), 1);
+        let r2 = engine.execute("script2", "2", &ctx).unwrap();
+        assert_eq!(r2.as_int().unwrap(), 2);
 
         engine.invalidate_all();
 

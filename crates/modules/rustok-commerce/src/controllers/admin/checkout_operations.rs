@@ -14,9 +14,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use super::{
-    CommerceHttpRuntime, admin::AdminErrorPolicy, common::ensure_permissions, order_error_policy,
-    payment_error_policy, payment_orchestration_error_policy,
+use crate::controllers::{
+    CommerceHttpRuntime, admin::AdminErrorPolicy, common::ensure_permissions,
 };
 use crate::{
     CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError,
@@ -1075,17 +1074,6 @@ fn map_compensation_error(
                 ),
                 "rustok_commerce.checkout_inventory_reservation",
             )
-        }
-        CheckoutCompensationError::Payment(source) => {
-            adopt_payment_error_identity(&mut context, source);
-            (payment_error_policy(source), "rustok_payment")
-        }
-        CheckoutCompensationError::PaymentOrchestration(source) => {
-            payment_orchestration_error_policy(source)
-        }
-        CheckoutCompensationError::Order(source) => {
-            adopt_order_error_identity(&mut context, source);
-            (order_error_policy(source), "rustok_order")
         }
         CheckoutCompensationError::ManualReconciliation(_) => (
             (

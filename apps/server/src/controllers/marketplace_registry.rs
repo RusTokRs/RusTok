@@ -30,6 +30,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, http_error};
 use crate::modules::{CatalogManifestModule, ManifestManager};
+use crate::middleware::registry_artifact_access::VerifiedRegistryRunnerAccess;
 use crate::services::marketplace_catalog::{
     RegistryAuthorSignatureEvidenceRequest, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
@@ -904,11 +905,15 @@ async fn download_publish_artifact(
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
+    verified_runner: Option<Extension<VerifiedRegistryRunnerAccess>>,
 ) -> Result<Response<Body>, Error> {
     tracing::debug!(%request_id, "Handling marketplace registry artifact download request");
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let governance = RegistryGovernanceService::new(ctx.db_clone());
-    if let Some(authority) = optional_authority_from_auth(&headers, auth)? {
+    if verified_runner.is_some() {
+        // The registry middleware already validated the host-only runner secret
+        // and removed it from the request before controller dispatch.
+    } else if let Some(authority) = optional_authority_from_auth(&headers, auth)? {
         governance
             .authorized_publish_request_status_snapshot(
                 &request_id,
@@ -919,6 +924,8 @@ async fn download_publish_artifact(
             .await
             .map_err(map_registry_governance_error)?;
     } else {
+        // Preserve direct-handler compatibility when this controller is used
+        // without the composed registry middleware.
         require_remote_executor_access(&ctx, &headers)?;
     }
 

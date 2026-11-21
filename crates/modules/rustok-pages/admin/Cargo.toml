@@ -43,6 +43,9 @@ ssr = [
   "dep:sha2",
 ]
 
+[lints]
+workspace = true
+
 [dependencies]
 fly = { path = "../../../ui/fly" }
 fly-browser = { path = "../../../ui/fly/browser" }

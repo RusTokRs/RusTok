@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 #[cfg(feature = "mod-blog")]
 #[path = "blog_public_comments_snapshot.rs"]
@@ -82,6 +82,55 @@ fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
     settings.runtime.runs_background_workers()
 }
 
+/// A published handle alone is not readiness: the listener requirement
+/// must also have been registered, and the dispatcher loop must still run.
+fn existing_module_dispatcher_status(ctx: &ServerRuntimeContext) -> Option<Result<()>> {
+    let running = ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished())?;
+    let required = ctx
+        .shared_get::<ModuleEventDispatcherRequirement>()
+        .is_some_and(|requirement| requirement.0);
+    Some(if running && required {
+        Ok(())
+    } else {
+        Err(Error::Message(
+            "module event dispatcher exists but is not ready or has terminated".to_string(),
+        ))
+    })
+}
+
+/// Distinguish a dispatcher already ready in the runtime from one still
+/// being built by another caller. An in-flight reservation is *not* readiness:
+/// the owner can still fail before it registers its handle and listener flag.
+fn claim_module_dispatcher_start(
+    ctx: &ServerRuntimeContext,
+) -> Result<Option<ServerRuntimeStartReservation<'_, ModuleEventDispatcherReservation>>> {
+    if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started before module dispatcher initialization".to_string(),
+        ));
+    }
+    if let Some(existing) = existing_module_dispatcher_status(ctx) {
+        existing?;
+        return Ok(None);
+    }
+
+    let Some(claim) =
+        ServerRuntimeStartReservation::try_claim(ctx, ModuleEventDispatcherReservation)
+    else {
+        // The first starter may have published its handle between our
+        // preflight and the failed atomic claim. Its ready listener flag must
+        // also exist before another caller may report successful startup.
+        if let Some(existing) = existing_module_dispatcher_status(ctx) {
+            existing?;
+            return Ok(None);
+        }
+        return Err(Error::Message(
+            "module event dispatcher startup is already in progress; retry".to_string(),
+        ));
+    };
+    Ok(Some(claim))
+}
+
 pub fn spawn_module_event_dispatcher(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
@@ -107,22 +156,20 @@ pub fn spawn_module_event_dispatcher(
         None
     };
 
-    // Two parallel composition attempts must not each start a dispatcher and
-    // overwrite the other's shutdown handle. Reserve the lifecycle *before*
-    // any module worker initialization or registration side effects.
-    if event_bus.is_some() {
-        if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
-            return Err(Error::Message(
-                "server shutdown started before module dispatcher initialization".to_string(),
-            ));
+    // Claim ownership before enriching the runtime or registering listeners.
+    // The guard releases the claim on errors, unwinds and abandoned startups.
+    // A concurrent *in-progress* attempt must never be reported as success.
+    let reservation = if event_bus.is_some() {
+        match claim_module_dispatcher_start(ctx)? {
+            Some(reservation) => Some(reservation),
+            None => {
+                tracing::debug!("Module event dispatcher is already registered");
+                return Ok(());
+            }
         }
-        if ctx.shared_contains::<ModuleEventDispatcherHandle>()
-            || !ctx.shared_insert_if_absent(ModuleEventDispatcherReservation)
-        {
-            tracing::debug!("Module event dispatcher already started or initializing");
-            return Ok(());
-        }
-    }
+    } else {
+        None
+    };
 
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
 
@@ -144,16 +191,15 @@ pub fn spawn_module_event_dispatcher(
     }
 
     if crate::services::app_lifecycle::StopHandle::ensure(ctx).is_stopping() {
-        ctx.shared_remove::<ModuleEventDispatcherReservation>();
         return Err(Error::Message(
             "server shutdown started during module dispatcher initialization".to_string(),
         ));
     }
-    let result = start_module_event_dispatcher(ctx, dispatcher, handler_count);
-    if result.is_err() {
-        // Failure must not permanently poison a later initialization retry.
-        ctx.shared_remove::<ModuleEventDispatcherReservation>();
-        return result;
+    // Publication is the commit boundary for local startup ownership.
+    // On any earlier failure, the RAII guard automatically permits retry.
+    start_module_event_dispatcher(ctx, dispatcher, handler_count)?;
+    if let Some(reservation) = reservation {
+        reservation.commit();
     }
 
     // Required dispatcher startup has succeeded. Optional recovery workers may
@@ -166,7 +212,7 @@ pub fn spawn_module_event_dispatcher(
     spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
-    result
+    Ok(())
 }
 
 fn start_module_event_dispatcher(
@@ -248,8 +294,15 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(PaidOrderLabelWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, PaidOrderLabelWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -260,11 +313,10 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         )
     {
         ctx.shared_insert(handle);
-    } else {
-        // The dependent fulfillment registry is not ready. Do not permanently
-        // reserve a worker that never started: a later composition may retry.
-        ctx.shared_remove::<PaidOrderLabelWorkerReservation>();
+        reservation.commit();
     }
+    // A missing registry or an unwinding/cancelled start releases the claim
+    // through Drop; a later composition may retry.
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
@@ -275,8 +327,15 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(MarketplaceFinancialWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, MarketplaceFinancialWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -287,8 +346,7 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
         )
     {
         ctx.shared_insert(handle);
-    } else {
-        ctx.shared_remove::<MarketplaceFinancialWorkerReservation>();
+        reservation.commit();
     }
 }
 
@@ -300,8 +358,15 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
         || ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >()
-        || !ctx.shared_insert_if_absent(PaymentProviderEventWorkerReservation)
     {
+        return;
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, PaymentProviderEventWorkerReservation)
+    else {
+        return;
+    };
+    if stop.is_stopping() {
         return;
     }
 
@@ -311,6 +376,7 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
             stop.subscribe(),
         ),
     );
+    reservation.commit();
 }
 
 pub fn build_shared_runtime_extensions(
@@ -1229,6 +1295,87 @@ mod lifecycle_tests {
         assert!(!ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >());
+    }
+
+    #[test]
+    fn concurrent_dispatcher_start_does_not_report_success_before_publication() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+
+        let first = claim_module_dispatcher_start(&ctx)
+            .expect("first starter may reserve")
+            .expect("first starter owns the in-flight claim");
+        assert!(ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+
+        let contender = claim_module_dispatcher_start(&ctx);
+        assert!(
+            matches!(contender, Err(Error::Message(message)) if message.contains("in progress")),
+            "the loser cannot report success before dispatcher publication"
+        );
+        drop(first);
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        let retry = claim_module_dispatcher_start(&ctx)
+            .expect("failed or cancelled bootstrap permits a retry")
+            .expect("the retry takes the released claim");
+        drop(retry);
+    }
+
+    #[test]
+    fn dispatcher_start_claim_is_released_on_unwind() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let cancelled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _reservation = claim_module_dispatcher_start(&ctx)
+                .expect("claim should work")
+                .expect("first owner");
+            panic!("simulate panic during synchronous extension construction");
+        }));
+        assert!(cancelled.is_err());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherReservation>());
+        let recovered = claim_module_dispatcher_start(&ctx)
+            .expect("retry after unwind")
+            .expect("claim was released by guard drop");
+        drop(recovered);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_start_requires_live_handle_and_published_listener_flag() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let reservation = claim_module_dispatcher_start(&ctx)
+            .expect("first admission")
+            .expect("first owner");
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Err(Error::Message(message)) if message.contains("not ready")),
+            "publishing a handle before the required listener flag is not success"
+        );
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Ok(None)),
+            "a live dispatcher and listener flag are idempotently ready"
+        );
+        reservation.commit();
+
+        let handle = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("mock dispatcher is present");
+        handle.request_stop();
+        handle.join().await.expect("mock dispatcher shuts down");
+        assert!(
+            ctx.shared_get::<ModuleEventDispatcherRequirement>()
+                .is_some_and(|value| value.0),
+            "the flag remains registered even after worker shutdown"
+        );
+        assert!(
+            matches!(claim_module_dispatcher_start(&ctx), Err(Error::Message(message)) if message.contains("in progress")),
+            "a committed claim without a worker cannot be treated as readiness"
+        );
     }
 
     #[test]

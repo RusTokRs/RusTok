@@ -215,7 +215,7 @@ pub(super) fn body_revision_timestamp(
     now: chrono::DateTime<chrono::Utc>,
 ) -> sea_orm::prelude::DateTimeWithTimeZone {
     chrono::DateTime::from_timestamp_micros(now.timestamp_micros())
-        .expect("a current timestamp always fits in the chrono range")
+        .unwrap_or(now)
         .into()
 }
 
@@ -350,11 +350,10 @@ pub(super) fn build_page_metadata(
         .cloned()
         .filter(|value| value.is_object())
         .unwrap_or_else(|| serde_json::json!({}));
-    let object = metadata
-        .as_object_mut()
-        .expect("page metadata is normalized to an object");
-    object.remove("seo");
-    object.insert("template".to_string(), serde_json::json!(template));
+    if let Some(object) = metadata.as_object_mut() {
+        object.remove("seo");
+        object.insert("template".to_string(), serde_json::json!(template));
+    }
     metadata
 }
 

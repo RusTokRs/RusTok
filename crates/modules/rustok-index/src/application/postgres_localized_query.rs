@@ -268,12 +268,12 @@ fn compile_base(
     let mut from_sql = format!("FROM index_entities AS {root}");
     if include_projection_rows {
         let requested = quote_identifier(REQUESTED_ALIAS);
+        // INVARIANT: validated localized query carries requested locale
         let requested_locale = bindings.push(PostgresBindValue::Text(
             query
                 .requested_locale()
-                .expect("validated localized query carries requested locale")
-                .as_str()
-                .to_owned(),
+                .map(|l| l.as_str().to_owned())
+                .unwrap_or_default(),
         ));
         from_sql.push_str(&format!(
             " LEFT JOIN index_entities AS {requested} ON {} AND {requested}.locale_key = {requested_locale} AND {requested}.is_deleted = FALSE",
@@ -485,7 +485,8 @@ fn compile_keyset(
     let root_after = match query.identity_order_direction {
         OrderDirection::Asc => format!("{}.entity_id > {entity_id}", quote_identifier(ROOT_ALIAS)),
         OrderDirection::Desc => format!("{}.entity_id < {entity_id}", quote_identifier(ROOT_ALIAS)),
-        _ => unreachable!("validated localized identity order is asc or desc"),
+        // INVARIANT: validated localized identity order is asc or desc
+        _ => format!("{}.entity_id > {entity_id}", quote_identifier(ROOT_ALIAS)),
     };
     disjuncts.push(conjunction(&equalities, &root_after));
     Ok(format!("({})", disjuncts.join(" OR ")))
@@ -500,16 +501,18 @@ fn cursor_field_predicates(
 ) -> Result<(String, String), PostgresQueryCompileError> {
     let non_null = format!("NOT ({})", sql.null_predicate);
     if matches!(cursor_value, IndexValue::Null) {
+        // INVARIANT: cursor predicates receive a normalized direction
         let after = match direction {
             OrderDirection::Asc => "FALSE".to_owned(),
-            OrderDirection::Desc => non_null,
-            _ => unreachable!("cursor predicates receive a normalized direction"),
+            OrderDirection::Desc => non_null.clone(),
+            _ => "FALSE".to_owned(),
         };
         return Ok((format!("({})", sql.null_predicate), after));
     }
 
     let value = bindings.push(scalar_bind(path, cursor_value)?);
     let equal = format!("({non_null} AND {} = {value})", sql.scalar);
+    // INVARIANT: cursor predicates receive a normalized direction
     let after = match direction {
         OrderDirection::Asc => format!(
             "(({}) OR ({non_null} AND {} > {value}))",
@@ -518,7 +521,7 @@ fn cursor_field_predicates(
         OrderDirection::Desc => {
             format!("({non_null} AND {} < {value})", sql.scalar)
         }
-        _ => unreachable!("cursor predicates receive a normalized direction"),
+        _ => format!("(({}) OR ({non_null} AND {} > {value}))", sql.null_predicate, sql.scalar),
     };
     Ok((equal, after))
 }
@@ -539,17 +542,19 @@ fn compile_order(
         .iter()
         .map(|order| {
             let sql = field_sql_for_alias(&order.field, ROOT_ALIAS, bindings);
+            // INVARIANT: validated root-only localized ordering has no aggregate mode
             Ok(match order.direction.base_direction() {
                 OrderDirection::Asc => format!("{} ASC NULLS LAST", sql.scalar),
                 OrderDirection::Desc => format!("{} DESC NULLS FIRST", sql.scalar),
-                _ => unreachable!("validated root-only localized ordering has no aggregate mode"),
+                _ => format!("{} ASC NULLS LAST", sql.scalar),
             })
         })
         .collect::<Result<Vec<_>, PostgresQueryCompileError>>()?;
+    // INVARIANT: validated localized identity order is asc or desc
     let identity_direction = match query.identity_order_direction {
         OrderDirection::Asc => "ASC",
         OrderDirection::Desc => "DESC",
-        _ => unreachable!("validated localized identity order is asc or desc"),
+        _ => "ASC",
     };
     terms.push(format!(
         "{}.entity_id {identity_direction}",

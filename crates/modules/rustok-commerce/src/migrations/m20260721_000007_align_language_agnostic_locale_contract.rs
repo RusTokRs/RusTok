@@ -33,7 +33,7 @@ ALTER TABLE product_category_translations
                 }
             }
             DatabaseBackend::Sqlite => rebuild_sqlite_translation_tables(manager).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
+            backend => return Err(DbErr::Custom(format!("unsupported SeaORM database backend: {:?}", backend))),
         }
         Ok(())
     }

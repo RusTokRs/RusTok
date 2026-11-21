@@ -172,7 +172,8 @@ for (const evidenceCase of evidence.cases) {
 const plan = read('crates/modules/rustok-ai-alloy/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'ai-alloy-policy-registry.json', 'ai-alloy-policy-static-matrix.json', 'alloy_script_execution_policy', 'allowed_operations', 'runtime_operation', 'alloy_change_review'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `rustok-ai-alloy` |', 'crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json', 'scripts/verify/verify-ai-alloy-policy.mjs', 'allowed operations'], 'central registry');
+if (!/\|\s*`rustok-ai-alloy`\s*\|/.test(central)) fail('central registry missing | `rustok-ai-alloy` |');
+hasAll(central, ['crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json', 'scripts/verify/verify-ai-alloy-policy.mjs', 'allowed operations'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`ai-alloy`', 'ai-alloy-policy-registry.json', 'alloy_script_execution_policy'], 'unified plan');
 
