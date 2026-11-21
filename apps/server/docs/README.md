@@ -1029,7 +1029,12 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   host shutdown is active. Neither this mechanism nor the existing unique
   running-job index recovers a job after process termination: ambiguous effects
   must be reconciled against durable receipts before an operator releases the
-  global installer fence. If shutdown is detected after durable claim
+  global installer fence. A failed pre-execution HTTP claim now attempts an
+  exact-identity, bounded CAS against a possibly committed-but-unacknowledged
+  `running` INSERT before releasing its process-local slot; a missing row is
+  harmless and a different job/session/submission or terminal status is never
+  overwritten. This is best-effort when storage is unavailable and never
+  relabels a job after the installer executor has been entered. If shutdown is detected after durable claim
   creation but before executor entry, the background owner transitions that
   unstarted job to `failed` and releases the slot, instead of beginning new
   installer side effects. A stop racing after the executor's final admission
