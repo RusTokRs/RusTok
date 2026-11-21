@@ -141,19 +141,26 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn init_otel_layer(
-    config: OtelConfig,
+/// Build OpenTelemetry layer synchronously without requiring an active Tokio runtime context.
+pub fn build_otel_layer(
+    config: &OtelConfig,
 ) -> Result<opentelemetry_sdk::trace::SdkTracer, OtelError> {
     if !config.enabled {
         return Err(OtelError::Disabled);
     }
 
-    let provider = build_tracer_provider(&config)?;
+    let provider = build_tracer_provider(config)?;
     let tracer = provider.tracer(config.service_name.clone());
     let _ = TRACER_PROVIDER.set(provider.clone());
     global::set_tracer_provider(provider);
 
     Ok(tracer)
+}
+
+pub async fn init_otel_layer(
+    config: OtelConfig,
+) -> Result<opentelemetry_sdk::trace::SdkTracer, OtelError> {
+    build_otel_layer(&config)
 }
 
 /// Shutdown OpenTelemetry gracefully
@@ -238,7 +245,7 @@ pub enum OtelError {
 ///     user_id = user_id.to_string(),
 ///     {
 ///         // Your code here
-///         println!("Fetching user...");
+///         tracing::info!("Fetching user...");
 ///     }
 /// );
 /// # }

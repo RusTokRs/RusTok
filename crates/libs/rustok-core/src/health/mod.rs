@@ -227,7 +227,7 @@ impl HealthRegistry {
             HealthStatus::Unhealthy
         } else if checks
             .iter()
-            .any(|c| matches!(c.status, HealthStatus::Degraded))
+            .any(|c| matches!(c.status, HealthStatus::Degraded | HealthStatus::Unhealthy))
         {
             HealthStatus::Degraded
         } else {
@@ -492,7 +492,8 @@ mod tests {
         registry.register(NonCriticalCheck);
 
         let health = registry.check_all().await;
-        // Non-critical failure doesn't make system unhealthy
-        assert!(health.is_healthy());
+        // Non-critical failure doesn't make system unhealthy, but marks it degraded and ready
+        assert!(health.is_ready());
+        assert_eq!(health.status, HealthStatus::Degraded);
     }
 }

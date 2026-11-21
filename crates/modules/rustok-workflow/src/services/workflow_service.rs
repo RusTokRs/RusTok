@@ -33,7 +33,7 @@ impl WorkflowService {
 
     // ── Workflows ──────────────────────────────────────────────────────────────
 
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, name = %input.name))]
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, workflow_id))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -55,6 +55,7 @@ impl WorkflowService {
 
         let now = Utc::now().fixed_offset();
         let id = Uuid::new_v4();
+        tracing::Span::current().record("workflow_id", tracing::field::display(id));
 
         let model = WorkflowActiveModel {
             id: Set(id),

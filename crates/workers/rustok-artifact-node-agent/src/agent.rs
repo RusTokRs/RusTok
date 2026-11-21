@@ -184,7 +184,7 @@ where
                         }
                     }
                     Err(error) => {
-                        eprintln!("artifact node agent iteration failed: {error}");
+                        tracing::error!(%error, "artifact node agent iteration failed");
                         if wait_for_poll_or_shutdown(&mut shutdown, poll_interval).await {
                             return;
                         }

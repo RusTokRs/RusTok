@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-10: Observability, Distributed Tracing & Telemetry
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09 (9/17 completed — 52.9%)
+- **Active Phase:** CC-11: Dynamic Settings, Tenant Configuration & Secrets
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10 (10/17 completed — 58.8%)
 - **Active Branch:** `main`
 
 ---
@@ -60,11 +60,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (8/8 completed)
 - [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (4/4 completed)
 - [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (4/4 completed)
-- [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
-- [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
-- [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
-- [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
-- [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
+- [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (5/5 completed)
+- [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (4/4 completed)
+- [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed)
+- [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed)
+- [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed)
 - [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
 - [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
 - [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
@@ -369,11 +369,36 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `rustok-telemetry`, `apps/server/src/controllers/metrics.rs`, `apps/server/src/controllers/health.rs`.
 - **CodeGraph Target:** `init_telemetry register_metrics tracing::instrument health_check`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-10.01 — Ad-Hoc Print Elimination**
-- [ ] **CC-10.02 — PII & Secret Redaction in Spans**
-- [ ] **CC-10.03 — Telemetry Lifecycle Safety**
-- [ ] **CC-10.04 — Health & Readiness Probes**
+- [x] **CC-10.01 — Ad-Hoc Print Elimination**
+  - Audited production crates and runtime services across the workspace for naked `println!`, `eprintln!`, and `dbg!` calls.
+  - Remediated naked `eprintln!` in `crates/workers/rustok-artifact-node-agent/src/agent.rs` (replaced with structured `tracing::error!(%error, "artifact node agent iteration failed")` and added `tracing.workspace = true` to its manifest).
+  - Remediated naked `eprintln!` in `crates/modules/flex/src/bin/service.rs` (replaced with `tracing::error!(%error, "Flex shutdown signal unavailable")`).
+  - Commented out lingering debug `eprintln!("Column Deserialize Error: {:?}", e)` in `crates/utils/serde-columnar-vendored/src/column/serde_impl.rs` across all 5 column visitor decoders.
+  - Replaced print example in `crates/libs/rustok-telemetry/src/otel.rs` doc comment with `tracing::info!`.
+- [x] **CC-10.02 — PII & Secret Redaction in Spans**
+  - Audited `#[instrument]` across domain modules and host services against [docs/standards/logging.md](./logging.md).
+  - Remediated sensitive and user-authored parameter leakage into distributed traces:
+    - In `apps/server/src/services/auth_lifecycle.rs`: added `email`, `name`, and `prepared` (carrying `password_hash`) to `skip(...)` across `create_user_runtime`, `create_user_db`, `create_user_in_tx`, `publish_user_event_in_tx`, and `update_profile_runtime`, preventing passwords, hashes, and PII from entering span attributes.
+    - In `crates/modules/rustok-newsletter/src/services/subscriber.rs`: removed unhashed raw `email = %input.email` from span fields in `SubscriberService::subscribe`, replacing with bounded `subscriber_id`.
+    - In `crates/modules/rustok-newsletter/src/services/campaign.rs`: removed user-authored `title = %input.title` from span fields in `CampaignService::create`, replacing with bounded `campaign_id`.
+    - In `apps/server/src/services/oauth_app.rs`: removed user-authored `name = %input.name` from span fields in `OAuthAppService::create_app`, replacing with bounded `client_id`.
+    - In `crates/modules/rustok-workflow/src/services/workflow_service.rs`: removed user-authored `name = %input.name` from span fields in `WorkflowService::create`, replacing with bounded `workflow_id`.
+- [x] **CC-10.03 — Telemetry Lifecycle Safety**
+  - Discovered and eliminated a critical process startup crash hazard in `crates/libs/rustok-telemetry/src/lib.rs` and `otel.rs`: `rustok_telemetry::init` previously attempted `tokio::task::block_in_place(|| Handle::current().block_on(...))` to initialize OpenTelemetry. When invoked prior to the Tokio runtime entry in `apps/server/src/main.rs`, setting `OTEL_ENABLED=true` panicked with "no reactor running".
+  - Refactored OpenTelemetry layer construction into synchronous `build_otel_layer(&config)`, allowing safe initialization without requiring an active Tokio runtime context, while preserving graceful fallback to structured logging when exporter creation fails.
+- [x] **CC-10.04 — Health & Readiness Probes**
+  - Audited health endpoints in `apps/server/src/controllers/health.rs`:
+    - `/health`: lightweight process status check returning version.
+    - `/health/live`: K8s liveness probe returning 200 OK.
+    - `/health/ready`: K8s readiness probe evaluating critical vs non-critical dependencies.
+    - Concurrency and starvation guards: probe stream uses `.buffer_unordered(READINESS_CONCURRENCY)` to bound in-flight health checks; aggregate probe deadline enforced via `READINESS_TIMEOUT`.
+    - Circuit breaker pattern: guarded dependency checks track failure streaks (`on_check_failure`) and trip open for a cooldown window (`circuit_open_for`), preventing cascaded failures and connection exhaustion against failing dependencies.
+    - Criticality mapping: failure of a `Critical` dependency yields 503 (`SERVICE_UNAVAILABLE`), while failure of a `NonCritical` dependency yields 200 (`OK`) with `status: "degraded"` and degraded reasons.
+    - Remediated `HealthRegistry::check_all` in `crates/libs/rustok-core/src/health/mod.rs` so that an unhealthy non-critical check sets status to `Degraded` instead of being incorrectly ignored as `Healthy`.
+  - Added automated gate `scripts/verify/verify-observability-telemetry-health.mjs` (PASSED). Verified scoped compilation and test suites: `cargo test -p rustok-core --lib`, `cargo test -p rustok-telemetry --lib`, `cargo check -p rustok-artifact-node-agent -p rustok-newsletter -p rustok-workflow -p flex` (PASSED, 0 errors, 0 warnings).
 
 ---
 

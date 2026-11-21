@@ -195,7 +195,7 @@ pub struct OAuthAppService;
 
 impl OAuthAppService {
     /// Registers a manual OAuth client application with generated credentials and tenant association.
-    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, name = %input.name, slug = %input.slug))]
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, slug = %input.slug, client_id))]
     pub async fn create_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -275,6 +275,8 @@ impl OAuthAppService {
                 return Err(Error::InternalServerError);
             }
         };
+
+        tracing::Span::current().record("client_id", tracing::field::display(app.client_id));
 
         Ok(CreateOAuthAppResult {
             app,
