@@ -616,12 +616,23 @@ async fn detect_oauth_refresh_reuse(
             OAuthTokenProtocolError::server_error("Failed to recheck refresh-token reuse")
         })?;
     let Some(stale) = stale else {
+        tx.rollback().await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to finish refresh-token reuse check")
+        })?;
         return Ok(());
     };
     let Some(revoked_at) = stale.revoked_at else {
+        tx.rollback().await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to finish refresh-token reuse check")
+        })?;
         return Ok(());
     };
     if Utc::now().timestamp() - revoked_at.timestamp() < OAUTH_REFRESH_REUSE_GRACE_SECONDS {
+        // Do not keep the SQLite writer reserved until a detached Drop rollback
+        // completes; release it before the caller returns invalid_grant.
+        tx.rollback().await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to finish refresh-token reuse check")
+        })?;
         return Ok(());
     }
 
