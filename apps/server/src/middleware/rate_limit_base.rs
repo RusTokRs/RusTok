@@ -34,6 +34,21 @@ use crate::common::{
 
 const RATE_LIMIT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
+// Repair legacy or restored counters that exist without an expiry. A counter
+// that cannot be given a TTL must fail closed rather than rate-limit forever.
+const RATE_LIMIT_REDIS_SCRIPT_SOURCE: &str = r#"
+local current = redis.call('INCR', KEYS[1])
+local ttl = redis.call('TTL', KEYS[1])
+if ttl == -1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+    ttl = redis.call('TTL', KEYS[1])
+end
+if ttl < 0 then
+    return redis.error_reply('rate-limit key expiry could not be established')
+end
+return {current, ttl}
+"#;
+
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
 pub struct RateLimitConfig {
@@ -315,18 +330,8 @@ impl RateLimiter {
         key_prefix: &str,
         key: &str,
     ) -> Result<RateLimitInfo, RateLimitCheckError> {
-        static RATE_LIMIT_REDIS_SCRIPT: Lazy<Script> = Lazy::new(|| {
-            Script::new(
-                r#"
-local current = redis.call('INCR', KEYS[1])
-if current == 1 then
-    redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-local ttl = redis.call('TTL', KEYS[1])
-return {current, ttl}
-"#,
-            )
-        });
+        static RATE_LIMIT_REDIS_SCRIPT: Lazy<Script> =
+            Lazy::new(|| Script::new(RATE_LIMIT_REDIS_SCRIPT_SOURCE));
 
         let redis_key = redis_rate_limit_key(key_prefix, key);
         let window_secs = bounded_redis_window_seconds(self.config.window);
@@ -965,6 +970,14 @@ mod window_bounds_tests {
 #[cfg(test)]
 mod diagnostic_tests {
     use super::*;
+
+    #[test]
+    fn redis_rate_limit_script_repairs_counters_without_expiry() {
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl == -1 then"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('EXPIRE'"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl < 0 then"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.error_reply"));
+    }
 
     #[test]
     fn redis_limiter_clones_share_one_reconnecting_connection_slot() {
