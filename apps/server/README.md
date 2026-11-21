@@ -6,6 +6,12 @@
 
 ## Responsibilities
 
+Cache listener startup for Channel/RBAC invalidation, tenant generation,
+tenant locale and Redis-status is stop-interruptible during unfinished
+initial recovery and replacement joins. Shutdown still takes and drains
+already published JoinHandles under each listener's registration lock.
+
+
 Public direct worker starters register Product Search channel repair,
 Notifications intake/candidate/fanout, Forum Search inbox/contract, Product
 Index refresh, Social Graph Index, Comments TCP listener and Comments durable
