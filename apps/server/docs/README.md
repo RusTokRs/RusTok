@@ -4,6 +4,16 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
+generation, and Redis-status listener starters now cancel pending
+**pre-publication** startup work when host shutdown is signaled. This
+includes their startup-mutex wait, initial cache/Redis recovery, and
+joins of previously aborted workers. A shared stop-watch helper checks
+the subscribed state to avoid losing a stop between check and wait;
+published task shutdown still uses each listener's own registry gate
+and bounded join/abort contract.
+
+
 Direct worker starters for Product Search channel repair, Notifications
 outbox intake/candidate/fanout, Forum Search inbox/contract, Product Index
 refresh, Social Graph Index, Comments TCP listener and Comments durable
