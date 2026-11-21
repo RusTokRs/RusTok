@@ -1,5 +1,60 @@
 # Server App — Implementation Plan
 
+## Worker recovery after DLQ publication failure and cooperative shutdown (2026-11-21)
+
+Branch: `agent/server-social-graph-poison-recovery-20261121`, based on main
+`a9431fdefd08693eab7aa0aaab87169b877af239`; independent of the
+open startup ownership and OAuth branches.
+
+### Defects confirmed in `apps/server`
+
+- `social_graph_index_worker.rs` ended the raw poison DLQ publish retry loop
+  with an `Err(_error)` match arm while its formatted error referenced
+  `{error}`. This is an unresolved Rust identifier in a compiled function
+  body and prevents the corresponding module from compiling. The raw broker
+  error also should not become a general worker error surface because its
+  text is uncontrolled transport data.
+- `marketplace_financial_worker.rs` performed three distinct durable
+  reconciliation stages sequentially on each timer tick: adapt provider
+  reversals, sweep reversal events, and sweep paid-order events. After
+  shutdown began during stage one or two, the worker could still admit later
+  stages before checking the stop channel again. This lengthened shutdown and
+  admitted avoidable external recovery work after host stop.
+
+### Remediation
+
+- Replaced the invalid raw-poison terminal error reference with a stable,
+  redacted diagnostic containing the retry attempt count and the crucial
+  guarantee that the source broker offset remains uncommitted. The existing
+  release-claim/lease and receipt publication logic is preserved; on
+  redelivery the worker can reclaim or recognize its durable receipt. Added
+  a focused regression for the failure diagnostic.
+- Factored marketplace financial reconciliation sequencing into
+  `run_recovery_phases`. Each phase runs to completion (a durable operation
+  is not cancelled mid-write), but the stop receiver is checked before the
+  initial phase and after every phase; an observed stop prevents admission
+  of the following phase. The outer worker exits rather than sleeping for
+  another tick. A deterministic asynchronous test covers stop before any
+  phase, after phase one, after phase two, after phase three, and successful
+  all-three completion without stop.
+
+### Verification and limits
+
+**No compilation, tests, formatting, lint or live Iggy/database failover
+exercises were run**, per maintainer preference. Suggested commands:
+```sh
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::social_graph_index_worker::tests
+cargo test -p rustok-server --lib services::marketplace_financial_worker::tests
+```
+Also exercise a real broker failure at the last DLQ attempt and a process
+stop between financial phases with a real database. Crash between Iggy
+publication and durable receipt publication still has an inherent
+at-least-once retry window (dependent on the broker's deterministic ID
+deduplication); this patch does **not** claim transactional exactly-once
+delivery across broker and database.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
