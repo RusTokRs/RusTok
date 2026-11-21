@@ -1,5 +1,6 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_core::PermissionScope;
+use sea_orm::PaginatorTrait;
 
 mod filters;
 mod ordering;

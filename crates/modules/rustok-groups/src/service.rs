@@ -172,12 +172,10 @@ impl GroupsService {
         }
         let body = normalize_optional_text(input.body);
         let metadata = normalize_language_agnostic_metadata(input.metadata)?;
-        if let Some(category_id) = input.category_id {
-            if category_id.is_nil() {
-                return Err(GroupsError::Validation(
-                    "category_id cannot be a nil UUID".to_string(),
-                ));
-            }
+        if input.category_id.is_some_and(|id| id.is_nil()) {
+            return Err(GroupsError::Validation(
+                "category_id cannot be a nil UUID".to_string(),
+            ));
         }
 
         let transaction = self.db.begin().await?;

@@ -84,7 +84,7 @@ async fn find_invitation_for_update(
     let locator = query()
         .one(transaction)
         .await?
-        .ok_or_else(|| GroupsError::NotFound)?;
+        .ok_or(GroupsError::NotFound)?;
     crate::membership_enforcement_transaction::reserve_group_write_for_update(
         transaction,
         tenant_id,

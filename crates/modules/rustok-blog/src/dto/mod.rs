@@ -25,7 +25,7 @@ pub use comment::{
 };
 pub use post::{
     AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,
-    PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary,
+    PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostStatusCounts, PostSummary,
     PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
     PublishedSeoPost, UpdatePostInput,
 };

@@ -124,14 +124,13 @@ impl ModerationSubjectCommandPort for GroupsModerationSubjectAdapter {
             .await;
         if let Err(error) = &result
             && !error.retryable
+            && let Err(failure) = idempotency::fail(&self.db, lease, error).await
         {
-            if let Err(failure) = idempotency::fail(&self.db, lease, error).await {
-                return Err(finalization_error(
-                    error,
-                    "receipt failure persistence",
-                    &failure.to_string(),
-                ));
-            }
+            return Err(finalization_error(
+                error,
+                "receipt failure persistence",
+                &failure.to_string(),
+            ));
         }
         result
     }

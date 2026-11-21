@@ -186,12 +186,12 @@ impl StorefrontProductListQueryExt for StorefrontProductListQuery {
         let currency = currency
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        if let Some(ref code) = currency {
-            if code.len() != 3 || !code.chars().all(|ch| ch.is_ascii_alphabetic()) {
-                return Err(CommerceError::Validation(
-                    "currency_code must be a 3-letter ISO code".to_string(),
-                ));
-            }
+        if let Some(ref code) = currency
+            && (code.len() != 3 || !code.chars().all(|ch| ch.is_ascii_alphabetic()))
+        {
+            return Err(CommerceError::Validation(
+                "currency_code must be a 3-letter ISO code".to_string(),
+            ));
         }
         self.currency_code = currency.map(|value| value.to_ascii_uppercase());
         Ok(self)
