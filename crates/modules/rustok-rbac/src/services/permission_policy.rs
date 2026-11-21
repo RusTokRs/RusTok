@@ -1,6 +1,5 @@
 use crate::services::permission_normalization::normalize_permissions;
 use rustok_api::Permission;
-use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeniedReasonKind {
@@ -135,7 +134,7 @@ pub fn denied_reason_for_denial(
         if index > 0 {
             reason.push(',');
         }
-        let _ = write!(&mut reason, "{}", permission);
+        reason.push_str(&permission.to_string());
     }
 
     (DeniedReasonKind::MissingPermissions, reason)
