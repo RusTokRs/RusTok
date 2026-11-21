@@ -17994,7 +17994,6 @@ dependencies = [
 name = "rustok-seo"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
@@ -18038,7 +18037,6 @@ dependencies = [
  "leptos-ui-routing",
  "leptos_axum",
  "rustok-api",
- "rustok-auth-ui",
  "rustok-core",
  "rustok-outbox",
  "rustok-seo",
@@ -18065,6 +18063,7 @@ dependencies = [
  "rustok-seo-targets",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -18074,10 +18073,7 @@ version = "0.1.0"
 dependencies = [
  "leptos",
  "rustok-core",
- "rustok-graphql",
  "rustok-seo",
- "rustok-ui-core",
- "rustok-ui-transport",
  "serde",
  "serde_json",
  "tokio",

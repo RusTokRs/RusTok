@@ -122,9 +122,9 @@ impl SeoService {
                 continue;
             }
 
-            let settings = settings
-                .as_ref()
-                .expect("enabled diagnostics must load one settings snapshot");
+            let Some(settings) = settings.as_ref() else {
+                continue;
+            };
             let target_ids = summaries
                 .iter()
                 .map(|summary| summary.target_id)

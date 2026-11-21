@@ -172,6 +172,7 @@ impl SeoMetadataService {
             .await
     }
 
+    #[tracing::instrument(skip(self, tenant), fields(tenant_id = %tenant.id, %target_kind, %target_id))]
     pub async fn publish_revision(
         &self,
         tenant: &TenantContext,
@@ -291,6 +292,7 @@ impl SeoSitemapService {
             .await
     }
 
+    #[tracing::instrument(skip(self, _authorization))]
     pub async fn execute_next_sitemap_job(
         &self,
         _authorization: &SeoWorkerAuthorization,
@@ -471,6 +473,7 @@ impl SeoBulkService {
             .await
     }
 
+    #[tracing::instrument(skip(self, _authorization))]
     pub async fn execute_next_bulk_job(
         &self,
         _authorization: &SeoWorkerAuthorization,
@@ -480,6 +483,7 @@ impl SeoBulkService {
             .await
     }
 
+    #[tracing::instrument(skip(self, _authorization))]
     pub async fn execute_next_sitemap_job(
         &self,
         _authorization: &SeoWorkerAuthorization,
@@ -487,6 +491,7 @@ impl SeoBulkService {
         self.runtime.execute_next_sitemap_job_background().await
     }
 
+    #[tracing::instrument(skip(self, _authorization))]
     pub async fn execute_next_index_repair_job(
         &self,
         _authorization: &SeoWorkerAuthorization,
@@ -537,6 +542,7 @@ impl SeoOperationsService {
             .await
     }
 
+    #[tracing::instrument(skip(self, _authorization))]
     pub async fn execute_next_index_repair_replay_job(
         &self,
         _authorization: &SeoWorkerAuthorization,

@@ -216,7 +216,7 @@ impl SeoBulkFilterForm {
     pub fn new(default_locale: Option<&str>) -> Self {
         Self {
             target_kind: SeoTargetSlug::new(seo_builtin_slug::PAGE)
-                .expect("builtin SEO target slug must stay valid"),
+                .unwrap_or_default(),
             locale: default_locale.unwrap_or("en").to_string(),
             query: String::new(),
             source: SeoBulkSource::Any,
@@ -700,10 +700,10 @@ impl SeoSettingsForm {
         Ok(())
     }
 
-    pub fn build_settings(&self) -> SeoModuleSettings {
+    pub fn build_settings(&self) -> Result<SeoModuleSettings, String> {
         let mut settings = SeoModuleSettings::default();
-        let _ = self.apply_to_settings(&mut settings);
-        settings
+        self.apply_to_settings(&mut settings)?;
+        Ok(settings)
     }
 }
 
@@ -860,7 +860,7 @@ mod tests {
         form.allowed_canonical_hosts_text = " Blog.Example.com \n".to_string();
         form.x_default_locale = " en-US ".to_string();
 
-        let settings = form.build_settings();
+        let settings = form.build_settings().expect("build settings");
         assert_eq!(settings.default_robots, vec!["index", "follow"]);
         assert_eq!(
             settings.allowed_redirect_hosts,

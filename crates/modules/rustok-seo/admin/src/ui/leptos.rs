@@ -154,7 +154,13 @@ pub fn SeoAdmin() -> impl IntoView {
             status_message.set(Some(err));
             return;
         }
-        let input = form.build_settings();
+        let input = match form.build_settings() {
+            Ok(input) => input,
+            Err(err) => {
+                status_message.set(Some(err));
+                return;
+            }
+        };
 
         busy_key.set(Some(SeoAdminBusyKey::SaveSettings.to_busy_key()));
         spawn_local(async move {

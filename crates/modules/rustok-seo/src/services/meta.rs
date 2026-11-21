@@ -250,6 +250,7 @@ impl SeoService {
         .await
     }
 
+    #[tracing::instrument(skip(self, tenant), fields(tenant_id = %tenant.id, %target_kind, %target_id))]
     pub async fn publish_revision(
         &self,
         tenant: &TenantContext,
@@ -843,7 +844,13 @@ fn snapshot_to_input(payload: Value, target_kind: SeoTargetSlug, target_id: Uuid
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|value| serde_json::from_value(value).ok())
+            .filter_map(|value| match serde_json::from_value(value) {
+                Ok(item) => Some(item),
+                Err(err) => {
+                    tracing::warn!(%err, "Skipping malformed SEO translation snapshot entry");
+                    None
+                }
+            })
             .collect(),
     }
 }

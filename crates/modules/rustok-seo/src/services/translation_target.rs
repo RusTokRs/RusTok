@@ -1395,9 +1395,9 @@ fn resource_identity(
     })?;
     Ok(TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(OWNER_SLUG)
-            .expect("static SEO owner slug must satisfy Translation target contract: invariant validated at startup"),
+            .map_err(|error| contract_validation_error(error.to_string()))?,
         resource_kind: ResourceKind::new(RESOURCE_KIND)
-            .expect("static SEO resource kind must satisfy Translation target contract: invariant validated at startup"),
+            .map_err(|error| contract_validation_error(error.to_string()))?,
         resource_id: ResourceId::new(target_id.to_string())
             .map_err(|error| contract_validation_error(error.to_string()))?,
         subresource_id: Some(
