@@ -1004,7 +1004,7 @@ impl CatalogService {
             seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
-            fulfillment_requirement: fulfillment_requirement.into(),
+            fulfillment_requirement,
             shipping_profile_slug: product
                 .shipping_profile_slug
                 .clone()

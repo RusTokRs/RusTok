@@ -162,6 +162,7 @@ modules.local.toml
 *-codex*/
 .codex/
 .codegraph/
+.gitnexus/
 .playwright-cli/
 playwright-report/
 test-results/

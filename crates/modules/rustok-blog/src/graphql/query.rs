@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
     Action, AuthContext, RequestContext, Resource, TenantContext,
-    graphql::{require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;

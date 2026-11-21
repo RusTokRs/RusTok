@@ -13,7 +13,7 @@ use crate::domain::{
 
 use super::{
     CursorCodec, CursorValidationError, IndexCursor, QueryValidationError, RecordValidationError,
-    SchemaRegistry,
+    SchemaRegistry, SchemaRegistryError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +148,7 @@ impl<'a> ReferenceIndex<'a> {
         let schema = self
             .registry
             .get(&query.schema)
-            .ok_or_else(|| QueryValidationError::UnknownSchema(query.schema.clone()))?;
+            .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
         let order_values = query
             .order_by
             .iter()
