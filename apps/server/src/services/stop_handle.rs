@@ -133,6 +133,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stop_releases_a_starter_waiting_on_a_busy_registration_lock() {
+        let gate = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let held = gate.lock().await;
+        let (stop, _receiver) = StopHandle::new();
+        let (waiting_tx, waiting_rx) = tokio::sync::oneshot::channel();
+        let stop_for_start = stop.clone();
+        let next_gate = std::sync::Arc::clone(&gate);
+        let starter = tokio::spawn(async move {
+            await_worker_startup_or_stop(&stop_for_start, async {
+                waiting_tx.send(()).expect("startup is waiting");
+                next_gate.lock().await
+            })
+            .await
+            .is_none()
+        });
+
+        waiting_rx.await.expect("startup reached the busy registration mutex");
+        stop.stop().await;
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), starter)
+                .await
+                .expect("stop releases a waiting initializer")
+                .expect("initializer task joins"),
+            "startup must not acquire a registration slot after host stop"
+        );
+        // The original initializer still owns the gate: success must not
+        // depend on shutdown waiting for unrelated in-flight setup.
+        drop(held);
+    }
+
+    #[tokio::test]
     async fn completed_bootstrap_is_not_reported_after_stop() {
         let (stop, _receiver) = StopHandle::new();
         assert_eq!(await_worker_startup_or_stop(&stop, async { 7 }).await, Some(7));
