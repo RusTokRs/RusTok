@@ -274,6 +274,14 @@ pub struct OutboxRetentionSettings {
     pub batch_size: u64,
     #[serde(default = "default_outbox_retention_interval_seconds")]
     pub interval_seconds: u64,
+    /// Days a dead-lettered event is kept; 0 keeps the DLQ forever.
+    #[serde(default = "default_outbox_failed_retention_days")]
+    pub failed_retention_days: u64,
+    /// Days a terminal owner-operation receipt is kept; 0 keeps receipts
+    /// forever. Bounded by default so stored responses cannot grow without
+    /// limit; a retry arriving after pruning runs the operation again.
+    #[serde(default = "default_outbox_receipt_retention_days")]
+    pub receipt_retention_days: u64,
 }
 
 impl Default for OutboxRetentionSettings {
@@ -283,6 +291,8 @@ impl Default for OutboxRetentionSettings {
             retention_days: default_outbox_retention_days(),
             batch_size: default_outbox_retention_batch_size(),
             interval_seconds: default_outbox_retention_interval_seconds(),
+            failed_retention_days: default_outbox_failed_retention_days(),
+            receipt_retention_days: default_outbox_receipt_retention_days(),
         }
     }
 }
@@ -1282,6 +1292,14 @@ fn default_outbox_retention_batch_size() -> u64 {
 
 fn default_outbox_retention_interval_seconds() -> u64 {
     3_600
+}
+
+fn default_outbox_failed_retention_days() -> u64 {
+    0
+}
+
+fn default_outbox_receipt_retention_days() -> u64 {
+    90
 }
 
 fn default_backpressure_max_queue_depth() -> usize {

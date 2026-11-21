@@ -313,10 +313,11 @@ fn relay_config(worker_id: &str) -> RelayConfig {
     RelayConfig {
         batch_size: 1,
         max_attempts: 3,
-        backoff_base: Duration::ZERO,
-        backoff_max: Duration::ZERO,
+        backoff_base: Duration::from_millis(1),
+        backoff_max: Duration::from_millis(1),
         max_concurrency: 1,
         claim_ttl: Duration::from_millis(1),
+        publish_timeout: Duration::from_micros(500),
         worker_id: worker_id.to_string(),
     }
 }

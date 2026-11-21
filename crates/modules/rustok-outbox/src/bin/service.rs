@@ -2,9 +2,9 @@ use std::{env, path::Path, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rustok_iggy::{IggyConfig, IggyMode, IggyTransport};
-use rustok_outbox::{OutboxRelay, RelayConfig, SysEvents};
+use rustok_outbox::{OutboxRelay, RelayConfig, SysEvents, entity};
 use rustok_telemetry::{LogFormat, TelemetryConfig};
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, QuerySelect};
 use url::Url;
 
 const DATABASE_ENV: &str = "RUSTOK_OUTBOX_DATABASE_URL";
@@ -27,14 +27,14 @@ async fn main() -> Result<()> {
         tokio::time::timeout(CONNECT_TIMEOUT, IggyTransport::new(config))
             .await
             .map_err(|_| anyhow!("Outbox Iggy connection timed out"))?
-            .map_err(|_| anyhow!("Outbox could not initialize the configured Iggy transport"))?,
+            .map_err(|error| {
+                // The outward error stays free of broker internals; the
+                // root cause belongs in the operator's log, not the void.
+                tracing::error!(%error, "Outbox Iggy transport initialization failed");
+                anyhow!("Outbox could not initialize the configured Iggy transport")
+            })?,
     );
-    let config = RelayConfig::default();
-    let relay = OutboxRelay::new(database, broker.clone()).with_config(RelayConfig {
-        // Keep each claimed row eligible for immediate dispatch by a worker.
-        batch_size: config.max_concurrency as u64,
-        ..config
-    });
+    let relay = OutboxRelay::new(database, broker.clone()).with_config(relay_config_from_env()?);
     tracing::info!("Outbox relay started");
     let result = run_until_shutdown(&relay).await;
     let shutdown = tokio::time::timeout(CONNECT_TIMEOUT, broker.shutdown())
@@ -58,12 +58,75 @@ async fn open_database(value: &str) -> Result<DatabaseConnection> {
         .sqlx_logging(false);
     let db = Database::connect(options)
         .await
-        .map_err(|_| anyhow!("Outbox PostgreSQL connection failed"))?;
+        .map_err(|error| {
+            tracing::error!(%error, "Outbox PostgreSQL connection failed");
+            anyhow!("Outbox PostgreSQL connection failed")
+        })?;
+    // Probe schema readability without loading a full event payload.
     SysEvents::find()
-        .one(&db)
+        .select_only()
+        .column(entity::Column::Id)
+        .limit(1)
+        .into_tuple::<uuid::Uuid>()
+        .all(&db)
         .await
         .map_err(|_| anyhow!("Outbox schema preflight failed for sys_events"))?;
     Ok(db)
+}
+
+/// Relay tuning for the standalone deployment. The embedded server resolves
+/// the same policy from `rustok.events.*` settings; here every knob is an
+/// optional environment variable over the `RelayConfig` defaults, so the
+/// two deployments cannot silently drift into different retry policies
+/// unless an operator sets them apart on purpose.
+fn relay_config_from_env() -> Result<RelayConfig> {
+    let defaults = RelayConfig::default();
+    let config = RelayConfig {
+        batch_size: env_u64("RUSTOK_OUTBOX_RELAY_BATCH_SIZE", defaults.batch_size)?,
+        max_attempts: i32::try_from(env_u64(
+            "RUSTOK_OUTBOX_RELAY_MAX_ATTEMPTS",
+            u64::try_from(defaults.max_attempts).unwrap_or(5),
+        )?)
+        .map_err(|_| anyhow!("RUSTOK_OUTBOX_RELAY_MAX_ATTEMPTS is out of range"))?,
+        backoff_base: env_duration_ms(
+            "RUSTOK_OUTBOX_RELAY_BACKOFF_BASE_MS",
+            defaults.backoff_base,
+        )?,
+        backoff_max: env_duration_ms("RUSTOK_OUTBOX_RELAY_BACKOFF_MAX_MS", defaults.backoff_max)?,
+        max_concurrency: usize::try_from(env_u64(
+            "RUSTOK_OUTBOX_RELAY_MAX_CONCURRENCY",
+            defaults.max_concurrency as u64,
+        )?)
+        .map_err(|_| anyhow!("RUSTOK_OUTBOX_RELAY_MAX_CONCURRENCY is out of range"))?,
+        claim_ttl: env_duration_ms("RUSTOK_OUTBOX_RELAY_CLAIM_TTL_MS", defaults.claim_ttl)?,
+        publish_timeout: env_duration_ms(
+            "RUSTOK_OUTBOX_RELAY_PUBLISH_TIMEOUT_MS",
+            defaults.publish_timeout,
+        )?,
+        worker_id: env::var("RUSTOK_OUTBOX_RELAY_WORKER_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(defaults.worker_id),
+    };
+    Ok(config)
+}
+
+fn env_u64(name: &str, default: u64) -> Result<u64> {
+    match env::var(name) {
+        Ok(value) => value
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| anyhow!("{name} must be a non-negative integer")),
+        Err(env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(anyhow!("{name} is not valid Unicode: {error}")),
+    }
+}
+
+fn env_duration_ms(name: &str, default: Duration) -> Result<Duration> {
+    Ok(Duration::from_millis(env_u64(
+        name,
+        u64::try_from(default.as_millis()).unwrap_or(u64::MAX),
+    )?))
 }
 
 async fn read_broker_config(path: &Path) -> Result<IggyConfig> {

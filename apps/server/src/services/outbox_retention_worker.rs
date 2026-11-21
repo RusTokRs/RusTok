@@ -124,6 +124,7 @@ mod tests {
                 retention: OutboxRetention::new(db).with_config(OutboxRetentionConfig {
                     retention: chrono::Duration::days(30),
                     batch_size: 10,
+                    ..Default::default()
                 }),
             },
             stop_rx,

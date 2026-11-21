@@ -231,6 +231,7 @@ async fn relay_reclaims_stale_claims() -> TestResult<()> {
     let relay =
         OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
             claim_ttl: std::time::Duration::from_millis(1),
+            publish_timeout: std::time::Duration::from_micros(500),
             ..Default::default()
         });
 
