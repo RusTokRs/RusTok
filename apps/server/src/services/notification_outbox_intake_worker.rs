@@ -208,7 +208,14 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
     let Some(reservation) =
         ServerRuntimeStartReservation::try_claim(ctx, NotificationOutboxIntakeStartupReservation)
     else {
-        return Ok(());
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Notification outbox intake worker startup is already in progress; retry".to_string(),
+        ));
     };
     if ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>() {
         return Ok(());
