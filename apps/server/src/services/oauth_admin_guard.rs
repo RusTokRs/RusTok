@@ -542,6 +542,88 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn prepared_secret_rotation_rejects_a_concurrent_secret_change() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "OAuth rotation race tenant",
+            &format!("oauth-rotation-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let created = scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Rotating client".to_string(),
+                    slug: "rotating-client".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://client.example/callback".to_string()],
+                    scopes: vec!["profile".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![Permission::MODULES_MANAGE.to_string()],
+                },
+            ),
+        )
+        .await
+        .expect("create OAuth app");
+        let app_id = created.app.id;
+        let actor_id = Uuid::new_v4();
+        let context = AuthAdminMutationContext {
+            actor_id,
+            tenant_id: tenant.id,
+            request_id: None,
+            locale: Some("en".to_string()),
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+        };
+        let guard = GuardedOAuthAdminProvider::new(
+            db.clone(),
+            Arc::new(ServerAuthAdminMutationProvider::new(
+                db.clone(),
+                crate::auth::AuthConfig::new("test-secret".to_string()),
+            )),
+        );
+        let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];
+
+        // Password hashing has completed without holding a transaction. The
+        // app can be updated independently before the commit phase starts.
+        let prepared = guard
+            .prepare_oauth_secret_rotation(tenant.id, app_id, &authority)
+            .await
+            .expect("prepare secret outside a SQL transaction");
+        let competing_hash = "secret-hash-set-by-another-rotation".to_string();
+        oauth_apps::ActiveModel {
+            id: sea_orm::Set(app_id),
+            client_secret_hash: sea_orm::Set(Some(competing_hash.clone())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("concurrent secret update must not be blocked by preparation");
+
+        let error = guard
+            .commit_prepared_oauth_secret_rotation(&context, app_id, &authority, prepared)
+            .await
+            .expect_err("stale prepared secret must never overwrite new secret");
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Validation(message)
+                if message.contains("changed during rotation")
+        ));
+        let current = oauth_apps::Entity::find_by_id(app_id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app still exists");
+        assert_eq!(current.client_secret_hash.as_deref(), Some(competing_hash.as_str()));
+    }
+
     #[test]
     fn refresh_grant_requires_authorization_code() {
         assert!(validate_grant_dependencies(&["refresh_token".to_string()]).is_err());
