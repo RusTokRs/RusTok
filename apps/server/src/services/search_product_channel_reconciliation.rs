@@ -6,9 +6,9 @@ use rustok_search::{
 };
 use tokio::task::JoinHandle;
 
-use crate::error::Result;
-use crate::services::app_lifecycle::StopHandle;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::error::{Error, Result};
+use crate::services::app_lifecycle::{DirectWorkerRegistrationLock, StopHandle};
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 
 const PRODUCT_CHANNEL_REPAIR_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 const PRODUCT_CHANNEL_REPAIR_BATCH_INTERVAL: Duration = Duration::from_millis(100);
@@ -36,9 +36,30 @@ impl ProductChannelProjectionWorkerHandle {
 pub fn start_product_channel_projection_reconciliation_if_ready(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<ProductChannelProjectionWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+
+    // This public starter may be called outside router bootstrap. Its entire
+    // synchronous check -> spawn -> publish path must exclude concurrent
+    // starters and shutdown's JoinHandle snapshot.
+    let stop = StopHandle::ensure(ctx);
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Product Search channel projection reconciliation cannot start during server shutdown"
+                .to_string(),
+        ));
+    }
+    if published_worker_running::<ProductChannelProjectionWorkerHandle>(
+        ctx,
+        "Product Search channel projection reconciliation",
+        ProductChannelProjectionWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
 
@@ -50,7 +71,7 @@ pub fn start_product_channel_projection_reconciliation_if_ready(
         return Ok(());
     }
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop_rx = stop.subscribe();
 
     let instance_id = PRODUCT_CHANNEL_REPAIR_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
