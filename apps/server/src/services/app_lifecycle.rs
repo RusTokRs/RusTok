@@ -2077,6 +2077,46 @@ mod tests {
         shutdown.await.expect("shutdown finishes after email");
     }
 
+    #[test]
+    fn direct_worker_shutdown_snapshot_waits_for_in_flight_registration() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::DirectWorkerRegistrationLock::ensure(&ctx);
+        let guard = registration
+            .0
+            .lock()
+            .expect("hold direct worker registration gate");
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (taken_tx, taken_rx) = std::sync::mpsc::channel();
+        let shutdown_ctx = ctx.clone();
+        let take = std::thread::spawn(move || {
+            ready_tx.send(()).expect("taking thread ready");
+            let result = super::take_direct_worker_for_shutdown::<u64>(&shutdown_ctx);
+            taken_tx.send(result).expect("report shutdown snapshot");
+        });
+
+        ready_rx.recv().expect("shutdown taker entered thread");
+        assert!(
+            taken_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "shutdown must wait while a direct starter owns publication"
+        );
+        // A direct starter that entered before stop may publish; the shutdown
+        // taker must then capture and remove that handle, not detach it.
+        ctx.shared_insert(42_u64);
+        drop(guard);
+
+        assert_eq!(
+            taken_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("shutdown acquires the gate"),
+            Some(42)
+        );
+        take.join().expect("shutdown thread joins");
+        assert!(!ctx.shared_contains::<u64>());
+    }
+
     #[tokio::test]
     async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
         let ctx = ServerRuntimeContext::new(
