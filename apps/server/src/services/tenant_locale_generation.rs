@@ -18,6 +18,7 @@ use crate::middleware::locale::{
     invalidate_all_tenant_locale_cache, invalidate_tenant_locale_cache,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::tenant_cache_generation::{
     TENANT_CACHE_BACKEND_PREFIX, TENANT_CACHE_GENERATION_CHANNEL,
 };
@@ -420,13 +421,11 @@ pub async fn start_tenant_locale_generation_listener(
     let start_lock = ctx
         .shared_get::<TenantLocaleGenerationStartLock>()
         .unwrap_or(candidate);
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return;
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<TenantLocaleGenerationListenerHandle>() {
         if existing.is_running() {
@@ -438,16 +437,20 @@ pub async fn start_tenant_locale_generation_listener(
         for task in &tasks {
             task.abort();
         }
-        for task in tasks {
-            if let Err(error) = task.await {
-                if !error.is_cancelled() {
-                    tracing::warn!(
-                        ?error,
-                        "Old tenant locale generation task failed while being replaced"
-                    );
+        let Some(()) = await_worker_startup_or_stop(&stop, async {
+            for task in tasks {
+                if let Err(error) = task.await {
+                    if !error.is_cancelled() {
+                        tracing::warn!(
+                            ?error,
+                            "Old tenant locale generation task failed while being replaced"
+                        );
+                    }
                 }
             }
-        }
+        }).await else {
+            return;
+        };
     }
 
     let health = Arc::new(TenantLocaleGenerationHealth::default());
@@ -456,18 +459,17 @@ pub async fn start_tenant_locale_generation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
-    if let Err(error) = listener.recover_if_advanced().await {
+    let Some(recovery) =
+        await_worker_startup_or_stop(&stop, listener.recover_if_advanced()).await
+    else {
+        return;
+    };
+    if let Err(error) = recovery {
         tracing::warn!(%error, "Tenant locale generation startup recovery failed");
         rustok_telemetry::metrics::record_event_error(
             "tenant.locale.generation",
             "startup_recovery",
         );
-    }
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
-        return;
     }
 
     let local_task = tokio::spawn(supervise_local_listener(listener.clone(), initial_local));
