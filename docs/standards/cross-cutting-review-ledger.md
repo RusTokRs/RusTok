@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-11: Dynamic Settings, Tenant Configuration & Secrets
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10 (10/17 completed — 58.8%)
+- **Active Phase:** CC-12: Internationalization (i18n), Localization & Translation Storage
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11 (11/17 completed — 64.7%)
 - **Active Branch:** `main`
 
 ---
@@ -405,14 +405,32 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 ### CC-11: Dynamic Settings, Tenant Configuration & Secrets
 
 - **Canonical Documents:** [docs/architecture/settings.md](../architecture/settings.md), [DECISIONS/2026-09-22-platform-module-settings-architecture.md](../../DECISIONS/2026-09-22-platform-module-settings-architecture.md).
-- **Primary Owner Crates:** `apps/server/src/services/settings_service.rs`, `crates/modules/*/settings`.
+- **Primary Owner Crates:** `apps/server/src/services/settings_service.rs`, `crates/modules/*/settings`, `crates/utils/rustok-secrets`.
 - **CodeGraph Target:** `SettingsService load_tenant_settings Zeroize`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-11.01 — In-Memory Secret Zeroization & Redaction**
-- [ ] **CC-11.02 — Dynamic Settings Schema Validation**
-- [ ] **CC-11.03 — Hierarchy & Fallback Resolution**
-- [ ] **CC-11.04 — Environment Variable Containment**
+- [x] **CC-11.01 — In-Memory Secret Zeroization & Redaction**
+  - Audited `crates/utils/rustok-secrets`: verified `secrecy::SecretString` with automatic `ZeroizeOnDrop` in RAM and redaction on Debug/Display.
+  - Enhanced `redact_secrets` in `apps/server/src/services/settings_service.rs` to redact OAuth secrets (`client_secret`, `clientSecret`, `secret`) across root-level, provider map, and provider array structures in addition to email and cache secrets.
+  - Enhanced `preserve_oauth_secret_fields` and `preserve_email_secret_fields` to recognize placeholder masks (`"[REDACTED]"`, `"********"`, `""`) and clear masks to empty strings when no previous secret exists, preventing placeholder masks from ever being persisted as live credentials. Added support for both object/map and array provider representations in OAuth preservation.
+- [x] **CC-11.02 — Dynamic Settings Schema Validation**
+  - Audited all categories in `category::ALL` (`general`, `email`, `rate_limit`, `features`, `i18n`, `oauth`, `cache`).
+  - Implemented typed validator structs implementing `SettingsValidator`:
+    - `FeaturesSettingsValidator`: strictly validates boolean flags (supporting both snake_case and camelCase) and rejects unknown flags.
+    - `GeneralSettingsValidator`: validates bounds on site name (1..=255 chars), description (<= 2000 chars), absolute URL parsing via `url::Url` (enforcing http/https and host presence), and boolean maintenance mode.
+    - `I18nSettingsValidator`: validates BCP 47 alphanumeric subtags (1..=8 chars per tag component), rejects malformed tags, enforces non-empty `locales`, and validates `default_locale` inclusion in `locales`.
+    - `OAuthSettingsValidator`: validates provider structures (map and array format) and enforces non-empty provider identifiers.
+  - Registered all 7 category validators in `ValidatorRegistry::default()`.
+  - Updated `ValidatorRegistry::validate` to fail closed (returning `Err`) if an unregistered category is evaluated instead of silently passing through.
+- [x] **CC-11.03 — Hierarchy & Fallback Resolution**
+  - Audited 3-level fallback hierarchy (1. DB tenant row in `platform_settings`, 2. deployment YAML `settings.rustok.<category>`, 3. `{}` compiled defaults).
+  - Verified bounded CAS concurrency control (`update_if_current` verifying `expected_schema_version`, optimistic locking query, atomic version increment, and transactional outbox emission `DomainEvent::PlatformSettingsChanged` within the same transaction).
+- [x] **CC-11.04 — Environment Variable Containment**
+  - Audited domain modules for direct `env::var` usage; verified that per-tenant settings never bypass dynamic database resolution and `SettingsService`.
+  - Verified that environment variables are strictly contained to process bootstrap and deployment configuration.
+  - Added automated gate `scripts/verify/verify-dynamic-settings-secrets.mjs` (PASSED). Verified scoped compilation and tests: `cargo test -p rustok-secrets --lib`, `cargo check -p rustok-search -p rustok-modules -p rustok-seo` (PASSED, 0 errors, 0 warnings).
 
 ---
 

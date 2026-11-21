@@ -214,6 +214,286 @@ impl SettingsValidator for CacheSettingsValidator {
     }
 }
 
+/// Built-in validator for the `features` category.
+pub struct FeaturesSettingsValidator;
+
+impl SettingsValidator for FeaturesSettingsValidator {
+    fn category(&self) -> &str {
+        category::FEATURES
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let Some(object) = settings.as_object() else {
+            return Err(vec!["features settings must be a JSON object".to_string()]);
+        };
+
+        let mut errors = Vec::new();
+        const KNOWN_FEATURE_FLAGS: &[&str] = &[
+            "registration_enabled",
+            "registrationEnabled",
+            "email_verification",
+            "emailVerification",
+            "multi_tenant",
+            "multiTenant",
+            "search_indexing",
+            "searchIndexing",
+            "oauth_enabled",
+            "oauthEnabled",
+            "invites_enabled",
+            "invitesEnabled",
+            "invite_only_registration",
+            "inviteOnlyRegistration",
+        ];
+
+        for (k, v) in object {
+            if !KNOWN_FEATURE_FLAGS.contains(&k.as_str()) {
+                errors.push(format!("Unknown feature flag '{k}' in features settings"));
+            } else if !v.is_boolean() {
+                errors.push(format!("Feature flag '{k}' must be a boolean"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+/// Built-in validator for the `general` category.
+pub struct GeneralSettingsValidator;
+
+impl SettingsValidator for GeneralSettingsValidator {
+    fn category(&self) -> &str {
+        category::GENERAL
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let Some(object) = settings.as_object() else {
+            return Err(vec!["general settings must be a JSON object".to_string()]);
+        };
+
+        let mut errors = Vec::new();
+
+        if let Some(site_name) = object.get("site_name").or_else(|| object.get("siteName")) {
+            if let Some(s) = site_name.as_str() {
+                let trimmed = s.trim();
+                if trimmed.is_empty() || trimmed.len() > 255 {
+                    errors.push("general.site_name must be between 1 and 255 characters".to_string());
+                }
+            } else {
+                errors.push("general.site_name must be a string".to_string());
+            }
+        }
+
+        if let Some(site_desc) = object.get("site_description").or_else(|| object.get("siteDescription")) {
+            if let Some(s) = site_desc.as_str() {
+                if s.len() > 2000 {
+                    errors.push("general.site_description must not exceed 2000 characters".to_string());
+                }
+            } else {
+                errors.push("general.site_description must be a string".to_string());
+            }
+        }
+
+        if let Some(site_url) = object.get("site_url").or_else(|| object.get("siteUrl")) {
+            if let Some(s) = site_url.as_str() {
+                let trimmed = s.trim();
+                if trimmed.len() > 2048 {
+                    errors.push("general.site_url must not exceed 2048 characters".to_string());
+                } else if !trimmed.is_empty() {
+                    match url::Url::parse(trimmed) {
+                        Ok(parsed) => {
+                            if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+                                errors.push("general.site_url must be an http or https URL with a host".to_string());
+                            }
+                        }
+                        Err(_) => {
+                            errors.push("general.site_url must be a valid absolute URL".to_string());
+                        }
+                    }
+                }
+            } else {
+                errors.push("general.site_url must be a string".to_string());
+            }
+        }
+
+        if let Some(maintenance) = object.get("maintenance_mode").or_else(|| object.get("maintenanceMode")) {
+            if !maintenance.is_boolean() {
+                errors.push("general.maintenance_mode must be a boolean".to_string());
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+/// Built-in validator for the `i18n` category.
+pub struct I18nSettingsValidator;
+
+impl SettingsValidator for I18nSettingsValidator {
+    fn category(&self) -> &str {
+        category::I18N
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let Some(object) = settings.as_object() else {
+            return Err(vec!["i18n settings must be a JSON object".to_string()]);
+        };
+
+        let mut errors = Vec::new();
+
+        let is_valid_locale_tag = |tag: &str| -> bool {
+            if tag.len() < 2 || tag.len() > 35 {
+                return false;
+            }
+            let parts: Vec<&str> = tag.split(['-', '_']).collect();
+            if parts.is_empty() || parts.iter().any(|p| p.is_empty() || p.len() > 8 || !p.chars().all(|c| c.is_ascii_alphanumeric())) {
+                return false;
+            }
+            true
+        };
+
+        let mut default_loc = None;
+        if let Some(default_locale) = object.get("default_locale").or_else(|| object.get("defaultLocale")) {
+            if let Some(s) = default_locale.as_str() {
+                if !is_valid_locale_tag(s) {
+                    errors.push(format!("i18n.default_locale '{s}' is not a valid BCP 47 locale tag"));
+                } else {
+                    default_loc = Some(s.to_string());
+                }
+            } else {
+                errors.push("i18n.default_locale must be a string".to_string());
+            }
+        }
+
+        if let Some(fallback_locale) = object.get("fallback_locale").or_else(|| object.get("fallbackLocale")) {
+            if let Some(s) = fallback_locale.as_str() {
+                if !is_valid_locale_tag(s) {
+                    errors.push(format!("i18n.fallback_locale '{s}' is not a valid BCP 47 locale tag"));
+                }
+            } else {
+                errors.push("i18n.fallback_locale must be a string".to_string());
+            }
+        }
+
+        if let Some(locales) = object.get("locales") {
+            if let Some(arr) = locales.as_array() {
+                if arr.is_empty() {
+                    errors.push("i18n.locales must contain at least one locale tag".to_string());
+                }
+                let mut valid_tags = Vec::new();
+                for (idx, item) in arr.iter().enumerate() {
+                    if let Some(s) = item.as_str() {
+                        if !is_valid_locale_tag(s) {
+                            errors.push(format!("i18n.locales[{idx}] '{s}' is not a valid BCP 47 locale tag"));
+                        } else {
+                            valid_tags.push(s);
+                        }
+                    } else {
+                        errors.push(format!("i18n.locales[{idx}] must be a string"));
+                    }
+                }
+                if let Some(ref def) = default_loc {
+                    if !valid_tags.is_empty() && !valid_tags.contains(&def.as_str()) {
+                        errors.push(format!("i18n.default_locale '{def}' must be listed in i18n.locales"));
+                    }
+                }
+            } else {
+                errors.push("i18n.locales must be an array of strings".to_string());
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+/// Built-in validator for the `oauth` category.
+pub struct OAuthSettingsValidator;
+
+impl SettingsValidator for OAuthSettingsValidator {
+    fn category(&self) -> &str {
+        category::OAUTH
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let Some(object) = settings.as_object() else {
+            return Err(vec!["oauth settings must be a JSON object".to_string()]);
+        };
+
+        let mut errors = Vec::new();
+
+        if let Some(enabled) = object.get("enabled") {
+            if !enabled.is_boolean() {
+                errors.push("oauth.enabled must be a boolean".to_string());
+            }
+        }
+
+        if let Some(allow_reg) = object.get("allow_registration").or_else(|| object.get("allowRegistration")) {
+            if !allow_reg.is_boolean() {
+                errors.push("oauth.allow_registration must be a boolean".to_string());
+            }
+        }
+
+        if let Some(providers) = object.get("providers") {
+            if let Some(providers_obj) = providers.as_object() {
+                for (p_name, p_val) in providers_obj {
+                    if p_name.trim().is_empty() {
+                        errors.push("oauth provider name cannot be empty".to_string());
+                    }
+                    if let Some(p_cfg) = p_val.as_object() {
+                        if let Some(client_id) = p_cfg.get("client_id").or_else(|| p_cfg.get("clientId")) {
+                            if !client_id.is_string() {
+                                errors.push(format!("oauth provider '{p_name}' client_id must be a string"));
+                            }
+                        }
+                        if let Some(secret) = p_cfg.get("client_secret").or_else(|| p_cfg.get("clientSecret")).or_else(|| p_cfg.get("secret")) {
+                            if !secret.is_string() {
+                                errors.push(format!("oauth provider '{p_name}' client_secret must be a string"));
+                            }
+                        }
+                    } else {
+                        errors.push(format!("oauth provider '{p_name}' configuration must be an object"));
+                    }
+                }
+            } else if let Some(providers_arr) = providers.as_array() {
+                for (idx, p_val) in providers_arr.iter().enumerate() {
+                    if let Some(p_cfg) = p_val.as_object() {
+                        if let Some(provider_name) = p_cfg.get("provider").or_else(|| p_cfg.get("name")).or_else(|| p_cfg.get("id")) {
+                            if let Some(s) = provider_name.as_str() {
+                                if s.trim().is_empty() {
+                                    errors.push(format!("oauth provider at index {idx} identifier cannot be empty"));
+                                }
+                            } else {
+                                errors.push(format!("oauth provider at index {idx} identifier must be a string"));
+                            }
+                        }
+                    } else {
+                        errors.push(format!("oauth provider at index {idx} must be an object"));
+                    }
+                }
+            } else {
+                errors.push("oauth.providers must be an object or array".to_string());
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
 /// Registry of validators indexed by category.
 pub struct ValidatorRegistry {
     validators: Vec<Box<dyn SettingsValidator>>,
@@ -227,6 +507,10 @@ impl Default for ValidatorRegistry {
         reg.register(RateLimitSettingsValidator);
         reg.register(EmailSettingsValidator);
         reg.register(CacheSettingsValidator);
+        reg.register(FeaturesSettingsValidator);
+        reg.register(GeneralSettingsValidator);
+        reg.register(I18nSettingsValidator);
+        reg.register(OAuthSettingsValidator);
         reg
     }
 }
@@ -242,8 +526,7 @@ impl ValidatorRegistry {
                 return v.validate(settings);
             }
         }
-        // Categories without a validator pass through
-        Ok(())
+        Err(vec![format!("No validator registered for category '{cat}'")])
     }
 }
 
@@ -659,6 +942,38 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
                 }
             }
         }
+        category::OAUTH => {
+            if let Some(object) = settings.as_object_mut() {
+                for key in ["client_secret", "clientSecret", "secret"] {
+                    if object.contains_key(key) {
+                        object.insert(key.to_string(), Value::String(String::new()));
+                    }
+                }
+                if let Some(providers) = object.get_mut("providers") {
+                    if let Some(providers_obj) = providers.as_object_mut() {
+                        for (_name, p_val) in providers_obj.iter_mut() {
+                            if let Some(p_cfg) = p_val.as_object_mut() {
+                                for key in ["client_secret", "clientSecret", "secret"] {
+                                    if p_cfg.contains_key(key) {
+                                        p_cfg.insert(key.to_string(), Value::String(String::new()));
+                                    }
+                                }
+                            }
+                        }
+                    } else if let Some(providers_arr) = providers.as_array_mut() {
+                        for item in providers_arr.iter_mut() {
+                            if let Some(p_cfg) = item.as_object_mut() {
+                                for key in ["client_secret", "clientSecret", "secret"] {
+                                    if p_cfg.contains_key(key) {
+                                        p_cfg.insert(key.to_string(), Value::String(String::new()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         _ => {}
     }
 
@@ -676,8 +991,107 @@ fn preserve_secrets_from_row(
     match cat {
         category::EMAIL => preserve_email_secret_fields(existing.settings.clone(), incoming),
         category::CACHE => preserve_cache_secret_fields(existing.settings.clone(), incoming),
+        category::OAUTH => preserve_oauth_secret_fields(existing.settings.clone(), incoming),
         _ => incoming,
     }
+}
+
+fn preserve_oauth_secret_fields(existing: Value, mut incoming: Value) -> Value {
+    let (Some(existing_object), Some(incoming_object)) =
+        (existing.as_object(), incoming.as_object_mut())
+    else {
+        return incoming;
+    };
+
+    let is_mask_or_empty = |val: &str| val.is_empty() || val == "[REDACTED]" || val == "********";
+
+    for key in ["client_secret", "clientSecret", "secret"] {
+        if let Some(incoming_val) = incoming_object.get(key).and_then(Value::as_str) {
+            if is_mask_or_empty(incoming_val) {
+                if let Some(existing_secret) = existing_object
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .filter(|s| !is_mask_or_empty(s))
+                {
+                    incoming_object.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                } else {
+                    incoming_object.insert(key.to_string(), Value::String(String::new()));
+                }
+            }
+        }
+    }
+
+    if let (Some(existing_providers), Some(incoming_providers)) = (
+        existing_object.get("providers").and_then(Value::as_object),
+        incoming_object.get_mut("providers").and_then(Value::as_object_mut),
+    ) {
+        for (provider_name, incoming_val) in incoming_providers.iter_mut() {
+            if let Some(incoming_cfg) = incoming_val.as_object_mut()
+                && let Some(existing_cfg) = existing_providers.get(provider_name).and_then(Value::as_object)
+            {
+                for key in ["client_secret", "clientSecret", "secret"] {
+                    if let Some(s) = incoming_cfg.get(key).and_then(Value::as_str) {
+                        if is_mask_or_empty(s) {
+                            if let Some(existing_secret) = existing_cfg
+                                .get(key)
+                                .and_then(Value::as_str)
+                                .filter(|ex| !is_mask_or_empty(ex))
+                            {
+                                incoming_cfg.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                            } else {
+                                incoming_cfg.insert(key.to_string(), Value::String(String::new()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else if let (Some(existing_arr), Some(incoming_arr)) = (
+        existing_object.get("providers").and_then(Value::as_array),
+        incoming_object.get_mut("providers").and_then(Value::as_array_mut),
+    ) {
+        for incoming_item in incoming_arr.iter_mut() {
+            if let Some(incoming_cfg) = incoming_item.as_object_mut() {
+                let incoming_id = incoming_cfg
+                    .get("provider")
+                    .or_else(|| incoming_cfg.get("id"))
+                    .or_else(|| incoming_cfg.get("name"))
+                    .and_then(Value::as_str);
+
+                if let Some(id) = incoming_id {
+                    let matching_existing = existing_arr.iter().find(|ex_item| {
+                        ex_item.as_object().and_then(|ex_cfg| {
+                            ex_cfg
+                                .get("provider")
+                                .or_else(|| ex_cfg.get("id"))
+                                .or_else(|| ex_cfg.get("name"))
+                                .and_then(Value::as_str)
+                        }) == Some(id)
+                    }).and_then(Value::as_object);
+
+                    if let Some(existing_cfg) = matching_existing {
+                        for key in ["client_secret", "clientSecret", "secret"] {
+                            if let Some(s) = incoming_cfg.get(key).and_then(Value::as_str) {
+                                if is_mask_or_empty(s) {
+                                    if let Some(existing_secret) = existing_cfg
+                                        .get(key)
+                                        .and_then(Value::as_str)
+                                        .filter(|ex| !is_mask_or_empty(ex))
+                                    {
+                                        incoming_cfg.insert(key.to_string(), Value::String(existing_secret.to_string()));
+                                    } else {
+                                        incoming_cfg.insert(key.to_string(), Value::String(String::new()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    incoming
 }
 
 fn is_unique_violation(error: &sea_orm::DbErr) -> bool {
@@ -850,44 +1264,44 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
         return incoming;
     };
 
-    if incoming_object
-        .get("smtp_password")
-        .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("smtp_password")
-            .or_else(|| existing_object.get("smtpPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("smtp_password".to_string(), existing_password.clone());
-    }
+    let is_mask_or_empty = |v: &str| v.is_empty() || v == "[REDACTED]" || v == "********";
 
-    if incoming_object
-        .get("smtpPassword")
-        .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("smtp_password")
-            .or_else(|| existing_object.get("smtpPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("smtpPassword".to_string(), existing_password.clone());
+    for key in ["smtp_password", "smtpPassword"] {
+        if let Some(incoming_val) = incoming_object.get(key).and_then(Value::as_str) {
+            if is_mask_or_empty(incoming_val) {
+                if let Some(existing_pwd) = existing_object
+                    .get("smtp_password")
+                    .or_else(|| existing_object.get("smtpPassword"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !is_mask_or_empty(s))
+                {
+                    incoming_object.insert(key.to_string(), Value::String(existing_pwd.to_string()));
+                } else {
+                    incoming_object.insert(key.to_string(), Value::String(String::new()));
+                }
+            }
+        }
     }
 
     if let Some(incoming_smtp) = incoming_object
         .get_mut("smtp")
         .and_then(Value::as_object_mut)
-        && incoming_smtp
-            .get("password")
-            .and_then(Value::as_str)
-            .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("smtp")
-            .and_then(Value::as_object)
-            .and_then(|smtp| smtp.get("password"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
     {
-        incoming_smtp.insert("password".to_string(), existing_password.clone());
+        if let Some(incoming_pwd) = incoming_smtp.get("password").and_then(Value::as_str) {
+            if is_mask_or_empty(incoming_pwd) {
+                if let Some(existing_pwd) = existing_object
+                    .get("smtp")
+                    .and_then(Value::as_object)
+                    .and_then(|s| s.get("password"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !is_mask_or_empty(s))
+                {
+                    incoming_smtp.insert("password".to_string(), Value::String(existing_pwd.to_string()));
+                } else {
+                    incoming_smtp.insert("password".to_string(), Value::String(String::new()));
+                }
+            }
+        }
     }
 
     incoming
@@ -1501,5 +1915,146 @@ mod tests {
                 .to_string()
                 .contains("concurrently")
         );
+    }
+
+    #[test]
+    fn features_validator_rejects_non_booleans_and_unknown_flags() {
+        let v = FeaturesSettingsValidator;
+        assert!(v.validate(&json!({ "registration_enabled": true, "email_verification": false })).is_ok());
+        assert!(v.validate(&json!({ "registrationEnabled": true, "emailVerification": false })).is_ok());
+        assert!(v.validate(&json!({ "registration_enabled": "yes" })).is_err());
+        assert!(v.validate(&json!({ "unsupported_flag": true })).is_err());
+    }
+
+    #[test]
+    fn general_validator_enforces_bounds() {
+        let v = GeneralSettingsValidator;
+        assert!(v.validate(&json!({ "site_name": "RusToK Platform", "maintenance_mode": false })).is_ok());
+        assert!(v.validate(&json!({ "siteName": "RusToK Platform", "maintenanceMode": false })).is_ok());
+        assert!(v.validate(&json!({ "site_name": "" })).is_err());
+        assert!(v.validate(&json!({ "site_name": "   " })).is_err());
+        assert!(v.validate(&json!({ "maintenance_mode": "no" })).is_err());
+        assert!(v.validate(&json!({ "site_url": "ftp://invalid-scheme" })).is_err());
+        assert!(v.validate(&json!({ "site_url": "https://" })).is_err());
+        assert!(v.validate(&json!({ "site_url": "https://rustok.dev" })).is_ok());
+    }
+
+    #[test]
+    fn i18n_validator_enforces_locale_tags() {
+        let v = I18nSettingsValidator;
+        assert!(v.validate(&json!({
+            "default_locale": "en",
+            "locales": ["en", "ru", "fr"]
+        })).is_ok());
+        assert!(v.validate(&json!({
+            "defaultLocale": "en-US",
+            "locales": ["en-US", "ru-RU"]
+        })).is_ok());
+        assert!(v.validate(&json!({
+            "locales": []
+        })).is_err(), "empty locales array is invalid");
+        assert!(v.validate(&json!({
+            "default_locale": "de",
+            "locales": ["en", "ru"]
+        })).is_err(), "default_locale must be in locales");
+        assert!(v.validate(&json!({
+            "default_locale": "invalid locale tag with spaces"
+        })).is_err());
+        assert!(v.validate(&json!({
+            "default_locale": "---"
+        })).is_err());
+    }
+
+    #[test]
+    fn oauth_validator_and_secret_redaction_preservation() {
+        let v = OAuthSettingsValidator;
+        let valid = json!({
+            "enabled": true,
+            "allow_registration": true,
+            "providers": {
+                "github": {
+                    "client_id": "gh-id",
+                    "client_secret": "gh-secret"
+                }
+            }
+        });
+        assert!(v.validate(&valid).is_ok());
+        assert!(v.validate(&json!({ "enabled": "not-bool" })).is_err());
+
+        // Redaction
+        let redacted = redact_secrets(category::OAUTH, valid.clone());
+        assert_eq!(redacted["providers"]["github"]["client_secret"], "");
+        assert_eq!(redacted["providers"]["github"]["client_id"], "gh-id");
+
+        // Preservation with empty string
+        let incoming = json!({
+            "enabled": true,
+            "providers": {
+                "github": {
+                    "client_id": "gh-id-updated",
+                    "client_secret": ""
+                }
+            }
+        });
+        let preserved = preserve_oauth_secret_fields(valid.clone(), incoming);
+        assert_eq!(preserved["providers"]["github"]["client_secret"], "gh-secret");
+        assert_eq!(preserved["providers"]["github"]["client_id"], "gh-id-updated");
+
+        // Preservation with mask "[REDACTED]"
+        let incoming_masked = json!({
+            "enabled": true,
+            "providers": {
+                "github": {
+                    "client_id": "gh-id-updated",
+                    "client_secret": "[REDACTED]"
+                }
+            }
+        });
+        let preserved_masked = preserve_oauth_secret_fields(valid, incoming_masked);
+        assert_eq!(preserved_masked["providers"]["github"]["client_secret"], "gh-secret");
+
+        // Array format preservation
+        let valid_arr = json!({
+            "enabled": true,
+            "providers": [
+                {
+                    "provider": "google",
+                    "client_id": "google-id",
+                    "client_secret": "google-secret"
+                }
+            ]
+        });
+        let incoming_arr = json!({
+            "enabled": true,
+            "providers": [
+                {
+                    "provider": "google",
+                    "client_id": "google-id-v2",
+                    "client_secret": "[REDACTED]"
+                }
+            ]
+        });
+        let preserved_arr = preserve_oauth_secret_fields(valid_arr, incoming_arr);
+        assert_eq!(preserved_arr["providers"][0]["client_secret"], "google-secret");
+        assert_eq!(preserved_arr["providers"][0]["client_id"], "google-id-v2");
+
+        // Mask with no prior secret clears mask instead of storing literal "[REDACTED]"
+        let empty_prior = json!({ "enabled": true });
+        let incoming_new = json!({ "client_secret": "[REDACTED]" });
+        let cleared = preserve_oauth_secret_fields(empty_prior, incoming_new);
+        assert_eq!(cleared["client_secret"], "");
+    }
+
+    #[test]
+    fn validator_registry_fails_closed_on_unregistered_category() {
+        let registry = ValidatorRegistry::default();
+        for &cat in category::ALL {
+            assert!(
+                registry.validate(cat, &json!({})).is_ok(),
+                "category {cat} must have a registered validator"
+            );
+        }
+        let err = registry.validate("unregistered_category", &json!({})).expect_err("must fail closed");
+        assert!(err[0].contains("No validator registered"));
     }
 }
