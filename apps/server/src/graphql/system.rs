@@ -315,11 +315,25 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
 
 #[cfg(test)]
 mod tests {
+    use async_graphql::{EmptyMutation, EmptySubscription, Schema, Value};
     use rustok_api::{Permission, has_effective_permission};
 
-    #[test]
-    fn host_global_system_queries_require_host_authority() {
-        assert!(super::require_host_read().is_err());
+    #[tokio::test]
+    async fn host_global_system_queries_require_host_authority() {
+        let schema = Schema::build(super::SystemQuery, EmptyMutation, EmptySubscription).finish();
+        for query in [
+            "{ systemHealth { overall } }",
+            "{ eventsStatus { pendingEvents } }",
+        ] {
+            let response = schema.execute(query).await;
+            assert_eq!(response.errors.len(), 1, "{query}: {response:?}");
+            let error = &response.errors[0];
+            assert_eq!(error.message, "host-global authority required");
+            assert_eq!(
+                error.extensions.as_ref().and_then(|ext| ext.get("code")),
+                Some(&Value::String("PERMISSION_DENIED".into())),
+            );
+        }
     }
 
     #[test]

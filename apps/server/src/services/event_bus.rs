@@ -612,6 +612,17 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::watch;
 
+    fn assert_single_forwarded_envelope(
+        accepted: &[rustok_events::EventEnvelope],
+        expected: &rustok_events::EventEnvelope,
+    ) {
+        assert_eq!(accepted.len(), 1, "expected exactly one forwarded envelope");
+        assert_eq!(
+            serde_json::to_value(&accepted[0]).expect("serialize forwarded envelope"),
+            serde_json::to_value(expected).expect("serialize expected envelope"),
+        );
+    }
+
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
         let (stop_tx, _stop_rx) = watch::channel(false);
@@ -699,10 +710,7 @@ mod tests {
             .expect("forwarder task should join");
 
         assert_eq!(transport.attempts.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            &[envelope]
-        );
+        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
         assert_eq!(
             bus.backpressure().expect("backpressure enabled").current_depth(),
             0
@@ -828,7 +836,7 @@ mod tests {
             .expect("forwarder should drain after producer completion")
             .expect("forwarder task should join");
 
-        assert_eq!(transport.accepted.lock().unwrap().as_slice(), &[envelope]);
+        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -888,10 +896,7 @@ mod tests {
             .await
             .expect("supervisor should drain before exiting")
             .expect("supervisor task should join");
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            std::slice::from_ref(&envelope)
-        );
+        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -966,10 +971,7 @@ mod tests {
         .await
         .expect("shutdown iteration should drain the restart receiver");
 
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            std::slice::from_ref(&envelope)
-        );
+        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -1051,7 +1053,7 @@ mod tests {
 
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
-                if transport.accepted.lock().unwrap().as_slice() == std::slice::from_ref(&envelope) {
+                if !transport.accepted.lock().unwrap().is_empty() {
                     break;
                 }
                 tokio::task::yield_now().await;
@@ -1066,6 +1068,7 @@ mod tests {
             .await
             .expect("forwarder should drain and stop")
             .expect("forwarder task should join");
+        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
     }
 
     #[tokio::test]

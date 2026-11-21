@@ -1540,6 +1540,7 @@ mod tests {
         .unwrap();
         rustok_outbox::entity::ActiveModel {
             id: Set(uuid::Uuid::new_v4()),
+            tenant_id: Set(None),
             event_type: Set("test.event".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({})),

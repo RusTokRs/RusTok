@@ -2113,7 +2113,7 @@ mod tests {
             "the retention worker must not be started twice"
         );
 
-        let snapshots = additional_runtime_worker_snapshots(&runtime_ctx);
+        let snapshots = super::additional_runtime_worker_snapshots(&runtime_ctx);
         for name in ["outbox_relay", "outbox_retention"] {
             let snapshot = snapshots
                 .iter()
