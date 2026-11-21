@@ -1,5 +1,55 @@
 # Server App — Implementation Plan
 
+## Notification background worker single-owner admission (2026-11-21)
+
+Branch: `agent/server-notification-worker-startup-ownership-20261121`,
+forked from main `a9431fdefd08693eab7aa0aaab87169b877af239`;
+independent of the module dispatcher and OAuth draft branches.
+
+### Confirmed defects
+
+- Candidate, fanout and outbox-intake startup each checked
+  `shared_contains::<...WorkerHandle>()` before dependency construction
+  and later executed an unconditional `shared_insert(...tokio::spawn(...))`.
+  Concurrent callers could both pass the initial check, launch duplicate
+  tasks and overwrite the context's sole JoinHandle, leaving one task
+  invisible to the normal drain. In Outbox intake, two callers could also
+  concurrently register consumer event types and backfill receipts before
+  any handle was published.
+- Candidate and fanout worker startup had no admission-time check of the
+  shared `StopHandle`. A late caller could spawn a worker while the server
+  already had its shutdown signal set.
+
+### Changes
+
+- Added a typed `ServerRuntimeStartReservation<'_, T>` in
+  `server_runtime_context.rs`: it takes a process-local atomic
+  `shared_insert_if_absent` claim, releases it on startup error or future
+  cancellation via `Drop`, and retains the claim after handle publication
+  through `commit`.
+- Candidate and fanout reserve after their readiness/dependency checks,
+  before constructing/spawning their workers. If construction fails or
+  shutdown begins during preparation, the claim is removed so a retry can
+  succeed. Only the one admitted caller publishes a JoinHandle.
+- Outbox intake reserves **before** async registration and full legacy
+  receipt backfill; an aborted backfill cannot strand its local startup
+  reservation. Successful backfill followed by handle publication retains
+  the claim. Existing durable receipt idempotence remains unchanged.
+- Tests cover failed-start claim release, retained successful ownership,
+  concurrent contention by 12 threads and cancellation by dropping an
+  in-flight async startup future before it completes.
+
+**Handoff:** No Cargo tests, rustfmt, clippy, compilation, migrations or
+multi-process checks were run per maintainer preference. Run
+`cargo check -p rustok-server --lib` and targeted
+`services::server_runtime_context::tests`,
+`services::notification_candidate_worker`,
+`services::notification_fanout_worker` and
+`services::notification_outbox_intake_worker` tests. Validate lifecycle
+shutdown/backfill interleavings with a real DB and two concurrent starter
+calls. This reserves **one worker per runtime context**, not one per
+deployment. It does not add durable cross-replica worker leader election.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
