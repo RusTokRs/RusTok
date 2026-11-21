@@ -1,5 +1,31 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — retry/shutdown operation admission (2026-11-21)
+
+Following the startup-liveness fixes in draft PR #4777, inspected the Comments
+schedule audit source-retry handoff and Notifications candidate/fanout worker
+operation sequences. The host already checked stop at the start of the worker
+cycle and batch item, but async intermediate calls could outlive that check:
+
+- Comments source-retry handoff could claim/publish up to 256 successive
+  canonical audit items in one cycle even after stop was signaled during
+  the first durable publish or failure transition.
+- Notification candidate/fanout workers could finish an async effective
+  policy lookup (or policy deferral) after stop and still begin a new
+  candidate, source materialization, or fanout job operation.
+
+The Comments cycle now accepts a shared stop receiver and checks it before
+the initial dead-letter sweep and every new claim. Existing claimed work is
+settled before checking again. Notifications now check stop at the
+**post-policy admission boundary** before the next effectful owner call.
+A focused deterministic Comments regression tests the per-claim admission
+predicate across a stop during an in-flight operation.
+
+These edits do not cancel a database transaction already started, repair
+cross-process crash side effects, or change owner lease/receipt semantics.
+The maintainer has not run tests, compilation, rustfmt, or runtime contention
+checks for this audit batch.
+
 ## Server audit continuation — exited worker startup (2026-11-21)
 
 PR #4772 was merged into `main` at

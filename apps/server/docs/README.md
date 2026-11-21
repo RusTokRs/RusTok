@@ -422,6 +422,16 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   source identity. A successful DLQ publication is recorded durably before
   broker source acknowledgement; a crash between these steps retries the
   receipt/offset path rather than dropping the source message.
+- The Comments schedule audit source-retry handoff checks the shared stop
+  signal before its expired-attempt sweep and before **each** new claim, not
+  only at the outer polling boundary. An already acquired claim is allowed to
+  complete its canonical outbox transaction and failure-state update before the
+  next shutdown check; this preserves attempt/receipt integrity.
+- Notification candidate and fanout workers recheck shutdown **after**
+  asynchronous tenant capability/policy evaluation (including deferrals),
+  immediately before starting their next candidate processing, source
+  materialization or fanout job. A policy lookup begun before shutdown is not
+  permission to admit a new durable effect afterward.
 - Marketplace financial recovery runs provider-reversal adaptation, reversal
   event reconciliation and paid-order event reconciliation in that order.
   During cooperative shutdown it finishes the currently running durable

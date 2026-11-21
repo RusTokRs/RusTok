@@ -207,6 +207,15 @@ async fn notification_fanout_worker_loop(
             if !source_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
             }
+            // Source policy evaluation can await storage after shutdown
+            // starts. A new materialization is not an in-flight operation.
+            if *stop_rx.borrow() {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification fanout worker stopped after source policy evaluation"
+                );
+                return;
+            }
             match worker.materialize_source_inbox(work.inbox_id).await {
                 Ok(receipt) => tracing::debug!(
                     worker_id = worker.worker_id(),
@@ -256,6 +265,15 @@ async fn notification_fanout_worker_loop(
             }
             if !job_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
+            }
+            // Respect shutdown even when a delayed tenant-policy lookup
+            // completed after the preceding loop-entry stop check.
+            if *stop_rx.borrow() {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification fanout worker stopped after job policy evaluation"
+                );
+                return;
             }
             match worker.process_fanout_job(work.job_id).await {
                 Ok(page) => tracing::debug!(

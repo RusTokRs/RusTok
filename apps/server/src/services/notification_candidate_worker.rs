@@ -284,6 +284,16 @@ async fn notification_candidate_worker_loop(
                 continue;
             };
 
+            // The asynchronous policy lookup (or deferral) may have run
+            // through shutdown. Do not acquire a fresh durable claim afterward.
+            if *stop_rx.borrow() {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification candidate worker stopped after policy observation"
+                );
+                return;
+            }
+
             match worker
                 .process_candidate_with_policy_revision(
                     work.item_id,
