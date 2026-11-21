@@ -569,9 +569,11 @@ pub fn email_service_from_ctx(
             let EmailService::Smtp(sender) = service else {
                 return Ok(Box::new(DisabledBuiltInAuthEmailSender));
             };
-            let sender = Arc::new(*sender);
-            ctx.shared_insert(SharedSmtpEmailService(sender.clone()));
-            Ok(Box::new(TemplatedSmtpMailerAdapter::new(sender, locale)))
+            // Concurrent requests may create provisional transports, but all
+            // callers must end up using the same cached pool. Never overwrite
+            // a transport another request has already registered.
+            let shared = ctx.shared_get_or_insert(SharedSmtpEmailService(Arc::new(*sender)));
+            Ok(Box::new(TemplatedSmtpMailerAdapter::new(shared.0, locale)))
         }
     }
 }
@@ -755,6 +757,23 @@ mod tests {
 
         release_tx.send(()).expect("complete existing send");
         drain.await.expect("drain completes");
+        let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
+        assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_first_poll_releases_auth_email_registration() {
+        use crate::common::settings::RustokSettings;
+        use sea_orm::DatabaseConnection;
+
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let handle = spawn_auth_email_task(&ctx, "cancelled_before_poll", || {
+            std::future::pending::<std::result::Result<(), EmailError>>()
+        });
+        handle.abort();
+        let _ = handle.await;
+        drain_auth_email_tasks(&ctx).await;
         let registry = ctx.shared_get::<Arc<AuthEmailTaskRegistry>>().expect("registry");
         assert_eq!(registry.state.lock().expect("registry mutex").handles.len(), 0);
     }
