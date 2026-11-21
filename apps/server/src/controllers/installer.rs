@@ -756,6 +756,129 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
+    async fn installer_job_test_db() -> sea_orm::DatabaseConnection {
+        use sea_orm::{ConnectionTrait, Database};
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE install_http_jobs (
+                id TEXT PRIMARY KEY NOT NULL,
+                status TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NULL,
+                session_id TEXT NULL,
+                tenant_id TEXT NULL,
+                output TEXT NULL,
+                error_message TEXT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .await
+        .expect("install_http_jobs table");
+        db
+    }
+
+    #[tokio::test]
+    async fn installer_job_runs_after_http_admission_receiver_is_cancelled() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+
+        let db = installer_job_test_db().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            persistence.clone(),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = started_tx.send(());
+                release_rx.await.expect("release installer task");
+            },
+        );
+        // Simulate HTTP client disconnecting before the claim was acknowledged.
+        drop(ready);
+        tokio::time::timeout(Duration::from_secs(2), started_rx)
+            .await
+            .expect("installer work starts despite disconnect")
+            .expect("background execution started");
+        assert!(ctx.shared_contains::<ActiveInstallerJobHandle>());
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("persisted status readable")
+            .expect("durable job exists");
+        assert_eq!(job.status, "running");
+
+        release_tx.send(()).expect("release executing installer");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("background task releases the reservation");
+    }
+
+    #[tokio::test]
+    async fn installer_claim_failure_clears_local_admission_without_running_job() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        let (ran_tx, mut ran_rx) = tokio::sync::mpsc::channel(1);
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            InstallerPersistenceService::new(ctx.db_clone()),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = ran_tx.send(()).await;
+            },
+        );
+        assert!(ready.await.expect("claim task replies").is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("failed claim releases local owner");
+        assert!(ran_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn installer_does_not_accept_new_jobs_during_shutdown() {
+        use crate::common::settings::RustokSettings;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        assert!(require_installer_not_stopping(&ctx).is_ok());
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        let error = require_installer_not_stopping(&ctx)
+            .expect_err("a stopping host cannot admit another installer task");
+        assert!(matches!(
+            error,
+            Error::Http(ref response) if response.status == StatusCode::SERVICE_UNAVAILABLE
+        ));
+    }
+
     #[test]
     fn installer_lock_owner_is_unique_per_attempt_and_bounded() {
         let job_id = Uuid::from_u128(1);
