@@ -374,6 +374,10 @@ impl ConsumerPoisonReceiptStore {
                     "consumer poison receipt disappeared after failed claim".to_owned(),
                 )
             })?;
+        // The expiry flag belongs to the SQL row, not the decoded neutral
+        // receipt (which intentionally exposes no lease or publisher data).
+        // Read it before transforming QueryResult into ConsumerPoisonReceipt.
+        let publishing_expired = publishing_claim_expired(&current)?;
         let current = decode_and_validate_receipt(&current, identity, backend)?;
         Ok(match current.state {
             ConsumerPoisonReceiptState::Published => ConsumerPoisonPublishClaim::AlreadyPublished,
@@ -382,7 +386,7 @@ impl ConsumerPoisonReceiptStore {
             }
             ConsumerPoisonReceiptState::Reserved => ConsumerPoisonPublishClaim::Busy,
             ConsumerPoisonReceiptState::Publishing => {
-                if publishing_claim_expired(&current)? {
+                if publishing_expired {
                     ConsumerPoisonPublishClaim::ReconciliationRequired
                 } else {
                     ConsumerPoisonPublishClaim::Busy

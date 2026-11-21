@@ -42,6 +42,14 @@ prove broker-level deduplication or promise exactly-once delivery. The
 read-only aggregate inspector already exposes expired-publishing counts.
 
 
+The concurrent claim-failure fallback reads the SQL-derived
+`publishing_claim_expired` column from `QueryResult` **before** decoding the
+public `ConsumerPoisonReceipt`. The neutral receipt intentionally does not
+carry publisher or lease fields, so reading SQL metadata after decoding would
+be a Rust type error. The source guard checks this ordering; the PostgreSQL
+expiry scenario tests the preserved `ReconciliationRequired` behavior.
+The source fix and guard were authored without running compiler or tests.
+
 `ConsumerPoisonReceiptInspector` provides one read-only aggregate snapshot for a
 validated consumer group. It exposes only total, reserved, publishing, expired-
 publishing, published, and acknowledged counts. Unknown/corrupt states fail closed when

@@ -1,5 +1,19 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — poison receipt SQL fallback type fix (2026-11-21)
+
+A review of the previous ambiguous DLQ publication patch found a Rust type
+error in `ConsumerPoisonReceiptStore::reserve_and_claim_in_transaction`.
+After a lost concurrent claim, the fallback decoded a `QueryResult` into
+a public `ConsumerPoisonReceipt` and then called
+`publishing_claim_expired(&current)` on the decoded receipt. That helper
+expects a raw `QueryResult` containing the SQL-only expiry alias.
+
+The fallback now reads the expiry alias before decoding and branches on the
+saved boolean, keeping the public neutral receipt free of publisher/lease
+metadata. Updated the existing source verifier to enforce the ordering.
+No test, compiler or formatting commands were executed.
+
 ## Server audit continuation — global DLQ observer lifecycle (2026-11-21)
 
 The physical Event DLQ duplicate-alert observer and its telemetry companion

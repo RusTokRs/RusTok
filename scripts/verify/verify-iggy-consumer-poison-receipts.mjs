@@ -225,6 +225,32 @@ if (
   );
 }
 
+// Reading a SQL-only derived expiry flag after decoding into the deliberately
+// lease-free public receipt type is a Rust type error. Preserve this ordering
+// for the concurrent failed-claim fallback.
+const fallbackStart = files.receipts.indexOf(
+  "let current = transaction",
+  files.receipts.indexOf("claim_receipt_sql(backend)", sourceSelect),
+);
+const fallbackEnd = files.receipts.indexOf(
+  "pub async fn release_claim(",
+  fallbackStart,
+);
+const fallback = fallbackStart >= 0 && fallbackEnd > fallbackStart
+  ? files.receipts.slice(fallbackStart, fallbackEnd)
+  : "";
+const sqlExpiryRead = fallback.indexOf(
+  "let publishing_expired = publishing_claim_expired(&current)?;",
+);
+const receiptDecode = fallback.indexOf(
+  "let current = decode_and_validate_receipt(&current, identity, backend)?;",
+);
+if (sqlExpiryRead < 0 || receiptDecode <= sqlExpiryRead) {
+  failures.push(
+    "poison claim fallback must read SQL-only expiry before decoding QueryResult into neutral receipt",
+  );
+}
+
 const rawStart = files.worker.indexOf("async fn process_decode_failure(");
 const rawEnd = files.worker.indexOf("async fn acknowledge_terminal_result(", rawStart);
 const rawFlow =
