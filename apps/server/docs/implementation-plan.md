@@ -1,5 +1,52 @@
 # Server App — Implementation Plan
 
+## OAuth authorization-code creation fence (2026-11-21)
+
+Branch: `agent/server-oauth-code-issuance-fence-20261121`, forked from
+main `a9431fdefd08693eab7aa0aaab87169b877af239`; independent of
+the other open server audit PRs.
+
+### Confirmed TOCTOU defect
+
+All OAuth authorization routes (JSON, browser direct issue and consent
+approval) previously preflighted a client, grant, scopes, redirect and sometimes
+consent before calling `OAuthAppService::generate_authorization_code`. The
+service inserted the code without checking any of those authorities inside a
+transaction. A concurrent client revoke or consent revoke could commit first,
+invalidate all pending codes, and then the stale authorization route could
+create a new code **after** the invalidation. A subsequent client reactivation
+or renewed consent could make that code unexpectedly redeemable.
+
+### Implementation
+
+- The authorization-code generator starts a transaction and obtains the
+  canonical tenant-scoped OAuth app lock followed by the user lock. It checks
+  current app/subject activity, `authorization_code` grant and supported app
+  type, exact registered redirect URI, non-empty scopes within the current
+  app ceiling, and active scope-covering third-party consent.
+- It then creates and hashes a random code, inserts the pending code and
+  commits before returning plaintext. Failed policy decisions never insert a
+  code. This preserves the original `generate_authorization_code` API used
+  by all three REST authorization paths and shares the lock order used by
+  consent grant/revoke, app mutation and token exchange.
+- Focused SQLite regressions exercise missing/revoked/regranted consent,
+  app revocation, cross-tenant request, stale redirect/scopes and inactive
+  subject, including no-code-insert assertions.
+- Service failures currently retain the existing controller's coarse
+  `server_error` mapping; this continuation does not silently claim an
+  improved HTTP error taxonomy or a full transport contract parity audit.
+
+**Verification left to maintainer:** no compile, format, Cargo tests, lints
+or live PostgreSQL multi-replica interleaving tests were executed. Run
+`cargo check -p rustok-server --lib` and
+`cargo test -p rustok-server --lib services::oauth_app::tests` in the
+relevant feature profile before merge, plus end-to-end authorize/consent
+browser flows and concurrent revoke/issue tests on PostgreSQL. Security
+under real concurrency depends on all cooperating paths using the same
+app-then-subject lock order. This does not bind an authorization-code
+write to a live HTTP session generation after an already-authenticated
+request begins; token exchange still checks subject/credential epochs.
+
 ## Server runtime follow-up (2026-11-21)
 
 This bounded continuation follows merged PR #4759 and stays on
