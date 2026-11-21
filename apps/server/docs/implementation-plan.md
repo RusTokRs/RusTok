@@ -2302,10 +2302,12 @@ could silently turn a successful bootstrap into a failed listener task. The
 accept loop also retried persistent TCP accept errors immediately, producing
 a CPU and logging hot loop for conditions such as descriptor exhaustion.
 
-- Added an explicit 1..=4096 connection bound and reject invalid values before
-  the listener task is spawned.
-- Bounded the configurable shutdown grace to 1..=60,000 ms and made the runtime
-  join budget equal to that grace plus a five-second abort/join margin.
+- Added explicit bounds for 1..=128 concurrent connections and 1..=8 MiB
+  frames, preventing an operator setting from multiplying unbounded per-frame
+  allocations across thousands of connections.
+- Bounded the pre-request timeout and shutdown grace to 1..=60,000 ms, and made
+  the runtime join budget equal to the configured grace plus a five-second
+  abort/join margin.
 - Added exponential accept-error backoff from 100 ms to 5 seconds.
 - The backoff wait is interrupted immediately by the shared shutdown signal.
 - Added tests for the configuration bounds, retry progression/cap, and shutdown

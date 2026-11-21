@@ -51,7 +51,9 @@ pub const COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV: &str = "RUSTOK_COMMENTS_TCP_SHUTDO
 pub const COMMENTS_TCP_MAX_FRAME_BYTES_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_FRAME_BYTES";
 
 const DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS: usize = 64;
-const MAX_COMMENTS_TCP_MAX_CONNECTIONS: usize = 4_096;
+const MAX_COMMENTS_TCP_MAX_CONNECTIONS: usize = 128;
+const MAX_COMMENTS_TCP_FRAME_BYTES: usize = 8 * 1024 * 1024;
+const MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 60_000;
 const COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
 const COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS: u64 = 2_000;
@@ -154,23 +156,18 @@ impl CommentsTcpListenerConfig {
             COMMENTS_TCP_MAX_CONNECTIONS_ENV,
             DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS,
         )?)?;
-        let pre_request_timeout_ms = parse_optional_positive_u64(
+        let pre_request_timeout_ms = validate_pre_request_timeout_ms(parse_optional_positive_u64(
             COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV,
             DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS,
-        )?;
+        )?)?;
         let shutdown_grace_ms = validate_shutdown_grace_ms(parse_optional_positive_u64(
             COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV,
             DEFAULT_COMMENTS_TCP_SHUTDOWN_GRACE_MS,
         )?)?;
-        let max_frame_bytes = parse_optional_positive_usize(
+        let max_frame_bytes = validate_max_frame_bytes(parse_optional_positive_usize(
             COMMENTS_TCP_MAX_FRAME_BYTES_ENV,
             DEFAULT_COMMENTS_TCP_MAX_FRAME_BYTES,
-        )?;
-        if max_frame_bytes > u32::MAX as usize {
-            return Err(format!(
-                "{COMMENTS_TCP_MAX_FRAME_BYTES_ENV} must be within 1..=u32::MAX"
-            ));
-        }
+        )?)?;
 
         Ok(Some(Self {
             bind_addr,
@@ -672,6 +669,25 @@ async fn run_comments_tcp_listener(
 
 
 
+
+fn validate_pre_request_timeout_ms(timeout_ms: u64) -> std::result::Result<u64, String> {
+    if !(1..=MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS).contains(&timeout_ms) {
+        return Err(format!(
+            "{COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV} must be within 1..={MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS}"
+        ));
+    }
+    Ok(timeout_ms)
+}
+
+fn validate_max_frame_bytes(max_frame_bytes: usize) -> std::result::Result<usize, String> {
+    if !(1..=MAX_COMMENTS_TCP_FRAME_BYTES).contains(&max_frame_bytes) {
+        return Err(format!(
+            "{COMMENTS_TCP_MAX_FRAME_BYTES_ENV} must be within 1..={MAX_COMMENTS_TCP_FRAME_BYTES}"
+        ));
+    }
+    Ok(max_frame_bytes)
+}
+
 fn validate_shutdown_grace_ms(shutdown_grace_ms: u64) -> std::result::Result<u64, String> {
     if !(1..=MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS).contains(&shutdown_grace_ms) {
         return Err(format!(
@@ -832,7 +848,9 @@ mod tests {
         let starter = start_comments_tcp_listener_if_enabled;
         let _ = starter;
         assert_eq!(DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS, 64);
-        assert_eq!(MAX_COMMENTS_TCP_MAX_CONNECTIONS, 4_096);
+        assert_eq!(MAX_COMMENTS_TCP_MAX_CONNECTIONS, 128);
+        assert_eq!(MAX_COMMENTS_TCP_FRAME_BYTES, 8 * 1024 * 1024);
+        assert_eq!(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 60_000);
         assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_BASE_DELAY, Duration::from_millis(100));
         assert_eq!(COMMENTS_TCP_ACCEPT_RETRY_MAX_DELAY, Duration::from_secs(5));
         assert_eq!(DEFAULT_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS, 2_000);
@@ -851,6 +869,14 @@ mod tests {
         assert_eq!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS), Ok(4_096));
         assert!(validate_max_connections(0).is_err());
         assert!(validate_max_connections(MAX_COMMENTS_TCP_MAX_CONNECTIONS + 1).is_err());
+        assert_eq!(validate_pre_request_timeout_ms(1), Ok(1));
+        assert_eq!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS), Ok(60_000));
+        assert!(validate_pre_request_timeout_ms(0).is_err());
+        assert!(validate_pre_request_timeout_ms(MAX_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS + 1).is_err());
+        assert_eq!(validate_max_frame_bytes(1), Ok(1));
+        assert_eq!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES), Ok(8 * 1024 * 1024));
+        assert!(validate_max_frame_bytes(0).is_err());
+        assert!(validate_max_frame_bytes(MAX_COMMENTS_TCP_FRAME_BYTES + 1).is_err());
         assert_eq!(validate_shutdown_grace_ms(1), Ok(1));
         assert_eq!(validate_shutdown_grace_ms(MAX_COMMENTS_TCP_SHUTDOWN_GRACE_MS), Ok(60_000));
         assert!(validate_shutdown_grace_ms(0).is_err());
