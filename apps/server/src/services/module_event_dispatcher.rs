@@ -82,7 +82,23 @@ fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
     settings.runtime.runs_background_workers()
 }
 
-/// Distinguish a dispatcher already published in the runtime from one still
+/// A published handle alone is not readiness: the listener requirement
+/// must also have been registered, and the dispatcher loop must still run.
+fn existing_module_dispatcher_status(ctx: &ServerRuntimeContext) -> Option<Result<()>> {
+    let running = ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished())?;
+    let required = ctx
+        .shared_get::<ModuleEventDispatcherRequirement>()
+        .is_some_and(|requirement| requirement.0);
+    Some(if running && required {
+        Ok(())
+    } else {
+        Err(Error::Message(
+            "module event dispatcher exists but is not ready or has terminated".to_string(),
+        ))
+    })
+}
+
+/// Distinguish a dispatcher already ready in the runtime from one still
 /// being built by another caller. An in-flight reservation is *not* readiness:
 /// the owner can still fail before it registers its handle and listener flag.
 fn claim_module_dispatcher_start(
@@ -93,7 +109,8 @@ fn claim_module_dispatcher_start(
             "server shutdown started before module dispatcher initialization".to_string(),
         ));
     }
-    if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
+    if let Some(existing) = existing_module_dispatcher_status(ctx) {
+        existing?;
         return Ok(None);
     }
 
@@ -101,9 +118,10 @@ fn claim_module_dispatcher_start(
         ServerRuntimeStartReservation::try_claim(ctx, ModuleEventDispatcherReservation)
     else {
         // The first starter may have published its handle between our
-        // preflight and the failed atomic claim. Otherwise report contention,
-        // not a misleading Ok from a worker that does not yet exist.
-        if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
+        // preflight and the failed atomic claim. Its ready listener flag must
+        // also exist before another caller may report successful startup.
+        if let Some(existing) = existing_module_dispatcher_status(ctx) {
+            existing?;
             return Ok(None);
         }
         return Err(Error::Message(
