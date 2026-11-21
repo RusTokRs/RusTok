@@ -12,6 +12,10 @@ the schema created by `rustok-migrations`.
 ## Responsibilities
 
 - Persist installer sessions, state changes, tenant association, and locks.
+- Provide a conditional terminal write for an HTTP claim whose INSERT result is
+  ambiguous but whose executor never began: only the original job/session/
+  submitted-at identity in `running` may be marked failed. This does not
+  authorize recovery of an installation that may have performed side effects.
 - Claim installer sessions once and fail closed while an unreconciled session
   (including `recovery_required`) remains; lease expiry alone does not release
   global admission.
