@@ -338,7 +338,7 @@ async fn settle_unstarted_http_job_after_creation_failure(
         let transition = persistence
             .finish_unstarted_http_job_failed(job_id, job_id, submitted_at.clone())
             .await;
-        if matches!(transition, Ok(true)) {
+        if matches!(&transition, Ok(true)) {
             return Ok(());
         }
 
