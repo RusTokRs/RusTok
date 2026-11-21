@@ -494,6 +494,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   a new refresh successor being issued after a stale revocation read. Repeated
   revocations preserve the first `revoked_at` timestamp of every family member;
   unknown scoped tokens retain the standard success response.
+- OAuth secret rotation's database CAS additionally checks that the app still
+  belongs to a type permitted to rotate credentials. A concurrent configuration
+  change to an embedded/unsupported app type cannot cause a stale preflight
+  to install a secret; the caller receives the existing retryable conflict.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
