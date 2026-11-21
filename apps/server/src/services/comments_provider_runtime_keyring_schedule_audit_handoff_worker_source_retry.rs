@@ -102,6 +102,17 @@ impl SourceRetryHandoffWorkerCycleOutcome {
         self.calls < max_claims_per_cycle && !*stop_rx.borrow()
     }
 
+    // Sweep committed exhausted rows in bounded pages rather than advancing
+    // only one row per idle poll. A stop observed after an awaited SQL update
+    // must prevent the next durable mutation.
+    fn can_sweep_next(
+        self,
+        max_sweeps_per_cycle: usize,
+        stop_rx: &tokio::sync::watch::Receiver<bool>,
+    ) -> bool {
+        self.swept_dead_letters < max_sweeps_per_cycle && !*stop_rx.borrow()
+    }
+
     fn had_error(self) -> bool {
         self.conflicts > 0
             || self.unavailable > 0
@@ -123,7 +134,9 @@ impl SourceRetryHandoffWorkerCycleOutcome {
     ) -> Duration {
         if self.had_error() {
             config.handoff.retry_delay
-        } else if !self.reached_empty && self.calls >= config.handoff.max_claims_per_cycle {
+        } else if self.swept_dead_letters >= config.handoff.max_claims_per_cycle
+            || (!self.reached_empty && self.calls >= config.handoff.max_claims_per_cycle)
+        {
             ACTIVE_CYCLE_DELAY
         } else {
             config.handoff.idle_poll
@@ -372,13 +385,20 @@ async fn run_source_retry_handoff_cycle(
         return outcome;
     }
 
-    match retry_policy.dead_letter_next_expired_exhausted().await {
-        Ok(Some(_)) => outcome.swept_dead_letters += 1,
-        Ok(None) => {}
-        Err(error) => {
-            outcome.count_policy_error(error);
-            if error == CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::Unavailable {
-                return outcome;
+    // The expired-final-attempt crash gap may contain an arbitrarily large
+    // backlog. Process a bounded page per cycle and allow the worker to
+    // continue immediately if the page was full. Keep this budget independent
+    // of new claims so dead letters cannot starve publishable work.
+    while outcome.can_sweep_next(max_claims_per_cycle, stop_rx) {
+        match retry_policy.dead_letter_next_expired_exhausted().await {
+            Ok(Some(_)) => outcome.swept_dead_letters += 1,
+            Ok(None) => break,
+            Err(error) => {
+                outcome.count_policy_error(error);
+                if error == CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::Unavailable {
+                    return outcome;
+                }
+                break;
             }
         }
     }
@@ -487,6 +507,10 @@ mod source_retry_worker_tests {
             outcome.can_claim_next(32, &receiver),
             "next claim is allowed before stop"
         );
+        assert!(
+            outcome.can_sweep_next(32, &receiver),
+            "next exhausted-row transition is allowed before stop"
+        );
 
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
@@ -504,13 +528,22 @@ mod source_retry_worker_tests {
             !outcome.can_claim_next(32, &receiver),
             "no more claims after shutdown"
         );
+        assert!(
+            !outcome.can_sweep_next(32, &receiver),
+            "no more expired-row transitions after shutdown"
+        );
         let exhausted = SourceRetryHandoffWorkerCycleOutcome {
             calls: 32,
+            swept_dead_letters: 32,
             ..Default::default()
         };
         assert!(
             !exhausted.can_claim_next(32, &receiver),
             "cycle claim budget also applies"
+        );
+        assert!(
+            !exhausted.can_sweep_next(32, &receiver),
+            "exhausted-row sweep budget also applies"
         );
         receiver.changed().await.expect("stop update remains observable");
     }
@@ -550,6 +583,16 @@ mod source_retry_worker_tests {
             }
             .next_delay(config),
             ACTIVE_CYCLE_DELAY
+        );
+        assert_eq!(
+            SourceRetryHandoffWorkerCycleOutcome {
+                swept_dead_letters: 32,
+                reached_empty: true,
+                ..Default::default()
+            }
+            .next_delay(config),
+            ACTIVE_CYCLE_DELAY,
+            "a full expired-attempt sweep must not wait an idle poll"
         );
     }
 }
