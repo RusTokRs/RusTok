@@ -14766,6 +14766,7 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-i18n",
  "sea-orm",
+ "send_wrapper",
  "serde",
  "serde_json",
  "tracing",
