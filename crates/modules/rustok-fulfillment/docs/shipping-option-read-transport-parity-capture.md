@@ -53,8 +53,10 @@ Run:
 node scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs
 node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs
 
-No capture result may promote runtime_parity_proven. Deadline/failure injection, process restart, external adapter
-identity, and remote adapter behavior remain separate evidence gates.
+No capture result may promote runtime_parity_proven: runtime_parity_proven remains false
+until the wider runtime evidence is independently executed and reviewed. Deadline/failure
+injection, process restart, external adapter identity, and remote adapter behavior remain
+separate evidence gates.
 
 Only a successful immutable capture packet can set transport_projection_parity_proven to true. The packet still keeps
 runtime_parity_proven false until the wider runtime evidence is independently executed and reviewed.

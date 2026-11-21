@@ -226,3 +226,36 @@ re-export `BlogAdmin` / `BlogView`. Both packages expose a transport facade:
 SSR/hydrate selects native `#[server]` functions and standalone CSR selects the
 parallel GraphQL contract. Selected-transport failures are returned directly;
 mutations are never retried through another protocol.
+
+## Retained slice plans
+
+- [implementation-plan-slice-103.md](./implementation-plan-slice-103.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-104.md](./implementation-plan-slice-104.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-67.md](./implementation-plan-slice-67.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-68.md](./implementation-plan-slice-68.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-69.md](./implementation-plan-slice-69.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-70.md](./implementation-plan-slice-70.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-72.md](./implementation-plan-slice-72.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-73.md](./implementation-plan-slice-73.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-74.md](./implementation-plan-slice-74.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-75.md](./implementation-plan-slice-75.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-76.md](./implementation-plan-slice-76.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-77.md](./implementation-plan-slice-77.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-78.md](./implementation-plan-slice-78.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-79.md](./implementation-plan-slice-79.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-80.md](./implementation-plan-slice-80.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-81.md](./implementation-plan-slice-81.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-84.md](./implementation-plan-slice-84.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-85.md](./implementation-plan-slice-85.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-86.md](./implementation-plan-slice-86.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-87.md](./implementation-plan-slice-87.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-88.md](./implementation-plan-slice-88.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-89.md](./implementation-plan-slice-89.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-90.md](./implementation-plan-slice-90.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-91.md](./implementation-plan-slice-91.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-92.md](./implementation-plan-slice-92.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-93.md](./implementation-plan-slice-93.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-94.md](./implementation-plan-slice-94.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-95.md](./implementation-plan-slice-95.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-96.md](./implementation-plan-slice-96.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.
+- [implementation-plan-slice-97.md](./implementation-plan-slice-97.md) — retained source-verified slice plan; compile/runtime execution not run by the implementation agent.

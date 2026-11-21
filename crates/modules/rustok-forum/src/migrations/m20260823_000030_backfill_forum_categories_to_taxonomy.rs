@@ -408,8 +408,8 @@ async fn ensure_taxonomy_term(
     taxonomy_term::ActiveModel {
         id: Set(category.id),
         tenant_id: Set(category.tenant_id),
-        kind: Set("category".to_owned()),
-        scope_type: Set("module".to_owned()),
+        kind: Set(rustok_taxonomy::TaxonomyTermKind::Category.to_string()),
+        scope_type: Set(rustok_taxonomy::TaxonomyScopeType::Module.to_string()),
         scope_value: Set(FORUM_SCOPE_VALUE.to_owned()),
         canonical_key: Set(canonical_key),
         revision: Set(1),
@@ -571,8 +571,8 @@ async fn ensure_route_owner(
 
     taxonomy_term_route_key::ActiveModel {
         tenant_id: Set(tenant_id),
-        kind: Set("category".to_owned()),
-        scope_type: Set("module".to_owned()),
+        kind: Set(rustok_taxonomy::TaxonomyTermKind::Category.to_string()),
+        scope_type: Set(rustok_taxonomy::TaxonomyScopeType::Module.to_string()),
         scope_value: Set(FORUM_SCOPE_VALUE.to_owned()),
         locale: Set(locale.to_owned()),
         route_key: Set(route_key.to_owned()),
