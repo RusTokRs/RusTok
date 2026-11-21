@@ -388,6 +388,29 @@ async fn test_oversize_rejected_before_commit() {
 }
 
 #[tokio::test]
+async fn test_oversize_blob_is_rejected_on_verified_read() {
+    let db = setup_test_db().await;
+    let cas_dir = TestTempDir::new();
+    let store = SourceObjectStore::new(db, cas_dir.path().to_path_buf()).expect("store");
+
+    // Place a sparse oversize blob directly at its canonical CAS location,
+    // bypassing the publish paths that would have rejected it.
+    let digest = sha256_digest(b"oversize resident blob");
+    let destination = store.destination_path(&digest).expect("destination");
+    fs::create_dir_all(destination.parent().expect("fan-out directory"))
+        .expect("create fan-out directory");
+    let blob = fs::File::create(&destination).expect("create sparse blob");
+    blob.set_len(MAX_SOURCE_OBJECT_BYTES + 1)
+        .expect("set sparse length");
+    drop(blob);
+
+    assert!(matches!(
+        store.get_source_blob(&digest).await,
+        Err(SourceObjectError::TooLarge { .. })
+    ));
+}
+
+#[tokio::test]
 async fn test_verified_path_not_found() {
     let db = setup_test_db().await;
     let cas_dir = TestTempDir::new();
