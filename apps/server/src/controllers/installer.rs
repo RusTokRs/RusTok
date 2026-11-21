@@ -212,6 +212,7 @@ where
     tokio::spawn(async move {
         // Own the reservation from the first poll until the job terminates.
         // Cancellation of the caller does not drop this guard or the task.
+        let stop = crate::services::app_lifecycle::StopHandle::ensure(&ctx);
         let _guard = InstallerJobRuntimeGuard { ctx };
         let creation = persistence
             .create_http_job(job_id, job_id, submitted_at)
@@ -219,9 +220,22 @@ where
             .map(|_| ());
         let created = creation.is_ok();
         let _ = ready_tx.send(creation);
-        if created {
-            execute.await;
+        if !created {
+            return;
         }
+        if stop.is_stopping() {
+            // The claim may have been committed while shutdown began. No
+            // installer side effects have started yet, so this transition is
+            // safe; never leave a newly admitted but unstarted running job.
+            if let Err(_error) = persistence
+                .finish_http_job_failed(job_id, "server shutdown before installer execution")
+                .await
+            {
+                tracing::error!(%job_id, "Failed to mark unstarted installer job as failed during shutdown");
+            }
+            return;
+        }
+        execute.await;
     });
     ready_rx
 }
@@ -828,6 +842,46 @@ mod tests {
         })
         .await
         .expect("background task releases the reservation");
+    }
+
+    #[tokio::test]
+    async fn installer_shutdown_after_claim_marks_unstarted_job_failed() {
+        use crate::common::settings::RustokSettings;
+        use std::time::Duration;
+
+        let db = installer_job_test_db().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        assert!(ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)));
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx)
+            .stop()
+            .await;
+        let (ran_tx, mut ran_rx) = tokio::sync::mpsc::channel(1);
+        let ready = spawn_persisted_installer_job(
+            ctx.clone(),
+            persistence.clone(),
+            job_id,
+            Utc::now(),
+            async move {
+                let _ = ran_tx.send(()).await;
+            },
+        );
+        ready.await.expect("claim reply").expect("claim persisted");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while ctx.shared_contains::<ActiveInstallerJobHandle>() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown path releases reservation");
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("lookup")
+            .expect("job");
+        assert_eq!(job.status, "failed");
+        assert!(ran_rx.try_recv().is_err(), "installer work must not start");
     }
 
     #[tokio::test]
