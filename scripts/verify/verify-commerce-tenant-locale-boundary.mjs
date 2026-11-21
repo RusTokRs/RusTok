@@ -14,6 +14,7 @@ const exampleManifest = read('modules.toml.example');
 const cargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const manifest = read('crates/modules/rustok-commerce/rustok-module.toml');
 const lib = read('crates/modules/rustok-commerce/src/lib.rs');
+const moduleSrc = read('crates/modules/rustok-commerce/src/module.rs');
 const context = read('crates/modules/rustok-commerce/src/services/context.rs');
 const tests = read('crates/modules/rustok-commerce/tests/context_service_test.rs');
 const support = read('crates/modules/rustok-commerce/tests/support/mod.rs');
@@ -25,7 +26,7 @@ if (!cargo.includes('rustok-tenant.workspace = true')) {
 if (!manifest.includes('tenant = { version_req = ">=0.1.0" }')) {
   fail('commerce module manifest must declare the tenant owner dependency');
 }
-if (!lib.includes('"tenant",')) {
+if (!moduleSrc.includes('"tenant",') && !lib.includes('"tenant",')) {
   fail('CommerceModule runtime dependencies must include tenant');
 }
 const rootDependency = 'commerce = { crate = "rustok-commerce", source = "path", path = "crates/modules/rustok-commerce", depends_on = ["tenant",';

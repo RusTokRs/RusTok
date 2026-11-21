@@ -286,7 +286,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     &locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .ok()
@@ -448,7 +448,7 @@ impl GroupsService {
                     tenant_id,
                     &category_ids,
                     &effective_locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .unwrap_or_default()
@@ -529,7 +529,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     effective_locale,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                    None,
                 )
                 .await
                 .ok()
