@@ -299,7 +299,7 @@ async fn apply(
 
         match execution {
             Ok(Ok(output)) => {
-                if let Err(error) = persistence
+                if let Err(_error) = persistence
                     .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
                     .await
                 {

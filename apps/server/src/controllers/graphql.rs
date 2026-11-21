@@ -457,7 +457,10 @@ async fn abort_and_join_incoming_forwarder(task: tokio::task::JoinHandle<()>) {
     if let Err(error) = task.await
         && !error.is_cancelled()
     {
-        tracing::warn!(?error, "GraphQL WebSocket inbound forwarding task failed");
+        tracing::warn!(
+            failure_code = "graphql_ws_forwarder_join_failed",
+            "GraphQL WebSocket inbound forwarding task failed"
+        );
     }
 }
 
