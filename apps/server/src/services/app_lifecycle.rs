@@ -10,8 +10,9 @@ use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
+use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 #[cfg(feature = "mod-seo")]
 use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
@@ -635,7 +636,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
     let stop_rx = stop_handle.subscribe();
 
-    if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
+    if !published_worker_running::<OutboxRelayWorkerHandle>(
+        &runtime_ctx,
+        "Outbox relay worker",
+        OutboxRelayWorkerHandle::is_finished,
+    )? {
         let event_runtime = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .ok_or_else(|| Error::Message("EventRuntime not initialized".to_string()))?;
@@ -645,7 +650,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
     }
 
-    if !runtime_ctx.shared_contains::<OutboxRetentionWorkerHandle>() {
+    if !published_worker_running::<OutboxRetentionWorkerHandle>(
+        &runtime_ctx,
+        "Outbox retention worker",
+        OutboxRetentionWorkerHandle::is_finished,
+    )? {
         let retention_config = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .and_then(|runtime| runtime.outbox_retention.clone());
@@ -658,7 +667,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.background_workers.auth_retention_enabled
-        && !runtime_ctx.shared_contains::<AuthRetentionWorkerHandle>()
+        && !published_worker_running::<AuthRetentionWorkerHandle>(
+            &runtime_ctx,
+            "Auth retention worker",
+            AuthRetentionWorkerHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_auth_retention_handle(
             runtime_ctx.db_clone(),
@@ -667,7 +680,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.registry.remote_executor.enabled
-        && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
+        && !published_worker_running::<RemoteExecutorReaperHandle>(
+            &runtime_ctx,
+            "Remote executor reaper",
+            RemoteExecutorReaperHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_remote_executor_reaper_handle(
             runtime_ctx.clone(),
@@ -677,7 +694,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+    if seo_worker_enabled && !published_worker_running::<SeoBulkWorkerHandle>(
+        &runtime_ctx,
+        "SEO bulk worker",
+        SeoBulkWorkerHandle::is_finished,
+    )? {
         let authorization = SeoWorkerAuthorization::from_runtime_config(
             settings.runtime.runs_background_workers(),
             seo_worker_enabled,
@@ -701,7 +722,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.runs_background_workers()
-        && !runtime_ctx.shared_contains::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>()
+        && !published_worker_running::<ModuleTransitionWatchdogHandle>(
+            &runtime_ctx,
+            "Module transition watchdog",
+            ModuleTransitionWatchdogHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(
             crate::services::module_transition_watchdog::spawn_module_transition_watchdog_handle(

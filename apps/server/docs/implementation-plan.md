@@ -7,9 +7,11 @@ PR #4772 was merged into `main` at
 closed, so this follow-up uses `agent/server-recovery-startup-health-20261121`
 from that merge commit, rather than appending to an already merged PR.
 
-Seven host-owned durable worker starters returned success when they found a
+Thirteen host-owned durable worker starters returned success when they found a
 published handle, even when the underlying task had already exited. The same
-false-positive existed in the contested-reservation and post-claim checks.
+false-positive existed in the contested-reservation and post-claim checks of
+the seven individually claimed consumers; six other host workers use the
+serialized runtime initializer.
 That can make later bootstrap callers believe an inactive consumer was started,
 while its durable work is still waiting for recovery. A shared runtime helper
 now accepts only a live published handle, rejects a finished handle without
@@ -17,7 +19,9 @@ replacing or orphaning it, and leaves absence available to an exclusive
 startup claim. A source regression tests absent, live, and finished states.
 
 Scope: Notifications intake/candidate/fanout; Forum Search inbox/contract
-consumer; Product Index refresh; Social Graph Index consumer. Owner-side
+consumer; Product Index refresh; Social Graph Index consumer; host Outbox
+relay/retention, Auth retention, remote executor reaper, SEO bulk worker and
+module transition watchdog. Owner-side
 receipt/idempotency handling and external recovery are unchanged. Runtime
 process restart remains necessary after an unexpected worker exit; automatic
 in-process replacement is not implied. No Cargo tests, compilation, rustfmt,

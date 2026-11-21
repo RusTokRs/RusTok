@@ -91,10 +91,13 @@ app edits mark lifecycle, credential, identity, and runtime-owned columns
 
 A registered runtime handle is not evidence that its task is running. The
 notification outbox intake, notification candidate/fanout, Forum Search inbox
-and contract consumer, Product Index refresh, and Social Graph Index consumer
-start paths reject a retained handle whose Tokio task has terminated. Their
-initial check, contested startup-reservation check, and post-claim check must
-all make the same live/dead distinction. A live handle permits idempotent
+and contract consumer, Product Index refresh, and Social Graph Index consumer,
+plus the host's Outbox relay/retention, Auth retention, remote executor reaper,
+SEO bulk worker and module transition watchdog start paths reject a retained
+handle whose Tokio task has terminated. The seven individually claimed consumers
+apply this distinction in their initial, contested-reservation, and post-claim
+checks. The other six host workers check liveness under the serialized runtime
+initializer. A live handle permits idempotent
 startup; a missing handle can be claimed once; a finished handle is an explicit
 startup error rather than a successful no-op. The retained handle remains
 available for shutdown joining and failure accounting.
