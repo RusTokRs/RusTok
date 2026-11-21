@@ -2273,3 +2273,21 @@ Not run in this task, at the user's request. Run before merge:
 - cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_failure_finalization_accepts_an_already_committed_state
 - cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::installer_job_tasks_are_drained_and_admission_closes
 - cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::stuck_installer_job_tasks_are_aborted_after_the_grace_timeout
+
+
+## P30 — Prevent catch-up bursts in maintenance timers (2026-11-21)
+
+A final pass over periodic server maintenance loops found two intervals still
+using Tokio's default Burst missed-tick policy: Redis status monitoring and
+rate-limit cache cleanup. If either operation ran longer than its interval,
+the next loop iterations could execute immediately to catch up, adding load
+precisely while the dependency or cache was slow.
+
+- Set both timers to MissedTickBehavior::Delay. Their first-tick behavior is
+  unchanged; after a delayed run, the next poll is scheduled relative to the
+  completed tick instead of replaying missed intervals.
+- Other audited periodic workers already use Delay or Skip, or use a sleep
+  after each completed cycle; no retry/replay semantics were changed.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.
