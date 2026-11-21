@@ -128,7 +128,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/secondar
   'expired_operation_is_reclaimed_with_attempt_fencing',
   'schema_and_request_validation_fail_closed',
   "(payload -> 'price_minor') ->> 'value'",
-  "((payload -> 'tags') -> 'value') jsonb_path_ops",
+  "USING gin ((((payload -> 'tags') -> 'value')) jsonb_path_ops)",
   'retirement should remain available',
   'SecondaryIndexClaimOutcome::Busy',
   'SecondaryIndexError::LeaseLost',

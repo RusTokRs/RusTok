@@ -71,7 +71,11 @@ Migration `m20260806_000007_add_index_finding_repair_commands` adds
 `prepared` command per tenant/finding.
 
 A completed retry returns its existing terminal receipt. A different active command receives
-`FindingBusy`. Exact retry of `prepared` state is additionally subject to the recovery policy below.
+`FindingBusy`. If a competing insert aborts with PostgreSQL serialization failure or a conflict on
+that exact partial unique index, the old snapshot may not show the winner. Only after rollback does
+one fresh read confirm a different `prepared` command for the same tenant and finding. Without that
+proof the store returns a retryable storage failure. It does not retry the insert or admit an owner
+side effect. Exact retry of `prepared` state is additionally subject to the recovery policy below.
 
 ## Before, owner, and after boundaries
 

@@ -138,12 +138,18 @@ async fn postgres_timestamp_and_decimal_keys_match_reference_through_null_pages(
                     direction,
                 }],
             );
+            let expected_ids = match direction {
+                OrderDirection::Asc => [3, 2, 1, 4],
+                OrderDirection::Desc => [4, 1, 2, 3],
+                _ => unreachable!("fixture only orders by scalar direction"),
+            };
             let mut after = None;
-            for page in 0..4 {
+            for (page, id) in expected_ids.into_iter().enumerate() {
                 q.pagination = Pagination::Cursor { first: 1, after };
                 let result = assert_equivalent(&port, &reference, q.clone()).await?;
                 assert_eq!(result.exact_count, Some(4));
                 assert_eq!(result.items.len(), 1);
+                assert_eq!(result.items[0].entity_id, Uuid::from_u128(id));
                 after = result.next_cursor;
                 assert_eq!(after.is_some(), page < 3);
             }
@@ -239,7 +245,29 @@ async fn postgres_nested_locale_identity_and_target_admission_agree_in_page_and_
     let excluded = port.execute_query(linked_query.clone()).await?;
     assert_eq!(excluded.exact_count, Some(0));
     assert!(excluded.items.is_empty());
-    test.db.execute_unprepared("UPDATE index_entities SET source_version=1, schema_fingerprint=repeat('0',64) WHERE entity_name='variant' AND locale_key='fr'").await?;
+    const STALE_TARGET: &str = "UPDATE index_entities SET source_version=1, schema_fingerprint=repeat('0',64) WHERE entity_name='variant' AND locale_key='fr'";
+    let rejected = test
+        .db
+        .execute_unprepared(STALE_TARGET)
+        .await
+        .expect_err("normal storage must reject an unregistered fingerprint");
+    assert!(matches!(
+        rejected.sql_err(),
+        Some(sea_orm::SqlErr::ForeignKeyConstraintViolation(message))
+            if message.contains("fk_index_entities_schema")
+    ));
+    // Only in this disposable test schema: force an otherwise impossible stale
+    // fingerprint to exercise defense in depth in the page and exact count.
+    test.db
+        .execute_unprepared("ALTER TABLE index_entities DROP CONSTRAINT fk_index_entities_schema")
+        .await?;
+    assert_eq!(
+        test.db
+            .execute_unprepared(STALE_TARGET)
+            .await?
+            .rows_affected(),
+        1
+    );
     let excluded = port.execute_query(linked_query).await?;
     assert_eq!(excluded.exact_count, Some(0));
     assert!(excluded.items.is_empty());

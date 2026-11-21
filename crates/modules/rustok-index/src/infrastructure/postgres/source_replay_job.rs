@@ -1037,13 +1037,16 @@ fn select_replay_job_history_sql(backend: DbBackend, include_cancelled: bool) ->
         DbBackend::Sqlite => format!("locale_key IS {prefix}6"),
         _ => unreachable!("unsupported database backend was validated"),
     };
-    let state_filter = if include_cancelled {
-        ""
+    let (state_filter, limit) = if include_cancelled {
+        ("", 2)
     } else {
-        " AND state IN ('pending', 'running', 'succeeded', 'failed')"
+        (
+            " AND state IN ('pending', 'running', 'succeeded', 'failed')",
+            1,
+        )
     };
     format!(
-        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, CAST(retry_epoch AS BIGINT) AS retry_epoch_value, CASE WHEN {claimable} THEN TRUE ELSE FALSE END AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match}{state_filter} ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC LIMIT 1"
+        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, CAST(retry_epoch AS BIGINT) AS retry_epoch_value, CASE WHEN {claimable} THEN TRUE ELSE FALSE END AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match}{state_filter} ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC LIMIT {limit}"
     )
 }
 

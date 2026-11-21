@@ -55,8 +55,9 @@ bounded URL class are derived only by the capture runner and are retained withou
 
 `drift_repair_recovery_postgres_test` covers:
 
-- concurrent commands for one finding, requiring exactly one durable reservation and one
-  `FindingBusy` result;
+- concurrent commands for one finding, using a third connection to hold the finding lock until
+  both reservations have taken their serializable snapshots, and requiring exactly one durable
+  reservation and one `FindingBusy` result;
 - immutable revision `0` activation for the winning reservation;
 - command UUID payload reuse rejection;
 - authorized pause and exact decision replay;
