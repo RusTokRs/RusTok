@@ -349,6 +349,13 @@ delay; storage errors retain the configured retry delay. Source regressions
 cover per-item shutdown/budget admission and non-idle continuation after a
 full sweep; no SQL, Cargo, formatting or runtime tests were run by the agent.
 
+The independently exposed `record_failure` source transition also omitted
+an active-lease expiry predicate: matching a stale claim token and attempt
+was not sufficient evidence that its lease was still authoritative. It now
+requires `handoff_claim_expires_at > NOW()` like the runner-specific
+`record_active_failure` transition. The source regression asserts the SQL
+expiry fence; both paths remain fail-closed if the claim has expired.
+
 This is not automatic redelivery of ambiguous external effects. Terminal
 publication and source attempt receipts remain owner-authored and require the
 existing PostgreSQL transaction/fencing contract.
