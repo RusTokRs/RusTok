@@ -1165,6 +1165,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ambiguous_unstarted_http_job_is_settled_before_releasing_admission() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+        // Simulate a committed INSERT whose reply was lost after the final
+        // creation retry. The executor has not entered any side-effect path.
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("persist ambiguous claim");
+        settle_unstarted_http_job_after_creation_failure(
+            &persistence,
+            job_id,
+            submitted_at,
+        )
+        .await
+        .expect("settle the committed but unstarted claim");
+
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("read job")
+            .expect("job persists for operator history");
+        assert_eq!(job.status, "failed");
+        assert!(job.finished_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_unstarted_cleanup_refuses_another_submission() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("persist a different submission");
+        let error = settle_unstarted_http_job_after_creation_failure(
+            &persistence,
+            job_id,
+            submitted_at + chrono::Duration::seconds(1),
+        )
+        .await
+        .expect_err("a mismatched claim cannot be closed");
+        assert!(error.to_string().contains("identity changed"));
+        assert_eq!(
+            persistence
+                .get_http_job(job_id)
+                .await
+                .expect("lookup")
+                .expect("existing job")
+                .status,
+            "running"
+        );
+    }
+
+    #[tokio::test]
     async fn installer_does_not_accept_new_jobs_during_shutdown() {
         use crate::common::settings::RustokSettings;
         let ctx = ServerRuntimeContext::new(
