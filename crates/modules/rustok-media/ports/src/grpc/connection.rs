@@ -284,3 +284,64 @@ pub fn is_loopback_host(host: Option<Host<&str>>) -> bool {
         None => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn https_endpoint_and_origin_are_normalized() {
+        let validated = GrpcMediaPublicImageConnectionConfig::new("https://media.internal:7443")
+            .with_public_origin(Some("https://media.example.com/".to_string()))
+            .with_tls_domain(Some("media.internal".to_string()))
+            .validated()
+            .expect("https remote media configuration should validate");
+
+        assert!(validated.endpoint_uses_tls);
+        assert_eq!(
+            validated.public_origin.as_deref(),
+            Some("https://media.example.com")
+        );
+        assert_eq!(validated.tls_domain.as_deref(), Some("media.internal"));
+    }
+
+    #[test]
+    fn external_plaintext_endpoint_is_rejected() {
+        let error = GrpcMediaPublicImageConnectionConfig::new("http://media.internal:50051")
+            .validated()
+            .expect_err("external plaintext media must fail closed");
+        assert!(matches!(
+            error,
+            GrpcMediaPublicImageConnectionError::InsecureEndpointForbidden
+        ));
+    }
+
+    #[test]
+    fn plaintext_loopback_requires_explicit_opt_in() {
+        let rejected = GrpcMediaPublicImageConnectionConfig::new("http://127.0.0.1:50051")
+            .validated()
+            .expect_err("loopback plaintext must still require explicit opt in");
+        assert!(matches!(
+            rejected,
+            GrpcMediaPublicImageConnectionError::InsecureEndpointForbidden
+        ));
+
+        let accepted = GrpcMediaPublicImageConnectionConfig::new("http://127.0.0.1:50051")
+            .allow_insecure_loopback(true)
+            .validated()
+            .expect("explicit loopback development transport should validate");
+        assert!(!accepted.endpoint_uses_tls);
+    }
+
+    #[test]
+    fn timeout_is_bounded() {
+        let error = GrpcMediaPublicImageConnectionConfig::new("https://media.internal")
+            .with_connect_timeout(Duration::from_secs(31))
+            .validated()
+            .expect_err("unbounded connect timeout must fail closed");
+        assert!(matches!(
+            error,
+            GrpcMediaPublicImageConnectionError::InvalidConnectTimeout
+        ));
+    }
+}

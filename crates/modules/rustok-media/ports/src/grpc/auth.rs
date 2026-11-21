@@ -13,7 +13,9 @@ use tonic::{Request, Status};
 #[cfg(feature = "grpc-server")]
 use uuid::Uuid;
 
+#[cfg(feature = "grpc-server")]
 pub(crate) const AUTHORIZATION_METADATA: &str = "authorization";
+#[cfg(feature = "grpc-server")]
 pub(crate) const TENANT_ID_METADATA: &str = "x-rustok-tenant-id";
 const MAX_BEARER_TOKEN_BYTES: usize = 4_096;
 const AUTHORIZATION_DIGEST_BYTES: usize = 32;

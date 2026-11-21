@@ -785,7 +785,8 @@ impl MediaService {
                 .await?;
             return Err(MediaError::UploadSessionExpired(session_id));
         }
-        UploadSessionEntity::update_many()
+
+        let update_result = UploadSessionEntity::update_many()
             .col_expr(
                 UploadSessionCol::State,
                 sea_orm::sea_query::Expr::value(UploadState::Finalizing.as_str()),
@@ -795,8 +796,42 @@ impl MediaService {
                 sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
             )
             .filter(UploadSessionCol::Id.eq(session_id))
+            .filter(UploadSessionCol::TenantId.eq(tenant_id))
+            .filter(UploadSessionCol::State.eq(UploadState::Pending.as_str()))
             .exec(&self.db)
             .await?;
+
+        if update_result.rows_affected == 0 {
+            if let Some(asset) = AssetEntity::find()
+                .filter(AssetCol::TenantId.eq(tenant_id))
+                .filter(AssetCol::UploadSessionId.eq(session_id))
+                .one(&self.db)
+                .await?
+            {
+                self.complete_upload_session_row(&session).await;
+                rustok_telemetry::metrics::record_media_upload_session("reused");
+                return self.get(tenant_id, asset.id).await;
+            }
+            let current = UploadSessionEntity::find_by_id(session_id)
+                .filter(UploadSessionCol::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or(MediaError::NotFound(session_id))?;
+            if current.state == UploadState::Expired.as_str() {
+                return Err(MediaError::UploadSessionExpired(session_id));
+            }
+            if current.state == UploadState::Finalizing.as_str() {
+                return Err(MediaError::RenditionInProgress(session_id));
+            }
+            if current.state == UploadState::Failed.as_str() {
+                return Err(MediaError::InvalidMediaContent {
+                    declared: current.expected_mime_type,
+                    reason: current
+                        .last_error
+                        .unwrap_or_else(|| "upload session has failed".to_string()),
+                });
+            }
+        }
 
         let data = match self
             .storage
