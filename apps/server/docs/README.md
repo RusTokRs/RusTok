@@ -744,7 +744,11 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   host shutdown is active. Neither this mechanism nor the existing unique
   running-job index recovers a job after process termination: ambiguous effects
   must be reconciled against durable receipts before an operator releases the
-  global installer fence. Mutating HTTP install
+  global installer fence. If shutdown is detected after durable claim
+  creation but before executor entry, the background owner transitions that
+  unstarted job to `failed` and releases the slot, instead of beginning new
+  installer side effects. A stop racing after the executor's final admission
+  check still requires operator reconciliation of any interrupted effects. Mutating HTTP install
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token
