@@ -1,4 +1,4 @@
-use anyhow::Context;
+// use anyhow removed
 use axum::{
     Json,
     body::Body,
@@ -71,6 +71,12 @@ pub struct PagesHttpRuntime {
     cache: Option<PagesCacheReadRuntime>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PagesControllerError {
+    #[error("pages HTTP routes require {0} in HostRuntimeContext")]
+    MissingHostDependency(&'static str),
+}
+
 impl PagesHttpRuntime {
     fn db_clone(&self) -> DatabaseConnection {
         self.db.clone()
@@ -84,10 +90,10 @@ impl PagesHttpRuntime {
         self.cache.as_ref()
     }
 
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesControllerError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("pages HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+            .ok_or(PagesControllerError::MissingHostDependency("TransactionalEventBus"))?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -208,18 +214,20 @@ pub async fn get_page_artifact(
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| etag_matches(value, &etag))
     {
-        return Ok(Response::builder()
+        // INVARIANT: All static HTTP headers and status code passed to builder are well-formed.
+        return Response::builder()
             .status(StatusCode::NOT_MODIFIED)
             .header(header::ETAG, etag)
             .header(header::CONTENT_LANGUAGE, artifact.locale.as_str())
             .header(header::VARY, ARTIFACT_VARY)
             .header(header::CACHE_CONTROL, ARTIFACT_CACHE_CONTROL)
             .body(Body::empty())
-            .expect("artifact 304 response headers are valid"));
+            .map_err(|error| HttpError::internal(format!("failed to construct artifact 304 response: {error}")));
     }
 
     let csp = artifact_content_security_policy(&artifact.css);
-    Ok(Response::builder()
+    // INVARIANT: All static HTTP headers and status code passed to builder are well-formed.
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
         .header(header::CONTENT_LANGUAGE, artifact.locale.as_str())
@@ -231,7 +239,7 @@ pub async fn get_page_artifact(
         .header("x-content-type-options", "nosniff")
         .header("cross-origin-resource-policy", "same-origin")
         .body(Body::from(artifact.document_html))
-        .expect("artifact response headers are valid"))
+        .map_err(|error| HttpError::internal(format!("failed to construct artifact response: {error}")))
 }
 
 async fn load_cached_page_artifact(
@@ -641,7 +649,7 @@ pub async fn delete_page(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, PagesControllerError> {
     let state = PagesHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route("/api/pages", axum::routing::get(get_page))

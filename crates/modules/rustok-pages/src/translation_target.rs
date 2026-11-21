@@ -347,10 +347,10 @@ impl TranslationTargetProvider for PagesMetadataTranslationTargetProvider {
         if has_more {
             pages.truncate(usize::from(request.limit));
         }
-        let next_cursor = has_more.then(|| pages.last()).flatten().map(|page| {
-            OpaqueCursor::new(page.id.to_string())
-                .expect("Pages UUID cursor must satisfy the opaque cursor contract")
-        });
+        let next_cursor = has_more
+            .then(|| pages.last())
+            .flatten()
+            .and_then(|page| OpaqueCursor::new(page.id.to_string()).ok());
         let page_ids = pages.iter().map(|page| page.id).collect::<Vec<_>>();
         let translations = self.load_translations(tenant_id, page_ids).await?;
         let resources = pages
@@ -583,10 +583,9 @@ impl TranslationTargetProvider for PagesMetadataTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(pages_database_error_to_port_error)?;
-        let next_cursor = rows.last().map(|change| {
-            OpaqueCursor::new(change.id.to_string())
-                .expect("Pages change UUID must satisfy the opaque cursor contract")
-        });
+        let next_cursor = rows
+            .last()
+            .and_then(|change| OpaqueCursor::new(change.id.to_string()).ok());
         let changes = rows
             .into_iter()
             .map(change_from_model)

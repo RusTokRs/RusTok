@@ -422,13 +422,7 @@ fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot {
 }
 
 fn encode_digest(digest: &[u8]) -> String {
-    use std::fmt::Write as _;
-
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    encoded
+    hex::encode(digest)
 }
 
 fn format_body_revisions(revisions: &BodyRevisionSnapshot) -> String {

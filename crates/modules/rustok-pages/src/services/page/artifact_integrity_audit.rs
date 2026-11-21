@@ -108,14 +108,19 @@ impl PageService {
         let page = match txn.get_database_backend() {
             DbBackend::Sqlite => page_query().one(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         if page.is_none() {
             return Err(PagesError::PageNotFound(page_id));
         }
 
-        // Only the identifier leaves this query: the full payloads are hydrated one record at
-        // a time below, after truncation has discarded the lookahead row.
+        // Only the identifier leaves this query: the full payloads are hydrated in one batched
+        // query below, after truncation has discarded the lookahead row.
         let artifact_id_query = || {
             page_static_landing_artifact::Entity::find()
                 .select_only()
@@ -135,7 +140,12 @@ impl PageService {
                     .all(&txn)
                     .await?
             }
-            _ => unreachable!("unsupported SeaORM database backend"),
+            backend => {
+                return Err(PagesError::validation(format!(
+                    "unsupported SeaORM database backend: {:?}",
+                    backend
+                )));
+            }
         };
         let truncated = artifact_ids.len() > max_records as usize;
         if truncated {
@@ -148,27 +158,32 @@ impl PageService {
         let mut findings_truncated = false;
         let mut entries = Vec::with_capacity(artifact_ids.len());
 
-        // The identifier pass above keeps the bounded scan cheap; the payload pass below loads
-        // one full artifact at a time, so a page with large documents never materialises every
-        // HTML/CSS/runtime payload of the slice in one result set.
-        for artifact_id in &artifact_ids {
-            let record_query = || {
-                page_static_landing_artifact::Entity::find_by_id(*artifact_id)
+        let records = if artifact_ids.is_empty() {
+            Vec::new()
+        } else {
+            let records_query = || {
+                page_static_landing_artifact::Entity::find()
                     .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
                     .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
+                    .filter(page_static_landing_artifact::Column::Id.is_in(artifact_ids.clone()))
+                    .order_by_asc(page_static_landing_artifact::Column::CreatedAt)
+                    .order_by_asc(page_static_landing_artifact::Column::Id)
             };
-            let record = match txn.get_database_backend() {
-                DbBackend::Sqlite => record_query().one(&txn).await?,
+            match txn.get_database_backend() {
+                DbBackend::Sqlite => records_query().all(&txn).await?,
                 DbBackend::Postgres | DbBackend::MySql => {
-                    record_query().lock_shared().one(&txn).await?
+                    records_query().lock_shared().all(&txn).await?
                 }
-                _ => unreachable!("unsupported SeaORM database backend"),
-            };
-            let Some(record) = record else {
-                return Err(PagesError::artifact_integrity(
-                    "An immutable artifact selected for audit is no longer readable",
-                ));
-            };
+                backend => {
+                    return Err(PagesError::validation(format!(
+                        "unsupported SeaORM database backend: {:?}",
+                        backend
+                    )));
+                }
+            }
+        };
+
+        for record in records {
             let locale_hash = hex_sha256(record.locale.as_bytes());
             let record_identity_hash = artifact_record_identity_hash(&record)?;
             let (status, diagnostic_hash) =

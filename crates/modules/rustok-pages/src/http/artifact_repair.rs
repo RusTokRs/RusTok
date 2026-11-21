@@ -1,4 +1,4 @@
-use anyhow::Context;
+// use anyhow removed
 use axum::{
     Json,
     extract::{Path, State},
@@ -40,11 +40,17 @@ pub struct PagesArtifactRepairHttpRuntime {
     event_bus: TransactionalEventBus,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PagesRepairHttpError {
+    #[error("Pages artifact repair HTTP routes require {0}")]
+    MissingHostDependency(&'static str),
+}
+
 impl PagesArtifactRepairHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesRepairHttpError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("Pages artifact repair HTTP routes require TransactionalEventBus")?;
+            .ok_or(PagesRepairHttpError::MissingHostDependency("TransactionalEventBus"))?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -116,7 +122,7 @@ pub async fn activate_rebuilt_page_artifact(
     Ok(Json(result.into()))
 }
 
-pub(super) fn router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub(super) fn router(runtime: &HostRuntimeContext) -> Result<axum::Router, PagesRepairHttpError> {
     Ok(axum::Router::new()
         .route(
             "/api/admin/pages/{id}/artifacts/rebuild",

@@ -325,7 +325,15 @@ fn form_urlencode_component(value: &str) -> String {
                 encoded.push(byte as char);
             }
             b' ' => encoded.push('+'),
-            _ => write!(encoded, "%{byte:02X}").expect("writing to a String cannot fail"),
+            _ => {
+                encoded.push('%');
+                if let Some(c) = char::from_digit((byte >> 4) as u32, 16) {
+                    encoded.push(c.to_ascii_uppercase());
+                }
+                if let Some(c) = char::from_digit((byte & 0x0F) as u32, 16) {
+                    encoded.push(c.to_ascii_uppercase());
+                }
+            }
         }
     }
     encoded

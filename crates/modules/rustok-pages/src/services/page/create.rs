@@ -64,13 +64,11 @@ impl PageService {
             ));
         }
         validate_page_translations(&input.translations)?;
-        let response_locale = normalize_locale(
-            &input
-                .translations
-                .first()
-                .expect("validated translations are non-empty")
-                .locale,
-        )?;
+        let first_translation = input
+            .translations
+            .first()
+            .ok_or_else(|| PagesError::validation("translations cannot be empty"))?;
+        let response_locale = normalize_locale(&first_translation.locale)?;
         let template = input
             .template
             .clone()

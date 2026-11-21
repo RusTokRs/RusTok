@@ -57,7 +57,7 @@ impl PersistedRevisionCache {
         let mut entries = self
             .entries
             .lock()
-            .expect("persisted revision cache lock poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         match entries.get(&key) {
             Some((revision, expires_at)) if now < *expires_at => Some(revision.clone()),
             Some(_) => {
@@ -72,7 +72,7 @@ impl PersistedRevisionCache {
         let mut entries = self
             .entries
             .lock()
-            .expect("persisted revision cache lock poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         entries.retain(|_, (_, expires_at)| now < *expires_at);
         if entries.len() >= PERSISTED_REVISION_CACHE_MAX_ENTRIES {
             // Bounded memory over correctness-critical state: dropping the
@@ -87,7 +87,7 @@ impl PersistedRevisionCache {
     fn invalidate(&self, key: u64) {
         self.entries
             .lock()
-            .expect("persisted revision cache lock poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&key);
     }
 }

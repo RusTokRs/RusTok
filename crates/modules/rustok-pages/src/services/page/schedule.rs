@@ -120,7 +120,7 @@ fn schedule_response_from_model(model: page_publish_job::Model) -> PagePublishSc
         page_id: model.page_id,
         publish_at: model.publish_at.to_string(),
         state: PagePublishJobState::parse(&model.state)
-            .expect("job state is constrained by the storage check"),
+            .unwrap_or(PagePublishJobState::Scheduled),
         attempts: model.attempts,
         last_error_code: model.last_error_code,
         last_error_message: model.last_error_message,
@@ -236,7 +236,7 @@ impl PageService {
             return match self.latest_publish_job(tenant_id, page_id).await? {
                 Some(job) => {
                     let state = PagePublishJobState::parse(&job.state)
-                        .expect("job state is storage-checked");
+                        .unwrap_or(PagePublishJobState::Scheduled);
                     Err(schedule_not_cancelable(state))
                 }
                 None => Err(schedule_not_found(page_id)),

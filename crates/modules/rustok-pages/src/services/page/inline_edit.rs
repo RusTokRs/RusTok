@@ -219,7 +219,7 @@ impl PageInlineEditKeyring {
         let secret = self
             .keys
             .get(&self.active_key_id)
-            .expect("validated inline edit keyring must retain active key");
+            .ok_or_else(invalid_inline_edit_grant)?;
         let signature = inline_edit_signature(secret, &key_id, payload.as_bytes());
         let authorization_proof = serde_json::to_string(&SignedPageInlineEditGrant {
             key_id,

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::{Path, PathBuf}, sync::Arc};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderSloEvaluation};
@@ -231,7 +231,7 @@ fn environment_value(key: &'static str) -> Result<Option<String>, PagesProviderH
     }
 }
 
-fn read_retained_packet(path: &PathBuf) -> Result<Vec<u8>, PagesProviderHealthBindingError> {
+fn read_retained_packet(path: &Path) -> Result<Vec<u8>, PagesProviderHealthBindingError> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
     if !metadata.file_type().is_file()
