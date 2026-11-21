@@ -331,6 +331,28 @@ cross-thread atomic operation; effect owners remain responsible for durable
 replay, attempt fencing and idempotency. Tests, cargo compilation and
 formatting were not run per maintainer request.
 
+## Server audit continuation — exhausted comments handoff recovery throughput (2026-11-22)
+
+Following merged PR #4772, the Comments source-retry worker still finalized only
+one expired, exhausted source claim per polling cycle, despite accepting up to
+256 new publication claims per cycle. Under a large post-crash backlog this
+serialized dead-letter recovery to the idle poll interval, delaying the
+operator's terminal evidence without improving transaction safety.
+
+The host now processes up to `max_claims_per_cycle` expired final attempts per
+cycle, using the existing exact PostgreSQL SKIP LOCKED/expiry-fenced owner
+transition for each row. The dead-letter sweep has a separate bounded budget
+from publication claims, avoiding starvation of ready source events. The shared
+shutdown signal is checked before every next transition, but an already
+started database update is awaited. A full sweep uses the short active-cycle
+delay; storage errors retain the configured retry delay. Source regressions
+cover per-item shutdown/budget admission and non-idle continuation after a
+full sweep; no SQL, Cargo, formatting or runtime tests were run by the agent.
+
+This is not automatic redelivery of ambiguous external effects. Terminal
+publication and source attempt receipts remain owner-authored and require the
+existing PostgreSQL transaction/fencing contract.
+
 ## Server audit continuation — retry/shutdown operation admission (2026-11-21)
 
 Following the startup-liveness fixes in draft PR #4777, inspected the Comments
