@@ -1,5 +1,32 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — tenant cache-generation recovery semantics (2026-11-21)
+
+The tenant cache-generation listener already reconciled the shared backend
+generation on startup, subscription readiness, Pub/Sub gaps and a 30-second
+watchdog. However, its `recover_shared_generation` updated the tracker and
+backend generation without clearing the independent
+`ModuleEffectivePolicyCache`. Missing a tenant or platform invalidation
+therefore left cached effective authorizations in other tenants until TTL
+expiry, even as reconciliation reported a recovered durable offset. The
+ordinary in-order listener also acknowledged its tracker *before* clearing
+the policy and shared backend caches.
+
+The listener now holds one shared async transition gate across local bus,
+Redis handler and periodic recovery. A changed/unverified durable generation
+clears **all** effective policies and shared backends before advancing the
+recovered checkpoint; unchanged generations leave fresh caches intact.
+In-order events apply their local invalidations before acknowledging.
+Unrecognized bounded event keys cause a conservative full policy clear,
+never an acknowledgement with no policy effect. The inner recovery helper
+avoids recursively acquiring the gate on a gap.
+
+New regressions cover missed generations, subsequent unrelated-tenant
+cache eviction on a gap, no-op unchanged reconciliation, invalid keys,
+and shared-lock ownership across listener clones. The full effect is
+process-local and does not claim distributed exactly-once delivery.
+No tests/build/format commands were run.
+
 ## Server audit continuation — tenant locale generation transition ownership (2026-11-21)
 
 The tenant locale-generation listener is cloned into three independent
