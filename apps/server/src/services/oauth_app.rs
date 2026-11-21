@@ -697,6 +697,9 @@ impl OAuthAppService {
                 .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
                 .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
                 .filter(family_scope)
+                // A repeated RFC 7009 request must not rewrite the original
+                // revocation timestamp of an already-invalid family member.
+                .filter(oauth_tokens::Column::RevokedAt.is_null())
                 .exec(&tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
@@ -2836,6 +2839,7 @@ mod tests {
             .await
             .expect("revoke refresh family");
 
+        let mut first_revoked_at = Vec::new();
         for id in [root.id, child.id] {
             let token = oauth_tokens::Entity::find_by_id(id)
                 .one(&db)
@@ -2846,6 +2850,7 @@ mod tests {
                 token.revoked_at.is_some(),
                 "family token {id} must be revoked"
             );
+            first_revoked_at.push((id, token.revoked_at));
         }
         let unrelated = oauth_tokens::Entity::find_by_id(unrelated.id)
             .one(&db)
@@ -2857,6 +2862,17 @@ mod tests {
         OAuthAppService::revoke_token_by_hash(&db, "family-child", app.id, tenant.id)
             .await
             .expect("repeat revocation is idempotent");
+        for (id, first_timestamp) in first_revoked_at {
+            let current = oauth_tokens::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("reload revoked token")
+                .expect("token remains present");
+            assert_eq!(
+                current.revoked_at, first_timestamp,
+                "replayed revocation must preserve the original revocation timestamp"
+            );
+        }
     }
 
     #[tokio::test]
