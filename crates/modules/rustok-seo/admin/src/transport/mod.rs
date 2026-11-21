@@ -102,7 +102,6 @@ pub async fn fetch_bulk_jobs(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn fetch_bulk_job(job_id: String) -> Result<Option<SeoBulkJobRecord>, ApiError> {
     seo_bulk_job_native(job_id).await.map_err(Into::into)
 }

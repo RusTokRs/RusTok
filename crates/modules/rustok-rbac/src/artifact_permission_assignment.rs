@@ -278,8 +278,7 @@ fn scope_key(scope: ArtifactPermissionAssignmentScope, tenant_id: Uuid) -> Strin
 fn uuid_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
     match backend {
         DbBackend::Postgres => value.into(),
-        DbBackend::Sqlite => value.to_string().into(),
-        _ => unreachable!("unsupported database backend was validated"),
+        _ => value.to_string().into(),
     }
 }
 
@@ -298,7 +297,9 @@ fn uuid_from_row(
                 ))
             })
         }
-        _ => unreachable!("unsupported database backend was validated"),
+        backend => Err(ArtifactPermissionAssignmentError::Database(format!(
+            "artifact permission assignment does not support {backend:?}"
+        ))),
     }
 }
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermissionAssignmentError> {
@@ -521,10 +522,10 @@ fn placeholders(backend: DbBackend, template: &str) -> String {
     let mut sql = template.to_string();
     let mut names = Vec::new();
     while let Some(start) = sql.find('{') {
-        let end = sql[start..]
-            .find('}')
-            .map(|offset| start + offset)
-            .expect("placeholder must have a closing brace");
+        let Some(offset) = sql[start..].find('}') else {
+            break;
+        };
+        let end = start + offset;
         let name = sql[start + 1..end].to_string();
         let index = match names.iter().position(|known| known == &name) {
             Some(index) => index,
@@ -535,8 +536,7 @@ fn placeholders(backend: DbBackend, template: &str) -> String {
         };
         let placeholder = match backend {
             DbBackend::Sqlite => format!("?{}", index + 1),
-            DbBackend::Postgres => format!("${}", index + 1),
-            _ => unreachable!("unsupported database backend was validated"),
+            _ => format!("${}", index + 1),
         };
         sql.replace_range(start..=end, &placeholder);
     }

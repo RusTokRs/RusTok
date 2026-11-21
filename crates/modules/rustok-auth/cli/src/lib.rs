@@ -118,16 +118,15 @@ async fn create_development_app(
     let transaction = db.begin().await.map_err(command_failed)?;
 
     let app_sql = match backend {
-        DbBackend::Postgres => {
-            "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
-        }
         DbBackend::MySql => {
             "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         }
         DbBackend::Sqlite => {
             "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        _ => {
+            "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+        }
     };
     transaction
         .execute_raw(Statement::from_sql_and_values(
@@ -157,16 +156,15 @@ async fn create_development_app(
         .map_err(command_failed)?;
 
     let translation_sql = match backend {
-        DbBackend::Postgres => {
-            "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES ($1, $2, $3, $4, $5, $6)"
-        }
         DbBackend::MySql => {
             "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?, ?, ?, ?, ?, ?)"
         }
         DbBackend::Sqlite => {
             "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        _ => {
+            "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES ($1, $2, $3, $4, $5, $6)"
+        }
     };
     transaction
         .execute_raw(Statement::from_sql_and_values(

@@ -152,6 +152,7 @@ impl SeoIndexReindexTrigger {
 }
 
 impl SeoService {
+    #[tracing::instrument(skip(self, txn, input))]
     pub(super) async fn publish_seo_meta_upserted_event_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -418,6 +419,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, txn))]
     pub(super) async fn publish_seo_revision_published_event_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -494,6 +496,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, txn))]
     pub(super) async fn publish_seo_revision_rolled_back_event_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -570,6 +573,7 @@ impl SeoService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, txn))]
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn publish_seo_bulk_terminal_event_in_tx(
         &self,
@@ -652,6 +656,7 @@ impl SeoService {
         Ok(Some((idempotency_key, index_reindex_event)))
     }
 
+    #[tracing::instrument(skip(self))]
     pub(super) async fn dispatch_seo_bulk_terminal_reindex(
         &self,
         tenant_id: Uuid,

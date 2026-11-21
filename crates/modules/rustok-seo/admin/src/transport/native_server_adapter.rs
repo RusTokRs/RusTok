@@ -72,8 +72,14 @@ async fn persist_seo_settings(
         ));
     };
 
-    let mut current: SeoModuleSettings =
-        serde_json::from_value(model.settings.clone()).unwrap_or_default();
+    let mut current: SeoModuleSettings = if model.settings.is_null() {
+        SeoModuleSettings::default()
+    } else {
+        serde_json::from_value(model.settings.clone()).map_err(|err| {
+            tracing::error!(%err, "Failed to deserialize stored SEO settings");
+            ServerFnError::new(format!("Invalid stored SEO settings: {err}"))
+        })?
+    };
     current.default_robots = input.default_robots;
     current.sitemap_enabled = input.sitemap_enabled;
     current.allowed_redirect_hosts = input.allowed_redirect_hosts;

@@ -89,19 +89,19 @@ impl SeoHttpRuntime {
 }
 
 impl SeoHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, SeoError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "SEO HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                SeoError::configuration(
+                    "SEO HTTP routes require TransactionalEventBus in HostRuntimeContext",
                 )
             })?;
         let extensions = runtime
             .shared_get::<Arc<ModuleRuntimeExtensions>>()
             .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "SEO HTTP routes require ModuleRuntimeExtensions in HostRuntimeContext"
+                SeoError::configuration(
+                    "SEO HTTP routes require ModuleRuntimeExtensions in HostRuntimeContext",
                 )
             })?;
         Ok(Self {
@@ -524,7 +524,7 @@ pub async fn cross_link_suggestions_json(
     Ok(Json(suggestions))
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, SeoError> {
     use axum::routing::get;
 
     let state = SeoHttpRuntime::from_host(runtime)?;

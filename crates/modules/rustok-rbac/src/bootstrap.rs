@@ -213,10 +213,9 @@ impl RbacRoleAssignmentDbWriter {
             DbBackend::Sqlite => {
                 "DELETE FROM user_roles WHERE user_id = ?1 AND role_id IN (SELECT id FROM roles WHERE tenant_id = ?2)"
             }
-            DbBackend::Postgres => {
+            _ => {
                 "DELETE FROM user_roles WHERE user_id = $1 AND role_id IN (SELECT id FROM roles WHERE tenant_id = $2)"
             }
-            _ => unreachable!("RBAC backend was validated before membership removal"),
         };
         db.execute_raw(Statement::from_sql_and_values(
             backend,
@@ -288,10 +287,7 @@ where
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => "SELECT tenant_id FROM users WHERE id = ?1 LIMIT 1",
-            DbBackend::Postgres | DbBackend::MySql => {
-                "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1"
-            }
-            _ => unreachable!("RBAC backend was validated before role assignment"),
+            _ => "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1",
         };
         let actual_tenant_id = self
             .query_uuid(sql, "tenant_id", vec![user_id.into()])
@@ -353,10 +349,9 @@ where
             DbBackend::Sqlite => {
                 "SELECT id, is_system FROM roles WHERE tenant_id = ?1 AND slug = ?2 LIMIT 1"
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            _ => {
                 "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1"
             }
-            _ => unreachable!("RBAC backend was validated before role assignment"),
         };
         self.db
             .query_one_raw(Statement::from_sql_and_values(
@@ -390,10 +385,9 @@ where
             DbBackend::Sqlite => {
                 "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1"
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            _ => {
                 "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1"
             }
-            _ => unreachable!("RBAC backend was validated before role assignment"),
         };
         if let Some(id) = self
             .query_id(
@@ -479,10 +473,7 @@ where
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => "SELECT permission_id FROM role_permissions WHERE role_id = ?1",
-            DbBackend::Postgres | DbBackend::MySql => {
-                "SELECT permission_id FROM role_permissions WHERE role_id = $1"
-            }
-            _ => unreachable!("RBAC backend was validated before role assignment"),
+            _ => "SELECT permission_id FROM role_permissions WHERE role_id = $1",
         };
         let rows = self
             .db
@@ -512,10 +503,9 @@ where
             DbBackend::Sqlite => {
                 "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            _ => {
                 "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2"
             }
-            _ => unreachable!("RBAC backend was validated before role assignment"),
         };
         self.db
             .execute_raw(Statement::from_sql_and_values(
@@ -608,8 +598,7 @@ fn stale_role_permission_ids(
 fn render_insert_sql(template: &str, backend: DbBackend) -> String {
     let markers = match backend {
         DbBackend::Sqlite => ["?1", "?2", "?3", "?4"],
-        DbBackend::Postgres | DbBackend::MySql => ["$1", "$2", "$3", "$4"],
-        _ => unreachable!("RBAC backend was validated before rendering SQL"),
+        _ => ["$1", "$2", "$3", "$4"],
     };
     template
         .replace("{id}", markers[0])

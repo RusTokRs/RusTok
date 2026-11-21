@@ -6,7 +6,7 @@
 mod core;
 mod i18n;
 mod sections;
-mod transport;
+pub mod transport;
 mod ui;
 
 #[cfg(test)]

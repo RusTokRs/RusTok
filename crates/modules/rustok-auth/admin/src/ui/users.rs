@@ -87,14 +87,14 @@ pub fn Users() -> impl IntoView {
         300.0,
     );
     Effect::new(move |_| {
-        let _ = search_query.get();
+        search_query.track();
         debounce_search();
     });
 
     Effect::new(move |_| {
-        let _ = debounced_search.get();
-        let _ = role_filter.get();
-        let _ = status_filter.get();
+        debounced_search.track();
+        role_filter.track();
+        status_filter.track();
         set_page.set(1);
     });
 

@@ -405,6 +405,10 @@ async fn auth_rest_cookie_logout_at(
 }
 
 #[cfg(feature = "ssr")]
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(reqwest::Client::new);
+
+#[cfg(feature = "ssr")]
 async fn auth_rest_post<T>(
     path: &str,
     body: &serde_json::Value,
@@ -416,8 +420,7 @@ where
 {
     use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = HTTP_CLIENT
         .post(format!("{}{}", get_api_url(), path))
         .header(CONTENT_TYPE, "application/json")
         .json(body);
@@ -448,8 +451,7 @@ where
 {
     use reqwest::header::AUTHORIZATION;
 
-    let client = reqwest::Client::new();
-    let mut request = client.get(format!("{}{}", get_api_url(), path));
+    let mut request = HTTP_CLIENT.get(format!("{}{}", get_api_url(), path));
 
     if let Some(token) = token {
         request = request.header(AUTHORIZATION, format!("Bearer {token}"));

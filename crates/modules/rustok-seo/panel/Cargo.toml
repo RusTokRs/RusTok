@@ -15,6 +15,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 [lib]
 crate-type = ["rlib"]
 
+[lints]
+workspace = true
+
 [dependencies]
 leptos.workspace = true
 rustok-auth-ui.workspace = true
@@ -23,4 +26,5 @@ rustok-api = { workspace = true, default-features = false }
 rustok-seo-targets.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+thiserror.workspace = true
 uuid.workspace = true
