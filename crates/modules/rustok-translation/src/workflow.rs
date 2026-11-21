@@ -16,7 +16,8 @@ use rustok_translation_targets::{
     TranslationTargetCapability, TranslationTargetProvider, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
+    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use serde::{Deserialize, Serialize};
@@ -1915,20 +1916,17 @@ impl TranslationWorkflowService {
         Ok(())
     }
 
-    async fn complete_job_if_terminal<C>(
+    async fn complete_job_if_terminal(
         &self,
-        database: &C,
+        transaction: &DatabaseTransaction,
         tenant_id: Uuid,
         job_id: Uuid,
         event_actor_id: Option<Uuid>,
-    ) -> TranslationResult<bool>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> TranslationResult<bool> {
         let items = job_item::Entity::find()
             .filter(job_item::Column::TenantId.eq(tenant_id))
             .filter(job_item::Column::JobId.eq(job_id))
-            .all(database)
+            .all(transaction)
             .await?;
         if items.is_empty()
             || items
@@ -1937,7 +1935,7 @@ impl TranslationWorkflowService {
         {
             return Ok(false);
         }
-        let job_model = find_job(database, tenant_id, job_id).await?;
+        let job_model = find_job(transaction, tenant_id, job_id).await?;
         if job_model.status == "completed" {
             return Ok(false);
         }
@@ -1956,7 +1954,7 @@ impl TranslationWorkflowService {
             .filter(job::Column::TenantId.eq(tenant_id))
             .filter(job::Column::Status.eq(job_model.status))
             .filter(job::Column::Revision.eq(job_model.revision))
-            .exec(database)
+            .exec(transaction)
             .await?;
         if update.rows_affected != 1 {
             return Err(TranslationError::WorkflowRevisionConflict);
@@ -1965,7 +1963,7 @@ impl TranslationWorkflowService {
             u64::try_from(items.len()).map_err(|_| TranslationError::WorkflowRevisionConflict)?;
         self.event_bus
             .publish_contract_in_tx(
-                database,
+                transaction,
                 tenant_id,
                 event_actor_id,
                 TranslationWorkflowEvent::JobCompleted {
