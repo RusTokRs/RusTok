@@ -26,7 +26,7 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::stop_handle::StopHandle;
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
@@ -89,6 +89,9 @@ impl ProductIndexRefreshWorkerConfig {
         })
     }
 }
+
+// Claims the local consumer lifecycle before opening its durable broker group.
+struct ProductIndexRefreshStartupReservation;
 
 pub struct ProductIndexRefreshWorkerHandle {
     handle: JoinHandle<()>,
@@ -214,6 +217,31 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         }
     }
 
+    // A broker consumer may be opened asynchronously. Reserve first so two
+    // starters cannot both establish a durable consumer and orphan one task.
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Product Index refresh consumer cannot start during server shutdown".to_string(),
+        ));
+    }
+    let Some(reservation) =
+        ServerRuntimeStartReservation::try_claim(ctx, ProductIndexRefreshStartupReservation)
+    else {
+        // Another caller is still preparing this worker; a successful return
+        // would falsely tell bootstrap it is running if that starter fails.
+        if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Product Index refresh worker startup is already in progress; retry".to_string(),
+        ));
+    };
+    if ctx.shared_contains::<ProductIndexRefreshWorkerHandle>() {
+        return Ok(());
+    }
+    let config = ProductIndexRefreshWorkerConfig::from_context(ctx)?;
+
     let group = Arc::new(
         transport
             .open_persistent_contract_consumer_group(
@@ -246,8 +274,12 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         events,
     };
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
-    let config = ProductIndexRefreshWorkerConfig::from_context(ctx)?;
+    if stop.is_stopping() {
+        return Err(Error::Message(
+            "Product Index refresh consumer startup interrupted by server shutdown".to_string(),
+        ));
+    }
+    let stop_rx = stop.subscribe();
     let instance_id = PRODUCT_INDEX_REFRESH_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);
     tracing::info!(
@@ -261,6 +293,7 @@ pub async fn start_product_index_refresh_worker_if_enabled(
     ctx.shared_insert(ProductIndexRefreshWorkerHandle {
         handle: tokio::spawn(product_index_refresh_worker_loop(runtime, config, stop_rx)),
     });
+    reservation.commit();
     Ok(())
 }
 
