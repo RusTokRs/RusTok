@@ -124,16 +124,7 @@ pub fn spawn_module_event_dispatcher(
         }
     }
 
-    #[cfg(feature = "mod-product")]
-    spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
-
-    #[cfg(feature = "mod-commerce")]
-    spawn_paid_order_label_worker_if_enabled(ctx);
-    #[cfg(feature = "commerce-marketplace-financial")]
-    spawn_marketplace_financial_worker_if_enabled(ctx);
-    #[cfg(feature = "mod-payment")]
-    spawn_payment_provider_event_worker_if_enabled(ctx);
 
     let Some(event_bus) = event_bus else {
         tracing::info!(
@@ -162,7 +153,19 @@ pub fn spawn_module_event_dispatcher(
     if result.is_err() {
         // Failure must not permanently poison a later initialization retry.
         ctx.shared_remove::<ModuleEventDispatcherReservation>();
+        return result;
     }
+
+    // Required dispatcher startup has succeeded. Optional recovery workers may
+    // now begin their own loops; a failed dispatcher start leaves none behind.
+    #[cfg(feature = "mod-product")]
+    spawn_product_media_release_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-commerce")]
+    spawn_paid_order_label_worker_if_enabled(ctx);
+    #[cfg(feature = "commerce-marketplace-financial")]
+    spawn_marketplace_financial_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-payment")]
+    spawn_payment_provider_event_worker_if_enabled(ctx);
     result
 }
 
@@ -177,8 +180,8 @@ fn start_module_event_dispatcher(
     let running = dispatcher.start_with_contract_delivery()?;
     // Publish the required-listener flag only after the dispatcher actually
     // starts; a failed start is not a running/healthy listener registry.
-    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
+    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
 }
