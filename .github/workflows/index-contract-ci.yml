@@ -110,7 +110,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  RUST_TOOLCHAIN: "1.96.0"
+  # Override rust-toolchain.toml's `stable`, so Cargo uses the toolchain that owns the WASM stdlib.
+  RUSTUP_TOOLCHAIN: "1.96.0"
 
 jobs:
   source-contracts:
@@ -172,7 +173,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: index-contract-ci
@@ -207,7 +208,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: index-contract-ci
@@ -261,8 +262,10 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          targets: ${{ matrix.profile != 'ssr' && 'wasm32-unknown-unknown' || '' }}
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+      - name: Install WASM target for the active toolchain
+        if: matrix.profile != 'ssr'
+        run: rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           key: index-admin-${{ matrix.profile }}

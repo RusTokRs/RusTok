@@ -152,7 +152,9 @@ async fn replay_job_excludes_other_workers_and_requires_complete_checkpoint() {
             .acquire(&fixture.request("worker-b"))
             .await
             .unwrap(),
-        IndexReplayJobAcquireOutcome::Busy { .. }
+        IndexReplayJobAcquireOutcome::Busy {
+            job_id: lease.job_id(),
+        }
     );
     assert_eq!(
         fixture.jobs.succeed(&lease).await,

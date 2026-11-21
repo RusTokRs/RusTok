@@ -21,7 +21,7 @@ for (const marker of [
   'push:',
   'contents: read',
   'persist-credentials: false',
-  'RUST_TOOLCHAIN: "1.96.0"',
+  'RUSTUP_TOOLCHAIN: "1.96.0"',
   'node scripts/verify/verify-index-query-planner.mjs',
   'node scripts/verify/verify-index-postgres-query-compiler.mjs',
   'node scripts/verify/verify-index-query-snapshots.mjs',
@@ -94,14 +94,20 @@ for (const [path, fixture] of [
   requireInJob('focused-cargo', [`cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
   if (!read(`apps/server/src/${path}`).includes(`async fn ${fixture}()`)) fail(`${fixture} is not a server test`);
 }
+const installWasmTarget = 'rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown';
 requireInJob('admin-profiles', [
   'profile: [ssr, hydrate, csr]',
-  'wasm32-unknown-unknown',
+  'toolchain: ${{ env.RUSTUP_TOOLCHAIN }}',
+  installWasmTarget,
   `${runCheck} cargo test --locked -p rustok-index-admin --no-default-features --features ssr`,
   `${runCheck} cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr`,
   `${runCheck} cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
   `${runCheck} cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown`,
 ]);
+const adminProfiles = job('admin-profiles');
+if (adminProfiles.indexOf(installWasmTarget) >= adminProfiles.indexOf('Check Index admin in isolation')) {
+  fail('admin-profiles must install the WASM target before running browser checks');
+}
 requireInJob('gate', [
   'if: always()',
   'needs:',
