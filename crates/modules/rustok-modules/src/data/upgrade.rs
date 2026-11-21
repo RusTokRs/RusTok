@@ -289,6 +289,12 @@ fn validate_upgrade_plan(plan: &ArtifactDataUpgradePlan) -> Result<(), ArtifactD
     }
     plan.source.validate()?;
     plan.target.validate()?;
+    // A plan is produced from one bounded page; an apply request carrying
+    // more records than a page can hold did not come from the planner and
+    // must not drive an unbounded get/put loop.
+    if plan.records.len() > MAX_ARTIFACT_DATA_PAGE_SIZE as usize {
+        return Err(ArtifactDataError::InvalidUpgrade);
+    }
     for (index, record) in plan.records.iter().enumerate() {
         validate_artifact_data_key(&record.key)?;
         validate_artifact_data_value(&record.value)?;
