@@ -199,7 +199,7 @@ impl Drop for BackpressureOwnership {
     fn drop(&mut self) {
         // Free the claim only if it is still ours; a preempting primary owner
         // must not lose its claim when the stale fallback guard drops.
-        let _ = self.state.compare_exchange(
+        let _released_or_preempted = self.state.compare_exchange(
             self.encoded,
             OWNERSHIP_FREE,
             Ordering::AcqRel,
