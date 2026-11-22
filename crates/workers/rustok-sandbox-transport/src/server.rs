@@ -86,7 +86,7 @@ impl SandboxWorkerGrpcService {
         sandbox_request: SandboxRequest,
         cancellation: SandboxCancellation,
         reader: tokio::task::JoinHandle<()>,
-    ) {
+    ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let _permit = permit;
             let callback = CallbackBroker::new(
@@ -99,7 +99,7 @@ impl SandboxWorkerGrpcService {
             let terminal = terminal_frame(&execution_id, result);
             let _ = outbound.send(Ok(terminal)).await;
             reader.abort();
-        });
+        })
     }
 
     async fn parse_initial_request(
@@ -212,7 +212,7 @@ impl SandboxWorkerService for SandboxWorkerGrpcService {
             cancellation.clone(),
         ));
 
-        Self::spawn_executor_task(
+        let _executor_handle = Self::spawn_executor_task(
             Arc::clone(&self.executor),
             permit,
             execution_id,

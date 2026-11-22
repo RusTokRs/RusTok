@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use rustok_api::PortError;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
@@ -14,8 +12,7 @@ use crate::forum_owner_checkpoint::ForumOwnerCheckpointReconciler;
 pub use crate::forum_owner_contracts::{
     DEFAULT_FORUM_OWNER_REVISION_PAGE_LIMIT, ForumProjectionOwnerRevisionImpact,
     ForumProjectionOwnerRevisionRecord, ForumProjectionOwnerRevisionRequest,
-    ForumProjectionOwnerRevisionSourcePort, ForumProjectionOwnerTenantHead,
-    ForumProjectionOwnerTenantPageRequest, MAX_FORUM_OWNER_REVISION_PAGE_LIMIT,
+    ForumProjectionOwnerRevisionSourcePort, MAX_FORUM_OWNER_REVISION_PAGE_LIMIT,
     SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
 };
 use crate::projection_driver::SearchProjectionDriver;
