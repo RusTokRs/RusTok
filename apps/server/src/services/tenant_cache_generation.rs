@@ -18,7 +18,7 @@ use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 use tokio::sync::broadcast;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop, run_until_stopped};
 use crate::services::tenant_cache_generation_status::{
     TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerState,
 };
@@ -593,7 +593,7 @@ pub async fn start_tenant_cache_generation_listener(
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
     let local_listener = listener.clone();
     let local_state = Arc::clone(&state);
-    let local_task = tokio::spawn(async move {
+    let local_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
         let runtime = EventConsumerRuntime::new("tenant_cache_generation_local");
         runtime.restarted("startup");
         loop {
@@ -644,14 +644,14 @@ pub async fn start_tenant_cache_generation_listener(
                 }
             }
         }
-    });
+    }));
     tasks.push(local_task);
 
     if cache.redis_client_initialized() {
         let redis_listener = listener.clone();
         let invalidations = cache.invalidations();
         let redis_state = Arc::clone(&state);
-        let redis_task = tokio::spawn(async move {
+        let redis_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
             let runtime = EventConsumerRuntime::new("tenant_cache_generation_redis");
             let mut reason = "startup";
             loop {
@@ -726,12 +726,12 @@ pub async fn start_tenant_cache_generation_listener(
                 reason = "reconnect";
                 tokio::time::sleep(LISTENER_RESTART_DELAY).await;
             }
-        });
+        }));
         tasks.push(redis_task);
 
         let reconcile_listener = listener.clone();
         let reconcile_state = Arc::clone(&state);
-        let reconcile_task = tokio::spawn(async move {
+        let reconcile_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
             let start = tokio::time::Instant::now() + GENERATION_RECONCILE_INTERVAL;
             let mut interval = tokio::time::interval_at(start, GENERATION_RECONCILE_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -756,7 +756,7 @@ pub async fn start_tenant_cache_generation_listener(
                     }
                 }
             }
-        });
+        }));
         tasks.push(reconcile_task);
     }
 
