@@ -1,5 +1,33 @@
 # Server App — Implementation Plan
 
+## Code-review corrections — shutdown admission and cooperative listeners (2026-11-22)
+
+A second adversarial review found that Notification Candidate and Notification
+Fanout could durably defer work after a tenant-policy lookup returned during
+shutdown. Both paths now check the host stop signal before the deferral and
+again before processing/materialization. Fanout also stops before beginning
+the second work-selection query after its source pass.
+
+Artifact maintenance now checks shutdown after loading blob-retention policy
+and before destructive blob reconciliation, and after tenant discovery before
+loading the next retention snapshot. This closes the preparation/effect
+boundary where a shutdown arriving during a read could still admit a new GC
+operation.
+
+The cache Redis status monitor, tenant cache-generation listeners, tenant
+locale-generation listeners, and RBAC durable-generation watchdog now wrap
+their cancellation-safe background loops in a cooperative stop gate. They
+exit promptly instead of remaining alive until the generic worker abort
+timeout. The shared `run_until_stopped` helper is intentionally limited to
+cache invalidation, status observation, and reconciliation work whose
+interruption is recovered by a full generation sync on the next startup; it
+must not wrap a claimed durable operation or external side effect that needs
+completion/compensation.
+
+RBAC pre-migration diagnostics now distinguish a missing
+`rbac_invalidation_state` table from unrelated missing relations and missing
+columns, including SQLite, PostgreSQL, and MySQL diagnostics.
+
 ## Server audit continuation — RBAC watchdog diagnosis and bounded module recovery admission (2026-11-22)
 
 The RBAC durable-generation watchdog previously classified any SQLite
