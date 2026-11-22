@@ -317,7 +317,7 @@ impl AdminProductListQueryExt for AdminProductListQuery {
             })
             .transpose()?;
         Ok(Self {
-            search: normalize_optional_text(search),
+            search: normalize_storefront_product_search(search)?,
             status,
             category_id: parse_optional_uuid(category_id, "category_id")?,
             sort_by: parse_storefront_sort_by(sort_by)?,

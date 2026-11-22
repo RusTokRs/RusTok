@@ -47,6 +47,7 @@ impl CatalogService {
                 "page must be at least 1 and per_page must be between 1 and 100".to_owned(),
             ));
         }
+        types::validate_storefront_product_search(list_query.search.as_deref())?;
         let offset = page
             .checked_sub(1)
             .and_then(|page| page.checked_mul(per_page))

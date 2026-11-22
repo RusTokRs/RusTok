@@ -310,6 +310,7 @@ impl CatalogService {
                 "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
             ));
         }
+        types::validate_storefront_product_search(search)?;
         let offset = page
             .checked_sub(1)
             .and_then(|page| page.checked_mul(per_page))
@@ -342,6 +343,7 @@ impl CatalogService {
         let products = query
             .order_by_desc(entities::product::Column::PublishedAt)
             .order_by_desc(entities::product::Column::CreatedAt)
+            .order_by_desc(entities::product::Column::Id)
             .offset(offset)
             .limit(per_page)
             .all(&self.db)
