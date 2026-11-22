@@ -43,9 +43,9 @@ const PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE: &str =
 
 /// Bounded private diagnostics for the public catalog search-options wrapper.
 ///
-/// The compatibility executor in `transport` returns the captured GraphQL error
-/// as a `String`; that value is used only to derive presence and character
-/// length. The captured text is not logged and never becomes the public error.
+/// The selected transport returns an error as a `String`; that value is used
+/// only to derive presence and character length. The captured text is not
+/// logged and never becomes the public error.
 struct CatalogSearchOptionsErrorContext {
     correlation_id: String,
     token_present: bool,
@@ -79,7 +79,7 @@ impl CatalogSearchOptionsErrorContext {
             token_present = self.token_present,
             tenant_slug_length = ?self.tenant_slug_length,
             locale_length = self.locale_length,
-            code = "product.admin_catalog_search_options_graphql_unavailable",
+            code = "product.admin_catalog_search_options_unavailable",
             "product admin catalog search options are unavailable"
         );
 

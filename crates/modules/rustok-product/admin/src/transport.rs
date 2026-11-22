@@ -120,6 +120,7 @@ pub(crate) async fn fetch_catalog_categories(
     }
 }
 
+#[cfg(any(not(any(feature = "ssr", feature = "hydrate")), test))]
 fn structural_category_options(
     categories: impl IntoIterator<Item = crate::model::CatalogCategorySummary>,
 ) -> Vec<crate::model::ProductCatalogSearchOption> {
@@ -133,6 +134,7 @@ fn structural_category_options(
         .collect()
 }
 
+#[cfg(any(not(any(feature = "ssr", feature = "hydrate")), test))]
 fn filterable_attribute_options(
     attributes: impl IntoIterator<Item = crate::model::ProductAttributeSummary>,
 ) -> Vec<crate::model::ProductCatalogSearchOption> {
@@ -156,33 +158,43 @@ pub async fn fetch_catalog_search_options(
     tenant_slug: Option<String>,
     locale: String,
 ) -> Result<ProductCatalogSearchOptions, String> {
-    if let Ok(options) = native_server_adapter::fetch_catalog_search_options(locale.clone()).await {
-        return Ok(options);
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        // The selected native transport is authoritative. A server-function
+        // failure must remain visible instead of silently switching protocols.
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_catalog_search_options(locale)
+            .await
+            .map_err(|error| error.to_string())
     }
 
-    let bootstrap = graphql_adapter::fetch_bootstrap(token.clone(), tenant_slug.clone())
-        .await
-        .map_err(|err| err.to_string())?;
-    let tenant_id = bootstrap.current_tenant.id;
-    let categories = graphql_adapter::fetch_catalog_categories(
-        token.clone(),
-        tenant_slug.clone(),
-        tenant_id.clone(),
-        locale.clone(),
-    )
-    .await
-    .map_err(|err| err.to_string())?;
-    let attributes =
-        graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale)
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        let bootstrap = graphql_adapter::fetch_bootstrap(token.clone(), tenant_slug.clone())
             .await
             .map_err(|err| err.to_string())?;
+        let tenant_id = bootstrap.current_tenant.id;
+        let categories = graphql_adapter::fetch_catalog_categories(
+            token.clone(),
+            tenant_slug.clone(),
+            tenant_id.clone(),
+            locale.clone(),
+        )
+        .await
+        .map_err(|err| err.to_string())?;
+        let attributes =
+            graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale)
+                .await
+                .map_err(|err| err.to_string())?;
 
-    Ok(ProductCatalogSearchOptions {
-        category_options: structural_category_options(categories.items),
-        attribute_options: filterable_attribute_options(attributes.items),
-    })
+        Ok(ProductCatalogSearchOptions {
+            category_options: structural_category_options(categories.items),
+            attribute_options: filterable_attribute_options(attributes.items),
+        })
+    }
 }
 
+#[cfg(any(not(any(feature = "ssr", feature = "hydrate")), test))]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
@@ -809,7 +821,7 @@ mod filterable_search_option_tests {
     }
 
     #[test]
-    fn graphql_fallback_search_options_exclude_non_filterable_and_variant_only_attributes() {
+    fn graphql_search_options_exclude_non_filterable_and_variant_only_attributes() {
         let options = filterable_attribute_options([
             attribute("color", "product", true, false),
             attribute("internal_rank", "product", false, true),
