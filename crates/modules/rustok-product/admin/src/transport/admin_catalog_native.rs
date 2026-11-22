@@ -1,5 +1,15 @@
 use leptos::prelude::*;
 
+#[cfg(feature = "ssr")]
+use std::time::Duration;
+
+#[cfg(feature = "ssr")]
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+#[cfg(feature = "ssr")]
+use rustok_product::ports::types::{AdminCatalogFacetsRequest, AdminProductsRequest};
+#[cfg(feature = "ssr")]
+use rustok_product::ProductCatalogReadPort;
+
 use crate::catalog_controls::ProductAdminListInput;
 use crate::model::ProductList;
 #[cfg(feature = "ssr")]
@@ -17,6 +27,7 @@ pub(crate) async fn fetch_products(
         locale,
         controls.search,
         controls.status,
+        controls.vendor,
         controls.category_id,
         controls.sort_by,
         controls.sort_direction,
@@ -66,6 +77,73 @@ fn map_product_service_error(
 }
 
 #[cfg(feature = "ssr")]
+fn product_admin_read_port_context(
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    locale: &str,
+    operation: &str,
+) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        locale.to_string(),
+        format!("product-admin:{operation}:{tenant_id}"),
+    )
+    .with_deadline(Duration::from_secs(2))
+}
+
+#[cfg(feature = "ssr")]
+fn map_product_port_error(
+    context: &PortContext,
+    error: PortError,
+    operation: &'static str,
+) -> ServerFnError {
+    let (message, public_kind, retryable) = match &error.kind {
+        PortErrorKind::Validation => (
+            if error.message.trim().is_empty() {
+                "Invalid product catalog request"
+            } else {
+                error.message.as_str()
+            },
+            "validation",
+            false,
+        ),
+        PortErrorKind::NotFound => ("Product was not found", "not_found", false),
+        PortErrorKind::Conflict => (
+            "Product operation conflicts with current state",
+            "conflict",
+            false,
+        ),
+        PortErrorKind::Forbidden => ("Product operation is not permitted", "forbidden", false),
+        PortErrorKind::Unavailable => (
+            "Product data is temporarily unavailable",
+            "unavailable",
+            true,
+        ),
+        PortErrorKind::Timeout => ("Product data is temporarily unavailable", "timeout", true),
+        PortErrorKind::InvariantViolation => (
+            "Product operation could not be completed safely",
+            "invariant_violation",
+            false,
+        ),
+    };
+
+    tracing::error!(
+        owner = "rustok_product.admin",
+        owner_operation = operation,
+        boundary = "product_admin_catalog_native",
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        owner_code = %error.code,
+        owner_kind = public_kind,
+        owner_retryable = error.retryable,
+        retryable,
+        "product admin read-port request failed"
+    );
+    ServerFnError::new(message.to_string())
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_list(value: rustok_product::AdminProductList) -> ProductList {
     ProductList {
         items: value
@@ -99,6 +177,7 @@ async fn product_admin_catalog_list_native(
     locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
+    vendor: Option<String>,
     category_id: Option<String>,
     sort_by: Option<String>,
     sort_direction: Option<String>,
@@ -153,17 +232,30 @@ async fn product_admin_catalog_list_native(
             attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_catalog_list_input"))?;
-        let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
-            .list_admin_products_with_query(
-                tenant.id,
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                list_query,
-                page,
-                per_page,
+        let service = CatalogService::new(runtime_ctx.db_clone(), event_bus);
+        let port_context = product_admin_read_port_context(
+            tenant.id,
+            auth.user_id,
+            requested_locale.as_str(),
+            "admin_catalog_list",
+        );
+        let products = service
+            .list_admin_products(
+                port_context.clone(),
+                AdminProductsRequest {
+                    locale: Some(requested_locale.clone()),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    query: list_query,
+                    raw_status: None,
+                    vendor,
+                    product_type: None,
+                    empty_missing_title: false,
+                    page,
+                    per_page,
+                },
             )
             .await
-            .map_err(|error| map_product_service_error(error, "admin_catalog_list"))?;
+            .map_err(|error| map_product_port_error(&port_context, error, "admin_catalog_list"))?;
         Ok(map_product_list(products))
     }
     #[cfg(not(feature = "ssr"))]
@@ -173,6 +265,7 @@ async fn product_admin_catalog_list_native(
             locale,
             search,
             status,
+            vendor,
             category_id,
             sort_by,
             sort_direction,
@@ -228,6 +321,7 @@ pub(crate) async fn fetch_admin_catalog_facets(
         locale,
         controls.search,
         controls.status,
+        controls.vendor,
         controls.category_id,
         controls.sort_by,
         controls.sort_direction,
@@ -243,6 +337,7 @@ async fn product_admin_catalog_facets_native(
     locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
+    vendor: Option<String>,
     category_id: Option<String>,
     sort_by: Option<String>,
     sort_direction: Option<String>,
@@ -296,16 +391,26 @@ async fn product_admin_catalog_facets_native(
             attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_catalog_facets_input"))?;
-        let facets = CatalogService::new(runtime_ctx.db_clone(), event_bus)
-            .admin_catalog_facets(
-                tenant.id,
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                &list_query,
-                facet_codes.as_slice(),
+        let service = CatalogService::new(runtime_ctx.db_clone(), event_bus);
+        let port_context = product_admin_read_port_context(
+            tenant.id,
+            auth.user_id,
+            requested_locale.as_str(),
+            "admin_catalog_facets",
+        );
+        let facets = service
+            .load_admin_catalog_facets(
+                port_context.clone(),
+                AdminCatalogFacetsRequest {
+                    locale: Some(requested_locale.clone()),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    query: list_query,
+                    vendor,
+                    facet_codes,
+                },
             )
             .await
-            .map_err(|error| map_product_service_error(error, "admin_catalog_facets"))?;
+            .map_err(|error| map_product_port_error(&port_context, error, "admin_catalog_facets"))?;
         Ok(map_admin_catalog_facets(facets))
     }
     #[cfg(not(feature = "ssr"))]
@@ -315,6 +420,7 @@ async fn product_admin_catalog_facets_native(
             locale,
             search,
             status,
+            vendor,
             category_id,
             sort_by,
             sort_direction,
