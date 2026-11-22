@@ -1365,3 +1365,23 @@ pages-layout-suggestionMissing = Not available to you for this locale
 pages-layout-contextAfterCreate = Session, tenant or locale changed while creating the page. The page may have been created in the previous context; check before retrying.
 
 pages-layout-permissionsHint = Non-default layouts require pages:manage for builder composition.
+
+# Product catalog filtering and facets
+product-catalog-filters = Catalog filters
+product-catalog-filtersDescription = Narrow the catalog by structural category and typed product attributes.
+product-catalog-clear = Clear catalog filters
+product-catalog-category = Primary category
+product-catalog-allCategories = All structural categories
+product-catalog-attributeFilters = Attribute filters
+product-catalog-attributeFiltersPlaceholder = color=red;weight=12.5
+product-catalog-sortBy = Sort by
+product-catalog-publishedAt = Publication date
+product-catalog-createdAt = Creation date
+product-catalog-sortDirection = Direction
+product-catalog-newestFirst = Newest first
+product-catalog-oldestFirst = Oldest first
+product-catalog-apply = Apply filters
+product-catalog-availableAttributes = Filterable attributes
+product-catalog-manualFacetHint = Enter a code=value expression above to filter this attribute.
+product-catalog-truncated = Some values are omitted; narrow your filters to see more.
+product-catalog-clearFacet = Clear this facet

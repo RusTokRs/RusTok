@@ -37,3 +37,15 @@ the URL. Focused source
 regressions in `src/product-list-pagination.test.mjs` and
 `src/data-table-shell-pagination.test.mjs` are authored but unrun; no build or browser
 behavior is certified.
+
+## Admin catalog filter and facet contract (2026-11-22)
+
+The dashboard product route now renders server-backed category, typed-attribute, and
+sort controls plus value-count facets. Category choices are restricted to structural
+categories; attribute choices are limited to filterable attributes with Product or Both
+scope. Facet requests reuse the current search, status, vendor, category, and attribute
+filters while deliberately omitting pagination, so counts describe the full filtered
+catalog rather than only the visible page. Facet links reset the page to 1 and preserve
+the selected page size and unrelated filters. The facet request is bounded to the first
+eight filterable attribute codes. Option/facet transport failures degrade to empty filter
+metadata without hiding an otherwise successful product list.
