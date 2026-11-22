@@ -5,8 +5,8 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-01 — Shared Platform Foundation Libraries (`crates/libs/*`)
-- **Next Pending Component:** [`crates/libs/rustok-fba`](../../crates/libs/rustok-fba)
-- **Current main SHA:** `9c0abde868`
+- **Next Pending Component:** [`crates/libs/rustok-outbox-storage`](../../crates/libs/rustok-outbox-storage)
+- **Current main SHA:** `67f842e7e8`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -188,8 +188,8 @@ flowchart TD
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-core` | `crates/libs/rustok-core` | [x] | [x] | [x] | [x] |
 | `rustok-api` | `crates/libs/rustok-api` | [x] | [x] | [x] | [x] |
-| `rustok-fba` | `crates/libs/rustok-fba` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-events` | `crates/libs/rustok-events` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-fba` | `crates/libs/rustok-fba` | [x] | [x] | [x] | [x] |
+| `rustok-events` | `crates/libs/rustok-events` | [x] | [x] | [x] | [x] |
 | `rustok-outbox-storage` | `crates/libs/rustok-outbox-storage` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-runtime` | `crates/libs/rustok-runtime` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-manifest` | `crates/libs/rustok-manifest` | [ ] | [ ] | [ ] | [ ] |
