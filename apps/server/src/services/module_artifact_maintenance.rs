@@ -16,6 +16,8 @@ use rustok_storage::StorageRuntime;
 use rustok_verification_transport::GrpcTrustVerifier;
 use rustok_worker_transport::MutualTlsClientConfig;
 
+use crate::services::stop_handle::may_admit_next_worker_operation;
+
 static MODULE_ARTIFACT_MAINTENANCE_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 /// Bounded per-pass budgets. A pass repeats on the poll interval, so these
@@ -278,7 +280,7 @@ pub fn spawn_module_artifact_maintenance_handle(
                     // The blob sweep may have blocked during shutdown. Finish
                     // that operation but never enter the next independent GC
                     // leg once admission of new work has closed.
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         break;
                     }
 
@@ -298,7 +300,7 @@ pub fn spawn_module_artifact_maintenance_handle(
                                         // A tenant sweep already underway must
                                         // finish; unstarted tenants remain
                                         // eligible for the next host instance.
-                                        if *stop_rx.borrow() {
+                                        if !may_admit_next_worker_operation(&stop_rx) {
                                             break;
                                         }
                                         match data_object_gc
@@ -356,7 +358,7 @@ pub fn spawn_module_artifact_maintenance_handle(
 
                     // Do not begin a separate verification leg after the
                     // tenant GC pass observes host shutdown.
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         break;
                     }
 
@@ -384,7 +386,7 @@ pub fn spawn_module_artifact_maintenance_handle(
                         }
                         // Establishing a verifier may be slow. A stop during
                         // that connection must not admit a fresh candidate scan.
-                        if *stop_rx.borrow() {
+                        if !may_admit_next_worker_operation(&stop_rx) {
                             break;
                         }
                         if let Some(verifier) = &verifier {
@@ -402,7 +404,7 @@ pub fn spawn_module_artifact_maintenance_handle(
                                         // reverification once the host is
                                         // stopping. The current call completes
                                         // before this check is reached.
-                                        if *stop_rx.borrow() {
+                                        if !may_admit_next_worker_operation(&stop_rx) {
                                             break;
                                         }
                                         let idempotency_key = reverification_idempotency_key(
