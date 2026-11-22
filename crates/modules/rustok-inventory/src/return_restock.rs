@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::OnConflict,
 };
 use uuid::Uuid;
@@ -190,11 +190,7 @@ pub async fn restock_returned_items(
         .values()
         .map(Movement::level_key)
         .collect::<BTreeSet<_>>();
-    let mut levels = BTreeMap::new();
-    for (item_id, location_id) in level_keys {
-        let level = fetch_return_level(&txn, &context, item_id, location_id).await?;
-        levels.insert((item_id, location_id), level);
-    }
+    let mut levels = fetch_return_levels(&txn, &context, &level_keys).await?;
 
     let now = Utc::now();
     let mut additions = BTreeMap::<(Uuid, Uuid), i32>::new();
@@ -359,39 +355,56 @@ async fn fetch_return_reservation(
     reservations.pop().ok_or_else(identity_conflict)
 }
 
-async fn fetch_return_level(
+async fn fetch_return_levels(
     txn: &DatabaseTransaction,
     context: &PortContext,
-    item_id: Uuid,
-    location_id: Uuid,
-) -> Result<inventory_level::Model, PortError> {
-    // INVARIANT: both the item and the saved location were tenant-proved above.
-    let level_query = inventory_level::Entity::find()
-        .filter(inventory_level::Column::InventoryItemId.eq(item_id))
-        .filter(inventory_level::Column::LocationId.eq(location_id))
-        .limit(2);
+    level_keys: &BTreeSet<(Uuid, Uuid)>,
+) -> Result<BTreeMap<(Uuid, Uuid), inventory_level::Model>, PortError> {
+    if level_keys.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut condition = Condition::any();
+    for (item_id, location_id) in level_keys {
+        condition = condition.add(
+            Condition::all()
+                .add(inventory_level::Column::InventoryItemId.eq(*item_id))
+                .add(inventory_level::Column::LocationId.eq(*location_id)),
+        );
+    }
+    let level_query = inventory_level::Entity::find().filter(condition);
     let level_query = if txn.get_database_backend() == DbBackend::Sqlite {
         level_query
     } else {
         level_query.lock_exclusive()
     };
-    let mut matching = level_query.all(txn).await.map_err(|error| {
+    let matching = level_query.all(txn).await.map_err(|error| {
         storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
     })?;
-    if matching.len() != 1 {
-        return Err(PortError::invariant_violation(
-            "inventory.return_restock_level_unverified",
-            "saved return allocation requires exactly one inventory level",
-        ));
+    let mut levels = BTreeMap::new();
+    for level in matching {
+        if level.stocked_quantity < 0
+            || level.reserved_quantity < 0
+            || level.incoming_quantity < 0
+        {
+            return Err(identity_conflict());
+        }
+        let key = (level.inventory_item_id, level.location_id);
+        if levels.insert(key, level).is_some() {
+            return Err(PortError::invariant_violation(
+                "inventory.return_restock_level_unverified",
+                "saved return allocation requires exactly one inventory level",
+            ));
+        }
     }
-    let level = matching.pop().ok_or_else(identity_conflict)?;
-    if level.stocked_quantity < 0
-        || level.reserved_quantity < 0
-        || level.incoming_quantity < 0
-    {
-        return Err(identity_conflict());
+    for key in level_keys {
+        if !levels.contains_key(key) {
+            return Err(PortError::invariant_violation(
+                "inventory.return_restock_level_unverified",
+                "saved return allocation requires exactly one inventory level",
+            ));
+        }
     }
-    Ok(level)
+    Ok(levels)
 }
 
 fn validate_allocation(

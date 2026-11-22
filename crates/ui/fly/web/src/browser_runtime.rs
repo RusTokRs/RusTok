@@ -109,19 +109,18 @@ impl ResizeObserverHandle {
         mut handler: impl FnMut(Vec<BrowserRect>) + 'static,
     ) -> Result<Self, BrowserRuntimeError> {
         let callback = Closure::wrap(Box::new(move |entries: Array, _observer: ResizeObserver| {
-            let rectangles = entries
-                .iter()
-                .filter_map(|value| value.dyn_into::<ResizeObserverEntry>().ok())
-                .map(|entry| {
+            let mut rectangles = Vec::new();
+            for value in entries.iter() {
+                if let Ok(entry) = value.dyn_into::<ResizeObserverEntry>() {
                     let rect = entry.content_rect();
-                    BrowserRect {
+                    rectangles.push(BrowserRect {
                         left: rect.x(),
                         top: rect.y(),
                         width: rect.width(),
                         height: rect.height(),
-                    }
-                })
-                .collect::<Vec<_>>();
+                    });
+                }
+            }
             handler(rectangles);
         }) as Box<dyn FnMut(Array, ResizeObserver)>);
         let observer =

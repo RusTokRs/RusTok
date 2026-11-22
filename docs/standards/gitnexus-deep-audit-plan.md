@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)
+- **Next Pending Component:** [`crates/modules/rustok-cart`](../../crates/modules/rustok-cart)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -211,7 +211,7 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-commerce` | `crates/modules/rustok-commerce` | [x] | [x] | [x] | [x] |
-| `rustok-commerce-foundation` | `crates/modules/rustok-commerce-foundation` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-commerce-foundation` | `crates/modules/rustok-commerce-foundation` | [x] | [x] | [x] | [x] |
 | `rustok-cart` | `crates/modules/rustok-cart` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-order` | `crates/modules/rustok-order` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-payment` | `crates/modules/rustok-payment` | [ ] | [ ] | [ ] | [ ] |
@@ -363,11 +363,11 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-content-revisions` | `crates/integration/rustok-content-revisions`| [ ] | [ ] | [ ] | [ ] |
-| `apps/server` | `apps/server` | [ ] | [ ] | [ ] | [ ] |
+| `apps/server` | `apps/server` | [x] | [x] | [x] | [x] |
 | `apps/next-admin` (18 пакетов) | `apps/next-admin` | [ ] | [ ] | [ ] | [ ] |
 | `apps/next-frontend` (12 пакетов) | `apps/next-frontend` | [ ] | [ ] | [ ] | [ ] |
 | `apps/admin` (Leptos Admin Host) | `apps/admin` | [ ] | [ ] | [ ] | [ ] |
-| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [ ] | [ ] | [ ] | [ ] |
+| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [x] | [x] | [x] | [x] |
 | `apps/dioxus-admin` (Dioxus Admin) | `apps/dioxus-admin` | [ ] | [ ] | [ ] | [ ] |
 
 ---

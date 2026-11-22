@@ -103,23 +103,34 @@ async fn collect_pg_stat_statements(
         vec![(top_n as i64).into()],
     );
     match db.query_all_raw(statement).await {
-        Ok(rows) => PgStatStatementsReport {
-            available: true,
-            error: None,
-            statements: rows
-                .into_iter()
-                .filter_map(|row| {
-                    Some(PgStatStatementEntry {
-                        query_id: row.try_get("", "query_id").ok()?,
-                        calls: row.try_get("", "calls").ok()?,
-                        total_exec_time_ms: row.try_get("", "total_exec_time_ms").ok()?,
-                        mean_exec_time_ms: row.try_get("", "mean_exec_time_ms").ok()?,
-                        rows: row.try_get("", "rows").ok()?,
-                        query: row.try_get("", "query").ok()?,
+        Ok(rows) => {
+            let mut statements = Vec::with_capacity(rows.len());
+            let mut parse_error = None;
+            for row in &rows {
+                let entry = (|| -> Result<PgStatStatementEntry, sea_orm::DbErr> {
+                    Ok(PgStatStatementEntry {
+                        query_id: row.try_get("", "query_id")?,
+                        calls: row.try_get("", "calls")?,
+                        total_exec_time_ms: row.try_get("", "total_exec_time_ms")?,
+                        mean_exec_time_ms: row.try_get("", "mean_exec_time_ms")?,
+                        rows: row.try_get("", "rows")?,
+                        query: row.try_get("", "query")?,
                     })
-                })
-                .collect(),
-        },
+                })();
+                match entry {
+                    Ok(item) => statements.push(item),
+                    Err(error) => {
+                        parse_error = Some(format!("failed to parse pg_stat_statements row: {error}"));
+                        break;
+                    }
+                }
+            }
+            PgStatStatementsReport {
+                available: parse_error.is_none(),
+                error: parse_error,
+                statements,
+            }
+        }
         Err(error) => PgStatStatementsReport {
             available: false,
             error: Some(format!("pg_stat_statements unavailable: {error}")),
@@ -195,16 +206,16 @@ async fn explain_lines(
         .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(command_failed)?;
-    Ok(match backend {
+    match backend {
         DbBackend::Sqlite => rows
             .into_iter()
-            .filter_map(|row| row.try_get::<String>("", "detail").ok())
+            .map(|row| row.try_get::<String>("", "detail").map_err(command_failed))
             .collect(),
         _ => rows
             .into_iter()
-            .filter_map(|row| row.try_get::<String>("", "QUERY PLAN").ok())
+            .map(|row| row.try_get::<String>("", "QUERY PLAN").map_err(command_failed))
             .collect(),
-    })
+    }
 }
 
 async fn resolve_tenant_id(

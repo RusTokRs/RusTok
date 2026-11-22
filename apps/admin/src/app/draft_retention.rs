@@ -54,13 +54,13 @@ pub fn prune_draft_sessions_once(store: &dyn SsrDraftSessionStore) -> usize {
 /// The loop holds a borrowed `'static` store, which is what the intent endpoint reads: a custom
 /// store registered through `set_pages_browser_draft_store` before boot is therefore the one that
 /// is pruned, instead of a second instance nobody reads.
-pub fn spawn_draft_session_prune(interval: Duration) {
+pub fn spawn_draft_session_prune(interval: Duration) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             prune_draft_sessions_once(pages_browser_draft_store());
             tokio::time::sleep(interval).await;
         }
-    });
+    })
 }
 
 #[cfg(test)]

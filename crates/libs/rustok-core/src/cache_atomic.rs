@@ -32,12 +32,14 @@ struct InMemoryCacheValue {
     ttl: Duration,
 }
 
+type CacheKey = String;
+
 struct InMemoryCacheExpiry;
 
-impl Expiry<String, InMemoryCacheValue> for InMemoryCacheExpiry {
+impl Expiry<CacheKey, InMemoryCacheValue> for InMemoryCacheExpiry {
     fn expire_after_create(
         &self,
-        _key: &String,
+        _key: &CacheKey,
         value: &InMemoryCacheValue,
         _created_at: Instant,
     ) -> Option<Duration> {
@@ -46,7 +48,7 @@ impl Expiry<String, InMemoryCacheValue> for InMemoryCacheExpiry {
 
     fn expire_after_update(
         &self,
-        _key: &String,
+        _key: &CacheKey,
         value: &InMemoryCacheValue,
         _updated_at: Instant,
         _duration_until_expiry: Option<Duration>,

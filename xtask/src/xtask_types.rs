@@ -1,6 +1,6 @@
 use super::*;
 
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "manifest re-exports for xtask subcommands")]
 pub(crate) use rustok_manifest::{
     BuildConfig, Manifest, ModuleGraphqlProvides, ModuleHttpProvides, ModulePackageCliProvides,
     ModulePackageCrateContract, ModulePackageDependency, ModulePackageManifest,

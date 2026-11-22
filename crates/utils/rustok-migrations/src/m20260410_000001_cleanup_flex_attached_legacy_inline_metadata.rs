@@ -121,7 +121,7 @@ where
             continue;
         }
 
-        let locale = extract_locale(&metadata, tenant_locales.get(&tenant_id));
+        let locale = extract_locale(&metadata, tenant_locales.get(&tenant_id).map(|s| s.as_str()));
 
         for (field_key, field_value) in localized {
             let mut insert = Query::insert();
@@ -337,7 +337,7 @@ fn split_metadata(
     (shared, localized)
 }
 
-fn extract_locale(metadata: &Value, tenant_default_locale: Option<&String>) -> String {
+fn extract_locale(metadata: &Value, tenant_default_locale: Option<&str>) -> String {
     metadata
         .get("locale")
         .and_then(Value::as_str)
@@ -364,6 +364,6 @@ fn extract_locale(metadata: &Value, tenant_default_locale: Option<&String>) -> S
                 .and_then(Value::as_str)
         })
         .and_then(normalize_locale_tag)
-        .or_else(|| tenant_default_locale.cloned())
+        .or_else(|| tenant_default_locale.map(|s| s.to_string()))
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
 }

@@ -323,7 +323,7 @@ impl InstallerCommandProvider {
         let file_path = option(options, "file");
 
         let blueprint = if let Some(path) = file_path {
-            let content = std::fs::read_to_string(&path).map_err(|err| {
+            let content = tokio::fs::read_to_string(&path).await.map_err(|err| {
                 failed(format!("Failed to read blueprint file `{}`: {}", path, err))
             })?;
             serde_json::from_str::<rustok_starter::StarterBlueprint>(&content).map_err(|err| {

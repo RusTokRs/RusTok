@@ -21,7 +21,7 @@ mod ui;
 use transaction::ScaffoldTransaction;
 use transaction::ScaffoldWorkspace;
 
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "scaffold options re-exported for cli and test consumers")]
 pub use options::{
     default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
     ScaffoldProfile, ScaffoldUi,

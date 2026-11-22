@@ -580,7 +580,7 @@ fn build_namespaced_rate_limiter(
             namespace,
             cache_service,
         )
-        .map_err(Error::BadRequest)?,
+        .map_err(|err| Error::BadRequest(err.to_string()))?,
     );
 
     match shared_namespace {

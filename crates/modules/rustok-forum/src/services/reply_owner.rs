@@ -1427,25 +1427,8 @@ impl ReplyService {
             // Bound nesting depth. The loop is depth-capped, so even a
             // corrupt cyclic parent chain terminates with this error
             // instead of walking forever inside the transaction.
-            let mut depth = 1_u32;
-            let mut ancestor_id = parent.parent_reply_id;
-            while let Some(ancestor) = ancestor_id {
-                depth += 1;
-                if depth > crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH {
-                    return Err(ForumError::Validation(format!(
-                        "Forum reply nesting exceeds {} levels",
-                        crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH
-                    )));
-                }
-                let ancestor_reply =
-                    reply::ReplyService::find_reply_in_tx(&txn, tenant_id, ancestor).await?;
-                if ancestor_reply.topic_id != topic_id {
-                    return Err(ForumError::Validation(
-                        "Parent reply belongs to another topic".to_string(),
-                    ));
-                }
-                ancestor_id = ancestor_reply.parent_reply_id;
-            }
+            verify_reply_ancestor_depth_in_tx(&txn, tenant_id, topic_id, parent.parent_reply_id)
+                .await?;
         }
 
         super::posting_rate::enforce_new_reply_rate_in_tx(
@@ -1544,4 +1527,38 @@ impl ReplyService {
             .update_with_inline_relations(tenant_id, reply_id, security, input)
             .await
     }
+}
+
+async fn verify_reply_ancestor_depth_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    mut ancestor_id: Option<Uuid>,
+) -> ForumResult<()> {
+    let mut depth = 1_u32;
+    while let Some(ancestor) = ancestor_id {
+        depth += 1;
+        if depth > crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH {
+            return Err(ForumError::Validation(format!(
+                "Forum reply nesting exceeds {} levels",
+                crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH
+            )));
+        }
+        let ancestor_reply = check_reply_ancestor_in_tx(txn, tenant_id, ancestor).await?;
+        if ancestor_reply.topic_id != topic_id {
+            return Err(ForumError::Validation(
+                "Parent reply belongs to another topic".to_string(),
+            ));
+        }
+        ancestor_id = ancestor_reply.parent_reply_id;
+    }
+    Ok(())
+}
+
+async fn check_reply_ancestor_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    ancestor: Uuid,
+) -> ForumResult<forum_reply::Model> {
+    reply::ReplyService::find_reply_in_tx(txn, tenant_id, ancestor).await
 }

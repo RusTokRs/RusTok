@@ -209,17 +209,21 @@ async fn find_previous_publish_target_in_tx(
             ))));
         }
     };
+    let mut selected_operation = None;
     for operation in operations {
         verify_publish_operation_for_rollback(&operation)?;
-        if operation.artifact_set_hash == current_artifact_set_hash {
-            continue;
+        if operation.artifact_set_hash != current_artifact_set_hash {
+            selected_operation = Some(operation);
+            break;
         }
-        let manifest = load_publish_manifest_in_tx(txn, &operation).await?;
-        return Ok((operation, manifest));
     }
-    Err(PagesError::rollback_target_unavailable(
-        "no older distinct immutable publish artifact set is available",
-    ))
+    let target = selected_operation.ok_or_else(|| {
+        PagesError::rollback_target_unavailable(
+            "no older distinct immutable publish artifact set is available",
+        )
+    })?;
+    let manifest = load_publish_manifest_in_tx(txn, &target).await?;
+    Ok((target, manifest))
 }
 
 async fn find_current_publish_cursor_in_tx(

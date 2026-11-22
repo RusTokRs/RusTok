@@ -25,6 +25,7 @@ rustok-runtime.workspace = true
 rustok-starter.workspace = true
 rustok-tenant.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

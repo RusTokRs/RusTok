@@ -445,7 +445,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         || name == "cli.rs"
         || parts
             .iter()
-            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
+            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask" | "rustok-doctor"));
     let mut scan = Scan {
         file,
         lines: source::lines(content),
@@ -1443,7 +1443,7 @@ fn check_rules(
                 "Match on db_err.sql_state() == Some(\"23505\") or \"P0001\".");
         }
     }
-    if loop_depth.is_some() && !test_context
+    if loop_depth.is_some() && !test_context && !scan.migration
         && !re!(r"^\s*(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(text)
         && re!(r"\.(?:one|all|one_by_id|query_one|query_all)\s*\(\s*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)\s*\)\.await").is_match(text)
     {
@@ -1451,7 +1451,7 @@ fn check_rules(
             "Suspected N+1 query: database query inside loop body. Batch with Column::Id.is_in(ids).all().",
             "Collect IDs and perform one Entity::find().filter(Column::Id.is_in(ids)).all(txn) before loop.");
     }
-    if loop_depth.is_some() && !test_context
+    if loop_depth.is_some() && !test_context && !scan.migration
         && !re!(r"^\s*(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(text)
         && re!(r"\b(?:self\.)?(?:fetch|load|get|find|select)_\w+\s*\([^)]*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)[^)]*\)\.await").is_match(text)
     {

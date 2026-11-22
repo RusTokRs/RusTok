@@ -164,7 +164,7 @@ pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_operator
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
     materialize_comments_tcp_delegation_schedule_audit_operator(runtime_ctx)
-        .map_err(ServerError::BadRequest)?;
+        .map_err(|err| ServerError::BadRequest(err.to_string()))?;
     start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled(
         runtime_ctx,
     )

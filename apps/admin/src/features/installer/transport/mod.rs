@@ -45,12 +45,14 @@ pub async fn fetch_receipts(
     .await
 }
 
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(reqwest::Client::new);
+
 async fn get_json<TResp>(path: &str, setup_token: Option<String>) -> Result<TResp, String>
 where
     TResp: for<'de> Deserialize<'de>,
 {
-    let client = reqwest::Client::new();
-    let mut request = client.get(format!("{}{}", api_base_url(), path));
+    let mut request = HTTP_CLIENT.get(format!("{}{}", api_base_url(), path));
     if let Some(token) = setup_token.filter(|value| !value.trim().is_empty()) {
         request = request.header("x-rustok-setup-token", token);
     }
@@ -75,8 +77,7 @@ where
     TReq: Serialize + ?Sized,
     TResp: for<'de> Deserialize<'de>,
 {
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = HTTP_CLIENT
         .post(format!("{}{}", api_base_url(), path))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .json(body);

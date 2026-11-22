@@ -107,13 +107,13 @@ impl StaticDistributionPublisherConfig {
             self.credential_broker_path.clone(),
             self.credential_broker_digest.clone(),
         )
-        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+        .map_err(|err| StaticDistributionPublisherError::InvalidConfig(err.to_string()))?;
         CosignArtifactSigner::new(
             self.cosign_path.clone(),
             self.cosign_digest.clone(),
             self.cosign_key_reference.clone(),
         )
-        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+        .map_err(|err| StaticDistributionPublisherError::InvalidConfig(err.to_string()))?;
         Ok(())
     }
 
@@ -447,13 +447,13 @@ async fn setup_publisher_and_signer(
         config.credential_broker_path.clone(),
         config.credential_broker_digest.clone(),
     )
-    .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+    .map_err(|err| StaticDistributionPublisherError::InvalidConfig(err.to_string()))?;
     let signer = CosignArtifactSigner::new(
         config.cosign_path.clone(),
         config.cosign_digest.clone(),
         config.cosign_key_reference.clone(),
     )
-    .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+    .map_err(|err| StaticDistributionPublisherError::InvalidConfig(err.to_string()))?;
     let credentials = credential_broker
         .acquire(
             target,

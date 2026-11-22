@@ -183,16 +183,17 @@ pub fn StorefrontShell(
     #[prop(optional)] fetch_initial: bool,
 ) -> impl IntoView {
     init_modules();
+    let locale = StoredValue::new(locale);
 
     view! {
-        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.clone() fetch_initial=fetch_initial>
+        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.get_value() fetch_initial=fetch_initial>
             <ModuleRequestProvider
-                locale=Some(locale.clone())
+                locale=Some(locale.get_value())
                 route_segment=None
                 subpath=None
                 query_params=query_params.clone()
             >
-                <StorefrontShellContent locale=locale.clone() />
+                <StorefrontShellContent locale=locale.get_value() />
             </ModuleRequestProvider>
         </EnabledModulesProvider>
     }
@@ -207,16 +208,18 @@ pub fn StorefrontModulePage(
     #[prop(optional)] fetch_initial: bool,
 ) -> impl IntoView {
     init_modules();
+    let locale = StoredValue::new(locale);
+    let route_segment = StoredValue::new(route_segment);
 
     view! {
-        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.clone() fetch_initial=fetch_initial>
+        <EnabledModulesProvider initial_modules=enabled_modules locale=locale.get_value() fetch_initial=fetch_initial>
             <ModuleRequestProvider
-                locale=Some(locale.clone())
-                route_segment=Some(route_segment.clone())
+                locale=Some(locale.get_value())
+                route_segment=Some(route_segment.get_value())
                 subpath=None
                 query_params=query_params.clone()
             >
-                <StorefrontModulePageContent locale=locale.clone() route_segment=route_segment.clone() />
+                <StorefrontModulePageContent locale=locale.get_value() route_segment=route_segment.get_value() />
             </ModuleRequestProvider>
         </EnabledModulesProvider>
     }
