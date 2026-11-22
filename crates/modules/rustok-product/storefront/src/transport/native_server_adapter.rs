@@ -237,6 +237,39 @@ fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffective
 }
 
 #[cfg(feature = "ssr")]
+fn structural_category_options(
+    categories: impl IntoIterator<Item = rustok_product::services::CatalogCategoryListRecord>,
+) -> Vec<crate::model::ProductCatalogSearchOption> {
+    categories
+        .into_iter()
+        .filter(|category| category.kind.as_str() == "structural")
+        .map(|category| crate::model::ProductCatalogSearchOption {
+            value: category.id.to_string(),
+            label: first_non_empty([category.path, category.name, category.code]),
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn filterable_attribute_options(
+    attributes: impl IntoIterator<Item = rustok_product::services::ProductAttributeListRecord>,
+) -> Vec<crate::model::ProductCatalogSearchOption> {
+    attributes
+        .into_iter()
+        .filter(|attribute| {
+            attribute.is_filterable && matches!(attribute.scope.as_str(), "product" | "both")
+        })
+        .map(|attribute| {
+            let label = first_non_empty([attribute.label, attribute.code.clone()]);
+            crate::model::ProductCatalogSearchOption {
+                value: attribute.code.clone(),
+                label: format!("{label} ({})", attribute.code),
+            }
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
@@ -261,28 +294,16 @@ async fn storefront_catalog_search_options_native(
         let service = product_read_runtime(&scope)
             .schema_read_port()
             .ok_or_else(map_product_internal_error)?;
-        let category_options = product_read_call(&scope, service.list_categories(context.clone()))
-            .await
-            .map_err(map_product_port_error)?
-            .into_iter()
-            .map(|category| ProductCatalogSearchOption {
-                value: category.id.to_string(),
-                label: first_non_empty([category.path, category.name, category.code]),
-            })
-            .collect();
-        let attribute_options = product_read_call(&scope, service.list_attributes(context))
-            .await
-            .map_err(map_product_port_error)?
-            .into_iter()
-            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
-            .map(|attribute| {
-                let label = first_non_empty([attribute.label, attribute.code.clone()]);
-                ProductCatalogSearchOption {
-                    value: attribute.code.clone(),
-                    label: format!("{label} ({})", attribute.code),
-                }
-            })
-            .collect();
+        let category_options = structural_category_options(
+            product_read_call(&scope, service.list_categories(context.clone()))
+                .await
+                .map_err(map_product_port_error)?,
+        );
+        let attribute_options = filterable_attribute_options(
+            product_read_call(&scope, service.list_attributes(context))
+                .await
+                .map_err(map_product_port_error)?,
+        );
 
         Ok(ProductCatalogSearchOptions {
             category_options,
@@ -600,5 +621,62 @@ async fn storefront_buyer_quote_native(
         Err(ServerFnError::new(
             "Native buyer quotes require the SSR server",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod filterable_search_option_tests {
+    use super::*;
+    use rustok_product::services::{AttributeValueType, ProductAttributeListRecord};
+
+    fn attribute(
+        code: &str,
+        scope: &str,
+        is_filterable: bool,
+        is_sortable: bool,
+    ) -> ProductAttributeListRecord {
+        ProductAttributeListRecord {
+            id: uuid::Uuid::new_v4(),
+            code: code.to_owned(),
+            value_type: AttributeValueType::Select,
+            scope: scope.to_owned(),
+            is_localized: false,
+            is_filterable,
+            is_searchable: false,
+            is_sortable,
+            show_on_storefront: true,
+            label: code.to_owned(),
+        }
+    }
+
+    #[test]
+    fn storefront_category_search_options_exclude_virtual_categories() {
+        let category = |id: &str, kind| rustok_product::services::CatalogCategoryListRecord {
+            id: uuid::Uuid::new_v4(),
+            parent_id: None,
+            code: id.to_owned(),
+            slug: id.to_owned(),
+            path: id.to_owned(),
+            kind,
+            name: id.to_owned(),
+        };
+        let options = structural_category_options([
+            category("root", rustok_product::services::CatalogCategoryKind::Structural),
+            category("smart", rustok_product::services::CatalogCategoryKind::Virtual),
+        ]);
+        let ids = options.into_iter().map(|option| option.label).collect::<Vec<_>>();
+        assert_eq!(ids, vec!["root".to_owned()]);
+    }
+
+    #[test]
+    fn storefront_search_options_exclude_non_filterable_and_variant_only_attributes() {
+        let options = filterable_attribute_options([
+            attribute("color", "product", true, false),
+            attribute("internal_rank", "product", false, true),
+            attribute("variant_material", "variant", true, false),
+            attribute("size", "both", true, true),
+        ]);
+        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(codes, vec!["color", "size"]);
     }
 }

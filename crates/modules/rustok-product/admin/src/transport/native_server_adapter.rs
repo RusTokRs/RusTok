@@ -346,6 +346,39 @@ fn map_category_record(
 }
 
 #[cfg(feature = "ssr")]
+fn structural_category_options(
+    categories: impl IntoIterator<Item = CatalogCategorySummary>,
+) -> Vec<ProductCatalogSearchOption> {
+    categories
+        .into_iter()
+        .filter(|category| category.kind.eq_ignore_ascii_case("structural"))
+        .map(|category| ProductCatalogSearchOption {
+            value: category.id,
+            label: first_non_empty([category.path, category.name, category.code]),
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn filterable_attribute_options(
+    attributes: impl IntoIterator<Item = crate::model::ProductAttributeSummary>,
+) -> Vec<ProductCatalogSearchOption> {
+    attributes
+        .into_iter()
+        .filter(|attribute| {
+            attribute.is_filterable && matches!(attribute.scope.as_str(), "product" | "both")
+        })
+        .map(|attribute| {
+            let label = first_non_empty([attribute.label, attribute.code.clone()]);
+            ProductCatalogSearchOption {
+                value: attribute.code.clone(),
+                label: format!("{label} ({})", attribute.code),
+            }
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
@@ -783,32 +816,22 @@ async fn product_admin_catalog_search_options_native(
             &[rustok_api::Permission::PRODUCTS_READ],
             "products:read required",
         )?;
-        let categories = service
-            .list_categories(tenant.id, locale.trim())
-            .await
-            .map_err(|error| map_product_service_error(error, "catalog_search_categories"))?
-            .into_iter()
-            .map(map_category_record)
-            .map(|category| ProductCatalogSearchOption {
-                value: category.id,
-                label: first_non_empty([category.path, category.name, category.code]),
-            })
-            .collect();
-        let attributes = service
-            .list_attributes(tenant.id, locale.trim())
-            .await
-            .map_err(|error| map_product_service_error(error, "catalog_search_attributes"))?
-            .into_iter()
-            .map(map_attribute_record)
-            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
-            .map(|attribute| {
-                let label = first_non_empty([attribute.label, attribute.code.clone()]);
-                ProductCatalogSearchOption {
-                    value: attribute.code.clone(),
-                    label: format!("{label} ({})", attribute.code),
-                }
-            })
-            .collect();
+        let categories = structural_category_options(
+            service
+                .list_categories(tenant.id, locale.trim())
+                .await
+                .map_err(|error| map_product_service_error(error, "catalog_search_categories"))?
+                .into_iter()
+                .map(map_category_record),
+        );
+        let attributes = filterable_attribute_options(
+            service
+                .list_attributes(tenant.id, locale.trim())
+                .await
+                .map_err(|error| map_product_service_error(error, "catalog_search_attributes"))?
+                .into_iter()
+                .map(map_attribute_record),
+        );
 
         Ok(ProductCatalogSearchOptions {
             category_options: categories,
@@ -1690,5 +1713,62 @@ async fn product_admin_bind_category_attribute_native(
         Err(ServerFnError::new(
             "product/admin/bind-category-attribute requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod filterable_search_option_tests {
+    use super::*;
+    use crate::model::ProductAttributeSummary;
+
+    fn attribute(
+        code: &str,
+        scope: &str,
+        is_filterable: bool,
+        is_sortable: bool,
+    ) -> ProductAttributeSummary {
+        ProductAttributeSummary {
+            id: uuid::Uuid::new_v4().to_string(),
+            code: code.to_owned(),
+            value_type: "select".to_owned(),
+            scope: scope.to_owned(),
+            is_localized: false,
+            is_filterable,
+            is_searchable: false,
+            is_sortable,
+            show_on_storefront: true,
+            label: code.to_owned(),
+        }
+    }
+
+    #[test]
+    fn native_category_search_options_exclude_virtual_categories() {
+        let category = |id: &str, kind: &str| CatalogCategorySummary {
+            id: id.to_owned(),
+            code: id.to_owned(),
+            slug: id.to_owned(),
+            path: id.to_owned(),
+            kind: kind.to_owned(),
+            name: id.to_owned(),
+            parent_id: None,
+        };
+        let options = structural_category_options([
+            category("root", "structural"),
+            category("smart", "virtual"),
+        ]);
+        let ids = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(ids, vec!["root".to_owned()]);
+    }
+
+    #[test]
+    fn native_search_options_exclude_non_filterable_and_variant_only_attributes() {
+        let options = filterable_attribute_options([
+            attribute("color", "product", true, false),
+            attribute("internal_rank", "product", false, true),
+            attribute("variant_material", "variant", true, false),
+            attribute("size", "both", true, true),
+        ]);
+        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(codes, vec!["color", "size"]);
     }
 }

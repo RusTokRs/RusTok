@@ -55,6 +55,20 @@ Every capability they expose is reachable on the mounted surface: list controls 
   `attribute_id` plus optional `option_id`, without generic `id`/display-field aliases.
 - Reads the effective UI locale from `UiRouteContext.locale`; product translation edits and edit-form hydration both resolve against that host-owned locale without a package-local locale override.
 
+## Admin catalog pagination
+
+The mounted `ProductGridPage` uses the Product owner's page metadata rather than slicing a fixed
+client-side array. The requested `page` and `per_page` travel through the profile-selected
+transport (native server functions for SSR/hydrate, GraphQL for CSR); both paths return the same
+`items/total/page/per_page/has_next` contract. The grid runs in server-pagination mode, writes
+page changes back to the route query, clamps stale deep links to the last available page, and
+accumulates fetched pages only when infinite-scroll mode is selected. Facet counts intentionally
+remain unpaginated.
+
+The quick-search field and table-column filters are still local to the currently loaded page(s);
+they do not change the owner total or facet counts. Server-side filtering parity is a separate
+follow-up and is not implied by this pagination change.
+
 ## Documentation
 
 - See [platform docs](../../../../docs/index.md).

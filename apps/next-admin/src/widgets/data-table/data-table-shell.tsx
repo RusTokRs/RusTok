@@ -76,6 +76,9 @@ export function DataTableShell<TData extends RowData = any>({
     columns,
     pageCount,
     clientPagination,
+    // Keep the table's own URL parser on the same default as the shell's
+    // page-count calculation and the server-rendered first result.
+    initialState: { pagination: { pageIndex: 0, pageSize } },
     shallow: clientPagination,
     debounceMs
   });

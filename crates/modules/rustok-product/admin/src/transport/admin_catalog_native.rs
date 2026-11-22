@@ -21,6 +21,8 @@ pub(crate) async fn fetch_products(
         controls.sort_by,
         controls.sort_direction,
         controls.attribute_filters,
+        controls.page,
+        controls.per_page,
     )
     .await
 }
@@ -101,6 +103,8 @@ async fn product_admin_catalog_list_native(
     sort_by: Option<String>,
     sort_direction: Option<String>,
     attribute_filters: Vec<String>,
+    page: u64,
+    per_page: u64,
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -155,8 +159,8 @@ async fn product_admin_catalog_list_native(
                 requested_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
                 list_query,
-                1,
-                24,
+                page,
+                per_page,
             )
             .await
             .map_err(|error| map_product_service_error(error, "admin_catalog_list"))?;
@@ -173,6 +177,8 @@ async fn product_admin_catalog_list_native(
             sort_by,
             sort_direction,
             attribute_filters,
+            page,
+            per_page,
         );
         Err(ServerFnError::new(
             "product/admin/catalog-list requires the `ssr` feature",

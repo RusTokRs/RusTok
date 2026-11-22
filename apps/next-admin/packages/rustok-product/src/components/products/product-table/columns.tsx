@@ -11,8 +11,7 @@ import type { ProductListItem } from '../../../api/types';
 import { CellAction } from './cell-action';
 
 export const STATUS_OPTIONS = [
-  { label: 'Published / Active', value: 'published' },
-  { label: 'Active', value: 'active' },
+  { label: 'Active / Published', value: 'active' },
   { label: 'Draft', value: 'draft' },
   { label: 'Archived', value: 'archived' }
 ];
@@ -71,7 +70,8 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
       variant: 'text',
       icon: Text
     },
-    enableColumnFilter: true
+    enableColumnFilter: true,
+    enableSorting: false
   },
   {
     id: 'status',
@@ -108,15 +108,17 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
       );
     },
     enableColumnFilter: true,
+    enableSorting: false,
     meta: {
       label: 'Status',
-      variant: 'multiSelect',
+      variant: 'select',
       options: STATUS_OPTIONS
     }
   },
   {
     id: 'productType',
     accessorKey: 'productType',
+    enableSorting: false,
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Type' />
     ),
@@ -146,11 +148,13 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
       placeholder: 'Filter by vendor...',
       variant: 'text'
     },
-    enableColumnFilter: true
+    enableColumnFilter: true,
+    enableSorting: false
   },
   {
     id: 'publishedAt',
     accessorKey: 'publishedAt',
+    enableSorting: false,
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Published' />
     ),
@@ -166,6 +170,7 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
   },
   {
     id: 'actions',
+    enableSorting: false,
     cell: ({ row }) => <CellAction data={row.original} />,
     size: 50
   }

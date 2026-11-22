@@ -63,6 +63,21 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     Ok(())
 }
 
+fn validate_variant_weight(weight: Option<&rust_decimal::Decimal>) -> CommerceResult<()> {
+    if weight.is_some_and(|value| *value < rust_decimal::Decimal::ZERO) {
+        return Err(CommerceError::Validation(
+            "Product variant weight cannot be negative".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn pricing_port_unavailable() -> CommerceError {
+    CommerceError::Core(CoreError::External(
+        "Product Pricing capability is unavailable".to_owned(),
+    ))
+}
+
 fn validate_product_brands(brands: &[ProductBrandInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     let mut primary_count = 0;
@@ -202,6 +217,15 @@ impl CatalogService {
         validate_variant_axes_and_combinations(&input.variant_axes, &input.variants)?;
         for var_input in &input.variants {
             validate_variant_prices(&var_input.prices)?;
+            validate_variant_weight(var_input.weight.as_ref())?;
+        }
+        if input
+            .variants
+            .iter()
+            .any(|variant| !variant.prices.is_empty())
+            && self.pricing_port.is_none()
+        {
+            return Err(pricing_port_unavailable());
         }
         let product_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
@@ -292,10 +316,8 @@ impl CatalogService {
                 )));
             }
 
-            let handle = trans_input
-                .handle
-                .clone()
-                .unwrap_or_else(|| slugify(&trans_input.title));
+            let handle =
+                product_translation_handle(trans_input.handle.as_deref(), &trans_input.title);
 
             let key = format!("{}::{}", trans_input.locale, handle.clone());
             if !seen_handles.insert(key) {
@@ -458,14 +480,11 @@ impl CatalogService {
                 .await?;
         }
         if !initial_prices.is_empty() {
-            if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices)
-                    .await?;
-            } else {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .create_initial_prices_in_tx(&txn, initial_prices)
+                .await?;
         }
         debug!(
             variants_count = input.variants.len(),
@@ -784,10 +803,10 @@ impl CatalogService {
                     )));
                 }
 
-                let handle = translation_input
-                    .handle
-                    .clone()
-                    .unwrap_or_else(|| slugify(&translation_input.title));
+                let handle = product_translation_handle(
+                    translation_input.handle.as_deref(),
+                    &translation_input.title,
+                );
 
                 let locale = translation_input.locale.clone();
                 let key = format!("{}::{}", locale, handle.clone());
@@ -1243,6 +1262,8 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
+        // Pricing is optional in Product-only composition. When attached, cleanup
+        // participates in this transaction; explicit price writes fail closed above.
         if let Some(port) = &self.pricing_port {
             port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
                 .await?;
@@ -1359,6 +1380,10 @@ impl CatalogService {
         .await?;
 
         validate_variant_prices(&input.prices)?;
+        validate_variant_weight(input.weight.as_ref())?;
+        if !input.prices.is_empty() && self.pricing_port.is_none() {
+            return Err(pricing_port_unavailable());
+        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
@@ -1496,14 +1521,11 @@ impl CatalogService {
             });
         }
         if !initial_prices.is_empty() {
-            if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices)
-                    .await?;
-            } else {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .create_initial_prices_in_tx(&txn, initial_prices)
+                .await?;
         }
 
         txn.publish_in_tx(
@@ -1546,6 +1568,9 @@ impl CatalogService {
         validate_patch_text_length(&input.barcode, 100, "Barcode")?;
         validate_patch_text_length(&input.shipping_profile_slug, 100, "Shipping profile slug")?;
         validate_patch_text_length(&input.weight_unit, 16, "Weight unit")?;
+        if let Patch::Set(weight) = &input.weight {
+            validate_variant_weight(Some(weight))?;
+        }
         if let Patch::Set(slug) = &input.shipping_profile_slug {
             self.validate_shipping_profiles(tenant_id, actor_id, Some(slug.as_str()))
                 .await?;
@@ -1563,6 +1588,9 @@ impl CatalogService {
                 ));
             }
         }
+        if input.prices.is_some() && self.pricing_port.is_none() {
+            return Err(pricing_port_unavailable());
+        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
@@ -1575,6 +1603,12 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        if !input.has_changes() {
+            let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
         let mut active: entities::product_variant::ActiveModel = variant.into();
         active.updated_at = Set(Utc::now().into());
 
@@ -1743,14 +1777,11 @@ impl CatalogService {
                     compare_at_amount: price_input.compare_at_amount,
                 });
             }
-            if let Some(port) = &self.pricing_port {
-                port.replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
-                    .await?;
-            } else if !initial_prices.is_empty() {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
+                .await?;
         }
 
         if let Some(quantity) = input.inventory_quantity {
@@ -1815,6 +1846,8 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
+        // Pricing is optional in Product-only composition. When attached, cleanup
+        // participates in this transaction; explicit price writes fail closed above.
         if let Some(port) = &self.pricing_port {
             port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
                 .await?;
@@ -1898,7 +1931,7 @@ impl CatalogService {
         self.retain_product_image(tenant_id, actor_id, image_id, media_id)
             .await?;
 
-        let (txn, result) = match self
+        let (txn, result) = self
             .stage_product_image_addition_in_tx(
                 tenant_id,
                 actor_id,
@@ -1907,18 +1940,7 @@ impl CatalogService {
                 input,
                 image_locale,
             )
-            .await
-        {
-            Ok(staged) => staged,
-            Err(error) => {
-                // The Media hold was taken before this transaction opened. A
-                // definite rollback enqueues its release instead of leaking an
-                // orphan hold for the at-least-once release worker.
-                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
-                    .await;
-                return Err(error);
-            }
-        };
+            .await?;
         record_product_operation_result(&result);
         // A commit failure is ambiguous (the commit may have landed) and is
         // deliberately not compensated: a leaked hold is recoverable, releasing
@@ -1948,6 +1970,9 @@ impl CatalogService {
         input: AddProductImageInput,
         image_locale: Option<String>,
     ) -> CommerceResult<(ProductWriteTransaction, ProductImageResponse)> {
+        // A retained Media hold remains conservative after local failure or an
+        // ambiguous commit. Retries reuse the same Media idempotency identity;
+        // only committed Product removal rows authorize automatic release.
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -3054,6 +3079,17 @@ pub(super) fn validate_variant_axis_tuples(
 mod tests {
     use super::*;
     use rust_decimal::Decimal;
+
+    #[test]
+    fn negative_variant_weight_is_rejected_for_all_write_inputs() {
+        assert!(validate_variant_weight(None).is_ok());
+        assert!(validate_variant_weight(Some(&Decimal::ZERO)).is_ok());
+        assert!(validate_variant_weight(Some(&Decimal::new(100, 2))).is_ok());
+        assert!(matches!(
+            validate_variant_weight(Some(&Decimal::new(-1, 2))),
+            Err(CommerceError::Validation(_))
+        ));
+    }
 
     #[test]
     fn validate_variant_prices_accepts_valid_prices() {

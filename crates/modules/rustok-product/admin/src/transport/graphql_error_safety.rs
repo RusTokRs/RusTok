@@ -28,6 +28,7 @@ impl GraphqlReadContext {
         Self::new("fetch_bootstrap", token, tenant_slug)
     }
 
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn for_products(
         token: Option<&str>,
@@ -42,7 +43,7 @@ impl GraphqlReadContext {
         context.locale_length = text_length(locale);
         context.search_length = text_length(search);
         context.status_length = text_length(status);
-        context.native_fallback_attempted = true;
+        context.native_fallback_attempted = false;
         context
     }
 

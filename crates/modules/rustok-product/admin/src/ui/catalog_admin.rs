@@ -34,7 +34,10 @@ pub fn ProductAdmin() -> impl IntoView {
         read_route_query_value(&route_context, "sort_by"),
         read_route_query_value(&route_context, "sort_direction"),
         read_route_query_value(&route_context, "attribute_filters"),
+        read_route_query_value(&route_context, "page"),
+        read_route_query_value(&route_context, "per_page"),
     );
+    let page_size = catalog_controls.per_page;
     let current_category = catalog_controls.category_id.clone().unwrap_or_default();
     let current_attribute_filters =
         serialize_attribute_filters(catalog_controls.attribute_filters.as_slice());
@@ -59,6 +62,8 @@ pub fn ProductAdmin() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">{labels.subtitle}</p>
                 </div>
                 <form method="get" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                    <input type="hidden" name="page" value="1" />
+                    <input type="hidden" name="per_page" value=page_size.to_string() />
                     {selected_product_id.map(|value| view! {
                         <input type="hidden" name=AdminQueryKey::ProductId.as_str() value=value />
                     })}

@@ -10,6 +10,20 @@ use rustok_core::field_schema::{
 
 use super::attached_localized_storage;
 use crate::services::flex_schema_projection::ProductFlexSchemaSource;
+/// A literal substring search across SQLite and PostgreSQL. `LIKE` interprets
+/// percent, underscore and the escape character unless escaped explicitly.
+pub fn product_title_substring_like_pattern(search: &str) -> String {
+    let mut pattern = String::from("%");
+    for character in search.chars() {
+        if matches!(character, '%' | '_' | '!') {
+            pattern.push('!');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
 pub fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
@@ -30,11 +44,12 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = std::collections::BTreeSet::new();
     for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
+        if let Some(raw_slug) = value.as_str() {
+            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+                .filter(|slug| slug.as_str() == raw_slug)
+            {
+                normalized.insert(slug);
+            }
         }
     }
 
@@ -63,6 +78,23 @@ pub fn is_metadata_visible_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> bool {
     let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    let explicit_allowlist = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("allowed_channel_slugs"));
+    let malformed_nonempty_allowlist = match explicit_allowlist {
+        Some(Value::Array(values)) => !values.is_empty() && allowed_channel_slugs.is_empty(),
+        Some(_) => true,
+        None => false,
+    };
+
+    // A malformed non-empty allowlist must not collapse to the empty-list
+    // "visible everywhere" default.
+    if malformed_nonempty_allowlist {
+        return false;
+    }
+
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
 }
 use sea_orm::{
@@ -94,7 +126,7 @@ pub fn slugify(text: &str) -> String {
     let slug: String = normalized
         .to_lowercase()
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
         .map(|c| if c == ' ' || c == '_' { '-' } else { c })
         .collect();
 
@@ -105,6 +137,7 @@ pub fn slugify(text: &str) -> String {
         .join("-");
 
     let slug: String = slug.chars().take(MAX_LENGTH).collect();
+    let slug = slug.trim_matches('-').to_owned();
 
     let slug = if RESERVED_NAMES.contains(&slug.as_str()) {
         format!("{}-1", slug)
@@ -117,6 +150,16 @@ pub fn slugify(text: &str) -> String {
     } else {
         slug
     }
+}
+
+/// Resolves a Product handle. An omitted or blank form value means "generate from the
+/// localized title"; a nonblank authored value is preserved after trimming.
+pub fn product_translation_handle(handle: Option<&str>, title: &str) -> String {
+    handle
+        .map(str::trim)
+        .filter(|handle| !handle.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| slugify(title))
 }
 
 pub fn generate_variant_title_from_axis_values(values: &[&str]) -> String {
@@ -448,7 +491,9 @@ pub fn pick_product_translation<'a>(
                     .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
-        .or_else(|| translations.first())
+        // A missing requested/default locale must not depend on unspecified SQL
+        // row order (or the order supplied by an external projection).
+        .or_else(|| translations.iter().min_by(|a, b| a.locale.cmp(&b.locale)))
 }
 
 pub fn pick_response_translation<'a>(
@@ -466,7 +511,9 @@ pub fn pick_response_translation<'a>(
                     .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
-        .or_else(|| translations.first())
+        // A missing requested/default locale must not depend on unspecified SQL
+        // row order (or the order supplied by an external projection).
+        .or_else(|| translations.iter().min_by(|a, b| a.locale.cmp(&b.locale)))
 }
 
 pub fn localize_product_response(
@@ -601,14 +648,18 @@ pub fn product_channel_visibility_condition(
     if backend == DbBackend::Sqlite {
         return match normalize_public_channel_slug(public_channel_slug) {
             None => Condition::all().add(Expr::cust(
-                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'",
+                "COALESCE(json_type(metadata, '$.channel_visibility.allowed_channel_slugs'), 'array') = 'array'
+                 AND COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'",
             )),
             Some(slug) => Condition::all().add(Expr::cust_with_values(
-                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'
-                 OR EXISTS (
-                     SELECT 1
-                     FROM json_each(COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]'))
-                     WHERE value = ?
+                "COALESCE(json_type(metadata, '$.channel_visibility.allowed_channel_slugs'), 'array') = 'array'
+                 AND (
+                     COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'
+                     OR EXISTS (
+                         SELECT 1
+                         FROM json_each(COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]'))
+                         WHERE value = ?
+                     )
                  )",
                 vec![SqlValue::from(slug)],
             )),
@@ -1107,5 +1158,98 @@ mod category_filter_subtree_tests {
             .await
             .expect_err("an oversized subtree must be refused");
         assert!(matches!(error, CommerceError::Validation(_)));
+    }
+}
+
+#[cfg(test)]
+mod product_handle_and_visibility_tests {
+    use super::{
+        is_metadata_visible_for_public_channel, product_title_substring_like_pattern,
+        product_translation_handle, slugify,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn product_title_substring_search_treats_like_metacharacters_as_literals() {
+        assert_eq!(product_title_substring_like_pattern("100%_ready!"), "%100!%!_ready!!%");
+        assert_eq!(product_title_substring_like_pattern("a b"), "%a b%");
+        assert_eq!(product_title_substring_like_pattern(""), "%%");
+    }
+
+    #[test]
+    fn missing_locale_uses_deterministic_translation_fallback() {
+        use super::pick_response_translation;
+        use crate::dto::ProductTranslationResponse;
+
+        let translation = |locale: &str| ProductTranslationResponse {
+            locale: locale.to_owned(),
+            title: locale.to_owned(),
+            handle: locale.to_owned(),
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        };
+        let reversed = vec![translation("zh"), translation("de"), translation("fr")];
+        let forward = vec![translation("fr"), translation("de"), translation("zh")];
+        let pick = |items: &[ProductTranslationResponse]| {
+            pick_response_translation(items, "it", "en")
+                .map(|translation| translation.locale.as_str())
+        };
+        assert_eq!(pick(&reversed), Some("de"));
+        assert_eq!(pick(&forward), Some("de"));
+        assert_eq!(
+            pick_response_translation(&reversed, "fr", "en")
+                .map(|translation| translation.locale.as_str()),
+            Some("fr"),
+        );
+    }
+
+    #[test]
+    fn slugify_preserves_unicode_letters_and_numbers() {
+        assert_eq!(slugify("Красный чай 2026"), "красный-чай-2026");
+        assert_eq!(slugify("東京 2026"), "東京-2026");
+        assert_eq!(slugify("Café Déjà Vu"), "café-déjà-vu");
+    }
+
+    #[test]
+    fn blank_product_handles_fall_back_to_the_localized_title() {
+        assert_eq!(product_translation_handle(None, "Красный чай"), "красный-чай");
+        assert_eq!(product_translation_handle(Some(""), "Chair"), "chair");
+        assert_eq!(product_translation_handle(Some("  \t "), "Chair"), "chair");
+        assert_eq!(
+            product_translation_handle(Some("custom-handle"), "Chair"),
+            "custom-handle"
+        );
+    }
+
+    #[test]
+    fn malformed_nonempty_channel_allowlists_do_not_become_public() {
+        let invalid_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["", 42, null] }
+        });
+        let noncanonical_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["WEB"] }
+        });
+        let wrong_shape = json!({
+            "channel_visibility": { "allowed_channel_slugs": "web" }
+        });
+        let null_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": null }
+        });
+        let valid_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["web"] }
+        });
+
+        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
+            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+            assert!(!is_metadata_visible_for_public_channel(metadata, None));
+        }
+        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
+        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
+            None
+        ));
+        assert!(is_metadata_visible_for_public_channel(&json!({}), Some("web")));
     }
 }
