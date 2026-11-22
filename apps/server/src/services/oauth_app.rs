@@ -2984,25 +2984,28 @@ mod tests {
         .insert(&db)
         .await
         .expect("create authorization subject");
+        let user_id = user.id;
         OAuthAppService::grant_consent_strict(
             &db,
             app.id,
-            user.id,
+            user_id,
             tenant.id,
             vec!["openid".to_string()],
         )
         .await
         .expect("grant active consent");
 
-        let issue = |tenant_id| OAuthAppService::generate_authorization_code(
-            &db,
-            app.id,
-            user.id,
-            tenant_id,
-            "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()],
-            "challenge".to_string(),
-        );
+        let issue = |tenant_id| {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                user_id,
+                tenant_id,
+                "https://partner.example.com/callback".to_string(),
+                vec!["openid".to_string()],
+                "challenge".to_string(),
+            )
+        };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
 
         // A stale preflight cannot bind a code to a redirect the app no longer
@@ -3993,7 +3996,7 @@ mod tests {
     #[serial]
     async fn manifest_sync_reactivates_embedded_app_with_revocation_timestamp() {
         let (db, tenant) = test_db_with_tenant().await;
-        let now = Utc::now();
+        let now = Utc::now().fixed_offset();
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -4011,11 +4014,11 @@ mod tests {
             manifest_ref: Set(Some("leptos-admin".to_string())),
             auto_created: Set(true),
             is_active: Set(true),
-            revoked_at: Set(Some(now.clone())),
+            revoked_at: Set(Some(now)),
             last_used_at: Set(None),
             metadata: Set(serde_json::json!({})),
-            created_at: Set(now.clone().into()),
-            updated_at: Set(now.into()),
+            created_at: Set(now),
+            updated_at: Set(now),
         }
         .insert(&db)
         .await

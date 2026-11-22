@@ -593,10 +593,21 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
 }
 
 #[cfg(test)]
+pub(super) fn assert_root_delivery(accepted: &[EventEnvelope], expected: &[&EventEnvelope]) {
+    assert_eq!(accepted.len(), expected.len(), "root delivery count");
+    for (actual, expected) in accepted.iter().zip(expected) {
+        assert_eq!(
+            serde_json::to_value(actual).expect("serialize delivered envelope"),
+            serde_json::to_value(expected).expect("serialize expected envelope"),
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::{
-        EventForwarderHandle, EventForwarderReceiver, SharedEventBus, event_bus_from_context,
-        run_event_forwarder, transactional_event_bus_from_context,
+        EventForwarderHandle, EventForwarderReceiver, SharedEventBus, assert_root_delivery,
+        event_bus_from_context, run_event_forwarder, transactional_event_bus_from_context,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -611,17 +622,6 @@ mod tests {
     };
     use std::time::Duration;
     use tokio::sync::watch;
-
-    fn assert_single_forwarded_envelope(
-        accepted: &[rustok_events::EventEnvelope],
-        expected: &rustok_events::EventEnvelope,
-    ) {
-        assert_eq!(accepted.len(), 1, "expected exactly one forwarded envelope");
-        assert_eq!(
-            serde_json::to_value(&accepted[0]).expect("serialize forwarded envelope"),
-            serde_json::to_value(expected).expect("serialize expected envelope"),
-        );
-    }
 
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
@@ -710,7 +710,7 @@ mod tests {
             .expect("forwarder task should join");
 
         assert_eq!(transport.attempts.load(Ordering::SeqCst), 2);
-        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("backpressure enabled").current_depth(),
             0
@@ -836,7 +836,7 @@ mod tests {
             .expect("forwarder should drain after producer completion")
             .expect("forwarder task should join");
 
-        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -896,7 +896,7 @@ mod tests {
             .await
             .expect("supervisor should drain before exiting")
             .expect("supervisor task should join");
-        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -971,7 +971,7 @@ mod tests {
         .await
         .expect("shutdown iteration should drain the restart receiver");
 
-        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -1068,7 +1068,7 @@ mod tests {
             .await
             .expect("forwarder should drain and stop")
             .expect("forwarder task should join");
-        assert_single_forwarded_envelope(&transport.accepted.lock().unwrap(), &envelope);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
     }
 
     #[tokio::test]

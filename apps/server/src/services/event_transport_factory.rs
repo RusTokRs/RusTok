@@ -596,6 +596,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::event_bus::assert_root_delivery;
     use async_trait::async_trait;
     use rustok_core::events::{
         EventDispatcher, EventHandler, HandlerResult, RunningDispatcher,
@@ -741,7 +742,7 @@ mod tests {
         );
 
         target.publish(envelope.clone()).await.unwrap();
-        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        assert_root_delivery(&handled.lock().unwrap(), &[&envelope]);
         running.stop().await.expect("root dispatcher stop");
     }
 
@@ -766,7 +767,7 @@ mod tests {
 
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        assert_root_delivery(&handled.lock().unwrap(), &[&envelope]);
         running.stop().await.expect("root dispatcher stop");
     }
 
@@ -848,10 +849,7 @@ mod tests {
         fail.store(false, Ordering::SeqCst);
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert_eq!(
-            *handled.lock().unwrap(),
-            vec![envelope.clone(), envelope]
-        );
+        assert_root_delivery(&handled.lock().unwrap(), &[&envelope, &envelope]);
         running.stop().await.expect("root dispatcher stop");
     }
 }
