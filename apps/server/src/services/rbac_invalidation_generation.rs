@@ -340,7 +340,8 @@ fn is_missing_generation_state(error: &Error) -> bool {
     message.contains("rbac_invalidation_state")
         && (message.contains("no such table")
             || message.contains("undefinedtable")
-            || message.contains("does not exist"))
+            || message.contains("does not exist")
+            || message.contains("doesn't exist"))
 }
 
 #[cfg(test)]
@@ -390,6 +391,9 @@ mod tests {
         )));
         assert!(!is_missing_generation_state(&Error::Cache(
             "Database error: undefinedTable on unrelated_authorization_state".to_string()
+        )));
+        assert!(is_missing_generation_state(&Error::Cache(
+            "Table 'rustok.rbac_invalidation_state' doesn't exist".to_string()
         )));
     }
 
