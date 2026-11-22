@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
+use tracing::instrument;
 
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
@@ -79,6 +80,7 @@ impl FulfillmentOrchestrationService {
         self
     }
 
+    #[instrument(skip(self, input))]
     pub async fn create_manual_fulfillment(
         &self,
         tenant_id: Uuid,

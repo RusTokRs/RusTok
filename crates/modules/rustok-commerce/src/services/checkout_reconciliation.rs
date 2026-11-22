@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_outbox::TransactionalEventBus;
@@ -217,6 +218,7 @@ impl CheckoutReconciliationService {
     /// The public entry point owns the metrics: every call records exactly one
     /// `rustok_checkout_reconciliation_actions_total` sample with a bounded
     /// `result` label, whether the request was rejected, replayed or executed.
+    #[instrument(skip(self, context))]
     pub async fn execute(
         &self,
         context: PortContext,

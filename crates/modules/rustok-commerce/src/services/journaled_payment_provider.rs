@@ -7,6 +7,7 @@ use rustok_payment::{
     PaymentProviderOperationJournal,
 };
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationResult};
@@ -19,6 +20,7 @@ pub(crate) struct JournaledProviderResult {
     pub result: PaymentProviderOperationResult,
 }
 
+#[instrument(skip(journal, registry, request))]
 pub(crate) async fn execute_journaled_provider_operation(
     journal: &PaymentProviderOperationJournal,
     registry: &PaymentProviderRegistry,

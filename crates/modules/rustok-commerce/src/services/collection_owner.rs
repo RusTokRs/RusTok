@@ -9,6 +9,7 @@ use sea_orm::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -31,6 +32,7 @@ const COLLECTION_COPY_RESOURCE_REVISION_NAMESPACE: &str =
 /// must go through these methods so the Collection row, exact-locale rows, and durable translation
 /// ChangeCursor evidence are committed atomically.
 impl CollectionTranslationService {
+    #[instrument(skip(self, conditions, metadata, translations))]
     pub async fn create_collection_owner(
         &self,
         tenant_id: Uuid,
@@ -78,6 +80,7 @@ impl CollectionTranslationService {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self, conditions, metadata, translations))]
     pub async fn update_collection_owner(
         &self,
         tenant_id: Uuid,
@@ -166,6 +169,7 @@ impl CollectionTranslationService {
         Ok(true)
     }
 
+    #[instrument(skip(self))]
     pub async fn delete_collection_owner(
         &self,
         tenant_id: Uuid,
