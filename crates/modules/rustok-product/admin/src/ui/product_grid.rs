@@ -118,6 +118,7 @@ pub fn ProductGridPage() -> impl IntoView {
     });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
     let current_category = catalog_controls.category_id.clone().unwrap_or_default();
+    let current_vendor = catalog_controls.vendor.clone().unwrap_or_default();
     let current_attribute_filters =
         serialize_attribute_filters(catalog_controls.attribute_filters.as_slice());
     let current_sort_by = catalog_controls
@@ -1127,11 +1128,11 @@ pub fn ProductGridPage() -> impl IntoView {
             </Show>
 
             // Catalog controls: the GET form keeps the owner list contract
-            // (category, typed attribute filters, deterministic date order) in
+            // (category, vendor, typed attribute filters, deterministic date order) in
             // the URL, so deep links and refreshes resolve the same list.
             <form
                 method="get"
-                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
+                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
             >
                 <input type="hidden" name="page" value="1" />
                 <input
@@ -1139,7 +1140,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     name="per_page"
                     prop:value=move || pagination.get().page_size.to_string()
                 />
-                <div class="space-y-1 xl:col-span-5">
+                <div class="space-y-1 xl:col-span-6">
                     <h2 class="text-sm font-semibold text-foreground">{catalog_labels.title.clone()}</h2>
                     <p class="text-xs text-muted-foreground">{catalog_labels.subtitle.clone()}</p>
                 </div>
@@ -1159,6 +1160,16 @@ pub fn ProductGridPage() -> impl IntoView {
                             }).collect_view())
                             .unwrap_or_default()}
                     </select>
+                </label>
+                <label class="grid gap-2 text-xs text-foreground">
+                    <span class="font-medium">{catalog_labels.vendor.clone()}</span>
+                    <input
+                        name="vendor"
+                        type="text"
+                        value=current_vendor.clone()
+                        placeholder=catalog_labels.vendor_placeholder.clone()
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
+                    />
                 </label>
                 <label class="grid gap-2 text-xs text-foreground">
                     <span class="font-medium">{catalog_labels.attribute_filters.clone()}</span>
