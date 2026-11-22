@@ -879,6 +879,18 @@ mod tests {
             );
             assert_eq!(error.message, "product request context is invalid");
         }
+
+        invalid = context.clone();
+        invalid.tenant_id = Uuid::nil().to_string();
+        let nil_tenant = command_scope(&invalid, "update_product")
+            .expect_err("nil tenant UUID must be rejected");
+        assert_eq!(nil_tenant.code, "product.tenant_id_invalid");
+
+        invalid = context.clone();
+        invalid.actor.id = Uuid::nil().to_string();
+        let nil_actor = command_scope(&invalid, "update_product")
+            .expect_err("nil actor UUID must be rejected");
+        assert_eq!(nil_actor.code, "product.actor_id_invalid");
     }
 
     #[test]
