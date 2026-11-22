@@ -6,6 +6,13 @@
 
 ## Responsibilities
 
+RBAC generation-watchdog pre-migration diagnostics distinguish the
+RBAC generation table from unrelated missing relations. Shutdown
+interrupts pending watchdog admission, and multi-stage module
+transition/artifact maintenance stops before entering additional
+independent durable operations.
+
+
 Cache listener startup for Channel/RBAC invalidation, tenant generation,
 tenant locale and Redis-status is stop-interruptible during unfinished
 initial recovery and replacement joins. Shutdown still takes and drains
