@@ -418,10 +418,10 @@ fn resolve_product_translation<'a>(
         }
     }
 
+    let stable_fallback = items.iter().min_by(|left, right| left.locale.cmp(&right.locale));
     (
-        items.first(),
-        items
-            .first()
+        stable_fallback,
+        stable_fallback
             .and_then(|item| rustok_api::normalize_locale_tag(item.locale.as_str()))
             .unwrap_or_else(|| requested.to_string()),
     )

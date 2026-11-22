@@ -491,7 +491,9 @@ pub fn pick_product_translation<'a>(
                     .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
-        .or_else(|| translations.first())
+        // A missing requested/default locale must not depend on unspecified SQL
+        // row order (or the order supplied by an external projection).
+        .or_else(|| translations.iter().min_by(|a, b| a.locale.cmp(&b.locale)))
 }
 
 pub fn pick_response_translation<'a>(
@@ -509,7 +511,9 @@ pub fn pick_response_translation<'a>(
                     .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
-        .or_else(|| translations.first())
+        // A missing requested/default locale must not depend on unspecified SQL
+        // row order (or the order supplied by an external projection).
+        .or_else(|| translations.iter().min_by(|a, b| a.locale.cmp(&b.locale)))
 }
 
 pub fn localize_product_response(
@@ -1170,6 +1174,34 @@ mod product_handle_and_visibility_tests {
         assert_eq!(product_title_substring_like_pattern("100%_ready!"), "%100!%!_ready!!%");
         assert_eq!(product_title_substring_like_pattern("a b"), "%a b%");
         assert_eq!(product_title_substring_like_pattern(""), "%%");
+    }
+
+    #[test]
+    fn missing_locale_uses_deterministic_translation_fallback() {
+        use super::pick_response_translation;
+        use crate::dto::ProductTranslationResponse;
+
+        let translation = |locale: &str| ProductTranslationResponse {
+            locale: locale.to_owned(),
+            title: locale.to_owned(),
+            handle: locale.to_owned(),
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        };
+        let reversed = vec![translation("zh"), translation("de"), translation("fr")];
+        let forward = vec![translation("fr"), translation("de"), translation("zh")];
+        let pick = |items: &[ProductTranslationResponse]| {
+            pick_response_translation(items, "it", "en")
+                .map(|translation| translation.locale.as_str())
+        };
+        assert_eq!(pick(&reversed), Some("de"));
+        assert_eq!(pick(&forward), Some("de"));
+        assert_eq!(
+            pick_response_translation(&reversed, "fr", "en")
+                .map(|translation| translation.locale.as_str()),
+            Some("fr"),
+        );
     }
 
     #[test]

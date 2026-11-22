@@ -264,7 +264,7 @@ fn pick_product_translation<'a>(
                     .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
-        .or_else(|| translations.first())
+        .or_else(|| translations.iter().min_by(|a, b| a.locale.cmp(&b.locale)))
 }
 
 fn shipping_profile_slug_from_metadata(metadata: &serde_json::Value) -> String {
