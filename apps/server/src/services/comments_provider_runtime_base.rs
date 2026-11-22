@@ -289,7 +289,7 @@ pub fn register_comments_provider_runtime(
 pub async fn start_comments_tcp_listener_if_enabled(
     runtime_ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    let Some(config) = CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
+    let Some(config) = CommentsTcpListenerConfig::from_environment().map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };
@@ -365,7 +365,7 @@ async fn start_comments_tcp_listener(
         .map(|shared| shared.0)
         .map(Ok)
         .unwrap_or_else(comments_tcp_authority_from_environment)
-        .map_err(Error::BadRequest)?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
     let channel_acceptor = runtime_ctx
         .shared_get::<SharedCommentsTcpServerChannelAcceptor>()
         .or_else(|| {

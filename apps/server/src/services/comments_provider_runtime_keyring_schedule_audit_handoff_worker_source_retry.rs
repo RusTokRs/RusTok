@@ -173,7 +173,7 @@ pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_r
 ) -> Result<()> {
     let Some(config) =
         CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig::from_environment()
-            .map_err(Error::BadRequest)?
+            .map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };
@@ -254,13 +254,13 @@ fn start_source_retry_handoff_worker(
         writer,
         config.handoff.claim_ttl,
     )
-    .map_err(Error::BadRequest)?;
+    .map_err(|err| Error::BadRequest(err.to_string()))?;
     let retry_policy = PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy::new(
         database,
         config.source_max_attempts,
         config.source_retry_delay,
     )
-    .map_err(Error::BadRequest)?;
+    .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     // The public starter can run outside router bootstrap. Keep shutdown's
     // handle snapshot and this final admission/spawn/publication atomic.

@@ -187,7 +187,7 @@ pub mod module_event_dispatcher {
         #[cfg(feature = "mod-comments")]
         {
             super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)
-                .map_err(Error::BadRequest)?;
+                .map_err(|err| Error::BadRequest(err.to_string()))?;
 
             let selection = extensions
                 .get::<super::comments_provider_runtime::CommentsProviderRuntimeSelection>()
