@@ -264,13 +264,18 @@ fn spawn_rbac_invalidation_generation_watchdog(
     state: RbacInvalidationGenerationState,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> JoinHandle<()> {
-    tokio::spawn(run_until_stopped(
-        stop_rx,
-        supervise_rbac_invalidation_generation_watchdog(
-            move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
-            RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
-        ),
-    ))
+    rbac_invalidation_metrics::set_watchdog_running(true);
+    tokio::spawn(async move {
+        run_until_stopped(
+            stop_rx,
+            supervise_rbac_invalidation_generation_watchdog(
+                move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
+                RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
+            ),
+        )
+        .await;
+        rbac_invalidation_metrics::set_watchdog_running(false);
+    })
 }
 
 /// Poll the database source of truth so missed Redis/PubSub delivery can never
@@ -324,7 +329,6 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     let task =
         spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state, stop.subscribe());
     ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));
-    rbac_invalidation_metrics::set_watchdog_running(true);
     Ok(())
 }
 
