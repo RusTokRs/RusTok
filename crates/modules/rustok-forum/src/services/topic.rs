@@ -1390,7 +1390,7 @@ async fn load_topic_custom_fields_schema(
 fn topic_field_definition_from_row(
     row: topic_field_definitions_storage::Model,
 ) -> Result<FieldDefinition, ForumError> {
-    field_definition_from_source(&row).map_err(ForumError::Validation)
+    field_definition_from_source(&row).map_err(|err| ForumError::Validation(err.to_string()))
 }
 
 impl TopicService {

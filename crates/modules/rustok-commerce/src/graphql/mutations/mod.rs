@@ -15,7 +15,7 @@ pub mod fulfillment;
 #[path = "layered_order_helpers.rs"]
 pub mod helpers;
 #[allow(dead_code)]
-#[path = "safe_legacy_helpers.rs"]
+#[path = "helpers.rs"]
 mod legacy_helpers;
 pub mod pricing;
 pub mod provider_operations;
