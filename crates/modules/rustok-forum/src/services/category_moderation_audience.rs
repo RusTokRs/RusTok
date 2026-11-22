@@ -1,3 +1,4 @@
+use tracing::instrument;
 use std::collections::HashMap;
 
 use chrono::Utc;
@@ -69,6 +70,7 @@ impl ForumCategoryModerationAudiencePolicyService {
         Ok(result)
     }
 
+    #[instrument(skip_all)]
     pub async fn set(
         &self,
         tenant_id: Uuid,

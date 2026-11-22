@@ -112,6 +112,7 @@ impl ForumTopicMergeSubscriptionReconciliationService {
     /// other merge effect. Returns the persisted reconciliation row, or `None` when a
     /// reconciliation for this merge operation already ran — the caller treats
     /// `None` as an idempotent no-op.
+    #[instrument(skip_all)]
     pub(crate) async fn reconcile_in_tx(
         &self,
         txn: &DatabaseTransaction,

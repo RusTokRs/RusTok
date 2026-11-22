@@ -263,6 +263,7 @@ impl ReplyService {
             .ok_or(ForumError::ReplyNotFound(reply_id))
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -588,6 +589,7 @@ impl ReplyService {
         Ok(result)
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn update_with_inline_relations(
         &self,
         tenant_id: Uuid,

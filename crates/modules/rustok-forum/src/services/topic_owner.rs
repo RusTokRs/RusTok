@@ -556,6 +556,7 @@ impl TopicService {
         topic::TopicService::adjust_reply_count_in_tx(txn, tenant_id, topic_id, delta).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_pinned_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -565,6 +566,7 @@ impl TopicService {
         topic::TopicService::set_pinned_in_tx(txn, tenant_id, topic_id, is_pinned).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_locked_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -574,6 +576,7 @@ impl TopicService {
         topic::TopicService::set_locked_in_tx(txn, tenant_id, topic_id, is_locked).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

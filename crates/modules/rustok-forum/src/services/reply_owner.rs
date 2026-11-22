@@ -971,6 +971,7 @@ impl ReplyService {
         reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -1343,6 +1344,7 @@ impl ReplyService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn create_command_with_audience_authorization(
         &self,
         tenant_id: Uuid,

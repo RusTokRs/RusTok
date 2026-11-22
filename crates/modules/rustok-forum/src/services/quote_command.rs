@@ -1,3 +1,4 @@
+use tracing::instrument;
 use std::collections::BTreeSet;
 
 use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
@@ -68,6 +69,7 @@ impl ForumQuoteCommandService {
         self
     }
 
+    #[instrument(skip_all)]
     pub async fn set_topic_quotes(
         &self,
         tenant_id: Uuid,
@@ -84,6 +86,7 @@ impl ForumQuoteCommandService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub async fn set_reply_quotes(
         &self,
         tenant_id: Uuid,

@@ -590,6 +590,7 @@ impl TopicService {
         Ok(active.update(txn).await?)
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_pinned_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -604,6 +605,7 @@ impl TopicService {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_locked_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -618,6 +620,7 @@ impl TopicService {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -1513,6 +1516,7 @@ use rustok_api::PortContext;
 pub const MAX_FORUM_TOPIC_TAGS: usize = 100;
 
 impl TopicService {
+    #[instrument(skip_all)]
     pub(crate) async fn create_with_inline_relations(
         &self,
         tenant_id: Uuid,
@@ -1525,6 +1529,7 @@ impl TopicService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn create_with_audience_authorization(
         &self,
         tenant_id: Uuid,
@@ -1702,6 +1707,7 @@ impl TopicService {
         self.get(tenant_id, security, topic_id, &locale).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn update_with_inline_relations(
         &self,
         tenant_id: Uuid,

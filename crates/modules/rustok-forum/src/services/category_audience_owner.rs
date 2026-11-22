@@ -1,3 +1,4 @@
+use tracing::instrument;
 use super::*;
 
 /// Transactional owner facade for category audience policy replacement.
@@ -28,6 +29,7 @@ impl ForumCategoryAudiencePolicyOwnerService {
         self.inner.get(tenant_id, category_id, security).await
     }
 
+    #[instrument(skip_all)]
     pub async fn set(
         &self,
         tenant_id: Uuid,

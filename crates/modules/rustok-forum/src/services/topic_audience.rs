@@ -1,3 +1,4 @@
+use tracing::instrument;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -362,6 +363,7 @@ impl ForumTopicAudiencePolicyOwnerService {
         self.inner.get(tenant_id, topic_id, security).await
     }
 
+    #[instrument(skip_all)]
     pub async fn set(
         &self,
         tenant_id: Uuid,
