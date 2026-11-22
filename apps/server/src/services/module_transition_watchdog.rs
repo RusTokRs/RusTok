@@ -9,6 +9,8 @@ use rustok_modules::{
     reap_expired_retention_holds,
 };
 
+use crate::services::stop_handle::may_admit_next_worker_operation;
+
 static MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 pub struct ModuleTransitionWatchdogHandle {
@@ -115,7 +117,7 @@ pub fn spawn_module_transition_watchdog_handle(
                     // The previous stale-operation page may have awaited the
                     // database while shutdown was signaled. Do not admit a new
                     // independent retention-reaping operation after that stop.
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         break;
                     }
                     match reap_expired_retention_holds(&db).await {
@@ -142,7 +144,7 @@ pub fn spawn_module_transition_watchdog_handle(
 
                     // Finish the current reap, but do not start an additional
                     // checkpoint transition after host shutdown was requested.
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         break;
                     }
                     match evaluate_transition_watchdog(&db).await {
