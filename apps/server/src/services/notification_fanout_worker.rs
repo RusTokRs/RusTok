@@ -254,6 +254,14 @@ async fn notification_fanout_worker_loop(
             }
         }
 
+        if !may_admit_next_worker_operation(&stop_rx) {
+            tracing::info!(
+                worker_id = worker.worker_id(),
+                "Notification fanout worker stopped before selecting fanout jobs"
+            );
+            return;
+        }
+
         let job_work = match worker.claimable_fanout_job_work().await {
             Ok(job_work) => job_work,
             Err(error) => {
