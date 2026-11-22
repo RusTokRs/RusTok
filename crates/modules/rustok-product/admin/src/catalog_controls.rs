@@ -10,6 +10,7 @@ use crate::i18n::t;
 pub struct ProductAdminListInput {
     pub search: Option<String>,
     pub status: Option<String>,
+    pub vendor: Option<String>,
     pub category_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
@@ -23,6 +24,7 @@ impl Default for ProductAdminListInput {
         Self {
             search: None,
             status: None,
+            vendor: None,
             category_id: None,
             sort_by: None,
             sort_direction: None,
@@ -30,6 +32,13 @@ impl Default for ProductAdminListInput {
             page: 1,
             per_page: DEFAULT_PAGE_SIZE as u64,
         }
+    }
+}
+
+impl ProductAdminListInput {
+    pub(crate) fn with_vendor(mut self, vendor: Option<String>) -> Self {
+        self.vendor = normalize_optional_ui_text(vendor);
+        self
     }
 }
 
@@ -46,6 +55,7 @@ pub(crate) fn build_product_admin_list_input(
     ProductAdminListInput {
         search: normalize_optional_ui_text(search),
         status: normalize_optional_ui_text(status),
+        vendor: None,
         category_id: normalize_optional_ui_text(category_id),
         sort_by: normalize_optional_ui_text(sort_by).or_else(|| Some("published_at".to_string())),
         sort_direction: normalize_optional_ui_text(sort_direction)
@@ -66,6 +76,8 @@ pub(crate) struct ProductAdminCatalogControlsLabels {
     pub subtitle: String,
     pub category: String,
     pub all_categories: String,
+    pub vendor: String,
+    pub vendor_placeholder: String,
     pub attribute_filters: String,
     pub attribute_filters_placeholder: String,
     pub attribute_filters_help: String,
@@ -86,10 +98,12 @@ pub(crate) fn build_product_admin_catalog_controls_labels(
         subtitle: t(
             locale,
             "product.list.catalogControlsSubtitle",
-            "Filter the Product-owned admin list by category, typed attributes, and deterministic date order.",
+            "Filter the Product-owned admin list by category, vendor, typed attributes, and deterministic date order.",
         ),
         category: t(locale, "product.list.category", "Primary category"),
         all_categories: t(locale, "product.list.allCategories", "All categories"),
+        vendor: t(locale, "product.list.vendor", "Vendor"),
+        vendor_placeholder: t(locale, "product.list.vendorPlaceholder", "Exact vendor"),
         attribute_filters: t(locale, "product.list.attributeFilters", "Attribute filters"),
         attribute_filters_placeholder: t(
             locale,
@@ -166,6 +180,16 @@ mod tests {
             serialize_attribute_filters(controls.attribute_filters.as_slice()),
             "color=red;weight = 12.5"
         );
+    }
+
+    #[test]
+    fn vendor_filter_is_trimmed_and_blank_values_are_cleared() {
+        let controls = ProductAdminListInput::default()
+            .with_vendor(Some("  Acme  ".to_string()));
+        assert_eq!(controls.vendor.as_deref(), Some("Acme"));
+
+        let blank = ProductAdminListInput::default().with_vendor(Some("   ".to_string()));
+        assert_eq!(blank.vendor, None);
     }
 
     #[test]

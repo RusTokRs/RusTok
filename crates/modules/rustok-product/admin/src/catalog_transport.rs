@@ -90,6 +90,7 @@ impl CatalogSearchOptionsErrorContext {
 /// Route-query controls snapshot for the admin catalog list.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ProductAdminRouteControls {
+    pub vendor: Option<String>,
     pub category_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
@@ -101,6 +102,9 @@ pub(crate) struct ProductAdminRouteControls {
 impl ProductAdminRouteControls {
     pub(crate) fn from_route_context(route_context: &UiRouteContext) -> Self {
         Self {
+            vendor: route_context
+                .query_value("vendor")
+                .map(ToString::to_string),
             category_id: route_context
                 .query_value("category_id")
                 .map(ToString::to_string),
@@ -140,6 +144,7 @@ pub(crate) fn product_admin_list_input_from_route() -> ProductAdminListInput {
         route_controls.page,
         route_controls.per_page,
     )
+    .with_vendor(route_controls.vendor)
 }
 
 pub(crate) async fn fetch_bootstrap(
