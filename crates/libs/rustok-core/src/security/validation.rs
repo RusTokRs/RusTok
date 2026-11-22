@@ -54,7 +54,7 @@ use once_cell::sync::Lazy;
 static SQL_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // INVARIANT: Verified static SQL injection regex
-        Regex::new(r"(?i)(SELECT\s+.*\s+FROM|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+TABLE|UNION\s+SELECT|--|;--)")
+        Regex::new(r"(?i)(SELECT\s+.*\s+FROM|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+(TABLE|DATABASE|SCHEMA|VIEW)|ALTER\s+TABLE|UNION\s+(ALL\s+)?SELECT|--|;--|/\*.*?\*/)")
             .expect("valid SQL regex"),
         // INVARIANT: Verified static boolean injection regex
         Regex::new(r#"(?i)(OR\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|AND\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|['\"]?1['\"]?\s*=\s*['\"]?1['\"]?)"#)
@@ -68,18 +68,24 @@ static SQL_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 // INVARIANT: Static XSS patterns are compile-time verified constants.
 static XSS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        // INVARIANT: Verified static XSS script tag regex
-        Regex::new(r"(?i)<script[^>]*>.*?</script>").expect("valid XSS regex"),
+        // INVARIANT: Verified static XSS script tag regex (both unclosed and closed tags)
+        Regex::new(r"(?i)<\s*script").expect("valid XSS regex"),
         // INVARIANT: Verified static javascript URI regex
         Regex::new(r"(?i)javascript:").expect("valid XSS regex"),
+        // INVARIANT: Verified static vbscript URI regex
+        Regex::new(r"(?i)vbscript:").expect("valid XSS regex"),
+        // INVARIANT: Verified static data:text/html URI regex
+        Regex::new(r"(?i)data:\s*text/html").expect("valid XSS regex"),
         // INVARIANT: Verified static event handler regex
-        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#).expect("valid XSS regex"),
+        Regex::new(r#"(?i)on[a-z]+\s*="#).expect("valid XSS regex"),
         // INVARIANT: Verified static iframe regex
         Regex::new(r"(?i)<\s*iframe").expect("valid XSS regex"),
         // INVARIANT: Verified static object regex
         Regex::new(r"(?i)<\s*object").expect("valid XSS regex"),
         // INVARIANT: Verified static embed regex
         Regex::new(r"(?i)<\s*embed").expect("valid XSS regex"),
+        // INVARIANT: Verified static base tag injection regex
+        Regex::new(r"(?i)<\s*base\b").expect("valid XSS regex"),
     ]
 });
 
@@ -99,13 +105,17 @@ static CMD_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 static PATH_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // INVARIANT: Verified static unix path traversal regex
-        Regex::new(r"\.\./").expect("valid path traversal regex"),
+        Regex::new(r"\.\./|\.\.$").expect("valid path traversal regex"),
         // INVARIANT: Verified static windows path traversal regex
         Regex::new(r"\.\.\\").expect("valid path traversal regex"),
         // INVARIANT: Verified static URL-encoded path traversal regex
-        Regex::new(r"%2e%2e[/\\]").expect("valid path traversal regex"),
+        Regex::new(r"(?i)%2e%2e[/\\]|%2e%2e$").expect("valid path traversal regex"),
+        // INVARIANT: Verified static double-encoded path traversal regex
+        Regex::new(r"(?i)%252e%252e").expect("valid path traversal regex"),
         // INVARIANT: Verified static hex-encoded path traversal regex
         Regex::new(r"\x2e\x2e[/\\]").expect("valid path traversal regex"),
+        // INVARIANT: Verified static null byte injection regex
+        Regex::new(r"(?i)\x00|%00").expect("valid path traversal regex"),
     ]
 });
 
@@ -272,6 +282,13 @@ impl SsrfProtection {
             }
         };
 
+        // Reject credentials / userinfo in URL
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return ValidationResult::Invalid {
+                reason: "URL userinfo is not allowed".to_string(),
+            };
+        }
+
         // Check scheme
         let scheme = parsed.scheme();
         if self.blocked_schemes.contains(scheme) {
@@ -308,17 +325,25 @@ impl SsrfProtection {
             };
         }
 
+        if normalized_host == "localhost"
+            || normalized_host.ends_with(".localhost")
+            || normalized_host.ends_with(".local")
+            || normalized_host.ends_with(".internal")
+            || normalized_host.ends_with(".home.arpa")
+            || normalized_host.ends_with(".lan")
+            || normalized_host.ends_with(".localdomain")
+            || normalized_host.ends_with(".corp")
+        {
+            return ValidationResult::Invalid {
+                reason: "Localhost or internal network hostnames are not allowed".to_string(),
+            };
+        }
+
         if let Ok(ip) = normalized_host.parse::<std::net::IpAddr>()
             && self.is_private_ip(&ip)
         {
             return ValidationResult::Invalid {
                 reason: "Private IP addresses are not allowed".to_string(),
-            };
-        }
-
-        if normalized_host == "localhost" {
-            return ValidationResult::Invalid {
-                reason: "Localhost URLs are not allowed".to_string(),
             };
         }
 
@@ -360,25 +385,54 @@ impl SsrfProtection {
         }
     }
 
-    fn is_private_ip(&self, ip: &std::net::IpAddr) -> bool {
+    pub fn is_private_ip(&self, ip: &std::net::IpAddr) -> bool {
+        Self::is_private_ip_addr(ip)
+    }
+
+    pub fn is_private_ip_addr(ip: &std::net::IpAddr) -> bool {
         match ip {
-            std::net::IpAddr::V4(ipv4) => {
-                ipv4.is_private()
-                    || ipv4.is_loopback()
-                    || ipv4.is_link_local()
-                    || ipv4.is_broadcast()
-                    || ipv4.is_documentation()
-                    || ipv4.is_unspecified()
-                    || ipv4.is_multicast()
-            }
-            std::net::IpAddr::V6(ipv6) => {
-                ipv6.is_loopback()
-                    || ipv6.is_unspecified()
-                    || ipv6.is_unique_local()
-                    || ipv6.is_unicast_link_local()
-                    || ipv6.is_multicast()
-            }
+            std::net::IpAddr::V4(ipv4) => Self::is_private_ipv4(ipv4),
+            std::net::IpAddr::V6(ipv6) => Self::is_private_ipv6(ipv6),
         }
+    }
+
+    fn is_private_ipv4(ipv4: &std::net::Ipv4Addr) -> bool {
+        let [a, b, c, _] = ipv4.octets();
+        ipv4.is_private()
+            || ipv4.is_loopback()
+            || ipv4.is_link_local()
+            || ipv4.is_broadcast()
+            || ipv4.is_documentation()
+            || ipv4.is_unspecified()
+            || ipv4.is_multicast()
+            || a == 0 // 0.0.0.0/8 current network
+            || a >= 240 // 240.0.0.0/4 reserved (Class E)
+            || (a == 100 && (64..=127).contains(&b)) // 100.64.0.0/10 Carrier-Grade NAT (RFC 6598)
+            || (a == 192 && b == 0 && c == 0) // 192.0.0.0/24 IETF Protocol Assignments (RFC 6890)
+            || (a == 198 && (b == 18 || b == 19)) // 198.18.0.0/15 Benchmark testing (RFC 2544)
+    }
+
+    fn is_private_ipv6(ipv6: &std::net::Ipv6Addr) -> bool {
+        if let Some(ipv4) = ipv6.to_ipv4() {
+            return Self::is_private_ipv4(&ipv4);
+        }
+
+        let segments = ipv6.segments();
+        let first = segments[0];
+        ipv6.is_loopback()
+            || ipv6.is_unspecified()
+            || ipv6.is_multicast()
+            || ipv6.is_unique_local()
+            || ipv6.is_unicast_link_local()
+            || (first & 0xfe00) == 0xfc00 // Unique Local Address fc00::/7
+            || (first & 0xffc0) == 0xfe80 // Link-Local Unicast fe80::/10
+            || (first & 0xffc0) == 0xfec0 // Site-Local Unicast (deprecated) fec0::/10
+            || (first & 0xff00) == 0xff00 // Multicast ff00::/8
+            || (segments[0] == 0x0064 && segments[1] == 0xff9b) // NAT64 64:ff9b::/96
+            || (segments[0] == 0x0100 && segments[1] == 0) // Discard-only prefix 100::/64
+            || (segments[0] == 0x2001 && segments[1] == 0) // TEREDO 2001::/32
+            || (segments[0] == 0x2001 && segments[1] == 0x0db8) // Documentation 2001:db8::/32
+            || segments[0] == 0x2002 // 6to4 2002::/16
     }
 
     fn normalize_host(host: &str) -> String {
@@ -422,6 +476,16 @@ mod tests {
         ));
 
         assert!(matches!(
+            validator.validate("1' UNION ALL SELECT null, null--"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("admin'/* comment */"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
             validator.validate("normal input"),
             ValidationResult::Valid
         ));
@@ -437,7 +501,22 @@ mod tests {
         ));
 
         assert!(matches!(
+            validator.validate("<script src=\"http://evil.com/x.js\">"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("<img src=x onerror=alert(1)>"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
             validator.validate("javascript:alert(1)"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("vbscript:msgbox(1)"),
             ValidationResult::Invalid { .. }
         ));
     }
@@ -458,6 +537,21 @@ mod tests {
 
         assert!(matches!(
             validator.validate("../../../etc/passwd"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("/path/to/dir/.."),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("file%00.png"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            validator.validate("%252e%252e/etc/passwd"),
             ValidationResult::Invalid { .. }
         ));
     }
@@ -484,6 +578,46 @@ mod tests {
         assert!(matches!(
             ssrf.validate_url("http://api.example.com/data"),
             ValidationResult::Valid
+        ));
+
+        // IPv4-mapped IPv6 SSRF blocked
+        assert!(matches!(
+            ssrf.validate_url("http://[::ffff:127.0.0.1]/admin"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        // Cloud metadata blocked
+        assert!(matches!(
+            ssrf.validate_url("http://[::ffff:169.254.169.254]/latest/meta-data"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        // CGNAT IP blocked
+        assert!(matches!(
+            ssrf.validate_url("http://100.64.0.1/internal"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        // Local and internal domain suffixes blocked
+        assert!(matches!(
+            ssrf.validate_url("http://service.local/api"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            ssrf.validate_url("http://metadata.internal/info"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        assert!(matches!(
+            ssrf.validate_url("http://app.localhost/status"),
+            ValidationResult::Invalid { .. }
+        ));
+
+        // Userinfo rejected
+        assert!(matches!(
+            ssrf.validate_url("http://admin:secret@api.example.com/data"),
+            ValidationResult::Invalid { .. }
         ));
     }
 

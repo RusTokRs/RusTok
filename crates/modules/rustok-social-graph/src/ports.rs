@@ -340,6 +340,13 @@ impl SocialGraphPrivacyRuntime {
     }
 }
 
+/// Build the owner-controlled social graph privacy read port used by directly embedded hosts/modules.
+pub fn in_process_social_graph_privacy_port(
+    db: sea_orm::DatabaseConnection,
+) -> Arc<dyn SocialGraphPrivacyReadPort> {
+    Arc::new(crate::SocialGraphService::new(db))
+}
+
 #[async_trait]
 impl SocialGraphCommandPort for SocialGraphService {
     async fn set_relation(
