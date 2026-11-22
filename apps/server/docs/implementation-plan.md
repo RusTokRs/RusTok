@@ -1,5 +1,38 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — RBAC watchdog diagnosis and bounded module recovery admission (2026-11-22)
+
+The RBAC durable-generation watchdog previously classified any SQLite
+`no such table` or Postgres `undefinedTable` error as a permissible
+pre-install condition while the local RBAC generation checkpoint was
+uninitialized. Unrelated missing tables could therefore hide an actual
+schema fault. The watchdog now suppresses only missing-relation errors
+that explicitly name `rbac_invalidation_state`; fixture coverage rejects
+unrelated SQLite, Postgres and generic undefined-table diagnostics.
+Its startup admission/old-exited-task join is also stop-aware, using
+the same pre-publication cancellation helper as cache listeners. A
+blocked competing starter now returns on host stop without spawning
+another watchdog; regression tests cover that contention and a
+previously signaled stop.
+
+Two recovery controllers, `module_transition_watchdog` and
+`module_artifact_maintenance`, checked shutdown before starting an
+entire tick, then ran multiple independent durable operations across
+await points. A shutdown arriving mid-pass therefore still permitted
+retention hold reaping, transition evaluation, additional tenant GC
+sweeps or trust-admission rechecks to begin. They now use
+`may_admit_next_worker_operation` **between** separate effects and
+before each next tenant/candidate. They never cancel an already
+entered database mutation, storage deletion, or external trust
+reverification merely to honor the stop signal. Not-yet-started work
+remains available to the next supervised instance.
+
+These changes do not override the existing bounded host join/abort
+timeout or guarantee completion of an effect that independently
+blocks longer than its shutdown deadline. Tests, compilation, and
+formatting were not run.
+
+
 ## Server audit continuation — cache listener startup cancellation on shutdown (2026-11-22)
 
 Five cache/control-plane listeners serialized startup under their own
