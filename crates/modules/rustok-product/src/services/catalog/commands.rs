@@ -69,6 +69,15 @@ fn pricing_port_unavailable() -> CommerceError {
     ))
 }
 
+fn product_image_stage_failure_requires_compensation(error: &CommerceError) -> bool {
+    matches!(
+        error,
+        CommerceError::Validation(_)
+            | CommerceError::ProductNotFound(_)
+            | CommerceError::Conflict(_)
+    )
+}
+
 fn validate_product_brands(brands: &[ProductBrandInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     let mut primary_count = 0;
@@ -1959,14 +1968,7 @@ impl CatalogService {
         image_locale: Option<String>,
     ) -> CommerceResult<(ProductWriteTransaction, ProductImageResponse)> {
         let media_id = input.media_id;
-        let txn = match ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await {
-            Ok(txn) => txn,
-            Err(error) => {
-                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
-                    .await?;
-                return Err(error);
-            }
-        };
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         match self
             .stage_product_image_addition_in_open_tx(
@@ -1989,8 +1991,14 @@ impl CatalogService {
                     );
                     return Err(rollback_error);
                 }
-                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
-                    .await?;
+                // Keep the hold for retryable failures: the admitted Product receipt
+                // reuses this image identity and Media idempotency key. Releasing it
+                // here would make a later replay of Media's old retain receipt unable
+                // to recreate the hold. Only terminal failures need compensation.
+                if product_image_stage_failure_requires_compensation(&error) {
+                    self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
+                        .await?;
+                }
                 Err(error)
             }
         }
@@ -3262,5 +3270,30 @@ mod tests {
                 ("ru", Some("Ручное название")), // authored copy survives
             ]
         );
+    }
+}
+
+
+#[cfg(test)]
+mod product_image_stage_compensation_tests {
+    use super::*;
+
+    #[test]
+    fn only_terminal_stage_failures_enqueue_media_compensation() {
+        assert!(product_image_stage_failure_requires_compensation(
+            &CommerceError::Validation("invalid image position".to_owned())
+        ));
+        assert!(product_image_stage_failure_requires_compensation(
+            &CommerceError::ProductNotFound(Uuid::new_v4())
+        ));
+        assert!(product_image_stage_failure_requires_compensation(
+            &CommerceError::Conflict("product changed".to_owned())
+        ));
+        assert!(!product_image_stage_failure_requires_compensation(
+            &CommerceError::Database(sea_orm::DbErr::Custom("temporary outage".to_owned()))
+        ));
+        assert!(!product_image_stage_failure_requires_compensation(
+            &CommerceError::Core(CoreError::External("temporary dependency outage".to_owned()))
+        ));
     }
 }
