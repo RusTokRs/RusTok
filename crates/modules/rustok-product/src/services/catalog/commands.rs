@@ -64,7 +64,7 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
 }
 
 fn pricing_port_unavailable() -> CommerceError {
-    CommerceError::Database(sea_orm::DbErr::Custom(
+    CommerceError::Core(CoreError::External(
         "Product Pricing capability is unavailable".to_owned(),
     ))
 }
@@ -1249,16 +1249,15 @@ impl CatalogService {
             return Err(CommerceError::NoVariants);
         }
         let variant_ids = variants.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-        let pricing_port = self
-            .pricing_port
-            .as_ref()
-            .ok_or_else(pricing_port_unavailable)?;
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
-        pricing_port
-            .delete_prices_for_variants_in_tx(&txn, &variant_ids)
-            .await?;
+        // Pricing is optional in Product-only composition. When attached, cleanup
+        // participates in this transaction; explicit price writes fail closed above.
+        if let Some(port) = &self.pricing_port {
+            port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
+                .await?;
+        }
 
         entities::variant_translation::Entity::delete_many()
             .filter(
@@ -1830,16 +1829,15 @@ impl CatalogService {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
 
-        let pricing_port = self
-            .pricing_port
-            .as_ref()
-            .ok_or_else(pricing_port_unavailable)?;
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
-        pricing_port
-            .delete_prices_for_variants_in_tx(&txn, &[variant_id])
-            .await?;
+        // Pricing is optional in Product-only composition. When attached, cleanup
+        // participates in this transaction; explicit price writes fail closed above.
+        if let Some(port) = &self.pricing_port {
+            port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
+                .await?;
+        }
 
         entities::variant_translation::Entity::delete_many()
             .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
