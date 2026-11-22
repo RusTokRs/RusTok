@@ -33,18 +33,7 @@ impl RusToKModule for CommerceModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &[
-            "tenant",
-            "cart",
-            "customer",
-            "product",
-            "region",
-            "pricing",
-            "inventory",
-            "order",
-            "payment",
-            "fulfillment",
-        ]
+        crate::RUNTIME_DEPENDENCIES
     }
 
     fn register_event_listeners(
@@ -63,20 +52,26 @@ impl RusToKModule for CommerceModule {
 
         #[cfg(feature = "marketplace-financial")]
         {
-            let financial_runtime = ctx
+            let Some(financial_runtime) = ctx
                 .extensions
                 .get::<MarketplaceFinancialRuntime>()
                 .cloned()
-                .expect(
-                    "commerce marketplace-financial capability requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions",
+            else {
+                tracing::warn!(
+                    "commerce marketplace-financial capability requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions"
                 );
-            let event_bus = ctx
+                return;
+            };
+            let Some(event_bus) = ctx
                 .extensions
                 .get::<TransactionalEventBus>()
                 .cloned()
-                .expect(
-                    "commerce marketplace-financial capability requires TransactionalEventBus in ModuleRuntimeExtensions",
+            else {
+                tracing::warn!(
+                    "commerce marketplace-financial capability requires TransactionalEventBus in ModuleRuntimeExtensions"
                 );
+                return;
+            };
             registry.register(services::MarketplacePaidOrderFinancialHandler::new(
                 ctx.db.clone(),
                 event_bus,

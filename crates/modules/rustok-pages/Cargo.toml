@@ -21,6 +21,9 @@ inline-edit-assets = []
 # so the composition root is the only place that knows which binary enables it.
 runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow.workspace = true
 async-graphql.workspace = true

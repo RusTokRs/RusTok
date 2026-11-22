@@ -184,6 +184,7 @@ pub(crate) async fn take_task_for_shutdown(ctx: &ServerRuntimeContext) -> Option
 
 async fn run_cache_redis_status_monitor(cache: CacheService, mut previous: RedisCacheStatus) {
     let mut interval = tokio::time::interval(CACHE_REDIS_STATUS_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // The startup or restart probe already populated the collector.
     interval.tick().await;
     loop {

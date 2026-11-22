@@ -44,6 +44,8 @@ const gridLib = read("crates/ui/rustok-grid/src/lib.rs");
 const ownerFacets = read("crates/modules/rustok-product/src/services/catalog/facets.rs");
 const ownerPort = read("crates/modules/rustok-product/src/ports/catalog_read.rs");
 const ownerPortTypes = read("crates/modules/rustok-product/src/ports/types.rs");
+const ownerContractsTypes = read("crates/modules/rustok-product/ports/src/types.rs");
+const ownerContractsPorts = read("crates/modules/rustok-product/ports/src/ports.rs");
 const graphqlRoot = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
 const adminFacets = read("crates/modules/rustok-product/admin/src/facets.rs");
 const adminModel = read("crates/modules/rustok-product/admin/src/model.rs");
@@ -146,7 +148,7 @@ reject(
 
 // ── Port: an optional admin capability that fails closed ───────────────────
 requireAll(
-  ownerPortTypes,
+  ownerContractsTypes,
   [
     "pub struct AdminCatalogFacetsRequest",
     "pub query: AdminProductListQuery,",
@@ -159,11 +161,11 @@ requireAll(
   [
     "async fn load_admin_catalog_facets(",
     'const LOAD_ADMIN_CATALOG_FACETS_OPERATION: &str = "load_admin_catalog_facets";',
-    "product.admin_catalog_facets_unavailable",
     "crate::CatalogService::admin_catalog_facets(",
   ],
   "admin facet port",
 );
+requireAll(ownerContractsPorts, ["product.admin_catalog_facets_unavailable"], "admin facet port");
 
 // ── Commerce GraphQL: an admin root over the same bucket contract ──────────
 requireAll(

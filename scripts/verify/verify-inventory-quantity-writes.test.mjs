@@ -126,7 +126,7 @@ test("quantity source rejects disconnected native and Product owner hooks", () =
     change(
       root,
       files.projection,
-      "BootstrapService::load_available_quantities(conn, &variant_ids)",
+      "port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)",
       "BootstrapService::load_available_quantities(&self.db, &variant_ids)",
     );
     refused(root);
@@ -144,8 +144,8 @@ test("quantity source rejects disconnected native and Product owner hooks", () =
     change(
       root,
       files.commands,
-      "BootstrapService::update_initial_quantity_in_tx",
-      "BootstrapService::unproved_quantity",
+      ".update_initial_quantity_in_tx(",
+      ".unproved_quantity(",
     );
     refused(root);
   });
@@ -156,6 +156,15 @@ test("quantity source rejects missing finite policy and a saturating visible pro
     change(
       root,
       files.commandPort,
+      "crate::error::inventory_quantity_port_error(&blocker)",
+      "unknown_provider_kind(&blocker)",
+    );
+    refused(root);
+  });
+  fixture((root) => {
+    change(
+      root,
+      files.productError,
       "inventory_quantity_blocker(error)",
       "unknown_provider_kind(error)",
     );

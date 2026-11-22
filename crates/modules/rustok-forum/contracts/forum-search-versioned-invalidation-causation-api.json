@@ -6,7 +6,7 @@
   "predecessor_contract": "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
   "decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
   "events_owner": "crates/libs/rustok-events/src/contract.rs",
-  "outbox_owner": "crates/modules/rustok-outbox/src/transactional.rs",
+  "outbox_owner": "crates/libs/rustok-outbox-storage/src/transactional.rs",
   "events_api": "crates/libs/rustok-events/CRATE_API.md",
   "outbox_api": "crates/modules/rustok-outbox/CRATE_API.md",
   "owner_note": "crates/modules/rustok-forum/docs/README.md",

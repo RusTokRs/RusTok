@@ -69,10 +69,11 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    Self::ensure_slug_available(txn, tenant_id, &slug, None).await?;
+                    let requested_slug = slug.clone();
+                    Self::ensure_slug_available(txn, tenant_id, slug.clone(), None)
+                        .await?;
 
                     let now = Utc::now();
-                    let requested_slug = slug.clone();
                     let active_profile = shipping_profile::ActiveModel {
                         id: Set(id),
                         tenant_id: Set(tenant_id),
@@ -82,12 +83,10 @@ impl ShippingProfileService {
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
                     };
-                    match active_profile.insert(txn).await {
+                    match insert_shipping_profile_row(txn, active_profile).await {
                         Ok(_) => {}
                         Err(error) if is_shipping_profile_slug_conflict(&error) => {
-                            return Err(CommerceError::DuplicateShippingProfileSlug(
-                                requested_slug,
-                            ));
+                            return Err(CommerceError::DuplicateShippingProfileSlug(requested_slug));
                         }
                         Err(error) => return Err(error.into()),
                     }
@@ -205,19 +204,13 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    let row =
-                        Self::load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
+                    let row = Self::load_shipping_profile(txn, tenant_id, shipping_profile_id).await?;
                     let mut active: shipping_profile::ActiveModel = row.into();
                     let requested_slug = normalized_slug.clone();
 
                     if let Some(slug) = normalized_slug {
-                        Self::ensure_slug_available(
-                            txn,
-                            tenant_id,
-                            &slug,
-                            Some(shipping_profile_id),
-                        )
-                        .await?;
+                        Self::ensure_slug_available(txn, tenant_id, slug.clone(), Some(shipping_profile_id))
+                            .await?;
                         active.slug = Set(slug);
                     }
                     if let Some(metadata) = metadata {
@@ -225,7 +218,7 @@ impl ShippingProfileService {
                     }
 
                     active.updated_at = Set(Utc::now().into());
-                    match active.update(txn).await {
+                    match update_shipping_profile_row(txn, active).await {
                         Ok(_) => {}
                         Err(error) if is_shipping_profile_slug_conflict(&error) => {
                             if let Some(slug) = requested_slug {
@@ -313,19 +306,17 @@ impl ShippingProfileService {
     async fn ensure_slug_available<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
-        slug: &str,
+        slug: String,
         current_id: Option<Uuid>,
     ) -> CommerceResult<()> {
         let existing = shipping_profile::Entity::find()
             .filter(shipping_profile::Column::TenantId.eq(tenant_id))
-            .filter(shipping_profile::Column::Slug.eq(slug))
+            .filter(shipping_profile::Column::Slug.eq(&slug))
             .one(db)
             .await?;
 
         if existing.is_some_and(|row| Some(row.id) != current_id) {
-            return Err(CommerceError::DuplicateShippingProfileSlug(
-                slug.to_string(),
-            ));
+            return Err(CommerceError::DuplicateShippingProfileSlug(slug));
         }
 
         Ok(())
@@ -478,6 +469,20 @@ fn normalize_translation_inputs(
         });
     }
     Ok(normalized)
+}
+
+async fn insert_shipping_profile_row<C: ConnectionTrait>(
+    txn: &C,
+    active_profile: shipping_profile::ActiveModel,
+) -> Result<shipping_profile::Model, sea_orm::DbErr> {
+    Ok(active_profile.insert(txn).await?)
+}
+
+async fn update_shipping_profile_row<C: ConnectionTrait>(
+    txn: &C,
+    active: shipping_profile::ActiveModel,
+) -> Result<shipping_profile::Model, sea_orm::DbErr> {
+    Ok(active.update(txn).await?)
 }
 
 async fn insert_translations<C: ConnectionTrait>(

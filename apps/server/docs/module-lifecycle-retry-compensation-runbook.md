@@ -40,7 +40,11 @@ with the other writers before making a new operation possible.
 3. Inspect `module_operation_override_states` and current `tenant_modules`
    state. A recorded nullable override means inherited intent, not an absent
    evidence row. The historical effective availability is not a substitute
-   for selected intent. The settings digest is input evidence only.
+   for selected intent. The settings digest is input evidence only. A recorded
+   nullable override is `inherit`: compensation restores it by removing the
+   override row. Legacy rows without that side record use
+   `selected_intent_state_unavailable` and fail closed.
+   Do **not** use `previous_effective_enabled` as the compensation target.
 4. Preserve the incident evidence and involve the owning teams. Do not present
    automatic retry or compensation as an available remediation until the
    required identity and quiescence protocol is implemented and verified.

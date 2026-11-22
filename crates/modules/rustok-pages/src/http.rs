@@ -9,7 +9,7 @@ pub use artifact_repair::{
     activate_rebuilt_page_artifact, rebuild_page_artifact,
 };
 
-use anyhow::Context;
+// use anyhow removed
 use axum::{
     Json,
     extract::{Path, State},
@@ -40,11 +40,25 @@ pub struct PagesPublishHttpRuntime {
     event_bus: TransactionalEventBus,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PagesHttpError {
+    #[error("Pages HTTP routes require {0}")]
+    MissingDependency(&'static str),
+    #[error(transparent)]
+    Controller(#[from] crate::controllers::PagesControllerError),
+    #[error(transparent)]
+    Audit(#[from] crate::http::artifact_integrity_audit::PagesAuditHttpError),
+    #[error(transparent)]
+    Repair(#[from] crate::http::artifact_repair::PagesRepairHttpError),
+}
+
 impl PagesPublishHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, PagesHttpError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("Pages atomic publication HTTP routes require TransactionalEventBus")?;
+            .ok_or(PagesHttpError::MissingDependency(
+                "TransactionalEventBus in HostRuntimeContext",
+            ))?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -114,7 +128,7 @@ pub async fn rollback_page(
         .map_err(map_publication_error)
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, PagesHttpError> {
     let publish_runtime = PagesPublishHttpRuntime::from_host(runtime)?;
     let publish_router = axum::Router::new()
         .route(

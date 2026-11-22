@@ -286,7 +286,6 @@ impl CheckoutPlanBuilder {
             .map(|demand| {
                 let variant_id = demand.variant_id;
                 let product_id = demand.product_id;
-                let locale = cart.locale_code.clone();
                 let port = self.product_catalog_read_port.clone();
                 let product_context =
                     product_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
@@ -297,7 +296,7 @@ impl CheckoutPlanBuilder {
                                 product_context.clone(),
                                 ProductProjectionRequest {
                                     product_id,
-                                    locale: locale.clone(),
+                                    locale: cart.locale_code.clone(),
                                     fallback_locale: None,
                                 },
                             )
@@ -314,7 +313,7 @@ impl CheckoutPlanBuilder {
                                 product_context.clone(),
                                 VariantProductProjectionRequest {
                                     variant_id,
-                                    locale: locale.clone(),
+                                    locale: cart.locale_code.clone(),
                                     fallback_locale: None,
                                 },
                             )
@@ -331,32 +330,42 @@ impl CheckoutPlanBuilder {
                 }
             })
             .collect::<Vec<_>>();
-        let products = try_join_all(product_futures).await?;
-        for (demand, product) in demands.iter().zip(products.iter()) {
-            for line_item in &demand.line_items {
+        let mut products = try_join_all(product_futures).await?.into_iter();
+        for demand in demands.iter() {
+            let product = products.next().ok_or_else(|| {
+                boundary_error(
+                    "read_checkout_product_projection",
+                    PortError::invariant_violation(
+                        "checkout.product_projection_identity_lost",
+                        "checkout product projections must preserve demand order",
+                    ),
+                )
+            })?;
+            for line_item in demand.line_items.iter() {
                 super::checkout_catalog::validate_variant_line(
                     tenant_id,
                     line_item,
-                    product,
+                    &product,
                     public_channel_slug.as_deref(),
                 )?;
             }
         }
+        let channel_slug_for_inventory = public_channel_slug.clone();
         let inventory_futures = demands.iter().map(|demand| {
             let variant_id = demand.variant_id;
             let quantity = demand.quantity;
-            let channel_slug = public_channel_slug.clone();
             let port = self.inventory_availability_port.clone();
+            let channel_slug = channel_slug_for_inventory.clone();
             let inventory_context =
-                inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
+                inventory_context(tenant_id, actor_id, cart, channel_slug_for_inventory.as_deref());
             async move {
                 let availability = port
                     .check_availability(
                         inventory_context.clone(),
                         InventoryAvailabilityRequest {
                             variant_id,
-                            requested_quantity: quantity,
-                            channel_slug: channel_slug.clone(),
+                            requested_quantity: demand.quantity,
+                            channel_slug,
                         },
                     )
                     .await

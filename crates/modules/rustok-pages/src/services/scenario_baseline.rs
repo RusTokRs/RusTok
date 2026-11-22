@@ -679,7 +679,7 @@ impl PageBuilderScenarioBaselineService {
         RuntimeScenarioReleaseBaseline,
     )> {
         // The caller only reaches this helper for a recorded legacy hash, so it always rewrites.
-        let _ = baseline.upgrade_legacy_hash();
+        let _upgraded_legacy_hash = baseline.upgrade_legacy_hash();
         let upgraded = serde_json::to_value(&baseline).map_err(|error| {
             PagesError::validation(format!(
                 "Unable to encode upgraded Page Builder scenario baseline: {error}"

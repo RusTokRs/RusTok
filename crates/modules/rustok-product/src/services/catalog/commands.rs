@@ -203,14 +203,16 @@ impl CatalogService {
         for var_input in &input.variants {
             validate_variant_prices(&var_input.prices)?;
         }
-        self.validate_primary_category(tenant_id, input.primary_category_id)
-            .await?;
         let product_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
+        // Validate the category against the owner transaction, not a pre-tx snapshot:
+        // a category deleted between check and insert must surface as this typed
+        // refusal instead of a raw FK failure.
+        validate_primary_category(&txn, tenant_id, input.primary_category_id).await?;
         let preferred_locale = preferred_product_locale_from_translations(&input.translations);
         let (prepared_custom_fields, custom_fields_schema) =
             prepare_product_custom_fields_and_schema_for_create(
@@ -353,13 +355,14 @@ impl CatalogService {
             "Product variant axes inserted"
         );
 
-        let mut variant_translation_models = Vec::new();
         let mut initial_prices = Vec::new();
         let mut initial_inventories = Vec::new();
+        let mut created_variant_ids = Vec::new();
         for (position, var_input) in input.variants.iter().enumerate() {
             let variant_position = i32::try_from(position)
                 .map_err(|_| CommerceError::Validation("too many Product variants".to_owned()))?;
             let variant_id = generate_id();
+            created_variant_ids.push(variant_id);
 
             let variant = entities::product_variant::ActiveModel {
                 id: Set(variant_id),
@@ -404,25 +407,6 @@ impl CatalogService {
                 available_quantity: var_input.inventory_quantity,
             });
 
-            let variant_title = if !var_input.axis_values.is_empty() {
-                let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
-                    .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(CommerceError::VariantNotFound(variant_id))?;
-                generate_variant_title(&variant_model)
-            } else {
-                "Default".to_string()
-            };
-            for locale in &translation_locales {
-                variant_translation_models.push(entities::variant_translation::ActiveModel {
-                    id: Set(generate_id()),
-                    variant_id: Set(variant_id),
-                    locale: Set(locale.clone()),
-                    title: Set(Some(variant_title.clone())),
-                });
-            }
-
             for price_input in &var_input.prices {
                 initial_prices.push(InitialPrice {
                     variant_id,
@@ -433,6 +417,33 @@ impl CatalogService {
                     currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
                     amount: price_input.amount,
                     compare_at_amount: price_input.compare_at_amount,
+                });
+            }
+        }
+        // Seed one translation row per product locale with that locale's readable
+        // title, resolved from the localized option labels of each sparse tuple.
+        let mut variant_translation_models = Vec::new();
+        for locale in &translation_locales {
+            let titles_by_variant = super::projection::load_variant_display_titles(
+                &txn,
+                tenant_id,
+                product_id,
+                &created_variant_ids,
+                locale,
+                PLATFORM_FALLBACK_LOCALE,
+            )
+            .await?;
+            for seeded_variant_id in &created_variant_ids {
+                variant_translation_models.push(entities::variant_translation::ActiveModel {
+                    id: Set(generate_id()),
+                    variant_id: Set(*seeded_variant_id),
+                    locale: Set(locale.clone()),
+                    title: Set(Some(
+                        titles_by_variant
+                            .get(seeded_variant_id)
+                            .cloned()
+                            .unwrap_or_else(|| "Default".to_string()),
+                    )),
                 });
             }
         }
@@ -565,13 +576,15 @@ impl CatalogService {
         validate_patch_text_length(&input.vendor, 255, "Vendor")?;
         validate_patch_text_length(&input.product_type, 255, "Product type")?;
         validate_patch_text_length(&input.shipping_profile_slug, 64, "Shipping profile slug")?;
-        if let Patch::Set(primary_category_id) = &input.primary_category_id {
-            self.validate_primary_category(tenant_id, Some(*primary_category_id))
-                .await?;
-        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
+        if let Patch::Set(primary_category_id) = &input.primary_category_id {
+            // Validate the category against the owner transaction, not a pre-tx
+            // snapshot: a concurrently deleted category must surface as this typed
+            // refusal instead of a raw FK failure.
+            validate_primary_category(&txn, tenant_id, Some(*primary_category_id)).await?;
+        }
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
             .await
@@ -585,7 +598,14 @@ impl CatalogService {
         ensure_expected_revision(&existing_product, input.expected_revision)?;
         let existing_status: rustok_product_ports::ProductStatus =
             existing_product.status.clone().into();
-        if !input.changes_document() && input.status.as_ref() == Some(&existing_status) {
+        // An input that changes neither the document nor the lifecycle state is a
+        // no-op: it must not burn a revision or emit a ProductUpdated event.
+        if !input.changes_document()
+            && input
+                .status
+                .as_ref()
+                .is_none_or(|status| status == &existing_status)
+        {
             let result = self
                 .get_product_in(
                     &txn,
@@ -821,7 +841,7 @@ impl CatalogService {
                             entities::variant_translation::Entity::find()
                                 .filter(
                                     entities::variant_translation::Column::VariantId
-                                        .is_in(variant_ids),
+                                        .is_in(variant_ids.clone()),
                                 )
                                 .filter(entities::variant_translation::Column::Locale.eq(&locale))
                                 .all(&txn)
@@ -830,10 +850,24 @@ impl CatalogService {
                                 .map(|vt| vt.variant_id)
                                 .collect();
 
+                        // Seed the new locale's rows with that locale's readable
+                        // tuple labels instead of the machine identity.
+                        let titles_by_variant = super::projection::load_variant_display_titles(
+                            &txn,
+                            tenant_id,
+                            product_id,
+                            &variant_ids,
+                            &locale,
+                            PLATFORM_FALLBACK_LOCALE,
+                        )
+                        .await?;
                         let mut new_variant_translations = Vec::new();
                         for variant in variants {
                             if !existing_trans_variant_ids.contains(&variant.id) {
-                                let variant_title = generate_variant_title(&variant);
+                                let variant_title = titles_by_variant
+                                    .get(&variant.id)
+                                    .cloned()
+                                    .unwrap_or_else(|| "Default".to_string());
                                 new_variant_translations.push(
                                     entities::variant_translation::ActiveModel {
                                         id: Set(generate_id()),
@@ -958,37 +992,6 @@ impl CatalogService {
         info!(product_id = %product_id, "Product updated successfully");
 
         Ok(result)
-    }
-
-    async fn validate_primary_category(
-        &self,
-        tenant_id: Uuid,
-        category_id: Option<Uuid>,
-    ) -> CommerceResult<()> {
-        let Some(category_id) = category_id else {
-            return Ok(());
-        };
-        let row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
-                "SELECT kind FROM catalog_categories WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
-                [tenant_id.into(), category_id.into()],
-            ))
-            .await?;
-        let kind = row
-            .and_then(|row| row.try_get::<String>("", "kind").ok())
-            .ok_or_else(|| {
-                CommerceError::Validation(
-                    "Primary category must reference an existing tenant category".to_string(),
-                )
-            })?;
-        if kind != "structural" {
-            return Err(CommerceError::Validation(
-                "Primary category must be structural".to_string(),
-            ));
-        }
-        Ok(())
     }
 
     #[instrument(skip(self))]
@@ -1449,20 +1452,30 @@ impl CatalogService {
             )
             .await?;
 
-        let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
-        let variant_title = generate_variant_title(&variant_model);
-
+        // Seed one translation row per existing product locale with that locale's
+        // readable title, resolved from the localized option labels of the tuple.
+        let seeded_variant_ids = [variant_id];
         let mut variant_translation_models = Vec::new();
         for locale in &existing_locales {
+            let titles_by_variant = super::projection::load_variant_display_titles(
+                &txn,
+                tenant_id,
+                product_id,
+                &seeded_variant_ids,
+                locale,
+                PLATFORM_FALLBACK_LOCALE,
+            )
+            .await?;
             variant_translation_models.push(entities::variant_translation::ActiveModel {
                 id: Set(generate_id()),
                 variant_id: Set(variant_id),
                 locale: Set(locale.clone()),
-                title: Set(Some(variant_title.clone())),
+                title: Set(Some(
+                    titles_by_variant
+                        .get(&variant_id)
+                        .cloned()
+                        .unwrap_or_else(|| "Default".to_string()),
+                )),
             });
         }
         if !variant_translation_models.is_empty() {
@@ -1617,33 +1630,77 @@ impl CatalogService {
                 .map(|axis| axis.attribute_id)
                 .collect::<Vec<_>>();
 
+            // Product locales drive which translation rows must exist; locales
+            // already carrying variant rows (for example from the Translation
+            // apply boundary) join them so their auto rows advance too. Capture
+            // the auto-generated titles of the current tuple before it changes
+            // so this edit refreshes seeded titles without touching authored copy.
+            let mut product_locales = entities::product_translation::Entity::find()
+                .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+                .filter(entities::product_translation::Column::ProductId.eq(product_id))
+                .all(&txn)
+                .await?
+                .into_iter()
+                .map(|translation| translation.locale)
+                .collect::<Vec<_>>();
+            for existing_locale in entities::variant_translation::Entity::find()
+                .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+                .all(&txn)
+                .await?
+                .into_iter()
+                .map(|row| row.locale)
+            {
+                if !product_locales.contains(&existing_locale) {
+                    product_locales.push(existing_locale);
+                }
+            }
+            let previous_auto_titles = variant_auto_titles_by_locale_in_tx(
+                &txn,
+                tenant_id,
+                product_id,
+                variant_id,
+                &product_locales,
+            )
+            .await?;
+
             if !configured_axis_attribute_ids.is_empty() {
+                let backend = txn.get_database_backend();
                 let placeholders = (0..configured_axis_attribute_ids.len())
-                    .map(|i| format!("${}", i + 3))
+                    .map(|index| sql_placeholder(backend, index + 3))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let query = format!(
-                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id IN ({placeholders})"
+                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND variant_id = {variant_ph} AND attribute_id IN ({placeholders})",
+                    tenant_ph = sql_placeholder(backend, 1),
+                    variant_ph = sql_placeholder(backend, 2),
                 );
                 let mut params = vec![tenant_id.into(), variant_id.into()];
                 for aid in configured_axis_attribute_ids {
                     params.push(aid.into());
                 }
                 let existing_vals: Vec<IdRow> = IdRow::find_by_statement(
-                    Statement::from_sql_and_values(txn.get_database_backend(), &query, params),
+                    Statement::from_sql_and_values(backend, &query, params),
                 )
                 .all(&txn)
                 .await?;
                 for ev in existing_vals {
                     txn.execute_raw(Statement::from_sql_and_values(
-                        txn.get_database_backend(),
-                        "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
+                        backend,
+                        format!(
+                            "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = {tenant_ph} AND value_id = {value_ph}",
+                            tenant_ph = sql_placeholder(backend, 1),
+                            value_ph = sql_placeholder(backend, 2),
+                        ),
                         vec![tenant_id.into(), ev.id.into()],
                     ))
                     .await?;
                     txn.execute_raw(Statement::from_sql_and_values(
-                        txn.get_database_backend(),
-                        "DELETE FROM product_variant_attribute_values WHERE tenant_id = $1 AND id = $2",
+                        backend,
+                        format!(
+                            "DELETE FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND id = {value_ph}",
+                            tenant_ph = sql_placeholder(backend, 1),
+                            value_ph = sql_placeholder(backend, 2),
+                        ),
                         vec![tenant_id.into(), ev.id.into()],
                     ))
                     .await?;
@@ -1652,20 +1709,24 @@ impl CatalogService {
 
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
 
-            let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
-                .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-                .one(&txn)
-                .await?
-                .ok_or(CommerceError::VariantNotFound(variant_id))?;
-            let variant_title = generate_variant_title(&variant_model);
-            entities::variant_translation::Entity::update_many()
-                .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
-                .col_expr(
-                    entities::variant_translation::Column::Title,
-                    sea_orm::sea_query::Expr::value(Some(variant_title)),
-                )
-                .exec(&txn)
-                .await?;
+            // Refresh only un-authored titles: rows that are missing, empty, or still
+            // hold the previous auto-generated value. Operator-authored copy survives.
+            let next_auto_titles = variant_auto_titles_by_locale_in_tx(
+                &txn,
+                tenant_id,
+                product_id,
+                variant_id,
+                &product_locales,
+            )
+            .await?;
+            sync_variant_auto_titles_in_tx(
+                &txn,
+                variant_id,
+                &product_locales,
+                &previous_auto_titles,
+                &next_auto_titles,
+            )
+            .await?;
         }
 
         if let Some(prices) = input.prices {
@@ -1833,9 +1894,60 @@ impl CatalogService {
                 "existing Product images require Media hold backfill before image admission".into(),
             )));
         }
-        self.retain_product_image(tenant_id, actor_id, image_id, input.media_id)
+        let media_id = input.media_id;
+        self.retain_product_image(tenant_id, actor_id, image_id, media_id)
             .await?;
 
+        let (txn, result) = match self
+            .stage_product_image_addition_in_tx(
+                tenant_id,
+                actor_id,
+                product_id,
+                image_id,
+                input,
+                image_locale,
+            )
+            .await
+        {
+            Ok(staged) => staged,
+            Err(error) => {
+                // The Media hold was taken before this transaction opened. A
+                // definite rollback enqueues its release instead of leaking an
+                // orphan hold for the at-least-once release worker.
+                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
+                    .await;
+                return Err(error);
+            }
+        };
+        record_product_operation_result(&result);
+        // A commit failure is ambiguous (the commit may have landed) and is
+        // deliberately not compensated: a leaked hold is recoverable, releasing
+        // the hold of a landed image is not.
+        txn.commit().await?;
+
+        info!(
+            image_id = %image_id,
+            product_id = %product_id,
+            "Product image added successfully"
+        );
+
+        Ok(result)
+    }
+
+    /// Stages a retained Product image inside its owner transaction without
+    /// committing it.
+    ///
+    /// Split from `add_product_image` so a definite rollback can compensate the
+    /// Media hold that was taken before the transaction opened.
+    async fn stage_product_image_addition_in_tx(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: AddProductImageInput,
+        image_locale: Option<String>,
+    ) -> CommerceResult<(ProductWriteTransaction, ProductImageResponse)> {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -1922,16 +2034,8 @@ impl CatalogService {
             position,
             translations,
         };
-        record_product_operation_result(&result);
-        txn.commit().await?;
 
-        info!(
-            image_id = %image_id,
-            product_id = %product_id,
-            "Product image added successfully"
-        );
-
-        Ok(result)
+        Ok((txn, result))
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
@@ -2185,6 +2289,135 @@ struct IdRow {
     id: Uuid,
 }
 
+/// Validates a primary category binding against the caller's connection, inside the
+/// owner transaction: a concurrently deleted category must surface as this typed
+/// refusal instead of a raw FK failure at insert time.
+async fn validate_primary_category<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    category_id: Option<Uuid>,
+) -> CommerceResult<()> {
+    let Some(category_id) = category_id else {
+        return Ok(());
+    };
+    let backend = conn.get_database_backend();
+    let row = conn
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT kind FROM catalog_categories WHERE tenant_id = {tenant_ph} AND id = {category_ph} AND deleted_at IS NULL",
+                tenant_ph = sql_placeholder(backend, 1),
+                category_ph = sql_placeholder(backend, 2),
+            ),
+            [tenant_id.into(), category_id.into()],
+        ))
+        .await?;
+    let kind = row
+        .and_then(|row| row.try_get::<String>("", "kind").ok())
+        .ok_or_else(|| {
+            CommerceError::Validation(
+                "Primary category must reference an existing tenant category".to_string(),
+            )
+        })?;
+    if kind != "structural" {
+        return Err(CommerceError::Validation(
+            "Primary category must be structural".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Auto-generated variant titles per product locale, resolved from the currently
+/// persisted sparse tuple.
+async fn variant_auto_titles_by_locale_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_id: Uuid,
+    locales: &[String],
+) -> CommerceResult<HashMap<String, String>> {
+    let variant_ids = [variant_id];
+    let mut titles = HashMap::with_capacity(locales.len());
+    for locale in locales {
+        let mut by_variant = super::projection::load_variant_display_titles(
+            txn,
+            tenant_id,
+            product_id,
+            &variant_ids,
+            locale,
+            PLATFORM_FALLBACK_LOCALE,
+        )
+        .await?;
+        titles.insert(
+            locale.clone(),
+            by_variant
+                .remove(&variant_id)
+                .unwrap_or_else(|| "Default".to_string()),
+        );
+    }
+    Ok(titles)
+}
+
+/// Refreshes variant translation titles after a tuple change without destroying
+/// authored copy.
+///
+/// Missing locales and empty rows are seeded with the next auto-generated title, and
+/// a row that still holds the previous auto-generated value is advanced to it. Any
+/// other row was authored through the Translation boundary and is left untouched.
+async fn sync_variant_auto_titles_in_tx(
+    txn: &DatabaseTransaction,
+    variant_id: Uuid,
+    locales: &[String],
+    previous_auto_titles: &HashMap<String, String>,
+    next_auto_titles: &HashMap<String, String>,
+) -> CommerceResult<()> {
+    let existing: HashMap<String, entities::variant_translation::Model> =
+        entities::variant_translation::Entity::find()
+            .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+            .all(txn)
+            .await?
+            .into_iter()
+            .map(|row| (row.locale.clone(), row))
+            .collect();
+
+    let mut inserts = Vec::new();
+    for locale in locales {
+        let next_title = next_auto_titles
+            .get(locale)
+            .cloned()
+            .unwrap_or_else(|| "Default".to_string());
+        match existing.get(locale) {
+            None => {
+                inserts.push(entities::variant_translation::ActiveModel {
+                    id: Set(generate_id()),
+                    variant_id: Set(variant_id),
+                    locale: Set(locale.clone()),
+                    title: Set(Some(next_title)),
+                });
+            }
+            Some(row) => {
+                let current = row.title.as_deref().unwrap_or("");
+                let is_auto = current.trim().is_empty()
+                    || previous_auto_titles
+                        .get(locale)
+                        .is_some_and(|previous| previous == current);
+                if is_auto && current != next_title {
+                    let mut active: entities::variant_translation::ActiveModel =
+                        row.clone().into();
+                    active.title = Set(Some(next_title));
+                    active.update(txn).await?;
+                }
+            }
+        }
+    }
+    if !inserts.is_empty() {
+        entities::variant_translation::Entity::insert_many(inserts)
+            .exec(txn)
+            .await?;
+    }
+    Ok(())
+}
+
 async fn persist_product_image_order_in_tx(
     txn: &DatabaseTransaction,
     product_id: Uuid,
@@ -2428,16 +2661,18 @@ where
         .iter()
         .map(|axis| axis.attribute_id)
         .collect::<Vec<_>>();
+    let backend = conn.get_database_backend();
     let attribute_placeholders = (0..attribute_ids.len())
-        .map(|index| format!("${}", index + 2))
+        .map(|index| sql_placeholder(backend, index + 2))
         .collect::<Vec<_>>()
         .join(", ");
     let mut attribute_values = vec![tenant_id.into()];
     attribute_values.extend(attribute_ids.iter().copied().map(Into::into));
     let definitions = VariantAxisDefinitionRow::find_by_statement(Statement::from_sql_and_values(
-        conn.get_database_backend(),
+        backend,
         format!(
-            "SELECT id, value_type, scope FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({attribute_placeholders})"
+            "SELECT id, value_type, scope FROM product_attributes WHERE tenant_id = {tenant_ph} AND archived_at IS NULL AND id IN ({attribute_placeholders})",
+            tenant_ph = sql_placeholder(backend, 1),
         ),
         attribute_values,
     ))
@@ -2465,15 +2700,16 @@ where
     let mut option_owners = HashMap::new();
     for option_ids in requested_option_ids.chunks(128) {
         let placeholders = (0..option_ids.len())
-            .map(|index| format!("${}", index + 2))
+            .map(|index| sql_placeholder(backend, index + 2))
             .collect::<Vec<_>>()
             .join(", ");
         let mut values = vec![tenant_id.into()];
         values.extend(option_ids.iter().copied().map(Into::into));
         let options = VariantAxisOptionRow::find_by_statement(Statement::from_sql_and_values(
-            conn.get_database_backend(),
+            backend,
             format!(
-                "SELECT id, attribute_id FROM product_attribute_options WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+                "SELECT id, attribute_id FROM product_attribute_options WHERE tenant_id = {tenant_ph} AND archived_at IS NULL AND id IN ({placeholders})",
+                tenant_ph = sql_placeholder(backend, 1),
             ),
             values,
         ))
@@ -2591,17 +2827,24 @@ async fn assign_variant_axis_value_rows_in_tx(
     axis_values: &[VariantAxisValueInput],
 ) -> CommerceResult<()> {
     for val in axis_values {
+        let backend = txn.get_database_backend();
         let row = IdRow::find_by_statement(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
+            backend,
+            format!(
+                r#"
             INSERT INTO product_variant_attribute_values (
                 id, tenant_id, variant_id, attribute_id, detached_at
-            ) VALUES ($1, $2, $3, $4, NULL)
+            ) VALUES ({p1}, {p2}, {p3}, {p4}, NULL)
             ON CONFLICT (tenant_id, variant_id, attribute_id) DO UPDATE SET
                 detached_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
             "#,
+                p1 = sql_placeholder(backend, 1),
+                p2 = sql_placeholder(backend, 2),
+                p3 = sql_placeholder(backend, 3),
+                p4 = sql_placeholder(backend, 4),
+            ),
             vec![
                 generate_id().into(),
                 tenant_id.into(),
@@ -2615,8 +2858,13 @@ async fn assign_variant_axis_value_rows_in_tx(
         let value_id = match row {
             Some(r) => r.id,
             None => IdRow::find_by_statement(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
+                backend,
+                format!(
+                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = {tenant_ph} AND variant_id = {variant_ph} AND attribute_id = {attribute_ph}",
+                    tenant_ph = sql_placeholder(backend, 1),
+                    variant_ph = sql_placeholder(backend, 2),
+                    attribute_ph = sql_placeholder(backend, 3),
+                ),
                 vec![tenant_id.into(), variant_id.into(), val.attribute_id.into()],
             ))
             .one(txn)
@@ -2630,15 +2878,24 @@ async fn assign_variant_axis_value_rows_in_tx(
         };
 
         txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
+            backend,
+            format!(
+                "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = {tenant_ph} AND value_id = {value_ph}",
+                tenant_ph = sql_placeholder(backend, 1),
+                value_ph = sql_placeholder(backend, 2),
+            ),
             vec![tenant_id.into(), value_id.into()],
         ))
         .await?;
 
         txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)",
+            backend,
+            format!(
+                "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ({tenant_ph}, {value_ph}, {option_ph})",
+                tenant_ph = sql_placeholder(backend, 1),
+                value_ph = sql_placeholder(backend, 2),
+                option_ph = sql_placeholder(backend, 3),
+            ),
             vec![tenant_id.into(), value_id.into(), val.option_id.into()],
         ))
         .await?;
@@ -2655,10 +2912,16 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
 ) -> CommerceResult<()> {
     assign_variant_axis_value_rows_in_tx(txn, tenant_id, variant_id, axis_values).await?;
 
+    let backend = txn.get_database_backend();
     let combination_identity = variant_combination_identity(axis_values);
     txn.execute_raw(Statement::from_sql_and_values(
-        txn.get_database_backend(),
-        "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
+        backend,
+        format!(
+            "UPDATE product_variants SET combination_identity = {identity_ph} WHERE tenant_id = {tenant_ph} AND id = {variant_ph}",
+            identity_ph = sql_placeholder(backend, 1),
+            tenant_ph = sql_placeholder(backend, 2),
+            variant_ph = sql_placeholder(backend, 3),
+        ),
         vec![
             combination_identity.into(),
             tenant_id.into(),
@@ -2853,5 +3116,96 @@ mod tests {
         }];
         let err = validate_variant_prices(&prices).unwrap_err();
         assert!(matches!(err, CommerceError::Validation(_)));
+    }
+    #[tokio::test]
+    async fn sync_variant_auto_titles_seeds_missing_advances_auto_and_preserves_authored() {
+        use sea_orm::TransactionTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+        db.execute_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE product_variant_translations (
+                id TEXT PRIMARY KEY,
+                variant_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                title TEXT
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("create variant translations");
+
+        let variant_id = Uuid::new_v4();
+        let seeded = |locale: &str, title: Option<&str>| {
+            entities::variant_translation::ActiveModel {
+                id: Set(generate_id()),
+                variant_id: Set(variant_id),
+                locale: Set(locale.to_owned()),
+                title: Set(title.map(str::to_owned)),
+            }
+        };
+
+        // ru is operator-authored; de is an empty row; fr still holds the
+        // previous auto-generated value; en has no row at all.
+        for model in [
+            seeded("ru", Some("Ручное название")),
+            seeded("de", Some("")),
+            seeded("fr", Some("Red / M")),
+        ] {
+            model.insert(&db).await.expect("seed translation row");
+        }
+
+        let locales = vec![
+            "en".to_owned(),
+            "ru".to_owned(),
+            "de".to_owned(),
+            "fr".to_owned(),
+        ];
+        let previous_auto = HashMap::from([
+            ("en".to_owned(), "Red / M".to_owned()),
+            ("fr".to_owned(), "Red / M".to_owned()),
+        ]);
+        let next_auto = HashMap::from([
+            ("en".to_owned(), "Blue / M".to_owned()),
+            ("fr".to_owned(), "Blue / M".to_owned()),
+            ("de".to_owned(), "Blue / M".to_owned()),
+        ]);
+
+        let txn = db.begin().await.expect("begin transaction");
+        sync_variant_auto_titles_in_tx(
+            &txn,
+            variant_id,
+            &locales,
+            &previous_auto,
+            &next_auto,
+        )
+        .await
+        .expect("sync auto titles");
+        txn.commit().await.expect("commit");
+
+        let mut rows = entities::variant_translation::Entity::find()
+            .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+            .all(&db)
+            .await
+            .expect("read translations");
+        rows.sort_by_key(|row| row.locale.clone());
+        let titles: Vec<(&str, Option<&str>)> = rows
+            .iter()
+            .map(|row| (row.locale.as_str(), row.title.as_deref()))
+            .collect();
+
+        assert_eq!(
+            titles,
+            vec![
+                ("de", Some("Blue / M")), // empty rows are seeded with the next auto title
+                ("en", Some("Blue / M")), // missing locales are seeded
+                ("fr", Some("Blue / M")), // the previous auto value advances
+                ("ru", Some("Ручное название")), // authored copy survives
+            ]
+        );
     }
 }

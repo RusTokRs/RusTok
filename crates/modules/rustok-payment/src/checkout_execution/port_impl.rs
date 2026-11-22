@@ -178,9 +178,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             None,
             None,
         );
-        let result = self
-            .read(&context, owner_operation, tenant_id, request)
-            .await;
+        let result = self.read(context, owner_operation, tenant_id, request).await;
         result.map_err(|error| {
             map_checkout_payment_execution_local_port_error(
                 &diagnostic_context,
@@ -195,7 +193,7 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
 impl InProcessCheckoutPaymentExecutionPort {
     async fn read(
         &self,
-        context: &PortContext,
+        context: PortContext,
         owner_operation: &'static str,
         tenant_id: Uuid,
         request: ReadCheckoutPaymentCollectionRequest,
@@ -205,7 +203,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             .payment_service
             .get_collection(tenant_id, request.collection_id)
             .await
-            .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
+            .map_err(|error| payment_error_to_port_error(&context, owner_operation, error))?;
         validate_collection(&collection, tenant_id, &request.identity)?;
         Ok(collection)
     }

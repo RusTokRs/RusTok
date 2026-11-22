@@ -303,6 +303,13 @@ fn test_ssrf_protection_blocks_private_ips() {
         "http://[::1]/admin",
         "http://[fd00::1]/internal",
         "http://[fe80::1]/link-local",
+        "http://[::ffff:127.0.0.1]/admin",
+        "http://[::ffff:169.254.169.254]/latest/meta-data",
+        "http://100.64.0.1/internal",
+        "http://service.local/api",
+        "http://metadata.internal/info",
+        "http://app.localhost/status",
+        "http://user:pass@api.example.com/test",
     ];
 
     for url in private_urls {

@@ -154,7 +154,7 @@ async fn load_source_in_tx(
     match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
     }
     .ok_or_else(|| rebuild_source_invalid("immutable rebuild source is unavailable"))
 }
@@ -174,7 +174,7 @@ async fn find_operation_in_tx(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
     })
 }
 

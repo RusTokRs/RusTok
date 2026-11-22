@@ -329,7 +329,7 @@ pub async fn resolve_locale(
             .map(|tenant| tenant.default_locale.as_str()),
     );
 
-    tracing::debug!(path = parts.uri.path(), "locale::resolve_locale entry");
+    tracing::debug!(path_group = super::http_stack::trace_path_family(parts.uri.path()), "locale::resolve_locale entry");
     if let Some(tenant) = tenant_context.as_ref() {
         let locales = match get_tenant_locales_cached(&ctx, tenant.id).await {
             Ok(locales) => locales,
@@ -352,7 +352,7 @@ pub async fn resolve_locale(
     parts.extensions.insert(resolved.clone());
     parts.extensions.insert(locale);
 
-    tracing::debug!(path = parts.uri.path(), effective_locale = %resolved.effective_locale, "locale::resolve_locale calling next");
+    tracing::debug!(path_group = super::http_stack::trace_path_family(parts.uri.path()), effective_locale = %resolved.effective_locale, "locale::resolve_locale calling next");
     let request = Request::from_parts(parts, body);
     let mut response = next.run(request).await;
     if let Ok(value) = HeaderValue::from_str(&resolved.effective_locale) {

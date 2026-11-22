@@ -21,6 +21,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const ARTIFACT_CONTENT_TYPE: &str = "application/octet-stream";
 const MAX_REGISTRY_MUTATION_BODY_BYTES: usize = 64 * 1024;
 
+/// Internal proof that the host-only runner credential was validated before
+/// its header was stripped from the request.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct VerifiedRegistryRunnerAccess;
+
 /// Enforce registry publish-request, artifact, ownership and remote-runner
 /// access before the controller executes.
 ///
@@ -39,7 +44,11 @@ pub async fn enforce(
 
     let method = request.method().clone();
     let path = request.uri().path();
-    tracing::debug!(path, %method, "registry_artifact_access::enforce entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(path),
+        method_group = super::http_stack::trace_method_family(&method),
+        "registry_artifact_access::enforce entry"
+    );
 
     if method == Method::POST && path == "/v2/catalog/owner-transfer" {
         return validate_owner_transfer(&ctx, request, next).await;
@@ -87,10 +96,10 @@ pub async fn enforce(
             next.run(request).await
         }
         RegistryOperation::ArtifactDownload => {
-            if !runner_token_valid
-                && let Err(response) =
-                    authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage)
-                        .await
+            if runner_token_valid {
+                request.extensions_mut().insert(VerifiedRegistryRunnerAccess);
+            } else if let Err(response) =
+                authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage).await
             {
                 return response;
             }
@@ -362,7 +371,10 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{RegistryOperation, is_remote_runner_path, registry_route};
+    use super::{
+        RegistryOperation, VerifiedRegistryRunnerAccess, enforce, is_remote_runner_path,
+        registry_route,
+    };
 
     #[test]
     fn classifies_sensitive_registry_publish_routes() {
@@ -409,6 +421,48 @@ mod tests {
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
+    }
+
+    #[tokio::test]
+    async fn artifact_download_passes_verified_runner_context_without_forwarding_secret() {
+        use axum::{
+            Extension, Router,
+            body::Body,
+            http::{HeaderMap, Request, StatusCode},
+            middleware::from_fn_with_state,
+            routing::get,
+        };
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use sea_orm::DatabaseConnection;
+        use tower::ServiceExt;
+
+        async fn assert_verified_runner(
+            Extension(_verified): Extension<VerifiedRegistryRunnerAccess>,
+            headers: HeaderMap,
+        ) -> StatusCode {
+            assert!(!headers.contains_key("x-rustok-runner-token"));
+            StatusCode::OK
+        }
+
+        let mut settings = RustokSettings::default();
+        settings.registry.remote_executor.enabled = true;
+        settings.registry.remote_executor.shared_token = Some("runner-secret".to_string());
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), settings);
+        let app = Router::new()
+            .route(
+                "/v2/catalog/publish/rpr_1/artifact/download",
+                get(assert_verified_runner),
+            )
+            .layer(from_fn_with_state(ctx, enforce));
+        let request = Request::builder()
+            .uri("/v2/catalog/publish/rpr_1/artifact/download")
+            .header("x-rustok-runner-token", "runner-secret")
+            .body(Body::empty())
+            .expect("runner download request");
+
+        let response = app.oneshot(request).await.expect("middleware response");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]

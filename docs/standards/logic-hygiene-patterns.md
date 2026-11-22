@@ -25,12 +25,274 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
+| `P-GENERATION-ACK-BEFORE-CACHE-EFFECT` | Tenant cache-generation recovery updated its durable checkpoint without clearing the independent effective-policy cache after missed Pub/Sub generations; ordinary in-order events also acknowledged before applying the cache effect. Recovered gaps now clear all tenant policies before checkpoint, in-order events ack after effects, invalid keys fail conservatively and all listener paths serialize. Tests authored but not run. | [Tenant generation listener](../../apps/server/src/services/tenant_cache_generation.rs), [Effective-policy cache](../../crates/modules/rustok-modules/src/policy_cache.rs) |
+| `P-LOCALE-GENERATION-TRANSITION-RACE` | Local, Redis and periodic tenant-locale listeners shared a bounded generation map and readiness flag but could concurrently read, invalidate, acknowledge and update readiness. They now share one async gate across the entire effect/ack/readiness transition. A Tokio contention regression is authored but unrun. | [Tenant locale listener](../../apps/server/src/services/tenant_locale_generation.rs), [Regression](../../apps/server/src/services/tenant_locale_generation_tests.rs) |
+| `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
+| `P-CORS-IMPLICIT-LOOPBACK` | Credentialed production CORS previously trusted a synthesized localhost origin with an empty/invalid allow-list, and mapped a wildcard bind host to the same trusted origin. Production now allows only explicit valid HTTP(S) browser origins; developer bind-host fallback remains local-only. Source/regressions are authored but unrun. | [CORS middleware](../../apps/server/src/middleware/cors.rs), [Router composition](../../apps/server/src/services/app_router.rs), [Server docs](../../apps/server/docs/README.md) |
+| `P-DISPATCHER-SHUTDOWN-REGISTRATION-RACE` | A direct module dispatcher or its startup-owned paid-order/marketplace/payment/product-media workers could publish their handles after shutdown had taken the task snapshot. All five paths now share one registration lock and check stop under it; product-media also has drop-safe reservation. Concurrent tests authored but unrun. | [Dispatcher](../../apps/server/src/services/module_event_dispatcher.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
+| `P-EVENT-TRANSPORT-LOSING-INSERT` | Transactional EventBus fallback ignored a failed `shared_insert_if_absent` and returned a private `OutboxTransport`, diverging from the registered runtime transport. Both forwarder and transactional publishers now use the same atomic singleton resolver; tests cover contention and configured transport identity but are unrun. | [EventBus transport](../../apps/server/src/services/event_bus.rs), [Runtime singleton](../../apps/server/src/services/server_runtime_context.rs) |
+| `P-TENANT-ERROR-INPUT-REFLECTION` | Tenant resolution mapped typed errors to public HTTP messages through Display, interpolating raw Host, slug, header names and validator details. Public messages now use fixed bounded text while keeping HTTP status and machine code; a response-level regression is authored but not run. | [Tenant error mapping](../../apps/server/src/middleware/tenant_resolution.rs), [Tenant middleware](../../apps/server/src/middleware/tenant.rs) |
+| `P-HTTP-UNBOUNDED-TRACE-CONTEXT` | The outer HTTP span still logged raw client-supplied request/correlation IDs, traceparent and extension methods after URI path bounding. Root-span diagnostics now validate fixed-size UUID/trace IDs and W3C version-00 traceparent, redact other input and bucket nonstandard methods; headers are unchanged. Regression authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Server docs](../../apps/server/docs/README.md) |
+| `P-HTTP-RAW-PATH-TRACE` | Edge tracing and metrics-auth/rate-limit debug diagnostics emitted user-controlled URI path segments even though HTTP metrics were already route-template bounded. The root HTTP trace, metrics-auth, rate-limit, tenant, auth-context, channel, locale, security-header and registry authorization middleware now use one fixed `trace_path_family` vocabulary; request dispatch and policy matching retain the original URI. Registry method diagnostics also use a fixed method family. Regression is authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Metrics auth](../../apps/server/src/middleware/metrics_auth.rs), [Rate limit](../../apps/server/src/middleware/rate_limit.rs) |
+| `P-QUERYRESULT-DECODE-ORDER` | The poison receipt claim-failure fallback shadowed its raw SQL `QueryResult` with a decoded neutral receipt and then passed the decoded type to an expiry helper requiring the SQL row. Read the derived SQL-only expiry before decoding, retain a narrow source-order regression guard; compile verification remains maintainer-run. | [Receipt store](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Source guard](../../scripts/verify/verify-iggy-consumer-poison-receipts.mjs) |
+| `P-DLQ-OBSERVER-SINGLE-OWNER` | Physical Event DLQ duplicate-alert scanner and telemetry companion could overwrite each other's shutdown-visible lifecycle independently of stop. They now share a registration mutex acquired by shutdown before snapshot; exited tasks emit a stable diagnostic instead of silently returning and are retained for join accounting. No-task modes keep their existing semantics; source tests are authored but unrun. | [Scanner](../../apps/server/src/services/event_dlq_duplicate_alert_observer.rs), [Telemetry companion](../../apps/server/src/services/event_dlq_duplicate_alert_observability.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
+| `P-OBSERVER-LIFECYCLE-OWNERSHIP` | Social Graph position/poison observers used a check-then-spawn registry check, allowing duplicate tasks to overwrite a shutdown handle; retained finished handles also produced false idempotent success. Both observers now reserve startup atomically, reject exited handles and reject stop-time admission; shutdown also waits on their shared registration lock before taking handles. Regression tests are authored but unrun. | [Poison observer](../../apps/server/src/services/social_graph_index_poison_observer.rs), [position observer](../../apps/server/src/services/social_graph_index_position_observer.rs), [runtime reservation](../../apps/server/src/services/server_runtime_context.rs) |
+| `P-DLQ-AMBIGUOUS-PUBLISH` | The neutral poison receipt allowed automatic takeover of expired `publishing` leases, while Forum Search and Social Graph retried external DLQ sends after ambiguous transport errors. The connector now retains ambiguous claims and reports `ReconciliationRequired` on expiry; server workers leave their offsets uncommitted for evidence-based reconciliation. Source/regression changes are authored but unrun. | [Poison receipt](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Forum Search consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Social Graph consumer](../../apps/server/src/services/social_graph_index_worker.rs), [Recovery decision](../../DECISIONS/2026-11-12-durable-side-effect-recovery.md) |
+| `P-WORKER-SHUTDOWN-ADMISSION` | Comments source-retry handoff checked shutdown only outside a bounded multi-claim cycle; Notifications candidate/fanout could begin a new durable action after an async policy check; three broker consumers could process a delivery selected concurrently with shutdown. The host now rechecks stop between durable claims and after policy observation, without cancelling an already claimed operation. Source-level fix and regression authored, unrun. | [Comments handoff loop](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs), [stop admission](../../apps/server/src/services/stop_handle.rs), [broker consumer](../../apps/server/src/services/social_graph_index_worker.rs), [candidate worker](../../apps/server/src/services/notification_candidate_worker.rs), [fanout worker](../../apps/server/src/services/notification_fanout_worker.rs) |
+| `P-WORKER-STARTUP-LIVENESS` | Thirteen server worker starters reported idempotent startup when only a terminated Tokio `JoinHandle` remained registered. Repeated bootstrap now distinguishes live/absent/exited handles at the relevant checks, rejecting terminated tasks without orphaning the shutdown handle. No runtime tests have been executed for this patch. | [Shared guard](../../apps/server/src/services/server_runtime_context.rs), [Host worker startup](../../apps/server/src/services/app_lifecycle.rs), [Notifications intake](../../apps/server/src/services/notification_outbox_intake_worker.rs), [Forum contract consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Product Index refresh](../../apps/server/src/services/product_index_refresh_worker.rs) |
 | `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
 | `P-OWNER-READ-BOUNDARY` | Distribution queried private Product and Channel tables. Change `8cc68c8fa2` moved the read contracts to their owners while retaining one PostgreSQL snapshot for admission. | [Decision](../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md), [Product projection](../../crates/modules/rustok-product/src/index_projection.rs), [Channel projection](../../crates/modules/rustok-channel/src/index_projection.rs) |
 | `P-FIXTURE-OWNERSHIP` | A migration verifier could attempt cleanup after creation failed because a fixture name already existed. Change `8b407a1bb3` tracks successful acquisition before cleanup. | [Verifier](../../crates/utils/rustok-migrations/src/bin/verify_migrations.rs), [bootstrap](../../crates/utils/rustok-migrations/src/verification/bootstrap.rs) |
 | `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
 | `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
+| `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
+| `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
+
+### P-GENERATION-ACK-BEFORE-CACHE-EFFECT — checkpoint only after invalidation
+
+- **Category:** Cache consistency, authorization projection freshness and
+  concurrent delivery/recovery.
+- **Observed defect:** Durable-generation reconciliation acknowledged a
+  generation but never invalidated the separate effective-policy cache
+  after missing one or more tenant invalidations. An in-order handler
+  likewise advanced its tracker before applying the effect.
+- **Remediation:** Use a shared transition mutex, evict all effective
+  policies and shared backends on an advanced/unverified recovered
+  generation, and move normal acknowledgement after cache invalidation.
+  On unexpected invalidation keys use full-cache eviction, not a silent
+  selective-invalidation miss. Preserve the canonical `*` global key,
+  and reject a nil tenant UUID as an invalid selective-invalidation key.
+- **Verification:** Unit source tests cover gap, changed/unchanged
+  reconciliation, unrelated tenant policies and malformed keys; unrun.
+
+### P-LOCALE-GENERATION-TRANSITION-RACE — serialize effects with checkpoints
+
+- **Category:** Concurrent cache invalidation, durable generation offsets,
+  and operational readiness.
+- **Observed defect:** Separate tasks shared an atomic tracker but not the
+  asynchronous sequence around its observations, local cache clearing,
+  acknowledgements and the global readiness flag.
+- **Remediation:** Share one per-listener async transition lock between all
+  cloned task owners, covering both event application and reconciliation
+  through the readiness update. Preserve durable generation checks.
+- **Verification:** Tokio regression confirms both entrypoints are fenced
+  by a lock held by another clone; not executed.
+
+### P-REGISTRY-PUBLISH-GUARD-PARITY — one route recognizer for auth boundaries
+
+- **Category:** Authorization routing and request framing.
+- **Observed defect:** The outer registry middleware matched an exact
+  publication URL while the actual policy accepted terminal slashes. The
+  canonical publication route could enter an unprotected handler via a
+  distinct path spelling if the transport exposed a matching alias.
+- **Remediation:** Reuse the publish policy's canonical path predicate at
+  the outer interception point. When serializing a normalized request body,
+  remove obsolete content-length *and* transfer-encoding metadata.
+- **Verification:** Source tests cover multiple trailing slash spellings,
+  HTTP methods and normalizing-body framing; unrun.
+
+### P-CORS-IMPLICIT-LOOPBACK — bind hosts do not grant browser trust
+
+- **Category:** Web security and configuration fail-closed behavior.
+- **Observed defect:** A production CORS layer enabled credentials and
+  automatically allowed a localhost origin when configuration was missing,
+  invalid, or derived from a wildcard bind address.
+- **Remediation:** Require explicit HTTP(S) browser origins in production,
+  reject URL credentials and non-origin components, and leave the
+  allow-list empty when none is valid. Reject unspecified IPv4/IPv6 bind
+  addresses even when entered explicitly, instead of converting them
+  into localhost browser authority. Development host fallback remains
+  available, and same-origin HTTP requests are unaffected.
+- **Verification:** Regression scenarios for missing/invalid origins,
+  loopback, explicit valid sites and configured bind-address fallback; unrun.
+
+### P-DISPATCHER-SHUTDOWN-REGISTRATION-RACE — shutdown owns each published task
+
+- **Category:** Background task lifecycle, startup admission and graceful shutdown.
+- **Observed defect:** A worker startup reservation fenced competing
+  initializers but did not serialize the final check-stop/spawn/handle
+  publication with the shutdown snapshot. A direct entrypoint outside
+  router bootstrap could leak a late background dispatcher or one of
+  its four recovery worker handles.
+- **Remediation:** Share one per-runtime synchronous registration
+  mutex between dispatcher and all four child worker publication
+  paths and each corresponding shutdown handle take; recheck stop
+  with the mutex held, and release it before joining. Use a drop-safe
+  startup reservation for product-media.
+- **Verification:** Concurrent stop-vs-start and snapshot-vs-registration
+  Tokio regressions for dispatcher and child workers authored but unrun.
+
+### P-EVENT-TRANSPORT-LOSING-INSERT — losing CAS must use the owner
+
+- **Category:** Publication correctness and concurrent startup.
+- **Observed defect:** A transactional EventBus caller could race
+  `shared_insert_if_absent`, lose the registry insert, and still use its
+  own unregistered default transport, diverging from the process's
+  selected forwarder transport.
+- **Remediation:** Resolve typed shared transports via the runtime's
+  atomic get-or-insert API and return only the registered winner.
+  Preserve the existing transport and lifecycle contracts.
+- **Verification:** Source-level concurrency and configured-transport
+  identity regressions authored, not run.
+
+### P-TENANT-ERROR-INPUT-REFLECTION — do not echo untrusted routing facts
+
+- **Category:** HTTP error confidentiality and bounded response envelopes.
+- **Observed defect:** Public tenant-resolution messages used an internal
+  error Display containing untrusted hostnames, asserted slugs and
+  validation reasons, with no response-size bound.
+- **Remediation:** Preserve typed internal diagnostics and the current
+  HTTP status/error-code mapping; return a fixed public message for
+  every error class. Follow the existing tenant context-load pattern.
+- **Verification:** Response-level Tokio regression checks redaction,
+  bounded size and error-code/status preservation across variants; unrun.
+
+### P-HTTP-UNBOUNDED-TRACE-CONTEXT — trace metadata is untrusted input
+
+- **Category:** Unbounded tracing cardinality, credential exposure and log integrity.
+- **Observed defect:** Pre-routing traces copied arbitrary client HTTP header
+  strings and custom method names directly into request spans.
+- **Remediation:** Preserve legitimate UUID/hex tracing identities and valid
+  W3C traceparent, but redact arbitrary or oversized values from span fields.
+  Map extension HTTP methods to a fixed `OTHER` category; do not change
+  transport propagation or routing behavior.
+- **Verification:** Focused pure unit tests for accepted identifiers, malformed
+  and overlong values, traceparent IDs and extension methods; unrun.
+
+### P-HTTP-RAW-PATH-TRACE — pre-routing spans must not expose URL segments
+
+- **Category:** Sensitive diagnostic data and untrusted request paths.
+- **Observed defect:** HTTP edge traces emitted `request.uri().path()`;
+  metrics-auth and rate limit repeated it. Additional inspection found
+  identical raw-path logging in seven middleware files for tenant, auth,
+  locale, channel, security headers and registry authorization. Unknown
+  routes and dynamic segments can contain identifiers and reset tokens.
+- **Remediation:** Emit a closed family label before routing. Use exact
+  static health/metrics/GraphQL labels and generic API/admin/default
+  categories; never interpolate arbitrary path components. Preserve the
+  original URI for actual routing, auth/tenant and rate-limit matching.
+  Reuse the same vocabulary across all middleware; registry diagnostic
+  methods have a separate fixed group. Matched Axum templates remain
+  available after routing for Prometheus HTTP labels.
+- **Verification:** Unit source regressions cover sensitive nested paths and
+  segment-boundary lookalikes; unrun.
+
+### P-QUERYRESULT-DECODE-ORDER — preserve SQL-only metadata before mapping
+
+- **Category:** Rust type safety at data-store projection boundaries.
+- **Observed defect:** A result variable was shadowed after decoding into a
+  minimal public receipt; a later SQL-only lease inspection was attempted on
+  the decoded type, causing an uncompilable branch.
+- **Remediation:** Compute the lease-expiry boolean from `QueryResult` before
+  decoding to the privacy-preserving public receipt. Keep the raw broker
+  claim state and the externally exposed receipt DTO separate.
+- **Verification:** Static source-order guard; Rust compilation not run.
+
+### P-DLQ-OBSERVER-SINGLE-OWNER — scanning and reporting share a shutdown fence
+
+- **Category:** Lifecycle supervision and concurrent optional observers.
+- **Observed defect:** The physical DLQ scanner and its telemetry companion
+  used non-atomic check-then-spawn registry updates. Competing bootstrap and
+  direct calls could orphan Tokio handles, and shutdown could snapshot before
+  a late starter published the task.
+- **Remediation:** Use one short synchronous registration mutex for both
+  companions and have shutdown acquire it before taking the worker snapshot.
+  Check stop and retained task liveness under the mutex before publishing.
+  Treat disabled/unavailable/not-applicable static records differently from
+  finished live tasks; preserve the latter for shutdown accounting. Observer
+  failure remains non-blocking for event delivery.
+- **Verification:** Completed-task and post-stop admission tests for both
+  companion paths, plus static lifecycle markers; unrun.
+
+### P-OBSERVER-LIFECYCLE-OWNERSHIP — observation tasks need a single owner
+
+- **Category:** In-process concurrency, health and graceful shutdown.
+- **Observed defect:** Independent read-only observers used
+  `shared_contains::<ObserverHandle>()` before spawning and then overwrote
+  the registry with `shared_insert`. Concurrent starts could orphan a
+  `JoinHandle`; a retained exited task falsely represented active metrics.
+- **Remediation:** Acquire a typed atomic startup reservation before
+  publishing the observer, retain it on successful publication, release it
+  automatically on failure, and inspect `JoinHandle::is_finished` before
+  returning idempotent success. Protect the stop-check and handle publication
+  with a shared mutex that shutdown also acquires before taking its handle
+  snapshot. Reject admission after the shared shutdown signal; preserve any
+  old handle so shutdown accounting can observe it.
+- **Detection:** Inspect read-only observers along with durable consumers:
+  non-effectful tasks can still leak resources, leave stale gauges and
+  misreport lifecycle state. New tests cover exited Tokio tasks and contested
+  in-process startup.
+
+### P-DLQ-AMBIGUOUS-PUBLISH — lease expiration is not proof of failure
+
+- **Category:** Durable external side effects, retry and crash recovery.
+- **Observed failure:** `publishing` poison receipts were automatically
+  reclaimable after lease expiry; on an Iggy publish error, the server would
+  release its claim and resend. A broker can accept a message and lose its
+  response, so neither the transport error nor lease expiry proves that an
+  earlier publish did not happen.
+- **Remediation:** Preserve the pending publishing receipt and stable source
+  identity; return `Busy` while the attempt remains leased and
+  `ReconciliationRequired` after expiry. Do not release or repeat the
+  external send after an uncertain outcome. Retain the original source offset
+  until a persisted confirmed publish allows acknowledgment. A late
+  publisher can still settle the original claim. Operator recovery requires
+  effect-owner evidence and an audited, fenced decision.
+- **Verification:** Exercise an expired claim and concurrent publisher in
+  SQLite and PostgreSQL; ensure the second publisher cannot publish and the
+  original can still persist the confirmed result. Existing tests and
+  verification contracts were updated but have not been executed.
+
+### P-WORKER-SHUTDOWN-ADMISSION — stop after awaits, before new effects
+
+- **Category:** Concurrency, lifecycle shutdown and durable retry; **logic
+  dimensions:** order/concurrency, side-effect completeness and state
+  transition integrity.
+- **Observed failure:** Checking a stop flag only at an outer polling-loop
+  boundary allows a bounded inner loop to claim more durable items after the
+  stop request. Similarly, an `await` between a batch entry's stop check and
+  its first effectful operation makes the earlier admission obsolete. A broker
+  consumer's `tokio::select!` may also return the delivery branch when receive
+  and shutdown become ready simultaneously.
+- **Correct handling:** Finish the operation whose claim/effect boundary was
+  already entered, including its transactional receipt or failure transition.
+  Before the next claim, retry phase, newly received broker message, or effect
+  after a policy `await`, re-read the subscribed stop flag and exit if
+  signaled. Leave a broker delivery unacknowledged if received after stop. Do **not** cancel a
+  transaction halfway through its owner-managed recovery semantics.
+- **Detection:** Inspect `for` / `while` batches and the awaited steps
+  between `stop_rx.borrow()` and effectful service calls, including
+  `tokio::select!` receive branches; start with
+  `rg -n 'claim_next|process_candidate|materialize_source_inbox|process_fanout_job|stop_rx.borrow' apps/server/src/services`.
+  The existence of a stop check at the top of the outer worker loop is not
+  proof of a shutdown boundary inside a cycle.
+
+### P-WORKER-STARTUP-LIVENESS — dead handle is not readiness
+
+- **Category:** Concurrent startup and durable worker lifecycle; **logic dimensions:** state transitions, side effects, and order/concurrency.
+- **Root cause:** A worker can exit while its owned `JoinHandle` remains in the
+  runtime's typed registry. `shared_contains::<WorkerHandle>()` answers only
+  whether the handle was published, not whether its task is still alive.
+  Treating that as successful bootstrap hides a stalled consumer.
+- **Remediation:** Check the retained handle's `is_finished()` status in the
+  initial preflight, the failed-reservation contender, and the post-claim
+  double-check. A live handle permits idempotent success. A missing handle
+  may acquire the atomic startup claim. A terminated handle must return an
+  observable error while remaining owned for shutdown/join accounting. Do
+  not blindly spawn another consumer with an unacknowledged offset or effects.
+
+  ```rust
+  if published_worker_running::<WorkerHandle>(
+      ctx, "worker name", WorkerHandle::is_finished,
+  )? {
+      return Ok(());
+  }
+  ```
+
+- **Detection:** `rg -n 'shared_contains::<.*WorkerHandle>' apps/server/src/services`
+  then inspect the worker's early-return, contention, and post-claim branches
+  against the actual task liveness and owner recovery contract.
 
 For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
 characters in `1c5a07dc8b`; this does not establish that a collision occurred.
@@ -222,6 +484,7 @@ flowchart TD
   2. Break circular dependencies by defining narrow traits (e.g. `LockProvider`, `AncestorLoader`) implemented by the caller or foundation crate, rather than text-including source files.
   3. Keep handwritten Rust source in modules. Build output loaded through `concat!(env!("OUT_DIR"), ...)` is a separate use case. The scanner gates direct literal `include!("file.rs")` outside recognized test, example, and build contexts.
   4. When replacing a file-stitching macro, register the existing source file as a module and move child declarations to their owner as needed. Pasting the file body at the call site can leave a second copy and a stray statement delimiter. Retarget source guards to the compiled modules and verify the resulting tree with a scoped build.
+* **Mounted-facade exemption boundary:** A small, contracted family of mounted facades is the sanctioned inverse case, and the doctor's literal-include finding is a known false positive there. In these facades a verify contract pins the composition `mod legacy { include!("owner_file.rs"); }` (or a flat include list) as the terminal state of a `P-COPY-DRIFT-MOUNT` cutover: the included file remains the single owner of that source and the wrapper only adds sanitizing adapters and public policies. Current members: `graphql/mutations/safe_cart.rs`, `graphql/mutations/safe_legacy_helpers.rs`, `graphql/mutations/safe_checkout.rs`, `graphql/safe_query/source.rs`, `storefront_checkout_runtime_mounted.rs`, `services/checkout_compensation_error_safe.rs`, and `rustok-payment`'s `checkout_execution.rs`. The slop in this family is the drifting hand-inlined copy it replaced, not the include that removed the copy. Review a literal-include finding by asking which of the two states it protects: a second copy that can drift (defect), or the single-owner include that prevents one (contracted).
 
 ---
 
@@ -572,6 +835,130 @@ flowchart TD
 
 ---
 
+### Pattern 29: Mounted-Copy Drift (`P-COPY-DRIFT-MOUNT`)
+* **Category:** Compilation Hygiene & Zero AI Slop. **Dimension:** Single source of truth.
+* **Problem:** A wrapper module hand-inlines the body of a sibling source file — typically as `mod legacy { /* full copy of owner_file.rs */ }` under a mounted facade — instead of mounting that file. The copy is usually rustfmt-reformatted, so a textual diff against the original shows only line-wrapping noise while the two bodies silently drift apart as independent sources. Any fix applied to the original file (a bounded diagnostic, a new error variant, a signature change) does not reach the mounted copy, and the copy's stale behavior is what actually serves the mounted path. This is the mechanical-slop form of `P-DEAD-TWIN`: the twin is not dead, it is live and diverging.
+* **Pattern Solution:**
+  1. Mount the single owner of the source instead of pasting it: `mod legacy { include!("owner_file.rs"); }` for the contracted facade family (see the `P-ZERO-INCLUDE` mounted-facade boundary), or a normal `mod owner_file;` with explicit re-exports elsewhere.
+  2. When auditing a suspected copy, normalize both bodies (strip indentation, collapse whitespace) before diffing; a raw diff hides semantic equivalence under reformatting noise. The storefront checkout audit found a 611-line copy whose raw diff exceeded a thousand lines while the normalized diff was zero.
+  3. Keep wrapper-only concerns (sanitizing adapters, public policies, bounded mappers) in the wrapper file, and keep the owner file free of wrapper imports so it can be mounted textually without shim indirection. Where the owner file must reference crate items through shims, keep the `use super::..._shim as ...;` lines in the wrapper immediately before the include.
+  4. A copy that exists only to rename an import (a "facade copy" instead of a facade) is the same defect: fix the import path or the module wiring instead of duplicating the body.
+* **Detection:** Manual today. Candidate heuristic: a file containing a `mod` block whose whitespace-normalized content matches another file in the same crate at ≥90% (after stripping the wrapper's own items), reported as a duplicate-source finding with the matched path.
+
+---
+
+### Pattern 30: Bounded Owner Facts at Boundaries (`P-BOUNDED-OWNER-FACTS`)
+* **Category:** Observability & Diagnostic Safety. **Dimension:** Data minimization at owner boundaries.
+* **Problem:** Adapter and guard code at owner boundaries logs raw owner values — `error = ?error`, `internal_message = %error.message`, `tenant_id = %context.tenant_id`, `scope = ?request.scope`, or raw UUID request fields (`checkout_operation_id = %request.checkout_operation_id`). Raw `Debug`/`Display` of owner errors and request payloads forwards owner-internal text (validation messages, provider payloads, PII-shaped identifiers) into consumer-facing logs, and it makes log shape depend on owner internals that change without notice. The recurring verified form of this defect is a raw field appearing in one log site while sibling logs in the same file already use the bounded shape — the file itself proves the intended contract.
+* **Pattern Solution:**
+  1. Log bounded facts instead of values: presence flags (`channel_present`), non-nil checks (`checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), lengths (`tenant_id_length`, `owner_message_len`), and closed enum labels (`scope_kind = request_facts.scope_kind`, `error_kind`).
+  2. Derive the bounded facts once per call (`let request_facts = cart_promotion_request_facts(&request);`) and reuse the same facts structure in validation, logging, and mapping so the shapes cannot diverge.
+  3. Owner-internal service files may log their own values; the boundary is the mounted/sanitizing adapter. When a facade mounts an owner file that still carries raw logging (contracted `P-COPY-DRIFT-MOUNT` cutovers), the raw lines live in the owner file where the owner's diagnostic contract governs them, not in the wrapper.
+  4. Keep the public error path and the diagnostic path separate: the public envelope carries a stable code and static message; the correlated log carries the bounded facts. Never satisfy a bounded-diagnostics requirement by logging the raw value through a different macro level.
+* **Detection:** Manual today. Candidate heuristic: inside `tracing` macros, field values of the forms `?error`, `%error.message`, `%context.tenant_id`, or `%request.<uuid field>` in files that also define sanitizing adapters or `mod legacy` facades, when sibling logs in the same file already use the bounded shape.
+
+---
+
+### Pattern 31: Infallible Integer Casts (`P-TRY-FROM-LEN-PANIC`)
+* **Category:** Reliability & Panic Prevention. **Dimension:** Zero runtime panics in production.
+* **Problem:** Production code converts container lengths via `u64::try_from(slice.len()).expect("bounded component length")` or `.unwrap()`. Converting `usize` to `u64` is infallible on 32-bit and 64-bit target architectures (`len as u64`). Using `try_from().expect()` introduces panic branches, pollutes code with pseudo-invariants, and increases runtime fragility.
+* **Pattern Solution:**
+  1. Use infallible native casts for widening integer conversions: `let length = value.len() as u64;`.
+  2. Reserve `try_from` only for narrowing integer conversions (e.g. `u64 -> u32` or `usize -> i32`), and always propagate or handle the resulting error without `expect` or `unwrap`.
+* **Detection:** Doctor rule `P-TRY-FROM-LEN-PANIC`: direct regex match on `(?:u64|usize|i64|u32)::try_from\s*\([^)]*\.len\(\)\s*\)\s*\.(?:expect|unwrap)`.
+
+---
+
+### Pattern 32: Non-Panicking Migration Failure Paths (`P-MIGRATION-PANIC`)
+* **Category:** Database & Migration Integrity. **Dimension:** Branch completeness and anti-swallowing.
+* **Problem:** Database migrations use `unreachable!()` or `panic!()` in dialect match branches (e.g. `match manager.get_database_backend() { DbBackend::Postgres => ..., _ => unreachable!(...) }`). When migrations are executed in an unsupported dialect or during dry-run validations, panicking aborts the process rather than reporting a typed `DbErr::Custom`.
+* **Pattern Solution:**
+  1. Always return a typed migration error: `_ => Err(DbErr::Custom("unsupported database backend".to_string()))`.
+  2. Ensure migration failure paths preserve rollback semantics without tearing down the host process.
+* **Detection:** Doctor rule `P-MIGRATION-PANIC`: flags `unreachable!()` and `panic!()` inside `src/migrations/*.rs`.
+
+---
+
+### Pattern 33: Unique Distributed Lease Ownership Token (`P-DISTRIBUTED-LEASE-OWNER`)
+* **Category:** Distributed Concurrency & Coordination. **Dimension:** Concurrency and TOCTOU.
+* **Problem:** Distributed lease claiming (e.g. for scheduled jobs, outbox relays, reconcilers) uses process-local counters (e.g. `worker-1` or `format!("worker-{}", id)`). When multiple replica instances run concurrently, multiple distinct replicas claim or renew leases under the identical owner token, leading to split-brain execution and concurrent mutation races.
+* **Pattern Solution:**
+  1. Include a globally unique instance token in every lease owner identifier: `format!("{worker_prefix}:{}:{}", instance_id, Uuid::new_v4())` or storage-issued fencing tokens.
+  2. Validate that the lease owner string fits the database column schema length without truncation.
+* **Detection:** Doctor rule `P-DISTRIBUTED-LEASE-OWNER`: flags `claim_lease` / `claim_execution` where the owner string uses static prefixes without instance-level entropy.
+
+---
+
+### Pattern 34: Atomic Backpressure Queue Reservation (`P-ATOMIC-BACKPRESSURE`)
+* **Category:** Concurrency & Resource Bounding. **Dimension:** Order of operations and concurrency.
+* **Problem:** A `load-then-increment` sequence on atomic counters (`capacity.load()` followed by `if capacity < max { capacity.fetch_add(1) }`) is a check-then-act race. Concurrent tasks can all observe capacity below the threshold and collectively overrun the buffer, leading to silent message drops in bounded broadcast rings.
+* **Pattern Solution:**
+  1. Reserve queue permits with an atomic compare-and-swap loop (`compare_exchange` or `fetch_update`).
+  2. Release reservations consistently on completion, send failure, and task cancellation.
+* **Detection:** Doctor rule `P-ATOMIC-BACKPRESSURE`: flags atomic `.load()` followed by conditional `.fetch_add()` within lexical window.
+
+---
+
+### Pattern 35: Background Worker Task-Handle Liveness (`P-WORKER-READINESS-LIVENESS`)
+* **Category:** Runtime Observability & Health. **Dimension:** State transition integrity.
+* **Problem:** Long-lived background workers (outbox relay, cache synchronizer, index reconciler) are spawned with `tokio::spawn`, but their `JoinHandle` is discarded or omitted from readiness probes. When a worker terminates unexpectedly, the HTTP host remains green (200 OK) while background operations have silently stopped.
+* **Pattern Solution:**
+  1. Retain worker `JoinHandle`s in health registries and verify `!handle.is_finished()` in readiness snapshots.
+  2. Mark optional workers as required once they are successfully initialized.
+* **Detection:** Manual review of startup lifecycle services; verify that spawned workers register liveness probes.
+
+---
+
+### Pattern 36: Critical Identity Fallback Leakage (`P-NIL-IDENTITY-FALLBACK`)
+* **Category:** Multi-Tenancy & Authorization. **Dimension:** Preconditions & bounds / Branch completeness.
+* **Problem:** Replacing `.expect()` with `.unwrap_or_default()` or `unwrap_or(Uuid::nil())` on critical entity identities (`seller_id`, `actor_id`, `user_id`, `channel_id`, `account_id`, `order_id`, `organization_id`). When the identity is absent or malformed, the operation silently proceeds with Nil UUID (`00000000-0000-0000-0000-000000000000`), polluting shared data stores or bypassing tenant isolation.
+* **Pattern Solution:**
+  1. Fail closed on missing required identities: `entity_id.ok_or(DomainError::IdentityRequired)?`.
+  2. If the field is truly optional in the domain, model it explicitly as `Option<Uuid>` and check `is_some()` rather than collapsing to Nil.
+* **Detection:** Doctor rule `P-NIL-IDENTITY-FALLBACK`: flags `.unwrap_or_default()` or `unwrap_or(Uuid::nil())` on critical identity identifiers.
+
+---
+
+### Pattern 37: SQLite Row Lock Bypass (`P-SQLITE-UNLOCKED-RACE`)
+* **Category:** Database Concurrency & Isolation. **Dimension:** Order of operations and concurrency.
+* **Problem:** Because SQLite does not support `SELECT ... FOR UPDATE`, dialect match arms discard locking (`DbBackend::Sqlite => query, _ => query.lock_exclusive()`). Under SQLite's default deferred transaction mode (`BEGIN DEFERRED`), omitting row locks allows concurrent transactions to interleave read-modify-write operations, leading to lost updates.
+* **Pattern Solution:**
+  1. Ensure transactions in SQLite are opened with immediate write locks (`BEGIN IMMEDIATE`) or serialized via an application mutex.
+  2. Document the concurrency contract explicitly: `// INVARIANT: SQLite transaction uses BEGIN IMMEDIATE isolation`.
+* **Detection:** Doctor rule `P-SQLITE-UNLOCKED-RACE`: flags SQLite dialect arms that discard `.lock_exclusive()` without an invariant comment.
+
+---
+
+### Pattern 38: Silent Domain Event Discard (`P-SILENT-EVENT-DISCARD`)
+* **Category:** Distributed State & Messaging. **Dimension:** Side-effect completeness / Anti-swallowing.
+* **Problem:** Domain events or outbox entries dispatched via `let _ = event_dispatcher.publish(event).await` or `.enqueue(event).await.ok()`. If the outbox table or message broker fails, the mutation commits while downstream consumers (search indexing, cache invalidation, billing, notifications) are never notified, causing silent state desynchronization.
+* **Pattern Solution:**
+  1. Atomically write outbox records in the same transaction as the primary mutation.
+  2. Propagate publication errors with `?` or initiate compensatory rollback.
+* **Detection:** Doctor rule `P-SILENT-EVENT-DISCARD`: flags `let _ =` or `.ok()` on event dispatcher / outbox publication calls.
+
+---
+
+### Pattern 39: Loop Helper Database Calls (`P-LOOP-HELPER-AWAIT`)
+* **Category:** Persistence & Performance. **Dimension:** Algorithmic correctness.
+* **Problem:** N+1 database queries hidden inside loop bodies by extracting the query into a helper method (e.g. `for item in items { self.load_item_details(txn, item.id).await?; }`). Static scanners that check only for direct `.all(&txn).await` miss these indirect query loops.
+* **Pattern Solution:**
+  1. Batch load related records before the loop: `let map = self.load_items_batch(txn, &ids).await?;`.
+  2. Lookup in-memory from the pre-fetched map inside the loop.
+* **Detection:** Doctor rule `P-LOOP-HELPER-AWAIT`: flags database helper method calls with transaction/db handles inside loop bodies.
+
+---
+
+### Pattern 40: Unchecked Slice Range Indexing (`P-BYTE-SLICE-PANIC`)
+* **Category:** Memory & Codec Safety. **Dimension:** Preconditions and bounds.
+* **Problem:** In binary decoders and token parsers, indexing byte slices with constant ranges (e.g. `&bytes[0..12]` or `&slice[1..5]`) without verifying length first. Malformed or truncated inputs cause runtime panics (out-of-bounds index).
+* **Pattern Solution:**
+  1. Check slice length up-front: `if bytes.len() < 12 { return Err(CodecError::TooShort); }`.
+  2. Or use safe slicing: `bytes.get(..12).ok_or(CodecError::TooShort)?`.
+* **Detection:** Doctor rule `P-BYTE-SLICE-PANIC`: flags direct range slicing on slice/buffer variables without length guards.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -624,6 +1011,18 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-LOG-RAW-PRINT` | Observability | Production code uses tracing macros instead of raw stdout/stderr prints | High: direct println!, eprintln!, or dbg! in non-CLI/non-test code |
 | `P-TYPED-DOMAIN-ERROR` | Error handling | Library and domain modules propagate strongly-typed domain errors with thiserror | High: Result with bare String, &str, or anyhow in domain/library signatures |
 | `P-CHECK-THEN-UNWRAP` | Reliability | Atomic pattern matching (if let / match) used instead of check-then-unwrap | High: if .is_some()/.is_ok() followed by .unwrap()/.expect() |
+| `P-COPY-DRIFT-MOUNT` | Module structure | The mounted path compiles the single owner file, not a hand-inlined copy | Manual: normalized duplicate-content match |
+| `P-BOUNDED-OWNER-FACTS` | Observability | Boundary adapters log bounded facts (presence, length, kind), not raw owner values | Manual: raw owner field in tracing macro beside bounded sibling shapes |
+| `P-TRY-FROM-LEN-PANIC` | Reliability | Infallible length conversions avoid panicking try_from | High: try_from on .len() followed by expect/unwrap |
+| `P-MIGRATION-PANIC` | Database integrity | Migrations return DbErr::Custom instead of crashing | High: unreachable! or panic! in migration files |
+| `P-DISTRIBUTED-LEASE-OWNER` | Distributed coordination | Lease tokens are unique across replicas | High: local worker counters without instance UUID in lease_owner |
+| `P-ATOMIC-BACKPRESSURE` | Concurrency | Queue capacity reservations use compare-and-swap | High: load-then-increment race on queue capacity atomics |
+| `P-WORKER-READINESS-LIVENESS` | Observability | Readiness probes verify task-handle liveness | Manual |
+| `P-NIL-IDENTITY-FALLBACK` | Authorization | Critical identities fail closed without Nil fallback | High: unwrap_or_default or Uuid::nil on entity IDs |
+| `P-SQLITE-UNLOCKED-RACE` | Concurrency | SQLite transactions document immediate lock semantics | High: SQLite arms bypassing lock_exclusive without invariant |
+| `P-SILENT-EVENT-DISCARD` | Reliability | Event and outbox dispatch failures propagate | High: let _ = or .ok() on outbox/event publish |
+| `P-LOOP-HELPER-AWAIT` | Performance | Queries in loops batched even through helper methods | Heuristic: database helper calls inside loop bodies |
+| `P-BYTE-SLICE-PANIC` | Reliability | Byte slice decoders verify length before constant range indexing | Heuristic: range index on buffer without bounds check |
 
 ---
 

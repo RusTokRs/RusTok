@@ -38,8 +38,29 @@ const definitiveRefusals: Record<string, string> = {
   DUPLICATE_HANDLE: 'This product handle is already in use.',
   DUPLICATE_SKU: 'This SKU is already in use.',
   NO_VARIANTS: 'Product requires at least one variant.',
-  CANNOT_DELETE_PUBLISHED: 'Archive the published product before deleting it.'
+  CANNOT_DELETE_PUBLISHED: 'Archive the published product before deleting it.',
+  PRODUCT_OPERATION_FAILED:
+    'The operation could not be completed safely. Review the request and try again.',
+  IDEMPOTENCY_KEY_CONFLICT:
+    'This attempt was already used with a different request. Try again with the current values.'
 };
+
+/**
+ * True when the owner definitively refused the write: retrying the exact same
+ * request can never succeed (validation, permission, conflict, or a receipt
+ * bound to a different payload).
+ *
+ * Callers that reuse one idempotency key across retries of an uncertain
+ * submission must rotate the key when this returns true; only ambiguous
+ * (network-level) failures keep the key for a receipt replay.
+ */
+export function isDefinitiveProductWriteRefusal(error: unknown): boolean {
+  return (
+    error instanceof GraphqlError &&
+    error.retryable === false &&
+    error.outcome === 'rejected'
+  );
+}
 
 /** Serializable boundary: production Server Action exception redaction is irrelevant. */
 export async function productWriteOutcome(

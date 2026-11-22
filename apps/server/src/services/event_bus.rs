@@ -139,19 +139,17 @@ pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
     (*bus).clone()
 }
 
+/// Resolve the *published* runtime transport atomically. A check-then-insert
+/// caller that loses the race must never keep using its locally constructed
+/// OutboxTransport while the forwarder and other publishers use the winner.
+fn shared_event_transport(ctx: &ServerRuntimeContext) -> Arc<dyn EventTransport> {
+    ctx.shared_get_or_insert_with(|| {
+        Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>
+    })
+}
+
 fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
-    let shared_transport = if let Some(transport) = ctx.shared_get::<Arc<dyn EventTransport>>() {
-        transport
-    } else {
-        let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
-            as Arc<dyn EventTransport>;
-        if ctx.shared_insert_if_absent(default_transport.clone()) {
-            default_transport
-        } else {
-            ctx.shared_get::<Arc<dyn EventTransport>>()
-                .unwrap_or(default_transport)
-        }
-    };
+    let shared_transport = shared_event_transport(ctx);
 
     let stop = StopHandle::ensure(ctx);
     if stop.is_stopping() {
@@ -512,15 +510,7 @@ async fn run_event_forwarder_with_receiver(
 
 pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> TransactionalEventBus {
     tracing::debug!("Resolving TransactionalEventBus from ServerRuntimeContext");
-    let transport = if let Some(transport) = ctx.shared_get::<Arc<dyn EventTransport>>() {
-        transport
-    } else {
-        let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
-            as Arc<dyn EventTransport>;
-        ctx.shared_insert_if_absent(default_transport.clone());
-        default_transport
-    };
-    TransactionalEventBus::new(transport)
+    TransactionalEventBus::new(shared_event_transport(ctx))
 }
 
 fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>) -> EventBus {
@@ -1069,6 +1059,62 @@ mod tests {
             .expect("forwarder should drain and stop")
             .expect("forwarder task should join");
         assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn transactional_and_forwarder_transport_resolution_is_single_owner_under_contention() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let start = Arc::new(tokio::sync::Barrier::new(32));
+        let mut tasks = Vec::new();
+        for _ in 0..32 {
+            let ctx = ctx.clone();
+            let start = Arc::clone(&start);
+            tasks.push(tokio::spawn(async move {
+                start.wait().await;
+                let transport = super::shared_event_transport(&ctx);
+                let _tx_bus = transactional_event_bus_from_context(&ctx);
+                transport
+            }));
+        }
+
+        let mut selected_transports = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            selected_transports.push(task.await.expect("transport resolver task must join"));
+        }
+        let registered = ctx
+            .shared_get::<Arc<dyn EventTransport>>()
+            .expect("concurrent callers must publish a single shared transport");
+        for selected in selected_transports {
+            assert!(
+                Arc::ptr_eq(&selected, &registered),
+                "a losing initialization must use the winning shared transport"
+            );
+        }
+        assert!(Arc::ptr_eq(
+            &super::shared_event_transport(&ctx),
+            &registered
+        ));
+    }
+
+    #[tokio::test]
+    async fn transactional_transport_respects_preinstalled_owner() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let configured: Arc<dyn EventTransport> =
+            Arc::new(rustok_core::events::MemoryTransport::with_capacity(8));
+        ctx.shared_insert(configured.clone());
+
+        let _tx_bus = transactional_event_bus_from_context(&ctx);
+        let selected = super::shared_event_transport(&ctx);
+        assert!(
+            Arc::ptr_eq(&selected, &configured),
+            "fallback resolver cannot replace a configured event transport"
+        );
     }
 
     #[tokio::test]

@@ -79,7 +79,7 @@ for (const forbidden of ["Uuid", "Option<", "String"]) {
 const contextConversion = blockBetween(
   source,
   "impl From<&AdminProductErrorContext> for AdminProductDiagnosticContext {",
-  "struct AdminProductDiagnosticError;",
+  "fn uuid_shape(",
   "product context conversion",
 );
 for (const marker of [
@@ -88,20 +88,6 @@ for (const marker of [
   "product_id: optional_uuid_shape(context.product_id)",
   "operation: context.operation",
 ]) requireText(contextConversion, marker, `${paths.source}: diagnostic context conversion`);
-
-const diagnosticError = blockBetween(
-  source,
-  "struct AdminProductDiagnosticError;",
-  "fn uuid_shape(",
-  "bounded product error",
-);
-for (const marker of [
-  "impl std::fmt::Debug for AdminProductDiagnosticError",
-  'formatter.write_str("redacted")',
-]) requireText(diagnosticError, marker, `${paths.source}: redacted diagnostic error`);
-for (const forbidden of ["CommerceError", "message:", "source:", "String"]) {
-  forbidText(diagnosticError, forbidden, `${paths.source}: diagnostic error payload`);
-}
 
 const requiredShape = blockBetween(
   source,
@@ -126,12 +112,12 @@ for (const marker of [
 ]) requireText(optionalShape, marker, `${paths.source}: optional UUID shape`);
 
 requireText(source, '"commerce_admin_product_failed"', 'static internal fallback code');
-requireText(source, 'rustok_product::error::core_port_error(error).kind', 'Core policy must use canonical owner classification');
+requireText(source, '&rustok_product::error::core_port_error(error),', 'Core policy must use canonical owner classification');
 
 const policy = blockBetween(
   source,
   "fn product_error_policy(",
-  "fn adopt_product_error_identity(",
+  "pub(crate) fn admin_product_command_idempotency_key(",
   "admin product policy",
 );
 for (const marker of [
@@ -152,76 +138,35 @@ for (const marker of [
 
 ]) requireText(policy, marker, `${paths.source}: preserved product policy`);
 
-const identity = blockBetween(
-  source,
-  "fn adopt_product_error_identity(",
-  "pub(crate) fn map_admin_product_error(",
-  "product identity adoption",
-);
-for (const marker of [
-  "CommerceError::ProductNotFound(id)",
-  "context.product_id = Some(*id)",
-]) requireText(identity, marker, `${paths.source}: product identity adoption`);
-
-const mapper = blockBetween(
-  source,
-  "pub(crate) fn map_admin_product_error(",
-  "pub(crate) fn admin_product_command_idempotency_key(",
-  "admin product mapper",
-);
-requireOrder(
-  mapper,
-  [
-    "adopt_product_error_identity(&mut context, &error);",
-    "let (status, code, message, error_kind) = product_error_policy(&error);",
-    "let context = AdminProductDiagnosticContext::from(&context);",
-    "let error = AdminProductDiagnosticError;",
-    "tracing::error!(",
-    "HttpError::new(status, code, message)",
-  ],
-  `${paths.source}: typed policy and shadowing order`,
-);
-for (const marker of [
-  "error = ?error",
-  "owner = ADMIN_PRODUCT_OWNER",
-  "tenant_id = %context.tenant_id",
-  "actor_id = %context.actor_id",
-  "product_id = ?context.product_id",
-  "operation = %context.operation",
-  "error_kind,",
-  "public_code = code",
-  "status = %status",
-  "boundary = ADMIN_PRODUCT_BOUNDARY",
-  '"commerce admin product operation failed"',
-]) requireText(mapper, marker, `${paths.source}: bounded product log site`);
-for (const forbidden of ["error.to_string()", "error.message", "format!("]) {
-  forbidText(mapper, forbidden, `${paths.source}: raw product diagnostic payload`);
+for (const forbidden of ["pub async fn list_products(", "pub async fn show_product(", "map_admin_product_error("]) {
+  forbidText(source, forbidden, `${paths.source}: unmounted compatibility read source stays removed`);
 }
-
-requireCount(source, "map_admin_product_error(", 6, "typed read mapper and five shared read failures");
 requireCount(adminSource, "map_admin_product_port_error(", 4, "four mounted read/write owner-port failures");
 for (const marker of [
-  "Permission::PRODUCTS_LIST",
-  "Permission::PRODUCTS_READ",
   "Permission::PRODUCTS_DELETE",
   "Permission::PRODUCTS_UPDATE",
-  '"list_products_count"',
-  '"list_products_page"',
-  '"list_product_translations"',
-  '"list_product_tags"',
-  '"show_product"',
   '"delete_product"',
   '"publish_product"',
   '"unpublish_product"',
-  ".get_product_with_locale_fallback(",
   ".delete_product(port_context.clone(), id)",
   ".publish_product(port_context.clone(), id)",
   ".unpublish_product(port_context.clone(), id)",
-  "product_translation_title_search_condition(",
-  "metrics::record_read_path_query(",
-  "metrics::record_read_path_budget(",
-  "PaginationMeta::new(pagination.page, pagination.limit(), total)",
 ]) requireText(source, marker, `${paths.source}: preserved route contract`);
+for (const marker of [
+  "Permission::PRODUCTS_LIST",
+  "Permission::PRODUCTS_READ",
+  "let requested_limit = params",
+  "let pagination = params.pagination.unwrap_or_default();",
+  ".unwrap_or(request_context.locale.as_str())",
+  "request_context.correlation_id.clone()",
+  ".product_catalog_read_port()",
+  ".list_admin_products(",
+  "rustok_product::AdminProductsRequest {",
+  ".read_product_projection(",
+  "map_admin_product_port_error(",
+  "metrics::record_read_path_budget(",
+  "PaginationMeta::new(products.page, products.per_page, products.total)",
+]) requireText(adminSource, marker, `${paths.adminSource}: preserved mounted read contract`);
 
 for (const marker of [
   "Permission::PRODUCTS_CREATE",
@@ -236,7 +181,7 @@ for (const marker of [
 ]) requireText(adminSource, marker, `${paths.adminSource}: preserved admin wrapper contract`);
 
 const portMapper = blockBetween(source,
-  "pub(crate) fn map_admin_product_port_error(", "/// Shared admin product list handler.", "owner-port mapper");
+  "pub(crate) fn map_admin_product_port_error(", "/// Shared admin product delete handler.", "owner-port mapper");
 for (const marker of ["AdminProductDiagnosticContext::from(&context)",
   "owner_code_length", "error.code.chars().count()", "PortErrorKind::Forbidden",
   "StatusCode::FORBIDDEN", "PortErrorKind::Unavailable | PortErrorKind::Timeout",

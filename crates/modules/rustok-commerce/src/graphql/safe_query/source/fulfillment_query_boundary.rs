@@ -51,7 +51,13 @@ pub(super) fn map_fulfillment_port_error(
         public_retryable,
     );
 
-    if matches!(&error.kind, PortErrorKind::NotFound) {
+    let optional_not_found = matches!(&error.kind, PortErrorKind::NotFound)
+        && error.code == "fulfillment.shipping_option_not_found";
+    if optional_not_found {
+        FulfillmentError::ShippingOptionNotFound(
+            fulfillment_id.or(order_id).unwrap_or_else(Uuid::nil),
+        )
+    } else if matches!(&error.kind, PortErrorKind::NotFound) {
         FulfillmentError::FulfillmentNotFound(fulfillment_id.or(order_id).unwrap_or_else(Uuid::nil))
     } else {
         FulfillmentError::Public(BoundaryError::Public {

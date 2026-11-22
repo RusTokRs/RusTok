@@ -288,11 +288,10 @@ fn require_admin_read_context(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    context
-        .require_policy(PortCallPolicy::read())
-        .inspect_err(|error| {
-            log_context_rejection(context, operation, "policy", error);
-        })?;
+    if let Err(error) = context.require_policy(PortCallPolicy::read()) {
+        log_context_rejection(context, operation, "policy", &error);
+        return Err(error);
+    }
     let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "payment.admin_read_context_invalid",

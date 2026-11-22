@@ -67,7 +67,10 @@ pub async fn rate_limit_for_paths(
     mut request: Request,
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
-    tracing::debug!(path = request.uri().path(), "rate_limit_for_paths entry");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(request.uri().path()),
+        "rate_limit_for_paths entry"
+    );
     request.headers_mut().remove(TRUSTED_CLIENT_IP_HEADER);
 
     if let Some(client_ip) = extract_effective_client_ip(
@@ -96,6 +99,7 @@ fn cleanup_task_has_external_owners(limiter: &Arc<RateLimiter>) -> bool {
 /// the complete limiter/cache alive forever.
 pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
     let mut interval = tokio::time::interval(Duration::from_secs(300));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         interval.tick().await;

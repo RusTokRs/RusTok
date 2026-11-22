@@ -16,6 +16,20 @@
 
 #![allow(clippy::collapsible_if)]
 
+/// Runtime module dependencies in registration order.
+pub const RUNTIME_DEPENDENCIES: &[&str] = &[
+    "tenant",
+    "cart",
+    "customer",
+    "product",
+    "region",
+    "pricing",
+    "inventory",
+    "order",
+    "payment",
+    "fulfillment",
+];
+
 mod collection_translation_changes;
 mod collection_translation_progress;
 mod collection_translation_progress_target;

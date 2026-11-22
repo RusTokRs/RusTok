@@ -14,12 +14,16 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use super::{CommerceHttpRuntime, admin::AdminErrorPolicy, common::ensure_permissions};
+use crate::controllers::{
+    CommerceHttpRuntime, admin::AdminErrorPolicy, common::ensure_permissions,
+};
 use crate::{
     CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError,
     CheckoutReconciliationAction, CheckoutReconciliationActionRequest, CheckoutReconciliationError,
     CheckoutReconciliationOutcome, CheckoutReconciliationService,
 };
+use rustok_order::error::OrderError;
+use rustok_payment::error::PaymentError;
 
 const ADMIN_CHECKOUT_OPERATION_OWNER: &str = "rustok_commerce.admin_checkout_operation";
 const ADMIN_CHECKOUT_OPERATION_BOUNDARY: &str = "commerce_admin_checkout_operation_http";
@@ -975,6 +979,30 @@ fn adopt_reservation_error_identity(
 ) {
     if let CheckoutInventoryReservationError::NotFound(id) = error {
         context.reservation_id = Some(*id);
+    }
+}
+
+fn adopt_payment_error_identity(
+    context: &mut AdminCheckoutOperationErrorContext,
+    error: &PaymentError,
+) {
+    match error {
+        PaymentError::PaymentCollectionNotFound(id) => context.payment_collection_id = Some(*id),
+        PaymentError::PaymentNotFound(id) => context.payment_id = Some(*id),
+        PaymentError::RefundNotFound(id) => context.refund_id = Some(*id),
+        _ => {}
+    }
+}
+
+fn adopt_order_error_identity(
+    context: &mut AdminCheckoutOperationErrorContext,
+    error: &OrderError,
+) {
+    match error {
+        OrderError::OrderNotFound(id) => context.order_id = Some(*id),
+        OrderError::OrderReturnNotFound(id) => context.order_return_id = Some(*id),
+        OrderError::OrderChangeNotFound(id) => context.order_change_id = Some(*id),
+        _ => {}
     }
 }
 

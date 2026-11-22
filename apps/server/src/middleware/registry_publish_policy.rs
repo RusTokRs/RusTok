@@ -12,7 +12,7 @@ use crate::services::marketplace_catalog::RegistryPublishRequest;
 const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_PUBLISH_BODY_BYTES: usize = 256 * 1024;
 
-fn is_publish_path(path: &str) -> bool {
+pub(super) fn is_publish_path(path: &str) -> bool {
     path.trim_end_matches('/') == PUBLISH_PATH
 }
 
@@ -27,9 +27,13 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     if request.method() != Method::POST || !is_publish_path(path) {
         return next.run(request).await;
     }
-    tracing::debug!(path, method = %request.method(), "registry_publish_policy::enforce entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(path),
+        method_group = super::http_stack::trace_method_family(request.method()),
+        "registry_publish_policy::enforce entry"
+    );
 
-    let (mut parts, body) = request.into_parts();
+    let (parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_PUBLISH_BODY_BYTES).await {
         Ok(bytes) => bytes,
         Err(_) => return bad_request("Registry publish body is invalid or too large"),
@@ -86,9 +90,20 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
         Ok(bytes) => bytes,
         Err(_) => return internal_error("Failed to normalize registry publish request"),
     };
-    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
-    request = Request::from_parts(parts, Body::from(normalized));
+    request = request_with_canonical_publish_body(parts, normalized);
     next.run(request).await
+}
+
+/// The canonicalized JSON body may differ in length and transfer framing.
+/// Retain the request's principal and unrelated headers but never forward
+/// transport-owned framing from the original HTTP request to the new body.
+fn request_with_canonical_publish_body(
+    mut parts: axum::http::request::Parts,
+    body: Vec<u8>,
+) -> Request<Body> {
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    parts.headers.remove(axum::http::header::TRANSFER_ENCODING);
+    Request::from_parts(parts, Body::from(body))
 }
 
 fn normalize_ownership(value: &str) -> Option<&'static str> {
@@ -138,7 +153,10 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_publish_path, normalize_ownership, normalize_trust_level};
+    use super::{
+        is_publish_path, normalize_ownership, normalize_trust_level,
+        request_with_canonical_publish_body,
+    };
 
     #[test]
     fn is_publish_path_handles_trailing_slashes() {
@@ -146,6 +164,28 @@ mod tests {
         assert!(is_publish_path("/v2/catalog/publish/"));
         assert!(!is_publish_path("/v2/catalog/publish/other"));
         assert!(!is_publish_path("/v2/catalog"));
+    }
+
+    #[test]
+    fn canonical_publish_body_clears_obsolete_transport_framing() {
+        use axum::body::Body;
+        use axum::http::{Request, header};
+
+        let request = Request::builder()
+            .uri("/v2/catalog/publish")
+            .header(header::CONTENT_LENGTH, "1024")
+            .header(header::TRANSFER_ENCODING, "chunked")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::empty())
+            .expect("test request");
+        let (parts, _) = request.into_parts();
+        let normalized = request_with_canonical_publish_body(parts, br#"{}"#.to_vec());
+        assert!(normalized.headers().get(header::CONTENT_LENGTH).is_none());
+        assert!(normalized.headers().get(header::TRANSFER_ENCODING).is_none());
+        assert_eq!(
+            normalized.headers().get(header::CONTENT_TYPE),
+            Some(&axum::http::HeaderValue::from_static("application/json"))
+        );
     }
 
     #[test]

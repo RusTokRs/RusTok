@@ -136,6 +136,7 @@ impl IndexReplayRetryPolicy {
 impl Default for IndexReplayRetryPolicy {
     fn default() -> Self {
         Self::new(5, Duration::from_secs(5), Duration::from_secs(300))
+            // INVARIANT: default replay retry policy must be valid
             .expect("default replay retry policy must be valid")
     }
 }
@@ -378,6 +379,7 @@ fn uuid_value(value: uuid::Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

@@ -20,6 +20,20 @@ The observer is global event-delivery infrastructure. It is not owned by Social 
 
 `Outbox` is an intentional not-applicable mode. The server exits before asking for `Arc<IggyTransport>`. Only `OutboxIggy` resolves the shared transport created by the event runtime. A missing active Iggy mode fails closed rather than being guessed.
 
+## Lifecycle ownership
+
+The physical scanner and its identifier-free observability companion share
+a process-local `EventDlqObserverInitializationLock`. It protects the
+check-stop → publish-handle boundary against concurrent starters and
+shutdown's handle snapshot. The tasks are supervised by their original
+`JoinHandle`; an already-finished handle is reported with a stable error
+diagnostic and retained for the shutdown join rather than overwritten.
+A host already stopping admits no new scanner or companion tasks.
+
+Static modes that intentionally have no background task remain valid and do
+not block event delivery. The lock is process-local; broker duplication,
+retention and recovery remain separately owned.
+
 ## Activation and startup isolation
 
 The observer is default-off:

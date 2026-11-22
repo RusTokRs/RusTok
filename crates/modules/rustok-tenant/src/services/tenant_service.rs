@@ -163,8 +163,9 @@ impl TenantService {
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
+        let slug = input.slug.trim().to_string();
         let slug =
-            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&slug)
                 .map_err(|e| TenantError::Validation(e.to_string()))?;
         tracing::debug!(slug = %slug, "ensuring tenant");
 
@@ -723,13 +724,12 @@ impl TenantService {
     }
 }
 
-/// Backend-portable unique-constraint detection, following the precedent in
-/// `rustok-rbac` GraphQL mutations: SQLx surfaces constraint failures in the
-/// error text on every supported backend ("UNIQUE constraint failed",
-/// "duplicate key value violates unique constraint", "Duplicate entry").
+/// Backend-portable unique-constraint detection using SeaORM's SQLSTATE discriminator.
 fn is_unique_violation(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string().to_lowercase();
-    message.contains("unique") || message.contains("duplicate")
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 /// Reject a host name that another tenant already claims.

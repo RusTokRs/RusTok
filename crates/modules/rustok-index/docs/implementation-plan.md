@@ -40,8 +40,8 @@ No Index/Inventory or Product step-8 readiness is promoted; existing audit statu
 - **IDX-CURSOR-BOUNDS Verified**: `domain/query.rs`, `application/cursor.rs`, and `application/localized_cursor.rs` enforce `MAX_QUERY_CURSOR_BYTES` (64 KiB) before Base64 decoding, preventing unbounded allocation.
 - **IDX-ROLLBACK-ERROR Verified**: All 13 transactional rollback failure paths in PostgreSQL adapters propagate typed storage errors instead of silently swallowing rollback failures.
 - **Verification Evidence**:
-  - `cargo test -p rustok-index`: 320/320 tests passed (302 lib + 18 integration across 11 test suites), 0 failures.
-  - `cargo test -p rustok-index-admin`: 16/16 tests passed (15 lib + 1 integration), 0 failures.
+  - `cargo test -p rustok-index`: 320/320 test cases succeeded (302 lib + 18 integration across 11 test suites), 0 failures.
+  - `cargo test -p rustok-index-admin`: 16/16 test cases succeeded (15 lib + 1 integration), 0 failures.
   - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED (clean diff invariants, architecture dependency guard passed, 0 clippy warnings across `--all-targets`).
   - Zero AI slop, strict FFA framework-agnostic `core/` separation with pure Rust unit tests.
 
@@ -834,6 +834,15 @@ locale)` cursor and targeted loads. Product delete/translation tombstones,
 This section retains historical milestone delivery and evidence markers required by module query contract verifiers:
 
 - M6 - add prepared repair recovery policy: source_complete_recovery_policy_pending
+- M6 bounded replay interruption, source timeout, and no-write dry-run
+- M6 reconciliation retry, dead-letter, recovery, and generic host scheduling
+- M6 bounded drift-finding inspection and persistence
+- M6 locale-optional persisted entity finding scope
+- Add bounded drift-finding inspection and persistence for already-computed digest mismatches.
+- Retained PostgreSQL harness evidence: `drift_finding_writer_postgres_test`, `drift_snapshot_reader_postgres_test`.
+- [ ] Run and admit `drift_snapshot_reader_postgres_test` evidence.
+- [ ] Add targeted repair with before/after admitted evidence.
+- M6 bounded stale-entity and orphan-link candidate contract: `source_complete`
 - M6 bounded stale-entity and orphan-link candidate contract: source_complete
 - [x] Add a database-neutral bounded candidate contract
 - M6 guarded exact-entity drift diagnosis operator
@@ -843,9 +852,14 @@ This section retains historical milestone delivery and evidence markers required
 - M6 source-version-fenced PostgreSQL drift snapshot reader
 - source_complete_owner_execution_pending
 - M6 drift finding lifecycle commands: complete
+- M6 drift finding lifecycle commands: `source_complete`
+- Status: `source_complete_targeted_repair_boundary_complete`.
+- Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.
 - M6 explicit source absence watermark registry, Product provider, and reader fence
 - real-migration Product locale-absence scenario
 - M6 bounded GraphQL sealed source-page diagnosis transport
+- [x] Expose one bounded source-page GraphQL mutation over the sealed method only.
+- M6 stale entity, orphan-link, lifecycle, and targeted repair
 - M6 - retain concrete repair execution evidence
 - source_complete_recovery_aware_owner_execution_pending
 - Bind missing-entity retry identity to the durable repair command UUID.

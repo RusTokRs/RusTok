@@ -20,12 +20,13 @@ const { RichTextFrameController } = await import(
 const { createEnvelope, emptyRichTextDocument, RICH_TEXT_MESSAGE_KEYS } =
   await import('../dist/core.mjs');
 
-function harness(t) {
+function harness(t, options = {}) {
   const listeners = new Map(),
     channels = [],
     changes = [],
     errors = [],
-    focus = [];
+    focus = [],
+    sends = [];
   const contentWindow = { postMessage() {} };
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   Object.defineProperty(globalThis, 'window', {
@@ -49,7 +50,7 @@ function harness(t) {
           onmessage: null,
           start() {},
           close() {},
-          postMessage() {},
+          postMessage: (value) => sends.push(value),
         };
         this.port2 = {};
         channels.push(this);
@@ -69,6 +70,7 @@ function harness(t) {
     onDocumentChange: (doc) => changes.push(doc),
     onError: (...args) => errors.push(args),
     onFocusChange: (value) => focus.push(value),
+    ...options,
   });
   t.after(() => {
     controller.destroy();
@@ -88,7 +90,7 @@ function harness(t) {
   const event = (sequence, type, payload) => ({
     data: createEnvelope(controller.session, sequence, { type, payload }),
   });
-  return { controller, connect, channels, changes, errors, focus, event };
+  return { controller, connect, channels, changes, errors, focus, event, sends };
 }
 
 test('destroyed controller ignores queued document, focus, error and malformed port events', async (t) => {
@@ -125,4 +127,106 @@ test('a live controller still accepts validated document updates', async (t) => 
   receive(h.event(2, 'document_changed', { document }));
   assert.deepEqual(h.changes, [document]);
   assert.deepEqual(h.errors, []);
+});
+
+test('a poisoned persisted draft is dropped and never sent to the frame', async (t) => {
+  const storage = new Map();
+  const previousStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage'
+  );
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+  });
+  t.after(() => {
+    if (previousStorage)
+      Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    else delete globalThis.localStorage;
+  });
+  const key = 'post-42';
+  storage.set(
+    `richtext_draft_${key}`,
+    JSON.stringify({
+      timestamp: 1,
+      doc: { type: 'doc', content: [{ type: 'javascript' }] }
+    })
+  );
+
+  const hostDocument = emptyRichTextDocument();
+  const h = harness(t, { draftKey: key, document: hostDocument });
+  h.connect();
+  const initialize = h.sends[0].message;
+  assert.equal(initialize.type, 'initialize');
+  assert.deepEqual(
+    initialize.payload.document,
+    hostDocument,
+    'a draft that fails validation must not reach the frame'
+  );
+  assert.equal(
+    storage.has(`richtext_draft_${key}`),
+    false,
+    'the poisoned draft must be cleared, not retried on every mount'
+  );
+  const receive = h.channels[0].port1.onmessage;
+  receive(h.event(1, 'initialized', { document: hostDocument }));
+  await h.controller.ready;
+  assert.deepEqual(h.errors, []);
+});
+
+test('a valid persisted draft initializes the frame instead of the host document', async (t) => {
+  const storage = new Map();
+  const previousStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage'
+  );
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+  });
+  t.after(() => {
+    if (previousStorage)
+      Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    else delete globalThis.localStorage;
+  });
+  const key = 'post-42';
+  const draft = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Drafted' }] }
+    ]
+  };
+  storage.set(
+    `richtext_draft_${key}`,
+    JSON.stringify({ timestamp: 1, doc: draft })
+  );
+
+  const h = harness(t, { draftKey: key });
+  h.connect();
+  const initialize = h.sends[0].message;
+  assert.equal(initialize.type, 'initialize');
+  assert.deepEqual(initialize.payload.document, draft);
+  const receive = h.channels[0].port1.onmessage;
+  receive(h.event(1, 'initialized', { document: draft }));
+  await h.controller.ready;
+  assert.deepEqual(h.errors, []);
+});
+
+test('a frame error before initialization rejects ready instead of pending forever', async (t) => {
+  const h = harness(t);
+  h.connect();
+  const receive = h.channels[0].port1.onmessage;
+  receive(
+    h.event(1, 'error', { code: 'invalid_document', message: 'unsafe link' })
+  );
+  await assert.rejects(h.controller.ready, /unsafe link/);
+  assert.deepEqual(h.errors, [['invalid_document', 'unsafe link']]);
 });

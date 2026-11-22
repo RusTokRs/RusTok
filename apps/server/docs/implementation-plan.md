@@ -1,5 +1,453 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — module dispatcher shutdown ownership (2026-11-22)
+
+The host startup reservation prevented two module dispatchers from
+starting, but not a different race: `spawn_module_event_dispatcher`
+could check the global stop signal, then lose a scheduling race
+against `shutdown_runtime_workers` taking
+`ModuleEventDispatcherHandle`. The direct startup API can be called
+outside `ServerBootstrapInitializationLock`, and shutdown previously
+took the dispatcher handle without an additional registration gate.
+If the direct caller then spawned and published after the snapshot,
+the dispatcher task was left running without a shutdown join owner.
+
+A new process-local `ModuleEventDispatcherRegistrationLock` guards
+the final check-stop → spawn → publish sequence and the shutdown
+snapshot. The same gate now covers the four child recovery worker
+starters that follow successful dispatcher startup: paid-order labels,
+marketplace financial, payment-provider events and product-media release.
+Shutdown obtains their handles under the matching gate. The stop check
+for every worker now occurs inside it, so shutdown either joins a
+published worker or a late starter is rejected. The product-media
+starter also adopts a drop-safe typed startup reservation instead of
+keeping a permanent marker after a failed/abandoned attempt. Existing
+startup reservations still exclude simultaneous publishers. The lock
+is released before any handle's graceful drain, preventing a teardown
+deadlock.
+
+Regression scenarios cover a held registration gate during
+concurrent shutdown and a stop signal arriving while a direct
+dispatcher startup waits for the gate. Additional scenarios exercise
+generic child-worker handle take and a payment recovery worker
+waiting for the gate during shutdown. These tests are authored
+but unrun.
+No build, formatting or runtime verification was executed.
+
+## Server audit continuation — EventBus transport registration race (2026-11-21)
+
+The server had two transport registration paths using
+`ServerRuntimeContext::shared_insert_if_absent`. The EventBus forwarder
+handled a losing insert by fetching the registered winner (with a
+fallback), but `transactional_event_bus_from_context` ignored the
+boolean and returned its locally created `OutboxTransport` even after
+a concurrent publisher had installed another transport. This can split
+transactional writes from the runtime transport selected by the
+forwarder, bypassing configured delivery behavior for one caller.
+
+Both paths now use the already-present
+`shared_get_or_insert_with::<Arc<dyn EventTransport>>` atomic
+singleton contract. It returns the exact published transport regardless
+of whether that caller created it. The event bus lifecycle/stop lock is
+unchanged, as are existing transaction writer contracts. New regression
+tests cover racing resolver calls, transactional construction and
+preinstalled transport ownership. Tests/build/format commands not run.
+
+## Server audit continuation — tenant HTTP error redaction (2026-11-21)
+
+`TenantResolutionError::error_message` previously returned
+`to_string()` for every non-policy error. Its Display includes the
+untrusted request Host, asserted tenant slug, configured domain names,
+header names and arbitrary validator reason strings. A malformed or
+oversized request could cause the API's error envelope to echo those
+identifiers verbatim, despite the nearby `TenantContextLoadError`
+already returning only stable public descriptions.
+
+Public tenant resolution errors now use static bounded messages while
+retaining all existing status codes, machine-readable error codes and
+typed internal error structure. This does not change which requests
+are admitted, nor the specific validation rules. A regression exercises
+all data-bearing variants with an overlong credential-like string and
+requires the actual serialized HTTP response to remain short and
+redacted. Tests, builds and formatting were not run.
+
+## Server audit continuation — middleware raw-path diagnostic closure (2026-11-21)
+
+The previous path-label audit fixed the root HTTP trace span, metrics-auth
+and rate-limit diagnostics, but a follow-up traversal of the middleware
+directory found seven more request entry points logging the original URI
+pathname: `auth_context`, `tenant`, `channel`, `locale`,
+`security_headers`, `registry_artifact_access`, and
+`registry_publish_policy`. These execute within the edge span and
+could still record unknown dynamic URL segments, account identifiers or
+credential-like path material on both success and failure.
+
+All those diagnostic sites now use the existing fixed
+`trace_path_family` rather than retaining separate sanitization
+policies. Registry log entries also bucket extension HTTP methods with
+the fixed `trace_method_family`. The original path and HTTP method are
+preserved for routing, authentication, CSP selection, and authorization.
+Existing middleware behavior tests plus the shared family helper's
+focused regression remain available to the maintainer; none were run.
+
+## Server audit continuation — bounded HTTP trace identifiers (2026-11-21)
+
+The edge `RusTokMakeSpan` already used bounded `path_group` after
+earlier audit changes, but it still copied arbitrary
+`x-request-id`, `x-correlation-id`, `traceparent` headers and
+custom HTTP method names into the root span as-is. Those fields are
+client-controlled and could be unbounded or contain credential-like
+strings even when no route matches.
+
+The trace-span boundary now accepts only canonical UUIDs or
+32-character hex trace IDs for request/correlation identifiers and
+strict W3C version-00 traceparent syntax with nonzero trace/span IDs.
+Missing, malformed and overlong values map to `-`, and extension
+HTTP methods map to `OTHER`. The validated fields retain ordinary
+correlation for UUID-based callers. No HTTP headers are rewritten;
+downstream request/response ID propagation remains unchanged.
+The focused unit test exercises accepted and rejected values and
+the fixed method vocabulary. Tests, build and formatting not run.
+
+## Server audit continuation — tenant cache-generation recovery semantics (2026-11-21)
+
+The tenant cache-generation listener already reconciled the shared backend
+generation on startup, subscription readiness, Pub/Sub gaps and a 30-second
+watchdog. However, its `recover_shared_generation` updated the tracker and
+backend generation without clearing the independent
+`ModuleEffectivePolicyCache`. Missing a tenant or platform invalidation
+therefore left cached effective authorizations in other tenants until TTL
+expiry, even as reconciliation reported a recovered durable offset. The
+ordinary in-order listener also acknowledged its tracker *before* clearing
+the policy and shared backend caches.
+
+The listener now holds one shared async transition gate across local bus,
+Redis handler and periodic recovery. A changed/unverified durable generation
+clears **all** effective policies and shared backends before advancing the
+recovered checkpoint; unchanged generations leave fresh caches intact.
+In-order events apply their local invalidations before acknowledging.
+Unrecognized bounded event keys cause a conservative full policy clear,
+never an acknowledgement with no policy effect. The canonical `*`
+manual-global key is explicitly recognized; nil tenant UUIDs instead
+fail over to the conservative global clear. The inner recovery helper
+avoids recursively acquiring the gate on a gap.
+
+New regressions cover missed generations, subsequent unrelated-tenant
+cache eviction on a gap, no-op unchanged reconciliation, invalid keys,
+and shared-lock ownership across listener clones. The full effect is
+process-local and does not claim distributed exactly-once delivery.
+No tests/build/format commands were run.
+
+## Server audit continuation — tenant locale generation transition ownership (2026-11-21)
+
+The tenant locale-generation listener is cloned into three independent
+local, Redis and periodic reconciliation task owners. All three previously
+ran asynchronous `current_generation`, cache invalidation and tracker
+acknowledgement concurrently, then separately set a single readiness flag.
+The bounded tracker protected individual map operations but did not protect
+the whole observe → invalidate → acknowledge → health sequence. An older
+in-flight recovery could therefore report readiness after a newer failure,
+or classify an event against a checkpoint that was being advanced by a
+different task.
+
+A shared `Arc<tokio::sync::Mutex<()>>` now serializes both
+`recover_if_advanced` and `handle_message` across every cloned listener.
+These entrypoints preserve the existing durable checks, full-cache clear
+fallback, failure reporting and retry behavior. The gate is held through
+the final readiness update; internal helpers do not recursively acquire it.
+A focused Tokio regression verifies both entrypoints wait for a lock
+held by another clone. This does not provide multi-replica serialization.
+No tests/builds/formatting were executed.
+
+## Server audit continuation — registry publish middleware parity (2026-11-21)
+
+The outer `registry_remote_claim::claim_atomic` middleware delegated only
+the exact `POST /v2/catalog/publish` pathname to the host publication
+metadata policy; the owning `registry_publish_policy::is_publish_path`
+explicitly accepted trailing slash variants. A routed alias could therefore
+reach the registry handler without the same ownership, trust-level and
+session-authority checks. Both boundaries now share the policy's canonical
+path recognizer; a focused regression covers exact and trailing slash
+variants and rejects non-publish/mismatched methods.
+
+The metadata policy also previously rewrote the JSON request body while
+retaining the incoming `Transfer-Encoding` header. The normalized-body
+constructor now drops both stale `Content-Length` and
+`Transfer-Encoding`, matching the already-correct MCP body-normalization
+pattern. A regression checks that unrelated headers survive.
+Source/runtime tests, builds and formatting remain maintainer-run.
+
+## Server audit continuation — production CORS authorization (2026-11-21)
+
+Production CORS previously inserted `http://127.0.0.1:5150` whenever
+the allow-list was absent or unusable, even though credentialed
+cross-origin access was enabled. The `RUSTOK_HOST`/`APP_HOST` fallback
+could also silently treat a production bind address (such as
+`0.0.0.0:5150`) as trusted browser-origin configuration. A local page
+could therefore be granted a browser CORS permission which no operator
+explicitly approved.
+
+`build_cors_layer` now leaves the production allow-list empty without
+valid explicit origins; `resolve_cors_allowed_origins_from_env` applies
+bind-host fallback in development only. Configured entries are parsed
+as actual HTTP(S) origins; embedded URL credentials, paths, queries,
+fragments and other schemes are rejected instead of being treated as
+arbitrary header strings. Wildcard listener addresses (`0.0.0.0`,
+`[::]`) are also rejected as explicit browser origins, rather than
+being normalized into localhost authorization. Valid origins are canonicalized before being
+passed to `CorsLayer`. This does not reject same-origin HTTP traffic
+and does not substitute for normal authentication. Focused regression
+tests cover missing/invalid origins, loopback, credentials and
+production-versus-development host fallback. Unrun per maintainer request.
+
+## Server audit continuation — bounded HTTP path diagnostics (2026-11-21)
+
+The edge `RusTokMakeSpan` traced `request.uri().path()` verbatim, and
+metrics-auth and both rate-limit middleware layers repeated this user input
+in debug diagnostics. A path can contain bearer-like reset links, account
+identifiers or arbitrary content even for unmatched routes; the tracing
+fields were not subject to the existing bounded Prometheus route-label
+policy.
+
+The shared `trace_path_family` helper in `middleware/http_stack.rs`
+exposes only fixed route families at the pre-routing boundary: exact public
+health/metrics/GraphQL entry points, generic API/admin buckets and a generic
+fallback. The edge span and middleware diagnostics use this bounded field.
+The original path is still used for policy matching and Axum route dispatch,
+while Prometheus continues to label matched route templates after routing.
+Unit regressions assert secrets in nested paths cannot become trace path
+fields, including lookalike `/apiary` prefixes. No runtime checks executed.
+
+## Server audit continuation — poison receipt SQL fallback type fix (2026-11-21)
+
+A review of the previous ambiguous DLQ publication patch found a Rust type
+error in `ConsumerPoisonReceiptStore::reserve_and_claim_in_transaction`.
+After a lost concurrent claim, the fallback decoded a `QueryResult` into
+a public `ConsumerPoisonReceipt` and then called
+`publishing_claim_expired(&current)` on the decoded receipt. That helper
+expects a raw `QueryResult` containing the SQL-only expiry alias.
+
+The fallback now reads the expiry alias before decoding and branches on the
+saved boolean, keeping the public neutral receipt free of publisher/lease
+metadata. Updated the existing source verifier to enforce the ordering.
+No test, compiler or formatting commands were executed.
+
+## Server audit continuation — global DLQ observer lifecycle (2026-11-21)
+
+The physical Event DLQ duplicate-alert observer and its telemetry companion
+were separate check-then-spawn paths: both called
+`shared_contains::<...Handle>()` before unconditionally publishing a
+`shared_insert`, without fencing shutdown. Concurrent direct invocations
+could orphan one live Tokio task or overwrite the handle, and a late caller
+could publish after shutdown had snapshotted workers. Repeated startup also
+silently treated a retained but exited handle as an active observer.
+
+The two starters now share an `EventDlqObserverInitializationLock`
+(`std::sync::Mutex`; neither startup function suspends while holding it).
+Shutdown takes the same lock after signaling stop and before taking its
+handle snapshot, preserving the bootstrap → runtime-workers → observer lock
+order. After acquisition, starters reject already-stopping hosts and check
+whether any retained task finished. An exited task remains registered for
+shutdown and emits a stable error diagnostic instead of being overwritten.
+Static no-task modes remain idempotent, and startup errors remain
+non-blocking for event delivery. Focused tests exercise completed handles
+and post-stop startup for each companion.
+
+No tests, compiler checks or rustfmt were executed; the maintainer owns
+verification and runtime contention evidence.
+
+## Server audit continuation — Social Graph observer lifecycle (2026-11-21)
+
+Two independent Social Graph Index operational observers (consumer position and
+neutral poison-receipt aggregate) used a check-then-spawn `shared_contains`
+check followed by an unconditional `shared_insert`. Concurrent external
+starters could each spawn a task and overwrite the other's shutdown handle.
+Repeated startup also returned success for a completed observer task, leaving
+health/metrics stale. Neither observer fenced startup during host shutdown.
+
+Both paths now reuse typed `ServerRuntimeStartReservation` and
+`published_worker_running` with initial, contended and post-reservation
+checks, then verify the common `StopHandle` before publishing and committing
+the reservation. A shared `SocialGraphObserverInitializationLock` serializes
+both direct observer starters with shutdown's handle snapshot. The startup
+lock order remains bootstrap → runtime worker initialization → observer;
+an observer never acquires an outer lock while owning its registration lock. A failed/invalid optional poll configuration releases the
+reservation; no broker offset or durable receipt is mutated.
+Unit regressions cover exited Tokio tasks and competing startup reservations.
+
+Also corrected the Social Graph raw-poison publication diagnostic unit test
+to match the previous fail-closed change: an ambiguous external send is
+`reconciliation required`, not a proven failed send.
+
+These tests were authored but not executed; no compilation, formatting or
+integration runs were performed per maintainer instruction.
+
+## Server audit continuation — ambiguous poison DLQ results (2026-11-21)
+
+Confirmed in `ConsumerPoisonReceiptStore` and the Forum Search/Social Graph
+raw-poison consumers: `claim_receipt_sql` reclaimed expired `publishing`
+receipts based only on time, while both consumers released the claim and
+reissued the same external Iggy send after a transport error. A broker send
+may have succeeded despite a missing response; lease expiry/release cannot
+prove non-delivery. This violates the durable-effect recovery decision.
+
+The connector now claims only `reserved` receipts; a still-active
+`publishing` receipt returns `Busy`, and an expired one reports
+`ReconciliationRequired` without updating its existing immutable identity,
+first-error diagnostics or publisher token. The original owner can still
+settle `published` after its lease expiry. The two consumers no longer
+release a `publishing` receipt or perform an automatic second broker send
+after an ambiguous send failure. The source offset remains uncommitted.
+
+Regression coverage includes SQLite expiry and PostgreSQL late-publisher
+reconciliation, and the existing retained execution/evidence contract and
+static guards were updated to assert this safer invariant. Runtime tests
+and format/compile checks remain unexecuted per maintainer instruction.
+
+**Limit:** This deliberately fails closed until an effect owner/operator
+verifies whether the external send committed. Neither generic lease expiry
+nor a deterministic Iggy message ID is enough to authorize replay. An
+authenticated operator reconciliation workflow with auditable evidence is
+still a separate required owner capability, not implemented in this patch.
+
+## Server audit continuation — post-receive broker shutdown fence (2026-11-21)
+
+Forum Search typed contract consumer, Product Index refresh and Social Graph
+Index consumer previously awaited broker delivery and shutdown in the same
+`tokio::select!`. When both futures were ready, Tokio could choose the receive
+branch even after the stop signal was already visible. The worker then started
+projection or raw-poison DLQ publication instead of draining. The durable
+broker cursor is not acknowledged by receive, so a returned-but-unprocessed
+delivery should remain recoverable after process restart.
+
+All three loops now perform a second stop check immediately after receiving,
+before *any* event or decode-failure handling. A shared helper in
+`stop_handle.rs` documents operation admission and has a deterministic
+post-await/stop-signal regression. The existing stop branches and durable
+acknowledgement contracts are unchanged.
+
+The new checks cannot guarantee that shutdown and effect execution are a
+cross-thread atomic operation; effect owners remain responsible for durable
+replay, attempt fencing and idempotency. Tests, cargo compilation and
+formatting were not run per maintainer request.
+
+## Server audit continuation — retry/shutdown operation admission (2026-11-21)
+
+Following the startup-liveness fixes in draft PR #4777, inspected the Comments
+schedule audit source-retry handoff and Notifications candidate/fanout worker
+operation sequences. The host already checked stop at the start of the worker
+cycle and batch item, but async intermediate calls could outlive that check:
+
+- Comments source-retry handoff could claim/publish up to 256 successive
+  canonical audit items in one cycle even after stop was signaled during
+  the first durable publish or failure transition.
+- Notification candidate/fanout workers could finish an async effective
+  policy lookup (or policy deferral) after stop and still begin a new
+  candidate, source materialization, or fanout job operation.
+
+The Comments cycle now accepts a shared stop receiver and checks it before
+the initial dead-letter sweep and every new claim. Existing claimed work is
+settled before checking again. Notifications now check stop at the
+**post-policy admission boundary** before the next effectful owner call.
+A focused deterministic Comments regression tests the per-claim admission
+predicate across a stop during an in-flight operation.
+
+These edits do not cancel a database transaction already started, repair
+cross-process crash side effects, or change owner lease/receipt semantics.
+The maintainer has not run tests, compilation, rustfmt, or runtime contention
+checks for this audit batch.
+
+## Server audit continuation — exited worker startup (2026-11-21)
+
+PR #4772 was merged into `main` at
+`356bffa3c1703b47d8edcaac86547bc120922295`. Its original branch is
+closed, so this follow-up uses `agent/server-recovery-startup-health-20261121`
+from that merge commit, rather than appending to an already merged PR.
+
+Thirteen host-owned durable worker starters returned success when they found a
+published handle, even when the underlying task had already exited. The same
+false-positive existed in the contested-reservation and post-claim checks of
+the seven individually claimed consumers; six other host workers use the
+serialized runtime initializer.
+That can make later bootstrap callers believe an inactive consumer was started,
+while its durable work is still waiting for recovery. A shared runtime helper
+now accepts only a live published handle, rejects a finished handle without
+replacing or orphaning it, and leaves absence available to an exclusive
+startup claim. A source regression tests absent, live, and finished states.
+
+Scope: Notifications intake/candidate/fanout; Forum Search inbox/contract
+consumer; Product Index refresh; Social Graph Index consumer; host Outbox
+relay/retention, Auth retention, remote executor reaper, SEO bulk worker and
+module transition watchdog. Owner-side
+receipt/idempotency handling and external recovery are unchanged. Runtime
+process restart remains necessary after an unexpected worker exit; automatic
+in-process replacement is not implied. No Cargo tests, compilation, rustfmt,
+or live concurrency checks were run, as requested by the maintainer.
+
+## Server audit continuation — dispatcher readiness and cancellation (2026-11-21)
+
+One accumulating draft PR: `agent/server-audit-continuation-20261121`,
+based on current main `b4ec15e92e8c328bd7ba32ed50347911cbbfac89`,
+after consolidated server fix PR #4771 merged as
+`ec4914cac06b19fb352e429c39e4ce044f81774a`.
+
+### Confirmed start-state and cleanup defects
+
+- `spawn_module_event_dispatcher` previously returned `Ok(())` when it
+  observed `ModuleEventDispatcherReservation` even if no worker handle
+  existed. The first caller could still fail or panic, so external callers
+  not using the host bootstrap mutex could treat an unstarted listener
+  registry as successfully initialized.
+- A published dispatcher handle was treated as success even while the
+  required listener flag had not yet been stored, or after the worker
+  terminated unexpectedly. Readiness must check both a live loop and a
+  required-listener flag rather than the presence of a typed value alone.
+- The dispatcher and three optional recovery worker starters manually
+  removed their reservation only in selected error branches. A panic while
+  constructing a dispatcher or a dependent worker could strand the
+  reservation and prevent subsequent retry in the same runtime.
+- `connect_runtime_workers_with_runtime` is also exposed directly, outside
+  router bootstrap's `ServerBootstrapInitializationLock`. It holds an
+  independent artifact-maintenance initialization mutex while spawning other
+  host workers. Shutdown previously awaited only router-bootstrap admission
+  before taking its handle snapshot, so a direct initializer already inside
+  that independent mutex could publish a fresh handle *after* shutdown had
+  taken its corresponding slot. The newly spawned task would then have no
+  remaining host-owned `JoinHandle` to drain.
+
+### Fix and tests
+
+- Introduced `claim_module_dispatcher_start`, which returns idempotent
+  success only for an already-published *running* dispatcher with a true
+  `ModuleEventDispatcherRequirement`. A competing in-flight startup
+  instead returns an explicit retryable initialization error. A finished
+  registered worker is not reported as ready.
+- Reused `ServerRuntimeStartReservation` for dispatcher startup, paid
+  order label, marketplace financial and payment provider recovery.
+  `Drop` releases a claim on ordinary error, dependency unavailability,
+  or unwind; successful publication uses `commit()` to retain ownership.
+- Added focused source tests proving contention is not readiness,
+  cancellation/error and panic release a claim, and a handle without its
+  required-listener flag is rejected. Existing startup tests cover
+  missing EventRuntime and module listener registration.
+- Shutdown now waits for any direct runtime-worker initializer under the
+  existing `ModuleArtifactMaintenanceInitializationLock` after signaling
+  `StopHandle` and taking the router-bootstrap mutex. Both initializers
+  observe consistent lock ordering. The lock is released before `tokio::join!`
+  so artifact-maintenance drain can reacquire it without deadlock. A
+  regression simulates a direct initializer that registers an auth retention
+  task *after* the stop signal and verifies shutdown still removes/drains
+  the resulting handle after the initializer releases its mutex.
+
+**Validation handoff:** The user owns tests. No Cargo checks, tests, formatting,
+linters or live concurrency exercises have been run in this continuation.
+Recommended: `cargo check -p rustok-server --lib`,
+`cargo test -p rustok-server --lib services::module_event_dispatcher`, and
+`cargo test -p rustok-server --lib services::app_lifecycle::tests`,
+plus a multithreaded double-start/shutdown exercise. These guarantees
+remain per-runtime; the patch does not implement process restart,
+distributed leader election or broker exactly-once delivery.
+
 ## Installer HTTP admission cancellation follow-up (2026-11-21)
 
 Branch: `agent/server-installer-admission-cancellation-20261121`, based on
@@ -979,7 +1427,7 @@ The default `rustok-rbac` crate compiled on exact PR #2747 head
 The server owns the process-level watchdog that reconciles the authoritative
 RBAC database generation with the generation applied to local permission
 snapshots. The cycle-001 RBAC source slice instruments that existing worker; it
-does not create a second counter, cache authority, listener or recovery path.
+does not create a second counter, cache authority, listener or recovery path; it remains the only recovery path.
 
 The host adapter now reports through the canonical `rustok-telemetry` registry:
 
@@ -2159,3 +2607,173 @@ cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_c
 cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
 cargo test -p rustok-server --lib services::oauth_admin_guard::tests::guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling
 ```
+
+
+## P29 — Supervise HTTP installer jobs and retry durable claim finalization (2026-11-21)
+
+The HTTP installer already persisted its job before executing the plan, but the
+claim-to-execution task was a raw tokio::spawn. The global shutdown drain did not
+own or join it. A transient database error or a lost commit response during job
+creation/finalization could also leave a durable running row even when the
+corresponding write had committed.
+
+### Implemented
+
+- Added a runtime-owned installer task registry backed by JoinSet. Admission
+  and shutdown closure share one mutex fence: a racing request is either
+  registered before the drain snapshot or rejected after admission closes.
+- Shutdown now waits up to 60 seconds for accepted installer work, then aborts
+  and joins remaining tasks. The drain runs with other producers and completes
+  before the event forwarder is stopped.
+- The installer reservation guard now releases only the matching job ID.
+- Job creation retries the same generated ID and reconciles an ambiguous insert
+  by reading back the exact persisted running row (ID, session, status, and
+  submitted timestamp).
+- Success and failure terminal writes use bounded exponential backoff and
+  read-after-error reconciliation. A terminal state already committed is
+  treated as success; a still-running row receives another safe compare-and-set
+  attempt.
+- Added regression coverage for registry shutdown admission/draining, bounded
+  abort, ambiguous create recovery, and idempotent failure finalization.
+
+### Remaining crash-recovery boundary
+
+A hard process crash, or a shutdown timeout during an ambiguous claim write or
+after executor entry, can still leave the durable HTTP job in running. The patch deliberately does not replay
+an installer automatically: external side effects may have happened even when
+the final receipt or HTTP-job transition was not observed. The session's
+attempt-generation/receipt fence remains authoritative; an operator must
+reconcile durable receipts and session state before releasing the global
+installer fence. A separate ADR is still required for a durable job lease,
+heartbeat, and safe operator reconciliation workflow.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+- cargo fmt --all -- --check
+- cargo check -p rustok-server --lib
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_creation_reconciles_an_ambiguous_duplicate_insert
+- cargo test -p rustok-server --lib controllers::installer::tests::installer_http_job_failure_finalization_accepts_an_already_committed_state
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::installer_job_tasks_are_drained_and_admission_closes
+- cargo test -p rustok-server --lib services::app_lifecycle::installer_job_task_registry_tests::stuck_installer_job_tasks_are_aborted_after_the_grace_timeout
+
+
+## P30 — Prevent catch-up bursts in maintenance timers (2026-11-21)
+
+A final pass over periodic server maintenance loops found two intervals still
+using Tokio's default Burst missed-tick policy: Redis status monitoring and
+rate-limit cache cleanup. If either operation ran longer than its interval,
+the next loop iterations could execute immediately to catch up, adding load
+precisely while the dependency or cache was slow.
+
+- Set both timers to MissedTickBehavior::Delay. Their first-tick behavior is
+  unchanged; after a delayed run, the next poll is scheduled relative to the
+  completed tick instead of replaying missed intervals.
+- Other audited periodic workers already use Delay or Skip, or use a sleep
+  after each completed cycle; no retry/replay semantics were changed.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.
+
+
+## P31 — Bound Comments TCP listener concurrency and accept retries (2026-11-21)
+
+The opt-in Comments TCP listener accepted an arbitrary positive connection
+limit and passed it directly to Tokio's semaphore constructor. Tokio panics
+when the permit count exceeds its supported maximum, so a configuration typo
+could silently turn a successful bootstrap into a failed listener task. The
+accept loop also retried persistent TCP accept errors immediately, producing
+a CPU and logging hot loop for conditions such as descriptor exhaustion.
+
+- Added explicit bounds for 1..=128 concurrent connections and 1..=8 MiB
+  frames, preventing an operator setting from multiplying unbounded per-frame
+  allocations across thousands of connections.
+- Bounded the pre-request timeout and shutdown grace to 1..=60,000 ms, and made
+  the runtime join budget equal to the configured grace plus a five-second
+  abort/join margin.
+- Added exponential accept-error backoff from 100 ms to 5 seconds.
+- The backoff wait is interrupted immediately by the shared shutdown signal.
+- Added tests for the configuration bounds, retry progression/cap, and shutdown
+  interruption.
+
+Not run at the user's request. Verify with cargo fmt --all -- --check and
+cargo check -p rustok-server --lib before merge.
+
+
+## P32 — Make Comments worker startup cancellation-safe and truthful (2026-11-21)
+
+A lifecycle pass found two opt-in Comments workers that did not follow the
+server's shared startup-reservation contract. The TCP listener manually removed
+its marker only after a returned error, so cancellation while awaiting bind
+could strand the marker permanently. Both the listener and source-retry handoff
+worker returned `Ok(())` to a competing starter while the first startup was
+still in progress. They also admitted a task after shutdown had already been
+signalled, and an already-finished task handle was treated as an idempotently
+running worker.
+
+- Replaced manual marker cleanup with `ServerRuntimeStartReservation`; failed
+  or cancelled preparation releases only its own claim, while successful
+  publication retains the process-local owner marker.
+- Concurrent callers now return an explicit startup-in-progress error with
+  retry guidance unless a live handle has already been published.
+- Both workers reject startup after the shared stop signal and recheck it
+  immediately before spawning.
+- A finished published task is reported as exited, not as a successful
+  running worker; automatic restart remains intentionally unsupported and
+  readiness continues to report the failed required worker.
+- Corrected the Comments TCP max-connections regression assertion: the bound
+  is 128, not the unrelated value 4096.
+- Added focused lifecycle regressions for shutdown admission and finished
+  task handles. Existing `ServerRuntimeStartReservation` tests cover
+  cancellation cleanup and single-owner contention.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and the focused
+`comments_provider_runtime_base::tests` and
+`comments_provider_runtime_keyring_schedule_audit_handoff_worker::source_retry::source_retry_worker_tests`
+suites.
+
+
+## P33 — Repair Redis rate-limit counters without expiry (2026-11-21)
+
+The Redis fixed-window script set `EXPIRE` only when `INCR` returned 1.
+A pre-existing or restored counter key without a TTL therefore remained
+permanent: subsequent requests kept incrementing it, while the middleware
+reported a one-second retry delay forever.
+
+- The atomic script now checks the key TTL in milliseconds on every increment
+  and attaches the configured window whenever the key exists without an expiry.
+  Reset and Retry-After values round up to whole seconds, avoiding early retry
+  instructions from floor-rounded TTLs.
+- If Redis still reports a negative TTL after the repair attempt, the script
+  returns an error. The middleware treats that as backend unavailable (503),
+  preserving fail-closed behavior instead of silently creating a permanent
+  rate-limit lockout.
+- Added a regression assertion for the script's expiry-repair and fail-closed
+  contract. No Redis server is required by this source-level test.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::rate_limit_base::diagnostic_tests::redis_rate_limit_script_repairs_counters_without_expiry`.
+
+
+## P34 — Preserve verified runner access across artifact download dispatch (2026-11-21)
+
+The composed router validates the host-only runner token in
+`registry_artifact_access` and strips the secret header before controllers run.
+The artifact-download controller then attempted to validate the removed header
+again, so a correctly authenticated remote runner received 401 instead of the
+private artifact.
+
+- Added an internal `VerifiedRegistryRunnerAccess` request extension only for
+  artifact downloads whose runner token passed constant-time validation.
+- The controller trusts that marker, while retaining its user-authority check
+  and direct-handler fallback. The shared secret remains absent from controller
+  headers and downstream request processing.
+- Added an Axum middleware regression test proving that the verified marker
+  reaches the download handler while the token header does not.
+
+Not run at the user's request. Verify with `cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`, and
+`cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.

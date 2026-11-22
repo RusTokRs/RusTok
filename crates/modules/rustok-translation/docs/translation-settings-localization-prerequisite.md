@@ -31,6 +31,8 @@ Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, sou
 
 `rustok-modules-translation` contains no database access and does not own Settings persistence. It provides the pure mapping used by the registered runtime provider.
 
+The neutral validate/apply command mapping source-ready boundary ends here: this crate does **not** execute the prepared commands. Only the runtime registration/execution slice remains.
+
 ### Patch validation
 
 `StaticSettingsTranslationIdentity::validate_patch_against_snapshot` validates one neutral `TranslationPatchRequest` against a stable `StaticSettingsExactLocaleSnapshot`.

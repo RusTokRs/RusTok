@@ -152,7 +152,7 @@ for (const marker of [
 
 requireMarker(
   adminNativeRoot,
-  'include!("native_server_adapter/mapping.rs")',
+  "map_search_preview_payload",
   adminNativeRootPath,
 );
 for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"]) {

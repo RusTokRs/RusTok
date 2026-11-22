@@ -446,7 +446,7 @@ where
 #[cfg(not(feature = "test-transport-fallback"))]
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
-        "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",
+        "event transport does not support owner-transaction writes; configured reliability is {:?}",
         transport.reliability_level()
     ))
 }

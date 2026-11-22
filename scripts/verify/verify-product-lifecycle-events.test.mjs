@@ -121,7 +121,7 @@ pub async fn archive_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) 
 }
 
 pub async fn update_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
-    let will_archive = match input.status.as_ref() {
+    let will_archive = match input_status.as_ref() {
         Some(status) => *status == entities::product::ProductStatus::Archived,
         _ => false,
     };
@@ -151,7 +151,7 @@ pub async fn update_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
 
 pub async fn delete_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {}
 `,
-  'crates/modules/rustok-product/src/catalog_command_port.rs': `pub trait ProductCatalogCommandPort {
+  'crates/modules/rustok-product/ports/src/ports.rs': `pub trait ProductCatalogCommandPort {
     async fn publish_product(
         &self,
         context: PortContext,
@@ -164,6 +164,8 @@ pub async fn delete_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
         product_id: Uuid,
     ) -> Result<ProductResponse, PortError>;
 }
+`,
+  'crates/modules/rustok-product/src/catalog_command_port.rs': `use crate::ports::ProductCatalogCommandPort;
 
 impl ProductCatalogCommandPort for CatalogService {
     async fn archive_product(
@@ -411,8 +413,8 @@ test('unpublish publishing the generic updated event fails the contract', () => 
 
 test('archive missing from the owner port fails the contract', () => {
   const fixtureRoot = writeFixture({
-    'crates/modules/rustok-product/src/catalog_command_port.rs': canonicalFiles[
-      'crates/modules/rustok-product/src/catalog_command_port.rs'
+    'crates/modules/rustok-product/ports/src/ports.rs': canonicalFiles[
+      'crates/modules/rustok-product/ports/src/ports.rs'
     ].replace(
       `    async fn archive_product(
         &self,

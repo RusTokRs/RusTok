@@ -1,15 +1,18 @@
 use crate::error::{Error, Result};
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle, JoinSet};
 
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
+use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 #[cfg(feature = "mod-seo")]
 use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
@@ -236,6 +239,38 @@ struct ModuleArtifactMaintenanceInitializationLock(std::sync::Arc<tokio::sync::M
 
 impl ModuleArtifactMaintenanceInitializationLock {
     fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Serializes the physical DLQ duplicate scanner and its companion's
+/// admission with shutdown's JoinHandle snapshot. Only synchronous operations
+/// run while this lock is held, including the async scanner starter (which has
+/// no await points); it is distinct from the router bootstrap mutex.
+#[derive(Clone, Default)]
+pub(crate) struct EventDlqObserverInitializationLock(
+    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
+);
+
+impl EventDlqObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Serializes both Social Graph operational observers' handle publication
+/// against the runtime shutdown snapshot. This lock is independent of the
+/// bootstrap lock: direct observer starters also use it without needing to
+/// acquire the bootstrap lock recursively.
+#[cfg(feature = "mod-social_graph")]
+#[derive(Clone, Default)]
+pub(crate) struct SocialGraphObserverInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+#[cfg(feature = "mod-social_graph")]
+impl SocialGraphObserverInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
         ctx.shared_get_or_insert_with(Self::default)
     }
 }
@@ -482,7 +517,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         RuntimeWorkerSnapshot {
             name: "comments_tcp_listener",
             required: local && ctx.shared_contains::<CommentsTcpListenerTask>(),
-            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.0.is_finished()),
+            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.task.is_finished()),
         },
         #[cfg(feature = "mod-comments")]
         RuntimeWorkerSnapshot {
@@ -633,7 +668,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
     let stop_rx = stop_handle.subscribe();
 
-    if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
+    if !published_worker_running::<OutboxRelayWorkerHandle>(
+        &runtime_ctx,
+        "Outbox relay worker",
+        OutboxRelayWorkerHandle::is_finished,
+    )? {
         let event_runtime = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .ok_or_else(|| Error::Message("EventRuntime not initialized".to_string()))?;
@@ -643,7 +682,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
     }
 
-    if !runtime_ctx.shared_contains::<OutboxRetentionWorkerHandle>() {
+    if !published_worker_running::<OutboxRetentionWorkerHandle>(
+        &runtime_ctx,
+        "Outbox retention worker",
+        OutboxRetentionWorkerHandle::is_finished,
+    )? {
         let retention_config = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .and_then(|runtime| runtime.outbox_retention.clone());
@@ -656,7 +699,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.background_workers.auth_retention_enabled
-        && !runtime_ctx.shared_contains::<AuthRetentionWorkerHandle>()
+        && !published_worker_running::<AuthRetentionWorkerHandle>(
+            &runtime_ctx,
+            "Auth retention worker",
+            AuthRetentionWorkerHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_auth_retention_handle(
             runtime_ctx.db_clone(),
@@ -665,7 +712,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.registry.remote_executor.enabled
-        && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
+        && !published_worker_running::<RemoteExecutorReaperHandle>(
+            &runtime_ctx,
+            "Remote executor reaper",
+            RemoteExecutorReaperHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(spawn_remote_executor_reaper_handle(
             runtime_ctx.clone(),
@@ -675,7 +726,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+    if seo_worker_enabled && !published_worker_running::<SeoBulkWorkerHandle>(
+        &runtime_ctx,
+        "SEO bulk worker",
+        SeoBulkWorkerHandle::is_finished,
+    )? {
         let authorization = SeoWorkerAuthorization::from_runtime_config(
             settings.runtime.runs_background_workers(),
             seo_worker_enabled,
@@ -699,7 +754,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     if settings.runtime.runs_background_workers()
-        && !runtime_ctx.shared_contains::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>()
+        && !published_worker_running::<ModuleTransitionWatchdogHandle>(
+            &runtime_ctx,
+            "Module transition watchdog",
+            ModuleTransitionWatchdogHandle::is_finished,
+        )?
     {
         runtime_ctx.shared_insert(
             crate::services::module_transition_watchdog::spawn_module_transition_watchdog_handle(
@@ -736,6 +795,136 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     Ok(())
 }
 
+const INSTALLER_JOB_SHUTDOWN_GRACE: Duration = Duration::from_secs(60);
+const INSTALLER_JOB_ABORT_JOIN_GRACE: Duration = Duration::from_secs(5);
+
+struct InstallerJobTaskRegistry {
+    state: Mutex<InstallerJobTaskRegistryState>,
+}
+
+struct InstallerJobTaskRegistryState {
+    closed: bool,
+    tasks: JoinSet<()>,
+}
+
+impl Default for InstallerJobTaskRegistry {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(InstallerJobTaskRegistryState {
+                closed: false,
+                tasks: JoinSet::new(),
+            }),
+        }
+    }
+}
+
+impl InstallerJobTaskRegistry {
+    fn spawn<F>(&self, task: F) -> bool
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            return false;
+        }
+
+        // Reap completed jobs before admitting another one. The JoinSet keeps
+        // ownership of every live task and makes panics observable.
+        while let Some(result) = state.tasks.try_join_next() {
+            observe_installer_job_task_result(result);
+        }
+        let _abort_handle = state.tasks.spawn(task);
+        true
+    }
+
+    async fn drain(&self) {
+        self.drain_with_timeout(INSTALLER_JOB_SHUTDOWN_GRACE, INSTALLER_JOB_ABORT_JOIN_GRACE)
+            .await;
+    }
+
+    async fn drain_with_timeout(&self, grace: Duration, abort_join_grace: Duration) {
+        let mut tasks = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.closed = true;
+            std::mem::replace(&mut state.tasks, JoinSet::new())
+        };
+
+        if tasks.is_empty() {
+            return;
+        }
+
+        let pending = tasks.len();
+        tracing::info!(pending, "Draining accepted installer HTTP jobs");
+        let drained = tokio::time::timeout(grace, async {
+            while let Some(result) = tasks.join_next().await {
+                observe_installer_job_task_result(result);
+            }
+        })
+        .await;
+
+        if drained.is_err() {
+            let pending = tasks.len();
+            tracing::error!(
+                pending,
+                "Installer HTTP job shutdown grace expired; aborting in-flight work and leaving any durable running claim in place for operator reconciliation"
+            );
+            tasks.abort_all();
+            let joined = tokio::time::timeout(abort_join_grace, async {
+                while let Some(result) = tasks.join_next().await {
+                    observe_installer_job_task_result(result);
+                }
+            })
+            .await;
+            if joined.is_err() {
+                tracing::error!(
+                    pending = tasks.len(),
+                    "Installer HTTP job tasks did not finish after abort; dropping the JoinSet will abort remaining tasks"
+                );
+            }
+        }
+    }
+}
+
+fn observe_installer_job_task_result(result: std::result::Result<(), JoinError>) {
+    if let Err(error) = result {
+        if error.is_cancelled() {
+            tracing::warn!("Installer HTTP job task was cancelled during shutdown");
+        } else {
+            tracing::error!(
+                panicked = error.is_panic(),
+                "Installer HTTP job task exited without completing normally"
+            );
+        }
+    }
+}
+
+/// Register an HTTP installer job in the runtime-owned JoinSet.
+///
+/// The registry's close operation is serialized with task admission, so a
+/// request racing shutdown is either included in the drain or rejected.
+pub(crate) fn spawn_installer_job_task<F>(ctx: &ServerRuntimeContext, task: F) -> bool
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let registry =
+        ctx.shared_get_or_insert_with(|| std::sync::Arc::new(InstallerJobTaskRegistry::default()));
+    registry.spawn(task)
+}
+
+/// Close installer-job admission and join all accepted tasks before the event
+/// forwarder is drained.
+pub(crate) async fn drain_installer_job_tasks(ctx: &ServerRuntimeContext) {
+    let registry =
+        ctx.shared_get_or_insert_with(|| std::sync::Arc::new(InstallerJobTaskRegistry::default()));
+    registry.drain().await
+}
+
 /// Stops all runtime workers that were registered during server bootstrap.
 pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // Publish shutdown even when startup has not created a stop handle yet.
@@ -749,6 +938,41 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // bootstrap that was already running will not start long-lived work.
     let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _bootstrap_guard = bootstrap_initialization.lock().await;
+
+    // Router bootstrap holds the lock above, but this public startup function
+    // can also be invoked directly. It uses the artifact maintenance lock
+    // across *all* additional worker registration. Wait for that caller to
+    // finish before the shutdown snapshot, or a late worker could publish its
+    // handle after the drain already took the old value.
+    //
+    // Lock order matches router bootstrap: bootstrap -> runtime workers.
+    // Release the workers lock before join! (the artifact worker's own drain
+    // acquires it again). New callers see the stop flag after acquiring it
+    // and do not start more workers.
+    let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
+    let _worker_initialization_guard = worker_initialization.0.lock().await;
+    drop(_worker_initialization_guard);
+
+    // Direct observer startup can bypass router bootstrap. Wait for each
+    // observer's check-stop -> spawn -> publish sequence to complete before
+    // taking the shutdown JoinHandle snapshot. Lock order is bootstrap ->
+    // runtime workers -> observer; observer starters never acquire either
+    // outer lock while holding this one.
+    #[cfg(feature = "mod-social_graph")]
+    let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
+    #[cfg(feature = "mod-social_graph")]
+    let _observer_initialization_guard = observer_initialization.0.lock().await;
+    #[cfg(feature = "mod-social_graph")]
+    drop(_observer_initialization_guard);
+
+    // Direct DLQ observer/projection startup may bypass router bootstrap.
+    // Synchronize both check-stop -> publish paths with the shutdown snapshot.
+    let dlq_observer_initialization = EventDlqObserverInitializationLock::ensure(runtime_ctx);
+    let _dlq_observer_guard = dlq_observer_initialization
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    drop(_dlq_observer_guard);
 
     let timeout_duration = Duration::from_secs(5);
 
@@ -792,6 +1016,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     // task ownership after HTTP callers discard JoinHandles, and closes new
     // admission while allowing a bounded grace period for accepted sends.
     let auth_email_drain = crate::services::email::drain_auth_email_tasks(runtime_ctx);
+    let installer_job_drain = drain_installer_job_tasks(runtime_ctx);
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
@@ -862,9 +1087,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let module_event_dispatcher_drain = async {
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>(
-        ) {
+        if let Some(worker) =
+            crate::services::module_event_dispatcher::take_module_dispatcher_for_shutdown(runtime_ctx)
+        {
             // Request a cooperative drain first; the bounded helper aborts and
             // joins the dispatcher if an in-flight handler exceeds the deadline.
             worker.request_stop();
@@ -901,7 +1126,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
                 .shared_take::<crate::services::comments_provider_runtime::CommentsTcpListenerTask>(
                 )
         {
-            await_runtime_worker_shutdown("Comments TCP listener", Some(listener_task.0)).await;
+            await_runtime_worker_shutdown_with_timeout(
+                "Comments TCP listener",
+                Some(listener_task.task),
+                listener_task.shutdown_timeout,
+            )
+            .await;
         }
         runtime_ctx
             .shared_remove::<crate::services::comments_provider_runtime::CommentsTcpListenerHandle>(
@@ -927,7 +1157,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-commerce")]
     let paid_order_label_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Paid-order label", worker.into_task()).await;
         }
     };
@@ -936,7 +1166,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "commerce-marketplace-financial")]
     let marketplace_financial_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Marketplace financial", worker.into_task()).await;
         }
     };
@@ -945,7 +1175,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-payment")]
     let payment_provider_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Payment provider event", worker.into_task()).await;
         }
     };
@@ -954,7 +1184,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-product")]
     let product_media_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>() {
+        if let Some(worker) = crate::services::module_event_dispatcher::take_dispatcher_started_worker_for_shutdown::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Product media release", worker.into_task()).await;
         }
     };
@@ -1222,6 +1452,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         retention_drain,
         auth_retention_drain,
         auth_email_drain,
+        installer_job_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -1845,6 +2076,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shutdown_drains_handles_published_by_an_in_flight_direct_worker_initializer() {
+        // Direct calls to connect_runtime_workers_with_runtime use this lock
+        // without taking the router bootstrap lock. Simulate one such caller
+        // that already passed its stop check but has not yet published a handle.
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = super::ModuleArtifactMaintenanceInitializationLock::ensure(&ctx);
+        let guard = initialization.0.lock().await;
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        let stop = super::StopHandle::ensure(&ctx);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !stop.is_stopping() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown must broadcast the stop signal");
+
+        assert!(
+            !shutdown.is_finished(),
+            "shutdown cannot snapshot handles until direct startup releases its lock"
+        );
+
+        // The old implementation could take its snapshot here, then lose this
+        // newly registered handle forever. Use a trivially stoppable task so
+        // the test does not spend the full five-second forced-abort deadline.
+        let (task_finished_tx, task_finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _ = task_finished_tx.send(());
+        });
+        ctx.shared_insert(super::AuthRetentionWorkerHandle {
+            instance_id: 1,
+            _handle: task,
+        });
+        drop(guard);
+
+        tokio::time::timeout(Duration::from_secs(5), shutdown)
+            .await
+            .expect("shutdown should drain after initializer exits")
+            .expect("shutdown task should complete");
+        task_finished_rx.await.expect("late task should have run");
+        assert!(
+            !ctx.shared_contains::<super::AuthRetentionWorkerHandle>(),
+            "late-registered handle must be removed and joined by the drain"
+        );
+    }
+
+    #[tokio::test]
     async fn background_worker_startup_fails_when_required_durable_storage_is_missing() {
         use crate::common::settings::RuntimeHostMode;
 
@@ -1998,7 +2283,10 @@ mod tests {
             instance_id: 1,
             local_addr: std::net::SocketAddr::from(([127, 0, 0, 1], 9000)),
         });
-        ctx.shared_insert(CommentsTcpListenerTask(task));
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task,
+            shutdown_timeout: Duration::from_secs(6),
+        });
 
         super::shutdown_runtime_workers(&ctx).await;
 
@@ -2424,7 +2712,10 @@ mod tests {
         let listener_task = tokio::spawn(async move {
             let _ = listener_stop.changed().await;
         });
-        ctx.shared_insert(CommentsTcpListenerTask(listener_task));
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task: listener_task,
+            shutdown_timeout: Duration::from_secs(6),
+        });
 
         let mut handoff_stop = stop.subscribe();
         let handoff_task = tokio::spawn(async move {
@@ -2471,5 +2762,86 @@ mod tests {
 
         assert!(!runtime_ctx.shared_contains::<super::ModuleWorkSchedulerHandle>());
         assert!(super::StopHandle::ensure(&runtime_ctx).is_stopping());
+    }
+}
+
+
+#[cfg(test)]
+mod installer_job_task_registry_tests {
+    use super::{
+        drain_installer_job_tasks, spawn_installer_job_task, InstallerJobTaskRegistry,
+    };
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn installer_job_tasks_are_drained_and_admission_closes() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        let ctx = super::ServerRuntimeContext::new(
+            db,
+            crate::common::settings::RustokSettings::default(),
+        );
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        assert!(spawn_installer_job_task(&ctx, async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+        }));
+        started_rx.await.expect("installer task started");
+
+        let drain_ctx = ctx.clone();
+        let drain = tokio::spawn(async move {
+            drain_installer_job_tasks(&drain_ctx).await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!drain.is_finished(), "shutdown must join accepted installer work");
+
+        release_tx.send(()).expect("release installer task");
+        tokio::time::timeout(Duration::from_secs(2), drain)
+            .await
+            .expect("installer drain completes")
+            .expect("installer drain task joins");
+
+        assert!(
+            !spawn_installer_job_task(&ctx, async {}),
+            "shutdown must permanently close installer task admission"
+        );
+    }
+
+    #[tokio::test]
+    async fn stuck_installer_job_tasks_are_aborted_after_the_grace_timeout() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let registry = InstallerJobTaskRegistry::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let task_dropped = Arc::clone(&dropped);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        assert!(registry.spawn(async move {
+            let _drop_flag = DropFlag(task_dropped);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        }));
+        started_rx.await.expect("installer task started");
+
+        registry
+            .drain_with_timeout(Duration::from_millis(5), Duration::from_secs(1))
+            .await;
+
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "aborting the timed-out JoinSet must drop the in-flight task"
+        );
+        assert!(!registry.spawn(async {}), "drained registry stays closed");
     }
 }

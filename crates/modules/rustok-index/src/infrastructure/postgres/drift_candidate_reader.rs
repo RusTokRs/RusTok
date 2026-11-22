@@ -617,6 +617,7 @@ fn row_source_version(row: &QueryResult) -> Result<u64, IndexDriftCandidateFailu
 }
 
 fn limit_value(limit: usize) -> sea_orm::Value {
+    // INVARIANT: candidate limits are bounded to at most 33
     i64::try_from(limit)
         .expect("candidate limits are bounded to at most 33")
         .into()
@@ -658,11 +659,13 @@ fn decode_wire<T: DeserializeOwned>(
 }
 
 fn retryable_failure(code: &'static str) -> IndexDriftCandidateFailure {
+    // INVARIANT: static candidate failure code is valid: invariant validated at startup
     IndexDriftCandidateFailure::retryable(code)
         .expect("static candidate failure code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &'static str) -> IndexDriftCandidateFailure {
+    // INVARIANT: static candidate failure code is valid: invariant validated at startup
     IndexDriftCandidateFailure::permanent(code)
         .expect("static candidate failure code is valid: invariant validated at startup")
 }

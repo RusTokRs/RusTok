@@ -83,12 +83,16 @@ pub(super) async fn rollback_page(
 
     match result {
         Ok(response) => {
-            let _ = clear_pending_attempt(&page_id);
+            if let Err(clear_error) = clear_pending_attempt(&page_id) {
+                tracing::warn!(%clear_error, "failed to clear pending rollback retry attempt");
+            }
             Ok(response.rollback_page)
         }
         Err(error) => {
             if is_definitive_rejection(&error) {
-                let _ = clear_pending_attempt(&page_id);
+                if let Err(clear_error) = clear_pending_attempt(&page_id) {
+                    tracing::warn!(%clear_error, "failed to clear rejected rollback retry attempt");
+                }
             }
             Err(error)
         }

@@ -262,7 +262,12 @@ impl ReturnDecisionOwnerOrchestrationService {
                     .await?;
                 (order_return, None, Some(order_change))
             }
-            _ => unreachable!("validated action"),
+            other => {
+                return Err(PostOrderOrchestrationError::Validation(format!(
+                    "unsupported return decision action: {other}"
+                ))
+                .into());
+            }
         };
 
         Ok(ReturnDecisionResponse {
@@ -538,7 +543,11 @@ fn attach_return_order_change_context(
 ) -> PostOrderOrchestrationResult<Value> {
     let mut object = match attach_return_context(value, return_id)? {
         Value::Object(object) => object,
-        _ => unreachable!("attach_return_context returns object"),
+        _ => {
+            return Err(PostOrderOrchestrationError::Validation(
+                "attach_return_context did not return a JSON object".to_string(),
+            ));
+        }
     };
     object.insert(
         "return_decision_action".to_string(),
@@ -554,7 +563,11 @@ fn attach_return_order_change_context(
 fn attach_return_context(value: Value, return_id: Uuid) -> PostOrderOrchestrationResult<Value> {
     let mut object = match normalize_object_or_empty(value, "metadata")? {
         Value::Object(object) => object,
-        _ => unreachable!("normalize returns object"),
+        _ => {
+            return Err(PostOrderOrchestrationError::Validation(
+                "normalize did not return a JSON object".to_string(),
+            ));
+        }
     };
     object.insert(
         "order_return_id".to_string(),

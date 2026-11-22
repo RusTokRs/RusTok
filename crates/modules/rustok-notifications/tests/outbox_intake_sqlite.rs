@@ -125,7 +125,7 @@ async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
         .expect("accepted receipt and outbox acknowledgement commit together");
     assert!(matches!(accepted, NotificationOutboxIntakeOutcome::Accepted(_)));
     let ack_count: i64 = db
-        .query_one(sea_orm::Statement::from_string(
+        .query_one_raw(sea_orm::Statement::from_string(
             db.get_database_backend(),
             "SELECT COUNT(*) AS count FROM test_outbox_consumer_receipts".to_string(),
         ))
@@ -158,7 +158,7 @@ async fn terminal_intake_receipt_and_outbox_ack_commit_atomically() {
         .expect_err("ack failure must roll back the permanent rejection");
     assert!(error.is_retryable());
     assert_eq!(
-        db.query_one(sea_orm::Statement::from_string(
+        db.query_one_raw(sea_orm::Statement::from_string(
             db.get_database_backend(),
             "SELECT COUNT(*) AS count FROM notification_outbox_intake_rejections".to_string(),
         ))

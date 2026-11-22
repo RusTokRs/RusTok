@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
     Action, AuthContext, RequestContext, Resource, TenantContext,
-    graphql::{require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
@@ -272,6 +272,50 @@ impl BlogQuery {
         Ok(GqlPostList {
             items,
             next_cursor: result.next_cursor,
+        })
+    }
+
+    /// Aggregate post counters for admin dashboards. The keyset listing never
+    /// counts rows, so this is the module's only COUNT surface. Authors with
+    /// Own scope see counters for their own posts only.
+    async fn blog_stats(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<GqlBlogStats> {
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx
+            .data_opt::<AuthContext>()
+            .ok_or_else(async_graphql::FieldError::unauthenticated)?;
+        let tenant_id = query_tenant_id(ctx, tenant, Some(tenant_id))?;
+        if auth.user_id.is_nil()
+            || !rustok_api::has_any_effective_permission(
+                &auth.permissions,
+                &[rustok_api::Permission::BLOG_POSTS_READ],
+            )
+        {
+            return Err(async_graphql::FieldError::permission_denied(
+                "Permission denied: blog_posts:read required",
+            ));
+        }
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
+        let stats_started_at = Instant::now();
+        let counts = service
+            .count_posts_by_status(tenant_id, security_context_from_auth(auth))
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+        metrics::record_read_path_query(
+            "graphql",
+            "blog.blog_stats",
+            "service_count",
+            stats_started_at.elapsed().as_secs_f64(),
+            counts.total,
+        );
+        Ok(GqlBlogStats {
+            total: counts.total,
+            draft: counts.draft,
+            published: counts.published,
+            archived: counts.archived,
         })
     }
 

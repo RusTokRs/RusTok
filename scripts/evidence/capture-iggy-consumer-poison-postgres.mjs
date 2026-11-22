@@ -55,7 +55,7 @@ const expectedCommands = [
 ];
 const expectedCaseNames = [
   "concurrent_publishers_have_one_claim_owner",
-  "expired_lease_is_reclaimed_and_fences_the_previous_publisher",
+  "expired_lease_requires_reconciliation_and_preserves_original_publisher",
   "conflicts_roll_back_without_overwriting_original_identity",
   "terminal_states_and_aggregate_inspection_remain_consistent",
 ];

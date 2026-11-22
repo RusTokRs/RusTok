@@ -100,6 +100,16 @@ for (const marker of [
 }
 
 for (const marker of [
+  "EventDlqObserverInitializationLock::ensure(ctx)",
+  "event_dlq_duplicate_alert_observability_task_exited",
+  "event_dlq_duplicate_alert_observability_start_stopping",
+  "exited_observability_task_is_not_overwritten",
+  "observability_does_not_publish_handle_after_shutdown",
+]) {
+  requireText("server DLQ companion lifecycle", projection, marker);
+}
+
+for (const marker of [
   "pub enum EventDlqDuplicateAlertHealthState",
   "pub struct EventDlqDuplicateAlertHealthSnapshot",
   "pub struct EventDlqDuplicateAlertObservabilityHandle",

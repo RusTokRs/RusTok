@@ -265,24 +265,33 @@ fn cart_port_source_owner(error: &PortError) -> &'static str {
 }
 
 pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
-    let retryable = error.retryable;
-    let (message, code) = match &error.kind {
-        PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID"),
-        PortErrorKind::NotFound => ("Cart resource was not found", "CART_RESOURCE_NOT_FOUND"),
+    let (message, code, retryable) = match &error.kind {
+        PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID", false),
+        PortErrorKind::NotFound => (
+            "Cart resource was not found",
+            "CART_RESOURCE_NOT_FOUND",
+            false,
+        ),
         PortErrorKind::Conflict => (
             "Cart operation conflicts with the current state",
             "CART_STATE_CONFLICT",
+            false,
         ),
-        PortErrorKind::Forbidden => ("Cart operation is not permitted", "CART_ACCESS_DENIED"),
+        PortErrorKind::Forbidden => ("Cart operation is not permitted", "CART_ACCESS_DENIED", false),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "Cart is temporarily unavailable",
             "CART_TEMPORARILY_UNAVAILABLE",
+            true,
         ),
         PortErrorKind::InvariantViolation => (
             "Cart operation could not be completed safely",
             "CART_OPERATION_FAILED",
+            false,
         ),
     };
+    // The Cart envelope keeps owner-declared retryability (e.g. transient pricing
+    // conflicts) instead of trusting the kind policy alone.
+    let retryable = error.retryable || retryable;
 
     let source_owner = cart_port_source_owner(&error);
     let message_shape = text_shape(error.message.as_str());

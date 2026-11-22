@@ -34,6 +34,21 @@ use crate::common::{
 
 const RATE_LIMIT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
+// Repair legacy or restored counters that exist without an expiry. A counter
+// that cannot be given a TTL must fail closed rather than rate-limit forever.
+const RATE_LIMIT_REDIS_SCRIPT_SOURCE: &str = r#"
+local current = redis.call('INCR', KEYS[1])
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl == -1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+    ttl = redis.call('PTTL', KEYS[1])
+end
+if ttl < 0 then
+    return redis.error_reply('rate-limit key expiry could not be established')
+end
+return {current, ttl}
+"#;
+
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
 pub struct RateLimitConfig {
@@ -299,7 +314,7 @@ impl RateLimiter {
         }
 
         let reset_at = counter.window_start + window;
-        let reset_secs = reset_at.saturating_duration_since(now).as_secs();
+        let reset_secs = rate_limit_reset_after(reset_at.saturating_duration_since(now));
 
         Ok(RateLimitInfo {
             limit: max_requests,
@@ -315,18 +330,8 @@ impl RateLimiter {
         key_prefix: &str,
         key: &str,
     ) -> Result<RateLimitInfo, RateLimitCheckError> {
-        static RATE_LIMIT_REDIS_SCRIPT: Lazy<Script> = Lazy::new(|| {
-            Script::new(
-                r#"
-local current = redis.call('INCR', KEYS[1])
-if current == 1 then
-    redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-local ttl = redis.call('TTL', KEYS[1])
-return {current, ttl}
-"#,
-            )
-        });
+        static RATE_LIMIT_REDIS_SCRIPT: Lazy<Script> =
+            Lazy::new(|| Script::new(RATE_LIMIT_REDIS_SCRIPT_SOURCE));
 
         let redis_key = redis_rate_limit_key(key_prefix, key);
         let window_secs = bounded_redis_window_seconds(self.config.window);
@@ -347,7 +352,8 @@ return {current, ttl}
         .map_err(RateLimitCheckError::BackendUnavailable)?;
 
         let current = current.max(0) as usize;
-        let retry_after = ttl.max(1) as u64;
+        let reset_after = (ttl.max(0) as u64).saturating_add(999) / 1_000;
+        let retry_after = reset_after.max(1);
 
         if current > self.config.max_requests {
             warn!(
@@ -366,7 +372,7 @@ return {current, ttl}
         Ok(RateLimitInfo {
             limit: self.config.max_requests,
             remaining: self.config.max_requests.saturating_sub(current),
-            reset: retry_after,
+            reset: reset_after,
         })
     }
 
@@ -703,8 +709,14 @@ fn bounded_redis_window_seconds(window: Duration) -> i64 {
     window.as_secs().clamp(1, i64::MAX as u64) as i64
 }
 
+fn rate_limit_reset_after(remaining: Duration) -> u64 {
+    remaining
+        .as_secs()
+        .saturating_add(u64::from(remaining.subsec_nanos() > 0))
+}
+
 fn rate_limit_retry_after(remaining: Duration) -> u64 {
-    remaining.as_secs().max(1)
+    rate_limit_reset_after(remaining).max(1)
 }
 
 fn rate_limit_key_fingerprint(key: &str) -> String {
@@ -845,7 +857,7 @@ pub async fn rate_limit_for_paths(
     let rate_limit_key_fingerprint = rate_limit_key_fingerprint(&rate_limit_key);
     debug!(
         rate_limit_key_fingerprint = %rate_limit_key_fingerprint,
-        path = %path,
+        path_group = crate::middleware::http_stack::trace_path_family(&path),
         namespace = policy.limiter.namespace(),
         "Checking rate limit for matched path policy"
     );
@@ -967,6 +979,15 @@ mod diagnostic_tests {
     use super::*;
 
     #[test]
+    fn redis_rate_limit_script_repairs_counters_without_expiry() {
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl == -1 then"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('EXPIRE'"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('PTTL'"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl < 0 then"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.error_reply"));
+    }
+
+    #[test]
     fn redis_limiter_clones_share_one_reconnecting_connection_slot() {
         let client = redis::Client::open("redis://127.0.0.1:6379/0").expect("redis client");
         let limiter = RateLimiter::with_redis(
@@ -987,6 +1008,16 @@ mod diagnostic_tests {
         };
         assert!(Arc::ptr_eq(connection, clone_connection));
         assert!(limiter.is_distributed());
+    }
+
+    #[test]
+    fn rate_limit_retry_after_rounds_up_instead_of_inviting_early_retries() {
+        assert_eq!(rate_limit_reset_after(Duration::ZERO), 0);
+        assert_eq!(rate_limit_retry_after(Duration::ZERO), 1);
+        assert_eq!(rate_limit_reset_after(Duration::from_secs(1)), 1);
+        assert_eq!(rate_limit_retry_after(Duration::from_secs(1)), 1);
+        assert_eq!(rate_limit_retry_after(Duration::from_millis(1_001)), 2);
+        assert_eq!(rate_limit_retry_after(Duration::from_millis(1_999)), 2);
     }
 
     #[test]

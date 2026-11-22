@@ -1,8 +1,8 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
-    graphql::require_module_enabled,
+    AuthContext, PortActor, PortContext, RequestContext,
+    PortError, PortErrorKind, graphql::require_module_enabled,
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::{
@@ -323,7 +323,7 @@ impl CommerceCheckoutMutation {
         validate_shipping_option_profile_inputs(
             db,
             tenant_id,
-            input.allowed_shipping_profile_slugs.as_ref(),
+            input.allowed_shipping_profile_slugs.as_deref(),
         )
         .await?;
         let request = CreateAdminShippingOptionRequest {
@@ -382,7 +382,7 @@ impl CommerceCheckoutMutation {
         validate_shipping_option_profile_inputs(
             db,
             tenant_id,
-            input.allowed_shipping_profile_slugs.as_ref(),
+            input.allowed_shipping_profile_slugs.as_deref(),
         )
         .await?;
         let request = UpdateAdminShippingOptionRequest {

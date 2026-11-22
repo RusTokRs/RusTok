@@ -345,11 +345,8 @@ impl InProcessPaymentAdminRefundCommandPort {
             ));
         }
 
-        let provider_result = match self
-            .provider_registry
-            .execute_refund(provider_id, request)
-            .await
-        {
+        let provider_result = self.provider_registry.execute_refund(provider_id, request).await;
+        let provider_result = match provider_result {
             Ok(result) => result,
             Err(error) => {
                 let checkpoint = if error.requires_provider_reconciliation() {
@@ -575,11 +572,11 @@ fn require_refund_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context
-        .require_policy(PortCallPolicy::write())
-        .inspect_err(|error| {
-            log_port_error(context, operation, "policy", error);
-        })
+    if let Err(error) = context.require_policy(PortCallPolicy::write()) {
+        log_port_error(context, operation, "policy", &error);
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {

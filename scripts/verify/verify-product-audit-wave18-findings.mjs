@@ -76,17 +76,18 @@ assertContains(src.writePort, '"product.schema_write_forbidden"', `${paths.write
 }
 
 // 4. Publish requirements for a new product are checked inside the create transaction.
-assertContains(src.values, "pub(crate) async fn validate_new_product_publish_requirements_in<C>(", `${paths.values}: connection-scoped publish check missing`);
-assertContains(src.values, "Self::validate_new_product_publish_requirements_in(&self.db, tenant_id, primary_category_id)", `${paths.values}: public check must delegate`);
+assertContains(src.values, "pub(crate) async fn validate_product_publish_requirements_in<C>(", `${paths.values}: connection-scoped publish check missing`);
+assertContains(src.values, "self.validate_product_publish_requirements_in(&txn, tenant_id, product_id)", `${paths.values}: standalone value-write path must reuse the in-txn publish check`);
 {
   const create = src.commands.slice(src.commands.indexOf("ProductWriteTransaction::begin(&self.db"));
-  const checkAt = create.indexOf("validate_new_product_publish_requirements_in(");
-  const insertAt = create.indexOf("entities::product::ActiveModel {");
-  if (checkAt < 0 || insertAt < 0 || checkAt > insertAt) {
-    failures.push(`${paths.commands}: publish check must run inside the create transaction before the product insert`);
+  const checkAt = create.indexOf(".validate_product_publish_requirements_in(&txn, tenant_id, product_id)");
+  const gateAt = create.indexOf("if input.publish {\n            schema");
+  const eventAt = create.indexOf("txn.publish(");
+  if (checkAt < 0 || gateAt < 0 || checkAt < gateAt || eventAt < 0 || checkAt > eventAt) {
+    failures.push(`${paths.commands}: publish check must run inside the create transaction, gated on publish intent, before the event boundary`);
   }
 }
-assertAbsent(src.commands, "validate_new_product_publish_requirements(tenant_id", `${paths.commands}: publish check must not run outside the transaction`);
+assertAbsent(src.commands, "validate_product_publish_requirements_in(&self.db", `${paths.commands}: publish check must not run outside the transaction`);
 
 if (failures.length) {
   console.error("product audit wave 18 verification failed:");

@@ -226,8 +226,8 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
             operation = COMPENSATE_OPERATION,
             tenant_id = %tenant_id,
             actor_id = %actor_id,
-            checkout_operation_id = %request.checkout_operation_id,
-            cart_id = %request.cart_id,
+            checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
+            cart_id_non_nil = !request.cart_id.is_nil(),
             expected_order_id = ?request.expected_order_id,
             "compensate checkout order entered compensation port"
         );
@@ -561,33 +561,25 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        log_context_parse_rejection(
-            context,
-            operation,
-            "tenant_id",
-            context.tenant_id.chars().count(),
-            "order.tenant_id_invalid",
-        );
-        PortError::validation(
-            "order.tenant_id_invalid",
-            "order request context is invalid",
-        )
-    })?;
-    if tenant_id.is_nil() {
-        log_context_parse_rejection(
-            context,
-            operation,
-            "tenant_id",
-            context.tenant_id.chars().count(),
-            "order.tenant_id_nil",
-        );
-        return Err(PortError::validation(
+    let (code, message) = match Uuid::parse_str(&context.tenant_id).ok() {
+        Some(tenant_id) if !tenant_id.is_nil() => return Ok(tenant_id),
+        Some(_) => (
             "order.tenant_id_nil",
             "order tenant_id must not be a nil UUID",
-        ));
-    }
-    Ok(tenant_id)
+        ),
+        None => (
+            "order.tenant_id_invalid",
+            "order request context is invalid",
+        ),
+    };
+    log_context_parse_rejection(
+        context,
+        operation,
+        "tenant_id",
+        context.tenant_id.chars().count(),
+        code,
+    );
+    Err(PortError::validation(code, message))
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {

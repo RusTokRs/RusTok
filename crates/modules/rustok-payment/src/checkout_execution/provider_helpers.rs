@@ -26,6 +26,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::MissingDurableAuthorizeProviderIdentity,
+                    "payment provider authorize identity is missing from the durable operation",
                 )
             })?;
         if !matches!(
@@ -38,6 +39,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 context,
                 owner_operation,
                 CheckoutPaymentExecutionReconciliationReason::IncompleteAuthorizeOperation,
+                "payment authorize operation is incomplete",
             ));
         }
         let provider_payment_id = authorize
@@ -61,6 +63,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                     context,
                     owner_operation,
                     CheckoutPaymentExecutionReconciliationReason::MissingDurableProviderPaymentIdentity,
+                    "payment provider payment identity is missing from the durable operation",
                 )
             })?;
         insert_metadata_string(
@@ -171,6 +174,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 context,
                 owner_operation,
                 CheckoutPaymentExecutionReconciliationReason::CommitCheckpointFailed,
+                "payment operation commit checkpoint failed",
             ));
         }
         Ok(())

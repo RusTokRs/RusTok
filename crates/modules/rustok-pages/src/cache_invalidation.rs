@@ -492,6 +492,7 @@ pub(crate) fn published_landing_cache_variant(
     let channel_slug = channel_slug
         .map(|slug| slug.trim().to_ascii_lowercase())
         .unwrap_or_default();
+    // INVARIANT: Serializing a tuple of primitives and strings into JSON cannot fail.
     serde_json::to_string(&(
         representation.as_str(),
         generations.route,
@@ -500,7 +501,7 @@ pub(crate) fn published_landing_cache_variant(
         fallback_locale.trim(),
         channel_slug,
     ))
-    .expect("serializing a tuple of strings and integers cannot fail")
+    .unwrap_or_default()
 }
 
 fn cache_variant_hash(variant: &str) -> Result<String, PageCacheError> {

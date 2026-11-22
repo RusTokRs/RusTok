@@ -6,6 +6,7 @@ use super::super::keyring_schedule_audit_source_retry_postgres::{
     PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
 };
 use super::*;
+use crate::services::server_runtime_context::ServerRuntimeStartReservation;
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS_ENV: &str =
     "RUSTOK_COMMENTS_TCP_DELEGATION_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS";
@@ -90,6 +91,17 @@ struct SourceRetryHandoffWorkerCycleOutcome {
 }
 
 impl SourceRetryHandoffWorkerCycleOutcome {
+    /// Recheck admission before every new claim, not only once per cycle.
+    /// A claim already acquired is completed by the caller before this check
+    /// runs again, retaining its receipt/retry bookkeeping during shutdown.
+    fn can_claim_next(
+        self,
+        max_claims_per_cycle: usize,
+        stop_rx: &tokio::sync::watch::Receiver<bool>,
+    ) -> bool {
+        self.calls < max_claims_per_cycle && !*stop_rx.borrow()
+    }
+
     fn had_error(self) -> bool {
         self.conflicts > 0
             || self.unavailable > 0
@@ -159,23 +171,65 @@ pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_r
         ));
     }
 
-    if !runtime_ctx.shared_insert_if_absent(
-        CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation,
-    ) {
+    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_schedule_audit_handoff_start_not_stopping(&stop_handle)?;
+    if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
         return Ok(());
     }
 
-    let result = start_source_retry_handoff_worker(runtime_ctx, config);
-    if result.is_err() {
-        let _ = runtime_ctx
-            .shared_take::<CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation>();
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(
+        runtime_ctx,
+        CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation,
+    ) else {
+        if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
+            return Ok(());
+        }
+        return Err(Error::Message(
+            "Comments schedule audit handoff worker startup is already in progress; retry"
+                .to_string(),
+        ));
+    };
+
+    if existing_comments_schedule_audit_handoff_worker(runtime_ctx)? {
+        return Ok(());
     }
-    result
+
+    start_source_retry_handoff_worker(runtime_ctx, config, &stop_handle)?;
+    reservation.commit();
+    Ok(())
+}
+
+fn existing_comments_schedule_audit_handoff_worker(
+    runtime_ctx: &ServerRuntimeContext,
+) -> Result<bool> {
+    match runtime_ctx.shared_map::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, _>(
+        |worker| worker.is_finished(),
+    ) {
+        Some(false) => Ok(true),
+        Some(true) => Err(Error::Message(
+            "Comments schedule audit handoff worker has exited; automatic restart is not configured"
+                .to_string(),
+        )),
+        None => Ok(false),
+    }
+}
+
+fn ensure_comments_schedule_audit_handoff_start_not_stopping(
+    stop_handle: &StopHandle,
+) -> Result<()> {
+    if stop_handle.is_stopping() {
+        return Err(Error::Message(
+            "Comments schedule audit handoff worker startup interrupted by server shutdown"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn start_source_retry_handoff_worker(
     runtime_ctx: &ServerRuntimeContext,
     config: CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
+    stop_handle: &StopHandle,
 ) -> Result<()> {
     let writer: SharedCommentsTcpDelegationScheduleAuditCanonicalWriter =
         Arc::new(RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter);
@@ -194,7 +248,7 @@ fn start_source_retry_handoff_worker(
     )
     .map_err(Error::BadRequest)?;
 
-    let stop_handle = ensure_stop_handle(runtime_ctx);
+    ensure_comments_schedule_audit_handoff_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
     let instance_id = HANDOFF_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let task = tokio::spawn(run_source_retry_handoff_worker(
@@ -245,6 +299,7 @@ async fn run_source_retry_handoff_worker(
             &retry_policy,
             config.source_max_attempts,
             config.handoff.max_claims_per_cycle,
+            &stop_rx,
         )
         .await;
         if outcome.made_progress() {
@@ -277,6 +332,14 @@ async fn run_source_retry_handoff_worker(
             );
         }
 
+        if *stop_rx.borrow() {
+            tracing::info!(
+                instance_id,
+                "Comments schedule audit source-retry handoff worker stopped after its current durable operation"
+            );
+            return;
+        }
+
         let delay = outcome.next_delay(config);
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
@@ -298,8 +361,16 @@ async fn run_source_retry_handoff_cycle(
     retry_policy: &PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
     source_max_attempts: u32,
     max_claims_per_cycle: usize,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> SourceRetryHandoffWorkerCycleOutcome {
     let mut outcome = SourceRetryHandoffWorkerCycleOutcome::default();
+
+    // No new durable side-effect phase may be admitted after shutdown.
+    // Once an individual claim was acquired we still finish its publication
+    // and failure transition, preserving the owner's attempt receipt.
+    if *stop_rx.borrow() {
+        return outcome;
+    }
 
     match retry_policy.dead_letter_next_expired_exhausted().await {
         Ok(Some(_)) => outcome.swept_dead_letters += 1,
@@ -312,7 +383,9 @@ async fn run_source_retry_handoff_cycle(
         }
     }
 
-    while outcome.calls < max_claims_per_cycle {
+    // The preceding publish or source-failure transition may have awaited
+    // shutdown. Finish that attempt, but never claim its successor.
+    while outcome.can_claim_next(max_claims_per_cycle, stop_rx) {
         outcome.calls += 1;
         let claim = match handoff.claim_next_retry_ready(source_max_attempts).await {
             Ok(Some(claim)) => {
@@ -376,6 +449,70 @@ mod source_retry_worker_tests {
             source_max_attempts: 8,
             source_retry_delay: Duration::from_secs(30),
         }
+    }
+
+    #[tokio::test]
+    async fn source_retry_worker_start_rejects_a_signaled_shutdown() {
+        let (stop, _receiver) = StopHandle::new();
+        stop.stop().await;
+        assert!(ensure_comments_schedule_audit_handoff_start_not_stopping(&stop).is_err());
+    }
+
+    #[tokio::test]
+    async fn source_retry_worker_does_not_report_a_finished_task_as_live() {
+        use crate::common::settings::RustokSettings;
+
+        let runtime_ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let task = tokio::spawn(async {});
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        runtime_ctx.shared_insert(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task),
+        );
+        assert!(existing_comments_schedule_audit_handoff_worker(&runtime_ctx).is_err());
+    }
+
+    #[tokio::test]
+    async fn source_retry_shutdown_signal_is_visible_between_durable_phases() {
+        let (stop, mut receiver) = StopHandle::new();
+        let outcome = SourceRetryHandoffWorkerCycleOutcome {
+            calls: 1,
+            ..Default::default()
+        };
+        assert!(
+            outcome.can_claim_next(32, &receiver),
+            "next claim is allowed before stop"
+        );
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let prior_operation = tokio::spawn(async move {
+            started_tx.send(()).expect("operation started");
+            release_rx.await.expect("prior durable operation completed");
+        });
+        started_rx.await.expect("operation entered");
+
+        stop.stop().await;
+        // The in-flight operation is finished before checking for a successor.
+        release_tx.send(()).expect("release previous operation");
+        prior_operation.await.expect("previous operation joins");
+        assert!(
+            !outcome.can_claim_next(32, &receiver),
+            "no more claims after shutdown"
+        );
+        let exhausted = SourceRetryHandoffWorkerCycleOutcome {
+            calls: 32,
+            ..Default::default()
+        };
+        assert!(
+            !exhausted.can_claim_next(32, &receiver),
+            "cycle claim budget also applies"
+        );
+        receiver.changed().await.expect("stop update remains observable");
     }
 
     #[test]

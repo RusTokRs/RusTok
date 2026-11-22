@@ -38,6 +38,8 @@ const serverCargoPath = "apps/server/Cargo.toml";
 const transportCargoPath = "crates/modules/rustok-media/ports/Cargo.toml";
 const transportClientPath =
   "crates/modules/rustok-media/ports/src/grpc/public_image_client.rs";
+const transportConnectionPath =
+  "crates/modules/rustok-media/ports/src/grpc/connection.rs";
 const transportLibPath = "crates/modules/rustok-media/ports/src/grpc/mod.rs";
 const profileGraphqlPath = "crates/modules/rustok-profiles/src/graphql/types.rs";
 const profileNativePath =
@@ -52,6 +54,8 @@ const router = readRepo(routerPath);
 const serverCargo = readRepo(serverCargoPath);
 const transportCargo = readRepo(transportCargoPath);
 const transportClient = readRepo(transportClientPath);
+const transportConnection = readRepo(transportConnectionPath);
+const transportSources = `${transportClient}\n${transportConnection}`;
 const transportLib = readRepo(transportLibPath);
 const profileGraphql = readRepo(profileGraphqlPath);
 const profileNative = readRepo(profileNativePath);
@@ -148,7 +152,7 @@ for (const marker of [
   "plaintext_loopback_requires_explicit_opt_in",
 ]) {
   requireMarker(
-    transportClient,
+    transportSources,
     marker,
     `${transportClientPath}: missing secure remote marker ${marker}`,
   );
@@ -159,7 +163,7 @@ for (const forbidden of [
   "object_store",
 ]) {
   rejectMarker(
-    transportClient,
+    transportSources,
     forbidden,
     `${transportClientPath}: remote descriptor adapter must not own image bytes/storage`,
   );
@@ -172,8 +176,10 @@ for (const marker of [
 ]) {
   requireMarker(transportLib, marker, `${transportLibPath}: missing export ${marker}`);
 }
+if (!/tonic\s*=\s*\{\s*workspace\s*=\s*true.*features\s*=\s*\["tls-ring",\s*"tls-webpki-roots"\]/.test(transportCargo)) {
+  failures.push(`${transportCargoPath}: missing dependency marker tonic with tls features`);
+}
 for (const marker of [
-  'tonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }',
   "thiserror.workspace = true",
   "url.workspace = true",
 ]) {
@@ -198,7 +204,7 @@ for (const marker of [
 }
 for (const marker of [
   "configure_profile_media_public_image_deployment(&runtime_ctx).await?;",
-  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;",
+  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone())",
 ]) {
   requireMarker(bootstrap, marker, `${bootstrapPath}: missing startup marker ${marker}`);
 }
@@ -206,7 +212,7 @@ const configureIndex = bootstrap.indexOf(
   "configure_profile_media_public_image_deployment(&runtime_ctx).await?;",
 );
 const bootstrapIndex = bootstrap.indexOf(
-  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;",
+  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone())",
 );
 if (
   configureIndex < 0 ||
@@ -220,15 +226,17 @@ if (
 
 for (const marker of [
   "attach_profile_media_public_image_provider",
-  "let runtime_extensions = attach_profile_media_public_image_provider(",
   "module_runtime_extensions_from_ctx(ctx)",
   "runtime_extensions.apply_to_host_runtime(host_runtime)",
   "runtime_extensions,",
 ]) {
   requireMarker(schema, marker, `${schemaPath}: missing shared snapshot marker ${marker}`);
 }
+if (!/let\s+runtime_extensions\s*=\s*attach_profile_media_public_image_provider\(/.test(schema)) {
+  failures.push(`${schemaPath}: missing assignment to runtime_extensions via attach_profile_media_public_image_provider`);
+}
 const attachIndex = schema.indexOf(
-  "let runtime_extensions = attach_profile_media_public_image_provider(",
+  "attach_profile_media_public_image_provider",
 );
 const graphqlInputsIndex = schema.indexOf(
   "let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);",

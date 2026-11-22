@@ -439,20 +439,23 @@ pub(crate) async fn validate_selected_shipping_option(
             continue;
         };
 
-        validate_storefront_shipping_option_selection(
+        let option = validate_storefront_shipping_option_selection(
             cart,
             &selection,
             currency_code,
             public_channel_slug,
             requested_locale,
             tenant_default_locale,
-            &owner_context,
+            owner_context.clone(),
             shipping_option_read_port.as_ref(),
         )
         .await
-        .map_err(|error| {
-            shipping_option_graphql_error(
-                ShippingOptionFailure::from_selection_validation_error(error),
+        .map_err(|error| match error {
+            StorefrontShippingSelectionValidationError::Owner {
+                shipping_option_id,
+                error,
+            } => shipping_option_graphql_error(
+                ShippingOptionFailure::owner(shipping_option_id, error),
                 &owner_context,
                 cart.id,
                 selection_count,
@@ -461,8 +464,81 @@ pub(crate) async fn validate_selected_shipping_option(
                 public_channel_slug,
                 requested_locale,
                 tenant_default_locale,
-            )
+            ),
+            shared => shipping_option_graphql_error(
+                ShippingOptionFailure::from_selection_validation_error(shared),
+                &owner_context,
+                cart.id,
+                selection_count,
+                cart.delivery_groups.len(),
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ),
         })?;
+
+        // Typed local outcomes keep the public GraphQL envelope stable even when
+        // the shared selection policy evolves alongside the native runtime.
+        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::currency_mismatch(
+                    option.id,
+                    option.currency_code.as_str(),
+                    currency_code,
+                ),
+                &owner_context,
+                cart.id,
+                selection_count,
+                cart.delivery_groups.len(),
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
+        if !crate::storefront_channel::is_metadata_visible_for_public_channel(
+            &option.metadata,
+            public_channel_slug,
+        ) {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::channel_unavailable(option.id),
+                &owner_context,
+                cart.id,
+                selection_count,
+                cart.delivery_groups.len(),
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
+        let required_profile = crate::storefront_shipping::normalize_shipping_profile_slug(
+            selection.shipping_profile_slug.as_str(),
+        )
+        .unwrap_or_else(|| {
+            crate::storefront_shipping::DEFAULT_SHIPPING_PROFILE_SLUG.to_string()
+        });
+        let required_profiles = std::collections::BTreeSet::from([required_profile]);
+        if !crate::storefront_shipping::is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ) {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::profile_incompatible(
+                    option.id,
+                    selection.shipping_profile_slug.as_str(),
+                ),
+                &owner_context,
+                cart.id,
+                selection_count,
+                cart.delivery_groups.len(),
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
     }
 
     Ok(())

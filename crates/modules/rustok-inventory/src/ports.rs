@@ -1383,7 +1383,10 @@ pub(super) fn storage_unavailable_with_context(
         &facts,
         true,
     );
-    storage_unavailable()
+    PortError::unavailable(
+        "inventory.database_unavailable",
+        "inventory storage is temporarily unavailable",
+    )
 }
 
 pub(super) fn storage_unavailable() -> PortError {

@@ -130,7 +130,7 @@ impl CheckoutOrderRecoveryAdapter {
             boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
             operation = READ_OPERATION,
             tenant_id = %tenant_id,
-            checkout_operation_id = %request.checkout_operation_id,
+            checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil(),
             "read checkout order entered recovery adapter"
         );
         let identity = self

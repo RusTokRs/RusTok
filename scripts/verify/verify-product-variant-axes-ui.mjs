@@ -231,7 +231,8 @@ contains(
   'fn ProductAdmin(',
   'product_admin_selected_product_query_state(query.get())',
   'selected_id.get().into_iter()',
-  '<super::product_editor::ProductEditorPage'
+  'use super::product_editor::ProductEditorPage;',
+  '<ProductEditorPage is_new=false product_id=product_id />'
 );
 contains('catalogReference', '<super::leptos::ProductAdmin');
 

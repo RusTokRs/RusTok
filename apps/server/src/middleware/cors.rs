@@ -23,8 +23,6 @@ const DEFAULT_DEV_ORIGINS: &[&str] = &[
     "http://127.0.0.1:8081",
 ];
 
-const DEFAULT_PRODUCTION_ORIGIN: &str = "http://127.0.0.1:5150";
-
 /// Normalizes an origin or host string into a canonical origin URL with scheme.
 /// Converts `0.0.0.0:<port>` into `http://127.0.0.1:<port>` and attaches `http://`
 /// or `https://` if missing.
@@ -46,12 +44,60 @@ pub fn normalize_host_origin(host: &str) -> String {
     }
 }
 
+/// Accept only actual HTTP(S) origins, never URL credentials, paths,
+/// queries, fragments, or non-web schemes. The Origin request header is
+/// serialized as scheme + authority, so preserving a configured path would
+/// silently produce a non-matching or misleading allow-list entry.
+fn validated_cors_origin(configured: &str) -> Option<HeaderValue> {
+    let configured = configured.trim();
+    // The general development normalization maps an unspecified listener
+    // address to loopback. That is useful for local URLs but must not turn
+    // an explicitly supplied bind address into credentialed CORS authority.
+    if configured == "0.0.0.0" || configured.starts_with("0.0.0.0:") {
+        return None;
+    }
+    let normalized = normalize_host_origin(configured);
+    let url = url::Url::parse(&normalized).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || matches!(url.host(), Some(url::Host::Ipv4(ip)) if ip.is_unspecified())
+        || matches!(url.host(), Some(url::Host::Ipv6(ip)) if ip.is_unspecified())
+        || url.host().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    // Canonicalize scheme, host and default ports. It avoids treating
+    // multiple textual variants as independent trusted origins.
+    HeaderValue::from_str(&url.origin().ascii_serialization()).ok()
+}
+
 /// Resolves allowed origins from the environment:
-/// 1. `RUSTOK_CORS_ALLOWED_ORIGINS` (comma-separated origins)
-/// 2. `RUSTOK_HOST` or `APP_HOST` (canonical server host)
+/// 1. `RUSTOK_CORS_ALLOWED_ORIGINS` (comma-separated explicit origins)
+/// 2. In development ONLY, `RUSTOK_HOST` or `APP_HOST` (local server host).
+/// Production bind addresses are not proof of a browser origin's authorization.
 pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
-    if let Ok(raw) = std::env::var("RUSTOK_CORS_ALLOWED_ORIGINS") {
-        let origins: Vec<String> = raw
+    let explicit = std::env::var("RUSTOK_CORS_ALLOWED_ORIGINS").ok();
+    let host = std::env::var("RUSTOK_HOST")
+        .or_else(|_| std::env::var("APP_HOST"))
+        .ok();
+    cors_origins_from_configuration(
+        explicit.as_deref(),
+        host.as_deref(),
+        crate::common::is_production_environment(),
+    )
+}
+
+fn cors_origins_from_configuration(
+    explicit: Option<&str>,
+    host: Option<&str>,
+    is_production: bool,
+) -> Option<Vec<String>> {
+    if let Some(explicit) = explicit {
+        let origins: Vec<String> = explicit
             .split(',')
             .map(str::trim)
             .filter(|part| !part.is_empty())
@@ -62,20 +108,23 @@ pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
         }
     }
 
-    let host = std::env::var("RUSTOK_HOST")
-        .or_else(|_| std::env::var("APP_HOST"))
-        .ok()
-        .map(|h| h.trim().to_string())
-        .filter(|h| !h.is_empty());
+    // A production listener commonly binds to 0.0.0.0. Treating that bind
+    // address as an allow-listed localhost Origin would grant arbitrary local
+    // browser pages credentialed cross-origin access to the deployed host.
+    if is_production {
+        return None;
+    }
 
-    host.map(|h| vec![normalize_host_origin(&h)])
+    host.map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(|host| vec![normalize_host_origin(host)])
 }
 
 /// Builds a production-grade [`CorsLayer`] enforcing explicit origin policies.
 ///
 /// In production:
 /// - Uses explicitly configured `allowed_origins` from environment/settings.
-/// - Falls back to the primary server origin if none specified or if parsing failed (never wildcard).
+/// - Denies every cross-origin request when none are configured/valid (never wildcard or implicit loopback).
 ///
 /// In non-production (development/test):
 /// - Allows standard local frontend/admin origins (`localhost:3000`, `localhost:5173`, etc.)
@@ -86,17 +135,15 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
             .iter()
             .enumerate()
             .filter_map(|(origin_index, origin)| {
-                let normalized = normalize_host_origin(origin);
-                match normalized.parse::<HeaderValue>() {
-                    Ok(value) => Some(value),
-                    Err(_error) => {
-                        // Identify the configuration entry without logging its
-                        // potentially credential-bearing URL or query string.
+                match validated_cors_origin(origin) {
+                    Some(value) => Some(value),
+                    None => {
+                        // Never expose a possibly credential-bearing URL in
+                        // logs; log only the position of the invalid setting.
                         tracing::error!(
                             origin_index,
-                            error_code = "cors_origin_invalid_header_value",
-                            "Configured CORS origin is not a valid header value; \
-                             requests from it will be denied"
+                            error_code = "cors_origin_invalid",
+                            "Configured CORS origin is not a valid HTTP(S) origin; requests from it will be denied"
                         );
                         None
                     }
@@ -109,19 +156,14 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
 
     if origins.is_empty() {
         if is_production {
-            // Falling back to a loopback origin in production means the
-            // deployment supplied no usable allow-list. Serving traffic with
-            // this silently would look healthy while every real browser origin
-            // is rejected, and it would also be trusted by mistake if a proxy
-            // ever fronted the listener on 127.0.0.1.
+            // An unspecified bind address is never permission to trust
+            // loopback browser origins. Keep the origin list empty rather
+            // than inventing a credential-bearing CORS allow-list entry.
             tracing::error!(
-                fallback_origin = DEFAULT_PRODUCTION_ORIGIN,
                 configured = allowed_origins.map(<[String]>::len).unwrap_or(0),
-                "No usable CORS origin configured in production; the allow-list \
-                 falls back to a loopback origin and browser clients will be rejected. \
-                 Set the allowed origins explicitly."
+                error_code = "cors_no_valid_production_origins",
+                "No valid CORS origins configured in production; all cross-origin requests are denied"
             );
-            origins.push(HeaderValue::from_static(DEFAULT_PRODUCTION_ORIGIN));
         } else {
             origins.extend(
                 DEFAULT_DEV_ORIGINS
@@ -329,22 +371,88 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn production_cors_fallback_is_not_wildcard() {
-        // With nothing configured, production falls back to the single primary
-        // server origin. The fallback must never become `*` (which combined with
-        // credentials would let any site drive an authenticated session).
-        let allowed = preflight_allowed_origin(true, None, DEFAULT_PRODUCTION_ORIGIN).await;
+    async fn production_cors_without_valid_origins_denies_all_cross_origin_requests() {
+        for origin in [
+            "http://127.0.0.1:5150",
+            "http://localhost:5150",
+            "https://attacker.example.com",
+        ] {
+            assert_eq!(
+                preflight_allowed_origin(true, None, origin).await,
+                None,
+                "missing production origins must never grant credentialed access to {origin}"
+            );
+        }
+        let invalid = vec![
+            "https://user:password@trusted.example.com".to_string(),
+            "https://trusted.example.com/admin".to_string(),
+        ];
         assert_eq!(
-            allowed,
-            Some(DEFAULT_PRODUCTION_ORIGIN.to_string()),
-            "the operator-visible fallback origin must stay usable"
+            preflight_allowed_origin(true, Some(&invalid), "http://127.0.0.1:5150").await,
+            None
         );
-        assert_ne!(allowed.as_deref(), Some("*"));
-
         assert_eq!(
-            preflight_allowed_origin(true, None, "https://attacker.example.com").await,
+            preflight_allowed_origin(true, Some(&invalid), "https://trusted.example.com").await,
+            None
+        );
+    }
+
+    #[test]
+    fn cors_origin_validation_rejects_url_credentials_and_non_origin_parts() {
+        for invalid in [
+            "https://user:password@trusted.example.com",
+            "https://trusted.example.com/admin",
+            "https://trusted.example.com?token=secret",
+            "https://trusted.example.com/#fragment",
+            "ftp://trusted.example.com",
+            "javascript:alert(1)",
+            "0.0.0.0",
+            "0.0.0.0:5150",
+            "http://0.0.0.0:5150",
+            "http://[::]:5150",
+        ] {
+            assert!(
+                validated_cors_origin(invalid).is_none(),
+                "invalid origin must not be trusted"
+            );
+        }
+        assert_eq!(
+            validated_cors_origin("https://TRUSTED.EXAMPLE.COM:443/")
+                .as_ref()
+                .and_then(|value| value.to_str().ok()),
+            Some("https://trusted.example.com")
+        );
+        assert_eq!(
+            validated_cors_origin("localhost:3000")
+                .as_ref()
+                .and_then(|value| value.to_str().ok()),
+            Some("http://localhost:3000")
+        );
+    }
+
+    #[test]
+    fn production_does_not_promote_bind_host_to_cors_authorization() {
+        assert_eq!(
+            cors_origins_from_configuration(None, Some("0.0.0.0:5150"), true),
             None,
-            "the production fallback must not admit an arbitrary origin"
+            "a production bind address is not an authorized browser origin"
+        );
+        assert_eq!(
+            cors_origins_from_configuration(Some("  "), Some("localhost:5150"), true),
+            None
+        );
+        assert_eq!(
+            cors_origins_from_configuration(
+                Some("https://admin.example.com"),
+                Some("0.0.0.0:5150"),
+                true
+            ),
+            Some(vec!["https://admin.example.com".to_string()])
+        );
+        assert_eq!(
+            cors_origins_from_configuration(None, Some("0.0.0.0:5150"), false),
+            Some(vec!["http://127.0.0.1:5150".to_string()]),
+            "developer bind-host fallback retains its existing behavior"
         );
     }
 

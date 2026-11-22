@@ -58,7 +58,7 @@ pub use ports::{
     SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime, SocialGraphReceiptCleanupCommand,
     SocialGraphReceiptCleanupResult, SocialGraphReceiptMaintenancePort,
     SocialGraphRelationEventMaintenancePort, SocialGraphRelationEventReplayCommand,
-    SocialGraphRelationEventReplayResult,
+    SocialGraphRelationEventReplayResult, in_process_social_graph_privacy_port,
 };
 pub use service::SocialGraphService;
 

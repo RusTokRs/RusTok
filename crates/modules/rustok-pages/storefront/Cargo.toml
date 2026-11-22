@@ -28,6 +28,7 @@ ssr = [
   "dep:rustok-outbox",
   "dep:rustok-pages",
   "dep:rustok-tenant",
+  "dep:rustok-api",
   "rustok-api/server",
 ]
 inline-edit = [
@@ -35,6 +36,9 @@ inline-edit = [
   "dep:uuid",
   "rustok-page-builder-storefront/inline-edit",
 ]
+
+[lints]
+workspace = true
 
 [dependencies]
 rustok-ui-core.workspace = true
@@ -47,7 +51,7 @@ leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tracing.workspace = true
-rustok-api = { workspace = true, default-features = false }
+rustok-api = { workspace = true, optional = true, default-features = false }
 rustok-ui-i18n.workspace = true
 rustok-page-builder-storefront = { path = "../../rustok-page-builder/storefront" }
 rustok-channel = { workspace = true, optional = true }

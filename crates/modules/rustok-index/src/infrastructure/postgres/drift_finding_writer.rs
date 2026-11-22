@@ -512,7 +512,7 @@ fn hash_schema(hasher: &mut Sha256, schema: &crate::SchemaRef) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length = u64::try_from(value.len()).expect("bounded finding-key component length");
+    let length = value.len() as u64;
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }
@@ -572,6 +572,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -580,6 +581,7 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.map(|value| value.to_string()).into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -628,6 +630,7 @@ fn insert_finding_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, expected_digest, actual_digest, details) VALUES (?1, ?2, ?3, ?4, ?5, 'open', ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) ON CONFLICT (tenant_id, finding_key) DO NOTHING"
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -640,6 +643,7 @@ fn select_existing_finding_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "SELECT finding_id, check_name, state, scope_kind, module_name, entity_name, CAST(schema_version AS INTEGER) AS schema_version_value, entity_id, locale_key FROM index_consistency_findings WHERE tenant_id = ?1 AND finding_key = ?2"
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -652,6 +656,7 @@ fn refresh_open_finding_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "UPDATE index_consistency_findings SET severity = ?3, expected_digest = ?4, actual_digest = ?5, details = ?6, last_detected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND finding_id = ?2 AND finding_key = ?7 AND state = 'open'"
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -664,6 +669,7 @@ fn reopen_resolved_finding_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "UPDATE index_consistency_findings SET severity = ?3, state = 'open', expected_digest = ?4, actual_digest = ?5, details = ?6, last_detected_at = CURRENT_TIMESTAMP, closed_at = NULL WHERE tenant_id = ?1 AND finding_id = ?2 AND finding_key = ?7 AND state = 'resolved'"
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -676,6 +682,7 @@ fn refresh_ignored_finding_sql(backend: DbBackend) -> &'static str {
         DbBackend::Sqlite => {
             "UPDATE index_consistency_findings SET severity = ?3, expected_digest = ?4, actual_digest = ?5, details = ?6, last_detected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND finding_id = ?2 AND finding_key = ?7 AND state = 'ignored'"
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

@@ -15,6 +15,21 @@ export const commerceNavItems: NavItem[] = [
         i18nKey: 'orders'
       },
       {
+        title: 'Payments',
+        url: '/dashboard/commerce/payments',
+        i18nKey: 'payments'
+      },
+      {
+        title: 'Refunds',
+        url: '/dashboard/commerce/refunds',
+        i18nKey: 'refunds'
+      },
+      {
+        title: 'Fulfillments',
+        url: '/dashboard/commerce/fulfillments',
+        i18nKey: 'fulfillments'
+      },
+      {
         title: 'Shipping Profiles',
         url: '/dashboard/commerce/shipping-profiles',
         i18nKey: 'shippingProfiles'

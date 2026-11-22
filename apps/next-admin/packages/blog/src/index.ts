@@ -28,3 +28,4 @@ export { CategoryModal } from './components/category-modal';
 export { PostTable } from './components/post-table';
 export * from './api/posts';
 export * from './api/categories';
+export * from './api/stats';

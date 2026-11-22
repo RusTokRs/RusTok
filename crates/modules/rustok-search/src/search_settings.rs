@@ -70,10 +70,8 @@ impl SearchSettingsService {
         SearchFilterPresetService::validate_config(&config)
             .map_err(|err| DbErr::Custom(err.to_string()))?;
 
-        if let Some(id) = tenant_id {
-            if id.is_nil() {
-                return Err(DbErr::Custom("tenant_id cannot be nil".to_string()));
-            }
+        if tenant_id.is_some_and(|id| id.is_nil()) {
+            return Err(DbErr::Custom("tenant_id cannot be nil".to_string()));
         }
 
         let existing = if let Some(tenant_id) = tenant_id {

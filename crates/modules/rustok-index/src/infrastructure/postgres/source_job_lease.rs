@@ -4,6 +4,7 @@ pub(super) fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: callers reject unsupported backends before selecting job SQL.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -81,6 +82,7 @@ fn locked_job_where(
              ) SELECT 1 FROM locked_job WHERE {timing})"
         ),
         DbBackend::Sqlite => format!("{key} AND {guard} AND {timing}"),
+        // INVARIANT: callers reject unsupported backends before selecting job SQL.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -90,6 +92,7 @@ pub(super) fn deadline_after_seconds(backend: DbBackend, parameter: usize) -> St
     match backend {
         DbBackend::Postgres => format!("{clock} + (${parameter} * INTERVAL '1 second')"),
         DbBackend::Sqlite => format!("datetime('now', '+' || ?{parameter} || ' seconds')"),
+        // INVARIANT: callers reject unsupported backends before selecting job SQL.
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

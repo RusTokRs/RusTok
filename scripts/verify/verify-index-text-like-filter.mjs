@@ -88,10 +88,14 @@ if (owner.slice(searchStart).includes('pt.locale')) {
   fail(`${ownerPath} title search became locale-scoped; revisit localized Storefront parity in the same PR`);
 }
 
-requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
+// The query contract lives in the owner ports package (published contracts);
+// the transport normalization stays owner-internal.
+requireMarkers('crates/modules/rustok-product/ports/src/types.rs', [
   'pub struct StorefrontProductListQuery',
   'pub search: Option<String>',
-  'search: normalize_optional_text(search)',
+]);
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
+  'search: normalize_storefront_product_search(search)?,',
 ]);
 
 console.log('[verify-index-text-like-filter] bounded generic PostgreSQL LIKE semantics are source-locked for ordinary and folded filters; Storefront input-bound parity remains explicit');

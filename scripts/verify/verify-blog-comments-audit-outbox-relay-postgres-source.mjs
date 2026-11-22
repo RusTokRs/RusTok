@@ -159,7 +159,8 @@ for (const marker of [
   "SysEventStatus::Failed",
   "retry_count >= self.config.max_attempts",
   "self.mark_dispatched(model).await?",
-  "self.mark_failed_attempt(model, err).await",
+  // The owner API now carries an explicit terminal-failure flag; keep the pin on the real call shape.
+  "self.mark_failed_attempt(model, err, terminal).await",
 ]) need(relay, marker, "Outbox relay owner");
 for (const marker of [
   "publish_contract_once_direct_in_tx_with_envelope_id",

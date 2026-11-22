@@ -35,6 +35,7 @@ diagnostic helper does not construct a replacement code, message, kind, or retry
 ## Bounded diagnostic policy
 
 Admission diagnostics retain only bounded context and message-shape facts.
+Tenant UUID parsing and canonical `payment_error_to_port_error` are now closed by separate source-only contracts.
 
 The helper records one closed error-kind label:
 

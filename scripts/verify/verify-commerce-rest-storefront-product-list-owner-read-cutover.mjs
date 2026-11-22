@@ -113,7 +113,7 @@ for (const [value, label] of [
   ['.order_by_desc(product::Column::PublishedAt)', 'published ordering'],
   ['.order_by_desc(product::Column::CreatedAt)', 'created ordering'],
   ['.all(db)', 'pre-visibility materialization'],
-  ['rustok_inventory::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
+  ['crate::services::catalog::helpers::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
   ['let total = visible_products.len() as u64;', 'post-visibility total'],
   ['.skip(offset_usize)', 'post-visibility page offset'],
   ['.take(per_page as usize)', 'post-visibility page size'],
@@ -123,7 +123,7 @@ for (const [value, label] of [
   ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
 ]) requireText(owner, value, label);
 
-const visibilityIndex = owner.indexOf('rustok_inventory::is_metadata_visible_for_public_channel(');
+const visibilityIndex = owner.indexOf('crate::services::catalog::helpers::is_metadata_visible_for_public_channel(');
 const skipIndex = owner.indexOf('.skip(offset_usize)');
 if (visibilityIndex < 0 || skipIndex < 0 || visibilityIndex > skipIndex) {
   failures.push('owner REST compatibility projection must apply channel visibility before pagination');

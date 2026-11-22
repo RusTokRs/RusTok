@@ -177,11 +177,24 @@ impl TenantResolutionError {
         }
     }
 
-    pub(crate) fn error_message(&self) -> String {
-        if matches!(self, Self::InvalidPolicy(_)) {
-            "Internal tenant configuration error".to_string()
-        } else {
-            self.to_string()
+    /// Public errors must never echo a client-controlled Host/header/slug
+    /// value or an internal validation detail. Keep stable machine codes and
+    /// HTTP statuses for clients; the diagnostic Display is for internal use.
+    pub(crate) const fn error_message(&self) -> &'static str {
+        match self {
+            Self::InvalidPolicy(_) => "Internal tenant configuration error",
+            Self::MissingHeader { .. } => "Required tenant header is missing",
+            Self::InvalidHeaderValue { .. } => "Tenant header is invalid",
+            Self::ConflictingHeaderValues { .. } => "Conflicting tenant header values",
+            Self::MissingHost => "Request host is missing or untrusted",
+            Self::InvalidHost { .. } => "Invalid tenant host",
+            Self::InvalidIdentifier { .. } => "Invalid tenant identifier",
+            Self::BaseDomainRequiresTenantSlug { .. } => {
+                "Tenant slug is required for the base domain"
+            }
+            Self::NestedSubdomain { .. } => "Nested tenant subdomains are not allowed",
+            Self::NoBaseDomainMatch { .. } => "Tenant not found",
+            Self::ConflictingTenantAssertions { .. } => "Conflicting tenant assertions",
         }
     }
 
@@ -609,6 +622,63 @@ mod tests {
             TenantResolutionError::ConflictingHeaderValues { ref header_name }
                 if header_name == "X-Tenant-Slug"
         ));
+    }
+
+    #[tokio::test]
+    async fn tenant_resolution_http_errors_never_reflect_untrusted_identifiers() {
+        let secret = "super-secret-host-and-token-".repeat(512);
+        let variants = [
+            TenantResolutionError::InvalidPolicy(secret.clone()),
+            TenantResolutionError::MissingHeader {
+                header_name: secret.clone(),
+            },
+            TenantResolutionError::InvalidHeaderValue {
+                header_name: secret.clone(),
+            },
+            TenantResolutionError::ConflictingHeaderValues {
+                header_name: secret.clone(),
+            },
+            TenantResolutionError::InvalidHost {
+                value: secret.clone(),
+                reason: secret.clone(),
+            },
+            TenantResolutionError::InvalidIdentifier {
+                value: secret.clone(),
+                reason: secret.clone(),
+            },
+            TenantResolutionError::BaseDomainRequiresTenantSlug {
+                host: secret.clone(),
+                base_domain: secret.clone(),
+            },
+            TenantResolutionError::NestedSubdomain {
+                host: secret.clone(),
+                base_domain: secret.clone(),
+            },
+            TenantResolutionError::NoBaseDomainMatch {
+                host: secret.clone(),
+            },
+            TenantResolutionError::ConflictingTenantAssertions {
+                asserted_slug: secret.clone(),
+                resolved_slug: secret.clone(),
+            },
+        ];
+        for error in variants {
+            let response = error.to_response();
+            assert_eq!(response.status(), error.status_code());
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .expect("bounded tenant error response");
+            let text = std::str::from_utf8(&body).expect("JSON response body");
+            assert!(!text.contains("super-secret-host-and-token-"));
+            assert!(
+                text.len() < 512,
+                "untrusted user identifiers must not expand the public error envelope"
+            );
+            assert!(
+                text.contains(error.error_code()),
+                "stable error code must survive response redaction"
+            );
+        }
     }
 
     #[test]

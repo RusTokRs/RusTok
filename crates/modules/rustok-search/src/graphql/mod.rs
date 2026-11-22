@@ -67,11 +67,22 @@ async fn ensure_search_admin_permission(
         .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
     let tenant = ctx.data::<rustok_api::TenantContext>()?;
 
-    if auth.tenant_id.is_nil()
-        || tenant.id.is_nil()
-        || auth.tenant_id != tenant.id
-        || auth.user_id.is_nil()
-    {
+    if auth.tenant_id != tenant.id {
+        tracing::warn!(
+            auth_tenant_id = %auth.tenant_id,
+            resolved_tenant_id = %tenant.id,
+            user_id = %auth.user_id,
+            code = "search.graphql_tenant_scope_mismatch",
+            boundary = "search_graphql_admin",
+            "Search GraphQL admin authority cannot cross the resolved tenant boundary or use nil identifiers"
+        );
+        return Err(
+            <async_graphql::FieldError as GraphQLError>::permission_denied(
+                "Search administration access is denied",
+            ),
+        );
+    }
+    if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.user_id.is_nil() {
         tracing::warn!(
             auth_tenant_id = %auth.tenant_id,
             resolved_tenant_id = %tenant.id,

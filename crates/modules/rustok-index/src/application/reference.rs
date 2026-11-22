@@ -13,7 +13,7 @@ use crate::domain::{
 
 use super::{
     CursorCodec, CursorValidationError, IndexCursor, QueryValidationError, RecordValidationError,
-    SchemaRegistry,
+    SchemaRegistry, SchemaRegistryError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +148,7 @@ impl<'a> ReferenceIndex<'a> {
         let schema = self
             .registry
             .get(&query.schema)
-            .expect("validated query schema must remain registered");
+            .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
         let order_values = query
             .order_by
             .iter()
@@ -378,10 +378,11 @@ fn text_like_matches(value: &str, pattern: &str) -> bool {
 }
 
 fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {
+    // INVARIANT: base_direction returns a physical direction
     match direction.base_direction() {
         OrderDirection::Asc => ordering,
         OrderDirection::Desc => ordering.reverse(),
-        _ => unreachable!("base_direction returns a physical direction"),
+        _ => ordering,
     }
 }
 

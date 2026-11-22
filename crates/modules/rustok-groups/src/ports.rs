@@ -5,15 +5,12 @@ use std::sync::Arc;
 use crate::dto::{
     CreateGroupInput, DeleteGroupTranslationRequest, DeleteGroupTranslationResult,
     GroupAccessDecision, GroupAccessRequest, GroupConnection, GroupDetails, GroupFeatureBinding,
-    GroupMembership, GroupMembershipConnection, GroupMembershipEffectiveState, GroupTranslation,
-    GroupTranslationMutationResult, JoinGroupRequest, LeaveGroupRequest,
-    ListGroupMembershipsRequest, ListGroupTranslationsRequest, ListGroupsRequest,
-    ReadGroupMembershipEnforcementRequest, ReadGroupMembershipRequest, ReadGroupRequest,
-    SetGroupFeatureRequest, UpsertGroupTranslationRequest,
-};
-use crate::membership_enforcement_command::{
-    GroupMembershipEnforcementMutationResult, RevokeGroupMembershipSuspensionRequest,
-    SuspendGroupMembershipRequest,
+    GroupMembership, GroupMembershipConnection, GroupMembershipEffectiveState,
+    GroupMembershipEnforcementMutationResult, GroupTranslation, GroupTranslationMutationResult,
+    JoinGroupRequest, LeaveGroupRequest, ListGroupMembershipsRequest, ListGroupTranslationsRequest,
+    ListGroupsRequest, ReadGroupMembershipEnforcementRequest, ReadGroupMembershipRequest,
+    ReadGroupRequest, RevokeGroupMembershipSuspensionRequest, SetGroupFeatureRequest,
+    SuspendGroupMembershipRequest, UpsertGroupTranslationRequest,
 };
 
 #[async_trait]

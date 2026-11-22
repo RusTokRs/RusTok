@@ -313,6 +313,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -321,6 +322,7 @@ fn uuid_value(value: uuid::Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -337,6 +339,7 @@ fn optional_source_version_value(
                 checkpoint_contract_failure("checkpoint_source_version_invalid", error)
             })
             .map(Into::into),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

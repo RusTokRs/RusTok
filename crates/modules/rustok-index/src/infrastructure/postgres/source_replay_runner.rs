@@ -685,9 +685,7 @@ async fn finish_success(
     values.push(lease.schema().module.as_str().to_owned().into());
     values.push(lease.schema().entity.as_str().to_owned().into());
     values.push(i64::from(lease.schema().version.get()).into());
-    let locale_value = lease
-        .locale()
-        .map(|locale| locale.as_str().to_owned())
+    let locale_value = lease.locale().map(|locale| locale.as_str().to_owned())
         .unwrap_or_default();
     values.push(locale_value.into());
     let updated = db
@@ -782,6 +780,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -800,6 +799,7 @@ fn select_cancel_job_sql(backend: DbBackend) -> String {
     let lock = match backend {
         DbBackend::Postgres => " FOR UPDATE",
         DbBackend::Sqlite => "",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
@@ -834,6 +834,7 @@ fn finish_success_sql(backend: DbBackend) -> String {
     let complete_cursor = match backend {
         DbBackend::Postgres => "checkpoint.cursor = 'null'::jsonb",
         DbBackend::Sqlite => "json_type(checkpoint.cursor) = 'null'",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(

@@ -25,6 +25,63 @@ async fn locale_probe() -> &'static str {
 }
 
 #[tokio::test]
+async fn listener_reconciliation_and_invalidation_share_one_operation_gate() {
+    let db = sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("in-memory database");
+    let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+    let listener = TenantLocaleGenerationListener::new(
+        ctx,
+        CacheService::from_url(None),
+        Arc::new(TenantLocaleGenerationHealth::default()),
+    );
+
+    // A cloned listener backs the local bus, Redis subscriber, and periodic
+    // reconciler. They must all use one lock around the observe -> clear ->
+    // durable checkpoint -> readiness transition, not independent locks.
+    let gate = listener.operation_gate.lock().await;
+    assert!(
+        listener.clone().operation_gate.try_lock().is_err(),
+        "a clone must share the held generation transition lock"
+    );
+
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let reconciler = listener.clone();
+    let reconciliation = tokio::spawn(async move {
+        let _ = started_tx.send(());
+        reconciler.recover_if_advanced().await
+    });
+    started_rx.await.expect("reconciliation task launched");
+    tokio::task::yield_now().await;
+    assert!(
+        !reconciliation.is_finished(),
+        "reconciliation cannot finish while another transition holds the lock"
+    );
+    drop(gate);
+    // Durable generation availability depends on the test process's shared
+    // backend binding; only mutual exclusion is under test.
+    let _ = reconciliation.await.expect("reconciliation task joins");
+
+    let gate = listener.operation_gate.lock().await;
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let consumer = listener.clone();
+    let invalidation = tokio::spawn(async move {
+        let _ = started_tx.send(());
+        consumer.handle_message(invalidation_message("*", 1)).await
+    });
+    started_rx.await.expect("invalidation task launched");
+    tokio::task::yield_now().await;
+    assert!(
+        !invalidation.is_finished(),
+        "invalidation cannot bypass the ongoing generation transition"
+    );
+    drop(gate);
+    // The result depends on the process-global generation in other tests.
+    // This contract concerns serialized entry, not the event's classification.
+    let _ = invalidation.await.expect("invalidation task joins");
+}
+
+#[tokio::test]
 async fn host_shutdown_aborts_and_joins_tenant_locale_listener_tasks() {
     struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
     impl Drop for NotifyDrop {

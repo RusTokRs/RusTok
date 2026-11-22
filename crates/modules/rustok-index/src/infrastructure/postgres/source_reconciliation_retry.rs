@@ -188,6 +188,7 @@ impl IndexReconciliationRetryPolicy {
 impl Default for IndexReconciliationRetryPolicy {
     fn default() -> Self {
         Self::new(5, Duration::from_secs(5), Duration::from_secs(300))
+            // INVARIANT: default reconciliation retry policy must be valid
             .expect("default reconciliation retry policy must be valid")
     }
 }
@@ -401,6 +402,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }

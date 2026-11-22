@@ -292,12 +292,12 @@ export function verifyInventorySourceDelivery({ root = repository } = {}) {
     require(body(
       code.productCommands,
       name,
-    ), /BootstrapService::create_initial_records_in_tx\(\s*&txn,\s*&default_stock_location,\s*actor_id,/, `${name} forwards current actor`);
+    ), /\.bootstrap_variants_in_tx\(\s*&txn,\s*tenant_id,\s*actor_id,/, `${name} forwards current actor`);
   for (const name of ["delete_product", "delete_variant"])
     require(body(
       code.productCommands,
       name,
-    ), /BootstrapService::delete_records_for_variants_in_tx\(\s*&txn,\s*tenant_id,\s*actor_id,/, `${name} forwards current actor`);
+    ), /\.delete_records_for_variants_in_tx\(\s*&txn,\s*tenant_id,\s*actor_id,/, `${name} forwards current actor`);
 
   const fanout = body(code.fanout, "publish_contract");
   before(

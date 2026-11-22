@@ -91,6 +91,13 @@ function writeNoClobber(packet) {
   finally { if (existsSync(temp)) unlinkSync(temp); }
 }
 
+function ensureCleanCommit() {
+  if (status().trim()) fail("working tree must be clean before retained execution");
+  const commit = commandLine("git", ["rev-parse", "HEAD"], "git_commit");
+  if (!/^[0-9a-f]{40}$/u.test(commit)) fail("commit must be a full SHA-1");
+  return commit;
+}
+
 try {
   validateContract();
   const e = contract.required_environment;
@@ -98,8 +105,7 @@ try {
   const config = parseDedup(externalPath(process.env[e.config_path] ?? "", e.config_path));
   const reset = parseReset(externalPath(process.env[e.reset_review_path] ?? "", e.reset_review_path));
   const serverArtifact = artifact(process.env[e.server_artifact] ?? "", e.server_artifact);
-  if (status().trim()) fail("working tree must be clean before retained execution");
-  const commit = commandLine("git", ["rev-parse", "HEAD"], "git_commit"); if (!/^[0-9a-f]{40}$/u.test(commit)) fail("commit must be a full SHA-1");
+  const commit = ensureCleanCommit();
   const hashes = sourceHashes(); const cargo = commandLine("cargo", ["--version"], "cargo_version"); const rustc = commandLine("rustc", ["--version"], "rustc_version");
   const started = new Date().toISOString(); const result = run(contract.command.program, contract.command.args); const output = `${result.stdout}\n${result.stderr}`; requirePass(output);
   if (commandLine("git", ["rev-parse", "HEAD"], "final_commit") !== commit) fail("commit changed during execution");

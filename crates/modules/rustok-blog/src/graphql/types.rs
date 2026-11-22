@@ -341,6 +341,16 @@ pub struct GqlPostList {
     pub next_cursor: Option<String>,
 }
 
+/// Aggregate post counters for admin dashboards; the single COUNT surface of a
+/// module whose listings are keyset and never count rows.
+#[derive(SimpleObject)]
+pub struct GqlBlogStats {
+    pub total: u64,
+    pub draft: u64,
+    pub published: u64,
+    pub archived: u64,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlPublicPostList {
     pub items: Vec<GqlPostListItem>,

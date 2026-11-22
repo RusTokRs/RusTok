@@ -1134,7 +1134,11 @@ fn attach_return_order_change_context(
 ) -> PostOrderOrchestrationResult<Value> {
     let mut object = match normalize_object_or_empty(value, "metadata")? {
         Value::Object(object) => object,
-        _ => unreachable!("normalize_object_or_empty returns an object"),
+        _ => {
+            return Err(PostOrderOrchestrationError::Validation(
+                "normalize_object_or_empty did not return a JSON object".to_string(),
+            ));
+        }
     };
     object.insert(
         "order_return_id".to_string(),

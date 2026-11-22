@@ -101,7 +101,8 @@ The loop is default-off behind `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`. Whe
 `NotificationFanoutWorker` selects tenant-scoped source/job work without acquiring
 leases; the default/hard batch is 32/64 and one audience page is capped at 256.
 Before each source or job call, the server resolves effective `notifications`
-capability.
+capability and checks the worker stop signal again after the asynchronous
+policy evaluation, before admitting a new materialization or fanout page.
 
 Disabled tenant work is moved to `retryable_error` for 300 seconds; temporary policy
 lookup failure is deferred for 30 seconds. Owner CAS transitions increment attempt
@@ -120,7 +121,8 @@ cursors fail closed.
 a lease. Before canonical claim, the server calls
 `EffectiveModulePolicyService::resolve_snapshot`, requires `notifications`, and
 captures the deterministic policy revision plus the manifest default-enabled module
-set. Disabled or unresolved work receives the 300/30-second owner CAS backoff
+set. The server rechecks the stop signal after that async observation, before
+starting the next candidate claim; an operation already begun is left to finish. Disabled or unresolved work receives the 300/30-second owner CAS backoff
 without invoking recipient privacy or source providers.
 
 Enabled work is processed in this order:
@@ -387,3 +389,20 @@ These commands were not run while publishing
 - [Fanout worker contract](../contracts/notifications-fanout-worker.json)
 - [Candidate worker contract](../contracts/notifications-candidate-worker.json)
 - Canonical roadmap: `crates/modules/rustok-forum/docs/implementation-plan.md`
+- [forum-20am-plan-sync.md](./forum-20am-plan-sync.md) — synchronized owner note; runtime execution remains maintainer-owned.
+
+## Forum owner notes
+
+- [forum-20ab-selected-state.md](./forum-20ab-selected-state.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ac-group-listing.md](./forum-20ac-group-listing.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ad-group-key-population.md](./forum-20ad-group-key-population.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ae-group-summaries.md](./forum-20ae-group-summaries.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20af-group-state.md](./forum-20af-group-state.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ag-storefront-port.md](./forum-20ag-storefront-port.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ah-native-storefront-adapter.md](./forum-20ah-native-storefront-adapter.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ai-grouped-storefront-ui.md](./forum-20ai-grouped-storefront-ui.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20aj-navigation-badge.md](./forum-20aj-navigation-badge.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20ak-grouped-graphql.md](./forum-20ak-grouped-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20al-open-graphql.md](./forum-20al-open-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20am-plan-sync.md](./forum-20am-plan-sync.md) — source-ready owner note; runtime execution remains maintainer-owned.
+- [forum-20an-group-state-graphql.md](./forum-20an-group-state-graphql.md) — source-ready owner note; runtime execution remains maintainer-owned.

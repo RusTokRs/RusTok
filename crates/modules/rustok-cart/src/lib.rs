@@ -52,10 +52,7 @@ pub use entities::{
     cart_line_item_translation, cart_shipping_selection, cart_tax_line,
 };
 pub use error::{CartError, CartResult};
-pub use guarded_ports::{
-    guarded_cart_checkout_port as in_process_cart_checkout_port,
-    guarded_cart_storefront_port as in_process_cart_storefront_port,
-};
+pub use guarded_ports::guarded_cart_checkout_port as in_process_cart_checkout_port;
 pub use guest_access::{
     GUEST_CART_TOKEN_COOKIE, GUEST_CART_TOKEN_HEADER, attach_transient_guest_token,
     current_guest_cart_token, guest_cart_claim, guest_cart_token_from_context,
@@ -78,6 +75,7 @@ pub use ports::{
     CartPromotionScopeRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
     CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
+    in_process_cart_storefront_port,
 };
 pub use promotion_guard::guarded_cart_promotion_port as in_process_cart_promotion_port;
 pub use services::cart::{

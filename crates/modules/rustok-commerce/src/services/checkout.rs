@@ -790,7 +790,7 @@ impl CheckoutService {
                         ctx,
                         InventoryAvailabilityRequest {
                             variant_id,
-                            requested_quantity: quantity,
+                            requested_quantity: demand.quantity,
                             channel_slug: channel_slug.clone(),
                         },
                     )

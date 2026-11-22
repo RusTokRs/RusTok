@@ -235,9 +235,13 @@ where
             );
         }
     };
-    let refresh_revision = batch
-        .refresh_revision_at(0)
-        .expect("the batch contains exactly one mutation");
+    // This owner-visible refresh revision can differ from the record's source version.
+    let refresh_revision = batch.refresh_revision_at(0).ok_or_else(|| {
+        IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
+            event_domain: event_domain.clone(),
+            actual: 0,
+        }
+    })?;
     if refresh_revision < minimum_source_version {
         return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
             event_domain,

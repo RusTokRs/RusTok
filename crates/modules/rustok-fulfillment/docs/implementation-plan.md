@@ -272,8 +272,9 @@ disable/reconciliation matrix in
   and never become client response text.
 - [x] Propagate REST tenant, actor, locale, effective channel, correlation, and
   two-second deadline context.
-- [x] Publish the mounted shipping-option projection-parity execution contract,
-  capture runner, fail-closed verifier, and operator runbook.
+- [x] Publish the mounted shipping-option projection-parity execution contract and capture runner.
+  The fail-closed verifier and operator runbook are published with them.
+- [ ] Execute the mounted GraphQL/REST shipping-option projection-parity capture and retain its immutable packet.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 

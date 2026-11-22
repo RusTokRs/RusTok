@@ -166,10 +166,20 @@ for (const forbidden of [
 }
 
 const ports = read("crates/modules/rustok-product/src/ports.rs");
+const portsCrate = read("crates/modules/rustok-product/ports/src/ports.rs");
+const portsCrateTypes = read("crates/modules/rustok-product/ports/src/types.rs");
+requireText(
+  portsCrate,
+  '"product.legacy_admin_list_unavailable"',
+  'Product legacy admin read contract must contain "product.legacy_admin_list_unavailable"',
+);
+requireText(
+  portsCrateTypes,
+  "pub struct LegacyAdminProductsRequest",
+  "Product legacy admin read contract must contain pub struct LegacyAdminProductsRequest",
+);
 for (const required of [
   "async fn list_legacy_admin_products(",
-  "pub struct LegacyAdminProductsRequest",
-  '"product.legacy_admin_list_unavailable"',
   "LIST_LEGACY_ADMIN_PRODUCTS_OPERATION",
   "validate_legacy_admin_products_request(",
   "StorefrontProductSortBy::CreatedAt",

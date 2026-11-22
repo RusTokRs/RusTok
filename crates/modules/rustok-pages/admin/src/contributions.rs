@@ -35,15 +35,12 @@ pub fn pages_metadata_contribution() -> GeneratedPagesDescriptor {
 
 pub fn pages_metadata_property_schema() -> ConsumerPropertyEditorSchema {
     let contribution = pages_metadata_contribution();
+    // INVARIANT: Generated Pages metadata contribution is produced at compile time by build.rs.
     let editor = contribution
         .property_editors
         .iter()
         .find(|editor| editor.id == PAGES_METADATA_PROPERTY_EDITOR_ID)
-        .unwrap_or_else(|| {
-            panic!(
-                "generated Pages metadata contribution is missing property editor `{PAGES_METADATA_PROPERTY_EDITOR_ID}`"
-            )
-        });
+        .expect("generated Pages metadata contribution is missing property editor");
     // INVARIANT: Property schema was generated and validated at compile time by build.rs from canonical module metadata.
     let schema =
         serde_json::from_value::<ConsumerPropertyEditorSchema>(editor.property_schema.clone())
@@ -74,12 +71,13 @@ pub fn build_pages_admin_contribution_registry(
 }
 
 fn generated_admin_contribution(id: &str) -> GeneratedPagesDescriptor {
+    // INVARIANT: Generated Pages admin contribution is produced at compile time by build.rs.
     GENERATED_PAGES_CONTRIBUTION_MANIFEST
         .admin
         .iter()
         .find(|contribution| contribution.id == id)
         .cloned()
-        .unwrap_or_else(|| panic!("generated Pages admin contribution `{id}` is missing"))
+        .expect("generated Pages admin contribution is missing")
 }
 
 fn capability_set(capabilities: &[&str]) -> BTreeSet<String> {

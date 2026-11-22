@@ -351,6 +351,16 @@ impl PostListResponse {
     }
 }
 
+/// Aggregate post counters for the admin dashboard. Keyset listings never count
+/// rows, so this snapshot is the module's single COUNT owner.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+pub struct PostStatusCounts {
+    pub total: u64,
+    pub draft: u64,
+    pub published: u64,
+    pub archived: u64,
+}
+
 /// Keyset position of an admin post list: the sort value and id of the last item of
 /// the previous page. Posts whose sort column is NULL (drafts have no `published_at`)
 /// come after every non-null value, so their cursor carries `value: None`.

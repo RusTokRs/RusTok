@@ -340,7 +340,8 @@ assertContains(
 );
 assertContains(
   leptosAdapter,
-  '<super::product_editor::ProductEditorPage',
+  'use super::product_editor::ProductEditorPage;',
+  '<ProductEditorPage is_new=false product_id=product_id />',
   `${uiDir}/leptos.rs: reference selection must reuse the routed recovery editor`
 );
 

@@ -91,6 +91,29 @@ pub struct GqlProduct {
     pub images: Vec<GqlProductImage>,
     /// Storefront-safe specifications; empty on admin roots (see `GqlStorefrontProductAttribute`).
     pub attributes: Vec<GqlStorefrontProductAttribute>,
+    /// Brand bindings owned by `rustok-product::product_brands`, primary first.
+    pub brands: Vec<GqlProductBrand>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlProductBrand {
+    pub brand_id: Uuid,
+    pub is_primary: bool,
+    pub role: String,
+    pub position: i32,
+    pub brand: Option<GqlBrand>,
+}
+
+impl From<dto::ProductBrandResponse> for GqlProductBrand {
+    fn from(brand: dto::ProductBrandResponse) -> Self {
+        Self {
+            brand_id: brand.brand_id,
+            is_primary: brand.is_primary,
+            role: brand.role,
+            position: brand.position,
+            brand: None,
+        }
+    }
 }
 
 #[derive(SimpleObject)]
@@ -1164,7 +1187,17 @@ pub struct CreateProductInput {
     pub tags: Option<Vec<String>>,
     /// Optional custom fields validated against the tenant's active schema.
     pub custom_fields: Option<Json<serde_json::Value>>,
+    /// Optional brand bindings; multiple brands require exactly one primary.
+    pub brands: Option<Vec<ProductBrandInputObject>>,
     pub publish: Option<bool>,
+}
+
+#[derive(InputObject)]
+pub struct ProductBrandInputObject {
+    pub brand_id: Uuid,
+    pub is_primary: Option<bool>,
+    pub role: Option<String>,
+    pub position: Option<i32>,
 }
 
 #[derive(InputObject)]
@@ -1481,6 +1514,9 @@ pub struct UpdateProductInput {
     /// Optional custom fields patch — merged into existing metadata.
     pub custom_fields: Option<Json<serde_json::Value>>,
     pub status: Option<GqlProductStatus>,
+    /// Full brand-binding replacement: omitted keeps the stored bindings,
+    /// an explicit list re-syncs them (multiple brands require exactly one primary).
+    pub brands: Option<Vec<ProductBrandInputObject>>,
     /// Predecessor revision of the document that was read.
     ///
     /// Required whenever the input changes document fields; lifecycle-only writes (`status` only)
@@ -2108,6 +2144,7 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .map(GqlVariantAxisConfig::from)
                 .collect(),
             variants: product.variants.into_iter().map(GqlVariant::from).collect(),
+            brands: product.brands.into_iter().map(GqlProductBrand::from).collect(),
             images: product
                 .images
                 .into_iter()
@@ -3332,15 +3369,6 @@ pub struct GqlBrandListResponse {
     pub total: u64,
     pub page: u64,
     pub per_page: u64,
-}
-
-#[derive(SimpleObject, Clone)]
-pub struct GqlProductBrand {
-    pub brand_id: Uuid,
-    pub is_primary: bool,
-    pub role: String,
-    pub position: i32,
-    pub brand: Option<GqlBrand>,
 }
 
 #[derive(InputObject, Clone, Default)]

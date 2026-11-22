@@ -63,6 +63,7 @@ impl MarketplaceFinancialRuntime {
     }
 
     pub fn financial_port(&self) -> Arc<dyn MarketplaceFinancialCommandPort> {
+        // INVARIANT: In-process and host-composed reversal workflows require MarketplaceFinancialCommandPort.
         self.financial_port
             .clone()
             .expect("MarketplaceFinancialCommandPort must be host-composed for reversal workflows")

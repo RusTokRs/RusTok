@@ -391,16 +391,6 @@ impl ProductCatalogCommandRuntime {
             .and_then(|catalog| catalog.shipping_profile_port.clone())
     }
 
-    /// An external owner may publish its own maintenance adapter; the host must
-    /// not substitute local persistence for that owner's capability.
-    pub fn with_media_maintenance_port(
-        mut self,
-        port: Arc<dyn ProductMediaMaintenancePort>,
-    ) -> Self {
-        self.media_maintenance_port = Some(port);
-        self
-    }
-
     pub fn media_maintenance_port(&self) -> Option<Arc<dyn ProductMediaMaintenancePort>> {
         self.media_maintenance_port.clone()
     }

@@ -25,6 +25,7 @@ export function verifyIndexSourceRefreshEvent({ root = repository } = {}) {
   if (!persist || !process)
     failures.push("missing canonical persistence/wrapper boundary");
   const code = spaced(persist);
+  // `batch.mutations()` yields `&IndexMutation`; the sink already takes that reference.
   const ordered = [
     "event_registry.get(&event_domain)",
     "key.schema != expected_schema",
@@ -33,7 +34,7 @@ export function verifyIndexSourceRefreshEvent({ root = repository } = {}) {
     "IndexSourceLoadRequest::new(vec![key.clone()])",
     ".load(request)",
     "[mutation] => mutation",
-    ".refresh_revision_at(0)",
+    ".refresh_revision_at(0).ok_or_else(|| { IndexSourceRefreshEventProcessError::AmbiguousSourceMutation",
     "refresh_revision < minimum_source_version",
     "mutation.event_id().is_nil()",
     ".apply_replay_mutation(schema_registry, &expected_source_name, mutation)",

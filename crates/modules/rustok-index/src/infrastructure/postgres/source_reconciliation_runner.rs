@@ -1358,6 +1358,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1373,6 +1374,7 @@ fn stored_uuid(
             let value: String = row.try_get("", column).map_err(storage_error)?;
             Uuid::parse_str(&value).map_err(storage_error)
         }
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1468,6 +1470,7 @@ fn select_cancel_job_sql(backend: DbBackend) -> String {
     let lock = match backend {
         DbBackend::Postgres => " FOR UPDATE",
         DbBackend::Sqlite => "",
+        // INVARIANT: unsupported database backend was validated
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(

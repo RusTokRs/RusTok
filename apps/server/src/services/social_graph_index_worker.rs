@@ -20,7 +20,8 @@ use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
-use crate::services::stop_handle::StopHandle;
+use crate::services::server_runtime_context::published_worker_running;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -132,9 +133,14 @@ pub fn social_graph_index_consumer_enabled() -> Result<bool> {
 }
 
 pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
-    if !ctx.settings().runtime.runs_background_workers()
-        || ctx.shared_contains::<SocialGraphIndexWorkerHandle>()
-    {
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    if published_worker_running::<SocialGraphIndexWorkerHandle>(
+        ctx,
+        "Social Graph Index consumer",
+        SocialGraphIndexWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     if !social_graph_index_consumer_enabled()? {
@@ -178,14 +184,22 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
     else {
         // Another caller is still preparing this worker; a successful return
         // would falsely tell bootstrap it is running if that starter fails.
-        if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+        if published_worker_running::<SocialGraphIndexWorkerHandle>(
+            ctx,
+            "Social Graph Index consumer",
+            SocialGraphIndexWorkerHandle::is_finished,
+        )? {
             return Ok(());
         }
         return Err(Error::Message(
             "Social Graph Index worker startup is already in progress; retry".to_string(),
         ));
     };
-    if ctx.shared_contains::<SocialGraphIndexWorkerHandle>() {
+    if published_worker_running::<SocialGraphIndexWorkerHandle>(
+        ctx,
+        "Social Graph Index consumer",
+        SocialGraphIndexWorkerHandle::is_finished,
+    )? {
         return Ok(());
     }
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
@@ -271,6 +285,17 @@ async fn social_graph_index_worker_loop(
             );
             return;
         };
+        // The broker receive and shutdown notification may become ready
+        // simultaneously. Never admit a new projection/DLQ side effect after
+        // stop, even if select returned the delivery branch.
+        if !may_admit_next_worker_operation(&stop_rx) {
+            record_worker_termination("shutdown");
+            tracing::info!(
+                worker = METRICS_CONSUMER,
+                "Broker delivery arrived during shutdown; leaving its source offset uncommitted"
+            );
+            return;
+        }
 
         match received {
             Ok(Some(PersistentContractDelivery::Event(consumed))) => {
@@ -709,6 +734,17 @@ async fn process_decode_failure(
                     "neutral poison receipt remained busy after {attempt} attempt(s)"
                 ));
             }
+            Ok(ConsumerPoisonPublishClaim::ReconciliationRequired) => {
+                runtime_consumer_metrics::record_failure(
+                    METRICS_CONSUMER,
+                    STAGE_POISON_RECEIPT,
+                    "social_graph.index.poison_reconciliation_required",
+                );
+                return Err(
+                    "neutral poison DLQ publication requires reconciliation; automatic replay is forbidden and source offset remains uncommitted"
+                        .to_string(),
+                );
+            }
             Ok(ConsumerPoisonPublishClaim::Claimed) => {
                 match transport.move_to_dlq(failure.to_dlq_entry(1)).await {
                     Ok(()) => {
@@ -723,58 +759,23 @@ async fn process_decode_failure(
                         .await?;
                         break false;
                     }
-                    Err(_error) if attempt < config.max_attempts => {
-                        if let Err(_release_err) = poison_receipts
-                            .release_claim(&identity, poison_publisher_id)
-                            .await
-                        {
-                            tracing::warn!(
-                                failure_code = "social_graph_index_poison_claim_release_failed",
-                                "Failed to release poison claim before retry"
-                            );
-                        }
-                        let delay = retry_delay(config, attempt);
-                        runtime_consumer_metrics::record_failure(
-                            METRICS_CONSUMER,
-                            STAGE_DLQ_PUBLISH,
-                            "social_graph.index.transport_unavailable",
-                        );
-                        runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_DLQ_PUBLISH);
-                        tracing::warn!(
-                            worker = METRICS_CONSUMER,
-                            error_code = failure.stable_error_code(),
-                            failure_code = "social_graph_index_dlq_publish_failed",
-                            attempt,
-                            retry_delay_ms = duration_millis(delay),
-                            "Exact-byte raw poison publication failed; released claim and retained source offset"
-                        );
-                        if wait_or_stop(delay, stop_rx).await {
-                            return Ok(RawPoisonCompletion::Stopped);
-                        }
-                        attempt += 1;
-                    }
                     Err(_error) => {
-                        if let Err(_release_err) = poison_receipts
-                            .release_claim(&identity, poison_publisher_id)
-                            .await
-                        {
-                            tracing::warn!(
-                                failure_code = "social_graph_index_poison_claim_release_failed",
-                                "Failed to release poison claim on final attempt"
-                            );
-                        }
+                        // Lost broker responses are indistinguishable from
+                        // failed sends. Keep the publishing claim durable;
+                        // the source remains unacknowledged until this
+                        // delivery has been explicitly reconciled.
                         runtime_consumer_metrics::record_failure(
                             METRICS_CONSUMER,
                             STAGE_DLQ_PUBLISH,
-                            "social_graph.index.transport_unavailable",
+                            "social_graph.index.dlq_publish_ambiguous",
                         );
-                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "failure");
-                        // Transport failures are not necessarily safe to display:
-                        // broker errors can include remote payloads or credentials.
-                        // The claimed receipt was released (or its lease will
-                        // expire), and the source offset stays uncommitted for
-                        // recovery. Report a stable diagnostic without relying
-                        // on a deliberately discarded transport error binding.
+                        runtime_consumer_metrics::record_dlq(METRICS_CONSUMER, "uncertain");
+                        tracing::error!(
+                            worker = METRICS_CONSUMER,
+                            failure_code = "social_graph_index_dlq_publication_ambiguous",
+                            attempt,
+                            "Raw poison DLQ outcome is uncertain; retaining publishing claim and source offset for reconciliation"
+                        );
                         return Err(raw_poison_publish_failure(attempt));
                     }
                 }
@@ -825,12 +826,12 @@ async fn process_decode_failure(
     .await
 }
 
-/// Stable diagnostic for the last DLQ transport attempt. Never put the
+/// Stable diagnostic for an uncertain DLQ transport outcome. Never put the
 /// transport's raw error string on worker error surfaces: its content is
 /// controlled by a remote broker and may include sensitive connection data.
 fn raw_poison_publish_failure(attempt: u32) -> String {
     format!(
-        "exact-byte raw poison publication failed after {attempt} attempt(s); source offset remains uncommitted"
+        "exact-byte raw poison publication outcome unknown after {attempt} attempt(s); reconciliation required; source offset remains uncommitted"
     )
 }
 
@@ -1070,7 +1071,7 @@ mod tests {
         let reason = raw_poison_publish_failure(3);
         assert_eq!(
             reason,
-            "exact-byte raw poison publication failed after 3 attempt(s); source offset remains uncommitted"
+            "exact-byte raw poison publication outcome unknown after 3 attempt(s); reconciliation required; source offset remains uncommitted"
         );
         assert!(!reason.contains("password"));
         assert!(!reason.contains("token"));

@@ -293,6 +293,9 @@ struct TenantCacheGenerationListener {
     cache: CacheService,
     effective_policy_cache: Option<rustok_modules::ModuleEffectivePolicyCache>,
     tracker: BoundedCacheInvalidationGapTracker,
+    // Local bus, Redis subscriber and reconciler must not interleave
+    // generation observation, policy invalidation and checkpoint commit.
+    operation_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl TenantCacheGenerationListener {
@@ -304,10 +307,18 @@ impl TenantCacheGenerationListener {
             cache,
             effective_policy_cache,
             tracker: BoundedCacheInvalidationGapTracker::default(),
+            operation_gate: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
     async fn recover_shared_generation(&self) -> Result<u64> {
+        let _operation_guard = self.operation_gate.lock().await;
+        self.recover_shared_generation_locked().await
+    }
+
+    // Caller owns operation_gate; the message handler uses this inner form
+    // after observing a gap to avoid recursively acquiring an async mutex.
+    async fn recover_shared_generation_locked(&self) -> Result<u64> {
         let value = if self.cache.redis_configuration_present() {
             if !self.cache.redis_client_initialized() {
                 return Err(Error::Cache(
@@ -334,6 +345,21 @@ impl TenantCacheGenerationListener {
         };
 
         observe_tenant_backend_generation(value)?;
+        // The durable generation covers changes to *any* tenant, including
+        // events this process never received. Advancing its checkpoint without
+        // dropping cached effective policies would leave other tenants' module
+        // authority stale until TTL expiration. Apply the conservative full
+        // invalidation before acknowledging recovery, including first boot.
+        if self
+            .tracker
+            .last_generation(TENANT_CACHE_GENERATION_CHANNEL)
+            != Some(value)
+        {
+            if let Some(policy_cache) = &self.effective_policy_cache {
+                policy_cache.clear();
+            }
+            self.cache.clear_shared_backends();
+        }
         self.tracker
             .acknowledge_recovery(TENANT_CACHE_GENERATION_CHANNEL, value)
             .map_err(|error| Error::Cache(error.to_string()))?;
@@ -354,6 +380,7 @@ impl TenantCacheGenerationListener {
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
+        let _operation_guard = self.operation_gate.lock().await;
         let started_at = Instant::now();
         let event = VersionedCacheInvalidation::from_message(&message)
             .map_err(|error| Error::Cache(error.to_string()))?;
@@ -364,35 +391,53 @@ impl TenantCacheGenerationListener {
             )));
         }
 
-        match self.tracker.observe(&event) {
+        let acknowledge_generation = match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
                 observe_tenant_backend_generation(generation)?;
-                self.acknowledge_applied_generation(generation)?;
+                // Do not acknowledge the generation until its effects are
+                // visible; otherwise another consumer can skip an uncompleted
+                // cache invalidation after observing the advanced checkpoint.
+                Some(generation)
             }
             CacheInvalidationObservation::Duplicate { .. }
-            | CacheInvalidationObservation::Stale { .. } => {}
+            | CacheInvalidationObservation::Stale { .. } => None,
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
-                let recovered = self.recover_shared_generation().await?;
+                let recovered = self.recover_shared_generation_locked().await?;
                 if recovered < event.generation {
                     return Err(Error::Cache(format!(
                         "shared tenant cache generation {recovered} trails received {}",
                         event.generation
                     )));
                 }
+                None
             }
-        }
+        };
 
         if let Some(policy_cache) = &self.effective_policy_cache {
-            if event.key == PLATFORM_POLICY_INVALIDATION_KEY {
-                // Platform-wide module policy change (e.g. release quarantine):
-                // every tenant's cached policy may be stale.
+            if event.key == PLATFORM_POLICY_INVALIDATION_KEY || event.key == "*" {
+                // Platform-wide policy events and manual global invalidation
+                // both affect every tenant's effective availability.
                 policy_cache.clear();
-            } else if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key) {
+            } else if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key)
+                && !tenant_id.is_nil()
+            {
                 policy_cache.invalidate_tenant(tenant_id);
+            } else {
+                // The public invalidation envelope can carry an arbitrary
+                // bounded key. Unknown tenant coordinates must not acknowledge
+                // an event while leaving the unrelated policy cache intact.
+                policy_cache.clear();
+                tracing::warn!(
+                    error_code = "tenant_cache_generation_invalid_policy_key",
+                    "Invalid tenant cache generation key; invalidated all effective policies"
+                );
             }
         }
         self.cache.clear_shared_backends();
+        if let Some(generation) = acknowledge_generation {
+            self.acknowledge_applied_generation(generation)?;
+        }
 
         rustok_telemetry::metrics::record_event_dispatch_latency_ms(
             "tenant_cache_generation",
@@ -1080,6 +1125,186 @@ mod tests {
                 second.generation
             );
         }
+    }
+
+    fn cached_policy_fixture() -> rustok_modules::ModuleEffectivePolicy {
+        // An empty owner policy is a valid, revision-bound snapshot. Using the
+        // public serde contract avoids reaching into module-private writers.
+        serde_json::from_value(serde_json::json!({
+            "policy_revision": format!("sha256:{}", "a".repeat(64)),
+            "enabled_modules": [],
+            "decisions": {}
+        }))
+        .expect("valid empty effective policy fixture")
+    }
+
+    #[tokio::test]
+    async fn missed_generation_recovery_clears_all_tenant_policies() {
+        let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
+        let cache = CacheService::from_url(None);
+        let policies = rustok_modules::ModuleEffectivePolicyCache::new();
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+        policies.insert(tenant_a, cached_policy_fixture()).unwrap();
+        policies.insert(tenant_b, cached_policy_fixture()).unwrap();
+
+        let listener = TenantCacheGenerationListener::new(cache.clone(), Some(policies.clone()));
+        let base = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation;
+        listener
+            .tracker
+            .seed(TENANT_CACHE_GENERATION_CHANNEL, base)
+            .unwrap();
+
+        // Two durable rotations were not delivered through the subscriber.
+        cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let second = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        assert_eq!(policies.len(), 2, "missed Pub/Sub does not itself clear policy entries");
+
+        listener.recover_shared_generation().await.unwrap();
+        assert!(
+            policies.is_empty(),
+            "durable reconciliation must invalidate all tenants, not merely a received key"
+        );
+        assert_eq!(
+            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            Some(second.generation)
+        );
+
+        // A healthy, unchanged periodic observation must not evict fresh
+        // entries on every reconciliation interval.
+        policies.insert(tenant_a, cached_policy_fixture()).unwrap();
+        listener.recover_shared_generation().await.unwrap();
+        assert_eq!(policies.len(), 1);
+
+        // A later gap delivered for tenant A must evict unrelated tenant B
+        // before publishing the recovered generation checkpoint.
+        policies.insert(tenant_b, cached_policy_fixture()).unwrap();
+        cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let fourth = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            tenant_a.to_string(),
+            fourth.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(message).await.unwrap();
+        assert!(policies.is_empty(), "gap recovery cannot retain tenant B's stale policy");
+        assert_eq!(
+            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            Some(fourth.generation)
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_policy_key_clears_all_before_acknowledging_in_order_event() {
+        let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
+        let cache = CacheService::from_url(None);
+        let policies = rustok_modules::ModuleEffectivePolicyCache::new();
+        let tenant = Uuid::new_v4();
+        policies.insert(tenant, cached_policy_fixture()).unwrap();
+        let listener = TenantCacheGenerationListener::new(cache.clone(), Some(policies.clone()));
+        let base = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation;
+        listener
+            .tracker
+            .seed(TENANT_CACHE_GENERATION_CHANNEL, base)
+            .unwrap();
+        let next = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            "malformed-tenant-id",
+            next.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(message).await.unwrap();
+        assert!(
+            policies.is_empty(),
+            "invalid bounded key cannot silently skip tenant policy invalidation"
+        );
+        assert_eq!(
+            listener.tracker.last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            Some(next.generation)
+        );
+
+        // The canonical manual global invalidation key is a valid wildcard,
+        // not a malformed tenant identifier. It must still clear every policy.
+        policies.insert(tenant, cached_policy_fixture()).unwrap();
+        let wildcard_generation = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let wildcard_message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            "*",
+            wildcard_generation.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(wildcard_message).await.unwrap();
+        assert!(policies.is_empty(), "manual global invalidation clears policies");
+
+        // Nil UUIDs are not tenant identifiers. They must conservatively
+        // clear, rather than selectively evicting an impossible tenant.
+        policies.insert(tenant, cached_policy_fixture()).unwrap();
+        let nil_generation = cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .unwrap();
+        let nil_message = VersionedCacheInvalidation::new(
+            TENANT_CACHE_GENERATION_CHANNEL,
+            Uuid::nil().to_string(),
+            nil_generation.generation,
+            1_000,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+        listener.handle_message(nil_message).await.unwrap();
+        assert!(policies.is_empty(), "nil tenant key cannot skip invalidation");
+    }
+
+    #[test]
+    fn cloned_generation_listeners_share_one_transition_lock() {
+        let listener = TenantCacheGenerationListener::new(CacheService::from_url(None), None);
+        let copy = listener.clone();
+        let guard = listener
+            .operation_gate
+            .try_lock()
+            .expect("first transition lock is free");
+        assert!(
+            copy.operation_gate.try_lock().is_err(),
+            "local, Redis and reconciliation owners must share one gate"
+        );
+        drop(guard);
+        assert!(copy.operation_gate.try_lock().is_ok());
     }
 
     #[tokio::test]

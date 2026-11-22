@@ -13,6 +13,7 @@ pub mod engine;
 mod forum_contract_ingress;
 mod forum_inbox;
 mod forum_owner_checkpoint;
+pub mod forum_owner_contracts;
 mod forum_reconciliation;
 #[cfg(feature = "graphql")]
 pub mod graphql;

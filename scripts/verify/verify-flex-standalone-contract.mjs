@@ -355,10 +355,27 @@ expectNotContains(
   ".update_schema(tenant_id, actor_id, schema_id, input)\n        .update_schema(",
   "duplicate update_schema delegation chain",
 );
-for (const snippet of [
+expectContains(
+  "crates/libs/rustok-api/src/field_schema.rs",
   "pub trait FieldDefinitionSource",
-  "pub fn field_definition_from_source",
+  "API-level field definition source trait",
+);
+expectContains(
+  "crates/libs/rustok-api/src/field_schema.rs",
   "macro_rules! impl_field_definition_source",
+  "API-level field definition source implementation macro",
+);
+expectContains(
+  "crates/libs/rustok-core/src/field_schema/definitions.rs",
+  "pub fn field_definition_from_source",
+  "core field definition from source helper",
+);
+expectContains(
+  "crates/modules/flex/src/registry.rs",
+  "pub use rustok_core::field_schema::{FieldDefinitionSource, field_definition_from_source};",
+  "flex registry re-export of field definition source helpers",
+);
+for (const snippet of [
   "pub fn validate_field_definition_create",
   "pub fn field_definition_position_or_next",
   "pub fn field_definition_type_name",

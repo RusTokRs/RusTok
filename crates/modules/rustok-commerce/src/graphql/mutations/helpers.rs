@@ -27,6 +27,27 @@ use crate::{
 
 use super::super::types::*;
 
+/// Converts GraphQL brand bindings into the canonical domain input.
+///
+/// The role defaults to `manufacturer` and the position to `0`, mirroring the
+/// serde defaults of `rustok_product`'s `ProductBrandInput`.
+pub(crate) fn convert_product_brand_inputs(
+    brands: Option<Vec<ProductBrandInputObject>>,
+) -> Vec<crate::dto::ProductBrandInput> {
+    brands
+        .unwrap_or_default()
+        .into_iter()
+        .map(|brand| crate::dto::ProductBrandInput {
+            brand_id: brand.brand_id,
+            is_primary: brand.is_primary.unwrap_or(false),
+            role: brand
+                .role
+                .unwrap_or_else(|| "manufacturer".to_string()),
+            position: brand.position.unwrap_or(0),
+        })
+        .collect()
+}
+
 pub(crate) fn convert_create_product_input(
     input: CreateProductInput,
 ) -> Result<crate::dto::CreateProductInput> {
@@ -42,6 +63,8 @@ pub(crate) fn convert_create_product_input(
             meta_description: translation.meta_description,
         })
         .collect();
+
+    let brands = convert_product_brand_inputs(input.brands);
 
     let variant_axes = input
         .variant_axes
@@ -119,7 +142,7 @@ pub(crate) fn convert_create_product_input(
             .custom_fields
             .map(|cf| cf.0)
             .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
-        brands: Vec::new(),
+        brands,
         publish: input.publish.unwrap_or(false),
     })
 }
@@ -578,6 +601,32 @@ pub(crate) async fn enrich_storefront_cart(
     )
     .await
     .map_err(|err| async_graphql::Error::new(err.to_string()))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn validate_selected_shipping_option(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    cart: &crate::dto::CartResponse,
+    selected_shipping_option_id: Option<Uuid>,
+    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
+    currency_code: &str,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> Result<()> {
+    super::typed_shipping_option_helper::validate_selected_shipping_option(
+        db,
+        tenant_id,
+        cart,
+        selected_shipping_option_id,
+        shipping_selections,
+        currency_code,
+        public_channel_slug,
+        requested_locale,
+        tenant_default_locale,
+    )
+    .await
 }
 
 pub(crate) fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {

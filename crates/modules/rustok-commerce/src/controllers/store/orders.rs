@@ -453,7 +453,7 @@ fn map_storefront_payment_port_error(
         error_kind,
         public_code = code,
         status = %status,
-        boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY,
+        boundary = "commerce_storefront_order_http",
         "storefront Payment refund read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message).with_retryable(error.retryable)
@@ -882,11 +882,7 @@ pub async fn list_order_returns(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(
-            params.pagination.page,
-            params.pagination.limit(),
-            page.total,
-        ),
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }
 
@@ -985,11 +981,7 @@ pub async fn list_order_refunds(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(
-            params.pagination.page,
-            params.pagination.limit(),
-            page.total,
-        ),
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }
 
@@ -1092,10 +1084,6 @@ pub async fn list_order_changes(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(
-            params.pagination.page,
-            params.pagination.limit(),
-            page.total,
-        ),
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
     }))
 }

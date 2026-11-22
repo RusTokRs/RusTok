@@ -64,7 +64,7 @@ pub(crate) fn replace_symbol_block(content: &str, symbols: Vec<Value>) -> PagesR
     let mut value = parse_project_value(content)?;
     let object = value
         .as_object_mut()
-        .expect("parse_project_value returns an object");
+        .ok_or_else(|| PagesError::validation("project value is not a JSON object"))?;
     let replacement = (!symbols.is_empty()).then_some(Value::Array(symbols.clone()));
     if symbols.is_empty()
         && object.get(FLY_SYMBOLS_FIELD).is_none()
@@ -330,6 +330,7 @@ pub(crate) async fn lock_site_symbol_catalog_in_tx<C: ConnectionTrait>(
     if conn.get_database_backend() == DatabaseBackend::Postgres {
         let identity = format!("rustok-pages-site-symbols/{tenant_id}/{locale}");
         let digest = Sha256::digest(identity.as_bytes());
+        // INVARIANT: SHA-256 output is 32 bytes, so slicing [..8] always yields exactly 8 bytes.
         let key = i64::from_be_bytes(digest[..8].try_into().expect("SHA-256 output has 32 bytes"));
         let sql = format!("SELECT pg_advisory_xact_lock({key})");
         conn.query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))

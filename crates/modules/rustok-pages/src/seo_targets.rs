@@ -27,6 +27,7 @@ pub struct PagesSeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for PagesSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: `builtin_slug::PAGE` is a compile-time constant satisfying SeoTargetSlug requirements.
         SeoTargetSlug::new(builtin_slug::PAGE).expect("builtin SEO target slug must stay valid")
     }
 
@@ -378,9 +379,12 @@ fn map_page_response(
     }
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
+    // INVARIANT: `builtin_slug::PAGE` is a compile-time constant satisfying SeoTargetSlug requirements.
+    let target_kind = SeoTargetSlug::new(builtin_slug::PAGE)
+        .expect("builtin SEO target slug must stay valid");
+
     SeoLoadedTargetRecord {
-        target_kind: SeoTargetSlug::new(builtin_slug::PAGE)
-            .expect("builtin SEO target slug must stay valid"),
+        target_kind,
         target_id: page.id,
         requested_locale: page.requested_locale.clone(),
         effective_locale: effective_locale.clone(),

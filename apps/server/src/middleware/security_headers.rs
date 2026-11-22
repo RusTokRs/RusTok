@@ -55,7 +55,10 @@ pub async fn handle_csp_report(request: Request, next: Next) -> Response {
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
-    tracing::debug!(path = path.as_str(), "security_headers entry");
+    tracing::debug!(
+        path_group = super::http_stack::trace_path_family(&path),
+        "security_headers entry"
+    );
     let csp_nonce =
         (!is_api_surface(&path) && !is_richtext_frame_surface(&path)).then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {

@@ -138,30 +138,6 @@ pub(crate) fn validate_product_attribute_filters(
     Ok(())
 }
 
-/// Normalizes the optional storefront display currency to `AAA` upper case.
-#[expect(
-    dead_code,
-    reason = "reserved for multi-currency storefront catalog display"
-)]
-pub(crate) fn normalize_storefront_currency_code(
-    currency_code: Option<String>,
-) -> CommerceResult<Option<String>> {
-    let Some(currency_code) = normalize_optional_text(currency_code) else {
-        return Ok(None);
-    };
-    let normalized = currency_code.to_ascii_uppercase();
-    if normalized.len() != 3
-        || !normalized
-            .chars()
-            .all(|character| character.is_ascii_alphabetic())
-    {
-        return Err(CommerceError::Validation(
-            "currency_code must be a three-letter ISO 4217 code".to_string(),
-        ));
-    }
-    Ok(Some(normalized))
-}
-
 fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
     let filters = values
         .into_iter()
@@ -210,12 +186,12 @@ impl StorefrontProductListQueryExt for StorefrontProductListQuery {
         let currency = currency
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        if let Some(ref code) = currency {
-            if code.len() != 3 || !code.chars().all(|ch| ch.is_ascii_alphabetic()) {
-                return Err(CommerceError::Validation(
-                    "currency_code must be a 3-letter ISO code".to_string(),
-                ));
-            }
+        if let Some(ref code) = currency
+            && (code.len() != 3 || !code.chars().all(|ch| ch.is_ascii_alphabetic()))
+        {
+            return Err(CommerceError::Validation(
+                "currency_code must be a 3-letter ISO code".to_string(),
+            ));
         }
         self.currency_code = currency.map(|value| value.to_ascii_uppercase());
         Ok(self)

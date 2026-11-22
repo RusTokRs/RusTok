@@ -84,9 +84,11 @@ impl IndexReconciliationSchedulerPolicy {
         lease_duration: Duration,
     ) -> Result<Self, IndexReconciliationRunError> {
         let schema = SchemaRef {
+            // INVARIANT: static scheduler module name is valid
             module: ModuleName::new("index-scheduler-policy").expect(
                 "static scheduler module identifier must be valid: invariant validated at startup",
             ),
+            // INVARIANT: static scheduler entity name is valid
             entity: EntityName::new("item").expect(
                 "static scheduler entity identifier must be valid: invariant validated at startup",
             ),
@@ -137,6 +139,7 @@ impl Default for IndexReconciliationSchedulerPolicy {
             DEFAULT_HEARTBEAT_EVERY_PAGES,
             Duration::from_secs(DEFAULT_LEASE_SECONDS),
         )
+        // INVARIANT: default reconciliation scheduler policy must be valid
         .expect("default reconciliation scheduler policy must be valid")
     }
 }

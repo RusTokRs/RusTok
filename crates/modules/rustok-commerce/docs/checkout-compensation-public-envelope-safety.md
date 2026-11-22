@@ -50,8 +50,8 @@ not contain runtime identity or state values.
 
 This slice does not close transparent `CheckoutOperationError`,
 `CheckoutInventoryReservationError`, `PaymentError`,
-`PaymentOrchestrationError`, or `OrderError` display payloads. It also leaves
-`CheckoutCompensationError::Boundary` and
+`PaymentOrchestrationError`, or `OrderError` display payloads. It also
+leaves `CheckoutCompensationError::Boundary` and
 `CheckoutCompensationError::CompensationAndJournal` for separate review.
 
 The broader ecommerce correlation-safe mapper and non-`PortError` public-envelope

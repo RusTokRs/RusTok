@@ -21,7 +21,6 @@ use crate::services::registry_remote_transitions::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const CLAIM_PATH: &str = "/v2/catalog/runner/claim";
-const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_RUNNER_BODY_BYTES: usize = 64 * 1024;
 type RegistryClaimValidationResult<T> = Result<T, Box<Response>>;
 
@@ -35,7 +34,7 @@ pub async fn claim_atomic(
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    if request.method() == Method::POST && request.uri().path() == PUBLISH_PATH {
+    if publish_route_requires_policy(request.method(), request.uri().path()) {
         return crate::middleware::registry_publish_policy::enforce(request, next).await;
     }
     if request.method() != Method::POST {
@@ -93,6 +92,13 @@ pub async fn claim_atomic(
             handle_terminal(&ctx, &claim_id, &bytes, RemoteTerminalOutcome::Failed).await
         }
     }
+}
+
+/// Share the exact path recognizer with the policy middleware. If these
+/// differ, an optional trailing slash can skip classification/authority
+/// validation before the controller handles the registry mutation.
+fn publish_route_requires_policy(method: &Method, path: &str) -> bool {
+    *method == Method::POST && super::registry_publish_policy::is_publish_path(path)
 }
 
 async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8]) -> Response {
@@ -403,8 +409,9 @@ mod tests {
     use rustok_modules::ModuleGovernanceError;
 
     use super::{
-        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RegistryRemoteTransitionError,
-        RunnerRoute, claim_error_response, runner_route, transition_error_response,
+        CLAIM_PATH, MAX_RUNNER_BODY_BYTES, RegistryRemoteTransitionError,
+        RunnerRoute, claim_error_response, publish_route_requires_policy, runner_route,
+        transition_error_response,
     };
     use rustok_modules::ModuleGovernanceErrorCategory;
 
@@ -464,6 +471,28 @@ mod tests {
     }
 
     #[test]
+    fn registry_publish_policy_cannot_be_skipped_by_trailing_slashes() {
+        for path in [
+            "/v2/catalog/publish",
+            "/v2/catalog/publish/",
+            "/v2/catalog/publish///",
+        ] {
+            assert!(
+                publish_route_requires_policy(&axum::http::Method::POST, path),
+                "{path} must enter the shared publication authorization"
+            );
+            assert!(
+                !publish_route_requires_policy(&axum::http::Method::GET, path),
+                "non-mutating requests must not be intercepted by publish policy"
+            );
+        }
+        assert!(!publish_route_requires_policy(
+            &axum::http::Method::POST,
+            "/v2/catalog/publish/private-subpath"
+        ));
+    }
+
+    #[test]
     fn routes_all_atomic_runner_transitions() {
         assert_eq!(runner_route(CLAIM_PATH), Some(RunnerRoute::Claim));
         assert_eq!(
@@ -485,7 +514,6 @@ mod tests {
             })
         );
         assert_eq!(MAX_RUNNER_BODY_BYTES, 64 * 1024);
-        assert_eq!(PUBLISH_PATH, "/v2/catalog/publish");
         assert_eq!(runner_route("/v2/catalog/runner/rvc_1/heartbeat/"), None);
         assert_eq!(runner_route("//v2/catalog/runner/rvc_1/heartbeat"), None);
     }
