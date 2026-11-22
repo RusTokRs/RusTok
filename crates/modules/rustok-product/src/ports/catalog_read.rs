@@ -319,7 +319,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             vendor.as_deref(),
             product_type.as_deref(),
             empty_missing_title,
-            empty_missing_title,
+            false,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
