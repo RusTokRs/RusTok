@@ -328,7 +328,12 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
         .expect("fulfillment service should create fulfillment");
     let shipped = service
         .ship_fulfillment(
-            tenant_id,
+            rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::user(actor_id.to_string()),
+                "en",
+                "migrated-fulfillment-ship",
+            ),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "dhl".to_string(),
@@ -586,6 +591,7 @@ async fn seed_tenant_locale(
 fn create_product_input() -> CreateProductInput {
     CreateProductInput {
         attribute_values: Default::default(),
+        brands: Vec::new(),
         translations: vec![
             ProductTranslationInput {
                 locale: "en".to_string(),
