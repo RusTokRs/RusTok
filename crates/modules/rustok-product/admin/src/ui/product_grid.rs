@@ -74,19 +74,16 @@ pub fn ProductGridPage() -> impl IntoView {
     let (last_applied_request, set_last_applied_request) = signal(None::<u64>);
     let (last_auth_context, set_last_auth_context) =
         signal((token.get_untracked(), tenant.get_untracked()));
-    let auth_context_query_writer = route_query_writer.clone();
     Effect::new(move |_| {
         let current_context = (token.get(), tenant.get());
         if current_context != last_auth_context.get_untracked() {
             set_last_auth_context.set(current_context);
-            pagination.update(|state| state.set_page(1));
-            let state = pagination.get_untracked();
-            set_last_requested_pagination.set((state.page, state.page_size));
+            // Re-fetch the same deep-linked page under the new auth/tenant
+            // context; the owner will clamp it if the new catalog is smaller.
             set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
             set_last_applied_request.set(None);
             set_infinite_items.set(Vec::new());
             set_last_loaded_page.set(0);
-            auth_context_query_writer.replace_value("page", "1");
         }
     });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
