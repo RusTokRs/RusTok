@@ -287,9 +287,22 @@ async fn notification_candidate_worker_loop(
                 return;
             }
 
-            let Some(observation) =
-                candidate_work_policy_observation(&worker, &db, &module_registry, work).await
-            else {
+            let observation = candidate_work_policy_observation(
+                &worker,
+                &db,
+                &module_registry,
+                work,
+                &stop_rx,
+            )
+            .await;
+            if !may_admit_next_worker_operation(&stop_rx) {
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification candidate worker stopped after policy observation"
+                );
+                return;
+            }
+            let Some(observation) = observation else {
                 continue;
             };
 
@@ -354,8 +367,15 @@ async fn candidate_work_policy_observation(
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     work: NotificationCandidateWorkItem,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> Option<TenantPolicyObservation> {
-    let reason = match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+    let policy = tenant_notification_policy(db, module_registry, work.tenant_id).await;
+    // A disabled/unavailable policy normally causes a durable deferral. Do
+    // not start that transition if the policy read crossed host shutdown.
+    if !may_admit_next_worker_operation(stop_rx) {
+        return None;
+    }
+    let reason = match policy {
         TenantNotificationPolicy::Enabled(observation) => return Some(observation),
         TenantNotificationPolicy::Disabled => NotificationCandidatePolicyDeferral::TenantDisabled,
         TenantNotificationPolicy::Unavailable => {
