@@ -63,6 +63,15 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     Ok(())
 }
 
+fn validate_variant_weight(weight: Option<&rust_decimal::Decimal>) -> CommerceResult<()> {
+    if weight.is_some_and(|value| *value < rust_decimal::Decimal::ZERO) {
+        return Err(CommerceError::Validation(
+            "Product variant weight cannot be negative".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn pricing_port_unavailable() -> CommerceError {
     CommerceError::Core(CoreError::External(
         "Product Pricing capability is unavailable".to_owned(),
@@ -208,6 +217,7 @@ impl CatalogService {
         validate_variant_axes_and_combinations(&input.variant_axes, &input.variants)?;
         for var_input in &input.variants {
             validate_variant_prices(&var_input.prices)?;
+            validate_variant_weight(var_input.weight.as_ref())?;
         }
         if input
             .variants
@@ -1370,6 +1380,7 @@ impl CatalogService {
         .await?;
 
         validate_variant_prices(&input.prices)?;
+        validate_variant_weight(input.weight.as_ref())?;
         if !input.prices.is_empty() && self.pricing_port.is_none() {
             return Err(pricing_port_unavailable());
         }
@@ -1557,6 +1568,9 @@ impl CatalogService {
         validate_patch_text_length(&input.barcode, 100, "Barcode")?;
         validate_patch_text_length(&input.shipping_profile_slug, 100, "Shipping profile slug")?;
         validate_patch_text_length(&input.weight_unit, 16, "Weight unit")?;
+        if let Patch::Set(weight) = &input.weight {
+            validate_variant_weight(Some(weight))?;
+        }
         if let Patch::Set(slug) = &input.shipping_profile_slug {
             self.validate_shipping_profiles(tenant_id, actor_id, Some(slug.as_str()))
                 .await?;
@@ -3065,6 +3079,17 @@ pub(super) fn validate_variant_axis_tuples(
 mod tests {
     use super::*;
     use rust_decimal::Decimal;
+
+    #[test]
+    fn negative_variant_weight_is_rejected_for_all_write_inputs() {
+        assert!(validate_variant_weight(None).is_ok());
+        assert!(validate_variant_weight(Some(&Decimal::ZERO)).is_ok());
+        assert!(validate_variant_weight(Some(&Decimal::new(100, 2))).is_ok());
+        assert!(matches!(
+            validate_variant_weight(Some(&Decimal::new(-1, 2))),
+            Err(CommerceError::Validation(_))
+        ));
+    }
 
     #[test]
     fn validate_variant_prices_accepts_valid_prices() {
