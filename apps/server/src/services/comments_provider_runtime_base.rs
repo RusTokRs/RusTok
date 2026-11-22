@@ -30,7 +30,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::app_lifecycle::{DirectWorkerRegistrationLock, StopHandle};
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -418,6 +418,14 @@ async fn start_comments_tcp_listener(
         ))
     })?;
 
+    // Binding may await the OS while shutdown is already draining. Protect
+    // only the final stop check and the two registered handles with the same
+    // gate shutdown uses to take the listener task. Never await while held.
+    let registration = DirectWorkerRegistrationLock::ensure(runtime_ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     ensure_comments_tcp_listener_start_not_stopping(stop_handle)?;
     let stop_rx = stop_handle.subscribe();
     let shutdown_timeout = comments_tcp_listener_shutdown_timeout(config.shutdown_grace);

@@ -19,6 +19,7 @@ use rustok_outbox::OutboxConsumer;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::StopHandle;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
@@ -293,6 +294,14 @@ pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeCont
         }
     }
 
+    // No blocking mutex is held during the async registration/backfill.
+    // Serialize only the final stop check and handle publication with the
+    // shutdown take, after all database preparation has completed.
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     ensure_intake_bootstrap_not_stopping(&stop)?;
     let stop_rx = stop.subscribe();
     let instance_id = NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);

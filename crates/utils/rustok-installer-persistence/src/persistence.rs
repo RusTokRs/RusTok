@@ -140,6 +140,44 @@ impl InstallerPersistenceService {
             .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
     }
 
+    /// Settle a job whose HTTP host definitively did not enter installer execution,
+    /// but whose INSERT result may have been lost. Never rewrite an unrelated job
+    /// or a job whose identity/state has already changed: the exact original
+    /// session and submission timestamp are part of this conditional update.
+    ///
+    /// The caller must own the pre-execution path; this operation is not a
+    /// recovery mechanism for a job whose side effects may have begun.
+    pub async fn finish_unstarted_http_job_failed(
+        &self,
+        job_id: Uuid,
+        session_id: Uuid,
+        submitted_at: chrono::DateTime<Utc>,
+    ) -> Result<bool, sea_orm::DbErr> {
+        if job_id.is_nil() || session_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom(
+                "installer job and session IDs must not be nil".to_string(),
+            ));
+        }
+
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::SessionId.eq(session_id))
+            .filter(install_http_job::Column::SubmittedAt.eq(submitted_at))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_FAILED_STATUS.to_string()),
+                finished_at: Set(Some(now)),
+                error_message: Set(Some(bounded_http_job_error_message(""))),
+                output: Set(None),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected == 1)
+    }
+
     pub async fn create_session(
         &self,
         plan: &InstallPlan,

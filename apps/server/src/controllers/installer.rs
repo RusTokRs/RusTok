@@ -324,6 +324,68 @@ async fn finish_http_job_failed_with_retry(
     }))
 }
 
+/// On a failed INSERT acknowledgement, the host has not entered any installer
+/// side effects. A previously committed `running` row may still exist, so
+/// settle only this exact HTTP submission before releasing the local slot.
+/// A missing row is safe; a different identity or terminal state is not.
+async fn settle_unstarted_http_job_after_creation_failure(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+    submitted_at: DateTime<Utc>,
+) -> std::result::Result<(), sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+        let transition = persistence
+            .finish_unstarted_http_job_failed(job_id, job_id, submitted_at.clone())
+            .await;
+        if matches!(&transition, Ok(true)) {
+            return Ok(());
+        }
+
+        match persistence.get_http_job(job_id).await {
+            Ok(None) => return Ok(()),
+            Ok(Some(job))
+                if job.session_id == Some(job_id)
+                    && job.submitted_at.timestamp_micros() == submitted_at.timestamp_micros() =>
+            {
+                match job.status.as_str() {
+                    "failed" => return Ok(()),
+                    "running" => {
+                        last_error = Some(transition.err().unwrap_or_else(|| {
+                            sea_orm::DbErr::Custom(
+                                "unstarted installer HTTP job failed its conditional cleanup"
+                                    .to_string(),
+                            )
+                        }));
+                    }
+                    _ => {
+                        return Err(sea_orm::DbErr::Custom(
+                            "unstarted installer HTTP job has an unexpected terminal state"
+                                .to_string(),
+                        ));
+                    }
+                }
+            }
+            Ok(Some(_)) => {
+                return Err(sea_orm::DbErr::Custom(
+                    "unstarted installer HTTP job identity changed before cleanup".to_string(),
+                ));
+            }
+            Err(error) => last_error = Some(error),
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "unstarted installer HTTP job cleanup exhausted its retry budget".to_string(),
+        )
+    }))
+}
+
 /// The request may be cancelled after admission. The runtime JoinSet owns the
 /// claim-to-execution task and the shutdown drain joins it before the event
 /// forwarder is stopped.
@@ -346,24 +408,43 @@ where
     let executor_started = Arc::new(AtomicBool::new(false));
     let executor_started_in_task = Arc::clone(&executor_started);
     let persistence_for_recovery = persistence.clone();
+    let submitted_at_for_recovery = submitted_at.clone();
 
     let task = async move {
         let _guard = guard;
         let task_result = AssertUnwindSafe(async move {
-            let creation = create_http_job_with_retry(&persistence, job_id, submitted_at)
+            let creation = create_http_job_with_retry(&persistence, job_id, submitted_at.clone())
                 .await
                 .map(|_| ());
             let created = creation.is_ok();
             let _ = ready_tx.send(creation);
             if !created {
+                // No executor work has begun. Reconcile any INSERT whose
+                // acknowledgement was lost before dropping local admission.
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence,
+                    job_id,
+                    submitted_at,
+                )
+                .await
+                {
+                    tracing::error!(
+                        %job_id,
+                        "Unstarted installer HTTP job may need operator reconciliation after claim failure"
+                    );
+                }
                 return;
             }
 
             if stop.is_stopping() {
-                // No installer side effects have started yet, so failing this
-                // durable claim is safe and avoids a newly admitted orphan.
-                if let Err(_error) =
-                    finish_http_job_failed_with_retry(&persistence, job_id).await
+                // No installer side effects have started yet, so closing only
+                // this exact durable claim is safe during shutdown.
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence,
+                    job_id,
+                    submitted_at,
+                )
+                .await
                 {
                     tracing::error!(
                         %job_id,
@@ -382,8 +463,12 @@ where
         if task_result.is_err() {
             tracing::error!(%job_id, "Installer HTTP job task panicked outside the executor boundary");
             if !executor_started.load(Ordering::Acquire) {
-                if let Err(_error) =
-                    finish_http_job_failed_with_retry(&persistence_for_recovery, job_id).await
+                if let Err(_error) = settle_unstarted_http_job_after_creation_failure(
+                    &persistence_for_recovery,
+                    job_id,
+                    submitted_at_for_recovery,
+                )
+                .await
                 {
                     tracing::error!(
                         %job_id,
@@ -1086,6 +1171,64 @@ mod tests {
         .await
         .expect("failed claim releases local owner");
         assert!(ran_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_unstarted_http_job_is_settled_before_releasing_admission() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+        // Simulate a committed INSERT whose reply was lost after the final
+        // creation retry. The executor has not entered any side-effect path.
+        persistence
+            .create_http_job(job_id, job_id, submitted_at.clone())
+            .await
+            .expect("persist ambiguous claim");
+        settle_unstarted_http_job_after_creation_failure(
+            &persistence,
+            job_id,
+            submitted_at,
+        )
+        .await
+        .expect("settle the committed but unstarted claim");
+
+        let job = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("read job")
+            .expect("job persists for operator history");
+        assert_eq!(job.status, "failed");
+        assert!(job.finished_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_unstarted_cleanup_refuses_another_submission() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("persist a different submission");
+        let error = settle_unstarted_http_job_after_creation_failure(
+            &persistence,
+            job_id,
+            submitted_at + chrono::Duration::seconds(1),
+        )
+        .await
+        .expect_err("a mismatched claim cannot be closed");
+        assert!(error.to_string().contains("identity changed"));
+        assert_eq!(
+            persistence
+                .get_http_job(job_id)
+                .await
+                .expect("lookup")
+                .expect("existing job")
+                .status,
+            "running"
+        );
     }
 
     #[tokio::test]

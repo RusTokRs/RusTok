@@ -6,6 +6,28 @@
 
 ## Responsibilities
 
+RBAC generation-watchdog pre-migration diagnostics distinguish the
+RBAC generation table from unrelated missing relations. Shutdown
+interrupts pending watchdog admission, and multi-stage module
+transition/artifact maintenance stops before entering additional
+independent durable operations.
+
+
+Cache listener startup for Channel/RBAC invalidation, tenant generation,
+tenant locale and Redis-status is stop-interruptible during unfinished
+initial recovery and replacement joins. Shutdown still takes and drains
+already published JoinHandles under each listener's registration lock.
+
+
+Public direct worker starters register Product Search channel repair,
+Notifications intake/candidate/fanout, Forum Search inbox/contract, Product
+Index refresh, Social Graph Index, Comments TCP listener and Comments durable
+audit handoff JoinHandles under one runtime-local lock also used when
+shutdown takes those handles. This closes
+check-stop/publication races without holding the lock during async broker,
+database or task-drain operations.
+
+
 - Compose platform modules into the live runtime.
 - Expose GraphQL, HTTP, and Leptos server-function surfaces.
 - Host runtime orchestration, background tasks, and platform-owned control planes.
@@ -104,14 +126,19 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result. HTTP and CLI now use unique host-generated
+  persist the terminal result. Before the executor enters, exhausted claim
+  creation retries attempt a bounded, exact-job/session/submission CAS to
+  close an ambiguous committed `running` job as `failed`; database outages can
+  still prevent this cleanup, and no job whose effects began is reset. HTTP
+  and CLI now use unique host-generated
   lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
   Persistence blocks new applies while any unreconciled session has a
   recorded owner, even after lease expiry; `recovery_required` remains blocking
-  until manual reconciliation. However, state/receipt writes do not yet
-  compare the owner on every mutation, and resumable execution plus effect
-  reconciliation remain unimplemented; do not reset stale jobs based only on
-  lease expiry.
+  until manual reconciliation. State, tenant association and receipt writes
+  already compare the persisted owner and attempt generation, but this is
+  not a process-crash recovery or a heartbeat/expiry takeover protocol;
+  resumable execution and effect reconciliation remain unimplemented. Do not
+  reset stale jobs based only on lease expiry.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
   all-tenants bootstrap pass commits one tenant at a time, not as a single
   cross-tenant transaction. Built-in auth email delivery remains best effort.

@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop, run_until_stopped};
 
 pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
@@ -261,11 +262,20 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
 fn spawn_rbac_invalidation_generation_watchdog(
     db: DatabaseConnection,
     state: RbacInvalidationGenerationState,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> JoinHandle<()> {
-    tokio::spawn(supervise_rbac_invalidation_generation_watchdog(
-        move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
-        RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
-    ))
+    rbac_invalidation_metrics::set_watchdog_running(true);
+    tokio::spawn(async move {
+        run_until_stopped(
+            stop_rx,
+            supervise_rbac_invalidation_generation_watchdog(
+                move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
+                RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
+            ),
+        )
+        .await;
+        rbac_invalidation_metrics::set_watchdog_running(false);
+    })
 }
 
 /// Poll the database source of truth so missed Redis/PubSub delivery can never
@@ -281,13 +291,14 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         .ok_or_else(|| {
             Error::Cache("RBAC durable generation watchdog start lock is unavailable".to_string())
         })?;
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    // Shutdown may already be waiting to take the registered JoinHandle.
+    // Do not queue another watchdog initializer behind a holder when stop
+    // has been broadcast; the actual spawn/publish remains under the mutex.
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return Ok(());
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<RbacInvalidationGenerationWatchdogHandle>() {
         if existing.is_running() {
@@ -298,7 +309,12 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         rbac_invalidation_metrics::record_watchdog_restart("runtime_replaced");
         tracing::warn!("Durable RBAC invalidation generation watchdog stopped; replacing runtime");
         if let Some(task) = existing.take_task() {
-            if let Err(error) = task.await {
+            // A completed worker may still need a join for error accounting.
+            // Keep the replacement's admission interruptible by host stop.
+            let Some(result) = await_worker_startup_or_stop(&stop, task).await else {
+                return Ok(());
+            };
+            if let Err(error) = result {
                 if !error.is_cancelled() {
                     tracing::warn!(
                         ?error,
@@ -310,9 +326,9 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     }
 
     let state = ensure_rbac_invalidation_generation_state(ctx);
-    let task = spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state);
+    let task =
+        spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state, stop.subscribe());
     ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));
-    rbac_invalidation_metrics::set_watchdog_running(true);
     Ok(())
 }
 
@@ -328,9 +344,15 @@ pub(crate) async fn take_watchdog_task_for_shutdown(
 
 fn is_missing_generation_state(error: &Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
-    message.contains("no such table")
-        || message.contains("undefinedtable")
-        || message.contains("does not exist") && message.contains("rbac_invalidation_state")
+    // Only absence of OUR generation table may be tolerated on a pre-migration
+    // host. Require a table/relation diagnostic so a missing column or another
+    // schema error cannot leave RBAC recovery dormant.
+    message.contains("rbac_invalidation_state")
+        && (message.contains("no such table")
+            || message.contains("undefinedtable")
+            || (message.contains("relation") && message.contains("does not exist"))
+            || (message.contains("table '")
+                && (message.contains("does not exist") || message.contains("doesn't exist"))))
 }
 
 #[cfg(test)]
@@ -341,8 +363,10 @@ mod tests {
 
     use super::{
         RbacInvalidationGenerationState, RbacInvalidationGenerationWatchdogHandle,
-        is_missing_generation_state, read_rbac_invalidation_generation,
-        reserve_rbac_invalidation_generation, supervise_rbac_invalidation_generation_watchdog,
+        RbacInvalidationGenerationWatchdogStartLock, is_missing_generation_state,
+        read_rbac_invalidation_generation, reserve_rbac_invalidation_generation,
+        start_rbac_invalidation_generation_watchdog,
+        supervise_rbac_invalidation_generation_watchdog,
     };
     use crate::error::Error;
     use rustok_migrations::SqliteTestMigrator as Migrator;
@@ -370,6 +394,89 @@ mod tests {
         assert!(!is_missing_generation_state(&Error::Cache(
             "connection refused".to_string()
         )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "no such table: unrelated_authorization_state".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "relation public.unrelated_authorization_state does not exist".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "Database error: undefinedTable on unrelated_authorization_state".to_string()
+        )));
+        assert!(is_missing_generation_state(&Error::Cache(
+            "Database error: undefinedTable on rbac_invalidation_state".to_string()
+        )));
+        assert!(is_missing_generation_state(&Error::Cache(
+            "Table 'rustok.rbac_invalidation_state' doesn't exist".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "column rbac_invalidation_state does not exist".to_string()
+        )));
+    }
+
+    #[tokio::test]
+    async fn watchdog_start_does_not_wait_for_a_busy_lock_after_shutdown() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let start_lock =
+            ctx.shared_get_or_insert_with(RbacInvalidationGenerationWatchdogStartLock::default);
+        let held = start_lock.0.lock().await;
+        let starter_ctx = ctx.clone();
+        let starter = tokio::spawn(async move {
+            start_rbac_invalidation_generation_watchdog(&starter_ctx).await
+        });
+
+        // The start call has to contend for the lock; shutdown's signal
+        // must release its pending admission rather than waiting for us.
+        tokio::task::yield_now().await;
+        StopHandle::ensure(&ctx).stop().await;
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), starter)
+                .await
+                .expect("shutdown releases the waiting watchdog starter")
+                .expect("starter task joins")
+                .is_ok()
+        );
+        assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn durable_generation_watchdog_does_not_start_after_stop() {
+        use crate::services::stop_handle::StopHandle;
+
+        let (stop, stop_rx) = StopHandle::new();
+        stop.stop().await;
+        let task = super::spawn_rbac_invalidation_generation_watchdog(
+            sea_orm::DatabaseConnection::default(),
+            RbacInvalidationGenerationState::default(),
+            stop_rx,
+        );
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("stopped watchdog exits before polling the database")
+            .expect("watchdog wrapper joins");
+    }
+
+    #[tokio::test]
+    async fn watchdog_start_does_not_publish_after_existing_stop_signal() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        StopHandle::ensure(&ctx).stop().await;
+        start_rbac_invalidation_generation_watchdog(&ctx)
+            .await
+            .expect("shutdown is an idempotent startup skip");
+        assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
     }
 
     #[tokio::test]

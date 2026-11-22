@@ -18,16 +18,17 @@
 ### Primary Services & Port Adapters
 - `InstallerPersistenceService`: SeaORM-backed persistence manager for installer jobs, sessions, and step receipts.
   - `new(db: DatabaseConnection) -> Self`
-  - `create_http_job(job_id: Uuid, submitted_at: DateTime<Utc>) -> Result<install_http_job::Model, DbErr>`
+  - `create_http_job(job_id: Uuid, session_id: Uuid, submitted_at: DateTime<Utc>) -> Result<install_http_job::Model, DbErr>`
   - `get_http_job(job_id: Uuid) -> Result<Option<install_http_job::Model>, DbErr>`
   - `has_running_http_job() -> Result<bool, DbErr>`
   - `finish_http_job_succeeded(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set on `status = running`)
   - `finish_http_job_failed(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set with bounded error message)
+  - `finish_unstarted_http_job_failed(job_id, session_id, submitted_at) -> Result<bool, DbErr>` (exact identity + `running` CAS, for a host that has not entered execution)
   - `create_session(plan: &InstallPlan, tenant_id: Option<Uuid>, created_by: Option<Uuid>) -> Result<install_session::Model, DbErr>`
-  - `record_receipt(receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
+  - `record_receipt(session: &InstallSessionRecord, receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
   - `acquire_lock(session: install_session::Model, owner: &str, ttl: Duration) -> Result<install_session::Model, DbErr>`
-  - `set_state(session_id: Uuid, state: InstallState) -> Result<install_session::Model, DbErr>`
-  - `set_tenant_id(session_id: Uuid, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
+  - `set_state(session: &InstallSessionRecord, state: InstallState) -> Result<install_session::Model, DbErr>`
+  - `set_tenant_id(session: &InstallSessionRecord, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
   - `get_session(session_id: Uuid) -> Result<Option<install_session::Model>, DbErr>`
   - `latest_session() -> Result<Option<install_session::Model>, DbErr>`
   - `has_completed_session() -> Result<bool, DbErr>`
@@ -72,7 +73,7 @@
 - **Serializable Lock Acquisition:** PostgreSQL and MySQL begin lock acquisition in a `Serializable` transaction. SQLite uses the conditional session-claim update as its write fence.
 - **Fail-Closed Global Admission:** A session is claimed only from `draft` with `lock_owner IS NULL`, and cannot be claimed twice. Any other unreconciled session with a recorded owner blocks a new apply even after its lease expires. `recovery_required` blocks admission even if its owner has been cleared; completed, safely failed, and freshly cleaned sessions release the gate.
 - **No Lease-Expiry Takeover:** Expiry is not proof that the old process stopped. Stale sessions require explicit reconciliation before another apply can start.
-- **Owner Enforcement Boundary:** Adapters generate unique per-attempt owner values, but `record_receipt`, `set_state`, and `set_tenant_id` do not yet compare owner equality on every write. The fail-closed gate prevents automatic overlap; full stale-worker fencing and resumable recovery remain open.
+- **Owner Enforcement Boundary:** Adapters generate unique per-attempt owner values, and `record_receipt`, `set_state`, and `set_tenant_id` compare the current owner and attempt generation under a database transaction. This does not authorize expired-lease takeover, resume a crashed executor, or reconcile already begun external effects; those remain separate recovery work.
 - **Atomic Administrator Provisioning:** Admin identity creation (`ensure_user_on`) and SuperAdmin role assignment (`assign_role_permissions_on`) occur inside a single database transaction. Any failure triggers rollback, ensuring zero orphaned identities without roles.
 - **Terminal Session Permanence:** Completed installer sessions permanently record `completed_at`, and `has_completed_session()` remains `true` even in the presence of subsequent failed recovery attempts.
 

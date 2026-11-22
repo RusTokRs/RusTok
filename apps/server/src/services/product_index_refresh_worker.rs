@@ -24,6 +24,7 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
+use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
@@ -288,6 +289,14 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         events,
     };
 
+    // The startup reservation excludes competing initializers; this short
+    // registration gate excludes shutdown taking the handle between the final
+    // stop check and publication. No async setup is performed under the gate.
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if stop.is_stopping() {
         return Err(Error::Message(
             "Product Index refresh consumer startup interrupted by server shutdown".to_string(),

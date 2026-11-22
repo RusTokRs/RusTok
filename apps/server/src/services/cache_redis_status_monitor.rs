@@ -8,6 +8,7 @@ use rustok_cache::{CacheService, RedisCacheStatus};
 use tokio::task::JoinHandle;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 const CACHE_REDIS_STATUS_INTERVAL: Duration = Duration::from_secs(10);
 const CACHE_REDIS_STATUS_RESTART_DELAY: Duration = Duration::from_secs(1);
@@ -101,13 +102,11 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         tracing::error!("Cache Redis status monitor start lock is unavailable");
         return;
     };
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return;
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<CacheRedisStatusMonitorHandle>() {
         if existing.is_running() {
@@ -116,7 +115,10 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         tracing::warn!("Cache Redis status monitor stopped; replacing runtime");
         existing.abort();
         if let Some(task) = existing.take_task() {
-            if let Err(error) = task.await {
+            let Some(result) = await_worker_startup_or_stop(&stop, task).await else {
+                return;
+            };
+            if let Err(error) = result {
                 if !error.is_cancelled() {
                     tracing::warn!(
                         ?error,
@@ -127,14 +129,11 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         }
     }
 
-    let initial = cache.redis_status().await;
-    log_transition(None, &initial);
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let Some(initial) = await_worker_startup_or_stop(&stop, cache.redis_status()).await
+    else {
         return;
-    }
+    };
+    log_transition(None, &initial);
 
     let task = if cache.redis_configuration_present() {
         let first_previous = Arc::new(Mutex::new(Some(initial)));
@@ -158,6 +157,7 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
                 }
             },
             CACHE_REDIS_STATUS_RESTART_DELAY,
+            stop.subscribe(),
         )))
     } else {
         None
@@ -195,27 +195,65 @@ async fn run_cache_redis_status_monitor(cache: CacheService, mut previous: Redis
     }
 }
 
-async fn supervise_cache_redis_status_worker<F, Fut>(mut worker_factory: F, restart_delay: Duration)
-where
+async fn supervise_cache_redis_status_worker<F, Fut>(
+    mut worker_factory: F,
+    restart_delay: Duration,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) where
     F: FnMut() -> Fut + Send,
     Fut: Future<Output = ()> + Send,
 {
     loop {
+        if *stop_rx.borrow() {
+            return;
+        }
+
         let worker = match std::panic::catch_unwind(AssertUnwindSafe(&mut worker_factory)) {
             Ok(worker) => worker,
             Err(_) => {
+                if *stop_rx.borrow() {
+                    return;
+                }
                 record_monitor_restart("factory_panicked");
-                tokio::time::sleep(restart_delay).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(restart_delay) => {}
+                    changed = stop_rx.changed() => {
+                        if changed.is_err() || *stop_rx.borrow() {
+                            return;
+                        }
+                    }
+                }
                 continue;
             }
         };
-        let outcome = AssertUnwindSafe(worker).catch_unwind().await;
+
+        let outcome = tokio::select! {
+            biased;
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    return;
+                }
+                continue;
+            }
+            outcome = AssertUnwindSafe(worker).catch_unwind() => outcome,
+        };
+        if *stop_rx.borrow() {
+            return;
+        }
         if outcome.is_err() {
             record_monitor_restart("worker_panicked");
         } else {
             record_monitor_restart("worker_exited");
         }
-        tokio::time::sleep(restart_delay).await;
+
+        tokio::select! {
+            _ = tokio::time::sleep(restart_delay) => {}
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -342,6 +380,7 @@ mod tests {
     async fn monitor_supervisor_restarts_after_worker_panic() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let worker_attempts = Arc::clone(&attempts);
+        let (_stop, stop_rx) = StopHandle::new();
         let supervisor = tokio::spawn(supervise_cache_redis_status_worker(
             move || {
                 let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
@@ -353,6 +392,7 @@ mod tests {
                 }
             },
             Duration::from_millis(1),
+            stop_rx,
         ));
 
         tokio::time::timeout(Duration::from_secs(1), async {
@@ -366,9 +406,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn monitor_supervisor_stops_promptly_without_restarting() {
+        let (stop, stop_rx) = StopHandle::new();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let worker_attempts = Arc::clone(&attempts);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let mut started_tx = Some(started_tx);
+        let supervisor = tokio::spawn(supervise_cache_redis_status_worker(
+            move || {
+                worker_attempts.fetch_add(1, Ordering::SeqCst);
+                if let Some(started) = started_tx.take() {
+                    let _ = started.send(());
+                }
+                async { std::future::pending::<()>().await }
+            },
+            Duration::from_secs(30),
+            stop_rx,
+        ));
+
+        started_rx.await.expect("monitor worker starts");
+        stop.stop().await;
+        tokio::time::timeout(Duration::from_secs(1), supervisor)
+            .await
+            .expect("monitor supervisor exits on host stop")
+            .expect("monitor supervisor joins");
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn monitor_supervisor_restarts_after_factory_panic() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let worker_attempts = Arc::clone(&attempts);
+        let (_stop, stop_rx) = StopHandle::new();
         let supervisor = tokio::spawn(supervise_cache_redis_status_worker(
             move || {
                 let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
@@ -376,6 +445,7 @@ mod tests {
                 async { std::future::pending::<()>().await }
             },
             Duration::from_millis(1),
+            stop_rx,
         ));
 
         tokio::time::timeout(Duration::from_secs(1), async {

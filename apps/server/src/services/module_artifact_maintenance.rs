@@ -16,6 +16,8 @@ use rustok_storage::StorageRuntime;
 use rustok_verification_transport::GrpcTrustVerifier;
 use rustok_worker_transport::MutualTlsClientConfig;
 
+use crate::services::stop_handle::may_admit_next_worker_operation;
+
 static MODULE_ARTIFACT_MAINTENANCE_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 /// Bounded per-pass budgets. A pass repeats on the poll interval, so these
@@ -235,6 +237,12 @@ pub fn spawn_module_artifact_maintenance_handle(
                     // between passes protect bytes before any deletion.
                     match control_plane.artifact_blob_retention_policy().await {
                         Ok(policy) => {
+                            // Loading the retention policy is preparation, not
+                            // permission to begin destructive reconciliation.
+                            // Shutdown may have arrived while that read waited.
+                            if !may_admit_next_worker_operation(&stop_rx) {
+                                break;
+                            }
                             let reconciler = control_plane.artifact_blob_reconciler(storage.clone());
                             match reconciler.reconcile_published_blobs(&policy).await {
                                 Ok(report) if report.has_changes() => {
@@ -275,6 +283,13 @@ pub fn spawn_module_artifact_maintenance_handle(
                         }
                     }
 
+                    // The blob sweep may have blocked during shutdown. Finish
+                    // that operation but never enter the next independent GC
+                    // leg once admission of new work has closed.
+                    if !may_admit_next_worker_operation(&stop_rx) {
+                        break;
+                    }
+
                     // Tenant data-object garbage collection. The
                     // retention-hold snapshot is loaded once for the pass
                     // (and only when at least one tenant has candidates),
@@ -285,9 +300,18 @@ pub fn spawn_module_artifact_maintenance_handle(
                         .await
                     {
                         Ok(tenant_ids) if !tenant_ids.is_empty() => {
+                            if !may_admit_next_worker_operation(&stop_rx) {
+                                break;
+                            }
                             match data_object_gc.load_ledger_retention_snapshot().await {
                                 Ok(retention) => {
                                     for tenant_id in tenant_ids {
+                                        // A tenant sweep already underway must
+                                        // finish; unstarted tenants remain
+                                        // eligible for the next host instance.
+                                        if !may_admit_next_worker_operation(&stop_rx) {
+                                            break;
+                                        }
                                         match data_object_gc
                                             .sweep_tenant_with_ledger_retention_snapshot(
                                                 tenant_id,
@@ -341,6 +365,12 @@ pub fn spawn_module_artifact_maintenance_handle(
                         }
                     }
 
+                    // Do not begin a separate verification leg after the
+                    // tenant GC pass observes host shutdown.
+                    if !may_admit_next_worker_operation(&stop_rx) {
+                        break;
+                    }
+
                     // Current-policy reverification of stale admissions.
                     if let Some(config) = &reverification_config {
                         if verifier.is_none() {
@@ -363,6 +393,11 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 }
                             }
                         }
+                        // Establishing a verifier may be slow. A stop during
+                        // that connection must not admit a fresh candidate scan.
+                        if !may_admit_next_worker_operation(&stop_rx) {
+                            break;
+                        }
                         if let Some(verifier) = &verifier {
                             let service = control_plane.admission_reverification(
                                 Arc::clone(verifier),
@@ -374,6 +409,13 @@ pub fn spawn_module_artifact_maintenance_handle(
                             {
                                 Ok(candidates) => {
                                     for candidate in candidates {
+                                        // Never start another external trust
+                                        // reverification once the host is
+                                        // stopping. The current call completes
+                                        // before this check is reached.
+                                        if !may_admit_next_worker_operation(&stop_rx) {
+                                            break;
+                                        }
                                         let idempotency_key = reverification_idempotency_key(
                                             candidate.installation_id,
                                             candidate.expected_revision,

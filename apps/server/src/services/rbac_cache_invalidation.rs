@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::rbac_invalidation_generation::{
     RbacInvalidationGenerationState, ensure_rbac_invalidation_generation_state,
     read_rbac_invalidation_generation,
@@ -586,13 +587,11 @@ pub async fn start_rbac_cache_invalidation_listener(
     let start_lock = ctx
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return Ok(());
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<RbacCacheInvalidationListenerHandle>() {
         if existing.is_running() {
@@ -604,16 +603,20 @@ pub async fn start_rbac_cache_invalidation_listener(
         for task in &tasks {
             task.abort();
         }
-        for task in tasks {
-            if let Err(error) = task.await {
-                if !error.is_cancelled() {
-                    tracing::warn!(
-                        ?error,
-                        "Old RBAC invalidation worker failed while being replaced"
-                    );
+        let Some(()) = await_worker_startup_or_stop(&stop, async {
+            for task in tasks {
+                if let Err(error) = task.await {
+                    if !error.is_cancelled() {
+                        tracing::warn!(
+                            ?error,
+                            "Old RBAC invalidation worker failed while being replaced"
+                        );
+                    }
                 }
             }
-        }
+        }).await else {
+            return Ok(());
+        };
     }
 
     let durable_state = ensure_rbac_invalidation_generation_state(ctx);
@@ -625,23 +628,21 @@ pub async fn start_rbac_cache_invalidation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
-    if let Err(error) = listener.recover_generation_and_clear().await {
-        tracing::warn!(
-            %error,
-            "Initial RBAC invalidation recovery is unavailable; durable watchdog will retry"
-        );
-        invalidate_all_user_permissions_cache().await;
-        rustok_telemetry::metrics::record_event_error(
-            RBAC_PERMISSION_INVALIDATION_CHANNEL,
-            "startup_recovery_deferred",
-        );
-    }
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let Some(()) = await_worker_startup_or_stop(&stop, async {
+        if let Err(error) = listener.recover_generation_and_clear().await {
+            tracing::warn!(
+                %error,
+                "Initial RBAC invalidation recovery is unavailable; durable watchdog will retry"
+            );
+            invalidate_all_user_permissions_cache().await;
+            rustok_telemetry::metrics::record_event_error(
+                RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                "startup_recovery_deferred",
+            );
+        }
+    }).await else {
         return Ok(());
-    }
+    };
 
     let first_local = Arc::new(Mutex::new(Some(initial_local)));
     let local_cache = cache.clone();

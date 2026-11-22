@@ -4,6 +4,37 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+RBAC durable-generation bootstrap now treats only the absence of its
+own `rbac_invalidation_state` table as a pre-migration condition and
+cancels pending watchdog initialization on host stop. Module
+transition recovery, artifact/data-object garbage collection, and
+artifact admission reverification recheck stop between independent
+stages and tenant/candidate iterations; an already-started durable
+effect is not interrupted by these new checks.
+
+
+Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
+generation, and Redis-status listener starters now cancel pending
+**pre-publication** startup work when host shutdown is signaled. This
+includes their startup-mutex wait, initial cache/Redis recovery, and
+joins of previously aborted workers. A shared stop-watch helper checks
+the subscribed state to avoid losing a stop between check and wait;
+published task shutdown still uses each listener's own registry gate
+and bounded join/abort contract.
+
+
+Direct worker starters for Product Search channel repair, Notifications
+outbox intake/candidate/fanout, Forum Search inbox/contract, Product Index
+refresh, Social Graph Index, Comments TCP listener and Comments durable
+source-retry audit handoff serialize their final stop-check → task spawn →
+JoinHandle publication with the corresponding shutdown handle take,
+via a process-local runtime registration lock. Durable broker opening, receipt
+backfill and shutdown joins remain outside that lock. Product Search channel
+repair also rejects stale/finished published workers and concurrent duplicate
+starts; this fence prevents leaked local JoinHandles, not cross-process
+duplicate delivery or automatic durable job recovery.
+
+
 `apps/server` is the main backend composition root. The application:
 
 - assembles platform modules, shared foundation crates, and host-level capabilities into a single runtime;
@@ -534,10 +565,18 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   exactly-once broker effects. The stable Iggy message ID alone is not proof
   of suppression of all duplicates.
 - The Comments schedule audit source-retry handoff checks the shared stop
-  signal before its expired-attempt sweep and before **each** new claim, not
-  only at the outer polling boundary. An already acquired claim is allowed to
-  complete its canonical outbox transaction and failure-state update before the
-  next shutdown check; this preserves attempt/receipt integrity.
+  signal before **each** expired-attempt dead-letter transition and each new
+  claim, not only at the outer polling boundary. Exhausted claims left by a
+  crash are now swept in bounded pages (up to the configured
+  `max_claims_per_cycle` per cycle, independently of the claim budget), rather
+  than one row per idle poll. A full sweep schedules an immediate bounded
+  follow-up cycle; failed sweeps retain the configured error backoff. An
+  already acquired claim completes its canonical outbox transaction and
+  failure-state update before the next shutdown check; receipt identity,
+  lease expiry, and PostgreSQL row fences remain authoritative. Both public
+  and worker-specific failure transitions now require an unexpired matching
+  claim token and attempt, so an expired worker cannot reschedule a row
+  merely because no replacement has claimed it yet.
 - Notification candidate and fanout workers recheck shutdown **after**
   asynchronous tenant capability/policy evaluation (including deferrals),
   immediately before starting their next candidate processing, source
@@ -1021,7 +1060,12 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   host shutdown is active. Neither this mechanism nor the existing unique
   running-job index recovers a job after process termination: ambiguous effects
   must be reconciled against durable receipts before an operator releases the
-  global installer fence. If shutdown is detected after durable claim
+  global installer fence. A failed pre-execution HTTP claim now attempts an
+  exact-identity, bounded CAS against a possibly committed-but-unacknowledged
+  `running` INSERT before releasing its process-local slot; a missing row is
+  harmless and a different job/session/submission or terminal status is never
+  overwritten. This is best-effort when storage is unavailable and never
+  relabels a job after the installer executor has been entered. If shutdown is detected after durable claim
   creation but before executor entry, the background owner transitions that
   unstarted job to `failed` and releases the slot, instead of beginning new
   installer side effects. A stop racing after the executor's final admission

@@ -18,6 +18,7 @@ use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 use tokio::sync::broadcast;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop, run_until_stopped};
 use crate::services::tenant_cache_generation_status::{
     TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerState,
 };
@@ -507,13 +508,11 @@ pub async fn start_tenant_cache_generation_listener(
     let start_lock = ctx
         .shared_get::<TenantCacheGenerationListenerStartLock>()
         .ok_or_else(|| Error::Cache("tenant listener start lock is unavailable".to_string()))?;
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return Ok(());
-    }
+    };
     if let Some(existing) = ctx.shared_get::<TenantCacheGenerationListenerHandle>() {
         if existing.is_running() {
             return Ok(());
@@ -524,16 +523,20 @@ pub async fn start_tenant_cache_generation_listener(
             for task in &tasks {
                 task.abort();
             }
-            for task in tasks {
-                if let Err(join_err) = task.await {
-                    if !join_err.is_cancelled() {
-                        tracing::warn!(
-                            failure_code = "tenant_cache_generation_listener_join_failed",
-                            "Aborted stale tenant cache generation listener task failed unexpectedly"
-                        );
+            let Some(()) = await_worker_startup_or_stop(&stop, async {
+                for task in tasks {
+                    if let Err(join_err) = task.await {
+                        if !join_err.is_cancelled() {
+                            tracing::warn!(
+                                failure_code = "tenant_cache_generation_listener_join_failed",
+                                "Aborted stale tenant cache generation listener task failed unexpectedly"
+                            );
+                        }
                     }
                 }
-            }
+            }).await else {
+                return Ok(());
+            };
         }
     }
 
@@ -541,42 +544,40 @@ pub async fn start_tenant_cache_generation_listener(
     let state = TenantCacheGenerationListenerState::new(redis_required);
     let listener =
         TenantCacheGenerationListener::new(cache.clone(), Some(ctx.effective_policy_cache()));
-    match listener.recover_shared_generation().await {
-        Ok(_) if !redis_required => state.mark_local_healthy().await,
-        Ok(_) => state.mark_reconciliation_healthy().await,
-        Err(_error) if redis_required => {
-            state
-                .mark_reconciliation_degraded("tenant cache generation startup recovery failed")
-                .await;
-            tracing::warn!(
-                error_code = "tenant_cache_generation_startup_recovery_failed",
-                "Tenant cache generation startup recovery failed; isolated boot namespace remains active"
-            );
-            rustok_telemetry::metrics::record_event_error(
-                "tenant.cache.generation",
-                "startup_recovery",
-            );
+    let Some(()) = await_worker_startup_or_stop(&stop, async {
+        match listener.recover_shared_generation().await {
+            Ok(_) if !redis_required => state.mark_local_healthy().await,
+            Ok(_) => state.mark_reconciliation_healthy().await,
+            Err(_error) if redis_required => {
+                state
+                    .mark_reconciliation_degraded("tenant cache generation startup recovery failed")
+                    .await;
+                tracing::warn!(
+                    error_code = "tenant_cache_generation_startup_recovery_failed",
+                    "Tenant cache generation startup recovery failed; isolated boot namespace remains active"
+                );
+                rustok_telemetry::metrics::record_event_error(
+                    "tenant.cache.generation",
+                    "startup_recovery",
+                );
+            }
+            Err(_error) => {
+                state
+                    .mark_local_degraded("local tenant cache generation startup recovery failed")
+                    .await;
+                tracing::warn!(
+                    error_code = "tenant_cache_generation_local_startup_recovery_failed",
+                    "Local tenant cache generation startup recovery failed"
+                );
+                rustok_telemetry::metrics::record_event_error(
+                    "tenant.cache.generation",
+                    "startup_recovery",
+                );
+            }
         }
-        Err(_error) => {
-            state
-                .mark_local_degraded("local tenant cache generation startup recovery failed")
-                .await;
-            tracing::warn!(
-                error_code = "tenant_cache_generation_local_startup_recovery_failed",
-                "Local tenant cache generation startup recovery failed"
-            );
-            rustok_telemetry::metrics::record_event_error(
-                "tenant.cache.generation",
-                "startup_recovery",
-            );
-        }
-    }
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    }).await else {
         return Ok(());
-    }
+    };
 
     let mut tasks = Vec::new();
     // A configured-but-uninitialized Redis client cannot spawn the subscriber or
@@ -592,7 +593,7 @@ pub async fn start_tenant_cache_generation_listener(
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
     let local_listener = listener.clone();
     let local_state = Arc::clone(&state);
-    let local_task = tokio::spawn(async move {
+    let local_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
         let runtime = EventConsumerRuntime::new("tenant_cache_generation_local");
         runtime.restarted("startup");
         loop {
@@ -643,14 +644,14 @@ pub async fn start_tenant_cache_generation_listener(
                 }
             }
         }
-    });
+    }));
     tasks.push(local_task);
 
     if cache.redis_client_initialized() {
         let redis_listener = listener.clone();
         let invalidations = cache.invalidations();
         let redis_state = Arc::clone(&state);
-        let redis_task = tokio::spawn(async move {
+        let redis_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
             let runtime = EventConsumerRuntime::new("tenant_cache_generation_redis");
             let mut reason = "startup";
             loop {
@@ -725,12 +726,12 @@ pub async fn start_tenant_cache_generation_listener(
                 reason = "reconnect";
                 tokio::time::sleep(LISTENER_RESTART_DELAY).await;
             }
-        });
+        }));
         tasks.push(redis_task);
 
         let reconcile_listener = listener.clone();
         let reconcile_state = Arc::clone(&state);
-        let reconcile_task = tokio::spawn(async move {
+        let reconcile_task = tokio::spawn(run_until_stopped(stop.subscribe(), async move {
             let start = tokio::time::Instant::now() + GENERATION_RECONCILE_INTERVAL;
             let mut interval = tokio::time::interval_at(start, GENERATION_RECONCILE_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -755,7 +756,7 @@ pub async fn start_tenant_cache_generation_listener(
                     }
                 }
             }
-        });
+        }));
         tasks.push(reconcile_task);
     }
 

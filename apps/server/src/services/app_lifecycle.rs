@@ -275,6 +275,39 @@ impl SocialGraphObserverInitializationLock {
     }
 }
 
+/// Direct, synchronous worker starters can bypass router bootstrap. Guard
+/// their final shutdown check -> task spawn -> JoinHandle publication against
+/// the matching shutdown take. Do not hold this blocking gate across awaits or
+/// while joining tasks. One runtime-local gate covers the Product Search channel
+/// projection repair, three Notifications, Forum Search inbox/contract,
+/// Product Index, Social Graph Index, Comments TCP listener, and Comments
+/// durable audit handoff workers.
+#[derive(Clone, Default)]
+pub(crate) struct DirectWorkerRegistrationLock(
+    pub(crate) std::sync::Arc<std::sync::Mutex<()>>,
+);
+
+impl DirectWorkerRegistrationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+/// Take a directly registered worker under the same gate as its final spawn.
+/// Shutdown publishes stop before entering the drain, so a starter that loses
+/// this gate will observe stop and refuse to publish a new task.
+fn take_direct_worker_for_shutdown<T>(ctx: &ServerRuntimeContext) -> Option<T>
+where
+    T: 'static + Send + Sync,
+{
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<T>()
+}
+
 /// Serializes the complete server bootstrap against competing bootstraps and
 /// the shutdown drain. Several worker starters intentionally use a
 /// check-then-insert sequence; this host-level fence makes that sequence
@@ -1121,11 +1154,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-comments")]
     let comments_tcp_drain = async {
-        if let Some(listener_task) =
-            runtime_ctx
-                .shared_take::<crate::services::comments_provider_runtime::CommentsTcpListenerTask>(
-                )
-        {
+        if let Some(listener_task) = take_direct_worker_for_shutdown::<
+            crate::services::comments_provider_runtime::CommentsTcpListenerTask,
+        >(runtime_ctx) {
             await_runtime_worker_shutdown_with_timeout(
                 "Comments TCP listener",
                 Some(listener_task.task),
@@ -1142,9 +1173,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-comments")]
     let comments_schedule_audit_handoff_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<
+        if let Some(worker) = take_direct_worker_for_shutdown::<
             crate::services::comments_provider_runtime::CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
-        >() {
+        >(runtime_ctx) {
             await_runtime_worker_shutdown(
                 "Comments schedule audit handoff",
                 worker.take_task(),
@@ -1326,9 +1357,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let product_channel_reconciliation_drain = async {
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::search_product_channel_reconciliation::ProductChannelProjectionWorkerHandle>()
-        {
+        if let Some(worker) = take_direct_worker_for_shutdown::<
+            crate::services::search_product_channel_reconciliation::ProductChannelProjectionWorkerHandle,
+        >(runtime_ctx) {
             await_runtime_worker_shutdown(
                 "Product channel projection reconciliation",
                 Some(worker.into_task()),
@@ -1340,8 +1371,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-product")]
     let product_index_refresh_drain = async {
         #[cfg(feature = "mod-product")]
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>()
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>(runtime_ctx)
         {
             await_runtime_worker_shutdown(
                 "Product index refresh",
@@ -1356,8 +1386,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-social_graph")]
     let social_graph_index_drain = async {
         #[cfg(feature = "mod-social_graph")]
-        if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>()
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>(runtime_ctx)
         {
             await_runtime_worker_shutdown(
                 "Social Graph Index consumer",
@@ -1403,7 +1432,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_outbox_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification outbox intake", worker.into_task()).await;
         }
     };
@@ -1412,7 +1441,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_candidate_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification candidate", worker.into_task()).await;
         }
     };
@@ -1421,7 +1450,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-notifications")]
     let notification_fanout_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Notification fanout", worker.into_task()).await;
         }
     };
@@ -1430,7 +1459,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Forum search inbox", worker.into_task()).await;
         }
     };
@@ -1439,7 +1468,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-forum")]
     let forum_search_contract_consumer_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>() {
+        if let Some(worker) = take_direct_worker_for_shutdown::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>(runtime_ctx) {
             await_module_worker_shutdown("Forum Search contract consumer", worker.into_task()).await;
         }
     };
@@ -2044,6 +2073,110 @@ mod tests {
 
         finish_tx.send(()).expect("release send");
         shutdown.await.expect("shutdown finishes after email");
+    }
+
+    #[test]
+    fn direct_worker_shutdown_snapshot_waits_for_in_flight_registration() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::DirectWorkerRegistrationLock::ensure(&ctx);
+        let guard = registration
+            .0
+            .lock()
+            .expect("hold direct worker registration gate");
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (taken_tx, taken_rx) = std::sync::mpsc::channel();
+        let shutdown_ctx = ctx.clone();
+        let take = std::thread::spawn(move || {
+            ready_tx.send(()).expect("taking thread ready");
+            let result = super::take_direct_worker_for_shutdown::<u64>(&shutdown_ctx);
+            taken_tx.send(result).expect("report shutdown snapshot");
+        });
+
+        ready_rx.recv().expect("shutdown taker entered thread");
+        assert!(
+            taken_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "shutdown must wait while a direct starter owns publication"
+        );
+        // A direct starter that entered before stop may publish; the shutdown
+        // taker must then capture and remove that handle, not detach it.
+        ctx.shared_insert(42_u64);
+        drop(guard);
+
+        assert_eq!(
+            taken_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("shutdown acquires the gate"),
+            Some(42)
+        );
+        take.join().expect("shutdown thread joins");
+        assert!(!ctx.shared_contains::<u64>());
+    }
+
+    #[cfg(feature = "mod-comments")]
+    #[tokio::test]
+    async fn comments_direct_worker_handles_wait_for_publication_before_shutdown_take() {
+        use crate::services::comments_provider_runtime::{
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+        };
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let registration = super::DirectWorkerRegistrationLock::ensure(&ctx);
+        let guard = registration
+            .0
+            .lock()
+            .expect("hold Comments final registration window");
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (taken_tx, taken_rx) = std::sync::mpsc::channel();
+        let shutdown_ctx = ctx.clone();
+        let taker = std::thread::spawn(move || {
+            ready_tx.send(()).expect("shutdown taker begins");
+            let listener = super::take_direct_worker_for_shutdown::<CommentsTcpListenerTask>(
+                &shutdown_ctx,
+            );
+            let handoff = super::take_direct_worker_for_shutdown::<
+                CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
+            >(&shutdown_ctx);
+            taken_tx
+                .send((listener, handoff))
+                .expect("report both captured tasks");
+        });
+
+        ready_rx.recv().expect("shutdown taker thread started");
+        assert!(
+            taken_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "shutdown cannot take a Comments handle before publication finishes"
+        );
+
+        ctx.shared_insert(CommentsTcpListenerTask {
+            task: tokio::spawn(std::future::pending()),
+            shutdown_timeout: Duration::from_secs(1),
+        });
+        ctx.shared_insert(
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(tokio::spawn(
+                std::future::pending(),
+            )),
+        );
+        drop(guard);
+
+        let (listener, handoff) = taken_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("shutdown acquires both Comments task handles");
+        taker.join().expect("shutdown taker thread completes");
+        let listener = listener.expect("listener handle must be visible to shutdown");
+        listener.task.abort();
+        let _ = listener.task.await;
+        let handoff = handoff.expect("handoff handle must be visible to shutdown");
+        let handoff_task = handoff.take_task().expect("handoff task is retained");
+        handoff_task.abort();
+        let _ = handoff_task.await;
+        assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
+        assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
     }
 
     #[tokio::test]

@@ -1,5 +1,187 @@
 # Server App — Implementation Plan
 
+## Code-review corrections — shutdown admission and cooperative listeners (2026-11-22)
+
+A second adversarial review found that Notification Candidate and Notification
+Fanout could durably defer work after a tenant-policy lookup returned during
+shutdown. Both paths now check the host stop signal before the deferral and
+again before processing/materialization. Fanout also stops before beginning
+the second work-selection query after its source pass.
+
+Artifact maintenance now checks shutdown after loading blob-retention policy
+and before destructive blob reconciliation, and after tenant discovery before
+loading the next retention snapshot. This closes the preparation/effect
+boundary where a shutdown arriving during a read could still admit a new GC
+operation.
+
+The cache Redis status monitor, tenant cache-generation listeners, tenant
+locale-generation listeners, and RBAC durable-generation watchdog now wrap
+their cancellation-safe background loops in a cooperative stop gate. They
+exit promptly instead of remaining alive until the generic worker abort
+timeout. The shared `run_until_stopped` helper is intentionally limited to
+cache invalidation, status observation, and reconciliation work whose
+interruption is recovered by a full generation sync on the next startup; it
+must not wrap a claimed durable operation or external side effect that needs
+completion/compensation.
+
+RBAC pre-migration diagnostics now distinguish a missing
+`rbac_invalidation_state` table from unrelated missing relations and missing
+columns, including SQLite, PostgreSQL, and MySQL diagnostics.
+
+## Server audit continuation — RBAC watchdog diagnosis and bounded module recovery admission (2026-11-22)
+
+The RBAC durable-generation watchdog previously classified any SQLite
+`no such table` or Postgres `undefinedTable` error as a permissible
+pre-install condition while the local RBAC generation checkpoint was
+uninitialized. Unrelated missing tables could therefore hide an actual
+schema fault. The watchdog now suppresses only missing-relation errors
+that explicitly name `rbac_invalidation_state`; fixture coverage rejects
+unrelated SQLite, Postgres and generic undefined-table diagnostics.
+Its startup admission/old-exited-task join is also stop-aware, using
+the same pre-publication cancellation helper as cache listeners. A
+blocked competing starter now returns on host stop without spawning
+another watchdog; regression tests cover that contention and a
+previously signaled stop.
+
+Two recovery controllers, `module_transition_watchdog` and
+`module_artifact_maintenance`, checked shutdown before starting an
+entire tick, then ran multiple independent durable operations across
+await points. A shutdown arriving mid-pass therefore still permitted
+retention hold reaping, transition evaluation, additional tenant GC
+sweeps or trust-admission rechecks to begin. They now use
+`may_admit_next_worker_operation` **between** separate effects and
+before each next tenant/candidate. They never cancel an already
+entered database mutation, storage deletion, or external trust
+reverification merely to honor the stop signal. Not-yet-started work
+remains available to the next supervised instance.
+
+These changes do not override the existing bounded host join/abort
+timeout or guarantee completion of an effect that independently
+blocks longer than its shutdown deadline. Tests, compilation, and
+formatting were not run.
+
+
+## Server audit continuation — cache listener startup cancellation on shutdown (2026-11-22)
+
+Five cache/control-plane listeners serialized startup under their own
+per-runtime mutexes but performed potentially slow asynchronous setup while
+holding those locks. Channel and RBAC invalidation, tenant-locale and
+tenant-cache generation could wait on startup reconciliation or abandoned
+workers; Redis status monitoring could wait on its initial Redis status
+read. Shutdown's corresponding handle-take paths only waited five seconds
+for the start locks before returning without task handles. A slow direct
+initializer could therefore outlive the shutdown drain, even if it would
+eventually observe the stop flag before publishing its worker.
+
+The `stop_handle` owner now exposes `await_worker_startup_or_stop` for
+**unpublished/cancellable** initialization. The helper subscribes to the
+monotonic stop watch before inspecting its value, preventing a lost
+notification between precheck and subscription. It favors stop if both
+the setup result and stop are ready, and refuses to report setup success
+after stop becomes active. Channel, RBAC, locale, tenant generation and
+Redis-status starters use it while acquiring their startup lock,
+awaiting a previously aborted worker's join, and performing initial
+cache/readiness recovery. An interrupted setup drops its outstanding
+preparation future and releases the startup mutex; since completed
+worker publication is still synchronous under that mutex, the ordinary
+shutdown take/abort/join retains published task ownership.
+
+This helper MUST NOT be used for an already-claimed durable operation or
+a side effect with incomplete compensation; it is limited to cache
+bootstrap/reconciliation and prior aborted-task joins. It does not
+eliminate the five-second shutdown fallback for uncooperative blocking
+code, and process abort still provides no cleanup guarantee. Source
+regressions cover a never-completing setup future, an occupied
+registration mutex, and a stop signaled before initialization.
+Tests, builds and formatting were not run by the agent.
+
+
+## Server audit continuation — Comments direct-worker shutdown registration (2026-11-22)
+
+The opt-in Comments TCP listener already had one startup reservation and
+checked shutdown after its asynchronous socket bind. The Comments durable
+schedule-audit source-retry handoff similarly reserved a unique worker and
+checked stop after constructing its durable dependencies. However, neither
+path synchronized the final stop-check → `tokio::spawn` → published handle
+sequence with `shutdown_runtime_workers` taking those handles. A direct
+starter could publish a task after shutdown had already taken the old
+value, detaching the task from its intended join/abort owner.
+
+Both Comments starters now acquire the existing process-local
+`DirectWorkerRegistrationLock` for only the final admission/spawn/handle
+publication, and shutdown takes both their handles under that same gate.
+The TCP socket bind occurs before acquiring the gate, so a slow bind cannot
+block shutdown. Once the stop flag is broadcast, a later starter refuses
+publication under the gate. Shutdown still removes the separate TCP listener
+address metadata after taking its task, and the existing per-worker startup
+reservations continue to prevent duplicate starts. No change to persistent
+handoff claim leases or delivery semantics.
+
+Existing source-level tests for shutdown admission and terminated-join
+handles remain; the direct-registration gate contention regression also
+covers the shared registration primitive. A Comments-specific regression now
+holds the publication gate, asserts shutdown cannot take either task while
+that gate is held, publishes the TCP listener and durable handoff handles,
+then confirms both are taken and joined/aborted without a detached owner.
+Runtime/broker/SQL tests and formatting/build verification remain
+maintainer-owned and were not run.
+
+
+## Server audit continuation — direct worker registration and shutdown (2026-11-22)
+
+Several public worker starters can run outside the router's
+`ServerBootstrapInitializationLock`. The Product Search channel projection
+reconciler used a non-atomic `contains → spawn → insert` sequence, so
+competing callers could overwrite a live JoinHandle, and shutdown could
+take its snapshot between the check and publication. Its repeat-start path
+also considered a finished handle to be healthy. Notifications outbox intake,
+candidate and fanout, Forum Search inbox and contract consumers, Product
+Index refresh, and Social Graph Index workers already reserved competing
+startups, but each still left a final `is_stopping → spawn → shared_insert`
+window unprotected from the corresponding shutdown `shared_take`.
+
+The runtime now has a shared, process-local `DirectWorkerRegistrationLock`
+for these eight direct workers. Their synchronous final admission/spawn/handle
+publication is protected by the same lock as each shutdown handle take.
+Blocking mutex guards are never held across async preparation, receipt
+backfill, broker opening, task joins, or other awaits. Shutdown broadcasts
+stop before its drain; a starter waiting for the lock checks the stop flag
+*under* the lock and cannot publish after its handle was taken. Product
+Search channel repair uses the same lock for its whole synchronous starter,
+so concurrent starts have one owner and terminated tasks fail bootstrap
+rather than producing false success.
+
+Source tests cover contention between a held publication gate and a shutdown
+snapshot, plus Product Search shutdown refusal and terminated-handle
+reporting. Tests, compilation, formatting and runtime failure injection
+were not run; verification remains with the maintainer. This process-local
+publication lock does not replace the durable broker/DB recovery contracts.
+
+
+## Server audit continuation — ambiguous pre-execution installer HTTP claim (2026-11-22)
+
+A committed HTTP `install_http_jobs` INSERT may have lost its DB response.
+The server retries/reconciles its fixed job ID, but after exhausting the retry
+budget it dropped its local admission without trying to settle a matching
+`running` row; an installer executor that never ran could then leave the
+unique active-job fence blocking subsequent installations indefinitely.
+
+The persistence owner now exposes an exact `job_id`/`session_id`/
+`submitted_at` + `status = running` compare-and-set for use only after the
+host has definitively **not entered installer execution**. When claim
+creation exhausts its retries, the runtime-owned task attempts bounded
+cleanup before releasing its local reservation. Lost update acknowledgements
+are reconciled by reading the same job; missing rows require no cleanup,
+while mismatched identity and surprising terminal status fail closed. The
+HTTP caller retains its existing failed-creation error mapping. This does
+not release an installation that may have entered external side effects.
+
+Regressions assert exact-identity state change, unrelated-submission rejection,
+terminal immutability, and host recovery of a previously committed-but-
+unacknowledged claim. The tests and build/format commands were not run by
+the agent; failure injection against PostgreSQL/SQLite and worker termination
+remains with the maintainer.
+
 ## Server audit continuation — module dispatcher shutdown ownership (2026-11-22)
 
 The host startup reservation prevented two module dispatchers from
@@ -330,6 +512,35 @@ The new checks cannot guarantee that shutdown and effect execution are a
 cross-thread atomic operation; effect owners remain responsible for durable
 replay, attempt fencing and idempotency. Tests, cargo compilation and
 formatting were not run per maintainer request.
+
+## Server audit continuation — exhausted comments handoff recovery throughput (2026-11-22)
+
+Following merged PR #4772, the Comments source-retry worker still finalized only
+one expired, exhausted source claim per polling cycle, despite accepting up to
+256 new publication claims per cycle. Under a large post-crash backlog this
+serialized dead-letter recovery to the idle poll interval, delaying the
+operator's terminal evidence without improving transaction safety.
+
+The host now processes up to `max_claims_per_cycle` expired final attempts per
+cycle, using the existing exact PostgreSQL SKIP LOCKED/expiry-fenced owner
+transition for each row. The dead-letter sweep has a separate bounded budget
+from publication claims, avoiding starvation of ready source events. The shared
+shutdown signal is checked before every next transition, but an already
+started database update is awaited. A full sweep uses the short active-cycle
+delay; storage errors retain the configured retry delay. Source regressions
+cover per-item shutdown/budget admission and non-idle continuation after a
+full sweep; no SQL, Cargo, formatting or runtime tests were run by the agent.
+
+The independently exposed `record_failure` source transition also omitted
+an active-lease expiry predicate: matching a stale claim token and attempt
+was not sufficient evidence that its lease was still authoritative. It now
+requires `handoff_claim_expires_at > NOW()` like the runner-specific
+`record_active_failure` transition. The source regression asserts the SQL
+expiry fence; both paths remain fail-closed if the claim has expired.
+
+This is not automatic redelivery of ambiguous external effects. Terminal
+publication and source attempt receipts remain owner-authored and require the
+existing PostgreSQL transaction/fencing contract.
 
 ## Server audit continuation — retry/shutdown operation admission (2026-11-21)
 

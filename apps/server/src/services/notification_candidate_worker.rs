@@ -16,6 +16,7 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
+use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
 use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
@@ -219,6 +220,14 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         batch_size = worker.batch_size(),
         "Starting notification candidate worker"
     );
+    // The startup reservation fences competing initializers. This separate
+    // registration gate closes the last stop-check -> spawn -> publish race
+    // against shutdown taking the JoinHandle.
+    let registration = DirectWorkerRegistrationLock::ensure(ctx);
+    let _registration_guard = registration
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if stop.is_stopping() {
         return Err(Error::Message(
             "notification candidate worker startup interrupted by server shutdown".to_string(),
@@ -278,14 +287,14 @@ async fn notification_candidate_worker_loop(
                 return;
             }
 
-            let Some(observation) =
-                candidate_work_policy_observation(&worker, &db, &module_registry, work).await
-            else {
-                continue;
-            };
-
-            // The asynchronous policy lookup (or deferral) may have run
-            // through shutdown. Do not acquire a fresh durable claim afterward.
+            let observation = candidate_work_policy_observation(
+                &worker,
+                &db,
+                &module_registry,
+                work,
+                &stop_rx,
+            )
+            .await;
             if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
@@ -293,6 +302,9 @@ async fn notification_candidate_worker_loop(
                 );
                 return;
             }
+            let Some(observation) = observation else {
+                continue;
+            };
 
             match worker
                 .process_candidate_with_policy_revision(
@@ -345,8 +357,15 @@ async fn candidate_work_policy_observation(
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     work: NotificationCandidateWorkItem,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> Option<TenantPolicyObservation> {
-    let reason = match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+    let policy = tenant_notification_policy(db, module_registry, work.tenant_id).await;
+    // A disabled/unavailable policy normally causes a durable deferral. Do
+    // not start that transition if the policy read crossed host shutdown.
+    if !may_admit_next_worker_operation(stop_rx) {
+        return None;
+    }
+    let reason = match policy {
         TenantNotificationPolicy::Enabled(observation) => return Some(observation),
         TenantNotificationPolicy::Disabled => NotificationCandidatePolicyDeferral::TenantDisabled,
         TenantNotificationPolicy::Unavailable => {
