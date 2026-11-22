@@ -346,6 +346,20 @@ fn map_category_record(
 }
 
 #[cfg(feature = "ssr")]
+fn structural_category_options(
+    categories: impl IntoIterator<Item = CatalogCategorySummary>,
+) -> Vec<ProductCatalogSearchOption> {
+    categories
+        .into_iter()
+        .filter(|category| category.kind == "structural")
+        .map(|category| ProductCatalogSearchOption {
+            value: category.id,
+            label: first_non_empty([category.path, category.name, category.code]),
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn filterable_attribute_options(
     attributes: impl IntoIterator<Item = crate::model::ProductAttributeSummary>,
 ) -> Vec<ProductCatalogSearchOption> {
@@ -802,17 +816,14 @@ async fn product_admin_catalog_search_options_native(
             &[rustok_api::Permission::PRODUCTS_READ],
             "products:read required",
         )?;
-        let categories = service
-            .list_categories(tenant.id, locale.trim())
-            .await
-            .map_err(|error| map_product_service_error(error, "catalog_search_categories"))?
-            .into_iter()
-            .map(map_category_record)
-            .map(|category| ProductCatalogSearchOption {
-                value: category.id,
-                label: first_non_empty([category.path, category.name, category.code]),
-            })
-            .collect();
+        let categories = structural_category_options(
+            service
+                .list_categories(tenant.id, locale.trim())
+                .await
+                .map_err(|error| map_product_service_error(error, "catalog_search_categories"))?
+                .into_iter()
+                .map(map_category_record),
+        );
         let attributes = filterable_attribute_options(
             service
                 .list_attributes(tenant.id, locale.trim())
@@ -1728,6 +1739,25 @@ mod filterable_search_option_tests {
             show_on_storefront: true,
             label: code.to_owned(),
         }
+    }
+
+    #[test]
+    fn native_category_search_options_exclude_virtual_categories() {
+        let category = |id: &str, kind: &str| CatalogCategorySummary {
+            id: id.to_owned(),
+            code: id.to_owned(),
+            slug: id.to_owned(),
+            path: id.to_owned(),
+            kind: kind.to_owned(),
+            name: id.to_owned(),
+            parent_id: None,
+        };
+        let options = structural_category_options([
+            category("root", "structural"),
+            category("smart", "virtual"),
+        ]);
+        let ids = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(ids, vec!["root"]);
     }
 
     #[test]

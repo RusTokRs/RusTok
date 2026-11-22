@@ -237,6 +237,20 @@ fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffective
 }
 
 #[cfg(feature = "ssr")]
+fn structural_category_options(
+    categories: impl IntoIterator<Item = rustok_product::services::CatalogCategoryListRecord>,
+) -> Vec<crate::model::ProductCatalogSearchOption> {
+    categories
+        .into_iter()
+        .filter(|category| category.kind.as_str() == "structural")
+        .map(|category| crate::model::ProductCatalogSearchOption {
+            value: category.id.to_string(),
+            label: first_non_empty([category.path, category.name, category.code]),
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn filterable_attribute_options(
     attributes: impl IntoIterator<Item = rustok_product::services::ProductAttributeListRecord>,
 ) -> Vec<crate::model::ProductCatalogSearchOption> {
@@ -280,15 +294,11 @@ async fn storefront_catalog_search_options_native(
         let service = product_read_runtime(&scope)
             .schema_read_port()
             .ok_or_else(map_product_internal_error)?;
-        let category_options = product_read_call(&scope, service.list_categories(context.clone()))
-            .await
-            .map_err(map_product_port_error)?
-            .into_iter()
-            .map(|category| ProductCatalogSearchOption {
-                value: category.id.to_string(),
-                label: first_non_empty([category.path, category.name, category.code]),
-            })
-            .collect();
+        let category_options = structural_category_options(
+            product_read_call(&scope, service.list_categories(context.clone()))
+                .await
+                .map_err(map_product_port_error)?,
+        );
         let attribute_options = filterable_attribute_options(
             product_read_call(&scope, service.list_attributes(context))
                 .await
@@ -637,6 +647,25 @@ mod filterable_search_option_tests {
             show_on_storefront: true,
             label: code.to_owned(),
         }
+    }
+
+    #[test]
+    fn storefront_category_search_options_exclude_virtual_categories() {
+        let category = |id: &str, kind| rustok_product::services::CatalogCategoryListRecord {
+            id: uuid::Uuid::new_v4(),
+            parent_id: None,
+            code: id.to_owned(),
+            slug: id.to_owned(),
+            path: id.to_owned(),
+            kind,
+            name: id.to_owned(),
+        };
+        let options = structural_category_options([
+            category("root", rustok_product::services::CatalogCategoryKind::Structural),
+            category("smart", rustok_product::services::CatalogCategoryKind::Virtual),
+        ]);
+        let ids = options.into_iter().map(|option| option.label).collect::<Vec<_>>();
+        assert_eq!(ids, vec!["root"]);
     }
 
     #[test]

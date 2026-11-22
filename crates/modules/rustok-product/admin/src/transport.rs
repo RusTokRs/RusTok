@@ -120,6 +120,19 @@ pub(crate) async fn fetch_catalog_categories(
     }
 }
 
+fn structural_category_options(
+    categories: impl IntoIterator<Item = crate::model::CatalogCategorySummary>,
+) -> Vec<crate::model::ProductCatalogSearchOption> {
+    categories
+        .into_iter()
+        .filter(|category| category.kind == "structural")
+        .map(|category| crate::model::ProductCatalogSearchOption {
+            value: category.id,
+            label: first_non_empty([category.path, category.name, category.code]),
+        })
+        .collect()
+}
+
 fn filterable_attribute_options(
     attributes: impl IntoIterator<Item = crate::model::ProductAttributeSummary>,
 ) -> Vec<crate::model::ProductCatalogSearchOption> {
@@ -165,14 +178,7 @@ pub async fn fetch_catalog_search_options(
             .map_err(|err| err.to_string())?;
 
     Ok(ProductCatalogSearchOptions {
-        category_options: categories
-            .items
-            .into_iter()
-            .map(|category| ProductCatalogSearchOption {
-                value: category.id,
-                label: first_non_empty([category.path, category.name, category.code]),
-            })
-            .collect(),
+        category_options: structural_category_options(categories.items),
         attribute_options: filterable_attribute_options(attributes.items),
     })
 }
@@ -781,6 +787,25 @@ mod filterable_search_option_tests {
             show_on_storefront: true,
             label: code.to_owned(),
         }
+    }
+
+    #[test]
+    fn graphql_fallback_category_search_options_exclude_virtual_categories() {
+        let category = |id: &str, kind: &str| crate::model::CatalogCategorySummary {
+            id: id.to_owned(),
+            code: id.to_owned(),
+            slug: id.to_owned(),
+            path: id.to_owned(),
+            kind: kind.to_owned(),
+            name: id.to_owned(),
+            parent_id: None,
+        };
+        let options = structural_category_options([
+            category("root", "structural"),
+            category("smart", "virtual"),
+        ]);
+        let ids = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(ids, vec!["root"]);
     }
 
     #[test]
