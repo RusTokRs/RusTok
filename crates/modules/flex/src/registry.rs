@@ -452,32 +452,29 @@ mod persisted_definition_tests {
     fn persisted_field_conversion_fails_on_unknown_type() {
         let mut source = source();
         source.field_type = "future_unknown_type".to_string();
-        assert!(
-            field_definition_from_source(&source)
-                .expect_err("unknown type must not drop the definition")
-                .contains("unknown persisted field type")
-        );
+        let err = field_definition_from_source(&source)
+            .expect_err("unknown type must not drop the definition");
+        assert!(matches!(err, FieldDefinitionError::UnknownFieldType { .. }));
+        assert!(err.to_string().contains("unknown persisted field type"));
     }
 
     #[test]
     fn persisted_field_conversion_fails_on_malformed_label() {
         let mut source = source();
         source.label = serde_json::json!(["not", "a", "label-map"]);
-        assert!(
-            field_definition_from_source(&source)
-                .expect_err("invalid label must not become an empty map")
-                .contains("persisted field label is invalid")
-        );
+        let err = field_definition_from_source(&source)
+            .expect_err("invalid label must not become an empty map");
+        assert!(matches!(err, FieldDefinitionError::InvalidLabel { .. }));
+        assert!(err.to_string().contains("persisted field label is invalid"));
     }
 
     #[test]
     fn persisted_field_conversion_fails_on_malformed_validation() {
         let mut source = source();
         source.validation = Some(serde_json::json!({ "min": "not-a-number" }));
-        assert!(
-            field_definition_from_source(&source)
-                .expect_err("invalid validation must not be dropped")
-                .contains("persisted field validation is invalid")
-        );
+        let err = field_definition_from_source(&source)
+            .expect_err("invalid validation must not be dropped");
+        assert!(matches!(err, FieldDefinitionError::InvalidValidation { .. }));
+        assert!(err.to_string().contains("persisted field validation is invalid"));
     }
 }
