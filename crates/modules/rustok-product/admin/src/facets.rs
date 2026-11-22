@@ -24,6 +24,8 @@ use crate::catalog_controls::{ProductAdminListInput, serialize_attribute_filters
 use crate::i18n::t;
 use crate::model::AdminCatalogFacet;
 
+const MAX_PRODUCT_CATALOG_FACET_CODES: usize = 8;
+
 /// Maps owner-counted admin facets into the shared grid facet contract.
 ///
 /// The domain is derived from the owner's `is_enumerable` flag first and from the stored value
@@ -161,6 +163,9 @@ pub fn build_product_admin_facet_codes(
         let code = option.value.trim();
         if code.is_empty() || codes.iter().any(|existing| existing == code) {
             continue;
+        }
+        if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
+            break;
         }
         codes.push(code.to_string());
     }
@@ -390,6 +395,22 @@ mod tests {
             build_product_admin_facet_codes(&options),
             vec!["color".to_string(), "size".to_string()]
         );
+    }
+
+    #[test]
+    fn facet_codes_respect_the_owner_limit() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: (0..12)
+                .map(|index| crate::model::ProductCatalogSearchOption {
+                    value: format!("attribute_{index}"),
+                    label: format!("Attribute {index}"),
+                })
+                .collect(),
+        };
+        let codes = build_product_admin_facet_codes(&options);
+        assert_eq!(codes.len(), MAX_PRODUCT_CATALOG_FACET_CODES);
+        assert_eq!(codes.last().map(String::as_str), Some("attribute_7"));
     }
 
     #[test]

@@ -23,6 +23,8 @@ use crate::model::{
     ProductPricingDetail, ProductTranslation,
 };
 
+const MAX_PRODUCT_CATALOG_FACET_CODES: usize = 8;
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteInput {
     pub handle: Option<String>,
@@ -584,6 +586,9 @@ pub fn build_catalog_facet_codes(options: &ProductCatalogSearchOptions) -> Vec<S
         if code.is_empty() || codes.iter().any(|existing| existing == code) {
             continue;
         }
+        if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
+            break;
+        }
         codes.push(code.to_string());
     }
     codes
@@ -922,6 +927,22 @@ mod tests {
         };
 
         assert_eq!(build_catalog_facet_codes(&options), vec!["color", "size"]);
+    }
+
+    #[test]
+    fn facet_codes_respect_the_owner_limit() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: (0..12)
+                .map(|index| crate::model::ProductCatalogSearchOption {
+                    value: format!("attribute_{index}"),
+                    label: format!("Attribute {index}"),
+                })
+                .collect(),
+        };
+        let codes = build_catalog_facet_codes(&options);
+        assert_eq!(codes.len(), MAX_PRODUCT_CATALOG_FACET_CODES);
+        assert_eq!(codes.last().map(String::as_str), Some("attribute_7"));
     }
 
     #[test]
