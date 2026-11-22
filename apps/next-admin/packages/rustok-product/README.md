@@ -18,3 +18,16 @@ This package provides the administration workspace for comprehensive product cat
 - **Host Integration**: Registers `/dashboard/product`, `/dashboard/product/categories`, `/dashboard/product/attributes`, and `/dashboard/product/bundles` under `modulePlugins` via `@/modules/registry`.
 - **Backend Boundary**: Communicates with the async-graphql catalog schema via `graphqlRequest` with tenant and session token propagation.
 - **Shared FFA Primitives**: Renders data using `@/widgets/data-table`, `@/shared/ui/shadcn/*`, and Project Fluent translations.
+
+## Catalog pagination input boundary (2026-11-22)
+
+The Product-owned `normalizeProductAdminPagination` utility clamps both server-route and
+transport pagination to the Product read contract (page 1..2,147,483,647 and page size
+1..100, default 20). Invalid URLs are canonicalized before the shared Next table reads
+`page`/`perPage`, preventing the URL-backed table from displaying a different page
+size than the GraphQL result. Direct module `listProducts` callers apply the same
+bounds. The status picker uses the Product owner's single-status filter and columns do not offer
+sorting that the server query does not implement. Existing invalid status deep links are
+canonicalized (or removed) before the table reads them. The focused source regressions
+in `src/product-list-pagination.test.mjs` are authored but unrun; no build or browser
+behavior is certified.

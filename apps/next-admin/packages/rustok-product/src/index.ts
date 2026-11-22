@@ -35,6 +35,12 @@ registerAdminModule({
 
 export { productNavItems } from './nav';
 export { parsePriceAmount, salePercent, discountedPrice } from './money';
+export {
+  normalizeProductAdminPagination,
+  MAX_PRODUCT_ADMIN_PAGE,
+  MAX_PRODUCT_ADMIN_PAGE_SIZE
+} from './product-list-pagination';
+import { normalizeProductAdminPagination } from './product-list-pagination';
 export * from './api/types';
 export * from './api/categories';
 export * from './api/brands';
@@ -245,9 +251,10 @@ export async function listProducts(
 
   const executor = opts.graphql ?? graphqlRequest;
   const normalizedStatus = normalizeProductStatus(filter.status);
+  const pagination = normalizeProductAdminPagination(filter);
   const gqlFilter = {
-    page: filter.page,
-    perPage: filter.perPage,
+    page: pagination.page,
+    perPage: pagination.perPage,
     search: filter.search?.trim() || undefined,
     status: normalizedStatus,
     vendor: filter.vendor?.trim() || undefined
