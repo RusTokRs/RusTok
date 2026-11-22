@@ -213,17 +213,19 @@ async fn notification_fanout_worker_loop(
                 );
                 return;
             }
-            if !source_work_is_enabled(&worker, &db, &module_registry, work).await {
-                continue;
-            }
-            // Source policy evaluation can await storage after shutdown
-            // starts. A new materialization is not an in-flight operation.
+            let source_enabled =
+                source_work_is_enabled(&worker, &db, &module_registry, work, &stop_rx).await;
+            // Policy lookup can await storage. Its disabled/unavailable
+            // branches defer the row durably, so they must also recheck stop.
             if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification fanout worker stopped after source policy evaluation"
                 );
                 return;
+            }
+            if !source_enabled {
+                continue;
             }
             match worker.materialize_source_inbox(work.inbox_id).await {
                 Ok(receipt) => tracing::debug!(
@@ -272,9 +274,8 @@ async fn notification_fanout_worker_loop(
                 );
                 return;
             }
-            if !job_work_is_enabled(&worker, &db, &module_registry, work).await {
-                continue;
-            }
+            let job_enabled =
+                job_work_is_enabled(&worker, &db, &module_registry, work, &stop_rx).await;
             // Respect shutdown even when a delayed tenant-policy lookup
             // completed after the preceding loop-entry stop check.
             if !may_admit_next_worker_operation(&stop_rx) {
@@ -283,6 +284,9 @@ async fn notification_fanout_worker_loop(
                     "Notification fanout worker stopped after job policy evaluation"
                 );
                 return;
+            }
+            if !job_enabled {
+                continue;
             }
             match worker.process_fanout_job(work.job_id).await {
                 Ok(page) => tracing::debug!(
@@ -328,8 +332,13 @@ async fn source_work_is_enabled(
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     work: NotificationFanoutSourceWorkItem,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> bool {
-    match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+    let policy = tenant_notification_policy(db, module_registry, work.tenant_id).await;
+    if !may_admit_next_worker_operation(stop_rx) {
+        return false;
+    }
+    match policy {
         TenantNotificationPolicy::Enabled => true,
         TenantNotificationPolicy::Disabled => {
             defer_source_work(
@@ -357,8 +366,13 @@ async fn job_work_is_enabled(
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     work: NotificationFanoutJobWorkItem,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> bool {
-    match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+    let policy = tenant_notification_policy(db, module_registry, work.tenant_id).await;
+    if !may_admit_next_worker_operation(stop_rx) {
+        return false;
+    }
+    match policy {
         TenantNotificationPolicy::Enabled => true,
         TenantNotificationPolicy::Disabled => {
             defer_job_work(
