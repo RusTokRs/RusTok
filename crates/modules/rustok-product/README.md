@@ -351,7 +351,12 @@ tenant/locale data before retrying a refused migration.
   internals or negotiate locale itself.
 - Product translation title search predicates are not owned by `apps/server`;
   shared ecommerce readers use the owner/foundation search helper instead of a
-  host-local `product_search` service.
+  host-local `product_search` service. Product list searches are bounded to
+  1022 effective UTF-8 bytes, match literal substrings (including `%`, `_` and
+  `!`), and scope translation predicates to the authenticated tenant.
+- The legacy storefront REST list applies public-channel visibility, total count,
+  stable ordering and bounded pagination in SQL, rather than loading and
+  filtering the entire tenant catalog in application memory.
 - `StorefrontProductListQuery` owns storefront filters, sorting, and validated
   page/per-page input as one Product query contract across native and GraphQL
   transports.
