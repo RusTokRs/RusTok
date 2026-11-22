@@ -22,15 +22,20 @@ fi
 # Annotations can be read without downloading the complete runner logs.
 if [[ "$1" == cargo ]]; then
   detail=$(awk '
-    /^test .* \.\.\. FAILED$/ && ++failed_tests <= 32 { print substr($0, 1, 240); next }
-    /^test result: FAILED\./ { print substr($0, 1, 240); next }
-    /^error: could not compile / && blocks > 0 { print substr($0, 1, 400); remaining = 0; next }
+    function excerpt(line, size, edge) {
+      if (length(line) <= size) return line
+      edge = int((size - 5) / 2)
+      return substr(line, 1, edge) " ... " substr(line, length(line) - edge + 1)
+    }
+    /^test .* \.\.\. FAILED$/ && ++failed_tests <= 32 { print excerpt($0, 240); next }
+    /^test result: FAILED\./ { print excerpt($0, 240); next }
+    /^error: could not compile / && blocks > 0 { print excerpt($0, 400); remaining = 0; next }
     /^error(\[|:)/ || /^---- .* stdout ----$/ {
       # Include context for the first failures, then headlines and locations.
       ++blocks
       remaining = blocks <= 3 ? 8 : blocks <= 32 ? 2 : 0
     }
-    remaining > 0 { print substr($0, 1, 400); --remaining }
+    remaining > 0 { print excerpt($0, 400); --remaining }
     END { if (blocks > 32) printf "%d additional diagnostics in the full job log\n", blocks - 32 }
   ' "$log")
 else
