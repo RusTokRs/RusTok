@@ -2,6 +2,9 @@ import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
 import {
   listProducts,
+  listCatalogCategorySearchOptions,
+  listCatalogAttributeSearchOptions,
+  listAdminCatalogFacets,
   normalizeProductAdminPagination,
   normalizeProductStatus,
   ProductTable
@@ -12,6 +15,7 @@ import { PageContainer } from '@/widgets/app-shell';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
+import { getLocale } from '@rustok/next-fluent/server';
 
 export const metadata = {
   title: 'RusTok Admin: Catalog'
@@ -93,21 +97,23 @@ export default async function ProductPage({ searchParams }: PageProps) {
     tenantId: session?.user?.tenantId ?? null
   };
 
+  const locale = await getLocale();
+  const filter = {
+    page,
+    perPage,
+    search,
+    status,
+    vendor,
+    categoryId,
+    sortBy,
+    sortDirection,
+    attributeFilters
+  };
   let result: Awaited<ReturnType<typeof listProducts>> | null = null;
   let error: string | null = null;
 
   try {
-    result = await listProducts(opts, {
-      page,
-      perPage,
-      search,
-      status,
-      vendor,
-      categoryId,
-      sortBy,
-      sortDirection,
-      attributeFilters
-    });
+    result = await listProducts(opts, filter, locale);
   } catch {
     // Transport failures can carry server-controlled details. The view
     // displays only an operator-safe message, never a raw GraphQL payload.
@@ -119,6 +125,29 @@ export default async function ProductPage({ searchParams }: PageProps) {
 
   const products = result?.items ?? [];
   const total = result?.total ?? 0;
+  const categoryOptions = result
+    ? await listCatalogCategorySearchOptions(opts, locale).catch(() => [])
+    : [];
+  const attributeOptions = result
+    ? await listCatalogAttributeSearchOptions(opts, locale).catch(() => [])
+    : [];
+  const facets = result
+    ? await listAdminCatalogFacets(
+        opts,
+        filter,
+        attributeOptions.map((option) => option.value),
+        locale
+      ).catch(() => [])
+    : [];
+  const routeQuery: Record<string, string> = Object.fromEntries(
+    Object.entries(params).flatMap(([key, value]) => {
+      const selected = pickParam(value);
+      return selected === undefined ? [] : [[key, selected]];
+    })
+  );
+  if (attributeFilters.length > 0) {
+    routeQuery.attribute_filters = attributeFilters.join(';');
+  }
 
   return (
     <PageContainer
@@ -142,7 +171,19 @@ export default async function ProductPage({ searchParams }: PageProps) {
             </CardContent>
           </Card>
         ) : (
-          <ProductTable data={products} totalItems={total} />
+          <ProductTable
+            data={products}
+            totalItems={total}
+            categoryOptions={categoryOptions}
+            attributeOptions={attributeOptions}
+            facets={facets}
+            categoryId={categoryId}
+            attributeFilters={attributeFilters}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            perPage={perPage}
+            routeQuery={routeQuery}
+          />
         )}
       </div>
     </PageContainer>
