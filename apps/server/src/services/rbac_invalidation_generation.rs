@@ -351,8 +351,10 @@ mod tests {
 
     use super::{
         RbacInvalidationGenerationState, RbacInvalidationGenerationWatchdogHandle,
-        is_missing_generation_state, read_rbac_invalidation_generation,
-        reserve_rbac_invalidation_generation, supervise_rbac_invalidation_generation_watchdog,
+        RbacInvalidationGenerationWatchdogStartLock, is_missing_generation_state,
+        read_rbac_invalidation_generation, reserve_rbac_invalidation_generation,
+        start_rbac_invalidation_generation_watchdog,
+        supervise_rbac_invalidation_generation_watchdog,
     };
     use crate::error::Error;
     use rustok_migrations::SqliteTestMigrator as Migrator;
@@ -389,6 +391,54 @@ mod tests {
         assert!(!is_missing_generation_state(&Error::Cache(
             "Database error: undefinedTable on unrelated_authorization_state".to_string()
         )));
+    }
+
+    #[tokio::test]
+    async fn watchdog_start_does_not_wait_for_a_busy_lock_after_shutdown() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let start_lock =
+            ctx.shared_get_or_insert_with(RbacInvalidationGenerationWatchdogStartLock::default);
+        let held = start_lock.0.lock().await;
+        let starter_ctx = ctx.clone();
+        let starter = tokio::spawn(async move {
+            start_rbac_invalidation_generation_watchdog(&starter_ctx).await
+        });
+
+        // The start call has to contend for the lock; shutdown's signal
+        // must release its pending admission rather than waiting for us.
+        tokio::task::yield_now().await;
+        StopHandle::ensure(&ctx).stop().await;
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), starter)
+                .await
+                .expect("shutdown releases the waiting watchdog starter")
+                .expect("starter task joins")
+                .is_ok()
+        );
+        assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn watchdog_start_does_not_publish_after_existing_stop_signal() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        StopHandle::ensure(&ctx).stop().await;
+        start_rbac_invalidation_generation_watchdog(&ctx)
+            .await
+            .expect("shutdown is an idempotent startup skip");
+        assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
     }
 
     #[tokio::test]
