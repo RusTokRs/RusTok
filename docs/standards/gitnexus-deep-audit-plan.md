@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-02 — Core Identity, Tenancy & Access Modules
-- **Next Pending Component:** [`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)
+- **Next Pending Component:** [`crates/modules/rustok-auth`](../../crates/modules/rustok-auth)
 - **Current main SHA:** `67f842e7e8`
 - **Active Branch:** `main`
 
@@ -202,7 +202,7 @@ flowchart TD
 ### Phase GN-02 — Core Identity, Tenancy & Access Modules (4 модуля)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
-| `rustok-tenant` | `crates/modules/rustok-tenant` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-tenant` | `crates/modules/rustok-tenant` | [x] | [x] | [x] | [x] |
 | `rustok-auth` (вкл. `cli`, `ui`) | `crates/modules/rustok-auth` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-rbac` (вкл. `cli`) | `crates/modules/rustok-rbac` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-security` | `crates/modules/rustok-security` | [ ] | [ ] | [ ] | [ ] |
