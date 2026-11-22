@@ -237,6 +237,12 @@ pub fn spawn_module_artifact_maintenance_handle(
                     // between passes protect bytes before any deletion.
                     match control_plane.artifact_blob_retention_policy().await {
                         Ok(policy) => {
+                            // Loading the retention policy is preparation, not
+                            // permission to begin destructive reconciliation.
+                            // Shutdown may have arrived while that read waited.
+                            if !may_admit_next_worker_operation(&stop_rx) {
+                                break;
+                            }
                             let reconciler = control_plane.artifact_blob_reconciler(storage.clone());
                             match reconciler.reconcile_published_blobs(&policy).await {
                                 Ok(report) if report.has_changes() => {
@@ -294,6 +300,9 @@ pub fn spawn_module_artifact_maintenance_handle(
                         .await
                     {
                         Ok(tenant_ids) if !tenant_ids.is_empty() => {
+                            if !may_admit_next_worker_operation(&stop_rx) {
+                                break;
+                            }
                             match data_object_gc.load_ledger_retention_snapshot().await {
                                 Ok(retention) => {
                                     for tenant_id in tenant_ids {
