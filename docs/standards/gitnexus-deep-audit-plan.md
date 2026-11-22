@@ -4,8 +4,8 @@
 
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
-- **Active Phase:** Phase GN-01 — Shared Platform Foundation Libraries (`crates/libs/*`)
-- **Next Pending Component:** [`crates/libs/rustok-translation-targets`](../../crates/libs/rustok-translation-targets)
+- **Active Phase:** Phase GN-02 — Core Identity, Tenancy & Access Modules
+- **Next Pending Component:** [`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)
 - **Current main SHA:** `67f842e7e8`
 - **Active Branch:** `main`
 
@@ -196,8 +196,8 @@ flowchart TD
 | `rustok-telemetry` | `crates/libs/rustok-telemetry` | [x] | [x] | [x] | [x] |
 | `rustok-content-portability` | `crates/libs/rustok-content-portability` | [x] | [x] | [x] | [x] |
 | `rustok-seo-targets` | `crates/libs/rustok-seo-targets` | [x] | [x] | [x] | [x] |
-| `rustok-translation-targets` | `crates/libs/rustok-translation-targets` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-web` | `crates/libs/rustok-web` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-translation-targets` | `crates/libs/rustok-translation-targets` | [x] | [x] | [x] | [x] |
+| `rustok-web` | `crates/libs/rustok-web` | [x] | [x] | [x] | [x] |
 
 ### Phase GN-02 — Core Identity, Tenancy & Access Modules (4 модуля)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
