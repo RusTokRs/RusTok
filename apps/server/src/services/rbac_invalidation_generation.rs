@@ -328,9 +328,12 @@ pub(crate) async fn take_watchdog_task_for_shutdown(
 
 fn is_missing_generation_state(error: &Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
-    message.contains("no such table")
-        || message.contains("undefinedtable")
-        || message.contains("does not exist") && message.contains("rbac_invalidation_state")
+    // Only absence of OUR generation table may be tolerated on a pre-migration
+    // host. An unrelated missing relation must not leave RBAC recovery dormant.
+    message.contains("rbac_invalidation_state")
+        && (message.contains("no such table")
+            || message.contains("undefinedtable")
+            || message.contains("does not exist"))
 }
 
 #[cfg(test)]
@@ -369,6 +372,15 @@ mod tests {
         )));
         assert!(!is_missing_generation_state(&Error::Cache(
             "connection refused".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "no such table: unrelated_authorization_state".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "relation public.unrelated_authorization_state does not exist".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "Database error: undefinedTable on unrelated_authorization_state".to_string()
         )));
     }
 
