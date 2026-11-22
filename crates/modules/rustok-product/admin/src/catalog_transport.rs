@@ -179,7 +179,14 @@ pub(crate) async fn fetch_products(
         let _ = (token, tenant_slug);
         legacy::admin_catalog_native::fetch_products(tenant_id, locale, controls)
             .await
-            .map_err(Into::into)
+            // ServerFnError is not a GraphqlHttpError. Never expose the
+            // framework/server payload as an HTTP error or silently switch
+            // to a different transport after native admission rejects it.
+            .map_err(|_| {
+                GraphqlHttpError::Http(
+                    "Product admin catalog is temporarily unavailable".to_string(),
+                )
+            })
     }
 
     #[cfg(not(any(feature = "ssr", feature = "hydrate")))]

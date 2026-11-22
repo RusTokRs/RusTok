@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
-use leptos_ui_routing::use_route_query_writer;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{
     ColumnFilters, GridPagination, PaginationMode, RowSelection, DEFAULT_PAGE_SIZE,
@@ -10,7 +10,8 @@ use rustok_ui_core::UiRouteContext;
 
 use super::catalog_facets::AdminCatalogFacetPanel;
 use crate::catalog_controls::{
-    build_product_admin_catalog_controls_labels, serialize_attribute_filters,
+    build_product_admin_catalog_controls_labels, build_product_admin_list_input,
+    serialize_attribute_filters,
 };
 use crate::catalog_transport;
 use crate::core::{
@@ -24,6 +25,8 @@ use crate::model::{ProductList, ProductListItem};
 pub fn ProductGridPage() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let route_query_writer = use_route_query_writer();
+    let route_page = use_route_query_value("page");
+    let route_page_size = use_route_query_value("per_page");
     let locale = route_context.locale.clone();
     let is_ru = locale.as_deref() == Some("ru");
     let base_route = route_context.admin_module_route_base("product");
@@ -55,6 +58,7 @@ pub fn ProductGridPage() -> impl IntoView {
     let (last_requested_pagination, set_last_requested_pagination) =
         signal((requested_page, requested_page_size));
     let (page_request_nonce, set_page_request_nonce) = signal(0_u64);
+
     let request_current_page = {
         let pagination = pagination;
         let last_requested_pagination = last_requested_pagination;
@@ -72,6 +76,31 @@ pub fn ProductGridPage() -> impl IntoView {
     let (infinite_items, set_infinite_items) = signal(Vec::<ProductListItem>::new());
     let (last_loaded_page, set_last_loaded_page) = signal(0_usize);
     let (last_applied_request, set_last_applied_request) = signal(None::<u64>);
+
+    // The route is the durable page selection. Reconcile browser Back/Forward
+    // and external in-place URL changes, not just pagination button clicks.
+    // The signals read the router query map in the browser and the typed
+    // route snapshot during SSR.
+    Effect::new(move |_| {
+        let page = route_page.get();
+        let per_page = route_page_size.get();
+        let controls =
+            build_product_admin_list_input(None, None, None, None, None, None, page, per_page);
+        let next = (
+            usize::try_from(controls.page).unwrap_or(usize::MAX),
+            usize::try_from(controls.per_page).unwrap_or(DEFAULT_PAGE_SIZE),
+        );
+        if next != last_requested_pagination.get_untracked() {
+            if next.1 != last_requested_pagination.get_untracked().1 {
+                set_infinite_items.set(Vec::new());
+                set_last_loaded_page.set(0);
+            }
+            set_last_requested_pagination.set(next);
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+        }
+    });
+
+
     let (last_auth_context, set_last_auth_context) =
         signal((token.get_untracked(), tenant.get_untracked()));
     Effect::new(move |_| {
@@ -84,6 +113,7 @@ pub fn ProductGridPage() -> impl IntoView {
             set_last_applied_request.set(None);
             set_infinite_items.set(Vec::new());
             set_last_loaded_page.set(0);
+            selection.update(|selected| selected.clear());
         }
     });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
@@ -1165,6 +1195,16 @@ pub fn ProductGridPage() -> impl IntoView {
                     {catalog_labels.apply.clone()}
                 </button>
             </form>
+
+            <Show when=move || matches!(products_resource.get(), Some(Err(_)))>
+                <div role="alert" class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+                    {if is_ru {
+                        "Не удалось загрузить каталог товаров. Повторите обновление."
+                    } else {
+                        "Unable to load the product catalog. Refresh to retry."
+                    }}
+                </div>
+            </Show>
 
             // Main DataGrid
             <DataGrid
