@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{Result as AnyResult, anyhow};
 use async_trait::async_trait;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetProvider,
-    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
+    SeoTargetProvider, SeoTargetResult as AnyResult, SeoTargetRouteResolveRequest,
+    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
 };
 use url::Url;
 use uuid::Uuid;
@@ -75,7 +75,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                 request.locale,
                 Some(request.default_locale),
             )
-            .await?
+            .await
+            .map_err(SeoTargetError::provider)?
             .is_none()
         {
             return Ok(None);
@@ -112,7 +113,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                 {
                     Ok(resolution) => resolution,
                     Err(error) if category_route_absent(&error) => return Ok(None),
-                    Err(error) => return Err(error.into()),
+                    Err(error) => return Err(SeoTargetError::provider(error)),
                 };
                 let visible = self
                     .load_target(
@@ -166,7 +167,11 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
-        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+        if !discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(SeoTargetError::provider)?
+        {
             return Ok(SeoBulkSummaryPage {
                 items: Vec::new(),
                 next_cursor: None,
@@ -199,7 +204,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                         candidate.effective_locale.as_str(),
                         Some(default_locale),
                     )
-                    .await?
+                    .await
+                    .map_err(SeoTargetError::provider)?
                     .is_none()
                 {
                     continue;
@@ -215,14 +221,15 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                         candidate.effective_locale.as_str(),
                         Some(default_locale),
                     )
-                    .await?;
+                    .await
+                    .map_err(SeoTargetError::provider)?;
                 candidate.effective_locale = descriptor.locale;
                 candidate.route = descriptor.path;
                 visible.push(candidate);
             }
             match page.next_cursor {
                 Some(next) if scan_after.as_deref() == Some(next.as_str()) => {
-                    return Err(anyhow!("Forum category SEO keyset did not advance"));
+                    return Err(SeoTargetError::provider("Forum category SEO keyset did not advance"));
                 }
                 Some(next) => scan_after = Some(next),
                 None => break,
@@ -250,7 +257,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         // audience policy when anonymous reading remains enabled.
         public_discovery(runtime)
             .anonymous_reading_allowed(tenant_id)
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         Ok(true)
     }
 
@@ -262,7 +270,11 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
-        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+        if !discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(SeoTargetError::provider)?
+        {
             return Ok(Vec::new());
         }
         let candidates = category_provider()
@@ -278,7 +290,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                     candidate.locale.as_str(),
                     Some(default_locale),
                 )
-                .await?
+                .await
+                .map_err(SeoTargetError::provider)?
                 .is_none()
             {
                 continue;
@@ -290,7 +303,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                     candidate.locale.as_str(),
                     Some(default_locale),
                 )
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
             candidate.locale = descriptor.locale;
             candidate.route = descriptor.path;
             visible.push(candidate);
@@ -337,7 +351,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 Some(request.default_locale),
                 request.channel_slug,
             )
-            .await?
+            .await
+            .map_err(SeoTargetError::provider)?
             .is_none()
         {
             return Ok(None);
@@ -373,13 +388,13 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 {
                     Ok(resolution) => resolution,
                     Err(error) if topic_route_absent(&error) => return Ok(None),
-                    Err(error) => return Err(error.into()),
+                    Err(error) => return Err(SeoTargetError::provider(error)),
                 };
                 if resolution.disposition == ForumTopicRouteDisposition::Gone {
                     return Ok(None);
                 }
                 let canonical = resolution.canonical.ok_or_else(|| {
-                    anyhow!("Forum topic SEO route resolved without a canonical target")
+                    SeoTargetError::provider("Forum topic SEO route resolved without a canonical target")
                 })?;
                 let visible = self
                     .load_target(
@@ -433,7 +448,11 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
-        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+        if !discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(SeoTargetError::provider)?
+        {
             return Ok(SeoBulkSummaryPage {
                 items: Vec::new(),
                 next_cursor: None,
@@ -459,7 +478,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     Some(default_locale),
                     None,
                 )
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
         let has_more = page.next_cursor.is_some();
         let mut visible = Vec::with_capacity(page.items.len());
         let mut last_visible_cursor = None;
@@ -506,7 +526,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         // audience policy when anonymous reading remains enabled.
         public_discovery(runtime)
             .anonymous_reading_allowed(tenant_id)
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         Ok(true)
     }
 
@@ -518,7 +539,11 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
-        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+        if !discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(SeoTargetError::provider)?
+        {
             return Ok(Vec::new());
         }
         let candidates = topic_provider()
@@ -535,14 +560,16 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     Some(default_locale),
                     None,
                 )
-                .await?
+                .await
+                .map_err(SeoTargetError::provider)?
                 .is_none()
             {
                 continue;
             }
             let descriptor = route_service
                 .canonical_descriptor(tenant_id, candidate.target_id, candidate.locale.as_str())
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
             candidate.locale = descriptor.locale;
             candidate.route = descriptor.path;
             visible.push(candidate);
@@ -565,16 +592,18 @@ async fn rewrite_category_target(
             record.effective_locale.as_str(),
             Some(default_locale),
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
     let locales = alternate_locales(&record)?;
     let mut alternates = BTreeMap::new();
     for locale in locales {
         let descriptor = service
             .canonical_descriptor(tenant_id, record.target_id, locale.as_str(), None)
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         if descriptor.locale != locale {
-            return Err(anyhow!(
-                "Forum category SEO alternate resolved through an unexpected locale fallback"
+            return Err(SeoTargetError::provider(
+                "Forum category SEO alternate resolved through an unexpected locale fallback",
             ));
         }
         alternates.insert(descriptor.locale, descriptor.path);
@@ -599,16 +628,18 @@ async fn rewrite_topic_target(
             record.target_id,
             record.effective_locale.as_str(),
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
     let locales = alternate_locales(&record)?;
     let mut alternates = BTreeMap::new();
     for locale in locales {
         let descriptor = service
             .canonical_descriptor(tenant_id, record.target_id, locale.as_str())
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         if descriptor.locale != locale {
-            return Err(anyhow!(
-                "Forum topic SEO alternate resolved through an unexpected locale fallback"
+            return Err(SeoTargetError::provider(
+                "Forum topic SEO alternate resolved through an unexpected locale fallback",
             ));
         }
         alternates.insert(descriptor.locale, descriptor.path);
@@ -628,8 +659,8 @@ fn alternate_locales(record: &SeoLoadedTargetRecord) -> AnyResult<BTreeSet<Strin
         .collect::<BTreeSet<_>>();
     locales.insert(record.effective_locale.clone());
     if locales.len() > MAX_FORUM_SEO_ALTERNATE_ROUTES {
-        return Err(anyhow!(
-            "Forum SEO alternate route count exceeds the bounded public contract"
+        return Err(SeoTargetError::provider(
+            "Forum SEO alternate route count exceeds the bounded public contract",
         ));
     }
     Ok(locales)
@@ -652,7 +683,8 @@ fn apply_canonical_routes(
 }
 
 fn parse_canonical_forum_route(route: &str) -> AnyResult<Option<CanonicalForumRoute>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
+    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
+        .map_err(SeoTargetError::provider)?;
     let segments = parsed
         .path_segments()
         .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())

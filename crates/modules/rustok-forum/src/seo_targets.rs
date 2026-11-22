@@ -1,14 +1,13 @@
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
-    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
-    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
-    populate_image_template_fields, schema,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
+    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -102,7 +101,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                     channel_slug: request.channel_slug,
                 },
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         Ok(loaded.map(|record| SeoRouteMatchRecord {
             target_kind: record.target_kind,
             target_id: record.target_id,
@@ -119,7 +119,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             .after
             .map(Uuid::parse_str)
             .transpose()
-            .map_err(|_| anyhow::anyhow!("invalid forum category SEO bulk cursor"))?;
+            .map_err(|_| SeoTargetError::provider("invalid forum category SEO bulk cursor"))?;
         let (categories, next_cursor) = service
             .list_keyset_with_locale_fallback(
                 request.tenant_id,
@@ -129,7 +129,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                 request.limit,
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         let mut items = Vec::with_capacity(categories.len());
         for item in categories {
@@ -170,7 +171,8 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
                     BULK_FETCH_SIZE,
                     Some(request.default_locale),
                 )
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
             if items.is_empty() {
                 break;
             }
@@ -236,7 +238,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                         Some(request.default_locale),
                         request.channel_slug,
                     )
-                    .await?
+                    .await
+                    .map_err(SeoTargetError::provider)?
             }
             SeoTargetLoadScope::Authoring => {
                 let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
@@ -290,7 +293,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     channel_slug: request.channel_slug,
                 },
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         Ok(loaded.map(|record| SeoRouteMatchRecord {
             target_kind: record.target_kind,
             target_id: record.target_id,
@@ -321,7 +325,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 },
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         let mut items = Vec::with_capacity(page.items.len());
         for item in page.items {
@@ -374,7 +379,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     Some(request.default_locale),
                     None,
                 )
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
 
             for item in page.items {
                 if let Some(candidate) = load_topic_sitemap_candidate(
@@ -403,7 +409,7 @@ fn optional_category(result: ForumResult<CategoryResponse>) -> AnyResult<Option<
     match result {
         Ok(category) => Ok(Some(category)),
         Err(ForumError::CategoryNotFound(_)) => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(SeoTargetError::provider(error)),
     }
 }
 
@@ -411,7 +417,7 @@ fn optional_topic(result: ForumResult<TopicResponse>) -> AnyResult<Option<TopicR
     match result {
         Ok(topic) => Ok(Some(topic)),
         Err(ForumError::TopicNotFound(_)) => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(SeoTargetError::provider(error)),
     }
 }
 
@@ -741,7 +747,8 @@ enum ForumRoute {
 }
 
 fn parse_forum_route(route: &str) -> AnyResult<Option<ForumRoute>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
+    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
+        .map_err(SeoTargetError::provider)?;
     if !matches_module_path(&parsed, "forum") {
         return Ok(None);
     }

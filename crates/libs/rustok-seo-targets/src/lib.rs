@@ -11,8 +11,6 @@ use std::fmt;
 #[cfg(feature = "server")]
 use std::sync::Arc;
 
-#[cfg(feature = "server")]
-use anyhow::Result as AnyResult;
 use async_graphql::{
     Enum, InputValueError, InputValueResult, Scalar, ScalarType, SimpleObject, Value,
 };
@@ -926,20 +924,36 @@ pub struct GenerateSeoMetadataInput {
     pub current_route: Option<String>,
 }
 
-pub fn validate_seo_metadata_payload(payload: &GeneratedSeoMetadata) -> Result<(), String> {
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum SeoMetadataValidationError {
+    #[error("meta_title must not be blank when provided")]
+    BlankMetaTitle,
+    #[error("meta_description must not be blank when provided")]
+    BlankMetaDescription,
+}
+
+impl From<SeoMetadataValidationError> for String {
+    fn from(err: SeoMetadataValidationError) -> Self {
+        err.to_string()
+    }
+}
+
+pub fn validate_seo_metadata_payload(
+    payload: &GeneratedSeoMetadata,
+) -> Result<(), SeoMetadataValidationError> {
     if payload
         .meta_title
         .as_deref()
         .is_some_and(|title| title.trim().is_empty())
     {
-        return Err("meta_title must not be blank when provided".to_string());
+        return Err(SeoMetadataValidationError::BlankMetaTitle);
     }
     if payload
         .meta_description
         .as_deref()
         .is_some_and(|desc| desc.trim().is_empty())
     {
-        return Err("meta_description must not be blank when provided".to_string());
+        return Err(SeoMetadataValidationError::BlankMetaDescription);
     }
     Ok(())
 }
@@ -950,6 +964,56 @@ pub enum SeoTargetRegistryError {
     #[error("SEO target slug `{0}` is already registered")]
     DuplicateSlug(SeoTargetSlug),
 }
+
+#[derive(Debug, Error)]
+pub enum SeoTargetError {
+    #[error(transparent)]
+    Slug(#[from] SeoTargetSlugError),
+    #[cfg(feature = "server")]
+    #[error(transparent)]
+    Registry(#[from] SeoTargetRegistryError),
+    #[error(transparent)]
+    Validation(#[from] SeoMetadataValidationError),
+    #[error("SEO target `{0}` was not found")]
+    NotFound(String),
+    #[error("SEO capability `{0:?}` not supported by target")]
+    CapabilityNotSupported(SeoTargetCapabilityKind),
+    #[error("SEO bulk provider `{slug}` returned a non-advancing cursor")]
+    NonAdvancingCursor { slug: String },
+    #[cfg(feature = "server")]
+    #[error("SEO database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+    #[error("SEO provider error: {0}")]
+    Provider(String),
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl SeoTargetError {
+    pub fn provider(err: impl fmt::Display) -> Self {
+        Self::Provider(err.to_string())
+    }
+
+    pub fn other(err: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self::Other(err.into())
+    }
+}
+
+impl From<&str> for SeoTargetError {
+    fn from(s: &str) -> Self {
+        Self::Provider(s.to_string())
+    }
+}
+
+impl From<String> for SeoTargetError {
+    fn from(s: String) -> Self {
+        Self::Provider(s)
+    }
+}
+
+pub type SeoTargetResult<T> = Result<T, SeoTargetError>;
+#[deprecated(note = "use SeoTargetResult instead")]
+pub type AnyResult<T> = SeoTargetResult<T>;
 
 #[cfg(feature = "server")]
 #[async_trait]
@@ -966,7 +1030,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadRequest<'_>,
-    ) -> AnyResult<Option<SeoLoadedTargetRecord>>;
+    ) -> SeoTargetResult<Option<SeoLoadedTargetRecord>>;
 
     /// Batched state loads for scan consumers (diagnostics, exports). The default walks
     /// `load_target` per requested id, preserving single-load semantics; providers that
@@ -977,7 +1041,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadTargetsRequest<'_>,
-    ) -> AnyResult<Vec<(Uuid, Option<SeoLoadedTargetRecord>)>> {
+    ) -> SeoTargetResult<Vec<(Uuid, Option<SeoLoadedTargetRecord>)>> {
         let mut records = Vec::with_capacity(request.target_ids.len());
         for target_id in request.target_ids.iter().copied() {
             let record = self
@@ -1002,7 +1066,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         _runtime: &SeoTargetRuntimeContext,
         _request: SeoTargetRouteResolveRequest<'_>,
-    ) -> AnyResult<Option<SeoRouteMatchRecord>> {
+    ) -> SeoTargetResult<Option<SeoRouteMatchRecord>> {
         Ok(None)
     }
 
@@ -1011,7 +1075,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         _runtime: &SeoTargetRuntimeContext,
         _request: SeoTargetBulkPageRequest<'_>,
-    ) -> AnyResult<SeoBulkSummaryPage> {
+    ) -> SeoTargetResult<SeoBulkSummaryPage> {
         Ok(SeoBulkSummaryPage::default())
     }
 
@@ -1021,7 +1085,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+    ) -> SeoTargetResult<Vec<SeoBulkSummaryRecord>> {
         let mut after: Option<String> = None;
         let mut summaries = Vec::new();
         loop {
@@ -1041,10 +1105,9 @@ pub trait SeoTargetProvider: Send + Sync {
             match page.next_cursor {
                 None => return Ok(summaries),
                 Some(next) if after.as_deref() == Some(next.as_str()) => {
-                    return Err(anyhow::anyhow!(
-                        "SEO bulk provider `{}` returned a non-advancing cursor",
-                        self.slug().as_str()
-                    ));
+                    return Err(SeoTargetError::NonAdvancingCursor {
+                        slug: self.slug().as_str().to_string(),
+                    });
                 }
                 Some(next) => after = Some(next),
             }
@@ -1055,7 +1118,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         _runtime: &SeoTargetRuntimeContext,
         _request: SeoTargetSitemapRequest<'_>,
-    ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
+    ) -> SeoTargetResult<Vec<SeoSitemapCandidateRecord>> {
         Ok(Vec::new())
     }
 
@@ -1067,7 +1130,7 @@ pub trait SeoTargetProvider: Send + Sync {
         &self,
         _runtime: &SeoTargetRuntimeContext,
         _tenant_id: Uuid,
-    ) -> AnyResult<bool> {
+    ) -> SeoTargetResult<bool> {
         Ok(false)
     }
 }
@@ -1197,7 +1260,7 @@ mod tests {
             &self,
             _runtime: &SeoTargetRuntimeContext,
             request: SeoTargetLoadRequest<'_>,
-        ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
+        ) -> SeoTargetResult<Option<SeoLoadedTargetRecord>> {
             Ok(Some(SeoLoadedTargetRecord {
                 target_kind: self.slug(),
                 target_id: request.target_id,

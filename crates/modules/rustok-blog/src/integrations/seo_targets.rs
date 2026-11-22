@@ -1,14 +1,13 @@
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
-    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
-    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
-    populate_image_template_fields, schema,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
+    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -35,12 +34,7 @@ const MAX_SITEMAP_CANDIDATES: usize = 20_000;
 /// The SEO slug grammar is the owner's, so a drifted constant is reported as an error
 /// on the request path that needed it — never as a panic.
 fn blog_target_slug() -> AnyResult<SeoTargetSlug> {
-    SeoTargetSlug::new(builtin_slug::BLOG_POST).map_err(|error| {
-        anyhow::anyhow!(
-            "Blog SEO target slug `{}` is invalid: {error}",
-            builtin_slug::BLOG_POST
-        )
-    })
+    SeoTargetSlug::new(builtin_slug::BLOG_POST).map_err(SeoTargetError::Slug)
 }
 
 #[derive(Clone, Default)]
@@ -122,7 +116,8 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                 slug.as_str(),
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         Ok(post
             .filter(|post| {
@@ -150,16 +145,17 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             .after
             .map(Uuid::parse_str)
             .transpose()
-            .map_err(|_| anyhow::anyhow!("invalid blog SEO bulk cursor"))?;
+            .map_err(|_| SeoTargetError::provider("invalid blog SEO bulk cursor"))?;
         let scan = service
             .scan_published_posts(
                 request.tenant_id,
                 request.locale,
                 Some(request.default_locale),
                 after,
-                u32::try_from(request.limit)?,
+                u32::try_from(request.limit).map_err(SeoTargetError::provider)?,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         Ok(SeoBulkSummaryPage {
             items: scan
@@ -190,7 +186,8 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                     after,
                     BULK_FETCH_SIZE,
                 )
-                .await?;
+                .await
+                .map_err(SeoTargetError::provider)?;
 
             for item in page.items {
                 if candidates.len() >= MAX_SITEMAP_CANDIDATES {
@@ -329,7 +326,8 @@ fn primary_post_image_descriptor(
 }
 
 fn parse_blog_route(route: &str) -> AnyResult<Option<String>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
+    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
+        .map_err(SeoTargetError::provider)?;
     let mut segments = parsed
         .path_segments()
         .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
@@ -375,6 +373,6 @@ fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<Po
     match result {
         Ok(post) => Ok(Some(post)),
         Err(BlogError::PostNotFound(_)) => Ok(None),
-        Err(error) => Err(anyhow::Error::new(error)),
+        Err(error) => Err(SeoTargetError::provider(error)),
     }
 }

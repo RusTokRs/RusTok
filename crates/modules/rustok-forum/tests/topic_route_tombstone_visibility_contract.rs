@@ -3,7 +3,6 @@ const MIGRATION: &str = include_str!(
 );
 const MIGRATIONS_MOD: &str = include_str!("../src/migrations/mod.rs");
 const TOPIC_OWNER: &str = include_str!("../src/services/topic_owner.rs");
-const TOPIC_OWNER_INLINE: &str = include_str!("../src/services/topic_owner_inline.rs");
 const SNAPSHOT_OWNER: &str = include_str!("../src/services/topic_route_tombstone_visibility.rs");
 const CATEGORY_VISIBILITY: &str = include_str!("../src/services/category_visibility.rs");
 
@@ -58,7 +57,7 @@ fn delete_matches_canonical_policy_lock_order_before_snapshot() {
             "mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?",
         ],
     );
-    assert!(TOPIC_OWNER_INLINE.contains("path = \"topic_route_tombstone_visibility.rs\""));
+    assert!(TOPIC_OWNER.contains("path = \"topic_route_tombstone_visibility.rs\""));
 }
 
 #[test]
@@ -107,7 +106,7 @@ fn snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope() {
 
 #[test]
 fn this_slice_does_not_publish_gone_transport_or_http_policy() {
-    for source in [SNAPSHOT_OWNER, TOPIC_OWNER, TOPIC_OWNER_INLINE, MIGRATION] {
+    for source in [SNAPSHOT_OWNER, TOPIC_OWNER, MIGRATION] {
         for forbidden in [
             "GqlForumStorefrontTopicRouteDisposition::Gone",
             "StorefrontForumTopicRouteDisposition::Gone",

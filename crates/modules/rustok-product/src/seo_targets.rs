@@ -1,16 +1,16 @@
 use crate::dto::{
     ProductImageResponse, ProductSeoProjection, ProductStatus, ProductTranslationResponse,
 };
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetLoadTargetsRequest,
-    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
-    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
-    builtin_slug, populate_image_template_fields, schema,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
+    SeoTargetLoadTargetsRequest, SeoTargetOpenGraphRecord, SeoTargetProvider,
+    SeoTargetResult as AnyResult, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
+    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
+    populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -56,7 +56,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 request.locale,
                 request.default_locale,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         let Some(product) = product else {
             return Ok(None);
         };
@@ -90,7 +91,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 request.locale,
                 request.default_locale,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         let mut by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -136,7 +138,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 Some(request.default_locale),
                 request.channel_slug,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         Ok(product.map(|product| SeoRouteMatchRecord {
             target_kind: self.slug(),
@@ -154,10 +157,11 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             .after
             .map(Uuid::parse_str)
             .transpose()
-            .map_err(|_| anyhow::anyhow!("invalid product SEO bulk cursor"))?;
+            .map_err(|_| SeoTargetError::provider("invalid product SEO bulk cursor"))?;
         let (product_ids, next_after) = service
             .scan_published_product_ids(request.tenant_id, None, after, request.limit)
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         let projections = service
             .get_product_seo_projections(
@@ -166,7 +170,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 request.locale,
                 request.default_locale,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
         let mut by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -201,7 +206,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             // as the storefront list, walked by id instead of offset.
             let (product_ids, next_after) = service
                 .scan_published_product_ids(request.tenant_id, None, after, BULK_FETCH_SIZE)
-                .await?;
+                .await
+            .map_err(SeoTargetError::provider)?;
             let projections = service
                 .get_product_seo_projections(
                     request.tenant_id,
@@ -209,7 +215,8 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                     request.default_locale,
                     request.default_locale,
                 )
-                .await?;
+                .await
+            .map_err(SeoTargetError::provider)?;
             let mut by_id = projections
                 .into_iter()
                 .map(|projection| (projection.id, projection))
@@ -389,7 +396,8 @@ fn resolve_product_translation<'a>(
 }
 
 fn parse_product_route(route: &str) -> AnyResult<Option<String>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
+    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
+        .map_err(SeoTargetError::provider)?;
     let mut segments = parsed
         .path_segments()
         .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
