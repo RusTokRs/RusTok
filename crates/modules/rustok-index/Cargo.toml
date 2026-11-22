@@ -13,7 +13,6 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-rustok-api = { workspace = true, default-features = false }
 rustok-core.workspace = true
 rustok-runtime.workspace = true
 

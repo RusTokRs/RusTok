@@ -57,7 +57,9 @@ revisions, add Inventory SQL to Index/host code or infer historical delivery fro
 ## Boundaries
 
 - Index core must not depend on Product, Content, Flex, Pricing, Inventory, or
-  other source-domain crates.
+  other source-domain crates. Its locale bound and operator permission checks
+  use the shared `rustok-core` i18n and RBAC surfaces; HTTP and request context
+  stay in the host and admin adapters.
 - Source modules own conversion from domain state/events into generic records,
   mutations, and bounded replay/load adapters.
 - Index must not read source-module tables directly.

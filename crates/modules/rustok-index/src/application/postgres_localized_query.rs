@@ -511,7 +511,10 @@ fn cursor_field_predicates(
         OrderDirection::Desc => {
             format!("({non_null} AND {} < {value})", sql.scalar)
         }
-        _ => format!("(({}) OR ({non_null} AND {} > {value}))", sql.null_predicate, sql.scalar),
+        _ => format!(
+            "(({}) OR ({non_null} AND {} > {value}))",
+            sql.null_predicate, sql.scalar
+        ),
     };
     Ok((equal, after))
 }

@@ -12,7 +12,7 @@ use crate::{
     materialize_index_schema_registry, materialize_index_source_registry,
     materialize_postgres_index_replay_runtime, register_index_schema_source, register_index_source,
 };
-use rustok_core::MigrationSource;
+use rustok_core::{MigrationSource, rbac::Permission};
 use sea_orm::Database;
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
@@ -410,7 +410,7 @@ async fn audited_requeue_resumes_original_replay_checkpoint_and_rejects_stale_di
             tenant,
             tenant,
             actor,
-            &[rustok_api::Permission::MODULES_MANAGE],
+            &[Permission::MODULES_MANAGE],
         )
         .unwrap()
     };
@@ -672,7 +672,7 @@ async fn cancel_between_discovery_and_acquisition_is_not_a_terminal_ack_for_that
         TENANT,
         TENANT,
         Uuid::new_v4(),
-        &[rustok_api::Permission::MODULES_MANAGE],
+        &[Permission::MODULES_MANAGE],
     )
     .unwrap();
     assert_eq!(

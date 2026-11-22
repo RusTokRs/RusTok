@@ -1,7 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use rustok_api::{Permission, has_effective_permission};
-use rustok_core::ModuleRuntimeExtensions;
+use rustok_core::{
+    ModuleRuntimeExtensions,
+    rbac::{Permission, has_effective_permission},
+};
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use uuid::Uuid;
@@ -232,7 +234,6 @@ pub fn materialize_postgres_index_replay_runtime(
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
-    use rustok_api::{Permission, has_effective_permission};
     use rustok_core::ModuleRuntimeExtensions;
     use rustok_runtime::ModuleWorkRegistrations;
     use sea_orm::Database;
@@ -246,7 +247,35 @@ mod tests {
         register_index_schema_source, register_index_source,
     };
 
-    use super::{IndexReplayRuntimeCompositionError, materialize_postgres_index_replay_runtime};
+    use super::{
+        IndexJobOperatorAuthority, IndexJobOperatorError, IndexReplayRuntimeCompositionError,
+        Permission, materialize_postgres_index_replay_runtime,
+    };
+
+    #[test]
+    fn replay_operator_authority_requires_the_exact_tenant_and_manage_permission() {
+        let tenant = uuid::Uuid::from_u128(1);
+        let actor = uuid::Uuid::from_u128(2);
+        let other_tenant = uuid::Uuid::from_u128(3);
+        let manage = [Permission::MODULES_MANAGE];
+        for (request_tenant, actor, permissions) in [
+            (other_tenant, actor, &manage),
+            (tenant, uuid::Uuid::nil(), &manage),
+            (tenant, actor, &[Permission::MODULES_READ]),
+        ] {
+            assert!(matches!(
+                IndexJobOperatorAuthority::authorize(request_tenant, tenant, actor, permissions),
+                Err(IndexJobOperatorError::Forbidden)
+            ));
+        }
+        let authority = IndexJobOperatorAuthority::authorize(tenant, tenant, actor, &manage)
+            .expect("tenant-bound manage permission authorizes replay");
+        assert!(authority.require_tenant(tenant).is_ok());
+        assert!(matches!(
+            authority.require_tenant(other_tenant),
+            Err(IndexJobOperatorError::Forbidden)
+        ));
+    }
 
     struct NoopSource;
 
