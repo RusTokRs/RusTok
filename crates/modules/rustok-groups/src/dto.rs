@@ -239,6 +239,39 @@ pub struct ReadGroupMembershipEnforcementRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuspendGroupMembershipRequest {
+    pub group_id: Uuid,
+    pub target_user_id: Uuid,
+    pub expected_membership_revision: i64,
+    pub reason_code: String,
+    pub effective_until: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevokeGroupMembershipSuspensionRequest {
+    pub group_id: Uuid,
+    pub target_user_id: Uuid,
+    pub expected_membership_revision: i64,
+    pub reason_code: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupMembershipEnforcementMutationResult {
+    pub group_id: Uuid,
+    pub membership_id: Uuid,
+    pub user_id: Uuid,
+    pub membership_revision: i64,
+    pub group_version: i64,
+    /// Stored-lifecycle active count. Temporary enforcement deliberately does not change it.
+    pub member_count: i64,
+    pub effective_status: GroupMembershipEffectiveStatus,
+    pub enforcement_revision: i64,
+    pub effective_until: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListGroupMembershipsRequest {
     pub group_id: Uuid,
     pub page: u64,

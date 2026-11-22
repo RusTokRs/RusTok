@@ -151,6 +151,22 @@ pub async fn audit_headers(config: &SecurityConfig) -> Vec<SecurityFinding> {
             description: "CSP is missing default-src directive".to_string(),
             remediation: "Add default-src directive to CSP for baseline protection".to_string(),
         });
+    } else if !config.headers.csp.contains("object-src") {
+        findings.push(SecurityFinding {
+            category: SecurityCategory::SecurityMisconfiguration,
+            severity: Severity::Medium,
+            description: "CSP is missing object-src directive".to_string(),
+            remediation: "Add object-src 'none' to prevent Flash and plugin execution".to_string(),
+        });
+    }
+
+    if config.headers.csp.contains("'unsafe-eval'") {
+        findings.push(SecurityFinding {
+            category: SecurityCategory::SecurityMisconfiguration,
+            severity: Severity::Medium,
+            description: "CSP contains unsafe-eval directive".to_string(),
+            remediation: "Avoid unsafe-eval to prevent code injection via eval()".to_string(),
+        });
     }
 
     // Check frame options

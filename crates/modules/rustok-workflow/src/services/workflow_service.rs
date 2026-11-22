@@ -146,12 +146,12 @@ impl WorkflowService {
         if tenant_id.is_nil() || id.is_nil() {
             return Err(WorkflowError::NotFound(id));
         }
-        if let Some(ref name) = input.name {
-            if name.trim().is_empty() || name.len() > 255 {
-                return Err(WorkflowError::InvalidTriggerConfig(
-                    "workflow name must contain 1 to 255 characters".to_string(),
-                ));
-            }
+        if let Some(ref name) = input.name
+            && (name.trim().is_empty() || name.len() > 255)
+        {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "workflow name must contain 1 to 255 characters".to_string(),
+            ));
         }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;

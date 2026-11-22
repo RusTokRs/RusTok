@@ -7,8 +7,8 @@ use std::{
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_social_graph::{
-    MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SocialGraphFollowBatchRequest, SocialGraphPrivacyReadPort,
-    SocialGraphService,
+    MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SocialGraphFollowBatchRequest,
+    in_process_social_graph_privacy_port,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
@@ -199,7 +199,7 @@ impl ProfilePrivacyService {
             return Ok(Vec::new());
         }
 
-        let social_graph = SocialGraphService::new(self.db.clone());
+        let social_graph = in_process_social_graph_privacy_port(self.db.clone());
         let mut followed = HashSet::new();
         for chunk in profile_ids.chunks(MAX_SOCIAL_GRAPH_FOLLOW_TARGETS) {
             let context = PortContext::new(
@@ -209,15 +209,15 @@ impl ProfilePrivacyService {
                 Uuid::new_v4().to_string(),
             )
             .with_deadline(PROFILE_FOLLOW_READ_DEADLINE);
-            let result = SocialGraphPrivacyReadPort::source_follows_targets(
-                &social_graph,
-                context,
-                SocialGraphFollowBatchRequest {
-                    source_user_id: actor_id,
-                    target_user_ids: chunk.to_vec(),
-                },
-            )
-            .await?;
+            let result = social_graph
+                .source_follows_targets(
+                    context,
+                    SocialGraphFollowBatchRequest {
+                        source_user_id: actor_id,
+                        target_user_ids: chunk.to_vec(),
+                    },
+                )
+                .await?;
             followed.extend(result.followed_target_user_ids);
         }
 

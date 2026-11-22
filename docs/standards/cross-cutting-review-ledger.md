@@ -31,10 +31,10 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** ACTIVE
+- **Status:** COMPLETED
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15, CC-16 (16/17 completed — 94.1%)
+- **Active Phase:** Cycle 2 Fully Completed (17/17 phases verified & remediated)
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06, CC-07, CC-08, CC-09, CC-10, CC-11, CC-12, CC-13, CC-14, CC-15, CC-16, CC-17 (17/17 completed — 100.0%)
 - **Active Branch:** `main`
 
 ---
@@ -71,7 +71,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed)
 - [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed)
 - [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (4/4 completed)
-- [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
+- [x] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (4/4 completed)
 
 ---
 
@@ -585,8 +585,30 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `rustok-web`, `packages/richtext`, all DTO modules.
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 
+- **Audit Outcome:** COMPLETED (4/4 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-17.01 — Universal DTO Ingress Validation**
-- [ ] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP**
-- [ ] **CC-17.03 — Outbound SSRF Verification**
-- [ ] **CC-17.04 — Path-Based Rate Limiting**
+- [x] **CC-17.01 — Universal DTO Ingress Validation**
+  - Audited DTO ingress boundaries across `rustok-api`, `rustok-core` (`tenant_validation`, `InputValidator`), and `rustok-content` (`richtext::validate_and_normalize`).
+  - Confirmed strict type decoding: unknown fields on structured payloads fail closed (`#[serde(deny_unknown_fields)]` on `RichTextDocument`, `RichTextNode`, `RichTextMark`).
+  - Enforced preconditions and bounds: non-empty strings, length limits (slug <= 64, hostname <= 253, correlation ID <= 128 ASCII bytes with whitelisted character set).
+  - Enforced single normalization: locales normalized via `normalize_locale_code`/`normalize_locale_tag`, slugs trimmed and lowercased before uniqueness or database queries.
+- [x] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP**
+  - Audited rich text rendering in `rustok-content::richtext`: zero raw HTML accepted from clients; inputs conform strictly to server-selected `RichTextProfile`.
+  - Confirmed escaping on rendering: `escape_text` and `escape_attribute` prevent injection; `is_safe_link` prohibits control chars, backslashes, double slashes, and javascript/vbscript schemes. External links receive `rel="noopener noreferrer"`.
+  - Audited Content Security Policy in `apps/server/src/middleware/security_headers.rs`: strict API CSP (`default-src 'none'; frame-ancestors 'none'`) and UI CSP with per-request nonces, `object-src 'none'`, and `frame-ancestors 'none'`.
+  - Hardened `SecurityHeadersConfig` audit in `rustok-core::security::headers` to detect missing `object-src` and presence of `'unsafe-eval'`.
+- [x] **CC-17.03 — Outbound SSRF Verification**
+  - Audited and hardened `rustok-core::security::SsrfProtection` against advanced SSRF vectors:
+    - Scheme whitelist: only `http` and `https` permitted; `file`, `ftp`, `gopher`, `dict` blocked.
+    - Userinfo credentials rejected (`url.username().is_empty() && url.password().is_none()`).
+    - Internal and local domain suffixes blocked (`localhost`, `.localhost`, `.local`, `.internal`, `.home.arpa`, `.lan`, `.localdomain`, `.corp`).
+    - Comprehensive IP filtering: blocked IPv4 `0.0.0.0/8`, `100.64.0.0/10` (CGNAT), `192.0.0.0/24`, `198.18.0.0/15`, Class E `240.0.0.0/4`, loopback, private, link-local, broadcast, and multicast.
+    - Comprehensive IPv6 filtering: blocked loopback, unspecified, multicast, unique-local, link-local, NAT64, discard, TEREDO, documentation, 6to4, and **IPv4-mapped IPv6** (`::ffff:0:0/96`).
+    - Redirect chain verification (`validate_redirect_chain`) ensuring all hops remain policy-compliant.
+- [x] **CC-17.04 — Path-Based Rate Limiting**
+  - Audited dual-tier rate limiting: in-memory token bucket (`rustok-core::security::RateLimiter`) and distributed Redis/Moka fixed-window (`apps/server/src/middleware/rate_limit`).
+  - Enforced path-based rate limiting on sensitive routes (`/health/ready`, `/api/auth/*`, GraphQL operations).
+  - Propagated verified client IP via `TRUSTED_CLIENT_IP_HEADER` (`x-rustok-trusted-client-ip`), preventing client-forged spoofing while respecting trusted proxy configuration.
+  - Rate limit keys combine effective client IP and authenticated tenant/OAuth app dimensions.
+  - Scoped checks: `cargo test -p rustok-core --lib` (305 passed), `cargo test -p rustok-core --test security_audit_test` (24 passed), `cargo test -p rustok-core --test security_validation` (15 passed), `cargo test -p rustok-content --lib` (81 passed), `cargo test -p rustok-web --lib` (14 passed), `verify-blog-graphql-rate-limit.mjs` passed. Gatekeeper diff approved via `verify-remediation-gate.py`.

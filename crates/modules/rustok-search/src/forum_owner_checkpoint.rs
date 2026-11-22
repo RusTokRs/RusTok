@@ -7,9 +7,15 @@ use uuid::Uuid;
 
 use rustok_core::{Error, Result};
 
-use crate::forum_reconciliation::{
+use crate::forum_owner_contracts::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRequest,
-    SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
+    ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
+    MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, SharedForumProjectionOwnerRevisionSourcePort,
+    resolve_forum_projection_owner_revisions, resolve_forum_projection_owner_tenant_heads,
+};
+pub use crate::forum_owner_contracts::{
+    ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
+    MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, resolve_forum_projection_owner_tenant_heads,
 };
 use crate::projection_driver::SearchProjectionDriver;
 
@@ -18,98 +24,6 @@ const FULL_SCOPE_KEY: &str = "forum";
 const PROCESSING_LEASE_INTERVAL: &str = "1 hour";
 const DELIVERY_COVERED_OUTCOME: &str = "delivery_covered";
 const REBUILD_REPAIRED_OUTCOME: &str = "rebuild_repaired";
-
-pub const MAX_FORUM_OWNER_TENANT_PAGE_LIMIT: usize = 256;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ForumProjectionOwnerTenantHead {
-    pub tenant_id: Uuid,
-    pub latest_owner_revision: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ForumProjectionOwnerTenantPageRequest {
-    pub after_tenant_id: Option<Uuid>,
-    pub limit: usize,
-}
-
-pub async fn resolve_forum_projection_owner_tenant_heads(
-    port: Option<SharedForumProjectionOwnerRevisionSourcePort>,
-    request: ForumProjectionOwnerTenantPageRequest,
-) -> std::result::Result<Vec<ForumProjectionOwnerTenantHead>, PortError> {
-    validate_tenant_page_request(request)?;
-    let port = port.ok_or_else(|| {
-        PortError::unavailable(
-            "forum.search_projection_owner_revision.owner_unavailable",
-            "Forum projection owner revision source is temporarily unavailable",
-        )
-    })?;
-    let heads = port.list_owner_revision_tenants(request).await?;
-    validate_tenant_head_page(request, &heads)?;
-    Ok(heads)
-}
-
-fn validate_tenant_page_request(
-    request: ForumProjectionOwnerTenantPageRequest,
-) -> std::result::Result<(), PortError> {
-    if request
-        .after_tenant_id
-        .is_some_and(|tenant_id| tenant_id.is_nil())
-    {
-        return Err(PortError::validation(
-            "forum.search_projection_owner_revision.tenant_cursor_invalid",
-            "Forum projection owner tenant cursor must not be nil",
-        ));
-    }
-    if !(1..=MAX_FORUM_OWNER_TENANT_PAGE_LIMIT).contains(&request.limit) {
-        return Err(PortError::validation(
-            "forum.search_projection_owner_revision.tenant_limit_invalid",
-            format!(
-                "Forum projection owner tenant limit must be between 1 and {MAX_FORUM_OWNER_TENANT_PAGE_LIMIT}"
-            ),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_tenant_head_page(
-    request: ForumProjectionOwnerTenantPageRequest,
-    heads: &[ForumProjectionOwnerTenantHead],
-) -> std::result::Result<(), PortError> {
-    if heads.len() > request.limit {
-        return Err(owner_source_invariant(
-            "owner returned more tenant heads than requested",
-        ));
-    }
-
-    let mut previous_tenant_id = request.after_tenant_id;
-    for head in heads {
-        if head.tenant_id.is_nil() {
-            return Err(owner_source_invariant(
-                "owner tenant identity must not be nil",
-            ));
-        }
-        if previous_tenant_id.is_some_and(|previous| head.tenant_id <= previous) {
-            return Err(owner_source_invariant(
-                "owner tenant heads must be strictly ordered after the requested cursor",
-            ));
-        }
-        if head.latest_owner_revision <= 0 {
-            return Err(owner_source_invariant(
-                "owner tenant head revision must be positive",
-            ));
-        }
-        previous_tenant_id = Some(head.tenant_id);
-    }
-    Ok(())
-}
-
-fn owner_source_invariant(message: &'static str) -> PortError {
-    PortError::invariant_violation(
-        "forum.search_projection_owner_revision.contract_invalid",
-        message,
-    )
-}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ForumOwnerCheckpointSweepReport {

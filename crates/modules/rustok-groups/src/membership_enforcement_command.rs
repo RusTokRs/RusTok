@@ -8,7 +8,7 @@ use sea_orm::{
     DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     Set, Statement, TransactionTrait,
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -24,20 +24,16 @@ use crate::membership_enforcement::resolve_group_membership_enforcement;
 use crate::membership_enforcement_entities::{membership_enforcement, membership_state};
 use crate::ports::GroupMembershipEnforcementCommandPort;
 
+pub use crate::dto::{
+    GroupMembershipEnforcementMutationResult, RevokeGroupMembershipSuspensionRequest,
+    SuspendGroupMembershipRequest,
+};
+
 const SUSPEND_COMMAND: &str = "groups.membership.suspend.v1";
 const REVOKE_SUSPENSION_COMMAND: &str = "groups.membership.suspension_revoke.v1";
 const SUSPENDED_EVENT: &str = "groups.membership.suspended";
 const REVOKED_EVENT: &str = "groups.membership.suspension_revoked";
 const MAX_REASON_CODE_BYTES: usize = 80;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SuspendGroupMembershipRequest {
-    pub group_id: Uuid,
-    pub target_user_id: Uuid,
-    pub expected_membership_revision: i64,
-    pub reason_code: String,
-    pub effective_until: Option<DateTime<Utc>>,
-}
 
 impl SuspendGroupMembershipRequest {
     pub fn validate(&self) -> GroupsResult<()> {
@@ -51,14 +47,6 @@ impl SuspendGroupMembershipRequest {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RevokeGroupMembershipSuspensionRequest {
-    pub group_id: Uuid,
-    pub target_user_id: Uuid,
-    pub expected_membership_revision: i64,
-    pub reason_code: String,
-}
-
 impl RevokeGroupMembershipSuspensionRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         validate_identity(
@@ -69,22 +57,6 @@ impl RevokeGroupMembershipSuspensionRequest {
         normalize_reason_code(&self.reason_code)?;
         Ok(())
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GroupMembershipEnforcementMutationResult {
-    pub group_id: Uuid,
-    pub membership_id: Uuid,
-    pub user_id: Uuid,
-    pub membership_revision: i64,
-    pub group_version: i64,
-    /// Stored-lifecycle active count. Temporary enforcement deliberately does not change it.
-    pub member_count: i64,
-    pub effective_status: GroupMembershipEffectiveStatus,
-    pub enforcement_revision: i64,
-    pub effective_until: Option<DateTime<Utc>>,
-    pub revoked_at: Option<DateTime<Utc>>,
-    pub replayed: bool,
 }
 
 /// Provenance passed to the shared Groups-owned enforcement mutation.
