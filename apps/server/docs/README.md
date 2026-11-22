@@ -4,6 +4,15 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+RBAC durable-generation bootstrap now treats only the absence of its
+own `rbac_invalidation_state` table as a pre-migration condition and
+cancels pending watchdog initialization on host stop. Module
+transition recovery, artifact/data-object garbage collection, and
+artifact admission reverification recheck stop between independent
+stages and tenant/candidate iterations; an already-started durable
+effect is not interrupted by these new checks.
+
+
 Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
 generation, and Redis-status listener starters now cancel pending
 **pre-publication** startup work when host shutdown is signaled. This
