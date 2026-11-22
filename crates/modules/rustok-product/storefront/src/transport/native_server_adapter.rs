@@ -665,11 +665,11 @@ mod filterable_search_option_tests {
             category("smart", rustok_product::services::CatalogCategoryKind::Virtual),
         ]);
         let ids = options.into_iter().map(|option| option.label).collect::<Vec<_>>();
-        assert_eq!(ids, vec!["root"]);
+        assert_eq!(ids, vec!["root".to_owned()]);
     }
 
     #[test]
-    fn storefront_search_options_exclude_sortable_only_attributes() {
+    fn storefront_search_options_exclude_non_filterable_and_variant_only_attributes() {
         let options = filterable_attribute_options([
             attribute("color", "product", true, false),
             attribute("internal_rank", "product", false, true),

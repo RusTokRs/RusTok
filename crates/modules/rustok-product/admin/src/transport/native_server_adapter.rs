@@ -351,7 +351,7 @@ fn structural_category_options(
 ) -> Vec<ProductCatalogSearchOption> {
     categories
         .into_iter()
-        .filter(|category| category.kind == "structural")
+        .filter(|category| category.kind.eq_ignore_ascii_case("structural"))
         .map(|category| ProductCatalogSearchOption {
             value: category.id,
             label: first_non_empty([category.path, category.name, category.code]),
@@ -1757,11 +1757,11 @@ mod filterable_search_option_tests {
             category("smart", "virtual"),
         ]);
         let ids = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
-        assert_eq!(ids, vec!["root"]);
+        assert_eq!(ids, vec!["root".to_owned()]);
     }
 
     #[test]
-    fn native_catalog_search_options_exclude_sortable_only_attributes() {
+    fn native_search_options_exclude_non_filterable_and_variant_only_attributes() {
         let options = filterable_attribute_options([
             attribute("color", "product", true, false),
             attribute("internal_rank", "product", false, true),
