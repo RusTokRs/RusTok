@@ -458,7 +458,6 @@ impl ProductCatalogCommandRuntime {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

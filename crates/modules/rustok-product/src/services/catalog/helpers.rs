@@ -1143,7 +1143,6 @@ mod category_filter_subtree_tests {
     }
 }
 
-
 #[cfg(test)]
 mod product_handle_and_visibility_tests {
     use super::{
