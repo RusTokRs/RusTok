@@ -4124,7 +4124,7 @@ mod tests {
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
         let (db, tenant) = test_db_with_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
-        let manual = OAuthAppActiveModel {
+        let manual_model = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("Operator-owned app".to_string()),
@@ -4146,10 +4146,11 @@ mod tests {
             metadata: Set(serde_json::json!({"owner":"operator"})),
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
-        }
-        .insert(&db)
-        .await
-        .expect("insert manually managed app");
+        };
+        let manual =
+            oauth_apps::scope_runtime_copy_locale("en".to_string(), manual_model.insert(&db))
+                .await
+                .expect("insert manually managed app");
 
         let mut manifest = crate::modules::ModulesManifest::default();
         manifest.build.server.embed_admin = true;
@@ -4386,6 +4387,14 @@ mod tests {
                 "client_credentials".to_string(),
             ],
         );
+
+        for (app, expected_name) in [(next_admin, "next Admin"), (storefront, "shop storefront")] {
+            let copy = oauth_apps::resolve_translation(&db, tenant.id, app.id, "en")
+                .await
+                .expect("read manifest-generated OAuth copy")
+                .expect("manifest-generated copy commits with the OAuth app");
+            assert_eq!(copy.name, expected_name);
+        }
 
         let orphan = apps
             .iter()
