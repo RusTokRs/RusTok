@@ -138,9 +138,8 @@ pub fn slugify(text: &str) -> String {
     }
 }
 
-/// Resolves an authored Product handle, falling back to a localized title slug when the
-/// client submits an empty field. Product editors intentionally keep the handle input blank
-/// until the operator chooses a custom value or asks for automatic generation.
+/// Resolves a Product handle. An omitted or blank form value means "generate from the
+/// localized title"; a nonblank authored value is preserved after trimming.
 pub fn product_translation_handle(handle: Option<&str>, title: &str) -> String {
     handle
         .map(str::trim)
