@@ -234,7 +234,11 @@ impl ProductCatalogGrpcBearerAuthenticator {
             .get(TENANT_ID_METADATA)
             .and_then(|value| value.to_str().ok())
             .ok_or_else(authentication_failed)?;
-        if tenant_id != tenant_id.trim() || Uuid::parse_str(tenant_id).is_err() {
+        if tenant_id != tenant_id.trim()
+            || Uuid::parse_str(tenant_id)
+                .ok()
+                .is_none_or(|tenant_id| tenant_id.is_nil())
+        {
             return Err(authentication_failed());
         }
 
@@ -1283,9 +1287,10 @@ mod tests {
             ),
         ] {
             let mut request = Request::new(());
+            let authorization = format!("Bearer {secret}");
             request.metadata_mut().insert(
                 AUTHORIZATION_METADATA,
-                MetadataValue::try_from(format!("Bearer {secret}"))
+                MetadataValue::try_from(authorization.as_str())
                     .expect("test bearer metadata should be valid"),
             );
             request.metadata_mut().insert(
@@ -1335,6 +1340,29 @@ mod tests {
             .call(request)
             .expect_err("wrong credential must fail closed");
         assert_eq!(wrong.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn bearer_interceptor_rejects_nil_tenant_metadata() {
+        let mut interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
+            "catalog-secret",
+            PortActor::service("rustok-server"),
+        )
+        .expect("valid service credential should be accepted");
+        let mut request = Request::new(());
+        request.metadata_mut().insert(
+            AUTHORIZATION_METADATA,
+            MetadataValue::try_from("Bearer catalog-secret").unwrap(),
+        );
+        request.metadata_mut().insert(
+            TENANT_ID_METADATA,
+            MetadataValue::try_from(Uuid::nil().to_string().as_str()).unwrap(),
+        );
+
+        let status = interceptor
+            .call(request)
+            .expect_err("nil tenant must fail closed");
+        assert_eq!(status.code(), Code::Unauthenticated);
     }
 
     #[test]
