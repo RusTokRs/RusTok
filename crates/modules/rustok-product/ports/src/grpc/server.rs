@@ -265,14 +265,14 @@ impl fmt::Debug for ProductCatalogGrpcBearerAuthenticator {
 #[derive(Clone, Debug)]
 pub struct ProductCatalogGrpcBearerInterceptor {
     authenticator: ProductCatalogGrpcBearerAuthenticator,
-    additional_authenticator: Option<ProductCatalogGrpcBearerAuthenticator>,
+    additional_authenticators: Vec<ProductCatalogGrpcBearerAuthenticator>,
 }
 
 impl ProductCatalogGrpcBearerInterceptor {
     pub fn new(authenticator: ProductCatalogGrpcBearerAuthenticator) -> Self {
         Self {
             authenticator,
-            additional_authenticator: None,
+            additional_authenticators: Vec::new(),
         }
     }
 
@@ -280,7 +280,7 @@ impl ProductCatalogGrpcBearerInterceptor {
         mut self,
         authenticator: ProductCatalogGrpcBearerAuthenticator,
     ) -> Self {
-        self.additional_authenticator = Some(authenticator);
+        self.additional_authenticators.push(authenticator);
         self
     }
 
@@ -297,10 +297,10 @@ impl ProductCatalogGrpcBearerInterceptor {
 impl Interceptor for ProductCatalogGrpcBearerInterceptor {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
         let authority = self.authenticator.authenticate(&request).or_else(|error| {
-            self.additional_authenticator
-                .as_ref()
-                .ok_or(error)?
-                .authenticate(&request)
+            self.additional_authenticators
+                .iter()
+                .find_map(|authenticator| authenticator.authenticate(&request).ok())
+                .ok_or(error)
         })?;
         request.extensions_mut().insert(authority);
         Ok(request)
@@ -1113,8 +1113,9 @@ fn port_error_to_status(error: PortError) -> Status {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation,
-        TrustedProductCatalogAuthority, port_error_to_status, trusted_context,
+        ProductCatalogGrpcBearerAuthenticator, ProductCatalogGrpcBearerInterceptor,
+        ProductCatalogGrpcOperation, TrustedProductCatalogAuthority, port_error_to_status,
+        trusted_context,
     };
     use rustok_api::{PortActor, PortContext, PortError};
     use tonic::metadata::MetadataValue;
@@ -1231,6 +1232,81 @@ mod tests {
         }
         for operation in ProductCatalogGrpcOperation::COMMAND {
             assert!(!authority.allowed_operations.contains(&operation));
+        }
+    }
+
+    #[test]
+    fn bearer_interceptor_accepts_every_configured_additional_credential() {
+        let tenant_id = Uuid::new_v4().to_string();
+        let mut interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
+            "catalog-read-secret",
+            PortActor::service("rustok-server"),
+        )
+        .expect("read credential should be accepted")
+        .with_additional_authenticator(
+            ProductCatalogGrpcBearerAuthenticator::new(
+                "attached-values-secret",
+                PortActor::service("rustok-server"),
+            )
+            .expect("attached values credential should be accepted")
+            .with_allowed_operations([ProductCatalogGrpcOperation::ReadAttachedValues]),
+        )
+        .with_additional_authenticator(
+            ProductCatalogGrpcBearerAuthenticator::new(
+                "variant-replay-secret",
+                PortActor::service("product-index"),
+            )
+            .expect("variant replay credential should be accepted")
+            .with_allowed_operations([ProductCatalogGrpcOperation::ScanVariantReplay]),
+        )
+        .with_additional_authenticator(
+            ProductCatalogGrpcBearerAuthenticator::new(
+                "locale-replay-secret",
+                PortActor::service("product-index"),
+            )
+            .expect("locale replay credential should be accepted")
+            .with_allowed_operations([ProductCatalogGrpcOperation::ScanLocaleReplay]),
+        );
+
+        for (secret, operation) in [
+            (
+                "attached-values-secret",
+                ProductCatalogGrpcOperation::ReadAttachedValues,
+            ),
+            (
+                "variant-replay-secret",
+                ProductCatalogGrpcOperation::ScanVariantReplay,
+            ),
+            (
+                "locale-replay-secret",
+                ProductCatalogGrpcOperation::ScanLocaleReplay,
+            ),
+        ] {
+            let mut request = Request::new(());
+            request.metadata_mut().insert(
+                AUTHORIZATION_METADATA,
+                MetadataValue::try_from(format!("Bearer {secret}"))
+                    .expect("test bearer metadata should be valid"),
+            );
+            request.metadata_mut().insert(
+                TENANT_ID_METADATA,
+                MetadataValue::try_from(tenant_id.as_str())
+                    .expect("test tenant metadata should be valid"),
+            );
+
+            let authenticated = interceptor
+                .call(request)
+                .expect("each configured credential should authenticate");
+            let authority = authenticated
+                .extensions()
+                .get::<TrustedProductCatalogAuthority>()
+                .expect("authenticated authority should be installed");
+            assert_eq!(authority.tenant_id, tenant_id);
+            assert!(
+                authority.allowed_operations.contains(&operation),
+                "credential must retain its own operation grant: {operation:?}",
+            );
+            assert_eq!(authority.allowed_operations.len(), 1);
         }
     }
 
