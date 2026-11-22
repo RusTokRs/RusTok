@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
@@ -281,13 +282,14 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         .ok_or_else(|| {
             Error::Cache("RBAC durable generation watchdog start lock is unavailable".to_string())
         })?;
-    let _start_guard = start_lock.0.lock().await;
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    // Shutdown may already be waiting to take the registered JoinHandle.
+    // Do not queue another watchdog initializer behind a holder when stop
+    // has been broadcast; the actual spawn/publish remains under the mutex.
+    let stop = StopHandle::ensure(ctx);
+    let Some(_start_guard) = await_worker_startup_or_stop(&stop, start_lock.0.lock()).await
+    else {
         return Ok(());
-    }
+    };
 
     if let Some(existing) = ctx.shared_get::<RbacInvalidationGenerationWatchdogHandle>() {
         if existing.is_running() {
@@ -298,7 +300,12 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         rbac_invalidation_metrics::record_watchdog_restart("runtime_replaced");
         tracing::warn!("Durable RBAC invalidation generation watchdog stopped; replacing runtime");
         if let Some(task) = existing.take_task() {
-            if let Err(error) = task.await {
+            // A completed worker may still need a join for error accounting.
+            // Keep the replacement's admission interruptible by host stop.
+            let Some(result) = await_worker_startup_or_stop(&stop, task).await else {
+                return Ok(());
+            };
+            if let Err(error) = result {
                 if !error.is_cancelled() {
                     tracing::warn!(
                         ?error,
