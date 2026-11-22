@@ -337,7 +337,7 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
     for entry in entries {
         if let Some(factory) = &entry.graphql_runtime_data_factory_expr {
             out.push_str(&format!(
-                "    #[cfg(feature = \"{feature}\")]\n    {{\n        builder = builder.data({factory}(inputs)?);\n    }}\n",
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        builder = builder.data({factory}(inputs).map_err(|err| err.to_string())?);\n    }}\n",
                 feature = entry.feature,
                 factory = factory,
             ));

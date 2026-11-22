@@ -363,11 +363,11 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-content-revisions` | `crates/integration/rustok-content-revisions`| [ ] | [ ] | [ ] | [ ] |
-| `apps/server` | `apps/server` | [ ] | [ ] | [ ] | [ ] |
+| `apps/server` | `apps/server` | [x] | [x] | [x] | [x] |
 | `apps/next-admin` (18 пакетов) | `apps/next-admin` | [ ] | [ ] | [ ] | [ ] |
 | `apps/next-frontend` (12 пакетов) | `apps/next-frontend` | [ ] | [ ] | [ ] | [ ] |
 | `apps/admin` (Leptos Admin Host) | `apps/admin` | [ ] | [ ] | [ ] | [ ] |
-| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [ ] | [ ] | [ ] | [ ] |
+| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [x] | [x] | [x] | [x] |
 | `apps/dioxus-admin` (Dioxus Admin) | `apps/dioxus-admin` | [ ] | [ ] | [ ] | [ ] |
 
 ---

@@ -1,6 +1,8 @@
 mod core;
 
-use self::core::{SearchScope, build_header_links, build_search_target_url, resolve_default_scope};
+use self::core::{SearchScope, build_header_links, resolve_default_scope};
+#[cfg(target_arch = "wasm32")]
+use self::core::build_search_target_url;
 use crate::shared::ui::UiButton;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -18,9 +20,11 @@ fn HeaderSearchInput(locale: String) -> impl IntoView {
     let (is_dropdown_open, set_is_dropdown_open) = signal(false);
 
     let is_ru = locale.eq_ignore_ascii_case("ru");
+    #[cfg(target_arch = "wasm32")]
     let current_locale = locale.clone();
 
     let on_submit = {
+        #[cfg(target_arch = "wasm32")]
         let current_locale = current_locale.clone();
         move |ev: leptos::ev::SubmitEvent| {
             ev.prevent_default();
