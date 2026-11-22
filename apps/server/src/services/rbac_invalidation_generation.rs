@@ -336,12 +336,14 @@ pub(crate) async fn take_watchdog_task_for_shutdown(
 fn is_missing_generation_state(error: &Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     // Only absence of OUR generation table may be tolerated on a pre-migration
-    // host. An unrelated missing relation must not leave RBAC recovery dormant.
+    // host. Require a table/relation diagnostic so a missing column or another
+    // schema error cannot leave RBAC recovery dormant.
     message.contains("rbac_invalidation_state")
         && (message.contains("no such table")
-            || message.contains("undefinedtable")
-            || message.contains("does not exist")
-            || message.contains("doesn't exist"))
+            || (message.contains("relation")
+                && (message.contains("undefinedtable") || message.contains("does not exist")))
+            || (message.contains("table '")
+                && (message.contains("does not exist") || message.contains("doesn't exist"))))
 }
 
 #[cfg(test)]
@@ -394,6 +396,9 @@ mod tests {
         )));
         assert!(is_missing_generation_state(&Error::Cache(
             "Table 'rustok.rbac_invalidation_state' doesn't exist".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "column rbac_invalidation_state does not exist".to_string()
         )));
     }
 
