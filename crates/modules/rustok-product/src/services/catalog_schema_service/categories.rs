@@ -53,7 +53,13 @@ impl ProductCatalogSchemaService {
             Some(parent_id) => Some(load_category_parent(&txn, tenant_id, parent_id).await?),
             None => None,
         };
-        let level = parent.as_ref().map(|row| row.level + 1).unwrap_or(0);
+        let level = match parent.as_ref() {
+            Some(parent) => parent.level.checked_add(1).filter(|level| *level > 0)
+                .ok_or_else(|| CommerceError::Validation(
+                    "parent category level must be nonnegative and representable".into(),
+                ))?,
+            None => 0,
+        };
         let path = parent
             .as_ref()
             .map(|row| format!("{}/{}", row.path, input.slug))
@@ -406,10 +412,24 @@ fn compose_taxonomy_category_list_records(
     mut rows: Vec<ProductCategoryTaxonomyReadRow>,
     owners: Vec<crate::ports::ProductTaxonomyCategorySnapshot>,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
-    let mut owners = owners
-        .into_iter()
-        .map(|owner| (owner.id, owner))
-        .collect::<HashMap<_, _>>();
+    // A scoped Taxonomy read is an exact owner projection of these Product rows.
+    // Duplicate or unrelated owner records are an invariant violation, not a
+    // nondeterministic last-write-wins map entry or an invisible extra record.
+    let requested_ids = rows.iter().map(|row| row.id).collect::<HashSet<_>>();
+    let mut owner_by_id = HashMap::with_capacity(owners.len());
+    for owner in owners {
+        if !requested_ids.contains(&owner.id) {
+            return Err(super::taxonomy_projection_error(
+                "Product category Taxonomy read returned an unrequested owner",
+            ));
+        }
+        if owner_by_id.insert(owner.id, owner).is_some() {
+            return Err(super::taxonomy_projection_error(
+                "Product category Taxonomy read returned duplicate owners",
+            ));
+        }
+    }
+    let mut owners = owner_by_id;
     let hierarchy_order = taxonomy_category_hierarchy_order(&owners)?;
     let order_by_id = hierarchy_order
         .into_iter()
@@ -835,6 +855,29 @@ mod tests {
                 .to_string()
                 .contains("missing its Taxonomy owner projection")
         );
+    }
+
+    #[test]
+    fn category_taxonomy_read_rejects_duplicate_or_unrequested_owner_rows() {
+        let id = Uuid::new_v4();
+        let owner = taxonomy_owner_category(id, "A", "a", None);
+        let duplicate_error = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(id)],
+            vec![owner.clone(), owner],
+        )
+        .expect_err("repeated owner identity must not silently overwrite");
+        assert!(duplicate_error.to_string().contains("duplicate owners"));
+
+        let extra_id = Uuid::new_v4();
+        let unexpected_error = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(id)],
+            vec![
+                taxonomy_owner_category(id, "A", "a", None),
+                taxonomy_owner_category(extra_id, "Extra", "extra", None),
+            ],
+        )
+        .expect_err("unrequested scoped owner must be refused");
+        assert!(unexpected_error.to_string().contains("unrequested owner"));
     }
 
     #[test]
