@@ -819,7 +819,9 @@ pub(super) fn remove_owned_workspace(job_dir: &Path, workspace: &Path) {
         && fs::symlink_metadata(workspace)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
     {
-        let _ = fs::remove_dir_all(workspace);
+        if let Err(error) = fs::remove_dir_all(workspace) {
+            tracing::warn!(%error, path = %workspace.display(), "failed to remove owned workspace");
+        }
     }
 }
 

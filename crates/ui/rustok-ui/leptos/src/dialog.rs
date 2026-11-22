@@ -42,7 +42,7 @@ fn acquire_page_scroll_lock() {
                     .get_property_value("overflow")
                     .unwrap_or_default();
                 PREVIOUS_BODY_OVERFLOW.with(|value| *value.borrow_mut() = Some(previous));
-                let _ = body.style().set_property("overflow", "hidden");
+                drop(body.style().set_property("overflow", "hidden"));
             }
         }
         locks.set(current.saturating_add(1));
@@ -64,7 +64,7 @@ fn release_page_scroll_lock() {
             {
                 let previous = PREVIOUS_BODY_OVERFLOW.with(|value| value.borrow_mut().take());
                 if let Some(previous) = previous {
-                    let _ = body.style().set_property("overflow", &previous);
+                    drop(body.style().set_property("overflow", &previous));
                 }
             }
         }
@@ -161,7 +161,7 @@ fn trap_dialog_tab_sequence(event: &leptos::ev::KeyboardEvent) {
         .query_selector_all(FOCUSABLE_SELECTOR)
     else {
         event.prevent_default();
-        let _ = dialog.focus();
+        drop(dialog.focus());
         return;
     };
 
@@ -200,9 +200,9 @@ fn trap_dialog_tab_sequence(event: &leptos::ev::KeyboardEvent) {
     if let Some(next_index) =
         dialog_tab_target_index(event.shift_key(), active_index, focusables.len())
     {
-        let _ = focusables[next_index].focus();
+        drop(focusables[next_index].focus());
     } else {
-        let _ = dialog.focus();
+        drop(dialog.focus());
     }
 }
 
@@ -315,7 +315,7 @@ pub fn Dialog(
                 .get_untracked()
                 .and_then(|node_ref| node_ref.get())
         {
-            let _ = trigger.focus();
+            drop(trigger.focus());
         }
         was_open.set(is_open);
     });
@@ -512,7 +512,7 @@ pub fn DialogContent(
         if context.open.get()
             && let Some(element) = dialog_ref.get()
         {
-            let _ = element.focus();
+            drop(element.focus());
         }
     });
 

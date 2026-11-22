@@ -89,10 +89,10 @@ impl EventListenerHandle {
 
 impl Drop for EventListenerHandle {
     fn drop(&mut self) {
-        let _ = self.target.remove_event_listener_with_callback(
+        drop(self.target.remove_event_listener_with_callback(
             &self.event_name,
             self.callback.as_ref().unchecked_ref(),
-        );
+        ));
     }
 }
 

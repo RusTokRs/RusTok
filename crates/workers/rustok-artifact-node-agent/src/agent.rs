@@ -215,7 +215,9 @@ where
                 // Do not abandon an in-flight local operation and then start
                 // another assignment. Waiting is not proof that all external
                 // effects have stopped; those require a durable fence.
-                let _ = processing.await;
+                if let Err(error) = processing.await {
+                    tracing::warn!(%error, "processing failed while waiting for cancellation on heartbeat failure");
+                }
                 return Err(heartbeat_failure(heartbeat_result));
             }
             result = &mut processing => result?,

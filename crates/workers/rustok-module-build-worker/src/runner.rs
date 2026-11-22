@@ -640,7 +640,9 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                 status.map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?
             }
             Err(_) => {
-                let _ = child.kill().await;
+                if let Err(error) = child.kill().await {
+                    tracing::warn!(%error, "failed to kill OCI job launcher child process on timeout");
+                }
                 stdout_task.abort();
                 stderr_task.abort();
                 return Err(ModuleBuildProtocolError::Transport(

@@ -401,7 +401,9 @@ impl WasmComponentExecutor {
             spawn_wasm_watchdog(&engine, cancellation, request.policy.limits.wall_clock_ms);
         let result = invoke_wasm_component(&component, &linker, &mut store, request);
         watchdog_flags.completed.store(true, Ordering::Release);
-        let _ = watchdog.join();
+        if let Err(panic_err) = watchdog.join() {
+            tracing::warn!(?panic_err, "wasm watchdog thread panicked during execution");
+        }
         if watchdog_flags.cancelled.load(Ordering::Acquire) {
             return Err(SandboxError::Cancelled);
         }

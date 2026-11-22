@@ -313,7 +313,7 @@ pub(crate) fn remove_private_directory(path: &Path) {
         && std::fs::symlink_metadata(path)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
     {
-        let _ = std::fs::remove_dir_all(path);
+        drop(std::fs::remove_dir_all(path));
     }
 }
 
@@ -327,7 +327,7 @@ pub(crate) fn remove_private_file(path: &Path) {
         && std::fs::symlink_metadata(path)
             .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
     {
-        let _ = std::fs::remove_file(path);
+        drop(std::fs::remove_file(path));
     }
 }
 

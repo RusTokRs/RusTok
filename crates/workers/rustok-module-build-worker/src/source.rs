@@ -180,6 +180,8 @@ fn remove_owned_job_directory(workspace_root: &Path, job_dir: &Path) {
         && fs::symlink_metadata(job_dir)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
     {
-        let _ = fs::remove_dir_all(job_dir);
+        if let Err(error) = fs::remove_dir_all(job_dir) {
+            tracing::warn!(%error, path = %job_dir.display(), "failed to remove owned job directory");
+        }
     }
 }
