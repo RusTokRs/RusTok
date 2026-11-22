@@ -275,6 +275,13 @@ pub fn spawn_module_artifact_maintenance_handle(
                         }
                     }
 
+                    // The blob sweep may have blocked during shutdown. Finish
+                    // that operation but never enter the next independent GC
+                    // leg once admission of new work has closed.
+                    if *stop_rx.borrow() {
+                        break;
+                    }
+
                     // Tenant data-object garbage collection. The
                     // retention-hold snapshot is loaded once for the pass
                     // (and only when at least one tenant has candidates),
@@ -288,6 +295,12 @@ pub fn spawn_module_artifact_maintenance_handle(
                             match data_object_gc.load_ledger_retention_snapshot().await {
                                 Ok(retention) => {
                                     for tenant_id in tenant_ids {
+                                        // A tenant sweep already underway must
+                                        // finish; unstarted tenants remain
+                                        // eligible for the next host instance.
+                                        if *stop_rx.borrow() {
+                                            break;
+                                        }
                                         match data_object_gc
                                             .sweep_tenant_with_ledger_retention_snapshot(
                                                 tenant_id,
@@ -341,6 +354,12 @@ pub fn spawn_module_artifact_maintenance_handle(
                         }
                     }
 
+                    // Do not begin a separate verification leg after the
+                    // tenant GC pass observes host shutdown.
+                    if *stop_rx.borrow() {
+                        break;
+                    }
+
                     // Current-policy reverification of stale admissions.
                     if let Some(config) = &reverification_config {
                         if verifier.is_none() {
@@ -363,6 +382,11 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 }
                             }
                         }
+                        // Establishing a verifier may be slow. A stop during
+                        // that connection must not admit a fresh candidate scan.
+                        if *stop_rx.borrow() {
+                            break;
+                        }
                         if let Some(verifier) = &verifier {
                             let service = control_plane.admission_reverification(
                                 Arc::clone(verifier),
@@ -374,6 +398,13 @@ pub fn spawn_module_artifact_maintenance_handle(
                             {
                                 Ok(candidates) => {
                                     for candidate in candidates {
+                                        // Never start another external trust
+                                        // reverification once the host is
+                                        // stopping. The current call completes
+                                        // before this check is reached.
+                                        if *stop_rx.borrow() {
+                                            break;
+                                        }
                                         let idempotency_key = reverification_idempotency_key(
                                             candidate.installation_id,
                                             candidate.expected_revision,
