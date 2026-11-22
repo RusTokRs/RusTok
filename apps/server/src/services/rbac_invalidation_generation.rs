@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop, run_until_stopped};
 
 pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
@@ -262,10 +262,14 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
 fn spawn_rbac_invalidation_generation_watchdog(
     db: DatabaseConnection,
     state: RbacInvalidationGenerationState,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> JoinHandle<()> {
-    tokio::spawn(supervise_rbac_invalidation_generation_watchdog(
-        move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
-        RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
+    tokio::spawn(run_until_stopped(
+        stop_rx,
+        supervise_rbac_invalidation_generation_watchdog(
+            move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
+            RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
+        ),
     ))
 }
 
@@ -317,7 +321,8 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     }
 
     let state = ensure_rbac_invalidation_generation_state(ctx);
-    let task = spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state);
+    let task =
+        spawn_rbac_invalidation_generation_watchdog(ctx.db_clone(), state, stop.subscribe());
     ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));
     rbac_invalidation_metrics::set_watchdog_running(true);
     Ok(())
@@ -435,6 +440,23 @@ mod tests {
         );
         assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
         drop(held);
+    }
+
+    #[tokio::test]
+    async fn durable_generation_watchdog_does_not_start_after_stop() {
+        use crate::services::stop_handle::StopHandle;
+
+        let (stop, stop_rx) = StopHandle::new();
+        stop.stop().await;
+        let task = super::spawn_rbac_invalidation_generation_watchdog(
+            sea_orm::DatabaseConnection::default(),
+            RbacInvalidationGenerationState::default(),
+            stop_rx,
+        );
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("stopped watchdog exits before polling the database")
+            .expect("watchdog wrapper joins");
     }
 
     #[tokio::test]
