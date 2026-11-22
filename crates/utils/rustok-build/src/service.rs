@@ -5,7 +5,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set, TransactionTrait,
 };
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
 
 use crate::build::{
@@ -266,6 +266,7 @@ impl BuildService {
             .await?)
     }
 
+    #[instrument(skip(self))]
     pub async fn update_build_status(
         &self,
         build_id: Uuid,

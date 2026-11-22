@@ -13,6 +13,7 @@ use sea_orm::{
     Statement, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{page, page_template, site_symbol};
@@ -300,6 +301,7 @@ impl PageTemplateService {
     }
 
     /// Do not remove a template while *any* page still carries its key.
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

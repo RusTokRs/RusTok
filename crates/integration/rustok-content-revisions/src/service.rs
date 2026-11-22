@@ -277,6 +277,7 @@ impl ContentRevisionService {
     }
 
     /// Create a named version (snapshot).
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _current_content)))]
     pub async fn create_named_version<T: Revisionable>(
         &self,
         tenant_id: Uuid,
