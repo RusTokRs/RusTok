@@ -34,12 +34,16 @@ The query considers only schema-scoped reconciliation rows in `pending`, `runnin
 
 Only rank one may become work, and only when it is:
 
-- `pending` with `available_at <= CURRENT_TIMESTAMP`; or
-- `running` with `lease_expires_at <= CURRENT_TIMESTAMP`.
+- `pending` and due; or
+- `running` and due with an expired lease.
 
-Cancellation-requested expired running rows remain discoverable so the canonical runner can complete their fenced cancellation transition after takeover. Discovery is globally bounded by `LIMIT 1` and deterministically ordered by running takeover before pending work, due time, creation time, tenant, and job identity.
+In both cases the schema must have a currently selected source and active tenant registration
+matching the runtime's fingerprint.
 
-Discovery performs no insert, update, delete, lease acquisition, attempt increment, retry transition, cancellation transition, or terminal transition.
+Cancellation-requested expired running rows remain discoverable so the canonical runner can complete their fenced cancellation transition after takeover. Discovery is globally bounded by `LIMIT 1` and deterministically ordered by due time, creation time, tenant, and job identity.
+
+The discovery SELECT is read-only and is not lease acquisition. A malformed due row may be
+deferred with a bounded reason only while its original generation, epoch and due state match.
 
 ## Stored contract validation
 
@@ -61,9 +65,9 @@ The module-work item contains only:
 - tenant UUID required by the generic scheduler contract;
 - the fixed worker slug;
 - a fresh bounded invocation UUID used only to derive the runner worker identity;
-- strict payload contract `index_reconciliation_scheduler_item_v1` with module, entity, schema version, and pass count.
+- strict payload contract `index_reconciliation_scheduler_item_v1` with module, entity, schema version, pass count, lease generation and retry epoch.
 
-The payload uses `deny_unknown_fields`. It contains no cursor, error details, retry policy, source name, lease state, request JSON, actor, transport, or database detail.
+The payload uses `deny_unknown_fields`. It contains no cursor, error details, retry policy, source name, live lease token from Index storage, request JSON, actor, transport, or database detail.
 
 ## Canonical execution and fleet safety
 
@@ -88,15 +92,22 @@ The runner continues to own:
 - source scan and mutation application;
 - progress, yield, success, cancellation, retry, exhaustion, and dead-letter transitions.
 
-`ModuleWorkSource::complete` is deliberately a no-op because runner execution has already committed the authoritative durable state.
+`ModuleWorkSource::complete` verifies the original row, selected owner and pass count. Terminal
+outcomes require the same retry epoch and the exact lease generation acquired by the dispatch;
+an already-completed row can instead match the discovered generation. Success also requires a
+valid terminal cursor with all requested passes and no continuation. A later row can confirm a
+nonterminal observation (`Held` or `Retryable`), but can't confirm terminal work by an old dispatch.
+Completion never writes a job transition or a separate acknowledgment.
 
 ## Outcome mapping
 
-Runner `Cancelled` maps to module-work `Cancelled`.
+`AlreadyComplete` and `Complete` map to module-work `Completed`. `Cancelled` remains
+`Cancelled`; `Busy` is `Held`; `Yielded` and `RetryScheduled` are `Retryable`; terminal
+permanent or exhausted failures are `Rejected`.
 
-`Busy`, `AlreadyComplete`, `Complete`, `Yielded`, `RetryScheduled`, `FailedPermanent`, and `FailedExhausted` map to module-work `Completed`; each already represents a truthful durable runner result and requires no generic completion write.
-
-Runner failures map to the stable detail-free handler code `index.reconciliation_scheduler.run_failed`. A pre-claim failure remains discoverable on the next scheduler pass. A post-claim failure remains protected by the existing lease and expired-running takeover path.
+A run error is not completion. The adapter conditionally defers the originally discovered due
+row with `index.reconciliation_scheduler.run_failed`. A newer claim or requeue is untouched;
+a post-claim failure remains protected by its lease and takeover path.
 
 ## Explicitly open
 

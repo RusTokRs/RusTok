@@ -235,20 +235,18 @@ where
             );
         }
     };
-    // The registry reports the owner-visible revision for this key as the source version.
-    let source_version = batch
-        .refresh_revision_at(0)
-        .ok_or_else(|| {
-            IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
-                event_domain: event_domain.clone(),
-                actual: 0,
-            }
-        })?;
-    if source_version < minimum_source_version {
+    // This owner-visible refresh revision can differ from the record's source version.
+    let refresh_revision = batch.refresh_revision_at(0).ok_or_else(|| {
+        IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
+            event_domain: event_domain.clone(),
+            actual: 0,
+        }
+    })?;
+    if refresh_revision < minimum_source_version {
         return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
             event_domain,
             minimum: minimum_source_version,
-            actual: source_version,
+            actual: refresh_revision,
         });
     }
 

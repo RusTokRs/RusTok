@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{DomainError, FieldPath, FilterExpr, IndexQuery, LocaleKey, OrderDirection};
 
-const MAX_LOCALIZED_FILTER_NODES: usize = 128;
+use super::query::validate_filter_budget;
 
 fn default_identity_order_direction() -> OrderDirection {
     OrderDirection::Asc
@@ -82,15 +82,12 @@ impl LocalizedEntityQuery {
 
     pub fn validate_shape(&self) -> Result<(), DomainError> {
         self.query.validate_shape()?;
-        let ordinary_nodes = self.query.filter.as_ref().map_or(0, FilterExpr::node_count);
-        let any_locale_nodes = self
-            .any_locale_filter
-            .as_ref()
-            .map_or(0, FilterExpr::node_count);
-        if ordinary_nodes + any_locale_nodes > MAX_LOCALIZED_FILTER_NODES {
-            return Err(DomainError::FilterTooComplex);
-        }
-        Ok(())
+        validate_filter_budget(
+            self.query
+                .filter
+                .iter()
+                .chain(self.any_locale_filter.iter()),
+        )
     }
 
     pub fn any_locale_referenced_paths(&self) -> Vec<&FieldPath> {

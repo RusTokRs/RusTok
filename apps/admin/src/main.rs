@@ -354,6 +354,9 @@ async fn main() {
             unique_routes.push(route);
         }
     }
+    let index_upstream = rustok_index_admin::transport::IndexAdminUpstream::new(
+        &rustok_admin::shared::api::api_base_url(),
+    );
     let application = Router::new()
         .route("/health", get(|| async { StatusCode::OK }))
         .route(
@@ -369,11 +372,12 @@ async fn main() {
         .leptos_routes_with_context(
             &options,
             unique_routes,
-            || {
+            move || {
                 let snapshot = use_context::<axum::http::request::Parts>()
                     .map(|parts| request_auth_snapshot(&parts))
                     .unwrap_or_default();
                 provide_server_auth_snapshot(snapshot);
+                provide_context(index_upstream.clone());
                 if let Some(nonce) = request_csp_nonce() {
                     // Module surfaces cannot name the Axum-side nonce type. They read the UI
                     // contract and put the value on the inline elements they render.

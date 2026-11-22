@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[test]
 fn crate_api_defines_minimal_contract_sections() {
     let api = include_str!("../CRATE_API.md");
@@ -52,7 +54,6 @@ fn registry_covers_every_published_event_family_without_duplicates() {
 #[test]
 fn artifact_node_and_guest_root_events_validate_against_the_registry() {
     use crate::{DomainEvent, EventEnvelope};
-    use uuid::Uuid;
 
     let requested = EventEnvelope::new(
         Uuid::nil(),
@@ -103,30 +104,29 @@ fn artifact_node_and_guest_root_events_validate_against_the_registry() {
 
 #[test]
 fn contract_envelope_rejects_nil_envelope_id() {
-    let tenant_id = uuid::Uuid::new_v4();
-    let event = crate::RbacRoleMutationEvent::UserRoleAssignmentRepaired {
-        user_id: uuid::Uuid::new_v4(),
-        role: "admin".to_string(),
-        generation: 1,
-    };
-    let err = crate::ContractEventEnvelope::new_with_envelope_id(
-        uuid::Uuid::nil(),
-        tenant_id,
-        None,
-        event,
-    );
-    assert!(err.is_err());
+    let tenant_id = Uuid::new_v4();
+    let event =
+        crate::RbacRoleMutationEvent::user_role_assignment_repaired(Uuid::new_v4(), "admin", 1);
+    let result =
+        crate::ContractEventEnvelope::new_with_envelope_id(Uuid::nil(), tenant_id, None, event);
+    assert!(matches!(
+        result,
+        Err(crate::EventContractEnvelopeError::Validation(
+            crate::EventValidationError::NilUuid("id")
+        ))
+    ));
 }
 
 #[test]
 fn contract_envelope_rejects_nil_causation_id() {
-    let tenant_id = uuid::Uuid::new_v4();
-    let event = crate::RbacRoleMutationEvent::UserRoleAssignmentRepaired {
-        user_id: uuid::Uuid::new_v4(),
-        role: "admin".to_string(),
-        generation: 1,
-    };
-    let err =
-        crate::ContractEventEnvelope::new_caused_by(tenant_id, None, uuid::Uuid::nil(), event);
-    assert!(err.is_err());
+    let tenant_id = Uuid::new_v4();
+    let event =
+        crate::RbacRoleMutationEvent::user_role_assignment_repaired(Uuid::new_v4(), "admin", 1);
+    let result = crate::ContractEventEnvelope::new_caused_by(tenant_id, None, Uuid::nil(), event);
+    assert!(matches!(
+        result,
+        Err(crate::EventContractEnvelopeError::Validation(
+            crate::EventValidationError::NilUuid("causation_id")
+        ))
+    ));
 }

@@ -103,6 +103,17 @@ impl From<Model> for ActiveModel {
 
 impl ActiveModel {
     pub async fn insert(self, db: &DatabaseConnection) -> Result<Model, DbErr> {
+        let transaction = db.begin().await?;
+        let model = self.insert_in_transaction(&transaction).await?;
+        transaction.commit().await?;
+        Ok(model)
+    }
+
+    /// Keep the app, localized copy and change journal on the caller's transaction.
+    pub(crate) async fn insert_in_transaction(
+        self,
+        transaction: &DatabaseTransaction,
+    ) -> Result<Model, DbErr> {
         let name = active_value(&self.name)
             .ok_or_else(|| DbErr::Custom("OAuth app name is required".to_string()))?;
         let description = active_value(&self.description).unwrap_or(None);
@@ -113,10 +124,9 @@ impl ActiveModel {
         let auto_created = active_value(&self.auto_created).unwrap_or(false);
         let locale = copy_write_locale(auto_created)?;
 
-        let transaction = db.begin().await?;
-        let mut model = database_active(self).insert(&transaction).await?;
+        let mut model = database_active(self).insert(transaction).await?;
         upsert_translation(
-            &transaction,
+            transaction,
             tenant_id,
             app_id,
             locale.as_str(),
@@ -124,8 +134,7 @@ impl ActiveModel {
             description.clone(),
         )
         .await?;
-        record_translation_change(&transaction, &model, Some(rustok_core::generate_id())).await?;
-        transaction.commit().await?;
+        record_translation_change(transaction, &model, Some(rustok_core::generate_id())).await?;
         model.name = name;
         model.description = description;
         Ok(model)

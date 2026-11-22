@@ -14,7 +14,7 @@ The runner maps source and mutation retryable/permanent kinds to their bounded o
 
 A successful durable transition returns:
 
-- `RetryScheduled` with `retry_after` and `next_attempt`;
+- `RetryScheduled` with `retry_after` and `next_failure_ordinal`;
 - `FailedPermanent` without retry metadata;
 - `FailedExhausted` without retry metadata.
 
@@ -23,13 +23,16 @@ The outcome keeps job UUID, current attempt, and counters accumulated during the
 Default sequence:
 
 ```text
-attempt 1 failure -> pending for 5 seconds, next attempt 2
-attempt 2 failure -> pending for 10 seconds, next attempt 3
-attempt 3 failure -> pending for 20 seconds, next attempt 4
-attempt 4 failure -> pending for 40 seconds, next attempt 5
-attempt 5 retryable failure -> failed exhausted
+failure 1 -> pending for 5 seconds, next failure ordinal 2
+failure 2 -> pending for 10 seconds, next failure ordinal 3
+failure 3 -> pending for 20 seconds, next failure ordinal 4
+failure 4 -> pending for 40 seconds, next failure ordinal 5
+failure 5 (retryable) -> failed exhausted
 any permanent failure -> failed permanent
 ```
+
+Lease acquisition increments `attempt_count`, a generation fence; it does not spend the
+failure budget. Yields and lease takeovers do not increment `failure_count`.
 
 ## Scheduler ownership
 
@@ -37,13 +40,14 @@ The generic `ModuleWorkScheduler` owns polling cadence and graceful StopHandle s
 
 An invocation before `available_at` is not discovered. A discovery race or duplicate host still reaches the canonical runner claim path; only one pending or expired-running attempt can acquire the exact scope and attempt lease. Other invocations return `Busy` or another truthful current state.
 
-The runner remains task-free and sleep-free. It never polls for its own retry deadline.
+The runner starts no task and never polls for its own retry deadline. The page driver uses
+bounded timers for the whole-page deadline and heartbeat cadence.
 
 ## Cancellation and stale leases
 
 The retry-store update requires one current unexpired running lease and `cancel_requested = false`. If cancellation commits first, the runner completes the existing fenced cancellation transition and returns `Cancelled`. Otherwise a lost transition becomes the existing `LeaseLost` error for the exact job and attempt.
 
-Permanent and exhausted jobs retain the same job UUID, final attempt count, generic failure code, and strict inspection-compatible diagnostic. Ordinary admission continues to return `DeadLettered` without selecting raw details. Inspection and audited manual requeue remain unchanged.
+Permanent and exhausted jobs retain the same job UUID, final attempt count, generic failure code, and strict inspection-compatible diagnostic. Ordinary admission continues to return `DeadLettered` without selecting raw details. Inspection and audited manual requeue use the persisted job; requeue resets the failure budget and starts the passes over in a new epoch.
 
 ## Explicitly open
 
@@ -57,4 +61,4 @@ The canonical retry/backoff/dead-letter/global-scheduling roadmap item remains o
 
 ## Validation ownership
 
-Formatting, Cargo checks/tests, JavaScript verifiers, PostgreSQL scenarios, workflows, and CI are maintainer-run and were not executed by the implementation agent.
+Cargo tests, source verifiers, and PostgreSQL scenarios are maintainer-run.

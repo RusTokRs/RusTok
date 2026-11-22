@@ -116,7 +116,7 @@ const graphql = requireMarkers(graphqlPath, [
   'pub enum IndexReplayGraphqlShadowStatus',
   'pub struct IndexReplayShadowRunPayload',
   'async fn run_index_replay_shadow(',
-  'prepare_authorized_shadow_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_shadow_run(tenant_id, actor_id, input)',
   '.get::<IndexReplayShadowTransportRuntime>()',
   '.run(',
   'GRAPHQL_REPLAY_PAGE_LIMIT,',

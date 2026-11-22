@@ -17,6 +17,7 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+csr = ["leptos/csr", "rustok-auth-ui/csr", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "leptos/ssr",
@@ -27,10 +28,13 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-index",
   "dep:sea-orm",
+  "dep:reqwest",
 ]
 
 [dependencies]
 rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+rustok-graphql.workspace = true
 rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }
 leptos.workspace = true
@@ -46,3 +50,5 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true
 tracing.workspace = true
+
+reqwest = { workspace = true, optional = true }

@@ -49,9 +49,21 @@ if (acquireStart < 0 || acquireEnd <= acquireStart) {
   fail(`${runnerPath} must retain one bounded acquisition transaction`);
 }
 const acquire = runner.slice(acquireStart, acquireEnd);
-for (const marker of [
+const admission = [
   'lock_reconciliation_scope(transaction, request, backend).await?;',
-  'verify_schema_registration(transaction, request, backend).await?;',
+  'verify_schema_registration(transaction, request, registered, backend).await?;',
+  'select_jobs_sql(backend)',
+  '.is_some_and(|expected| expected != stored.job_id)',
+  'if !version.matches(stored.attempt_count, retry_epoch)',
+  'validate_stored_request(&stored, request)?;',
+];
+let previous = -1;
+for (const marker of admission) {
+  const position = acquire.indexOf(marker);
+  if (position <= previous) fail(`${runnerPath} must check scope and dispatch version in order: ${marker}`);
+  previous = position;
+}
+for (const marker of [
   '"succeeded" => {',
   '"running" | "pending" if !stored.claimable',
   '"running" | "pending" => {',
@@ -67,7 +79,7 @@ const claimableBranch = acquire.indexOf('"running" | "pending" => {');
 const failedBranch = acquire.indexOf('"failed" => {');
 const insertBranch = acquire.indexOf('let job_id = Uuid::new_v4();');
 if (
-  succeededBranch < 0
+  succeededBranch <= previous
   || busyBranch <= succeededBranch
   || claimableBranch <= busyBranch
   || failedBranch <= claimableBranch
@@ -118,10 +130,7 @@ const retry = requireMarkers(retryPath, [
   'completed_at = CURRENT_TIMESTAMP',
   'last_error_code = {prefix}5',
   'last_error_details = {prefix}6',
-  'lease_owner = {prefix}3',
-  'attempt_count = {prefix}4',
-  'lease_expires_at > CURRENT_TIMESTAMP',
-  'cancel_requested = FALSE',
+  'live_lease_where(backend, "reconcile", 1, false)',
 ]);
 if (runner.includes('fn finish_failure_sql(')) {
   fail(`${runnerPath} must not retain the superseded terminal failure SQL`);
@@ -134,7 +143,7 @@ const target = requireMarkers(targetPath, [
   'owner_source_permanent_dead_letter',
   'IndexReconciliationRunStatus::FailedPermanent',
   'first_outcome.retry_after(), None',
-  'first_outcome.next_attempt(), None',
+  'first_outcome.next_failure_ordinal(), None',
   'IndexReconciliationRunError::DeadLettered',
   'private-reconciliation-failure-detail',
   'assert!(!debug.contains(PRIVATE_MARKER))',

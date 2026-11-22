@@ -29,75 +29,37 @@ if (worker.includes('cancel_requested') || worker.includes('StopHandle')) {
   fail(`${workerPath} generic one-page interruption must remain independent of persisted cancellation/server lifecycle`);
 }
 
-const extensionPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
-const extension = requireMarkers(extensionPath, [
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runner = requireMarkers(runnerPath, [
   'pub async fn run_interruptible<Check>(',
+  'self.run_interruptible(request, || false).await',
   'Check: FnMut() -> bool',
-  'let page_future = worker.run_next_page_interruptible(',
-  'request.page_request().clone(),',
+  'worker.run_next_page_interruptible(',
   'Ok::<bool, crate::IndexReplayFailure>(interrupted)',
-  'await_page_with_lease_heartbeats(',
-  'aggregate.heartbeat_count += in_page_heartbeat_count;',
-  'Err(crate::IndexReplayError::Interrupted) => {',
-  'yield_after_host_interruption(&self.db, &lease, aggregate).await',
-  'if cancel_if_requested(db, lease).await?',
-  'match yield_for_resume(db, lease).await?',
-  'aggregate.status = IndexReplayRunStatus::Yielded;',
-  'aggregate.status = IndexReplayRunStatus::Cancelled;',
+  'drive_page(',
+  'Err(IndexReplayError::Interrupted) => break,',
+  'match yield_for_resume(&self.db, &lease).await?',
 ]);
-const interrupted = extension.indexOf('Err(crate::IndexReplayError::Interrupted) => {');
-const helper = extension.indexOf('async fn yield_after_host_interruption(');
-const cancel = extension.indexOf('if cancel_if_requested(db, lease).await?', helper);
-const yieldCall = extension.indexOf('match yield_for_resume(db, lease).await?', cancel);
-if (interrupted < 0 || helper < 0 || cancel <= helper || yieldCall <= cancel) {
-  fail('host interruption must preserve a persisted cancel race before yielding the lease to pending');
+const interrupted = runner.indexOf('Err(IndexReplayError::Interrupted) => break,');
+const retry = runner.indexOf('store.record_failure(&lease, &failure).await', interrupted);
+const yieldCall = runner.indexOf('match yield_for_resume(&self.db, &lease).await?', interrupted);
+const finish = runner.indexOf('async fn terminal_write_outcome(');
+const cancel = runner.indexOf('if cancel_if_requested(db, lease).await?', finish);
+if (interrupted < 0 || retry <= interrupted || yieldCall <= retry || finish < 0 || cancel <= finish) {
+  fail('host interruption must bypass failure accounting and preserve a persisted cancel race on yield');
 }
-
-const yieldHelper = extension.slice(helper);
-for (const forbidden of [
-  'request_cancel(',
-  'cancel_requested = TRUE',
-  'finish_failure(db, lease',
-  'IndexReplayRunStatus::Complete;',
-  'StopHandle',
-  'index_replay_page_timeout',
-]) {
-  if (yieldHelper.includes(forbidden)) {
-    fail(`yield_after_host_interruption must yield host interruption without manufacturing cancellation/failure/lifecycle ownership: ${forbidden}`);
-  }
-}
-for (const forbidden of [
-  'request_cancel(',
-  'cancel_requested = TRUE',
-  'StopHandle',
-  'index_replay_page_timeout',
-]) {
-  if (extension.includes(forbidden)) {
-    fail(`${extensionPath} contains forbidden marker: ${forbidden}`);
-  }
-}
-
-const ordinaryPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
-const ordinary = requireMarkers(ordinaryPath, [
-  'pub async fn run(',
-  'worker.run_next_page(request.page_request().clone())',
-  'await_page_with_lease_heartbeats(',
-  'pub async fn request_cancel(',
-  'yield_for_resume(&self.db, &lease).await?',
-]);
-if (ordinary.includes('run_interruptible<Check>')) {
-  fail(`${ordinaryPath} ordinary runner file must remain separate from the host-probe extension`);
-}
+if (runner.includes('StopHandle')) fail(`${runnerPath} must be host lifecycle-type neutral`);
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
-  'pub async fn run_interruptible<Check>(',
+  'pub async fn run_operator<Check>(',
+  'authority.require_tenant(request.page_request().tenant_id())?;',
   '.run_interruptible(request, should_interrupt)',
 ]);
 const operatorPath = 'apps/server/src/services/index_replay_runtime_composition.rs';
 const operator = requireMarkers(operatorPath, [
   'pub async fn run_interruptible<Check>(',
   'context.authorize_for(request.page_request().tenant_id())?;',
-  '.run_interruptible(request, should_interrupt)',
+  '.run_operator(authority, request, should_interrupt)',
 ]);
 if (operator.includes('StopHandle')) {
   fail(`${operatorPath} must remain lifecycle-type neutral`);
@@ -107,11 +69,10 @@ const schemaInitPath = 'apps/server/src/services/graphql_schema.rs';
 const schemaInit = requireMarkers(schemaInitPath, [
   'use crate::services::app_lifecycle::StopHandle;',
   'let stop_handle = stop_handle_from_context(ctx);',
-  'let (candidate, _initial_receiver) = StopHandle::new();',
-  'ctx.shared_insert_if_absent(candidate);',
+  'let handle = StopHandle::ensure(ctx);',
   'IndexReplayStopKeepalive',
   '_receiver: handle.subscribe()',
-  'avoid a zero-receiver window',
+  'Keeps at least one watch receiver alive for API-only hosts',
   'stop_handle,',
 ]);
 if (schemaInit.includes('stop_handle.stop()')) {
@@ -138,9 +99,7 @@ for (const forbidden of ['stop', 'shutdown', 'probe', 'StopHandle']) {
 }
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
-  'mod source_replay_runner {',
-  'include!("source_replay_runner.rs");',
-  'mod graceful_shutdown;',
+  'mod source_replay_runner;',
   'mod source_replay_graceful_shutdown_tests;',
 ]);
 

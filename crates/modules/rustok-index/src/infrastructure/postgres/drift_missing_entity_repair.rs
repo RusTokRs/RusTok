@@ -574,9 +574,11 @@ fn map_mutation_error(error: MutationStorageError) -> IndexDriftRepairFailure {
         MutationStorageError::DeliveryInProgress { .. }
         | MutationStorageError::Storage(_)
         | MutationStorageError::ConcurrentMutationConflict
+        | MutationStorageError::JobLeaseLost
         | MutationStorageError::InboxCompletionLost => retryable_failure(OWNER_UNAVAILABLE),
         MutationStorageError::Validation(_)
         | MutationStorageError::InvalidDelivery { .. }
+        | MutationStorageError::SourceRevisionConflict
         | MutationStorageError::DeliveryConflict
         | MutationStorageError::DeliveryRejected
         | MutationStorageError::InvalidStoredSourceVersion { .. }

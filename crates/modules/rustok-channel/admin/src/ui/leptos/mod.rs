@@ -110,7 +110,12 @@ pub fn ChannelAdmin() -> impl IntoView {
     let bootstrap = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            transport::fetch_bootstrap(token_value, tenant_value).await
+            let request = transport::fetch_bootstrap(token_value, tenant_value);
+            // Leptos polls browser resources on the JS thread. Keep fetch state
+            // on that thread without changing the server's Resource semantics.
+            #[cfg(target_arch = "wasm32")]
+            let request = send_wrapper::SendWrapper::new(request);
+            request.await
         },
     );
     let create_channel_query_writer = query_writer.clone();

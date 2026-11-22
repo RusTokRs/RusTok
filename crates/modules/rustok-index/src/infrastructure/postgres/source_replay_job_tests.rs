@@ -152,7 +152,9 @@ async fn replay_job_excludes_other_workers_and_requires_complete_checkpoint() {
             .acquire(&fixture.request("worker-b"))
             .await
             .unwrap(),
-        IndexReplayJobAcquireOutcome::Busy
+        IndexReplayJobAcquireOutcome::Busy {
+            job_id: lease.job_id(),
+        }
     );
     assert_eq!(
         fixture.jobs.succeed(&lease).await,
@@ -407,6 +409,27 @@ async fn enqueue_is_durable_and_duplicate_does_not_acquire_or_increment_a_lease(
 }
 
 #[tokio::test]
+async fn enqueue_rejects_conflicting_history_even_if_original_ranks_first() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    let other = Uuid::from_u128(901);
+    let request = enqueue_request(&fixture, original);
+    fixture.jobs.enqueue(&request).await.unwrap();
+    fixture.db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, request, completed_at) SELECT tenant_id, ?1, kind, 'cancelled', scope_kind, module_name, entity_name, schema_version, request, CURRENT_TIMESTAMP FROM index_jobs WHERE tenant_id = ?2 AND job_id = ?3",
+        vec![other.to_string().into(), TENANT.to_owned().into(), original.to_string().into()],
+    )).await.unwrap();
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await,
+        Err(IndexReplayJobError::JobIdentityConflict {
+            expected: original,
+            actual: other,
+        })
+    );
+}
+
+#[tokio::test]
 async fn duplicate_activation_retains_original_checkpoint_and_expired_job_attempt_fence() {
     let fixture = Fixture::new("active").await;
     let original = Uuid::from_u128(900);
@@ -565,12 +588,14 @@ async fn succeeded_original_enqueue_requires_retained_exact_complete_checkpoint(
 async fn pending_enqueue_storage_failure_never_returns_success_or_leaves_partial_job() {
     let fixture = Fixture::new("active").await;
     fixture.db.execute_unprepared("CREATE TRIGGER refuse_pending BEFORE INSERT ON index_jobs BEGIN SELECT RAISE(ABORT, 'fixture_storage_refused'); END").await.unwrap();
+    let error = fixture
+        .jobs
+        .enqueue(&enqueue_request(&fixture, Uuid::from_u128(900)))
+        .await
+        .expect_err("the fixture must block the pending insert");
     assert!(
-        fixture
-            .jobs
-            .enqueue(&enqueue_request(&fixture, Uuid::from_u128(900)))
-            .await
-            .is_err()
+        matches!(&error, IndexReplayJobError::Storage(message) if message.contains("fixture_storage_refused")),
+        "the insert never reached the trigger: {error:?}"
     );
     let row = fixture
         .db

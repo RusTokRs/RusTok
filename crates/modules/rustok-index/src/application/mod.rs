@@ -16,6 +16,7 @@ mod postgres_localized_query_result;
 mod postgres_query_admission;
 mod postgres_query_result;
 mod postgres_query_sql;
+pub(crate) mod postgres_value_sql;
 mod query_port;
 mod query_runtime;
 mod registry;

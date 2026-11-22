@@ -182,6 +182,9 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                     .map_err(|error| {
                         checkpoint_storage_failure("checkpoint_commit_failed", error)
                     })?;
+                assert_active_replay_job_lease(&transaction, &self.lease, backend)
+                    .await
+                    .map_err(classify_job_lease_failure)?;
                 Ok(())
             }
             .await;
@@ -240,6 +243,10 @@ fn classify_job_lease_failure(error: IndexReplayJobError) -> IndexReplayFailure 
 
 fn classify_mutation_failure(error: MutationStorageError) -> IndexReplayFailure {
     let (retryable, code) = match &error {
+        MutationStorageError::JobLeaseLost => (true, "job_lease_lost"),
+        MutationStorageError::SourceRevisionConflict => {
+            (false, "mutation_source_revision_conflict")
+        }
         MutationStorageError::Validation(_)
         | MutationStorageError::InvalidDelivery { .. }
         | MutationStorageError::DeliveryConflict

@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn invalid_environment_policy_is_a_server_configuration_error() {
-        let error = super::parse_env_policy("{")
+        let error = HostAuthorityPolicy::from_env_value(Ok("{".to_owned()))
             .expect_err("invalid environment policy must be rejected");
         assert!(matches!(error, crate::error::Error::Message(_)));
     }

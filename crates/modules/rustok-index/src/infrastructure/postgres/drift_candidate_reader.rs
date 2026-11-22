@@ -593,7 +593,7 @@ fn row_string(row: &QueryResult, column: &str) -> Result<String, IndexDriftCandi
 
 fn row_u32(row: &QueryResult, column: &str) -> Result<u32, IndexDriftCandidateFailure> {
     let value = row
-        .try_get::<i64>("", column)
+        .try_get::<i32>("", column)
         .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
     u32::try_from(value).map_err(|_| permanent_failure(MATERIALIZED_INVALID))
 }

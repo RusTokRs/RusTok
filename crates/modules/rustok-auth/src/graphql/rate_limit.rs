@@ -8,7 +8,7 @@ use async_graphql::extensions::{
 use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
 use async_graphql::{ErrorExtensions, FieldError, Pos, Request, Response, ServerResult};
 use async_trait::async_trait;
-use axum::http::{HeaderMap, header};
+use http::{HeaderMap, header};
 use rustok_api::{AuthContext, TenantContext};
 use rustok_telemetry::metrics;
 

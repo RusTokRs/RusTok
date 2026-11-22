@@ -26,6 +26,7 @@ Leptos admin UI package for the `rustok-channel` module.
 - Mounted by the Leptos admin host under `/modules/channels` through the generic module page route.
 - Uses build-profile-selected native Leptos `#[server]` functions through `HostRuntimeContext` for bootstrap, channel CRUD, target CRUD, module bindings, OAuth app bindings, and policy-set/rule lifecycle operations (create/activate/update/reorder/delete).
 - Keeps the thin REST surface exposed by `apps/server/src/controllers/channel.rs` as a parallel fallback path; native server functions do not replace `/api/channels/*`.
+- Resolves the bootstrap with a Leptos `Resource` so SSR can render the loaded view. CSR and hydration keep the browser HTTP future on its originating JS thread via a WASM-only checked wrapper; the transport and request scope are unchanged.
 - Must keep API assumptions aligned with the `rustok-channel` module and server wiring.
 - Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
 

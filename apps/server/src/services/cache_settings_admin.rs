@@ -139,7 +139,7 @@ mod tests {
             )
             .await
             .expect_err("unknown mode must not be persisted");
-        assert!(error.contains("mode"), "unexpected error: {error}");
+        assert!(error.0.contains("mode"), "unexpected error: {error}");
     }
 
     #[tokio::test]
@@ -165,7 +165,7 @@ mod tests {
             .await
             .expect_err("a settings write without an actor must be rejected");
         assert!(
-            error.contains("requires an authenticated actor"),
+            error.0.contains("requires an authenticated actor"),
             "unexpected error: {error}"
         );
 

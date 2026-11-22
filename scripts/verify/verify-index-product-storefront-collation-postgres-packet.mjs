@@ -31,13 +31,18 @@ if (titleSearch.includes('COLLATE')) {
 
 const localizedCompilerPath = 'crates/modules/rustok-index/src/application/postgres_localized_query.rs';
 const localizedCompiler = requireMarkers(localizedCompilerPath, [
-  'FilterExpr::TextLike(path, pattern)',
-  'IndexValueType::String => format!',
+  'FilterExpr::TextLike(path, pattern) => {',
   'COLLATE \\"C\\"',
-  "ESCAPE E'",
 ]);
-if (!localizedCompiler.includes('COALESCE({} LIKE {pattern}')) {
-  fail(`${localizedCompilerPath} no longer compiles TextLike through PostgreSQL LIKE`);
+const likeStart = localizedCompiler.indexOf('FilterExpr::TextLike(path, pattern) => {');
+const likeEnd = localizedCompiler.indexOf('\n        }', likeStart);
+const like = localizedCompiler.slice(likeStart, likeEnd);
+if (
+  likeEnd <= likeStart || !like.includes('field_sql_for_path(plan, path, alias)?') ||
+  !like.includes('bindings.push(PostgresBindValue::Text(pattern.clone()))') ||
+  !like.includes("{} LIKE {pattern} ESCAPE E'") || !like.includes('sql.scalar')
+) {
+  fail(`${localizedCompilerPath} must compile escaped PostgreSQL LIKE over the shared scalar expression with a bound pattern`);
 }
 
 const packetPath = 'crates/modules/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
@@ -80,6 +85,10 @@ for (const forbidden of [
 
 requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
+]);
+requireMarkers('crates/modules/rustok-index/src/application/postgres_value_sql.rs', [
+  'IndexValueType::String => format!',
+  'COLLATE \\"C\\"',
 ]);
 requireMarkers('crates/modules/rustok-index/src/application/validation.rs', [
   'const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;',

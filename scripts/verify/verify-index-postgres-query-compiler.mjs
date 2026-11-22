@@ -48,9 +48,14 @@ const sql = requireMarkers(sqlPath, [
   'let aggregate = compile_many_projection(plan, projection, index, &mut bindings)?;',
   'CompiledManyRelationColumn',
   'fn compile_many_projection(',
-  "jsonb_build_object('entity_ids'",
+  'WITH bounded_many AS MATERIALIZED',
+  'sum(octet_length(item::text) + 2) + 2',
+  'bound_projected_value(&field_sql.raw)',
+  'schema_scope_sql(',
+  'field_sql_for_alias(',
+  "jsonb_build_object('identities'",
   "'values'",
-  'jsonb_agg({item} ORDER BY {})',
+  'jsonb_agg(item ORDER BY {})',
   '.ordinal ASC',
   'fn compile_many_exists(',
   'EXISTS ({wrapper}{expression})',
@@ -58,7 +63,17 @@ const sql = requireMarkers(sqlPath, [
   'ASC NULLS LAST',
   'DESC NULLS FIRST',
   'SELECT COUNT(*)::bigint AS \\"__exact_count\\"',
+  'bindings.finish()?',
+]);
+
+requireMarkers('crates/modules/rustok-index/src/application/postgres_value_sql.rs', [
   'format!("${}", self.values.len())',
+  'pub(crate) fn schema_scope_sql(',
+  'pub(crate) fn scalar_expression(',
+  'MAX_BIND_COUNT',
+  'MAX_BIND_BYTES',
+  'IndexValueType::Decimal => format!("({text}::numeric)")',
+  'IndexValueType::Timestamp => format!("(left({text}, -1) COLLATE \\"C\\")")',
 ]);
 
 const basePosition = sql.indexOf('let base = compile_base(plan, &mut bindings);');
@@ -89,8 +104,8 @@ for (const [relative, source] of [[compilerPath, compiler], [sqlPath, sql]]) {
 }
 
 requireMarkers('crates/modules/rustok-index/src/application/postgres_compiler_tests.rs', [
-  'compiles_root_projection_with_bound_scope_and_limit',
-  'compiles_one_link_projection_without_interpolating_contract_values',
+  'compiles_root_projection_with_indexable_scope_and_bound_paging',
+  'compiles_one_link_projection_with_bound_link_name_and_literal_schema',
   'compiles_typed_filters_order_exact_count_and_bounded_offset',
   'compiles_validated_lexicographic_keyset_with_entity_tie_breaker',
   'rejects_cursor_reuse_across_query_semantics_before_sql_compilation',
@@ -109,7 +124,7 @@ requireMarkers('crates/modules/rustok-index/src/application/snapshots/m4_many_pr
   'AS "__many_0"',
   'jsonb_agg(',
   'ORDER BY "mp0_l1".ordinal ASC',
-  'LIMIT $12',
+  'LIMIT $3',
 ]);
 requireMarkers('crates/modules/rustok-index/docs/m4-query-snapshots.md', [
   'complete controlled PostgreSQL statement',

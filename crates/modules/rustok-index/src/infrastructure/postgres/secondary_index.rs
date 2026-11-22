@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use sea_orm::sqlx::{self, AssertSqlSafe, PgConnection};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
@@ -9,15 +10,22 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::application::postgres_value_sql::{
+    list_expression, scalar_expression, schema_scope_sql,
+};
 use crate::{
     FieldCardinality, FieldName, IndexSchema, IndexValueType, SchemaFingerprint, SchemaRef,
+};
+
+use super::source_job_lease::{
+    deadline_after_seconds, due_job_where, job_is_due, live_lease_where, placeholder_prefix,
 };
 
 const MAX_WORKER_ID_BYTES: usize = 191;
 const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_LEASE_SECONDS: u64 = 86_400;
 const OWNED_INDEX_COMMENT_PREFIX: &str = "rustok-index:";
-const STORAGE_VALUE_CONTRACT: &str = "tagged_index_value_v1";
+const STORAGE_VALUE_CONTRACT: &str = "tagged_index_expression_v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecondaryIndexKind {
@@ -58,7 +66,7 @@ impl SecondaryIndexSpec {
         kind: SecondaryIndexKind,
     ) -> Self {
         let definition = format!(
-            "rustok-index-secondary-v1\u{1f}{STORAGE_VALUE_CONTRACT}\u{1f}{tenant_id}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            "rustok-index-secondary\u{1f}{STORAGE_VALUE_CONTRACT}\u{1f}{tenant_id}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
             schema.reference.module.as_str(),
             schema.reference.entity.as_str(),
             schema.reference.version.get(),
@@ -129,14 +137,14 @@ impl SecondaryIndexSpec {
     ) -> Result<String, SecondaryIndexError> {
         let name = quote_identifier(&self.index_name);
         let predicate = self.predicate(backend);
-        let field = quote_literal(self.field_name.as_str());
         match (backend, self.kind) {
             (DbBackend::Postgres, SecondaryIndexKind::Scalar) => Ok(format!(
                 "CREATE INDEX CONCURRENTLY {name} ON index_entities (locale_key, {}, entity_id) WHERE {predicate}",
-                postgres_scalar_expression(self.value_type, &field),
+                scalar_expression("payload", &self.field_name, self.value_type),
             )),
             (DbBackend::Postgres, SecondaryIndexKind::JsonContainment) => Ok(format!(
-                "CREATE INDEX CONCURRENTLY {name} ON index_entities USING gin (((payload -> {field}) -> 'value') jsonb_path_ops) WHERE {predicate}",
+                "CREATE INDEX CONCURRENTLY {name} ON index_entities USING gin (({}) jsonb_path_ops) WHERE {predicate}",
+                list_expression("payload", &self.field_name),
             )),
             (DbBackend::Sqlite, _) if cfg!(test) => {
                 let path = quote_literal(&format!("$.{}.value", self.field_name.as_str()));
@@ -172,20 +180,11 @@ impl SecondaryIndexSpec {
         }
     }
 
-    fn comment_statement(&self) -> String {
-        format!(
-            "COMMENT ON INDEX {} IS {}",
-            quote_identifier(&self.index_name),
-            quote_literal(&self.owner_comment()),
-        )
-    }
-
     fn predicate(&self, backend: DbBackend) -> String {
+        if backend == DbBackend::Postgres {
+            return schema_scope_sql("", self.tenant_id, &self.schema, self.schema_fingerprint);
+        }
         let tenant = quote_literal(&self.tenant_id.to_string());
-        let tenant = match backend {
-            DbBackend::Postgres => format!("{tenant}::uuid"),
-            _ => tenant,
-        };
         format!(
             "tenant_id = {tenant} AND module_name = {} AND entity_name = {} AND schema_version = {} AND schema_fingerprint = {} AND is_deleted = FALSE",
             quote_literal(self.schema.module.as_str()),
@@ -215,6 +214,11 @@ impl SecondaryIndexPlan {
             .fields
             .iter()
             .filter(|field| field.filterable || field.sortable)
+            // Decimal-list membership uses numeric equality, not JSONB string containment.
+            .filter(|field| {
+                !(field.cardinality == FieldCardinality::Many
+                    && field.value_type == IndexValueType::Decimal)
+            })
             .map(|field| {
                 let kind = match field.cardinality {
                     FieldCardinality::One => SecondaryIndexKind::Scalar,
@@ -378,6 +382,10 @@ pub enum SecondaryIndexError {
     InvalidLeaseDuration,
     #[error("invalid secondary-index error code: {reason}")]
     InvalidErrorCode { reason: &'static str },
+    #[error("secondary-index schema is not selected in this runtime: {0}")]
+    SchemaNotSelected(SchemaRef),
+    #[error("field does not support a schema-derived secondary index")]
+    UnsupportedField,
     #[error("secondary-index schema is not persisted for this tenant: {0}")]
     SchemaNotRegistered(SchemaRef),
     #[error("secondary-index schema is retired: {0}")]
@@ -386,6 +394,8 @@ pub enum SecondaryIndexError {
     SchemaFingerprintConflict,
     #[error("stored secondary-index job is invalid: {0}")]
     InvalidStoredJob(String),
+    #[error("another Index worker holds the physical secondary-index DDL lock")]
+    DdlBusy,
     #[error("secondary-index lease ownership was lost")]
     LeaseLost,
     #[error("secondary index {index_name} is owned by a different definition")]
@@ -434,12 +444,51 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
-        self.assert_current(lease, backend).await?;
-        match lease.operation {
-            SecondaryIndexOperation::Ensure => self.ensure_index(&lease.spec, backend).await,
-            SecondaryIndexOperation::Reindex => self.reindex(&lease.spec, backend).await,
-            SecondaryIndexOperation::Retire => self.retire(&lease.spec, backend).await,
+        if backend == DbBackend::Postgres {
+            return self.execute_postgres(lease).await;
         }
+        self.assert_current(lease, backend).await?;
+        self.execute_sqlite(lease, backend).await
+    }
+
+    pub(crate) async fn operate(
+        &self,
+        request: &SecondaryIndexRequest,
+    ) -> Result<Option<SecondaryIndexExecutionOutcome>, SecondaryIndexError> {
+        let SecondaryIndexClaimOutcome::Acquired(lease) = self.claim(request).await? else {
+            return Ok(None);
+        };
+        let outcome = match self.execute(&lease).await {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.defer_interrupted_operation(&lease).await?;
+                return Err(error);
+            }
+        };
+        self.succeed(&lease).await?;
+        Ok(Some(outcome))
+    }
+
+    async fn defer_interrupted_operation(
+        &self,
+        lease: &SecondaryIndexLease,
+    ) -> Result<(), SecondaryIndexError> {
+        let backend = self.db.get_database_backend();
+        // This orchestrator is composed only for the PostgreSQL operator. An expired/lost
+        // generation already requires normal reacquisition; never modify its replacement.
+        let fence = live_lease_where(backend, "secondary_index", 1, false);
+        let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            backend,
+            format!("UPDATE index_jobs SET state = 'pending', lease_owner = NULL, lease_expires_at = NULL,
+                available_at = clock_timestamp() + INTERVAL '5 seconds', updated_at = clock_timestamp(),
+                last_error_code = 'index.secondary_index_execution_failed', last_error_details = NULL
+             WHERE {fence}"),
+            vec![lease.tenant_id.into(), lease.job_id.into(), lease.worker_id.clone().into(), i64::from(lease.attempt_count).into()],
+        )).await.map_err(storage_error)?;
+        if updated.rows_affected() == 0 {
+            tracing::debug!(job_id = %lease.job_id, "Secondary Index operation lost its lease before deferral");
+        }
+        Ok(())
     }
 
     pub async fn heartbeat(
@@ -496,8 +545,12 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<SecondaryIndexClaimOutcome, SecondaryIndexError> {
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        self.lock_index(transaction, request.spec(), backend)
-            .await?;
+        if !self
+            .lock_index(transaction, request.spec(), backend)
+            .await?
+        {
+            return Ok(SecondaryIndexClaimOutcome::Busy);
+        }
         self.verify_schema_registration(transaction, request.spec(), request.operation(), backend)
             .await?;
 
@@ -525,6 +578,11 @@ impl PostgresSecondaryIndexManager {
                 reclaim = Some(stored);
                 break;
             }
+            // A different operation cannot supersede a possibly interrupted CREATE. Its
+            // original Ensure must recover (or report conflict) before any other physical DDL.
+            if stored.creation_reserved {
+                return Ok(SecondaryIndexClaimOutcome::Busy);
+            }
             self.supersede_expired_job(transaction, &stored, request, backend)
                 .await?;
         }
@@ -533,9 +591,13 @@ impl PostgresSecondaryIndexManager {
         let attempt_count;
         if let Some(stored) = reclaim {
             job_id = stored.job_id;
-            attempt_count = stored.attempt_count.checked_add(1).ok_or_else(|| {
-                SecondaryIndexError::InvalidStoredJob("attempt count overflow".to_owned())
-            })?;
+            attempt_count = stored
+                .attempt_count
+                .checked_add(1)
+                .filter(|attempt| i32::try_from(*attempt).is_ok())
+                .ok_or_else(|| {
+                    SecondaryIndexError::InvalidStoredJob("attempt count overflow".to_owned())
+                })?;
             let claimed = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
@@ -595,19 +657,23 @@ impl PostgresSecondaryIndexManager {
         transaction: &DatabaseTransaction,
         spec: &SecondaryIndexSpec,
         backend: DbBackend,
-    ) -> Result<(), SecondaryIndexError> {
+    ) -> Result<bool, SecondaryIndexError> {
         if backend == DbBackend::Sqlite {
-            return Ok(());
+            return Ok(true);
         }
         transaction
-            .execute_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                vec![format!("secondary-index\u{1f}{}", spec.index_name).into()],
+                "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
+                vec![ddl_lock_key(spec).into()],
             ))
             .await
-            .map_err(storage_error)?;
-        Ok(())
+            .map_err(storage_error)?
+            .ok_or_else(|| {
+                SecondaryIndexError::Storage("missing secondary-index lock result".to_owned())
+            })?
+            .try_get("", "locked")
+            .map_err(storage_error)
     }
 
     async fn verify_schema_registration(
@@ -630,7 +696,8 @@ impl PostgresSecondaryIndexManager {
             .try_get("", "schema_fingerprint")
             .map_err(storage_error)?;
         let status: String = row.try_get("", "status").map_err(storage_error)?;
-        if fingerprint != spec.schema_fingerprint.to_string() {
+        let schema_json: JsonValue = row.try_get("", "schema_json").map_err(storage_error)?;
+        if !matches_schema_contract(spec, &fingerprint, schema_json) {
             return Err(SecondaryIndexError::SchemaFingerprintConflict);
         }
         if status != "active" && operation != SecondaryIndexOperation::Retire {
@@ -668,142 +735,84 @@ impl PostgresSecondaryIndexManager {
         Ok(())
     }
 
-    async fn ensure_index(
+    async fn execute_sqlite(
         &self,
-        spec: &SecondaryIndexSpec,
+        lease: &SecondaryIndexLease,
         backend: DbBackend,
     ) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
-        if let Some(existing) = self.inspect_index(spec, backend).await? {
-            verify_index_owner(spec, &existing, backend)?;
-            if !existing.ready || !existing.valid {
-                return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
-            }
-            if backend == DbBackend::Postgres && existing.comment.is_none() {
-                self.db
-                    .execute_unprepared(&spec.comment_statement())
-                    .await
-                    .map_err(storage_error)?;
-            }
-            return Ok(SecondaryIndexExecutionOutcome::Ready {
-                index_name: spec.index_name.clone(),
-                created: false,
-            });
-        }
-
-        self.db
-            .execute_unprepared(&spec.create_statement(backend)?)
-            .await
-            .map_err(storage_error)?;
-        if backend == DbBackend::Postgres {
-            self.db
-                .execute_unprepared(&spec.comment_statement())
-                .await
-                .map_err(storage_error)?;
-        }
-        let existing = self
-            .inspect_index(spec, backend)
-            .await?
-            .ok_or_else(|| SecondaryIndexError::IndexMissing(spec.index_name.clone()))?;
-        verify_index_owner(spec, &existing, backend)?;
-        if !existing.ready || !existing.valid {
-            return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
-        }
-        Ok(SecondaryIndexExecutionOutcome::Ready {
-            index_name: spec.index_name.clone(),
-            created: true,
-        })
-    }
-
-    async fn reindex(
-        &self,
-        spec: &SecondaryIndexSpec,
-        backend: DbBackend,
-    ) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
-        let existing = self
-            .inspect_index(spec, backend)
-            .await?
-            .ok_or_else(|| SecondaryIndexError::IndexMissing(spec.index_name.clone()))?;
-        verify_index_owner(spec, &existing, backend)?;
-        self.db
-            .execute_unprepared(&spec.reindex_statement(backend)?)
-            .await
-            .map_err(storage_error)?;
-        if backend == DbBackend::Postgres {
-            self.db
-                .execute_unprepared(&spec.comment_statement())
-                .await
-                .map_err(storage_error)?;
-        }
-        let rebuilt = self
-            .inspect_index(spec, backend)
-            .await?
-            .ok_or_else(|| SecondaryIndexError::IndexMissing(spec.index_name.clone()))?;
-        verify_index_owner(spec, &rebuilt, backend)?;
-        if !rebuilt.ready || !rebuilt.valid {
-            return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
-        }
-        Ok(SecondaryIndexExecutionOutcome::Reindexed {
-            index_name: spec.index_name.clone(),
-        })
-    }
-
-    async fn retire(
-        &self,
-        spec: &SecondaryIndexSpec,
-        backend: DbBackend,
-    ) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
-        let Some(existing) = self.inspect_index(spec, backend).await? else {
-            return Ok(SecondaryIndexExecutionOutcome::Retired {
-                index_name: spec.index_name.clone(),
-                dropped: false,
-            });
-        };
-        verify_index_owner(spec, &existing, backend)?;
-        self.db
-            .execute_unprepared(&spec.drop_statement(backend)?)
-            .await
-            .map_err(storage_error)?;
-        if self.inspect_index(spec, backend).await?.is_some() {
-            return Err(SecondaryIndexError::Storage(
-                "secondary index remained present after retirement".to_owned(),
-            ));
-        }
-        Ok(SecondaryIndexExecutionOutcome::Retired {
-            index_name: spec.index_name.clone(),
-            dropped: true,
-        })
-    }
-
-    async fn inspect_index(
-        &self,
-        spec: &SecondaryIndexSpec,
-        backend: DbBackend,
-    ) -> Result<Option<ExistingIndex>, SecondaryIndexError> {
-        let row = self
+        let spec = &lease.spec;
+        let index_name = spec.index_name.clone();
+        let exists = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
-                inspect_index_sql(backend),
-                vec![spec.index_name.clone().into()],
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [index_name.clone().into()],
             ))
             .await
-            .map_err(storage_error)?;
-        match (backend, row) {
-            (_, None) => Ok(None),
-            (DbBackend::Postgres, Some(row)) => Ok(Some(ExistingIndex {
-                ready: row.try_get("", "is_ready").map_err(storage_error)?,
-                valid: row.try_get("", "is_valid").map_err(storage_error)?,
-                comment: row.try_get("", "index_comment").map_err(storage_error)?,
-            })),
-            (DbBackend::Sqlite, Some(_)) if cfg!(test) => Ok(Some(ExistingIndex {
-                ready: true,
-                valid: true,
-                comment: None,
-            })),
-            (backend, Some(_)) => Err(SecondaryIndexError::UnsupportedBackend(format!(
-                "{backend:?}"
-            ))),
+            .map_err(storage_error)?
+            .is_some();
+        match lease.operation {
+            SecondaryIndexOperation::Ensure => {
+                if !exists {
+                    self.db
+                        .execute_unprepared(&spec.create_statement(backend)?)
+                        .await
+                        .map_err(storage_error)?;
+                }
+                Ok(SecondaryIndexExecutionOutcome::Ready {
+                    index_name,
+                    created: !exists,
+                })
+            }
+            SecondaryIndexOperation::Reindex => {
+                if !exists {
+                    return Err(SecondaryIndexError::IndexMissing(index_name));
+                }
+                self.db
+                    .execute_unprepared(&spec.reindex_statement(backend)?)
+                    .await
+                    .map_err(storage_error)?;
+                Ok(SecondaryIndexExecutionOutcome::Reindexed { index_name })
+            }
+            SecondaryIndexOperation::Retire => {
+                if exists {
+                    self.db
+                        .execute_unprepared(&spec.drop_statement(backend)?)
+                        .await
+                        .map_err(storage_error)?;
+                }
+                Ok(SecondaryIndexExecutionOutcome::Retired {
+                    index_name,
+                    dropped: exists,
+                })
+            }
         }
+    }
+
+    async fn execute_postgres(
+        &self,
+        lease: &SecondaryIndexLease,
+    ) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
+        let mut connection = self
+            .db
+            .get_postgres_connection_pool()
+            .acquire()
+            .await
+            .map_err(storage_error)?;
+        // Concurrent DDL cannot run in a transaction. Pin a session lock spanning the lease
+        // checks, catalogue inspection and DDL. Never return it to the pool on cancellation.
+        connection.close_on_drop();
+        let locked: bool =
+            sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1, 0))")
+                .bind(ddl_lock_key(&lease.spec))
+                .fetch_one(&mut *connection)
+                .await
+                .map_err(storage_error)?;
+        if !locked {
+            return Err(SecondaryIndexError::DdlBusy);
+        }
+        execute_postgres_locked(&mut connection, lease).await
     }
 
     async fn assert_current(
@@ -867,19 +876,13 @@ impl PostgresSecondaryIndexManager {
 #[derive(Debug)]
 struct StoredJob {
     job_id: Uuid,
+    creation_reserved: bool,
     operation: String,
     index_name: String,
     definition_hash: String,
     schema_fingerprint: String,
     attempt_count: u32,
     claimable: bool,
-}
-
-#[derive(Debug)]
-struct ExistingIndex {
-    ready: bool,
-    valid: bool,
-    comment: Option<String>,
 }
 
 fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, SecondaryIndexError> {
@@ -900,6 +903,9 @@ fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, Second
         .try_get("", "attempt_count_value")
         .map_err(storage_error)?;
     Ok(StoredJob {
+        creation_reserved: row
+            .try_get("", "creation_reserved")
+            .map_err(storage_error)?,
         job_id: stored_uuid(row, "job_id", backend)?,
         operation: string_field("operation")?,
         index_name: string_field("index_name")?,
@@ -924,27 +930,6 @@ fn request_json(request: &SecondaryIndexRequest) -> JsonValue {
         "index_kind": request.spec.kind.as_str(),
         "storage_value_contract": STORAGE_VALUE_CONTRACT,
     })
-}
-
-fn verify_index_owner(
-    spec: &SecondaryIndexSpec,
-    existing: &ExistingIndex,
-    backend: DbBackend,
-) -> Result<(), SecondaryIndexError> {
-    if backend != DbBackend::Postgres {
-        return Ok(());
-    }
-    let expected = spec.owner_comment();
-    if existing
-        .comment
-        .as_deref()
-        .is_some_and(|comment| comment != expected.as_str())
-    {
-        return Err(SecondaryIndexError::IndexOwnershipConflict {
-            index_name: spec.index_name.clone(),
-        });
-    }
-    Ok(())
 }
 
 fn validate_worker_id(worker_id: &str) -> Result<(), SecondaryIndexError> {
@@ -1038,35 +1023,12 @@ fn cardinality_tag(cardinality: FieldCardinality) -> &'static str {
     }
 }
 
-fn postgres_scalar_expression(value_type: IndexValueType, field: &str) -> String {
-    let value = format!("(payload -> {field}) ->> 'value'");
-    match value_type {
-        IndexValueType::Boolean => format!("(({value})::boolean)"),
-        IndexValueType::Integer => format!("(({value})::bigint)"),
-        IndexValueType::Decimal => format!("(({value})::numeric)"),
-        IndexValueType::String => format!("(({value}) COLLATE \"C\")"),
-        IndexValueType::Uuid => format!("(({value})::uuid)"),
-        IndexValueType::Timestamp => {
-            format!("((regexp_replace({value}, '[^0-9]', '', 'g')) COLLATE \"C\")")
-        }
-    }
-}
-
 fn quote_identifier(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
-}
-
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
 }
 
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
@@ -1106,93 +1068,430 @@ fn schema_scope_values(spec: &SecondaryIndexSpec, backend: DbBackend) -> Vec<Sql
 fn select_schema_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "SELECT schema_fingerprint, status FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1"
+        "SELECT schema_fingerprint, status, schema_json FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1"
     )
 }
 
 fn select_active_jobs_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    let (attempt_count, claimable) = match backend {
-        DbBackend::Postgres => (
-            "CAST(attempt_count AS BIGINT)",
-            "((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))",
-        ),
-        DbBackend::Sqlite => (
-            "CAST(attempt_count AS INTEGER)",
-            "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
-        ),
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    };
+    let claimable = job_is_due(backend);
     format!(
-        "SELECT job_id, request, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'secondary_index' AND scope_kind = 'schema' AND state IN ('pending', 'running') ORDER BY created_at"
+        "SELECT job_id, request, CASE WHEN cursor IS NOT NULL THEN TRUE ELSE FALSE END AS creation_reserved, CAST(attempt_count AS BIGINT) AS attempt_count_value, CASE WHEN {claimable} THEN TRUE ELSE FALSE END AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'secondary_index' AND scope_kind = 'schema' AND state IN ('pending', 'running') ORDER BY created_at"
     )
 }
 
 fn insert_job_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 8);
+    let lease_expires = deadline_after_seconds(backend, 8);
     format!(
         "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, request, attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at) VALUES ({prefix}1, {prefix}2, 'secondary_index', 'running', 'schema', {prefix}3, {prefix}4, {prefix}5, {prefix}6, 1, CURRENT_TIMESTAMP, {prefix}7, {lease_expires}, CURRENT_TIMESTAMP)"
     )
 }
 
 fn claim_job_sql(backend: DbBackend) -> String {
+    let due = due_job_where(backend, "secondary_index");
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'secondary_index' AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE {due}"
     )
 }
 
 fn supersede_job_sql(backend: DbBackend) -> String {
+    let due = due_job_where(backend, "secondary_index");
     let prefix = placeholder_prefix(backend);
+    // Keep the creation intent fence on the write even though the cooperating claim path
+    // already inspects it while holding the physical-name advisory lock.
     format!(
-        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = 'secondary_index.superseded', last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'secondary_index' AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = 'secondary_index.superseded', last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {due} AND cursor IS NULL"
     )
 }
 
 fn heartbeat_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease = live_lease_where(backend, "secondary_index", 1, false);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'secondary_index' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP"
+        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn assert_current_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    format!(
-        "SELECT job_id FROM index_jobs WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'secondary_index' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP LIMIT 1"
-    )
+    let lease = live_lease_where(backend, "secondary_index", 1, false);
+    format!("SELECT job_id FROM index_jobs WHERE {lease} LIMIT 1")
 }
 
 fn finish_job_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "secondary_index", 4, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = {prefix}1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = {prefix}2, last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}4 AND job_id = {prefix}5 AND kind = 'secondary_index' AND state = 'running' AND lease_owner = {prefix}6 AND attempt_count = {prefix}7 AND lease_expires_at > CURRENT_TIMESTAMP"
+        "UPDATE index_jobs SET state = {prefix}1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = {prefix}2, last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
-fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
-    let prefix = placeholder_prefix(backend);
-    match backend {
-        DbBackend::Postgres => {
-            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
-        }
-        DbBackend::Sqlite => {
-            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
-        }
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
+fn ddl_lock_key(spec: &SecondaryIndexSpec) -> String {
+    format!("secondary-index\u{1f}{}", spec.index_name)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct IndexDefinition {
+    method: String,
+    columns: String,
+    operator_classes: String,
+    collations: String,
+    options: String,
+    key_count: i16,
+    unique: bool,
+    expressions: String,
+    predicate: String,
+}
+
+struct PostgresIndexState {
+    definition: IndexDefinition,
+    comment: Option<String>,
+    ready: bool,
+}
+
+async fn index_state(
+    session: &mut PgConnection,
+    table_oid: i64,
+    index_name: &str,
+) -> Result<Option<PostgresIndexState>, SecondaryIndexError> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT am.amname::text AS method, i.indkey::text AS columns, i.indclass::text AS operator_classes,
+            i.indcollation::text AS collations, i.indoption::text AS options, i.indnkeyatts AS key_count,
+            i.indisunique AS unique_keys, COALESCE(pg_get_expr(i.indexprs, i.indrelid), '') AS expressions,
+            COALESCE(pg_get_expr(i.indpred, i.indrelid), '') AS predicate,
+            obj_description(c.oid, 'pg_class') AS comment, i.indisready AND i.indisvalid AND i.indislive AS ready
+         FROM pg_catalog.pg_index AS i JOIN pg_catalog.pg_class AS c ON c.oid = i.indexrelid
+         JOIN pg_catalog.pg_am AS am ON am.oid = c.relam
+         WHERE i.indrelid = $1::bigint::oid AND c.relname = $2 AND c.relkind = 'i'")
+        .bind(table_oid).bind(index_name).fetch_optional(session).await.map_err(storage_error)?;
+    row.map(|row| {
+        Ok(PostgresIndexState {
+            definition: IndexDefinition {
+                method: row.try_get("method").map_err(storage_error)?,
+                columns: row.try_get("columns").map_err(storage_error)?,
+                operator_classes: row.try_get("operator_classes").map_err(storage_error)?,
+                collations: row.try_get("collations").map_err(storage_error)?,
+                options: row.try_get("options").map_err(storage_error)?,
+                key_count: row.try_get("key_count").map_err(storage_error)?,
+                unique: row.try_get("unique_keys").map_err(storage_error)?,
+                expressions: row.try_get("expressions").map_err(storage_error)?,
+                predicate: row.try_get("predicate").map_err(storage_error)?,
+            },
+            comment: row.try_get("comment").map_err(storage_error)?,
+            ready: row.try_get("ready").map_err(storage_error)?,
+        })
+    })
+    .transpose()
+}
+
+async fn remaining_lease_budget(
+    session: &mut PgConnection,
+    lease: &SecondaryIndexLease,
+) -> Result<(), SecondaryIndexError> {
+    let remaining: Option<i64> = sqlx::query_scalar(
+        "SELECT floor(EXTRACT(EPOCH FROM (lease_expires_at - clock_timestamp())) * 1000)::bigint
+         FROM index_jobs WHERE tenant_id = $1 AND job_id = $2 AND lease_owner = $3
+           AND attempt_count = $4 AND kind = 'secondary_index' AND state = 'running' AND cancel_requested = FALSE")
+        .bind(lease.tenant_id).bind(lease.job_id).bind(&lease.worker_id)
+        .bind(i64::from(lease.attempt_count)).fetch_optional(&mut *session).await.map_err(storage_error)?;
+    let remaining = remaining
+        .filter(|remaining| *remaining > 0)
+        .ok_or(SecondaryIndexError::LeaseLost)?;
+    sqlx::query("SELECT set_config('statement_timeout', $1, false)")
+        .bind(format!("{}ms", remaining.min(300_000)))
+        .execute(session)
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
+fn matches_schema_contract(
+    spec: &SecondaryIndexSpec,
+    fingerprint: &str,
+    schema: JsonValue,
+) -> bool {
+    spec.schema_fingerprint.to_string() == fingerprint
+        && serde_json::from_value::<IndexSchema>(schema).is_ok_and(|schema| {
+            schema.reference == spec.schema
+                && schema
+                    .fingerprint()
+                    .is_ok_and(|fp| fp == spec.schema_fingerprint)
+        })
+}
+
+fn creation_intent(lease: &SecondaryIndexLease, table_oid: i64) -> JsonValue {
+    json!({
+        "phase": "creating_index",
+        "table_oid": table_oid,
+        "definition_hash": lease.spec.definition_hash,
+    })
+}
+
+async fn creation_is_reserved(
+    session: &mut PgConnection,
+    lease: &SecondaryIndexLease,
+    table_oid: i64,
+) -> Result<bool, SecondaryIndexError> {
+    let cursor: Option<JsonValue> = sqlx::query_scalar(
+        "SELECT cursor FROM index_jobs WHERE tenant_id = $1 AND job_id = $2 AND lease_owner = $3
+         AND attempt_count = $4 AND kind = 'secondary_index' AND state = 'running'
+         AND lease_expires_at > clock_timestamp() AND cancel_requested = FALSE",
+    )
+    .bind(lease.tenant_id)
+    .bind(lease.job_id)
+    .bind(&lease.worker_id)
+    .bind(i64::from(lease.attempt_count))
+    .fetch_optional(session)
+    .await
+    .map_err(storage_error)?
+    .ok_or(SecondaryIndexError::LeaseLost)?;
+    match cursor {
+        None => Ok(false),
+        Some(cursor) if cursor == creation_intent(lease, table_oid) => Ok(true),
+        Some(_) => Err(SecondaryIndexError::InvalidStoredJob(
+            "secondary-index creation intent no longer matches table and definition".to_owned(),
+        )),
     }
 }
 
-fn inspect_index_sql(backend: DbBackend) -> String {
-    match backend {
-        DbBackend::Postgres => "SELECT index_data.indisready AS is_ready, index_data.indisvalid AS is_valid, obj_description(index_class.oid, 'pg_class') AS index_comment FROM pg_class AS index_class JOIN pg_index AS index_data ON index_data.indexrelid = index_class.oid JOIN pg_class AS table_class ON table_class.oid = index_data.indrelid JOIN pg_namespace AS namespace ON namespace.oid = table_class.relnamespace WHERE table_class.relname = 'index_entities' AND index_class.relname = $1 LIMIT 1".to_owned(),
-        DbBackend::Sqlite if cfg!(test) => "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?1 LIMIT 1".to_owned(),
-        // INVARIANT: unsupported backend {backend:?} was validated
-        backend => unreachable!("unsupported backend {backend:?} was validated"),
+async fn reserve_creation(
+    session: &mut PgConnection,
+    lease: &SecondaryIndexLease,
+    table_oid: i64,
+    qualified_index: &str,
+) -> Result<(), SecondaryIndexError> {
+    let exists: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
+        .bind(qualified_index)
+        .fetch_one(&mut *session)
+        .await
+        .map_err(storage_error)?;
+    if exists {
+        return Err(SecondaryIndexError::IndexOwnershipConflict {
+            index_name: lease.spec.index_name.clone(),
+        });
+    }
+    let fence = live_lease_where(DbBackend::Postgres, "secondary_index", 1, false);
+    let statement = format!(
+        "UPDATE index_jobs SET cursor = $5, updated_at = clock_timestamp()
+         WHERE {fence} AND cursor IS NULL",
+    );
+    // The shared lease fence expands only fixed SQL tokens and placeholders.
+    let reserved = sqlx::query(AssertSqlSafe(statement))
+        .bind(lease.tenant_id)
+        .bind(lease.job_id)
+        .bind(&lease.worker_id)
+        .bind(i64::from(lease.attempt_count))
+        .bind(creation_intent(lease, table_oid))
+        .execute(session)
+        .await
+        .map_err(storage_error)?;
+    if reserved.rows_affected() != 1 {
+        return Err(SecondaryIndexError::LeaseLost);
+    }
+    Ok(())
 }
+
+async fn execute_postgres_locked(
+    session: &mut PgConnection,
+    lease: &SecondaryIndexLease,
+) -> Result<SecondaryIndexExecutionOutcome, SecondaryIndexError> {
+    remaining_lease_budget(session, lease).await?;
+    let spec = &lease.spec;
+    let (fingerprint, status, schema_json): (String, String, JsonValue) = sqlx::query_as(
+        "SELECT schema_fingerprint, status, schema_json FROM index_schemas WHERE tenant_id=$1 AND module_name=$2 AND entity_name=$3 AND schema_version=$4")
+        .bind(spec.tenant_id).bind(spec.schema.module.as_str()).bind(spec.schema.entity.as_str())
+        .bind(i64::from(spec.schema.version.get())).fetch_optional(&mut *session).await.map_err(storage_error)?
+        .ok_or_else(|| SecondaryIndexError::SchemaNotRegistered(spec.schema.clone()))?;
+    if !matches_schema_contract(spec, &fingerprint, schema_json) {
+        return Err(SecondaryIndexError::SchemaFingerprintConflict);
+    }
+    if status != "active" && lease.operation != SecondaryIndexOperation::Retire {
+        return Err(SecondaryIndexError::SchemaRetired(spec.schema.clone()));
+    }
+    let (table_oid, namespace, column_projection): (i64, String, String) = sqlx::query_as(
+        "SELECT t.oid::bigint, n.nspname::text, (
+            SELECT string_agg(CASE WHEN a.attisdropped THEN 'NULL::text AS ' || quote_ident('removed_' || a.attnum::text)
+                   ELSE quote_ident(a.attname) END, ', ' ORDER BY a.attnum)
+            FROM pg_catalog.pg_attribute AS a WHERE a.attrelid = t.oid AND a.attnum > 0
+         ) FROM pg_catalog.pg_class AS t JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+         WHERE t.oid = to_regclass('index_entities') AND t.relkind = 'r' AND n.oid <> pg_my_temp_schema()")
+        .fetch_optional(&mut *session).await.map_err(storage_error)?
+        .ok_or_else(|| SecondaryIndexError::Storage("Index entity table is missing or partitioned".to_owned()))?;
+    let table = format!("{}.index_entities", quote_identifier(&namespace));
+    let name = &spec.index_name;
+    let qualified_index = format!(
+        "{}.{}",
+        quote_identifier(&namespace),
+        quote_identifier(name)
+    );
+    let mut existing = index_state(session, table_oid, name).await?;
+    if existing.is_none() && lease.operation == SecondaryIndexOperation::Retire {
+        // No DROP will be issued, even if the name belongs to some other table.
+        return Ok(SecondaryIndexExecutionOutcome::Retired {
+            index_name: name.clone(),
+            dropped: false,
+        });
+    }
+    if existing.is_none() && lease.operation == SecondaryIndexOperation::Reindex {
+        return Err(SecondaryIndexError::IndexMissing(name.clone()));
+    }
+    let ownership_error = || SecondaryIndexError::IndexOwnershipConflict {
+        index_name: name.clone(),
+    };
+    let owner = spec.owner_comment();
+    let reserved = lease.operation == SecondaryIndexOperation::Ensure
+        && creation_is_reserved(session, lease, table_oid).await?;
+    if existing.as_ref().is_some_and(|index| {
+        index.comment.as_deref() != Some(owner.as_str()) && !(reserved && index.comment.is_none())
+    }) {
+        return Err(ownership_error());
+    }
+
+    // Let PostgreSQL normalize the exact expected definition against the actual column types and
+    // collations on an empty temporary table. Compare the catalog, not hand-normalized DDL text.
+    let scratch = format!("index_definition_{}", Uuid::new_v4().simple());
+    let scratch_table = format!("pg_temp.{}", quote_identifier(&scratch));
+    // Preserve physical column numbers even if the owning table has had a dropped column.
+    // The DDL uses quoted names (including catalog-produced quote_ident projections), a
+    // validated schema definition, and an owner comment derived from its hash. No raw input.
+    sqlx::raw_sql(AssertSqlSafe(format!(
+        "CREATE TEMP TABLE {} AS SELECT {column_projection} FROM {table} WITH NO DATA",
+        quote_identifier(&scratch)
+    )))
+    .execute(&mut *session)
+    .await
+    .map_err(storage_error)?;
+    let create = spec.create_statement(DbBackend::Postgres)?;
+    let reference = create
+        .replacen("CREATE INDEX CONCURRENTLY", "CREATE INDEX", 1)
+        .replacen(" ON index_entities ", &format!(" ON {scratch_table} "), 1);
+    sqlx::raw_sql(AssertSqlSafe(reference))
+        .execute(&mut *session)
+        .await
+        .map_err(storage_error)?;
+    let scratch_oid: i64 = sqlx::query_scalar("SELECT to_regclass($1)::bigint")
+        .bind(&scratch_table)
+        .fetch_one(&mut *session)
+        .await
+        .map_err(storage_error)?;
+    let expected = index_state(session, scratch_oid, name)
+        .await?
+        .ok_or_else(ownership_error)?
+        .definition;
+    sqlx::raw_sql(AssertSqlSafe(format!("DROP TABLE {scratch_table}")))
+        .execute(&mut *session)
+        .await
+        .map_err(storage_error)?;
+    if existing
+        .as_ref()
+        .is_some_and(|index| index.definition != expected)
+    {
+        return Err(ownership_error());
+    }
+    let verify_ready = |state: PostgresIndexState| {
+        if state.definition != expected || state.comment.as_deref() != Some(owner.as_str()) {
+            return Err(ownership_error());
+        }
+        if !state.ready {
+            return Err(SecondaryIndexError::IndexNotReady(name.clone()));
+        }
+        Ok(())
+    };
+
+    remaining_lease_budget(session, lease).await?;
+    let outcome = match lease.operation {
+        SecondaryIndexOperation::Ensure => {
+            // An interrupted concurrent build can leave an invalid physical index. Rebuild
+            // only if it was marked by Index or this exact job reserved its absent name.
+            if existing.as_ref().is_some_and(|state| !state.ready) {
+                sqlx::raw_sql(AssertSqlSafe(format!(
+                    "DROP INDEX CONCURRENTLY {qualified_index}"
+                )))
+                .execute(&mut *session)
+                .await
+                .map_err(storage_error)?;
+                existing = None;
+            }
+            let created = existing.is_none();
+            if created {
+                if !reserved {
+                    reserve_creation(session, lease, table_oid, &qualified_index).await?;
+                }
+                remaining_lease_budget(session, lease).await?;
+                let ddl = create.replacen(" ON index_entities ", &format!(" ON {table} "), 1);
+                sqlx::raw_sql(AssertSqlSafe(ddl))
+                    .execute(&mut *session)
+                    .await
+                    .map_err(storage_error)?;
+                existing = index_state(session, table_oid, name).await?;
+            }
+            let state = existing.ok_or_else(ownership_error)?;
+            if state.definition != expected
+                || state
+                    .comment
+                    .as_deref()
+                    .is_some_and(|comment| comment != owner)
+            {
+                return Err(ownership_error());
+            }
+            if !state.ready {
+                return Err(SecondaryIndexError::IndexNotReady(name.clone()));
+            }
+            if state.comment.is_none() {
+                remaining_lease_budget(session, lease).await?;
+                sqlx::raw_sql(AssertSqlSafe(format!(
+                    "COMMENT ON INDEX {qualified_index} IS {}",
+                    quote_literal(&owner)
+                )))
+                .execute(&mut *session)
+                .await
+                .map_err(storage_error)?;
+            }
+            verify_ready(
+                index_state(session, table_oid, name)
+                    .await?
+                    .ok_or_else(ownership_error)?,
+            )?;
+            SecondaryIndexExecutionOutcome::Ready {
+                index_name: name.clone(),
+                created,
+            }
+        }
+        SecondaryIndexOperation::Reindex => {
+            sqlx::raw_sql(AssertSqlSafe(format!(
+                "REINDEX INDEX CONCURRENTLY {qualified_index}"
+            )))
+            .execute(&mut *session)
+            .await
+            .map_err(storage_error)?;
+            verify_ready(
+                index_state(session, table_oid, name)
+                    .await?
+                    .ok_or_else(ownership_error)?,
+            )?;
+            SecondaryIndexExecutionOutcome::Reindexed {
+                index_name: name.clone(),
+            }
+        }
+        SecondaryIndexOperation::Retire => {
+            sqlx::raw_sql(AssertSqlSafe(format!(
+                "DROP INDEX CONCURRENTLY {qualified_index}"
+            )))
+            .execute(&mut *session)
+            .await
+            .map_err(storage_error)?;
+            if index_state(session, table_oid, name).await?.is_some() {
+                return Err(ownership_error());
+            }
+            SecondaryIndexExecutionOutcome::Retired {
+                index_name: name.clone(),
+                dropped: true,
+            }
+        }
+    };
+    remaining_lease_budget(session, lease).await?;
+    Ok(outcome)
 }

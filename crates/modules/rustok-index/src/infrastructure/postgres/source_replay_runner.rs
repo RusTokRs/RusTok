@@ -1,14 +1,10 @@
-mod graceful_shutdown;
-
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
-use tokio::time::{Instant, sleep_until};
 use uuid::Uuid;
 
 use crate::{
@@ -17,16 +13,21 @@ use crate::{
     SchemaRegistry, SharedIndexSourceRegistry,
 };
 
+use super::mutation_store::JobMutationFence;
+use super::source_job_discovery::DiscoveredJobVersion;
+use super::source_job_page::drive_page;
 use super::{
+    IndexJobRecoveryError, IndexJobRequeueOutcome, IndexJobRequeueRequest,
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
-    IndexReplayJobLeaseRequest, PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore,
-    PostgresMutationStore,
+    IndexReplayJobLeaseRequest, IndexReplayRetryDisposition, IndexReplayRetryError,
+    IndexReplayRetryFailure, PostgresIndexJobRecoveryStore, PostgresIndexReplayCheckpointStore,
+    PostgresIndexReplayJobStore, PostgresIndexReplayRetryStore, PostgresMutationStore,
 };
+
+use super::source_job_lease::{live_lease_where, placeholder_prefix};
 
 const MAX_PAGES_PER_RUN: usize = 1_024;
 const MIN_REPLAY_RUN_LEASE_DURATION: Duration = Duration::from_secs(60);
-const PAGE_LEASE_HEARTBEAT_DIVISOR: u32 = 3;
-const REPLAY_PAGE_FAILURE_CODE: &str = "index.replay_page_failed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexReplayRunRequest {
@@ -36,6 +37,7 @@ pub struct IndexReplayRunRequest {
     max_pages: usize,
     heartbeat_every_pages: usize,
     job_id: Option<Uuid>,
+    discovered_version: Option<DiscoveredJobVersion>,
 }
 
 impl IndexReplayRunRequest {
@@ -124,6 +126,7 @@ impl IndexReplayRunRequest {
             max_pages,
             heartbeat_every_pages,
             job_id: None,
+            discovered_version: None,
         })
     }
 
@@ -134,6 +137,16 @@ impl IndexReplayRunRequest {
         }
         self.job_id = Some(job_id);
         Ok(self)
+    }
+
+    pub(super) fn for_discovered_job(
+        self,
+        job_id: Uuid,
+        version: DiscoveredJobVersion,
+    ) -> Result<Self, IndexReplayRunError> {
+        let mut request = self.for_job(job_id)?;
+        request.discovered_version = Some(version);
+        Ok(request)
     }
 
     pub fn page_request(&self) -> &IndexReplayPageRequest {
@@ -168,6 +181,9 @@ pub enum IndexReplayRunStatus {
     Complete,
     Cancelled,
     Yielded,
+    RetryScheduled,
+    FailedPermanent,
+    FailedExhausted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +191,7 @@ pub struct IndexReplayRunOutcome {
     status: IndexReplayRunStatus,
     job_id: Option<Uuid>,
     attempt_count: Option<u32>,
+    retry_after: Option<Duration>,
     pages_processed: usize,
     heartbeat_count: usize,
     mutation_count: usize,
@@ -194,6 +211,10 @@ impl IndexReplayRunOutcome {
 
     pub fn attempt_count(&self) -> Option<u32> {
         self.attempt_count
+    }
+
+    pub fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
     }
 
     pub fn pages_processed(&self) -> usize {
@@ -281,10 +302,41 @@ impl PostgresIndexReplayRunner {
         }
     }
 
+    pub(super) async fn requeue_failed_reconciliation(
+        &self,
+        request: IndexJobRequeueRequest,
+    ) -> Result<IndexJobRequeueOutcome, IndexJobRecoveryError> {
+        PostgresIndexJobRecoveryStore::new(self.db.clone())
+            .requeue_reconciliation(request, &self.sources, &self.schema_registry)
+            .await
+    }
+
+    pub(super) async fn requeue_failed(
+        &self,
+        request: IndexJobRequeueRequest,
+    ) -> Result<IndexJobRequeueOutcome, IndexJobRecoveryError> {
+        PostgresIndexJobRecoveryStore::new(self.db.clone())
+            .requeue_replay(request, &self.sources, &self.schema_registry)
+            .await
+    }
+
     pub async fn run(
         &self,
         request: IndexReplayRunRequest,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError> {
+        self.run_interruptible(request, || false).await
+    }
+
+    /// Host interruption yields at a durable boundary without consuming a failure or
+    /// setting the persisted operator-cancellation flag.
+    pub async fn run_interruptible<Check>(
+        &self,
+        request: IndexReplayRunRequest,
+        mut should_interrupt: Check,
+    ) -> Result<IndexReplayRunOutcome, IndexReplayRunError>
+    where
+        Check: FnMut() -> bool,
+    {
         let source_name = self
             .sources
             .source_for_schema(request.page_request().schema())
@@ -293,11 +345,22 @@ impl PostgresIndexReplayRunner {
             })?
             .source_name()
             .to_owned();
-        let lease_request = lease_request_for_run(&request, source_name)?;
+        let registered = self
+            .schema_registry
+            .get(request.page_request().schema())
+            .ok_or_else(|| {
+                IndexReplayJobError::SchemaNotRegistered(request.page_request().schema().clone())
+            })?;
+        let lease_request = lease_request_for_run(&request, source_name)?
+            .with_schema_contract(registered.fingerprint, registered.schema.clone());
         let job_store = PostgresIndexReplayJobStore::new(self.db.clone());
         let lease = match job_store.acquire(&lease_request).await? {
-            IndexReplayJobAcquireOutcome::Busy => {
-                return Ok(empty_outcome(IndexReplayRunStatus::Busy, None, None));
+            IndexReplayJobAcquireOutcome::Busy { job_id } => {
+                return Ok(empty_outcome(
+                    IndexReplayRunStatus::Busy,
+                    Some(job_id),
+                    None,
+                ));
             }
             IndexReplayJobAcquireOutcome::AlreadyComplete { job_id } => {
                 return Ok(empty_outcome(
@@ -314,7 +377,16 @@ impl PostgresIndexReplayRunner {
         let worker = IndexReplayWorker::new(
             self.sources.clone(),
             self.schema_registry.clone(),
-            PostgresMutationStore::new(self.db.clone()),
+            PostgresMutationStore::new(self.db.clone()).with_job_fence(JobMutationFence {
+                tenant_id: lease.tenant_id(),
+                job_id: lease.job_id(),
+                schema: lease.schema().clone(),
+                locale: lease.locale().cloned(),
+                source_name: lease.source_name().to_owned(),
+                worker_id: lease.worker_id().to_owned(),
+                attempt_count: lease.attempt_count(),
+                kind: "rebuild",
+            }),
             checkpoint_store,
         );
 
@@ -322,6 +394,7 @@ impl PostgresIndexReplayRunner {
             status: IndexReplayRunStatus::Yielded,
             job_id: Some(lease.job_id()),
             attempt_count: Some(lease.attempt_count()),
+            retry_after: None,
             pages_processed: 0,
             heartbeat_count: 0,
             mutation_count: 0,
@@ -337,7 +410,13 @@ impl PostgresIndexReplayRunner {
             }
 
             if page_index > 0 && page_index % request.heartbeat_every_pages() == 0 {
-                heartbeat(&job_store, &lease, request.lease_duration()).await?;
+                if let Err(error) = heartbeat(&job_store, &lease, request.lease_duration()).await {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
+                    return Err(error);
+                }
                 aggregate.heartbeat_count += 1;
                 if cancel_if_requested(&self.db, &lease).await? {
                     aggregate.status = IndexReplayRunStatus::Cancelled;
@@ -345,17 +424,39 @@ impl PostgresIndexReplayRunner {
                 }
             }
 
-            let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(
-                &job_store,
-                &lease,
+            let page = drive_page(
                 request.lease_duration(),
-                worker.run_next_page(request.page_request().clone()),
+                worker.run_next_page_interruptible(request.page_request().clone(), || {
+                    let interrupted = should_interrupt();
+                    async move { Ok::<bool, crate::IndexReplayFailure>(interrupted) }
+                }),
+                || heartbeat(&job_store, &lease, request.lease_duration()),
             )
-            .await?;
+            .await;
+            let (page_result, in_page_heartbeat_count) = match page {
+                Ok(page) => page,
+                Err(error) => {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
+                    return Err(error);
+                }
+            };
+            let page_result = page_result.unwrap_or_else(|| {
+                Err(IndexReplayError::CheckpointReadFailed(
+                    crate::IndexReplayFailure::retryable_static("replay_page_deadline"),
+                ))
+            });
             aggregate.heartbeat_count += in_page_heartbeat_count;
             let page = match page_result {
                 Ok(page) => page,
+                Err(IndexReplayError::Interrupted) => break,
                 Err(error) if replay_error_is_lease_lost(&error) => {
+                    if cancel_if_requested(&self.db, &lease).await? {
+                        aggregate.status = IndexReplayRunStatus::Cancelled;
+                        return Ok(aggregate);
+                    }
                     return Err(lease_lost(&lease));
                 }
                 Err(error) => {
@@ -363,19 +464,29 @@ impl PostgresIndexReplayRunner {
                         aggregate.status = IndexReplayRunStatus::Cancelled;
                         return Ok(aggregate);
                     }
-                    let details = replay_failure_details(&error);
-                    match finish_failure(&self.db, &lease, details).await? {
-                        TerminalWriteOutcome::Written => {
-                            return Err(IndexReplayRunError::PageFailed {
-                                job_id: lease.job_id(),
-                                error: Box::new(error),
-                            });
+                    let failure = replay_retry_failure(&error)?;
+                    let store = PostgresIndexReplayRetryStore::new(self.db.clone());
+                    aggregate.status = match store.record_failure(&lease, &failure).await {
+                        Ok(IndexReplayRetryDisposition::RetryScheduled { retry_after, .. }) => {
+                            aggregate.retry_after = Some(retry_after);
+                            IndexReplayRunStatus::RetryScheduled
                         }
-                        TerminalWriteOutcome::Cancelled => {
-                            aggregate.status = IndexReplayRunStatus::Cancelled;
-                            return Ok(aggregate);
+                        Ok(IndexReplayRetryDisposition::TerminalPermanent { .. }) => {
+                            IndexReplayRunStatus::FailedPermanent
                         }
-                    }
+                        Ok(IndexReplayRetryDisposition::TerminalExhausted { .. }) => {
+                            IndexReplayRunStatus::FailedExhausted
+                        }
+                        Err(IndexReplayRetryError::LeaseLost) => {
+                            if cancel_if_requested(&self.db, &lease).await? {
+                                IndexReplayRunStatus::Cancelled
+                            } else {
+                                return Err(lease_lost(&lease));
+                            }
+                        }
+                        Err(error) => return Err(IndexReplayRunError::RetryTransition(error)),
+                    };
+                    return Ok(aggregate);
                 }
             };
 
@@ -447,7 +558,9 @@ fn lease_request_for_run(
         )?,
     };
     match request.job_id {
-        Some(job_id) => Ok(lease_request.for_job(job_id)?),
+        Some(job_id) => Ok(lease_request
+            .for_job(job_id)?
+            .with_discovered_version(request.discovered_version)),
         None => Ok(lease_request),
     }
 }
@@ -461,50 +574,13 @@ fn empty_outcome(
         status,
         job_id,
         attempt_count,
+        retry_after: None,
         pages_processed: 0,
         heartbeat_count: 0,
         mutation_count: 0,
         applied_count: 0,
         duplicate_count: 0,
         stale_count: 0,
-    }
-}
-
-fn page_lease_heartbeat_interval(lease_duration: Duration) -> Duration {
-    lease_duration / PAGE_LEASE_HEARTBEAT_DIVISOR
-}
-
-async fn await_page_with_lease_heartbeats<T, F>(
-    job_store: &PostgresIndexReplayJobStore,
-    lease: &IndexReplayJobLease,
-    lease_duration: Duration,
-    page_future: F,
-) -> Result<(Result<T, IndexReplayError>, usize), IndexReplayRunError>
-where
-    F: Future<Output = Result<T, IndexReplayError>>,
-{
-    let heartbeat_interval = page_lease_heartbeat_interval(lease_duration);
-    debug_assert!(!heartbeat_interval.is_zero());
-    tokio::pin!(page_future);
-    let mut heartbeat_count = 0usize;
-    let mut next_heartbeat = Instant::now() + heartbeat_interval;
-
-    loop {
-        tokio::select! {
-            page_result = &mut page_future => return Ok((page_result, heartbeat_count)),
-            _ = sleep_until(next_heartbeat) => {
-                let heartbeat_future = heartbeat(job_store, lease, lease_duration);
-                tokio::pin!(heartbeat_future);
-                tokio::select! {
-                    page_result = &mut page_future => return Ok((page_result, heartbeat_count)),
-                    heartbeat_result = &mut heartbeat_future => {
-                        heartbeat_result?;
-                        heartbeat_count += 1;
-                        next_heartbeat = Instant::now() + heartbeat_interval;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -623,27 +699,6 @@ async fn finish_success(
     terminal_write_outcome(db, lease, updated.rows_affected()).await
 }
 
-async fn finish_failure(
-    db: &DatabaseConnection,
-    lease: &IndexReplayJobLease,
-    details: JsonValue,
-) -> Result<TerminalWriteOutcome, IndexReplayRunError> {
-    let backend = db.get_database_backend();
-    ensure_supported_backend(backend)?;
-    let mut values = lease_values(lease, backend);
-    values.push(REPLAY_PAGE_FAILURE_CODE.to_owned().into());
-    values.push(SqlValue::Json(Some(Box::new(details))));
-    let updated = db
-        .execute_raw(Statement::from_sql_and_values(
-            backend,
-            finish_failure_sql(backend),
-            values,
-        ))
-        .await
-        .map_err(job_storage_error)?;
-    terminal_write_outcome(db, lease, updated.rows_affected()).await
-}
-
 async fn yield_for_resume(
     db: &DatabaseConnection,
     lease: &IndexReplayJobLease,
@@ -681,11 +736,14 @@ fn replay_error_is_lease_lost(error: &IndexReplayError) -> bool {
         | IndexReplayError::CheckpointCommitFailed(failure) => {
             failure.code() == "checkpoint_lease_lost"
         }
+        IndexReplayError::MutationFailed { failure, .. } => failure.code() == "job_lease_lost",
         _ => false,
     }
 }
 
-fn replay_failure_details(error: &IndexReplayError) -> JsonValue {
+fn replay_retry_failure(
+    error: &IndexReplayError,
+) -> Result<IndexReplayRetryFailure, IndexReplayRunError> {
     let (code, retryable) = match error {
         IndexReplayError::SourceContract(IndexSourceError::SourceFailure { failure, .. }) => (
             failure.code(),
@@ -700,11 +758,12 @@ fn replay_failure_details(error: &IndexReplayError) -> JsonValue {
         IndexReplayError::SourceContract(_) => ("source_contract_invalid", false),
         _ => ("replay_contract_invalid", false),
     };
-    json!({
-        "contract": "index_replay_run_failure_v1",
-        "dependency_code": code,
-        "retryable": retryable,
-    })
+    let failure = if retryable {
+        IndexReplayRetryFailure::retryable(code)
+    } else {
+        IndexReplayRetryFailure::permanent(code)
+    };
+    failure.map_err(IndexReplayRunError::RetryTransition)
 }
 
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRunError> {
@@ -714,15 +773,6 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRunErro
         backend => Err(IndexReplayRunError::Job(IndexReplayJobError::Storage(
             format!("Index replay runner does not support {backend:?}"),
         ))),
-    }
-}
-
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
     }
 }
 
@@ -772,13 +822,14 @@ fn request_running_cancel_sql(backend: DbBackend) -> String {
 }
 
 fn cancel_active_job_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let lease = live_lease_where(backend, "rebuild", 1, true);
     format!(
-        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = TRUE"
+        "UPDATE index_jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE {lease}"
     )
 }
 
 fn finish_success_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "rebuild", 1, false);
     let prefix = placeholder_prefix(backend);
     let complete_cursor = match backend {
         DbBackend::Postgres => "checkpoint.cursor = 'null'::jsonb",
@@ -787,21 +838,14 @@ fn finish_success_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = {prefix}9 AND checkpoint.partition_key = '' AND {complete_cursor})"
-    )
-}
-
-fn finish_failure_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    format!(
-        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6 WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'succeeded', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, last_error_code = NULL, last_error_details = NULL WHERE {lease} AND EXISTS (SELECT 1 FROM index_checkpoints AS checkpoint WHERE checkpoint.tenant_id = {prefix}1 AND checkpoint.checkpoint_kind = 'rebuild' AND checkpoint.source_name = {prefix}5 AND checkpoint.module_name = {prefix}6 AND checkpoint.entity_name = {prefix}7 AND checkpoint.schema_version = {prefix}8 AND checkpoint.locale_key = {prefix}9 AND checkpoint.partition_key = '' AND {complete_cursor})"
     )
 }
 
 fn yield_job_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let lease = live_lease_where(backend, "rebuild", 1, false);
     format!(
-        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'pending', available_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
@@ -842,12 +886,8 @@ pub enum IndexReplayRunError {
     Job(#[from] IndexReplayJobError),
     #[error("Index replay job {job_id} lost attempt {attempt_count} ownership")]
     LeaseLost { job_id: Uuid, attempt_count: u32 },
-    #[error("Index replay job {job_id} failed while processing a page")]
-    PageFailed {
-        job_id: Uuid,
-        #[source]
-        error: Box<IndexReplayError>,
-    },
+    #[error("Index replay retry transition failed")]
+    RetryTransition(#[source] IndexReplayRetryError),
 }
 
 #[cfg(test)]
@@ -936,7 +976,7 @@ mod locale_scope_tests {
         .expect("canonical 60 second replay lease should remain valid");
         assert_eq!(minimum.lease_duration(), Duration::from_secs(60));
         assert_eq!(
-            page_lease_heartbeat_interval(minimum.lease_duration()),
+            super::super::source_job_page::heartbeat_interval(minimum.lease_duration()),
             Duration::from_secs(20)
         );
     }

@@ -20,9 +20,14 @@ mod schema_lease;
 mod schema_readiness;
 mod schema_registration;
 mod secondary_index;
+mod secondary_index_runtime;
 mod source_factory;
+mod source_job_discovery;
+mod source_job_failure;
+mod source_job_lease;
+mod source_job_page;
+mod source_job_recovery;
 mod source_reconciliation_dead_letter_inspector;
-mod source_reconciliation_recovery;
 mod source_reconciliation_retry;
 mod source_reconciliation_runner;
 mod source_reconciliation_scheduler;
@@ -92,6 +97,7 @@ pub use drift_missing_entity_repair::{
 };
 pub use drift_orphan_link_repair::{
     PostgresIndexDriftOrphanLinkEvidenceReader, PostgresIndexDriftOrphanLinkRepairOwner,
+    PostgresIndexOrphanLinkAuthorityFence,
     materialize_postgres_index_drift_orphan_link_repair_service,
 };
 pub use drift_repair::{
@@ -125,8 +131,8 @@ pub use query_runtime::{
     IndexQueryRuntimeCompositionError, materialize_postgres_index_query_runtime,
 };
 pub use replay_runtime::{
-    IndexReplayRuntimeCompositionError, SharedIndexReplayRuntime,
-    materialize_postgres_index_replay_runtime,
+    IndexJobOperatorAuthority, IndexJobOperatorError, IndexReplayRuntimeCompositionError,
+    SharedIndexReplayRuntime, materialize_postgres_index_replay_runtime,
 };
 pub use schema_lease::{
     PostgresSchemaLeaseStore, SchemaApplicationLease, SchemaApplicationLeaseRequest,
@@ -146,19 +152,19 @@ pub use secondary_index::{
     SecondaryIndexExecutionOutcome, SecondaryIndexKind, SecondaryIndexLease,
     SecondaryIndexOperation, SecondaryIndexPlan, SecondaryIndexRequest, SecondaryIndexSpec,
 };
+pub use secondary_index_runtime::SharedIndexSecondaryIndexRuntime;
 pub use source_factory::{
-    IndexSourceRegistrationError, PostgresIndexSourceFactory,
-    PostgresIndexSourceFactoryCatalog, PostgresIndexSourceFactoryDescriptor,
-    PostgresIndexSourceFactoryError, materialize_postgres_index_sources,
-    register_postgres_index_source_factory,
+    IndexSourceRegistrationError, PostgresIndexSourceFactory, PostgresIndexSourceFactoryCatalog,
+    PostgresIndexSourceFactoryDescriptor, PostgresIndexSourceFactoryError,
+    materialize_postgres_index_sources, register_postgres_index_source_factory,
+};
+use source_job_recovery::PostgresIndexJobRecoveryStore;
+pub use source_job_recovery::{
+    IndexJobRecoveryError, IndexJobRequeueOutcome, IndexJobRequeueRequest,
 };
 pub use source_reconciliation_dead_letter_inspector::{
     IndexReconciliationDeadLetterInspection, IndexReconciliationDeadLetterInspectionError,
     PostgresIndexReconciliationDeadLetterInspector,
-};
-pub use source_reconciliation_recovery::{
-    IndexReconciliationRecoveryError, IndexReconciliationRequeueOutcome,
-    IndexReconciliationRequeueRequest, PostgresIndexReconciliationRecoveryStore,
 };
 pub use source_reconciliation_retry::{
     IndexReconciliationRetryDisposition, IndexReconciliationRetryError,

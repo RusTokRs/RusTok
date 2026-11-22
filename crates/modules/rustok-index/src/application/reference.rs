@@ -200,7 +200,7 @@ impl<'a> ReferenceIndex<'a> {
                 .values_for_path(record, &order.field)
                 .into_iter()
                 .next();
-            let comparison = compare_optional_to_cursor(record_value, cursor_value);
+            let comparison = compare_optional_values(record_value, Some(cursor_value));
             if comparison != Ordering::Equal {
                 return apply_direction(comparison, order.direction);
             }
@@ -386,26 +386,14 @@ fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {
     }
 }
 
+// Explicit null and an absent value (for example, a missing linked row) have the
+// same key. Reversing this comparison gives DESC NULLS FIRST.
 fn compare_optional_values(left: Option<&IndexValue>, right: Option<&IndexValue>) -> Ordering {
     match (left, right) {
+        (None | Some(IndexValue::Null), None | Some(IndexValue::Null)) => Ordering::Equal,
+        (None | Some(IndexValue::Null), _) => Ordering::Greater,
+        (_, None | Some(IndexValue::Null)) => Ordering::Less,
         (Some(left), Some(right)) => compare_values(left, right).unwrap_or(Ordering::Equal),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
-    }
-}
-
-fn compare_optional_to_cursor(
-    record_value: Option<&IndexValue>,
-    cursor_value: &IndexValue,
-) -> Ordering {
-    match (record_value, cursor_value) {
-        (None, IndexValue::Null) | (Some(IndexValue::Null), IndexValue::Null) => Ordering::Equal,
-        (None, _) | (Some(IndexValue::Null), _) => Ordering::Greater,
-        (Some(_), IndexValue::Null) => Ordering::Less,
-        (Some(record_value), cursor_value) => {
-            compare_values(record_value, cursor_value).unwrap_or(Ordering::Equal)
-        }
     }
 }
 
@@ -581,6 +569,27 @@ mod tests {
 
             prop_assert_eq!(outcome, ApplyOutcome::StaleIgnored);
             prop_assert!(!index.records.contains_key(&key));
+        }
+    }
+
+    #[test]
+    fn absent_and_explicit_null_have_the_same_order_key() {
+        let lower = IndexValue::Integer(-1);
+        let higher = IndexValue::Integer(2);
+        let null = IndexValue::Null;
+        let keys = [
+            (Some(&lower), 0),
+            (Some(&higher), 1),
+            (None, 2),
+            (Some(&null), 2),
+        ];
+        for (left, left_rank) in keys {
+            for (right, right_rank) in keys {
+                assert_eq!(
+                    compare_optional_values(left, right),
+                    left_rank.cmp(&right_rank)
+                );
+            }
         }
     }
 

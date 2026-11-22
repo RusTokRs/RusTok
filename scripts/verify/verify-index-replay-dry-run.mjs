@@ -97,11 +97,24 @@ for (const forbidden of ['tokio::spawn', '.execute(', '.begin()']) {
   }
 }
 
-requireMarkers('crates/modules/rustok-index/src/lib.rs', [
+const indexLib = requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'bounded side-effect-free',
   'pub mod replay_dry_run;',
-  'pub use replay_dry_run::*;',
 ]);
+const dryRunExports = indexLib.match(/pub use replay_dry_run::\{([^}]+)\};/)?.[1];
+for (const exported of [
+  'IndexReplayDryRunError',
+  'IndexReplayDryRunOutcome',
+  'IndexReplayDryRunRequest',
+  'IndexReplayDryRunRuntimeCompositionError',
+  'IndexReplayDryRunStatus',
+  'SharedIndexReplayDryRunRuntime',
+  'materialize_index_replay_dry_run_runtime',
+]) {
+  if (!dryRunExports?.split(',').some((name) => name.trim() === exported)) {
+    fail(`Index crate does not re-export ${exported} from the dry-run owner`);
+  }
+}
 requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod source_timeout;',
   'pub use source_timeout::register_index_source;',

@@ -8,7 +8,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{IndexMutation, SchemaRegistry};
+use crate::{EntityKey, IndexMutation, IndexValue, LocaleKey, SchemaRef, SchemaRegistry};
+
+use super::source_job_lease::{live_lease_where, placeholder_prefix};
 
 const MAX_SOURCE_NAME_BYTES: usize = 128;
 const MAX_DELIVERY_ID_BYTES: usize = 191;
@@ -83,6 +85,10 @@ pub enum MutationStorageError {
     },
     #[error("mutation delivery identity was reused for a different payload")]
     DeliveryConflict,
+    #[error("source published different Index content at the same revision")]
+    SourceRevisionConflict,
+    #[error("durable Index job no longer owns the mutation lease")]
+    JobLeaseLost,
     #[error("mutation delivery is already in non-terminal state {state}")]
     DeliveryInProgress { state: String },
     #[error("mutation delivery was rejected previously")]
@@ -102,13 +108,71 @@ pub enum MutationStorageError {
 }
 
 #[derive(Clone)]
+pub(super) struct JobMutationFence {
+    pub(super) tenant_id: Uuid,
+    pub(super) job_id: Uuid,
+    pub(super) schema: SchemaRef,
+    pub(super) locale: Option<LocaleKey>,
+    pub(super) source_name: String,
+    pub(super) worker_id: String,
+    pub(super) attempt_count: u32,
+    pub(super) kind: &'static str,
+}
+
+impl JobMutationFence {
+    async fn assert_active(
+        &self,
+        transaction: &DatabaseTransaction,
+        delivery: &MutationDelivery,
+    ) -> Result<(), MutationStorageError> {
+        let key = delivery.mutation().key();
+        if key.tenant_id != self.tenant_id
+            || key.schema != self.schema
+            || self
+                .locale
+                .as_ref()
+                .is_some_and(|locale| key.locale.as_ref() != Some(locale))
+            || delivery.source_name() != self.source_name
+        {
+            return Err(MutationStorageError::JobLeaseLost);
+        }
+        let backend = transaction.get_database_backend();
+        ensure_supported_backend(backend)?;
+        let lease = live_lease_where(backend, self.kind, 1, false);
+        let owned = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!("SELECT job_id FROM index_jobs WHERE {lease}"),
+                vec![
+                    uuid_value(self.tenant_id, backend),
+                    uuid_value(self.job_id, backend),
+                    self.worker_id.clone().into(),
+                    i64::from(self.attempt_count).into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if owned.is_none() {
+            return Err(MutationStorageError::JobLeaseLost);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub struct PostgresMutationStore {
     db: DatabaseConnection,
+    fence: Option<JobMutationFence>,
 }
 
 impl PostgresMutationStore {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self { db, fence: None }
+    }
+
+    pub(super) fn with_job_fence(mut self, fence: JobMutationFence) -> Self {
+        self.fence = Some(fence);
+        self
     }
 
     pub async fn apply(
@@ -120,11 +184,30 @@ impl PostgresMutationStore {
         let payload_bytes = serde_json::to_vec(delivery.mutation())
             .map_err(|error| MutationStorageError::Serialization(error.to_string()))?;
         let payload_hash = hex::encode(Sha256::digest(payload_bytes));
+        let record_fingerprint = revision_fingerprint(delivery.mutation())?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let result = self
-            .apply_in_transaction(&transaction, registry, delivery, &payload_hash)
-            .await;
+        let result = async {
+            if let Some(fence) = &self.fence {
+                // Hold the job row through the write; a reclaimer cannot change its generation
+                // while this mutation commits. Recheck elapsed lease time before commit as well.
+                fence.assert_active(&transaction, delivery).await?;
+            }
+            let outcome = self
+                .apply_in_transaction(
+                    &transaction,
+                    registry,
+                    delivery,
+                    &payload_hash,
+                    &record_fingerprint,
+                )
+                .await?;
+            if let Some(fence) = &self.fence {
+                fence.assert_active(&transaction, delivery).await?;
+            }
+            Ok(outcome)
+        }
+        .await;
 
         match result {
             Ok(outcome) => {
@@ -144,6 +227,7 @@ impl PostgresMutationStore {
         registry: &SchemaRegistry,
         delivery: &MutationDelivery,
         payload_hash: &str,
+        record_fingerprint: &str,
     ) -> Result<MutationApplyOutcome, MutationStorageError> {
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
@@ -186,25 +270,39 @@ impl PostgresMutationStore {
                 .await;
         }
 
-        self.lock_entity_key(transaction, mutation, backend).await?;
-        let current_source_version = self
-            .current_source_version(transaction, mutation, backend)
-            .await?;
-        if source_version <= current_source_version {
-            self.complete_inbox(transaction, delivery, payload_hash, backend)
-                .await?;
-            return Ok(MutationApplyOutcome::StaleIgnored {
-                incoming_source_version: source_version,
-                current_source_version,
-            });
-        }
-
+        lock_entity_key(transaction, key, backend).await?;
         let registered = registry.get(&key.schema).ok_or_else(|| {
             MutationStorageError::Storage(
                 "validated mutation schema disappeared from the registry".to_owned(),
             )
         })?;
         let schema_fingerprint = registered.fingerprint.to_string();
+        if let Some(row) = self.current_record(transaction, mutation, backend).await? {
+            let current_source_version = stored_source_version(&row)?;
+            if current_source_version >= source_version {
+                let outcome = if current_source_version == source_version {
+                    let saved_fingerprint: String = row
+                        .try_get("", "record_fingerprint")
+                        .map_err(storage_error)?;
+                    let saved_schema: String = row
+                        .try_get("", "schema_fingerprint")
+                        .map_err(storage_error)?;
+                    if saved_fingerprint != record_fingerprint || saved_schema != schema_fingerprint
+                    {
+                        return Err(MutationStorageError::SourceRevisionConflict);
+                    }
+                    MutationApplyOutcome::Duplicate { source_version }
+                } else {
+                    MutationApplyOutcome::StaleIgnored {
+                        incoming_source_version: source_version,
+                        current_source_version,
+                    }
+                };
+                self.complete_inbox(transaction, delivery, payload_hash, backend)
+                    .await?;
+                return Ok(outcome);
+            }
+        }
 
         self.delete_existing_links(transaction, mutation, backend)
             .await?;
@@ -217,6 +315,7 @@ impl PostgresMutationStore {
                         transaction,
                         mutation,
                         &schema_fingerprint,
+                        record_fingerprint,
                         Some(payload),
                         false,
                         backend,
@@ -233,6 +332,7 @@ impl PostgresMutationStore {
                         transaction,
                         mutation,
                         &schema_fingerprint,
+                        record_fingerprint,
                         None,
                         true,
                         backend,
@@ -319,52 +419,18 @@ impl PostgresMutationStore {
         }
     }
 
-    async fn lock_entity_key(
+    async fn current_record(
         &self,
         transaction: &DatabaseTransaction,
         mutation: &IndexMutation,
         backend: DbBackend,
-    ) -> Result<(), MutationStorageError> {
-        if backend == DbBackend::Sqlite {
-            return Ok(());
-        }
+    ) -> Result<Option<sea_orm::QueryResult>, MutationStorageError> {
         let key = mutation.key();
         let locale_key = key
             .locale
             .as_ref()
             .map_or_else(String::new, |locale| locale.as_str().to_owned());
-        let lock_key = format!(
-            "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
-            key.tenant_id,
-            key.schema.module.as_str(),
-            key.schema.entity.as_str(),
-            key.schema.version.get(),
-            key.entity_id,
-            locale_key,
-        );
         transaction
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                vec![lock_key.into()],
-            ))
-            .await
-            .map_err(storage_error)?;
-        Ok(())
-    }
-
-    async fn current_source_version(
-        &self,
-        transaction: &DatabaseTransaction,
-        mutation: &IndexMutation,
-        backend: DbBackend,
-    ) -> Result<u64, MutationStorageError> {
-        let key = mutation.key();
-        let locale_key = key
-            .locale
-            .as_ref()
-            .map_or_else(String::new, |locale| locale.as_str().to_owned());
-        let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_entity_version_sql(backend),
@@ -378,8 +444,7 @@ impl PostgresMutationStore {
                 ],
             ))
             .await
-            .map_err(storage_error)?;
-        row.as_ref().map_or(Ok(0), stored_source_version)
+            .map_err(storage_error)
     }
 
     async fn delete_existing_links(
@@ -416,6 +481,7 @@ impl PostgresMutationStore {
         transaction: &DatabaseTransaction,
         mutation: &IndexMutation,
         schema_fingerprint: &str,
+        record_fingerprint: &str,
         payload: Option<JsonValue>,
         is_deleted: bool,
         backend: DbBackend,
@@ -439,6 +505,7 @@ impl PostgresMutationStore {
                     locale_key.into(),
                     source_version_value(mutation.source_version(), backend)?,
                     schema_fingerprint.to_owned().into(),
+                    record_fingerprint.to_owned().into(),
                     payload,
                     is_deleted.into(),
                 ],
@@ -527,6 +594,66 @@ impl PostgresMutationStore {
     }
 }
 
+pub(super) async fn lock_entity_key(
+    transaction: &DatabaseTransaction,
+    key: &EntityKey,
+    backend: DbBackend,
+) -> Result<(), MutationStorageError> {
+    if backend == DbBackend::Sqlite {
+        return Ok(());
+    }
+    let locale_key = key
+        .locale
+        .as_ref()
+        .map_or_else(String::new, |locale| locale.as_str().to_owned());
+    let lock_key = format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        key.tenant_id,
+        key.schema.module.as_str(),
+        key.schema.entity.as_str(),
+        key.schema.version.get(),
+        key.entity_id,
+        locale_key,
+    );
+    transaction
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![lock_key.into()],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
+fn revision_fingerprint(mutation: &IndexMutation) -> Result<String, MutationStorageError> {
+    fn normalize(value: &mut IndexValue) {
+        match value {
+            IndexValue::Decimal(number) => *number = number.normalize(),
+            IndexValue::List(values) => values.iter_mut().for_each(normalize),
+            _ => {}
+        }
+    }
+    // The key and revision are compared independently. Different transport paths may identify
+    // the same source revision with different delivery IDs. Link target order is significant.
+    let bytes = match mutation {
+        IndexMutation::Upsert { record, .. } => {
+            let mut fields = record.fields.clone();
+            fields.values_mut().for_each(normalize);
+            let mut links: Vec<_> = record
+                .links
+                .iter()
+                .filter(|link| !link.targets.is_empty())
+                .collect();
+            links.sort_by(|left, right| left.name.cmp(&right.name));
+            serde_json::to_vec(&("upsert", fields, links))
+                .map_err(|error| MutationStorageError::Serialization(error.to_string()))?
+        }
+        IndexMutation::Delete { .. } => b"delete".to_vec(),
+    };
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
 fn validate_delivery_part(
     field: &'static str,
     value: &str,
@@ -570,15 +697,6 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), MutationStorageErr
 
 fn storage_error(error: impl std::fmt::Display) -> MutationStorageError {
     MutationStorageError::Storage(error.to_string())
-}
-
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
 }
 
 fn source_version_expression(backend: DbBackend, index: usize) -> String {
@@ -657,7 +775,7 @@ fn select_entity_version_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "SELECT CAST(source_version AS TEXT) AS source_version_text FROM index_entities WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND entity_id = {prefix}5 AND locale_key = {prefix}6{lock}"
+        "SELECT CAST(source_version AS TEXT) AS source_version_text, schema_fingerprint, record_fingerprint FROM index_entities WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND entity_id = {prefix}5 AND locale_key = {prefix}6{lock}"
     )
 }
 
@@ -672,7 +790,7 @@ fn upsert_entity_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     let source_version = source_version_expression(backend, 7);
     format!(
-        "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, payload, is_deleted) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {source_version}, {prefix}8, {prefix}9, {prefix}10) ON CONFLICT (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key) DO UPDATE SET source_version = excluded.source_version, schema_fingerprint = excluded.schema_fingerprint, payload = excluded.payload, is_deleted = excluded.is_deleted, updated_at = CURRENT_TIMESTAMP WHERE excluded.source_version > index_entities.source_version"
+        "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, record_fingerprint, payload, is_deleted) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {source_version}, {prefix}8, {prefix}9, {prefix}10, {prefix}11) ON CONFLICT (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key) DO UPDATE SET source_version = excluded.source_version, schema_fingerprint = excluded.schema_fingerprint, record_fingerprint = excluded.record_fingerprint, payload = excluded.payload, is_deleted = excluded.is_deleted, updated_at = CURRENT_TIMESTAMP WHERE excluded.source_version > index_entities.source_version"
     )
 }
 

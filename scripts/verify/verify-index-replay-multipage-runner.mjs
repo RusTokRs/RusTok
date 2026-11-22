@@ -34,20 +34,20 @@ const runner = requireMarkers(runnerPath, [
   'PostgresIndexReplayCheckpointStore::new(self.db.clone(), lease.clone())',
   'for page_index in 0..request.max_pages()',
   'page_index % request.heartbeat_every_pages() == 0',
-  'worker.run_next_page(request.page_request().clone())',
-  'let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(',
+  'worker.run_next_page_interruptible(request.page_request().clone(),',
+  'let page = drive_page(',
   'aggregate.heartbeat_count += in_page_heartbeat_count;',
   'cancel_if_requested(&self.db, &lease).await?',
   'finish_success(&self.db, &lease).await?',
-  'finish_failure(&self.db, &lease, details).await?',
+  'store.record_failure(&lease, &failure).await',
   'yield_for_resume(&self.db, &lease).await?',
   "state = 'pending'",
   "state = 'cancelled'",
   'cancel_requested = TRUE',
-  'cancel_requested = FALSE',
+  'live_lease_where(backend, "rebuild", 1, false)',
+  'live_lease_where(backend, "rebuild", 1, true)',
   "kind = 'rebuild'",
-  'lease_expires_at > CURRENT_TIMESTAMP',
-  'index_replay_run_failure_v1',
+  'replay_page_deadline',
   'checkpoint_lease_lost',
   'IndexReplayRunError::LeaseLost',
 ]);
@@ -58,16 +58,14 @@ for (const forbidden of [
   'rustok_product',
   'rustok_content',
   'rustok_flex',
-  'run_interruptible<Check>',
-  'index_replay_page_timeout',
 ]) {
   if (runner.includes(forbidden)) fail(`${runnerPath} contains forbidden marker ${forbidden}`);
 }
 
 const runLoop = runner.indexOf('for page_index in 0..request.max_pages()');
 const prePageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', runLoop);
-const pageAwait = runner.indexOf('let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(', prePageCancel);
-const pageCall = runner.indexOf('worker.run_next_page(request.page_request().clone())', pageAwait);
+const pageAwait = runner.indexOf('let page = drive_page(', prePageCancel);
+const pageCall = runner.indexOf('worker.run_next_page_interruptible(request.page_request().clone(),', pageAwait);
 const pageMatch = runner.indexOf('let page = match page_result {', pageCall);
 const postPageCancel = runner.indexOf('cancel_if_requested(&self.db, &lease).await?', pageMatch);
 const successCall = runner.indexOf('finish_success(&self.db, &lease).await?', postPageCancel);
@@ -85,10 +83,10 @@ if (
   fail('ordinary runner must preserve cancel -> bounded page/lease maintenance -> cancel -> complete/yield ordering');
 }
 
-for (const terminalSql of ['finish_success_sql', 'finish_failure_sql', 'yield_job_sql']) {
+for (const terminalSql of ['finish_success_sql', 'yield_job_sql']) {
   const start = runner.indexOf(`fn ${terminalSql}(`);
   const end = runner.indexOf('\n}', start);
-  if (start < 0 || !runner.slice(start, end).includes('cancel_requested = FALSE')) {
+  if (start < 0 || !runner.slice(start, end).includes('live_lease_where(backend, "rebuild", 1, false)')) {
     fail(`${terminalSql} must make cancellation win over terminal or pending publication`);
   }
 }
@@ -96,7 +94,7 @@ for (const terminalSql of ['finish_success_sql', 'finish_failure_sql', 'yield_jo
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner_tests.rs', [
   'bounded_run_yields_pending_and_resumes_with_a_new_attempt',
   'pending_cancel_request_terminalizes_without_a_worker',
-  'running_cancel_request_is_observed_after_the_current_page',
+  'running_cancel_request_fences_in_flight_mutations_and_checkpoint',
   'requested_running_cancel_survives_reclaim_and_fences_the_old_attempt',
   'lease_loss_during_a_page_does_not_publish_failure_or_advance_cursor',
   'run_request_bounds_pages_and_heartbeat_cadence',
@@ -109,9 +107,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_r
 ]);
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
-  'mod source_replay_runner {',
-  'include!("source_replay_runner.rs");',
-  'mod graceful_shutdown;',
+  'mod source_replay_runner;',
   'mod source_replay_runner_tests;',
   'mod source_replay_graceful_shutdown_tests;',
   'PostgresIndexReplayRunner',

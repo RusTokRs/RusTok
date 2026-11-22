@@ -2,8 +2,8 @@ use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use sea_orm::{
-    AccessMode, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend,
-    IsolationLevel, QueryResult, Statement, TransactionTrait,
+    AccessMode, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
+    IsolationLevel, QueryResult, RuntimeErr, Statement, TransactionTrait, sqlx,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -33,6 +33,35 @@ const FINDING_KEY_DOMAIN: &[u8] = b"index_drift_finding_key_v1";
 const COMMAND_PAYLOAD_DOMAIN: &[u8] = b"index_drift_repair_command_v1";
 const NO_LOCALE_COMPONENT: &[u8] = b"\0";
 
+// Keep the database's definitive insert conflicts distinct from transport or
+// storage failures. Only the former may be resolved with a fresh read.
+enum ReservationError {
+    Failure(IndexDriftRepairFailure),
+    ConcurrentInsert,
+}
+
+impl From<IndexDriftRepairFailure> for ReservationError {
+    fn from(failure: IndexDriftRepairFailure) -> Self {
+        Self::Failure(failure)
+    }
+}
+
+fn reservation_insert_error(error: DbErr) -> ReservationError {
+    if let DbErr::Exec(RuntimeErr::SqlxError(error)) | DbErr::Query(RuntimeErr::SqlxError(error)) =
+        &error
+        && let sqlx::Error::Database(error) = error.as_ref()
+    {
+        match error.code().as_deref() {
+            Some("40001") => return ReservationError::ConcurrentInsert,
+            Some("23505") if error.constraint() == Some("uq_index_finding_repair_active") => {
+                return ReservationError::ConcurrentInsert;
+            }
+            _ => {}
+        }
+    }
+    retryable_failure(STORAGE_UNAVAILABLE).into()
+}
+
 #[derive(Clone)]
 pub struct PostgresIndexDriftRepairStore {
     db: DatabaseConnection,
@@ -47,7 +76,7 @@ impl PostgresIndexDriftRepairStore {
         &self,
         transaction: &DatabaseTransaction,
         authorized: &IndexDriftAuthorizedRepairCommand,
-    ) -> Result<IndexDriftRepairReservationOutcome, IndexDriftRepairFailure> {
+    ) -> Result<IndexDriftRepairReservationOutcome, ReservationError> {
         let command = authorized.command();
         let payload_digest = command_payload_digest(command);
         lock_command_id(transaction, command.tenant_id(), command.command_id()).await?;
@@ -59,7 +88,7 @@ impl PostgresIndexDriftRepairStore {
                 || existing.payload_digest != payload_digest
                 || existing.target_kind != target_kind_text(command.target().kind())
             {
-                return Err(permanent_failure(COMMAND_ID_CONFLICT));
+                return Err(permanent_failure(COMMAND_ID_CONFLICT).into());
             }
             if existing.state == "completed" {
                 return Ok(IndexDriftRepairReservationOutcome::AlreadyCompleted(
@@ -67,12 +96,12 @@ impl PostgresIndexDriftRepairStore {
                 ));
             }
             if existing.state != "prepared" {
-                return Err(permanent_failure(STORED_CONTRACT_INVALID));
+                return Err(permanent_failure(STORED_CONTRACT_INVALID).into());
             }
             let finding = match load_and_validate_open_finding(transaction, command).await? {
                 FindingLoadOutcome::Open(finding) => finding,
                 FindingLoadOutcome::Missing | FindingLoadOutcome::NotOpen => {
-                    return Err(permanent_failure(RESERVATION_AMBIGUOUS));
+                    return Err(permanent_failure(RESERVATION_AMBIGUOUS).into());
                 }
             };
             return Ok(IndexDriftRepairReservationOutcome::Resumed {
@@ -116,9 +145,9 @@ impl PostgresIndexDriftRepairStore {
                 ],
             ))
             .await
-            .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
+            .map_err(reservation_insert_error)?;
         if inserted.rows_affected() != 1 {
-            return Err(retryable_failure(STORAGE_UNAVAILABLE));
+            return Err(retryable_failure(STORAGE_UNAVAILABLE).into());
         }
 
         Ok(IndexDriftRepairReservationOutcome::Reserved {
@@ -248,7 +277,20 @@ impl IndexDriftRepairStore for PostgresIndexDriftRepairStore {
                     .rollback()
                     .await
                     .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
-                Err(error)
+                match error {
+                    ReservationError::Failure(failure) => Err(failure),
+                    ReservationError::ConcurrentInsert => {
+                        // A Serializable snapshot taken before the finding lock wait
+                        // may not see the winner. Prove a different, durable prepared
+                        // command in a fresh snapshot; never retry the write here.
+                        if active_finding_command_exists(&self.db, authorized.command()).await? {
+                            return Ok(IndexDriftRepairReservationOutcome::NotReserved(
+                                IndexDriftRepairNotStartedReason::FindingBusy,
+                            ));
+                        }
+                        Err(retryable_failure(STORAGE_UNAVAILABLE))
+                    }
+                }
             }
         }
     }
@@ -486,14 +528,14 @@ fn decode_entity_scope(
 }
 
 async fn active_finding_command_exists(
-    transaction: &DatabaseTransaction,
+    connection: &impl ConnectionTrait,
     command: &IndexDriftRepairCommand,
 ) -> Result<bool, IndexDriftRepairFailure> {
-    transaction
+    connection
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT command_id FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND finding_id = $2 AND state = 'prepared' LIMIT 1",
-            vec![command.tenant_id().into(), command.finding_id().into()],
+            "SELECT command_id FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND finding_id = $2 AND command_id <> $3 AND state = 'prepared' LIMIT 1",
+            vec![command.tenant_id().into(), command.finding_id().into(), command.command_id().into()],
         ))
         .await
         .map(|row| row.is_some())

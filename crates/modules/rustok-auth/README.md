@@ -15,7 +15,9 @@ FFA package and framework-neutral session models in `rustok-ui-auth`.
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 - Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.
-- Own the auth lifecycle and OAuth GraphQL query, mutation, input, and output surfaces behind the `graphql` feature.
+- Own the auth lifecycle and OAuth GraphQL query, mutation, input, and output surfaces behind the
+  `graphql` feature. Its credential rate-limit extension uses shared `http` header types without a
+  direct Axum dependency.
 - Enforce tenant-composite integrity for OAuth apps, tokens, authorization codes,
   consents, and their user subjects at both database and query boundaries.
 - Fail auth configuration fast for malformed or mismatched RS256 keys and keep

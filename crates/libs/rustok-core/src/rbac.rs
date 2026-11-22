@@ -5,7 +5,9 @@ use once_cell::sync::Lazy;
 use uuid::Uuid;
 
 use crate::types::UserRole;
-use rustok_api::{Action, Permission, PortActorKind, PortContext, PortError, Resource};
+use rustok_api::{Action, PortActorKind, PortContext, PortError, Resource};
+
+pub use rustok_api::{Permission, has_effective_permission};
 
 fn managed_permissions(resources: impl IntoIterator<Item = Resource>) -> HashSet<Permission> {
     resources
@@ -375,7 +377,7 @@ impl Rbac {
     pub fn has_permission(role: &UserRole, permission: &Permission) -> bool {
         let permissions: Vec<Permission> =
             Self::permissions_for_role(role).iter().copied().collect();
-        rustok_api::has_effective_permission(&permissions, permission)
+        has_effective_permission(&permissions, permission)
     }
 
     pub fn has_any_permission(role: &UserRole, permissions: &[Permission]) -> bool {

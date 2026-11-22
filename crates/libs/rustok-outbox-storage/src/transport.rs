@@ -88,7 +88,11 @@ impl OutboxTransport {
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         entity::Entity::insert(active_model)
-            .on_conflict(OnConflict::column(entity::Column::Id).do_nothing().to_owned())
+            .on_conflict(
+                OnConflict::column(entity::Column::Id)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .exec_without_returning(txn)
             .await
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
@@ -332,8 +336,8 @@ impl EventTransport for OutboxTransport {
         // metadata (`timestamp`, `trace_id`, `retry_count`) legitimately
         // differs when a producer rebuilds the same logical event, exactly
         // as in the contract write-once comparison.
-        let stored_envelope: EventEnvelope =
-            serde_json::from_value(stored.payload.clone()).map_err(|_| {
+        let stored_envelope: EventEnvelope = serde_json::from_value(stored.payload.clone())
+            .map_err(|_| {
                 Error::Validation(format!(
                     "outbox event id {envelope_id} already belongs to different canonical facts"
                 ))

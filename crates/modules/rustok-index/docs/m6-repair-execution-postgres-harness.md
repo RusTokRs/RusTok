@@ -55,8 +55,9 @@ bounded URL class are derived only by the capture runner and are retained withou
 
 `drift_repair_recovery_postgres_test` covers:
 
-- concurrent commands for one finding, requiring exactly one durable reservation and one
-  `FindingBusy` result;
+- concurrent commands for one finding, using a third connection to hold the finding lock until
+  both reservations have taken their serializable snapshots, and requiring exactly one durable
+  reservation and one `FindingBusy` result;
 - immutable revision `0` activation for the winning reservation;
 - command UUID payload reuse rejection;
 - authorized pause and exact decision replay;
@@ -64,10 +65,12 @@ bounded URL class are derived only by the capture runner and are retained withou
 - database-trigger rejection of `prepared -> completed` while paused;
 - authorized resume followed by one valid completion;
 - immutable completed command identity;
-- reverse execution of all real Index migrations and removal of both repair tables.
+- reverse execution of all real Index migrations and removal of the finding and repair tables,
+  with a localized finding that is representable by the pre-locale-optional schema.
 
-The test stops immediately after reservation through an injected evidence failure. It does not use a
-parallel test-only reservation implementation.
+The test stops the repair immediately after reservation through an injected evidence failure.
+It exercises recovery decisions before running the reverse migrations. It neither bypasses the
+old locale constraint nor changes the nonlocalized fixtures used to exercise concrete repair.
 
 ## Concrete crash and retry target
 

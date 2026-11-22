@@ -61,6 +61,8 @@ the modules owner retains update authorization. See the
 
 - `generate_id`, `parse_id` — ULID/UUID platform identity generators.
 - `Rbac`, `SecurityContext`, `PermissionScope`, `SecurityActorKind` — runtime authorization evaluation context.
+- `rbac::{Permission, has_effective_permission}` — the shared permission vocabulary and effective-grant check for runtime callers, re-exported from the canonical platform contract.
+- `i18n::MAX_LOCALE_TAG_LEN` — the canonical persisted locale size bound for runtime keys.
 - `security_context_from_access_token` — token claim extraction to security context.
 - `RateLimiter`, `InputValidator`, `SecurityHeaders` — defensive HTTP and payload validation primitives.
 

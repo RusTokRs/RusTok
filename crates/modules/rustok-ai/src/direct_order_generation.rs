@@ -97,7 +97,8 @@ pub(crate) async fn generate_order_analytics(
         }),
     )
     .await?;
-    validate_order_analytics_payload(&generated).map_err(AiError::Validation)?;
+    validate_order_analytics_payload(&generated)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(generated)
 }
 
@@ -126,6 +127,7 @@ pub(crate) async fn generate_order_ops_assistant(
         }),
     )
     .await?;
-    validate_order_ops_assistant_payload(&decision).map_err(AiError::Validation)?;
+    validate_order_ops_assistant_payload(&decision)
+        .map_err(|err| AiError::Validation(err.to_string()))?;
     Ok(decision)
 }

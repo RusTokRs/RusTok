@@ -2,8 +2,8 @@ use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -638,8 +638,7 @@ impl CheckoutOperationJournal {
         txn: &DatabaseTransaction,
         operation: &checkout_operation::Model,
         reason: &'static str,
-    ) -> CheckoutOperationResult<()>
-    {
+    ) -> CheckoutOperationResult<()> {
         self.event_bus
             .publish_contract_in_tx(
                 txn,
@@ -662,8 +661,7 @@ impl CheckoutOperationJournal {
         operation: &checkout_operation::Model,
         outcome: &'static str,
         operator_id: Uuid,
-    ) -> CheckoutOperationResult<()>
-    {
+    ) -> CheckoutOperationResult<()> {
         self.event_bus
             .publish_contract_in_tx(
                 txn,
@@ -695,8 +693,7 @@ impl CheckoutOperationJournal {
         txn: &DatabaseTransaction,
         operation: &checkout_operation::Model,
         previous_admission: Option<CheckoutExecutionAdmission>,
-    ) -> CheckoutOperationResult<()>
-    {
+    ) -> CheckoutOperationResult<()> {
         let admission = CheckoutExecutionAdmission::parse(operation.execution_admission.as_str())
             .ok_or_else(|| {
             CheckoutOperationError::Validation(format!(

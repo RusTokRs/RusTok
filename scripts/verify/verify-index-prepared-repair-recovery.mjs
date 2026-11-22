@@ -209,9 +209,11 @@ for (const composition of ['missingComposition', 'orphanComposition']) {
   requireMarkers(composition, [
     'RecoveryAwareIndexDriftRepairOwner',
     'RecoveryAwareIndexDriftRepairStore',
-    'RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)',
     'RecoveryAwareIndexDriftRepairStore::new(db, store)',
   ]);
+  if (!/RecoveryAwareIndexDriftRepairOwner::new\(\s*db\.clone\(\),\s*base_owner\s*,?\s*\)/u.test(content[composition])) {
+    throw new Error(`${files[composition]} must wrap the base owner with the recovery fence`);
+  }
 }
 
 requireMarkers('doc', [

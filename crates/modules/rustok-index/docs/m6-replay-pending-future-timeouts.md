@@ -24,7 +24,7 @@ The one-page worker error surface remains unchanged.
 
 The bound applies only after replay-specific identity/contract preparation that can fail synchronously has succeeded. A normal dependency failure still passes through with its existing permanent/retryable classification.
 
-Production source scan/load calls remain independently bounded by the existing canonical Index source timeout wrapper at 30 seconds. The page-duration/lease policy does not merge source and storage timeouts into one generic page deadline; see `m6-replay-page-lease-heartbeat.md`.
+Production source scan/load calls remain independently bounded by the existing canonical Index source timeout wrapper at 30 seconds. The whole-page deadline is a separate 90-second observation budget; it does not replace source and storage timeout codes; see `m6-replay-page-lease-heartbeat.md`.
 
 ## Checkpoint read timeout semantics
 
@@ -56,24 +56,23 @@ The timeout path does not execute a synthetic rollback, rewind or checkpoint wri
 
 ## Runner failure and cancellation precedence
 
-No new runner terminal state is introduced. Existing `replay_failure_details` maps checkpoint-read, mutation and checkpoint-commit dependency failures to their machine code and `IndexReplayFailureKind` retryability.
-
-For any of these timeout paths, the multi-page runner still checks persisted cancellation after the page error and before writing terminal failure. Therefore:
+Replay carries the dependency code and retry classification through the original job lease.
+After a page error it checks persisted cancellation before recording a failure:
 
 1. a user cancellation that won the race remains `Cancelled`;
-2. otherwise an active fenced attempt records the existing `index.replay_page_failed` terminal job failure with timeout dependency code and `retryable: true` in details;
+2. an active fenced attempt whose dependency failed can return `RetryScheduled`, or
+   terminalize on the last allowed failure; the dependency remains retryable in diagnostics;
 3. lease loss still fails closed through the existing lease path;
-4. `StopHandle` interruption remains a separate safe-point-only `Yielded -> pending` path and is not used as a storage deadline.
-
-This slice does not automatically requeue a failed replay job. Existing replay retry/recovery policy remains the owner of later retry admission.
+4. `StopHandle` interruption remains a separate safe-point-only `Yielded -> pending` path
+   and is not used as a storage deadline.
 
 ## Lease boundary
 
-Per-dependency 30-second bounds are not summed into a whole-page timeout. Large pages can legitimately span many bounded mutation futures, so the runner now maintains lease ownership while the real page future is pending.
-
-`IndexReplayRunRequest` requires at least a 60-second lease, and the ordinary/graceful runners heartbeat an active page every one third of the configured lease duration. With the server-owned 60-second lease, the in-page cadence is 20 seconds. The existing page-count heartbeat remains intact for fast pages.
-
-This keeps exact source/checkpoint/mutation timeout identities authoritative. There is deliberately no generic `index_replay_page_timeout` code. Full policy and retained evidence are documented in `m6-replay-page-lease-heartbeat.md`.
+`IndexReplayRunRequest` requires at least a 60-second lease. The shared page driver renews an
+active lease every third of its duration (20 seconds at the minimum lease) and continues
+polling the page while a heartbeat waits. The 90-second whole-page deadline emits
+`replay_page_deadline` only when it wins; a shorter completed dependency timeout keeps its own
+code. See [page lease heartbeats](./m6-replay-page-lease-heartbeat.md).
 
 ## Retained source evidence
 
@@ -86,7 +85,7 @@ This keeps exact source/checkpoint/mutation timeout identities authoritative. Th
 
 `verify-index-replay-pending-future-timeout.mjs` locks production adapter wiring, all three timeout codes, runner retryability mapping, cancellation precedence and the deliberate absence of `StopHandle` / `request_cancel` from the timeout helper.
 
-`verify-index-replay-page-lease-heartbeat.mjs` separately locks the minimum lease, in-page heartbeat policy and the deliberate absence of a generic whole-page timeout.
+`verify-index-replay-page-lease-heartbeat.mjs` separately locks the minimum lease, in-page heartbeat policy and the whole-page deadline.
 
 The retained tests and verifiers were not executed by the implementation agent.
 
@@ -96,6 +95,5 @@ The retained tests and verifiers were not executed by the implementation agent.
 - maintainer execution/admission of the page lease-heartbeat source evidence;
 - broader multi-host/restart execution evidence;
 - partition replay only after a real partition-capable source contract exists;
-- explicit targeted/full/shadow rebuild modes;
 
-No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or `git diff --check` were executed by the implementation agent.
+Behavioral verification requires maintainer execution.

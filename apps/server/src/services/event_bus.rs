@@ -583,10 +583,21 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
 }
 
 #[cfg(test)]
+pub(super) fn assert_root_delivery(accepted: &[EventEnvelope], expected: &[&EventEnvelope]) {
+    assert_eq!(accepted.len(), expected.len(), "root delivery count");
+    for (actual, expected) in accepted.iter().zip(expected) {
+        assert_eq!(
+            serde_json::to_value(actual).expect("serialize delivered envelope"),
+            serde_json::to_value(expected).expect("serialize expected envelope"),
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::{
-        EventForwarderHandle, EventForwarderReceiver, SharedEventBus, event_bus_from_context,
-        run_event_forwarder, transactional_event_bus_from_context,
+        EventForwarderHandle, EventForwarderReceiver, SharedEventBus, assert_root_delivery,
+        event_bus_from_context, run_event_forwarder, transactional_event_bus_from_context,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -689,10 +700,7 @@ mod tests {
             .expect("forwarder task should join");
 
         assert_eq!(transport.attempts.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            &[envelope]
-        );
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("backpressure enabled").current_depth(),
             0
@@ -818,7 +826,7 @@ mod tests {
             .expect("forwarder should drain after producer completion")
             .expect("forwarder task should join");
 
-        assert_eq!(transport.accepted.lock().unwrap().as_slice(), &[envelope]);
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -878,10 +886,7 @@ mod tests {
             .await
             .expect("supervisor should drain before exiting")
             .expect("supervisor task should join");
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            std::slice::from_ref(&envelope)
-        );
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -956,10 +961,7 @@ mod tests {
         .await
         .expect("shutdown iteration should drain the restart receiver");
 
-        assert_eq!(
-            transport.accepted.lock().unwrap().as_slice(),
-            std::slice::from_ref(&envelope)
-        );
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
         assert_eq!(
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
@@ -1041,7 +1043,7 @@ mod tests {
 
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
-                if transport.accepted.lock().unwrap().as_slice() == std::slice::from_ref(&envelope) {
+                if !transport.accepted.lock().unwrap().is_empty() {
                     break;
                 }
                 tokio::task::yield_now().await;
@@ -1056,29 +1058,36 @@ mod tests {
             .await
             .expect("forwarder should drain and stop")
             .expect("forwarder task should join");
+        assert_root_delivery(&transport.accepted.lock().unwrap(), &[&envelope]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn transactional_and_forwarder_transport_resolution_is_single_owner_under_contention() {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("connect sqlite");
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let start = Arc::new(tokio::sync::Barrier::new(32));
         let mut tasks = Vec::new();
         for _ in 0..32 {
             let ctx = ctx.clone();
+            let start = Arc::clone(&start);
             tasks.push(tokio::spawn(async move {
+                start.wait().await;
                 let transport = super::shared_event_transport(&ctx);
                 let _tx_bus = transactional_event_bus_from_context(&ctx);
                 transport
             }));
         }
 
+        let mut selected_transports = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            selected_transports.push(task.await.expect("transport resolver task must join"));
+        }
         let registered = ctx
             .shared_get::<Arc<dyn EventTransport>>()
             .expect("concurrent callers must publish a single shared transport");
-        for task in tasks {
-            let selected = task.await.expect("transport resolver task must join");
+        for selected in selected_transports {
             assert!(
                 Arc::ptr_eq(&selected, &registered),
                 "a losing initialization must use the winning shared transport"

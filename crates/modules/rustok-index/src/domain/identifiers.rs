@@ -1,6 +1,7 @@
 use std::fmt;
 
 use icu_locale::{Locale, LocaleCanonicalizer};
+use rustok_core::i18n::MAX_LOCALE_TAG_LEN;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use uuid::Uuid;
 
@@ -123,7 +124,14 @@ impl LocaleKey {
             })?;
         LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
 
-        Ok(Self(locale.to_string()))
+        let canonical = locale.to_string();
+        if canonical.len() > MAX_LOCALE_TAG_LEN {
+            return Err(DomainError::IdentifierTooLong {
+                kind: "locale",
+                max: MAX_LOCALE_TAG_LEN,
+            });
+        }
+        Ok(Self(canonical))
     }
 
     pub fn as_str(&self) -> &str {
@@ -303,6 +311,20 @@ mod tests {
     fn rejects_invalid_locale_keys() {
         assert!(LocaleKey::new("en_US").is_err());
         assert!(LocaleKey::new("not a locale").is_err());
+    }
+
+    #[test]
+    fn canonical_locale_key_respects_the_shared_storage_bound() {
+        let boundary = "en-US-x-abcdefgh-abcdefgh-abcdef";
+        assert_eq!(boundary.len(), MAX_LOCALE_TAG_LEN);
+        assert_eq!(LocaleKey::new(boundary).unwrap().as_str(), boundary);
+        assert!(matches!(
+            LocaleKey::new(format!("{boundary}g")),
+            Err(DomainError::IdentifierTooLong {
+                kind: "locale",
+                max: MAX_LOCALE_TAG_LEN,
+            })
+        ));
     }
 
     #[test]

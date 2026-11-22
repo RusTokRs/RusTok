@@ -6,7 +6,11 @@ use thiserror::Error;
 
 use super::IndexReplayJobLease;
 
-const MAX_REPLAY_ATTEMPTS: u32 = 100;
+use super::source_job_failure::{FailureCountError, next_failure_count};
+
+use super::source_job_lease::{deadline_after_seconds, live_lease_where, placeholder_prefix};
+
+const MAX_REPLAY_FAILURES: u32 = 100;
 const MAX_BACKOFF_SECONDS: u64 = 86_400;
 const MAX_FAILURE_CODE_BYTES: usize = 128;
 const RETRY_DETAILS_CONTRACT: &str = "index_replay_retry_v1";
@@ -54,20 +58,20 @@ impl IndexReplayRetryFailure {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexReplayRetryPolicy {
-    max_attempts: u32,
+    max_failures: u32,
     base_backoff_seconds: u64,
     max_backoff_seconds: u64,
 }
 
 impl IndexReplayRetryPolicy {
     pub fn new(
-        max_attempts: u32,
+        max_failures: u32,
         base_backoff: Duration,
         max_backoff: Duration,
     ) -> Result<Self, IndexReplayRetryError> {
-        if !(1..=MAX_REPLAY_ATTEMPTS).contains(&max_attempts) {
+        if !(1..=MAX_REPLAY_FAILURES).contains(&max_failures) {
             return Err(IndexReplayRetryError::InvalidPolicy(
-                "max attempts must be between 1 and 100",
+                "max failures must be between 1 and 100",
             ));
         }
         let base_backoff_seconds = validate_backoff(base_backoff)?;
@@ -78,14 +82,14 @@ impl IndexReplayRetryPolicy {
             ));
         }
         Ok(Self {
-            max_attempts,
+            max_failures,
             base_backoff_seconds,
             max_backoff_seconds,
         })
     }
 
-    pub fn max_attempts(&self) -> u32 {
-        self.max_attempts
+    pub fn max_failures(&self) -> u32 {
+        self.max_failures
     }
 
     pub fn base_backoff(&self) -> Duration {
@@ -98,23 +102,23 @@ impl IndexReplayRetryPolicy {
 
     pub fn evaluate(
         &self,
-        attempt_count: u32,
+        failure_count: u32,
         failure_kind: IndexReplayRetryFailureKind,
     ) -> Result<IndexReplayRetryDisposition, IndexReplayRetryError> {
-        if attempt_count == 0 {
+        if failure_count == 0 {
             return Err(IndexReplayRetryError::InvalidAttemptCount);
         }
         if failure_kind == IndexReplayRetryFailureKind::Permanent {
             return Ok(IndexReplayRetryDisposition::TerminalPermanent {
-                attempts: attempt_count,
+                failures: failure_count,
             });
         }
-        if attempt_count >= self.max_attempts {
+        if failure_count >= self.max_failures {
             return Ok(IndexReplayRetryDisposition::TerminalExhausted {
-                attempts: attempt_count,
+                failures: failure_count,
             });
         }
-        let shift = attempt_count.saturating_sub(1).min(63);
+        let shift = failure_count.saturating_sub(1).min(63);
         let multiplier = 1_u64.checked_shl(shift).unwrap_or(u64::MAX);
         let retry_after_seconds = self
             .base_backoff_seconds
@@ -122,7 +126,7 @@ impl IndexReplayRetryPolicy {
             .min(self.max_backoff_seconds);
         Ok(IndexReplayRetryDisposition::RetryScheduled {
             retry_after: Duration::from_secs(retry_after_seconds),
-            next_attempt: attempt_count
+            next_failure_ordinal: failure_count
                 .checked_add(1)
                 .ok_or(IndexReplayRetryError::InvalidAttemptCount)?,
         })
@@ -141,13 +145,13 @@ impl Default for IndexReplayRetryPolicy {
 pub enum IndexReplayRetryDisposition {
     RetryScheduled {
         retry_after: Duration,
-        next_attempt: u32,
+        next_failure_ordinal: u32,
     },
     TerminalPermanent {
-        attempts: u32,
+        failures: u32,
     },
     TerminalExhausted {
-        attempts: u32,
+        failures: u32,
     },
 }
 
@@ -193,23 +197,36 @@ impl PostgresIndexReplayRetryStore {
     /// database, transport, request, or tenant details are intentionally not accepted.
     /// A retryable failure keeps the same job identity and moves it to `pending` with a
     /// deterministic `available_at` delay. Permanent or exhausted failures terminalize the
-    /// current job as `failed`. Runner integration, automatic scheduling, and scope-level
-    /// dead-letter blocking/requeue remain separate ownership boundaries.
+    /// current job as `failed`. A successful yield does not consume the failure budget.
     pub async fn record_failure(
         &self,
         lease: &IndexReplayJobLease,
         failure: &IndexReplayRetryFailure,
     ) -> Result<IndexReplayRetryDisposition, IndexReplayRetryError> {
-        let disposition = self
-            .policy
-            .evaluate(lease.attempt_count(), failure.kind())?;
         let backend = self.db.get_database_backend();
         ensure_supported_backend(backend)?;
+        let failure_count = next_failure_count(
+            &self.db,
+            backend,
+            "rebuild",
+            vec![
+                uuid_value(lease.tenant_id(), backend),
+                uuid_value(lease.job_id(), backend),
+                lease.worker_id().to_owned().into(),
+                i64::from(lease.attempt_count()).into(),
+            ],
+        )
+        .await
+        .map_err(|error| match error {
+            FailureCountError::LeaseLost => IndexReplayRetryError::LeaseLost,
+            FailureCountError::Storage => IndexReplayRetryError::Storage,
+        })?;
+        let disposition = self.policy.evaluate(failure_count, failure.kind())?;
 
         let rows_affected = match disposition {
             IndexReplayRetryDisposition::RetryScheduled {
                 retry_after,
-                next_attempt,
+                next_failure_ordinal,
             } => {
                 let retry_after_seconds = i64::try_from(retry_after.as_secs()).map_err(|_| {
                     IndexReplayRetryError::InvalidPolicy("retry delay exceeds the SQL range")
@@ -217,9 +234,10 @@ impl PostgresIndexReplayRetryStore {
                 let details = retry_details(
                     lease,
                     failure,
+                    failure_count,
                     "retry_scheduled",
                     Some(retry_after.as_secs()),
-                    Some(next_attempt),
+                    Some(next_failure_ordinal),
                     self.policy,
                 );
                 self.db
@@ -244,6 +262,7 @@ impl PostgresIndexReplayRetryStore {
                 let details = retry_details(
                     lease,
                     failure,
+                    failure_count,
                     "terminal_permanent",
                     None,
                     None,
@@ -255,6 +274,7 @@ impl PostgresIndexReplayRetryStore {
                 let details = retry_details(
                     lease,
                     failure,
+                    failure_count,
                     "terminal_exhausted",
                     None,
                     None,
@@ -298,9 +318,10 @@ async fn terminalize_failure(
 fn retry_details(
     lease: &IndexReplayJobLease,
     failure: &IndexReplayRetryFailure,
+    failure_count: u32,
     disposition: &'static str,
     retry_after_seconds: Option<u64>,
-    next_attempt: Option<u32>,
+    next_failure_ordinal: Option<u32>,
     policy: IndexReplayRetryPolicy,
 ) -> JsonValue {
     json!({
@@ -311,10 +332,11 @@ fn retry_details(
             IndexReplayRetryFailureKind::Permanent => "permanent",
         },
         "attempt_count": lease.attempt_count(),
-        "max_attempts": policy.max_attempts(),
+        "failure_count": failure_count,
+        "max_failures": policy.max_failures(),
         "disposition": disposition,
         "retry_after_seconds": retry_after_seconds,
-        "next_attempt": next_attempt,
+        "next_failure_ordinal": next_failure_ordinal,
     })
 }
 
@@ -353,15 +375,6 @@ fn storage_error(_error: impl std::fmt::Display) -> IndexReplayRetryError {
     IndexReplayRetryError::Storage
 }
 
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 fn uuid_value(value: uuid::Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
@@ -371,32 +384,20 @@ fn uuid_value(value: uuid::Uuid, backend: DbBackend) -> SqlValue {
     }
 }
 
-fn available_at_expression(backend: DbBackend, parameter: usize) -> String {
-    let prefix = placeholder_prefix(backend);
-    match backend {
-        DbBackend::Postgres => {
-            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
-        }
-        DbBackend::Sqlite => {
-            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
-        }
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 fn schedule_retry_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "rebuild", 1, false);
     let prefix = placeholder_prefix(backend);
-    let available_at = available_at_expression(backend, 5);
+    let available_at = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET state = 'pending', available_at = {available_at}, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = {prefix}6, last_error_details = {prefix}7, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'pending', failure_count = failure_count + 1, available_at = {available_at}, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = {prefix}6, last_error_details = {prefix}7, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn terminal_failure_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "rebuild", 1, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP AND cancel_requested = FALSE"
+        "UPDATE index_jobs SET state = 'failed', failure_count = failure_count + 1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, last_error_code = {prefix}5, last_error_details = {prefix}6, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
@@ -407,14 +408,16 @@ mod tests {
     #[test]
     fn default_policy_uses_bounded_exponential_backoff() {
         let policy = IndexReplayRetryPolicy::default();
-        for (attempt, seconds, next_attempt) in [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)] {
+        for (attempt, seconds, next_failure_ordinal) in
+            [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
+        {
             assert_eq!(
                 policy
                     .evaluate(attempt, IndexReplayRetryFailureKind::Retryable)
                     .unwrap(),
                 IndexReplayRetryDisposition::RetryScheduled {
                     retry_after: Duration::from_secs(seconds),
-                    next_attempt,
+                    next_failure_ordinal,
                 }
             );
         }
@@ -422,7 +425,7 @@ mod tests {
             policy
                 .evaluate(5, IndexReplayRetryFailureKind::Retryable)
                 .unwrap(),
-            IndexReplayRetryDisposition::TerminalExhausted { attempts: 5 }
+            IndexReplayRetryDisposition::TerminalExhausted { failures: 5 }
         );
     }
 
@@ -432,7 +435,7 @@ mod tests {
             IndexReplayRetryPolicy::default()
                 .evaluate(1, IndexReplayRetryFailureKind::Permanent)
                 .unwrap(),
-            IndexReplayRetryDisposition::TerminalPermanent { attempts: 1 }
+            IndexReplayRetryDisposition::TerminalPermanent { failures: 1 }
         );
     }
 
@@ -453,10 +456,10 @@ mod tests {
     fn retry_sql_is_lease_fenced_and_preserves_existing_job_identity() {
         let postgres = schedule_retry_sql(DbBackend::Postgres);
         assert!(postgres.contains("state = 'pending'"));
-        assert!(postgres.contains("available_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second')"));
+        assert!(postgres.contains("available_at = clock_timestamp() + ($5 * INTERVAL '1 second')"));
         assert!(postgres.contains("lease_owner = $3"));
         assert!(postgres.contains("attempt_count = $4"));
-        assert!(postgres.contains("lease_expires_at > CURRENT_TIMESTAMP"));
+        assert!(postgres.contains("lease_expires_at > clock_timestamp()"));
         assert!(postgres.contains("cancel_requested = FALSE"));
         assert!(!postgres.contains("INSERT INTO index_jobs"));
 

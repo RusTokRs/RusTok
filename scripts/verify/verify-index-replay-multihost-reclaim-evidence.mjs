@@ -84,10 +84,10 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
 
 const jobPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
 const job = requireMarkers(jobPath, [
-  "state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP",
+  'due_job_where(backend, "rebuild")',
+  'live_lease_where(backend, "rebuild", 1, false)',
   'attempt_count = {prefix}4',
   'lease_owner = {prefix}3',
-  'lease_expires_at > CURRENT_TIMESTAMP',
 ]);
 if (job.includes('distributed_consensus')) {
   fail(`${jobPath} must not introduce a second ownership mechanism for this evidence slice`);
@@ -97,7 +97,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_r
   'IndexReplayRunError::LeaseLost',
   'checkpoint_lease_lost',
   'terminal_write_outcome',
-  'await_page_with_lease_heartbeats(',
+  'drive_page(',
 ]);
 
 requireMarkers('crates/modules/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md', [

@@ -33,7 +33,8 @@ This is a fail-closed contract. If the canonical dependency window changes, the 
 
 ## In-page heartbeat
 
-Both ordinary and graceful replay runners wrap each one-page future in the same `await_page_with_lease_heartbeats` helper.
+Ordinary and interruptible replay use the same runner loop and the same `drive_page` helper
+as reconciliation.
 
 For an active page:
 
@@ -47,11 +48,14 @@ For the server-owned `60s` lease this produces a `20s` in-page heartbeat interva
 
 The pre-existing `heartbeat_every_pages` boundary heartbeat remains intact. It still provides an explicit page-count cadence for fast pages; the in-page timer protects a slow or mutation-heavy page from losing its lease merely because the next page boundary has not been reached yet.
 
-## Why there is no whole-page timeout
+## Whole-page deadline
 
-A single outer page timeout would race the more precise source/mutation/checkpoint timeout contracts. It could turn a known `index_replay_mutation_timeout` or `index_replay_checkpoint_commit_timeout` into a generic page-duration failure and would make durable-state recovery harder to diagnose.
-
-This policy therefore keeps dependency-specific timeout identity authoritative and uses lease heartbeats only for ownership maintenance. There is no new page terminal state and no generic `index_replay_page_timeout` code.
+The 90-second observation deadline is separate from the shorter dependency timeouts. When it
+wins, replay records `replay_page_deadline` and reconciliation records its corresponding
+page deadline. The driver continues polling the page while a heartbeat waits on the job row;
+waiting on the heartbeat alone could prevent the page from releasing that row. Cancellation
+and lease/generation checks also guard mutation and checkpoint transactions, not just the
+heartbeat and final job update.
 
 ## Lease-maintenance failure
 
@@ -63,14 +67,14 @@ No synthetic checkpoint, rollback, success or failure transition is invented aft
 
 ## Cancellation and graceful shutdown
 
-This slice does not merge persisted cancellation, graceful shutdown and lease maintenance into one state machine.
+Persisted cancellation, graceful shutdown, and lease loss remain distinct outcomes.
 
 - the in-page heartbeat does not set, clear or reinterpret `cancel_requested`;
 - the ordinary runner retains its existing persisted-cancellation checks before and after each page and before terminal failure publication;
 - `StopHandle` interruption is still observed only through the worker's cooperative safe points;
 - the graceful runner uses the same in-page lease helper around that interruptible page future;
 - a graceful interruption still yields the owned job to `pending` and preserves the last committed checkpoint;
-- no automatic retry/requeue policy is added.
+- a normal interruption does not charge the failure budget or create a replacement job.
 
 ## Production source boundary
 

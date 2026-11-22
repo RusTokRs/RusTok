@@ -208,8 +208,7 @@ fn plan_derives_stable_typed_and_containment_indexes() {
         .unwrap();
     assert_eq!(tags.kind(), SecondaryIndexKind::JsonContainment);
     let tags_sql = tags.create_statement(DbBackend::Postgres).unwrap();
-    assert!(tags_sql.contains("USING gin"));
-    assert!(tags_sql.contains("((payload -> 'tags') -> 'value') jsonb_path_ops"));
+    assert!(tags_sql.contains("USING gin ((((payload -> 'tags') -> 'value')) jsonb_path_ops)"));
     assert!(
         first
             .indexes()

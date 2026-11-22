@@ -15,6 +15,8 @@ pub enum DomainError {
     EmptySchema,
     #[error("schema version must be greater than zero")]
     ZeroSchemaVersion,
+    #[error("schema version exceeds the supported signed 32-bit range")]
+    SchemaVersionTooLarge,
     #[error("schema contains duplicate field: {0}")]
     DuplicateField(String),
     #[error("schema contains duplicate link: {0}")]
@@ -39,6 +41,8 @@ pub enum DomainError {
     TooManyOrderExpressions,
     #[error("query filter expression is too complex")]
     FilterTooComplex,
+    #[error("query contains too many filter operands")]
+    TooManyFilterOperands,
     #[error("query link path is too deep")]
     LinkPathTooDeep,
     #[error("page size must be greater than zero")]

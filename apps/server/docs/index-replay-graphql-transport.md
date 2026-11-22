@@ -4,12 +4,15 @@ Status: `full_shadow_targeted_source_complete_execution_pending`.
 
 ## Boundary
 
-The server exposes four bounded GraphQL mutations over server-owned guarded replay capabilities:
+The server exposes bounded GraphQL mutations over server-owned guarded Index capabilities:
 
 - `runIndexReplay(input: ...)` runs one bounded durable Full schema-wide or exact-locale replay chunk and samples the server-owned graceful-shutdown signal at durable safe points;
 - `runIndexReplayTargeted(input: ...)` runs one bounded exact-key Targeted mutation-application invocation;
 - `runIndexReplayShadow(input: ...)` runs one bounded schema-wide or exact-locale side-effect-free Shadow validation chunk and returns only an authenticated confidential continuation token when more source pages remain;
-- `cancelIndexReplay(input: ...)` requests cancellation of one durable Full replay job in the authenticated tenant.
+- `cancelIndexReplay(input: ...)` requests cancellation of one durable Full replay job in the authenticated tenant;
+- `requeueIndexReplay(input: IndexJobRequeueInput!)` requeues an exact failed replay job, retaining its committed checkpoint;
+- `requeueIndexReconciliation(input: IndexJobRequeueInput!)` requeues an exact failed reconciliation job, restarting its configured passes;
+- `maintainIndexSecondaryIndex(input: ...)` explicitly maintains one selected tenant schema field's PostgreSQL secondary index.
 
 These are dedicated command surfaces, not one caller-controlled replay mode selector. The transport
 does not add automatic replay scheduling, background worker ownership, a new replay algorithm,
@@ -23,7 +26,9 @@ Tenant and actor identities are never accepted from GraphQL input. The transport
 
 For Full this means authorization precedes schema and optional locale parsing. For Shadow it precedes
 schema, optional locale and continuation parsing. For Targeted it precedes schema, target UUID and
-per-target locale parsing. Cancellation authorizes before parsing the job UUID.
+per-target locale parsing. Cancellation authorizes before parsing the job UUID. Both requeue
+resolvers reject mismatched tenant/actor scope and authorize before constructing the recovery
+request. GraphQL's `UUID` scalar is validated by the schema before resolver execution.
 
 Full/Shadow locale and every Targeted key locale are bounded to 32 bytes and canonicalized through
 `rustok_index::LocaleKey`. Targeted therefore treats canonical aliases as the same exact key: the same
@@ -65,6 +70,11 @@ Each Targeted entry contains only:
 - positive schema routing key;
 - optional canonicalizable locale;
 - optional sealed continuation token.
+
+`IndexJobRequeueInput` contains only the exact `jobId` and bounded audit `reason`. The two
+fields select distinct job kinds and never fall through to another kind. `REQUEUED` returns
+`retryEpoch` and `auditId` from the committed update; `NOT_FOUND`, `NOT_FAILED`, and
+`SCOPE_UNAVAILABLE` do not change the job. See [Index operations](../../../crates/modules/rustok-index/docs/operations.md).
 
 No replay run input accepts tenant, actor, source name, database handle, scheduler controls, partition,
 retry state, or a generic mode. Full additionally exposes no worker identity, heartbeat cadence, lease
@@ -223,5 +233,9 @@ key deployment evidence, durable locale replay/restart execution, process-shutdo
 database replay execution, cancellation races, CI and retained runtime evidence remain
 maintainer-owned and are not claimed by this source slice.
 
-No Rust tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows,
-CI, or `git diff --check` were executed by the implementation agent.
+The shipped CSR command documents have an in-process schema fixture for unauthenticated,
+wrong-tenant, read-only, and authorized requests. The authorized branch reaches a deliberately
+unavailable runtime; it does not execute a write. A separate loopback fixture exercises the
+native standalone relay's scope headers and exact reconciliation requeue payload with a stub
+backend. See [Index operations](../../../crates/modules/rustok-index/docs/operations.md) for
+maintainer-run middleware, storage and browser verification.

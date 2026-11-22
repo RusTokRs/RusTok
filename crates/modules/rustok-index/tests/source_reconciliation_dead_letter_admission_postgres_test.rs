@@ -154,7 +154,7 @@ async fn failed_reconciliation_scope_blocks_new_jobs_without_exposing_details() 
     );
     assert_eq!(first_outcome.attempt_count(), Some(1));
     assert_eq!(first_outcome.retry_after(), None);
-    assert_eq!(first_outcome.next_attempt(), None);
+    assert_eq!(first_outcome.next_failure_ordinal(), None);
     assert_eq!(first_outcome.pages_processed(), 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 

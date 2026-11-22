@@ -8,7 +8,8 @@ use rustok_index::{
     IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
     IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairOutcome,
     IndexDriftRepairReceiptOutcome, IndexDriftRepairRecoveryAction,
-    IndexDriftRepairRecoveryOutcome, IndexMutation,
+    IndexDriftRepairRecoveryOutcome, IndexMutation, MutationApplyOutcome, MutationDelivery,
+    PostgresMutationStore,
 };
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tokio::sync::Barrier;
@@ -128,8 +129,8 @@ async fn missing_and_orphan_crash_windows_resume_exactly() -> TestResult<()> {
         "repair-evidence-missing-crash-seed",
     )
     .await?;
-    runtime.authority.clear_mutation(&missing_key);
-    runtime.authority.set_absence(missing_key.clone(), 9);
+    runtime.authority.clear_mutation(&missing_key).await;
+    runtime.authority.set_absence(missing_key.clone(), 9).await;
     let (missing_finding, missing_target) =
         create_missing_finding(&database, &runtime, missing_key.clone(), 7, 9).await?;
     let missing_command_id = Uuid::new_v4();
@@ -194,10 +195,13 @@ async fn missing_and_orphan_crash_windows_resume_exactly() -> TestResult<()> {
         "repair-evidence-orphan-crash-seed",
     )
     .await?;
-    runtime.authority.set_absence(
-        runtime.target_key(database.tenant_id, target_zero.entity_id),
-        9,
-    );
+    runtime
+        .authority
+        .set_absence(
+            runtime.target_key(database.tenant_id, target_zero.entity_id),
+            9,
+        )
+        .await;
     let (orphan_finding, orphan_target) = create_orphan_finding(
         &database,
         &runtime,
@@ -221,7 +225,7 @@ async fn missing_and_orphan_crash_windows_resume_exactly() -> TestResult<()> {
         Arc::new(FailAfterOwnerEvidence {
             inner: orphan_evidence(&database, &runtime).await?,
         }),
-        orphan_owner(&database).await?,
+        orphan_owner(&database, &runtime).await?,
         recovery_store(&database).await?,
     )?;
     let error = orphan_crash
@@ -268,7 +272,7 @@ async fn missing_and_orphan_crash_windows_resume_exactly() -> TestResult<()> {
 
     let orphan_retry = repair_service(
         orphan_evidence(&database, &runtime).await?,
-        orphan_owner(&database).await?,
+        orphan_owner(&database, &runtime).await?,
         recovery_store(&database).await?,
     )?;
     assert!(matches!(
@@ -298,8 +302,8 @@ async fn recovery_admission_fences_side_effect_and_completion() -> TestResult<()
         "repair-evidence-before-gate-seed",
     )
     .await?;
-    runtime.authority.clear_mutation(&before_key);
-    runtime.authority.set_absence(before_key.clone(), 9);
+    runtime.authority.clear_mutation(&before_key).await;
+    runtime.authority.set_absence(before_key.clone(), 9).await;
     let (before_finding, before_target) =
         create_missing_finding(&database, &runtime, before_key.clone(), 7, 9).await?;
     let before_command_id = Uuid::new_v4();
@@ -390,8 +394,8 @@ async fn recovery_admission_fences_side_effect_and_completion() -> TestResult<()
         "repair-evidence-after-gate-seed",
     )
     .await?;
-    runtime.authority.clear_mutation(&after_key);
-    runtime.authority.set_absence(after_key.clone(), 13);
+    runtime.authority.clear_mutation(&after_key).await;
+    runtime.authority.set_absence(after_key.clone(), 13).await;
     let (after_finding, after_target) =
         create_missing_finding(&database, &runtime, after_key.clone(), 11, 13).await?;
     let after_command_id = Uuid::new_v4();
@@ -498,26 +502,35 @@ async fn orphan_commitments_and_normal_mutations_fail_closed() -> TestResult<()>
         &replacement,
     )
     .await?;
-    runtime.authority.set_mutation(IndexMutation::Upsert {
-        event_id: Uuid::new_v4(),
-        record: runtime.source_record(substituted.source_key.clone(), 7, vec![replacement]),
-    });
+    runtime
+        .authority
+        .set_mutation(IndexMutation::Upsert {
+            event_id: Uuid::new_v4(),
+            record: runtime.source_record(substituted.source_key.clone(), 7, vec![replacement]),
+        })
+        .await;
     assert_orphan_not_repaired(&database, &runtime, &substituted).await?;
 
     let restored = prepare_orphan_case(&database, &runtime, "target-restored").await?;
     let restored_key = runtime.target_key(database.tenant_id, restored.target.entity_id);
-    runtime.authority.set_mutation(IndexMutation::Upsert {
-        event_id: Uuid::new_v4(),
-        record: runtime.target_record(restored_key.clone(), 10),
-    });
-    runtime.authority.clear_absence(&restored_key);
+    runtime
+        .authority
+        .set_mutation(IndexMutation::Upsert {
+            event_id: Uuid::new_v4(),
+            record: runtime.target_record(restored_key.clone(), 10),
+        })
+        .await;
+    runtime.authority.clear_absence(&restored_key).await;
     assert_orphan_not_repaired(&database, &runtime, &restored).await?;
 
     let absence_moved = prepare_orphan_case(&database, &runtime, "absence-moved").await?;
-    runtime.authority.set_absence(
-        runtime.target_key(database.tenant_id, absence_moved.target.entity_id),
-        10,
-    );
+    runtime
+        .authority
+        .set_absence(
+            runtime.target_key(database.tenant_id, absence_moved.target.entity_id),
+            10,
+        )
+        .await;
     assert_orphan_not_repaired(&database, &runtime, &absence_moved).await?;
 
     let concurrent = prepare_orphan_case(&database, &runtime, "normal-mutation").await?;
@@ -529,7 +542,7 @@ async fn orphan_commitments_and_normal_mutations_fail_closed() -> TestResult<()>
             entered: entered.clone(),
             release: release.clone(),
         }),
-        orphan_owner(&database).await?,
+        orphan_owner(&database, &runtime).await?,
         recovery_store(&database).await?,
     )?;
     let task = tokio::spawn({
@@ -549,7 +562,7 @@ async fn orphan_commitments_and_normal_mutations_fail_closed() -> TestResult<()>
     release.wait().await;
     let result = task.await?;
     let error = result.expect_err("normal mutation must invalidate the admitted orphan target");
-    assert_eq!(error.code(), "index_drift_repair_owner_unavailable");
+    assert_eq!(error.code(), "index_drift_repair_source_changed");
     assert_eq!(
         entity_state(&database, &concurrent.source_key).await?,
         Some((8, false))
@@ -605,7 +618,8 @@ async fn prepare_orphan_case(
     .await?;
     runtime
         .authority
-        .set_absence(runtime.target_key(database.tenant_id, target.entity_id), 9);
+        .set_absence(runtime.target_key(database.tenant_id, target.entity_id), 9)
+        .await;
     let (finding_id, repair_target) = create_orphan_finding(
         database,
         runtime,
@@ -637,7 +651,7 @@ async fn assert_orphan_not_repaired(
 ) -> TestResult<()> {
     let service = repair_service(
         orphan_evidence(database, runtime).await?,
-        orphan_owner(database).await?,
+        orphan_owner(database, runtime).await?,
         recovery_store(database).await?,
     )?;
     let outcome = service.execute(&case.command).await?;
@@ -672,4 +686,195 @@ async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> Tes
     ))
     .await?;
     Ok(())
+}
+
+#[tokio::test]
+async fn owner_target_revived_after_evidence_prevents_orphan_deletion_without_index_redelivery()
+-> TestResult<()> {
+    let Some(database) = TestDatabase::setup("orphan_owner_write_fence").await? else {
+        return Ok(());
+    };
+    let runtime = FixtureRuntime::setup(&database).await?;
+    let case = prepare_orphan_case(&database, &runtime, "owner-target-revived").await?;
+    let entered = Arc::new(Barrier::new(2));
+    let release = Arc::new(Barrier::new(2));
+    let service = repair_service(
+        Arc::new(GateBeforeOwnerEvidence {
+            inner: orphan_evidence(&database, &runtime).await?,
+            entered: entered.clone(),
+            release: release.clone(),
+        }),
+        orphan_owner(&database, &runtime).await?,
+        recovery_store(&database).await?,
+    )?;
+    let command = case.command.clone();
+    let task = tokio::spawn(async move { service.execute(&command).await });
+    entered.wait().await;
+    let target_key = runtime.target_key(database.tenant_id, case.target.entity_id);
+    runtime
+        .authority
+        .set_mutation(IndexMutation::Upsert {
+            event_id: Uuid::new_v4(),
+            record: runtime.target_record(target_key, 10),
+        })
+        .await;
+    release.wait().await;
+    let error = task
+        .await?
+        .expect_err("owner authority changed without an Index write");
+    assert_eq!(error.code(), "index_drift_repair_source_changed");
+    assert_eq!(
+        inbox_state(&database, ORPHAN_DELIVERY_SOURCE, case.command.command_id()).await?,
+        None
+    );
+    assert_eq!(
+        exact_link_count(
+            &database,
+            &case.source_key,
+            7,
+            &runtime.contracts.link_name,
+            0,
+            &case.target
+        )
+        .await?,
+        1
+    );
+    database.cleanup().await
+}
+
+#[tokio::test]
+async fn orphan_fence_survives_commit_and_crash_recovery_preserves_restored_edge() -> TestResult<()>
+{
+    let Some(database) = TestDatabase::setup("orphan_commit_fence").await? else {
+        return Ok(());
+    };
+    let runtime = FixtureRuntime::setup(&database).await?;
+    let case = prepare_orphan_case(&database, &runtime, "orphan-commit-fence").await?;
+    let db = database.connection().await?;
+    // A deferred constraint trigger runs at the repair transaction's commit, after the link
+    // is removed and the inbox is written. Checking the lock's PID also rejects a fence taken
+    // on another connection, even if that connection was kept alive by the fixture.
+    db.execute_unprepared(
+        r#"
+        CREATE FUNCTION require_fixture_owner_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+        DECLARE fence_key bigint := hashtextextended(current_schema() || ':fixture-owner', 0);
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_catalog.pg_locks
+                WHERE pid = pg_backend_pid() AND locktype = 'advisory' AND granted
+                  AND mode = 'ShareLock' AND objsubid = 1
+                  AND classid::bigint = ((fence_key >> 32) & 4294967295)
+                  AND objid::bigint = (fence_key & 4294967295)
+            ) THEN
+                RAISE EXCEPTION 'authoritative owner lock was not held through repair commit';
+            END IF;
+            RETURN OLD;
+        END; $$;
+        CREATE CONSTRAINT TRIGGER check_owner_lock_at_repair_commit
+            AFTER DELETE ON index_links DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION require_fixture_owner_fence();
+        "#,
+    )
+    .await?;
+    let crash = repair_service(
+        Arc::new(FailAfterOwnerEvidence {
+            inner: orphan_evidence(&database, &runtime).await?,
+        }),
+        orphan_owner(&database, &runtime).await?,
+        recovery_store(&database).await?,
+    )?;
+    assert_eq!(
+        crash
+            .execute(&case.command)
+            .await
+            .expect_err("interruption after commit")
+            .code(),
+        "repair_evidence_after_commit_crash",
+    );
+    assert_eq!(
+        repair_command_state(&database, case.command.command_id()).await?,
+        "prepared"
+    );
+    assert_eq!(
+        inbox_state(&database, ORPHAN_DELIVERY_SOURCE, case.command.command_id())
+            .await?
+            .as_deref(),
+        Some("applied")
+    );
+    db.execute_unprepared("DROP TRIGGER check_owner_lock_at_repair_commit ON index_links")
+        .await?;
+    let store = PostgresMutationStore::new(db);
+    let redelivery = MutationDelivery::from_event(
+        "repair-evidence-equal-revision",
+        IndexMutation::Upsert {
+            event_id: Uuid::new_v4(),
+            record: runtime.source_record(case.source_key.clone(), 7, vec![case.target.clone()]),
+        },
+    )?;
+    assert_eq!(
+        store.apply(runtime.schemas.as_ref(), &redelivery).await?,
+        MutationApplyOutcome::Duplicate { source_version: 7 }
+    );
+    let count = |version| {
+        exact_link_count(
+            &database,
+            &case.source_key,
+            version,
+            &runtime.contracts.link_name,
+            0,
+            &case.target,
+        )
+    };
+    assert_eq!(count(7).await?, 0);
+
+    // An owner allowing resurrection must publish the new target AND advance the source revision
+    // for restored edges. Index's duplicate check intentionally does not undo a local repair.
+    for record in [
+        runtime.target_record(
+            runtime.target_key(database.tenant_id, case.target.entity_id),
+            10,
+        ),
+        runtime.source_record(case.source_key.clone(), 8, vec![case.target.clone()]),
+    ] {
+        let mutation = IndexMutation::Upsert {
+            event_id: Uuid::new_v4(),
+            record,
+        };
+        runtime.authority.set_mutation(mutation.clone()).await;
+        let delivery = MutationDelivery::from_event("repair-evidence-restoration", mutation)?;
+        assert_eq!(
+            store.apply(runtime.schemas.as_ref(), &delivery).await?,
+            MutationApplyOutcome::Applied {
+                source_version: delivery.mutation().source_version()
+            }
+        );
+    }
+    assert_eq!(count(7).await?, 0);
+    assert_eq!(count(8).await?, 1);
+
+    // An old command can record its exact applied receipt, but cannot claim current convergence
+    // or run a second delete once the source/target authority has advanced.
+    let retry = repair_service(
+        orphan_evidence(&database, &runtime).await?,
+        orphan_owner(&database, &runtime).await?,
+        recovery_store(&database).await?,
+    )?;
+    let result = retry.execute(&case.command).await?;
+    let IndexDriftRepairOutcome::NotRepaired(receipt) = result else {
+        panic!("old command must not claim convergence: {result:?}");
+    };
+    assert_eq!(
+        receipt.outcome(),
+        &IndexDriftRepairReceiptOutcome::NotRepaired {
+            code: "after_not_converged".into()
+        }
+    );
+    assert!(receipt.owner_receipt_digest().is_some());
+    assert!(receipt.after_digest().is_some());
+    assert_eq!(count(8).await?, 1);
+    assert_eq!(
+        retry.execute(&case.command).await?,
+        IndexDriftRepairOutcome::AlreadyCompleted(receipt)
+    );
+    database.cleanup().await
 }

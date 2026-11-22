@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -21,7 +20,6 @@ pub enum PostgresBindValue {
     Decimal(Decimal),
     Text(String),
     Uuid(Uuid),
-    Timestamp(DateTime<Utc>),
     Json(JsonValue),
 }
 
@@ -29,6 +27,10 @@ pub enum PostgresBindValue {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CompiledQueryColumn {
     EntityId {
+        output_alias: String,
+        relation_alias: String,
+    },
+    RelationIdentity {
         output_alias: String,
         relation_alias: String,
     },
@@ -76,6 +78,8 @@ pub enum PostgresQueryBuildError {
 
 #[derive(Debug, Error)]
 pub enum PostgresQueryCompileError {
+    #[error("Index query exceeds the PostgreSQL bind budget")]
+    BindBudgetExceeded,
     #[error("cursor continuation must be decoded and validated through SchemaRegistry")]
     CursorContextRequired,
     #[error("decoded cursor context does not match query pagination")]
