@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_core::ModuleRuntimeExtensions;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend};
+use sea_orm::{DatabaseConnection, DbBackend};
 use thiserror::Error;
 
 use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};

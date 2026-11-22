@@ -54,6 +54,7 @@ impl IndexJobOperatorAuthority {
     }
 
     fn require_tenant(self, tenant_id: Uuid) -> Result<(), IndexJobOperatorError> {
+        // INVARIANT: Operator authority tenant must match requested job tenant.
         if self.tenant_id != tenant_id {
             return Err(IndexJobOperatorError::Forbidden);
         }
