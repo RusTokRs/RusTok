@@ -145,7 +145,7 @@ fn agent_workflow_execution_context(
         .map(|permission| {
             permission
                 .parse::<Permission>()
-                .map_err(AiError::Validation)
+                .map_err(|err| AiError::Validation(err.to_string()))
         })
         .collect::<AiResult<Vec<_>>>()?;
     let preferred_locale = context
