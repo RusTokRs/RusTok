@@ -18,7 +18,7 @@ use crate::middleware::locale::{
     invalidate_all_tenant_locale_cache, invalidate_tenant_locale_cache,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop, run_until_stopped};
 use crate::services::tenant_cache_generation::{
     TENANT_CACHE_BACKEND_PREFIX, TENANT_CACHE_GENERATION_CHANNEL,
 };
@@ -472,13 +472,23 @@ pub async fn start_tenant_locale_generation_listener(
         );
     }
 
-    let local_task = tokio::spawn(supervise_local_listener(listener.clone(), initial_local));
+    let local_task = tokio::spawn(run_until_stopped(
+        stop.subscribe(),
+        supervise_local_listener(listener.clone(), initial_local),
+    ));
     let redis_required = cache.redis_configuration_present();
-    let redis_task = cache
-        .redis_client_initialized()
-        .then(|| tokio::spawn(supervise_redis_listener(listener.clone())));
-    let reconcile_task =
-        redis_required.then(|| tokio::spawn(run_periodic_reconciliation(listener)));
+    let redis_task = cache.redis_client_initialized().then(|| {
+        tokio::spawn(run_until_stopped(
+            stop.subscribe(),
+            supervise_redis_listener(listener.clone()),
+        ))
+    });
+    let reconcile_task = redis_required.then(|| {
+        tokio::spawn(run_until_stopped(
+            stop.subscribe(),
+            run_periodic_reconciliation(listener),
+        ))
+    });
 
     ctx.shared_insert(TenantLocaleGenerationListenerHandle::new(
         local_task,
