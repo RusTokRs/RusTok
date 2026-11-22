@@ -42,6 +42,27 @@ where
     }
 }
 
+/// Run a cancellation-safe background listener until host shutdown.
+///
+/// Use only for workers whose current operation is safe to cancel (for
+/// example, cache invalidation listeners and read-only reconciliation). Durable
+/// claims and externally visible operations must finish or compensate instead.
+pub(crate) async fn run_until_stopped<F>(
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+    worker: F,
+) where
+    F: std::future::Future<Output = ()>,
+{
+    if *stop_rx.borrow() {
+        return;
+    }
+    tokio::select! {
+        biased;
+        _ = stop_rx.changed() => {}
+        _ = worker => {}
+    }
+}
+
 /// Stored in `ServerRuntimeContext`; shutdown signals each worker so it can
 /// complete its current durable operation and stop before the next one.
 #[derive(Clone)]
@@ -93,7 +114,10 @@ impl StopHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::{StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation};
+    use super::{
+        StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation,
+        run_until_stopped,
+    };
 
     #[tokio::test]
     async fn stop_interrupts_a_stalled_unpublished_bootstrap() {
@@ -173,6 +197,35 @@ mod tests {
             await_worker_startup_or_stop(&stop, async { 8 }).await,
             None
         );
+    }
+
+    #[tokio::test]
+    async fn run_until_stopped_cancels_a_running_listener() {
+        let (stop, receiver) = StopHandle::new();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+
+        struct CancellationMarker(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for CancellationMarker {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let worker = tokio::spawn(run_until_stopped(receiver, async move {
+            let _marker = CancellationMarker(Some(cancelled_tx));
+            started_tx.send(()).expect("listener started");
+            std::future::pending::<()>().await;
+        }));
+        started_rx.await.expect("listener future was polled");
+        stop.stop().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), worker)
+            .await
+            .expect("listener exits promptly on stop")
+            .expect("listener wrapper joins");
+        cancelled_rx.await.expect("listener future was cancelled");
     }
 
     #[tokio::test]
