@@ -60,6 +60,9 @@ pub struct AdminCatalogFacetsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
     pub query: AdminProductListQuery,
+    /// Exact vendor filter shared with the admin product list.
+    #[serde(default)]
+    pub vendor: Option<String>,
     /// Attribute codes to count, in display order; empty means "no facets".
     pub facet_codes: Vec<String>,
 }

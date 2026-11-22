@@ -127,6 +127,7 @@ impl super::CatalogService {
         locale: &str,
         fallback_locale: Option<&str>,
         list_query: &super::AdminProductListQuery,
+        vendor: Option<&str>,
         facet_codes: &[String],
     ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
@@ -142,6 +143,7 @@ impl super::CatalogService {
             },
             CatalogFacetFilters {
                 search: list_query.search.as_deref(),
+                vendor: vendor.map(str::trim).filter(|value| !value.is_empty()),
                 category_id: list_query.category_id,
                 attribute_filters: list_query.attribute_filters.as_slice(),
             },
@@ -170,6 +172,7 @@ pub(super) enum CatalogFacetScope<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CatalogFacetFilters<'a> {
     pub search: Option<&'a str>,
+    pub vendor: Option<&'a str>,
     pub category_id: Option<Uuid>,
     pub attribute_filters: &'a [ProductAttributeFilter],
 }
@@ -194,6 +197,7 @@ pub(super) async fn load_storefront_catalog_facets(
         },
         CatalogFacetFilters {
             search: list_query.search.as_deref(),
+            vendor: None,
             category_id: list_query.category_id,
             attribute_filters: list_query.attribute_filters.as_slice(),
         },
@@ -698,6 +702,15 @@ fn facet_products_condition(
                     .collect::<Vec<_>>(),
             ));
         }
+    }
+    if let Some(vendor) = filters
+        .vendor
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        condition = condition.add(
+            Expr::col((Alias::new("products"), Alias::new("vendor"))).eq(vendor),
+        );
     }
     if let Some(search) = filters
         .search

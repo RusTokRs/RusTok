@@ -493,6 +493,10 @@ impl ProductCatalogQuery {
             .or_else(|| request_context.map(|context| context.locale.clone()))
             .unwrap_or_else(|| tenant.default_locale.clone());
         let filter = filter.unwrap_or_default();
+        let vendor = filter
+            .vendor
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             filter.search,
             filter.status,
@@ -528,6 +532,7 @@ impl ProductCatalogQuery {
                     locale: Some(requested_locale),
                     fallback_locale: Some(tenant.default_locale.clone()),
                     query: list_query,
+                    vendor,
                     facet_codes,
                 },
             )

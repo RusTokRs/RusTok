@@ -166,6 +166,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             locale,
             request.fallback_locale.as_deref(),
             &request.query,
+            request.vendor.as_deref(),
             request.facet_codes.as_slice(),
         )
         .await
