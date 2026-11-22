@@ -195,7 +195,10 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    Uuid::parse_str(&context.tenant_id)
+        .ok()
+        .filter(|tenant_id| !tenant_id.is_nil())
+        .ok_or_else(|| {
         let context_facts = product_port_context_facts(context);
         tracing::warn!(
             correlation_id_length = context_facts.correlation_id_length,
@@ -313,6 +316,18 @@ mod diagnostic_policy_tests {
         assert_eq!(tenant.code, "product.tenant_id_invalid");
         assert!(!tenant.retryable);
         assert!(!tenant.message.contains("private-"));
+
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "corr-nil",
+        )
+        .with_deadline(std::time::Duration::from_secs(1));
+        let nil_tenant = parse_tenant_id(&nil_context, "scenario")
+            .expect_err("nil tenant UUID must be rejected");
+        assert_eq!(nil_tenant.kind, PortErrorKind::Validation);
+        assert_eq!(nil_tenant.code, "product.tenant_id_invalid");
     }
 
     #[test]

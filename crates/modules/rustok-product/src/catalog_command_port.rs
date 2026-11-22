@@ -535,7 +535,10 @@ fn catalog_scope(
         .require_policy(policy)
         .map_err(|error| command_context_error(context, operation, error))?;
 
-    let tenant_id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.as_str())
+        .ok()
+        .filter(|tenant_id| !tenant_id.is_nil())
+        .ok_or_else(|| {
         let context_facts = product_port_context_facts(context);
         tracing::warn!(
             correlation_id_length = context_facts.correlation_id_length,
@@ -548,7 +551,10 @@ fn catalog_scope(
             "product request context is invalid",
         )
     })?;
-    let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let actor_id = Uuid::parse_str(context.actor.id.as_str())
+        .ok()
+        .filter(|actor_id| !actor_id.is_nil())
+        .ok_or_else(|| {
         let context_facts = product_port_context_facts(context);
         tracing::warn!(
             correlation_id_length = context_facts.correlation_id_length,
@@ -759,7 +765,7 @@ mod tests {
 
     fn test_context() -> PortContext {
         PortContext::new(
-            Uuid::nil().to_string(),
+            Uuid::new_v4().to_string(),
             PortActor::service("product-command-test"),
             "en",
             "corr-cmd-1",
