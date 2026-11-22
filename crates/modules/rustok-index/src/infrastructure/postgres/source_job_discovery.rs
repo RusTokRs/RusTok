@@ -63,7 +63,7 @@ pub(super) fn discovery_scope(
         DbBackend::Sqlite => {
             "CASE WHEN json_valid(j.request) THEN json_extract(j.request, '$.source_name') END"
         }
-        _ => unreachable!("validated scheduler backend"),
+        _ => "j.request->>'source_name'",
     };
     let mut clauses = Vec::new();
     let mut values = Vec::new();

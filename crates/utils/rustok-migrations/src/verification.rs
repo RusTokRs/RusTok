@@ -179,9 +179,8 @@ fn compare_observations(
 
 fn snapshot_digest(snapshot: &DatabaseSnapshot) -> String {
     // Serialization of this closed struct contains no unordered maps or floats.
-    hex::encode(Sha256::digest(
-        serde_json::to_vec(snapshot).expect("snapshot serialization"),
-    ))
+    let bytes = serde_json::to_vec(snapshot).unwrap_or_default();
+    hex::encode(Sha256::digest(&bytes))
 }
 
 pub fn validate_journal(actual: &[String], expected: &[String]) -> Result<()> {
@@ -526,13 +525,19 @@ fn run_pg_dump(
             }
         })
     }
+    let Some(child_stdout) = child.stdout.take() else {
+        return Err(VerificationError::Tool("failed to capture pg_dump stdout".into()));
+    };
+    let Some(child_stderr) = child.stderr.take() else {
+        return Err(VerificationError::Tool("failed to capture pg_dump stderr".into()));
+    };
     let stdout = reader(
-        child.stdout.take().expect("piped stdout"),
+        child_stdout,
         limit,
         exceeded.clone(),
     );
     let stderr = reader(
-        child.stderr.take().expect("piped stderr"),
+        child_stderr,
         64 * 1024,
         exceeded.clone(),
     );

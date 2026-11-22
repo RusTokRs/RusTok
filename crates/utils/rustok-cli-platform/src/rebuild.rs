@@ -53,7 +53,7 @@ fn workspace_root() -> PathBuf {
         .and_then(|path| path.parent())
         .and_then(|path| path.parent())
         .map(PathBuf::from)
-        .expect("workspace root should be resolvable from rustok-cli-platform")
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn command_failed(error: impl std::fmt::Display) -> CliCoreError {

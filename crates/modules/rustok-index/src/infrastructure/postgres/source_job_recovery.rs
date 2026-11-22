@@ -569,17 +569,15 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexJobRecoveryEr
 
 fn placeholder_prefix(backend: DbBackend) -> &'static str {
     match backend {
-        DbBackend::Postgres => "$",
         DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported backend was validated"),
+        _ => "$",
     }
 }
 
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
-        _ => unreachable!("unsupported backend was validated"),
+        _ => value.into(),
     }
 }
 

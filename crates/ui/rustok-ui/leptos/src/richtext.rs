@@ -163,7 +163,7 @@ pub fn RichTextEditorFrame(
         }
 
         let messages_json =
-            serde_json::to_string(&copy.messages).expect("richtext messages must serialize");
+            serde_json::to_string(&copy.messages).unwrap_or_else(|_| "{}".to_string());
         let editor_handle = StoredValue::new_local(None::<JsValue>);
         let callback_handles = StoredValue::new_local(
             None::<(

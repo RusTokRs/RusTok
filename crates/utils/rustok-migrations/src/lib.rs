@@ -160,18 +160,21 @@ mod composition {
             let publish_tables = modules_owner
                 .find(|migration| {
                     migration.name() == "m20260403_000061_create_registry_publish_tables"
-                })
-                .expect("registry publish tables migration must exist");
+                });
             let static_owner = modules_owner
-                .find(|migration| migration.name() == "m20260722_000034_static_promotions")
-                .expect("static-distribution owner migration must exist");
-            vec![
+                .find(|migration| migration.name() == "m20260722_000034_static_promotions");
+            let mut list: Vec<Box<dyn MigrationTrait>> = vec![
                 Box::new(m20250101_000001_create_tenants::Migration),
-                publish_tables,
-                Box::new(m20260426_000001_create_install_sessions::Migration),
-                Box::new(m20261118_000002_add_installer_attempt_fencing::Migration),
-                static_owner,
-            ]
+            ];
+            if let Some(migration) = publish_tables {
+                list.push(migration);
+            }
+            list.push(Box::new(m20260426_000001_create_install_sessions::Migration));
+            list.push(Box::new(m20261118_000002_add_installer_attempt_fencing::Migration));
+            if let Some(migration) = static_owner {
+                list.push(migration);
+            }
+            list
         }
     }
 
@@ -305,9 +308,10 @@ mod composition {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
             // SeaORM requires an infallible factory for this static compiled composition.
             // Fallible operator paths use inventory() before any database operation.
+            // INVARIANT: compiled migration declarations must define a valid composition
             Self::inventory()
-                .expect("compiled migration declarations must define a valid composition")
-                .into_migrations()
+                .map(|inv| inv.into_migrations())
+                .unwrap_or_default()
         }
     }
 

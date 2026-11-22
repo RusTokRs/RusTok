@@ -271,15 +271,9 @@ pub fn replace_token_in_css_value(value: &str, old_name: &str, new_name: &str) -
         if idx < last_copied {
             continue;
         }
-        let before_is_ident = idx > 0 && {
-            let ch = value[..idx].chars().next_back().unwrap();
-            is_ident_char(ch)
-        };
+        let before_is_ident = value[..idx].chars().next_back().is_some_and(is_ident_char);
         let after_idx = idx + target.len();
-        let after_is_ident = after_idx < value.len() && {
-            let ch = value[after_idx..].chars().next().unwrap();
-            is_ident_char(ch)
-        };
+        let after_is_ident = value[after_idx..].chars().next().is_some_and(is_ident_char);
 
         if !before_is_ident && !after_is_ident {
             result.push_str(&value[last_copied..idx]);

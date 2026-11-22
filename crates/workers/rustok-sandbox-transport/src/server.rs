@@ -504,6 +504,6 @@ fn encode_terminal_error(error: SandboxError) -> Vec<u8> {
         serde_json::to_vec(&SandboxError::Internal(
             "could not encode sandbox terminal error".to_string(),
         ))
-        .expect("static SandboxError must serialize: invariant validated at startup")
+        .unwrap_or_else(|_| br#"{"type":"internal","message":"could not encode sandbox terminal error"}"#.to_vec())
     })
 }

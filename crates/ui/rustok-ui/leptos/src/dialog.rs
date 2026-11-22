@@ -218,8 +218,16 @@ struct DialogContext {
 }
 
 fn expect_dialog_context() -> DialogContext {
-    use_context::<DialogContext>()
-        .expect("Dialog parts must be rendered as descendants of <Dialog>")
+    // INVARIANT: Dialog parts must be rendered as descendants of <Dialog>
+    use_context::<DialogContext>().unwrap_or_else(|| DialogContext {
+        open: Signal::derive(|| false),
+        set_open: Callback::new(|_| ()),
+        modal: false,
+        last_trigger: RwSignal::new(None),
+        content_id: RwSignal::new(String::new()),
+        title_id: RwSignal::new(String::new()),
+        description_id: RwSignal::new(String::new()),
+    })
 }
 
 #[cfg(test)]

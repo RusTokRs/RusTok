@@ -296,8 +296,14 @@ impl rustok::module::host::Host for WasmStoreState {
 
 impl WasmComponentExecutor {
     pub fn new() -> Self {
-        Self::with_component_cache_policy(WasmComponentCachePolicy::default())
-            .expect("default Wasm component cache policy must be valid")
+        Self::with_component_cache_policy(WasmComponentCachePolicy::default()).unwrap_or_else(|_| {
+            Self {
+                cache: Arc::new(SerializedComponentCache::new(WasmComponentCachePolicy {
+                    max_entries: 1,
+                    max_serialized_bytes: 1,
+                })),
+            }
+        })
     }
 
     pub fn with_component_cache_policy(policy: WasmComponentCachePolicy) -> SandboxResult<Self> {

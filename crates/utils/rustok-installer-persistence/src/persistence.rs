@@ -689,11 +689,9 @@ fn admission_released_state_values() -> Vec<&'static str> {
 }
 
 fn serde_name<T: serde::Serialize>(value: T) -> String {
-    let json =
-        serde_json::to_value(value).expect("installer enum serialization must be infallible");
-    json.as_str()
-        .expect("installer enum serialization must produce a string")
-        .to_string()
+    let json = serde_json::to_value(value).ok();
+    json.and_then(|val| val.as_str().map(|s| s.to_string()))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

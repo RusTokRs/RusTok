@@ -580,7 +580,7 @@ impl RegistryValidationWorker {
                 }
             }
         }
-        unreachable!("retry delay schedule always has a terminal attempt")
+        self.terminalize_exhausted_load(work_item).await
     }
 
     async fn terminalize_exhausted_load(

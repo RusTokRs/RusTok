@@ -510,10 +510,10 @@ impl InstallTopology {
                 "install topology leaves a selected surface without exactly one owner".to_string(),
             );
         }
-        let distribution_roles = self
-            .distribution
-            .as_ref()
-            .expect("validated distribution binding must exist")
+        let Some(distribution) = self.distribution.as_ref() else {
+            return Err("install topology leaves a distribution binding unassigned".to_string());
+        };
+        let distribution_roles = distribution
             .roles
             .iter()
             .map(|artifact| artifact.role)
@@ -543,10 +543,9 @@ fn valid_sha256_digest(value: &str) -> bool {
 
 fn serde_name<T: Serialize>(value: T) -> String {
     serde_json::to_value(value)
-        .expect("install topology enum serialization must be infallible")
-        .as_str()
-        .expect("install topology enum serialization must produce a string")
-        .to_string()
+        .ok()
+        .and_then(|val| val.as_str().map(|s| s.to_string()))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
