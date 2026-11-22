@@ -545,21 +545,6 @@ impl ProductWriteTransaction {
         Ok(())
     }
 
-    /// Rolls back now rather than relying on SeaORM's asynchronous Drop path.
-    ///
-    /// Use this when an external side effect must be compensated only after the
-    /// owner transaction is known to have released its writes and locks.
-    pub(crate) async fn rollback(mut self) -> CommerceResult<()> {
-        let transaction = self.transaction.take().ok_or_else(|| {
-            CommerceError::Database(DbErr::Custom(
-                "Product owner transaction is no longer active".to_owned(),
-            ))
-        })?;
-        self.operation_receipt.take();
-        transaction.rollback().await?;
-        Ok(())
-    }
-
     pub(crate) async fn commit(mut self) -> CommerceResult<()> {
         let transaction = self.transaction.take().ok_or_else(|| {
             CommerceError::Database(DbErr::Custom(
@@ -1083,57 +1068,6 @@ mod tests {
             .close()
             .await
             .expect("observer database should close");
-        database.close().await.expect("owner database should close");
-        for sqlite_file in [
-            path.clone(),
-            PathBuf::from(format!("{}-shm", path.display())),
-            PathBuf::from(format!("{}-wal", path.display())),
-        ] {
-            let _ = std::fs::remove_file(sqlite_file);
-        }
-    }
-
-    #[tokio::test]
-    async fn explicit_owner_rollback_finishes_before_external_compensation() {
-        let (database, observer, path) =
-            receipt_probe_databases_with_independent_connections().await;
-        let lease = idempotency::Lease {
-            operation_id: Uuid::new_v4(),
-            token: Uuid::new_v4(),
-        };
-
-        let error = with_product_operation_receipt(lease, async {
-            let transaction =
-                ProductWriteTransaction::begin(&database, mock_transactional_event_bus()).await?;
-            transaction
-                .execute_unprepared("INSERT INTO product_receipt_probe (id) VALUES (1)")
-                .await?;
-            transaction.rollback().await?;
-
-            observer
-                .execute_unprepared("INSERT INTO product_receipt_probe (id) VALUES (2)")
-                .await?;
-
-            Err::<(), CommerceError>(CommerceError::Validation(
-                "forced error after explicit rollback".to_owned(),
-            ))
-        })
-        .await
-        .expect_err("the original owner error should remain visible");
-
-        assert!(matches!(error, CommerceError::Validation(_)));
-        let row = observer
-            .query_one_raw(Statement::from_string(
-                DatabaseBackend::Sqlite,
-                "SELECT COUNT(*) AS count FROM product_receipt_probe".to_owned(),
-            ))
-            .await
-            .expect("probe count should query")
-            .expect("probe count row should exist");
-        let count: i64 = row.try_get("", "count").expect("probe count should decode");
-        assert_eq!(count, 1, "the failed owner mutation must be rolled back");
-
-        observer.close().await.expect("observer should close");
         database.close().await.expect("owner database should close");
         for sqlite_file in [
             path.clone(),

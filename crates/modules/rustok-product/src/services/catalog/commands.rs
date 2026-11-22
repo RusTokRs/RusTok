@@ -69,15 +69,6 @@ fn pricing_port_unavailable() -> CommerceError {
     ))
 }
 
-fn product_image_stage_failure_requires_compensation(error: &CommerceError) -> bool {
-    matches!(
-        error,
-        CommerceError::Validation(_)
-            | CommerceError::ProductNotFound(_)
-            | CommerceError::Conflict(_)
-    )
-}
-
 fn validate_product_brands(brands: &[ProductBrandInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     let mut primary_count = 0;
@@ -1967,62 +1958,19 @@ impl CatalogService {
         input: AddProductImageInput,
         image_locale: Option<String>,
     ) -> CommerceResult<(ProductWriteTransaction, ProductImageResponse)> {
-        let media_id = input.media_id;
+        // A retained Media hold remains conservative after local failure or an
+        // ambiguous commit. Retries reuse the same Media idempotency identity;
+        // only committed Product removal rows authorize automatic release.
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
-        match self
-            .stage_product_image_addition_in_open_tx(
-                &txn,
-                tenant_id,
-                actor_id,
-                product_id,
-                image_id,
-                input,
-                image_locale,
-            )
-            .await
-        {
-            Ok(result) => Ok((txn, result)),
-            Err(error) => {
-                if let Err(rollback_error) = txn.rollback().await {
-                    tracing::error!(
-                        image_id_non_nil = !image_id.is_nil(),
-                        "Product image staging rollback failed; Media hold compensation was withheld"
-                    );
-                    return Err(rollback_error);
-                }
-                // Keep the hold for retryable failures: the admitted Product receipt
-                // reuses this image identity and Media idempotency key. Releasing it
-                // here would make a later replay of Media's old retain receipt unable
-                // to recreate the hold. Only terminal failures need compensation.
-                if product_image_stage_failure_requires_compensation(&error) {
-                    self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
-                        .await?;
-                }
-                Err(error)
-            }
-        }
-    }
-
-    async fn stage_product_image_addition_in_open_tx(
-        &self,
-        txn: &ProductWriteTransaction,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        product_id: Uuid,
-        image_id: Uuid,
-        input: AddProductImageInput,
-        image_locale: Option<String>,
-    ) -> CommerceResult<ProductImageResponse> {
-        lock_schema_for_product_write(&**txn, tenant_id).await?;
-
-        let _product = find_product_for_update_in_tx(&**txn, tenant_id, product_id).await?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let existing_images = entities::product_image::Entity::find()
             .filter(entities::product_image::Column::ProductId.eq(product_id))
             .order_by_asc(entities::product_image::Column::Position)
             .order_by_asc(entities::product_image::Column::Id)
-            .all(txn)
+            .all(&txn)
             .await?;
         let requested_position = input
             .position
@@ -2043,24 +1991,24 @@ impl CatalogService {
         let position = i32::try_from(insertion_index)
             .map_err(|_| CommerceError::Validation("too many Product images".to_owned()))?;
 
-        entities::product_image::ActiveModel {
+        let _image = entities::product_image::ActiveModel {
             id: Set(image_id),
             product_id: Set(product_id),
             media_id: Set(input.media_id),
             position: Set(position),
         }
-        .insert(txn)
+        .insert(&txn)
         .await?;
-        self.mark_image_media_provisioned(txn, tenant_id, image_id)
+        self.mark_image_media_provisioned(&*txn, tenant_id, image_id)
             .await?;
-        self.mark_media_retention_ready(txn, tenant_id).await?;
+        self.mark_media_retention_ready(&*txn, tenant_id).await?;
 
         let mut ordered_image_ids = existing_images
             .into_iter()
             .map(|image| image.id)
             .collect::<Vec<_>>();
         ordered_image_ids.insert(insertion_index, image_id);
-        persist_product_image_order_in_tx(&**txn, product_id, ordered_image_ids.as_slice()).await?;
+        persist_product_image_order_in_tx(&txn, product_id, ordered_image_ids.as_slice()).await?;
 
         let mut translations = Vec::new();
         if let Some(alt_text) = input.alt_text.as_deref() {
@@ -2075,7 +2023,7 @@ impl CatalogService {
                 locale: Set(locale.clone()),
                 alt_text: Set(Some(alt_text.to_string())),
             }
-            .insert(txn)
+            .insert(&txn)
             .await?;
 
             translations.push(ProductImageTranslationResponse {
@@ -2091,14 +2039,16 @@ impl CatalogService {
         )
         .await?;
 
-        Ok(ProductImageResponse {
+        let result = ProductImageResponse {
             id: image_id,
             media_id: input.media_id,
             url: format_product_media_url(input.media_id),
             alt_text: input.alt_text,
             position,
             translations,
-        })
+        };
+
+        Ok((txn, result))
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
@@ -3274,26 +3224,3 @@ mod tests {
 }
 
 
-#[cfg(test)]
-mod product_image_stage_compensation_tests {
-    use super::*;
-
-    #[test]
-    fn only_terminal_stage_failures_enqueue_media_compensation() {
-        assert!(product_image_stage_failure_requires_compensation(
-            &CommerceError::Validation("invalid image position".to_owned())
-        ));
-        assert!(product_image_stage_failure_requires_compensation(
-            &CommerceError::ProductNotFound(Uuid::new_v4())
-        ));
-        assert!(product_image_stage_failure_requires_compensation(
-            &CommerceError::Conflict("product changed".to_owned())
-        ));
-        assert!(!product_image_stage_failure_requires_compensation(
-            &CommerceError::Database(sea_orm::DbErr::Custom("temporary outage".to_owned()))
-        ));
-        assert!(!product_image_stage_failure_requires_compensation(
-            &CommerceError::Core(CoreError::External("temporary dependency outage".to_owned()))
-        ));
-    }
-}

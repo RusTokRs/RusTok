@@ -528,11 +528,10 @@ impl CatalogService {
     fn reference_port(&self) -> CommerceResult<Arc<dyn ProductMediaReferencePort>> {
         self.media_reference_port.clone().ok_or_else(storage_error)
     }
-    /// Called only after receipt admission, before the Product transaction. A
-    /// definite rollback of that transaction compensates through
-    /// [`Self::compensate_retained_media_hold`]; an ambiguous commit failure
-    /// deliberately does not, because releasing the hold of a landed image is
-    /// unrecoverable.
+    /// Called only after receipt admission, before the Product transaction.
+    /// A local failure or ambiguous commit deliberately leaves the Media hold
+    /// retained for reconciliation; only committed Product removal rows authorize
+    /// release.
     pub(crate) async fn retain_product_image(
         &self,
         tenant_id: Uuid,
@@ -567,56 +566,6 @@ impl CatalogService {
         }
         .insert(txn)
         .await?;
-        Ok(())
-    }
-    /// Compensates a Media hold whose owner transaction definitely rolled back.
-    ///
-    /// The release obligation is persisted outside the failed transaction only after
-    /// rollback has been awaited. Repeated attempts are idempotent by image identity.
-    /// A failed enqueue is returned as retryable infrastructure failure so the caller
-    /// cannot finalize a terminal Product rejection while the Media hold is orphaned.
-    pub(crate) async fn compensate_retained_media_hold(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        image_id: Uuid,
-        media_id: Uuid,
-    ) -> CommerceResult<()> {
-        let context = operation_context(tenant_id, actor_id, image_id)
-            .map_err(|_| storage_error())?;
-        let context = serde_json::to_value(context).map_err(|_| storage_error())?;
-
-        product_media_release::Entity::insert(product_media_release::ActiveModel {
-            image_id: Set(image_id),
-            tenant_id: Set(tenant_id),
-            media_id: Set(media_id),
-            context: Set(context),
-            attempts: Set(0),
-            next_attempt_at: Set(Utc::now()),
-            last_error_code: Set(None),
-        })
-        .on_conflict(
-            sea_orm::sea_query::OnConflict::column(product_media_release::Column::ImageId)
-                .do_nothing()
-                .to_owned(),
-        )
-        .exec(&self.db)
-        .await?;
-
-        // A worker may have already completed and acknowledged this release between
-        // the upsert and read. If a row remains, it must describe the same obligation.
-        if let Some(existing) = product_media_release::Entity::find_by_id(image_id)
-            .one(&self.db)
-            .await?
-        {
-            if existing.tenant_id != tenant_id || existing.media_id != media_id {
-                return Err(CommerceError::Database(sea_orm::DbErr::Custom(
-                    "Product Media release compensation identity conflicts with existing work"
-                        .to_owned(),
-                )));
-            }
-        }
-
         Ok(())
     }
     /// Crash-safe at-least-once delivery of committed removals. Multi-replica
