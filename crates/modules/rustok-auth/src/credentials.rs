@@ -244,13 +244,12 @@ mod tests {
 
     #[test]
     fn weak_parameter_hash_needs_rehash() {
-        use argon2::{Algorithm, Version, password_hash::SaltString};
+        use argon2::{Algorithm, Version};
 
         let weak_params = Params::new(8, 1, 1, None).expect("weak params");
         let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, weak_params);
-        let salt = SaltString::encode_b64(b"0123456789abcdef").expect("salt");
         let hash = argon
-            .hash_password(b"correct horse battery staple", &salt)
+            .hash_password(b"correct horse battery staple")
             .expect("weak hash")
             .to_string();
         assert!(password_hash_needs_rehash(&hash));
