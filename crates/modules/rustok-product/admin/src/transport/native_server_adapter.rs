@@ -1708,12 +1708,17 @@ mod filterable_search_option_tests {
     use super::*;
     use crate::model::ProductAttributeSummary;
 
-    fn attribute(code: &str, is_filterable: bool, is_sortable: bool) -> ProductAttributeSummary {
+    fn attribute(
+        code: &str,
+        scope: &str,
+        is_filterable: bool,
+        is_sortable: bool,
+    ) -> ProductAttributeSummary {
         ProductAttributeSummary {
             id: uuid::Uuid::new_v4().to_string(),
             code: code.to_owned(),
             value_type: "select".to_owned(),
-            scope: "product".to_owned(),
+            scope: scope.to_owned(),
             is_localized: false,
             is_filterable,
             is_searchable: false,
@@ -1726,9 +1731,10 @@ mod filterable_search_option_tests {
     #[test]
     fn native_catalog_search_options_exclude_sortable_only_attributes() {
         let options = filterable_attribute_options([
-            attribute("color", true, false),
-            attribute("internal_rank", false, true),
-            attribute("size", true, true),
+            attribute("color", "product", true, false),
+            attribute("internal_rank", "product", false, true),
+            attribute("variant_material", "variant", true, false),
+            attribute("size", "both", true, true),
         ]);
         let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
         assert_eq!(codes, vec!["color", "size"]);
