@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use chrono::Utc;
 use sea_orm::{
@@ -103,6 +103,7 @@ impl PageRouteHistoryImportService {
         let mut inserted_snapshot_count = 0_u32;
         let mut inserted_gone_alias_count = 0_u32;
         let mut terminal_pages = BTreeSet::new();
+        let mut page_existence_cache = HashMap::<Uuid, bool>::new();
 
         for item in &items {
             let receipts = page_route_history_import::Entity::find()
@@ -114,8 +115,15 @@ impl PageRouteHistoryImportService {
                 .all(&txn)
                 .await?;
 
-            let current_page = load_page_for_import(&txn, tenant_id, item.page_id).await?;
-            let page_exists = current_page.is_some();
+            let page_exists = match page_existence_cache.get(&item.page_id) {
+                Some(exists) => *exists,
+                None => {
+                    let current_page = load_page_for_import(&txn, tenant_id, item.page_id).await?;
+                    let exists = current_page.is_some();
+                    page_existence_cache.insert(item.page_id, exists);
+                    exists
+                }
+            };
 
             let (page_was_missing, replayed) = match receipts.as_slice() {
                 [] => (!page_exists, false),
