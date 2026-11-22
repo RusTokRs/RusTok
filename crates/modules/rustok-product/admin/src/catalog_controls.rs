@@ -117,6 +117,7 @@ fn normalize_page(value: Option<String>) -> u64 {
     value
         .and_then(|value| value.trim().parse::<u64>().ok())
         .filter(|page| *page > 0)
+        .map(|page| page.min(i32::MAX as u64))
         .unwrap_or(1)
 }
 
@@ -201,4 +202,19 @@ mod tests {
         assert_eq!(controls.per_page, DEFAULT_PAGE_SIZE as u64);
     }
 
+    #[test]
+    fn admin_catalog_page_number_fits_graphql_int() {
+        let controls = build_product_admin_list_input(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(u64::MAX.to_string()),
+            Some("20".to_string()),
+        );
+
+        assert_eq!(controls.page, i32::MAX as u64);
+    }
 }

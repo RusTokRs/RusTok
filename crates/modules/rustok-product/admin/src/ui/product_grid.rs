@@ -135,7 +135,9 @@ pub fn ProductGridPage() -> impl IntoView {
             )
         },
         move |(tok, ten, loc, mut controls, (page, page_size), request_id)| async move {
-            controls.page = u64::try_from(page).unwrap_or(u64::MAX);
+            controls.page = u64::try_from(page)
+                .unwrap_or(u64::MAX)
+                .min(i32::MAX as u64);
             controls.per_page = u64::try_from(page_size).unwrap_or(DEFAULT_PAGE_SIZE as u64);
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
