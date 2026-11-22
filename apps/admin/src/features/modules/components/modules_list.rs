@@ -996,7 +996,9 @@ pub fn ModulesList(
 
             let ws_for_open = ws.clone();
             let on_open = Closure::<dyn FnMut(Event)>::new(move |_| {
-                let _ = ws_for_open.send_with_str(&init_message);
+                if let Err(error) = ws_for_open.send_with_str(&init_message) {
+                    tracing::warn!(?error, "failed to send graphql-ws connection_init");
+                }
             });
 
             let ws_for_message = ws.clone();
@@ -1018,7 +1020,9 @@ pub fn ModulesList(
                         set_live_subscription_connected.set(true);
                         if !subscribed_for_message.get() {
                             subscribed_for_message.set(true);
-                            let _ = ws_for_message.send_with_str(&subscribe_message);
+                            if let Err(error) = ws_for_message.send_with_str(&subscribe_message) {
+                                tracing::warn!(?error, "failed to send graphql-ws subscribe message");
+                            }
                         }
                     }
                     BuildProgressSubscriptionMessage::Next { payload } => {
@@ -1055,7 +1059,9 @@ pub fn ModulesList(
                             "payload": payload,
                         })
                         .to_string();
-                        let _ = ws_for_message.send_with_str(&pong);
+                        if let Err(error) = ws_for_message.send_with_str(&pong) {
+                            tracing::warn!(?error, "failed to send graphql-ws pong message");
+                        }
                     }
                     BuildProgressSubscriptionMessage::Complete
                     | BuildProgressSubscriptionMessage::Pong => {}

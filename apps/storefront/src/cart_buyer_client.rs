@@ -69,10 +69,10 @@ struct ModuleListener {
 }
 impl Drop for ModuleListener {
     fn drop(&mut self) {
-        let _ = self.window.remove_event_listener_with_callback(
+        drop(self.window.remove_event_listener_with_callback(
             MODULES_CHANGED,
             self.callback.as_ref().unchecked_ref(),
-        );
+        ));
     }
 }
 
@@ -173,20 +173,20 @@ fn persist_selection(path: &str, href: &str) -> Option<String> {
 }
 
 fn mark_product_error(root: &web_sys::HtmlElement) {
-    let _ = root.set_attribute("data-product-buyer-client-error", "true");
+    drop(root.set_attribute("data-product-buyer-client-error", "true"));
     let Some(document) = root.owner_document() else {
         return;
     };
     let Ok(notice) = document.create_element("p") else {
         return;
     };
-    let _ = notice.set_attribute("role", "alert");
+    drop(notice.set_attribute("role", "alert"));
     notice.set_text_content(Some(
         &root
             .get_attribute("data-product-buyer-client-error-label")
             .unwrap_or_else(|| "Product interaction is unavailable.".into()),
     ));
-    let _ = root.append_child(&notice);
+    drop(root.append_child(&notice));
 }
 
 pub(crate) fn start() -> Result<(), JsValue> {

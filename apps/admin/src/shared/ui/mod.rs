@@ -227,20 +227,22 @@ fn apply_theme_mode(mode: ThemeMode) {
 
     if let Some(window) = web_sys::window() {
         if let Some(storage) = window.local_storage().ok().flatten() {
-            let _ = storage.set_item(THEME_STORAGE_KEY, mode.as_str());
+            if let Err(error) = storage.set_item(THEME_STORAGE_KEY, mode.as_str()) {
+                tracing::debug!(?error, "failed to persist theme mode to localStorage");
+            }
         }
 
         if let Some(document) = window.document() {
             if let Some(root) = document.document_element() {
                 let classes = root.class_list();
                 if mode.is_dark() {
-                    let _ = classes.add_1("dark");
+                    drop(classes.add_1("dark"));
                 } else {
-                    let _ = classes.remove_1("dark");
+                    drop(classes.remove_1("dark"));
                 }
 
                 if let Some(html) = root.dyn_ref::<web_sys::HtmlElement>() {
-                    let _ = html.style().set_property("color-scheme", mode.as_str());
+                    drop(html.style().set_property("color-scheme", mode.as_str()));
                 }
             }
         }

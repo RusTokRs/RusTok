@@ -417,7 +417,9 @@ where
                 .await
                 .map(|_| ());
             let created = creation.is_ok();
-            let _ = ready_tx.send(creation);
+            if let Err(_dropped) = ready_tx.send(creation) {
+                tracing::warn!("installer HTTP job receiver was dropped before readiness signal");
+            }
             if !created {
                 // No executor work has begun. Reconcile any INSERT whose
                 // acknowledgement was lost before dropping local admission.

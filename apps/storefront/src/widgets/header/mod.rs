@@ -34,7 +34,9 @@ fn HeaderSearchInput(locale: String) -> impl IntoView {
             {
                 let target = build_search_target_url(&current_locale, &query, scope);
                 if let Some(window) = leptos::web_sys::window() {
-                    let _ = window.location().set_href(&target);
+                    if let Err(error) = window.location().set_href(&target) {
+                        tracing::warn!(?error, "failed to navigate to search target url");
+                    }
                 }
             }
             #[cfg(not(target_arch = "wasm32"))]

@@ -886,7 +886,9 @@ async fn render_blog_feed_response(
 
 #[cfg(feature = "ssr")]
 pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
-    let _ = any_spawner::Executor::init_tokio();
+    if let Err(error) = any_spawner::Executor::init_tokio() {
+        tracing::debug!(%error, "any_spawner executor already initialized");
+    }
     let rss_runtime = runtime.clone();
     let localized_rss_runtime = runtime.clone();
     let router = Router::new()
