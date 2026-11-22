@@ -1246,6 +1246,19 @@ fn check_rules(
             );
         }
 
+        if re!(r"\.map_err\s*\(\s*(?:[A-Za-z_]\w*::)+(?:Validation|BadRequest|Mcp|Cache|InvalidConfig)\s*\)").is_match(text)
+            || re!(r"\.map_err\s*\(\s*async_graphql::Error::new\s*\)").is_match(text)
+        {
+            scan.add(
+                number,
+                "P-MAP-ERR-STRING-CONVERSION-MISMATCH",
+                "Bare Function Pointer MapErr to String-Taking Error Constructor",
+                Severity::High,
+                "Passing a String-taking error variant or constructor directly as a function pointer to .map_err(). Non-String errors implementing Display will fail to compile under active features.",
+                "Pass an explicit closure '.map_err(|err| Variant(err.to_string()))' or implement From<E> for TargetError.",
+            );
+        }
+
         if (text.starts_with("if ") || text.starts_with("let "))
             && re!(r"\b(?:capacity|permits|in_flight|queue_depth)\s*\.\s*load\s*\(").is_match(text)
         {

@@ -156,9 +156,12 @@ impl OAuthAppTranslationService {
         }
         let next_after = has_more.then(|| apps.last().map(|app| app.id)).flatten();
 
+        let app_ids: Vec<Uuid> = apps.iter().map(|app| app.id).collect();
+        let mut translations_by_app =
+            oauth_apps::load_batch_translations(&self.db, tenant_id, &app_ids).await?;
         let mut snapshots = Vec::with_capacity(apps.len());
         for app in apps {
-            let translations = oauth_apps::load_translations(&self.db, tenant_id, app.id).await?;
+            let translations = translations_by_app.remove(&app.id).unwrap_or_default();
             snapshots.push(build_snapshot(
                 app,
                 translations,

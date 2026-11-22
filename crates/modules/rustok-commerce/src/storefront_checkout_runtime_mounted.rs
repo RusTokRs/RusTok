@@ -1,6 +1,5 @@
-mod legacy {
-    include!("storefront_checkout_runtime.rs");
-}
+#[path = "storefront_checkout_runtime.rs"]
+mod legacy;
 
 pub use legacy::{
     StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime,

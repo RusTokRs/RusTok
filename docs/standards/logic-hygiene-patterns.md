@@ -980,6 +980,31 @@ flowchart TD
 
 ---
 
+### Pattern 43: Production Dependency Hidden in Dev-Dependencies (`P-DEV-DEP-PROD-LEAK`)
+* **Category:** Build Invariants & Dependency Sovereignty. **Dimension:** Preconditions & bounds.
+* **Problem:** A library crate or domain module references an external or workspace dependency in production code (`src/` or `migrations/`), but that dependency is declared exclusively under `[dev-dependencies]` in `Cargo.toml`.
+  - When running `cargo check -p <crate>` or `cargo test`, Cargo implicitly compiles dev-dependencies, masking the deficiency during local crate development.
+  - However, when downstream consumer crates depend on the library (e.g. `rustok-server` or CLI tools), or when compiling `--lib` without dev-dependencies, Cargo excludes dev-dependencies. The compilation abruptly crashes with `error[E0433]: cannot find module or crate X in this scope`.
+* **Pattern Solution:**
+  1. Inspect whether the dependency is genuinely required in production or migrations.
+  2. If required, move the dependency into `[dependencies]` in `Cargo.toml`.
+  3. If optional or target-specific, feature-gate both the dependency in `[dependencies]` and its usage in code (`#[cfg(feature = "...")]`).
+* **Detection:** Doctor rule `P-DEV-DEP-PROD-LEAK`: cross-references crates declared exclusively in `[dev-dependencies]` against non-test production source files.
+
+---
+
+### Pattern 44: Erased Error Display in Function-Pointer MapErr (`P-MAP-ERR-STRING-CONVERSION-MISMATCH`)
+* **Category:** Type Safety & Error Propagation. **Dimension:** Branch completeness & typed errors.
+* **Problem:** Passing an error variant or constructor function expecting `String` (e.g. `.map_err(AiError::Validation)`, `.map_err(async_graphql::Error::new)`, `.map_err(Error::BadRequest)`, `.map_err(Error::Cache)`) directly as a function pointer to `.map_err(...)` when the source error type `E` implements `Display` or `std::error::Error`, but does NOT implement `Into<String>`.
+  - This passes compiler checks if the file is gated behind an inactive feature flag, but violently fails with `E0631: type mismatch in function arguments` or `E0277: the trait bound String: From<CustomError> is not satisfied` the moment the feature or downstream crate is activated.
+* **Pattern Solution:**
+  1. Implement `From<CustomError> for TargetError` to allow direct `?` propagation with zero mapping overhead.
+  2. Or write explicit closure conversions: `.map_err(|err| TargetError::Validation(err.to_string()))`.
+  3. Avoid relying on accidental implicit `String` conversions across crate boundaries.
+* **Detection:** Doctor rule `P-MAP-ERR-STRING-CONVERSION-MISMATCH`: flags `.map_err(Variant)` where `Variant` is a known `(String)` constructor passed to non-String errors.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -1046,6 +1071,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-BYTE-SLICE-PANIC` | Reliability | Byte slice decoders verify length before constant range indexing | Heuristic: range index on buffer without bounds check |
 | `P-SHADOW-MACRO-HIJACK` | Architecture | Modules and macros not shadowed before textual inclusion | High: local shims or macro_rules! before include! |
 | `P-SPLIT-INHERENT-IMPL-HACK` | Architecture | Inherent impl blocks not mechanically split across include! files | High: series of include! stitching struct impls |
+| `P-DEV-DEP-PROD-LEAK` | Build invariants | Production code only uses dependencies declared in [dependencies] | High: dev-only dependency referenced in non-test source |
+| `P-MAP-ERR-STRING-CONVERSION-MISMATCH` | Type safety | Error variant function pointers match parameter types | Heuristic: .map_err(Constructor) with string-variant on typed error |
 
 ---
 
