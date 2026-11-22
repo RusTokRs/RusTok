@@ -571,41 +571,22 @@ impl CatalogService {
     }
     /// Compensates a Media hold whose owner transaction definitely rolled back.
     ///
-    /// The release row is inserted outside the failed transaction so the
-    /// at-least-once worker releases the hold. Failures are logged, never
-    /// surfaced: the original command error must remain the caller's answer. A
-    /// commit that returned an error is ambiguous and must never reach this
-    /// path — releasing then could drop the hold of an image that landed.
+    /// The release obligation is persisted outside the failed transaction only after
+    /// rollback has been awaited. Repeated attempts are idempotent by image identity.
+    /// A failed enqueue is returned as retryable infrastructure failure so the caller
+    /// cannot finalize a terminal Product rejection while the Media hold is orphaned.
     pub(crate) async fn compensate_retained_media_hold(
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
         image_id: Uuid,
         media_id: Uuid,
-    ) {
-        let context = match operation_context(tenant_id, actor_id, image_id) {
-            Ok(context) => context,
-            Err(error) => {
-                tracing::warn!(
-                    code = %error,
-                    image_id = %image_id,
-                    "failed to build Media hold release compensation context"
-                );
-                return;
-            }
-        };
-        let context = match serde_json::to_value(context) {
-            Ok(context) => context,
-            Err(error) => {
-                tracing::warn!(
-                    %error,
-                    image_id = %image_id,
-                    "failed to encode Media hold release compensation context"
-                );
-                return;
-            }
-        };
-        let enqueued = product_media_release::ActiveModel {
+    ) -> CommerceResult<()> {
+        let context = operation_context(tenant_id, actor_id, image_id)
+            .map_err(|_| storage_error())?;
+        let context = serde_json::to_value(context).map_err(|_| storage_error())?;
+
+        product_media_release::Entity::insert(product_media_release::ActiveModel {
             image_id: Set(image_id),
             tenant_id: Set(tenant_id),
             media_id: Set(media_id),
@@ -613,17 +594,30 @@ impl CatalogService {
             attempts: Set(0),
             next_attempt_at: Set(Utc::now()),
             last_error_code: Set(None),
+        })
+        .on_conflict(
+            sea_orm::sea_query::OnConflict::column(product_media_release::Column::ImageId)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec(&self.db)
+        .await?;
+
+        // A worker may have already completed and acknowledged this release between
+        // the upsert and read. If a row remains, it must describe the same obligation.
+        if let Some(existing) = product_media_release::Entity::find_by_id(image_id)
+            .one(&self.db)
+            .await?
+        {
+            if existing.tenant_id != tenant_id || existing.media_id != media_id {
+                return Err(CommerceError::Database(sea_orm::DbErr::Custom(
+                    "Product Media release compensation identity conflicts with existing work"
+                        .to_owned(),
+                )));
+            }
         }
-        .insert(&self.db)
-        .await;
-        if let Err(error) = enqueued {
-            tracing::warn!(
-                %error,
-                image_id = %image_id,
-                media_id = %media_id,
-                "failed to enqueue Media hold release compensation after rollback"
-            );
-        }
+
+        Ok(())
     }
     /// Crash-safe at-least-once delivery of committed removals. Multi-replica
     /// duplicate delivery is safe: Media receives the exact stored actor/request

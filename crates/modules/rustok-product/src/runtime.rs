@@ -219,6 +219,7 @@ pub struct ProductCatalogCommandRuntime {
     command_port: Arc<dyn ProductCatalogCommandPort>,
     attached_values_write_port: Option<Arc<dyn ProductAttachedValuesWritePort>>,
     schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>,
+    embedded_schema_write_service: Option<ProductCatalogSchemaService>,
     media_reference_port: Option<Arc<dyn ProductMediaReferencePort>>,
     embedded_catalog: Option<CatalogService>,
     media_maintenance_port: Option<Arc<dyn ProductMediaMaintenancePort>>,
@@ -234,6 +235,7 @@ impl ProductCatalogCommandRuntime {
             command_port,
             attached_values_write_port: None,
             schema_write_port: None,
+            embedded_schema_write_service: None,
             media_reference_port: None,
             embedded_catalog: None,
             media_maintenance_port: None,
@@ -273,8 +275,9 @@ impl ProductCatalogCommandRuntime {
         let mut runtime = Self::new(
             Arc::new(catalog.clone()),
             ProductCatalogCommandProfile::EmbeddedNative,
-        )
-        .with_schema_write_port(Arc::new(schema_service));
+        );
+        runtime.schema_write_port = Some(Arc::new(schema_service.clone()));
+        runtime.embedded_schema_write_service = Some(schema_service);
         runtime.media_maintenance_port = Some(Arc::new(catalog.clone()));
         runtime.embedded_catalog = Some(catalog);
         runtime
@@ -317,9 +320,10 @@ impl ProductCatalogCommandRuntime {
         self.command_port = Arc::new(catalog.clone());
         self.media_maintenance_port = Some(Arc::new(catalog.clone()));
         self.embedded_catalog = Some(catalog);
-        if let Some(schema_write) = self.schema_write_port.take() {
-            // Re-compose schema write service with taxonomy port if accessible
-            self.schema_write_port = Some(schema_write);
+        if let Some(schema_service) = self.embedded_schema_write_service.take() {
+            let schema_service = schema_service.with_taxonomy_port(port);
+            self.schema_write_port = Some(Arc::new(schema_service.clone()));
+            self.embedded_schema_write_service = Some(schema_service);
         }
         Ok(self)
     }
@@ -333,6 +337,7 @@ impl ProductCatalogCommandRuntime {
         schema_write_port: Arc<dyn ProductCatalogSchemaWritePort>,
     ) -> Self {
         self.schema_write_port = Some(schema_write_port);
+        self.embedded_schema_write_service = None;
         self
     }
 
@@ -450,5 +455,36 @@ impl ProductCatalogCommandRuntime {
 
     pub const fn profile(&self) -> ProductCatalogCommandProfile {
         self.profile
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ports::{NoopProductTaxonomyPort, ProductTaxonomyPort};
+    use rustok_test_utils::mock_transactional_event_bus;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn taxonomy_builder_recomposes_the_embedded_schema_writer() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        let taxonomy: Arc<dyn ProductTaxonomyPort> = Arc::new(NoopProductTaxonomyPort);
+
+        let runtime = ProductCatalogCommandRuntime::in_process(
+            database,
+            mock_transactional_event_bus(),
+        )
+        .with_taxonomy_port(taxonomy.clone())
+        .expect("embedded Taxonomy capability should compose");
+
+        let schema_service = runtime
+            .embedded_schema_write_service
+            .as_ref()
+            .expect("embedded schema service should remain available");
+        assert!(Arc::ptr_eq(&taxonomy, &schema_service.taxonomy()));
+        assert!(runtime.schema_write_port().is_some());
     }
 }

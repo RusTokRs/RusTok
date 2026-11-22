@@ -63,6 +63,12 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     Ok(())
 }
 
+fn pricing_port_unavailable() -> CommerceError {
+    CommerceError::Database(sea_orm::DbErr::Custom(
+        "Product Pricing capability is unavailable".to_owned(),
+    ))
+}
+
 fn validate_product_brands(brands: &[ProductBrandInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     let mut primary_count = 0;
@@ -203,6 +209,14 @@ impl CatalogService {
         for var_input in &input.variants {
             validate_variant_prices(&var_input.prices)?;
         }
+        if input
+            .variants
+            .iter()
+            .any(|variant| !variant.prices.is_empty())
+            && self.pricing_port.is_none()
+        {
+            return Err(pricing_port_unavailable());
+        }
         let product_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
@@ -292,10 +306,8 @@ impl CatalogService {
                 )));
             }
 
-            let handle = trans_input
-                .handle
-                .clone()
-                .unwrap_or_else(|| slugify(&trans_input.title));
+            let handle =
+                product_translation_handle(trans_input.handle.as_deref(), &trans_input.title);
 
             let key = format!("{}::{}", trans_input.locale, handle.clone());
             if !seen_handles.insert(key) {
@@ -458,14 +470,11 @@ impl CatalogService {
                 .await?;
         }
         if !initial_prices.is_empty() {
-            if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices)
-                    .await?;
-            } else {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .create_initial_prices_in_tx(&txn, initial_prices)
+                .await?;
         }
         debug!(
             variants_count = input.variants.len(),
@@ -784,10 +793,10 @@ impl CatalogService {
                     )));
                 }
 
-                let handle = translation_input
-                    .handle
-                    .clone()
-                    .unwrap_or_else(|| slugify(&translation_input.title));
+                let handle = product_translation_handle(
+                    translation_input.handle.as_deref(),
+                    &translation_input.title,
+                );
 
                 let locale = translation_input.locale.clone();
                 let key = format!("{}::{}", locale, handle.clone());
@@ -1240,13 +1249,16 @@ impl CatalogService {
             return Err(CommerceError::NoVariants);
         }
         let variant_ids = variants.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, &variant_ids)
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(
@@ -1359,6 +1371,9 @@ impl CatalogService {
         .await?;
 
         validate_variant_prices(&input.prices)?;
+        if !input.prices.is_empty() && self.pricing_port.is_none() {
+            return Err(pricing_port_unavailable());
+        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
@@ -1496,14 +1511,11 @@ impl CatalogService {
             });
         }
         if !initial_prices.is_empty() {
-            if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices)
-                    .await?;
-            } else {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .create_initial_prices_in_tx(&txn, initial_prices)
+                .await?;
         }
 
         txn.publish_in_tx(
@@ -1563,6 +1575,9 @@ impl CatalogService {
                 ));
             }
         }
+        if input.prices.is_some() && self.pricing_port.is_none() {
+            return Err(pricing_port_unavailable());
+        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
@@ -1575,6 +1590,12 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        if !input.has_changes() {
+            let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
         let mut active: entities::product_variant::ActiveModel = variant.into();
         active.updated_at = Set(Utc::now().into());
 
@@ -1743,14 +1764,11 @@ impl CatalogService {
                     compare_at_amount: price_input.compare_at_amount,
                 });
             }
-            if let Some(port) = &self.pricing_port {
-                port.replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
-                    .await?;
-            } else if !initial_prices.is_empty() {
-                return Err(CommerceError::Validation(
-                    "Product pricing port required to author variant prices".into(),
-                ));
-            }
+            self.pricing_port
+                .as_ref()
+                .ok_or_else(pricing_port_unavailable)?
+                .replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
+                .await?;
         }
 
         if let Some(quantity) = input.inventory_quantity {
@@ -1812,13 +1830,16 @@ impl CatalogService {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
 
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, &[variant_id])
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
@@ -1898,7 +1919,7 @@ impl CatalogService {
         self.retain_product_image(tenant_id, actor_id, image_id, media_id)
             .await?;
 
-        let (txn, result) = match self
+        let (txn, result) = self
             .stage_product_image_addition_in_tx(
                 tenant_id,
                 actor_id,
@@ -1907,18 +1928,7 @@ impl CatalogService {
                 input,
                 image_locale,
             )
-            .await
-        {
-            Ok(staged) => staged,
-            Err(error) => {
-                // The Media hold was taken before this transaction opened. A
-                // definite rollback enqueues its release instead of leaking an
-                // orphan hold for the at-least-once release worker.
-                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
-                    .await;
-                return Err(error);
-            }
-        };
+            .await?;
         record_product_operation_result(&result);
         // A commit failure is ambiguous (the commit may have landed) and is
         // deliberately not compensated: a leaked hold is recoverable, releasing
@@ -1948,16 +1958,63 @@ impl CatalogService {
         input: AddProductImageInput,
         image_locale: Option<String>,
     ) -> CommerceResult<(ProductWriteTransaction, ProductImageResponse)> {
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        lock_schema_for_product_write(&txn, tenant_id).await?;
+        let media_id = input.media_id;
+        let txn = match ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await {
+            Ok(txn) => txn,
+            Err(error) => {
+                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
+                    .await?;
+                return Err(error);
+            }
+        };
 
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        match self
+            .stage_product_image_addition_in_open_tx(
+                &txn,
+                tenant_id,
+                actor_id,
+                product_id,
+                image_id,
+                input,
+                image_locale,
+            )
+            .await
+        {
+            Ok(result) => Ok((txn, result)),
+            Err(error) => {
+                if let Err(rollback_error) = txn.rollback().await {
+                    tracing::error!(
+                        image_id_non_nil = !image_id.is_nil(),
+                        "Product image staging rollback failed; Media hold compensation was withheld"
+                    );
+                    return Err(rollback_error);
+                }
+                self.compensate_retained_media_hold(tenant_id, actor_id, image_id, media_id)
+                    .await?;
+                Err(error)
+            }
+        }
+    }
+
+    async fn stage_product_image_addition_in_open_tx(
+        &self,
+        txn: &ProductWriteTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: AddProductImageInput,
+        image_locale: Option<String>,
+    ) -> CommerceResult<ProductImageResponse> {
+        lock_schema_for_product_write(&**txn, tenant_id).await?;
+
+        let _product = find_product_for_update_in_tx(&**txn, tenant_id, product_id).await?;
 
         let existing_images = entities::product_image::Entity::find()
             .filter(entities::product_image::Column::ProductId.eq(product_id))
             .order_by_asc(entities::product_image::Column::Position)
             .order_by_asc(entities::product_image::Column::Id)
-            .all(&txn)
+            .all(txn)
             .await?;
         let requested_position = input
             .position
@@ -1978,24 +2035,24 @@ impl CatalogService {
         let position = i32::try_from(insertion_index)
             .map_err(|_| CommerceError::Validation("too many Product images".to_owned()))?;
 
-        let _image = entities::product_image::ActiveModel {
+        entities::product_image::ActiveModel {
             id: Set(image_id),
             product_id: Set(product_id),
             media_id: Set(input.media_id),
             position: Set(position),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
-        self.mark_image_media_provisioned(&*txn, tenant_id, image_id)
+        self.mark_image_media_provisioned(txn, tenant_id, image_id)
             .await?;
-        self.mark_media_retention_ready(&*txn, tenant_id).await?;
+        self.mark_media_retention_ready(txn, tenant_id).await?;
 
         let mut ordered_image_ids = existing_images
             .into_iter()
             .map(|image| image.id)
             .collect::<Vec<_>>();
         ordered_image_ids.insert(insertion_index, image_id);
-        persist_product_image_order_in_tx(&txn, product_id, ordered_image_ids.as_slice()).await?;
+        persist_product_image_order_in_tx(&**txn, product_id, ordered_image_ids.as_slice()).await?;
 
         let mut translations = Vec::new();
         if let Some(alt_text) = input.alt_text.as_deref() {
@@ -2010,7 +2067,7 @@ impl CatalogService {
                 locale: Set(locale.clone()),
                 alt_text: Set(Some(alt_text.to_string())),
             }
-            .insert(&txn)
+            .insert(txn)
             .await?;
 
             translations.push(ProductImageTranslationResponse {
@@ -2026,16 +2083,14 @@ impl CatalogService {
         )
         .await?;
 
-        let result = ProductImageResponse {
+        Ok(ProductImageResponse {
             id: image_id,
             media_id: input.media_id,
             url: format_product_media_url(input.media_id),
             alt_text: input.alt_text,
             position,
             translations,
-        };
-
-        Ok((txn, result))
+        })
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]

@@ -30,11 +30,12 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = std::collections::BTreeSet::new();
     for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
+        if let Some(raw_slug) = value.as_str() {
+            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+                .filter(|slug| slug.as_str() == raw_slug)
+            {
+                normalized.insert(slug);
+            }
         }
     }
 
@@ -63,6 +64,23 @@ pub fn is_metadata_visible_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> bool {
     let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    let explicit_allowlist = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("allowed_channel_slugs"));
+    let malformed_nonempty_allowlist = match explicit_allowlist {
+        Some(Value::Array(values)) => !values.is_empty() && allowed_channel_slugs.is_empty(),
+        Some(_) => true,
+        None => false,
+    };
+
+    // A malformed non-empty allowlist must not collapse to the empty-list
+    // "visible everywhere" default.
+    if malformed_nonempty_allowlist {
+        return false;
+    }
+
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
 }
 use sea_orm::{
@@ -94,7 +112,7 @@ pub fn slugify(text: &str) -> String {
     let slug: String = normalized
         .to_lowercase()
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
         .map(|c| if c == ' ' || c == '_' { '-' } else { c })
         .collect();
 
@@ -105,6 +123,7 @@ pub fn slugify(text: &str) -> String {
         .join("-");
 
     let slug: String = slug.chars().take(MAX_LENGTH).collect();
+    let slug = slug.trim_matches('-').to_owned();
 
     let slug = if RESERVED_NAMES.contains(&slug.as_str()) {
         format!("{}-1", slug)
@@ -117,6 +136,17 @@ pub fn slugify(text: &str) -> String {
     } else {
         slug
     }
+}
+
+/// Resolves an authored Product handle, falling back to a localized title slug when the
+/// client submits an empty field. Product editors intentionally keep the handle input blank
+/// until the operator chooses a custom value or asks for automatic generation.
+pub fn product_translation_handle(handle: Option<&str>, title: &str) -> String {
+    handle
+        .map(str::trim)
+        .filter(|handle| !handle.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| slugify(title))
 }
 
 pub fn generate_variant_title_from_axis_values(values: &[&str]) -> String {
@@ -601,14 +631,18 @@ pub fn product_channel_visibility_condition(
     if backend == DbBackend::Sqlite {
         return match normalize_public_channel_slug(public_channel_slug) {
             None => Condition::all().add(Expr::cust(
-                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'",
+                "COALESCE(json_type(metadata, '$.channel_visibility.allowed_channel_slugs'), 'array') = 'array'
+                 AND COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'",
             )),
             Some(slug) => Condition::all().add(Expr::cust_with_values(
-                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'
-                 OR EXISTS (
-                     SELECT 1
-                     FROM json_each(COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]'))
-                     WHERE value = ?
+                "COALESCE(json_type(metadata, '$.channel_visibility.allowed_channel_slugs'), 'array') = 'array'
+                 AND (
+                     COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'
+                     OR EXISTS (
+                         SELECT 1
+                         FROM json_each(COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]'))
+                         WHERE value = ?
+                     )
                  )",
                 vec![SqlValue::from(slug)],
             )),
@@ -1107,5 +1141,63 @@ mod category_filter_subtree_tests {
             .await
             .expect_err("an oversized subtree must be refused");
         assert!(matches!(error, CommerceError::Validation(_)));
+    }
+}
+
+
+#[cfg(test)]
+mod product_handle_and_visibility_tests {
+    use super::{
+        is_metadata_visible_for_public_channel, product_translation_handle, slugify,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn slugify_preserves_unicode_letters_and_numbers() {
+        assert_eq!(slugify("Красный чай 2026"), "красный-чай-2026");
+        assert_eq!(slugify("東京 2026"), "東京-2026");
+        assert_eq!(slugify("Café Déjà Vu"), "café-déjà-vu");
+    }
+
+    #[test]
+    fn blank_product_handles_fall_back_to_the_localized_title() {
+        assert_eq!(product_translation_handle(None, "Красный чай"), "красный-чай");
+        assert_eq!(product_translation_handle(Some(""), "Chair"), "chair");
+        assert_eq!(product_translation_handle(Some("  \t "), "Chair"), "chair");
+        assert_eq!(
+            product_translation_handle(Some("custom-handle"), "Chair"),
+            "custom-handle"
+        );
+    }
+
+    #[test]
+    fn malformed_nonempty_channel_allowlists_do_not_become_public() {
+        let invalid_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["", 42, null] }
+        });
+        let noncanonical_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["WEB"] }
+        });
+        let wrong_shape = json!({
+            "channel_visibility": { "allowed_channel_slugs": "web" }
+        });
+        let null_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": null }
+        });
+        let valid_values = json!({
+            "channel_visibility": { "allowed_channel_slugs": ["web"] }
+        });
+
+        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
+            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+            assert!(!is_metadata_visible_for_public_channel(metadata, None));
+        }
+        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
+        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
+            None
+        ));
+        assert!(is_metadata_visible_for_public_channel(&json!({}), Some("web")));
     }
 }
