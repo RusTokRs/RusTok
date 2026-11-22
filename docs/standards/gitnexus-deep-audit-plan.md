@@ -4,9 +4,9 @@
 
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
-- **Active Phase:** Phase GN-02 — Core Identity, Tenancy & Access Modules
-- **Next Pending Component:** [`crates/modules/rustok-security`](../../crates/modules/rustok-security)
-- **Current main SHA:** `67f842e7e8`
+- **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
+- **Next Pending Component:** [`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)
+- **Current main SHA:** `9d76057b1b`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -205,7 +205,7 @@ flowchart TD
 | `rustok-tenant` | `crates/modules/rustok-tenant` | [x] | [x] | [x] | [x] |
 | `rustok-auth` (вкл. `cli`, `ui`) | `crates/modules/rustok-auth` | [x] | [x] | [x] | [x] |
 | `rustok-rbac` (вкл. `cli`) | `crates/modules/rustok-rbac` | [x] | [x] | [x] | [x] |
-| `rustok-security` | `crates/modules/rustok-security` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-security` | `crates/modules/rustok-security` | [x] | [x] | [x] | [x] |
 
 ### Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
