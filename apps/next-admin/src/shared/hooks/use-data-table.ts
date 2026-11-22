@@ -215,15 +215,11 @@ export function useDataTable<TData extends RowData = any>(
     return Object.entries(filterValues).reduce<ColumnFiltersState>(
       (filters, [key, value]) => {
         if (value !== null) {
-          const processedValue = Array.isArray(value)
-            ? value
-            : typeof value === 'string' && /[^a-zA-Z0-9]/.test(value)
-              ? value.split(/[^a-zA-Z0-9]+/).filter(Boolean)
-              : [value];
-
+          // Text filters must remain scalar strings for their controlled inputs.
+          // Faceted filters already arrive as arrays from their URL parser.
           filters.push({
             id: key,
-            value: processedValue
+            value
           });
         }
         return filters;

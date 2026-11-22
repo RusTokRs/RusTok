@@ -25,6 +25,14 @@ function pickParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function parseAttributeFilters(value: string | string[] | undefined): string[] {
+  const entries = Array.isArray(value) ? value : value ? [value] : [];
+  return entries
+    .flatMap((entry) => entry.split(';'))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 export default async function ProductPage({ searchParams }: PageProps) {
   const session = await auth();
   const params = await searchParams;
@@ -73,6 +81,10 @@ export default async function ProductPage({ searchParams }: PageProps) {
     undefined;
   const status = canonicalStatus;
   const vendor = pickParam(params.vendor)?.trim() || undefined;
+  const categoryId = pickParam(params.category_id)?.trim() || undefined;
+  const sortBy = pickParam(params.sort_by)?.trim() || undefined;
+  const sortDirection = pickParam(params.sort_direction)?.trim() || undefined;
+  const attributeFilters = parseAttributeFilters(params.attribute_filters);
 
   const opts = {
     graphql: graphqlRequest,
@@ -90,7 +102,11 @@ export default async function ProductPage({ searchParams }: PageProps) {
       perPage,
       search,
       status,
-      vendor
+      vendor,
+      categoryId,
+      sortBy,
+      sortDirection,
+      attributeFilters
     });
   } catch {
     // Transport failures can carry server-controlled details. The view

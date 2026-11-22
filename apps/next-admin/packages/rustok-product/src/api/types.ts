@@ -365,6 +365,7 @@ export interface ProductListItem {
   vendor: string | null;
   productType: string | null;
   shippingProfileSlug: string | null;
+  primaryCategoryId?: string | null;
   tags: string[];
   createdAt: string | null;
   publishedAt: string | null;

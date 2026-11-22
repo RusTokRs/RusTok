@@ -338,3 +338,15 @@ See the [Inventory contract](../rustok-inventory/CRATE_API.md#anonymous-quantity
 The registered `inventory_service_test::quantity_release` definitions remain uncompiled/unrun
 alongside the owner pure cases (27 Rust total, 10 Node definitions). No reservation notification
 publisher or Index/runtime proof is added; prior physical-stock evidence remains separate.
+
+
+## Admin product catalog GraphQL filter (2026-11-22)
+
+The canonical operator list is `adminProductCatalog(tenantId, locale, filter)` with
+`AdminProductCatalogFilter`. The filter supports title search, lifecycle status, vendor,
+category subtree, typed attribute filters, sorting, and bounded `page`/`perPage`.
+The resolver forwards these values to Product's `AdminProductsRequest`; vendor is not a
+client-side filter. `total`, `page`, `perPage`, and `hasNext` are the Product owner's
+server-page result and must be used as returned rather than recomputed from the loaded slice.
+The legacy `products` query remains available for existing consumers, but new admin
+catalog clients should use `adminProductCatalog`.
