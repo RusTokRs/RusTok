@@ -15,7 +15,7 @@ use rustok_seo_targets::{
 use url::Url;
 use uuid::Uuid;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::CatalogService;
 
@@ -62,10 +62,23 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             return Ok(None);
         };
 
-        if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
-            && (product.status != ProductStatus::Active || product.published_at.is_none())
-        {
-            return Ok(None);
+        if matches!(request.scope, SeoTargetLoadScope::PublicRoute) {
+            if product.status != ProductStatus::Active || product.published_at.is_none() {
+                return Ok(None);
+            }
+            // Publication alone is insufficient: channel-restricted products
+            // must not be returned as public SEO targets for another channel.
+            let visible = service
+                .visible_published_product_ids(
+                    request.tenant_id,
+                    &[request.target_id],
+                    request.channel_slug,
+                )
+                .await
+                .map_err(SeoTargetError::provider)?;
+            if !visible.contains(&request.target_id) {
+                return Ok(None);
+            }
         }
 
         Ok(Some(map_product_response(
@@ -93,6 +106,21 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             )
             .await
             .map_err(SeoTargetError::provider)?;
+        let visible_public_ids: Option<HashSet<Uuid>> =
+            if matches!(request.scope, SeoTargetLoadScope::PublicRoute) {
+                Some(
+                    service
+                        .visible_published_product_ids(
+                            request.tenant_id,
+                            request.target_ids,
+                            request.channel_slug,
+                        )
+                        .await
+                        .map_err(SeoTargetError::provider)?,
+                )
+            } else {
+                None
+            };
         let mut by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -104,7 +132,11 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 continue;
             };
             if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
-                && (projection.status != ProductStatus::Active || projection.published_at.is_none())
+                && (projection.status != ProductStatus::Active
+                    || projection.published_at.is_none()
+                    || visible_public_ids
+                        .as_ref()
+                        .is_none_or(|visible| !visible.contains(&target_id)))
             {
                 records.push((target_id, None));
                 continue;

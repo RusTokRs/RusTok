@@ -1,6 +1,47 @@
 use super::*;
 
+const MAX_PUBLISHED_PRODUCT_SCAN_LIMIT: u64 = 500;
+
+fn validate_published_product_scan_limit(limit: u64) -> CommerceResult<u64> {
+    if !(1..=MAX_PUBLISHED_PRODUCT_SCAN_LIMIT).contains(&limit) {
+        return Err(CommerceError::Validation(
+            "published product scan limit must be between 1 and 500".to_owned(),
+        ));
+    }
+    Ok(limit)
+}
+
 impl CatalogService {
+    /// Batch scope check for SEO public-route projections. SEO's compact
+    /// projection intentionally omits Product metadata, so public consumers
+    /// must check the authoritative Product rows before returning them.
+    pub(crate) async fn visible_published_product_ids(
+        &self,
+        tenant_id: Uuid,
+        product_ids: &[Uuid],
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<HashSet<Uuid>> {
+        if product_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Id.is_in(product_ids.to_vec()))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .all(&self.db)
+            .await?;
+
+        Ok(products
+            .into_iter()
+            .filter(|product| {
+                is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+            })
+            .map(|product| product.id)
+            .collect())
+    }
+
     #[instrument(skip(self))]
     pub async fn list_published_products_with_locale_fallback(
         &self,
@@ -31,7 +72,7 @@ impl CatalogService {
         after: Option<Uuid>,
         limit: u64,
     ) -> CommerceResult<(Vec<Uuid>, Option<Uuid>)> {
-        let limit = limit.max(1);
+        let limit = validate_published_product_scan_limit(limit)?;
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
@@ -595,5 +636,19 @@ impl CatalogService {
                 )
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod seo_scan_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn seo_scan_rejects_zero_and_unbounded_batch_sizes() {
+        assert!(validate_published_product_scan_limit(0).is_err());
+        assert_eq!(validate_published_product_scan_limit(1).unwrap(), 1);
+        assert_eq!(validate_published_product_scan_limit(500).unwrap(), 500);
+        assert!(validate_published_product_scan_limit(501).is_err());
+        assert!(validate_published_product_scan_limit(u64::MAX).is_err());
     }
 }
