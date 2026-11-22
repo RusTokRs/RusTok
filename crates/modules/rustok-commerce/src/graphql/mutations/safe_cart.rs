@@ -601,6 +601,7 @@ mod rustok_cart_shim {
 
 mod rustok_pricing_shim {
     pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;
+    #[allow(unused_imports)]
     pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
 }
 

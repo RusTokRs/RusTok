@@ -93,11 +93,23 @@ requireText(
   'update concurrent slug conflict mapping',
 );
 
+if (
+  !service.includes('self.ensure_slug_available(txn,') &&
+  !service.includes('Self::ensure_slug_available(txn,')
+) {
+  failures.push('create slug check inside transaction: missing ensure_slug_available(txn,');
+}
+
+if (
+  !service.includes('self.load_shipping_profile(txn, tenant_id, shipping_profile_id)') &&
+  !service.includes('Self::load_shipping_profile(txn, tenant_id, shipping_profile_id)')
+) {
+  failures.push('update profile load inside transaction: missing load_shipping_profile(txn, tenant_id, shipping_profile_id)');
+}
+
 for (const [value, label] of [
-  ['self.ensure_slug_available(txn,', 'create slug check inside transaction'],
   ['active_profile.insert(txn).await?', 'create profile insert inside transaction'],
   ['insert_translations(txn, id, &normalized_translations).await?', 'create translations inside transaction'],
-  ['self.load_shipping_profile(txn, tenant_id, shipping_profile_id)', 'update profile load inside transaction'],
   ['active.update(txn).await?', 'update profile write inside transaction'],
   ['replace_translations(txn, shipping_profile_id, &translations).await?', 'update translations inside transaction'],
 ]) requireText(service, value, label);

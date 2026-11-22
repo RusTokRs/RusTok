@@ -7,8 +7,9 @@ use rustok_api::Permission;
 use rustok_api::{
     AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
 };
-use rustok_product::CommerceError;
 use rustok_web::{HttpError, HttpResult};
+#[cfg(test)]
+use rustok_product::CommerceError;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;

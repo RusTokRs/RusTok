@@ -8,8 +8,8 @@ use rustok_inventory::{
 };
 use rustok_pricing::{
     PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
+    in_process_pricing_read_port,
 };
-use super::cart::contextual_pricing_read_port as in_process_pricing_read_port;
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };

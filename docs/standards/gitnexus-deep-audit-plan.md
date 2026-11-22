@@ -5,8 +5,8 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)
-- **Current main SHA:** `9d76057b1b`
+- **Next Pending Component:** [`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)
+- **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -210,7 +210,7 @@ flowchart TD
 ### Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
-| `rustok-commerce` | `crates/modules/rustok-commerce` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-commerce` | `crates/modules/rustok-commerce` | [x] | [x] | [x] | [x] |
 | `rustok-commerce-foundation` | `crates/modules/rustok-commerce-foundation` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-cart` | `crates/modules/rustok-cart` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-order` | `crates/modules/rustok-order` | [ ] | [ ] | [ ] | [ ] |
