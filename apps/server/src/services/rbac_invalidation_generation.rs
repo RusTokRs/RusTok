@@ -340,8 +340,8 @@ fn is_missing_generation_state(error: &Error) -> bool {
     // schema error cannot leave RBAC recovery dormant.
     message.contains("rbac_invalidation_state")
         && (message.contains("no such table")
-            || (message.contains("relation")
-                && (message.contains("undefinedtable") || message.contains("does not exist")))
+            || message.contains("undefinedtable")
+            || (message.contains("relation") && message.contains("does not exist"))
             || (message.contains("table '")
                 && (message.contains("does not exist") || message.contains("doesn't exist"))))
 }
@@ -393,6 +393,9 @@ mod tests {
         )));
         assert!(!is_missing_generation_state(&Error::Cache(
             "Database error: undefinedTable on unrelated_authorization_state".to_string()
+        )));
+        assert!(is_missing_generation_state(&Error::Cache(
+            "Database error: undefinedTable on rbac_invalidation_state".to_string()
         )));
         assert!(is_missing_generation_state(&Error::Cache(
             "Table 'rustok.rbac_invalidation_state' doesn't exist".to_string()
