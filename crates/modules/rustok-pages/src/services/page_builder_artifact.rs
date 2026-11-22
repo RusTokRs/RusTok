@@ -265,22 +265,16 @@ impl PageBuilderArtifactService {
         {
             let bindings =
                 find_landing_bindings_batch_in_tx(&txn, tenant_id, page_id, &candidates).await?;
-            let mut selected_binding = None;
+            let mut selected_candidate = None;
             for candidate in &candidates {
-                if let Some(binding) = bindings.get(candidate) {
-                    selected_binding = Some(binding);
+                if bindings.contains_key(candidate) {
+                    selected_candidate = Some(candidate);
                     break;
                 }
             }
-            if let Some(binding) = selected_binding {
-                let record = page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)
-                    .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?;
-                if let Some(record) = record {
-                    verify_static_landing_artifact(&record)?;
-                    resolved = Some(parse_published_landing_artifact(&record)?);
-                }
+            if let Some(candidate) = selected_candidate {
+                resolved =
+                    load_bound_artifact_in_tx(&txn, tenant_id, page_id, candidate).await?;
             }
         }
 
@@ -453,7 +447,7 @@ async fn find_landing_bindings_batch_in_tx(
     }
     let body_ids: Vec<Uuid> = bodies.iter().map(|b| b.id).collect();
     let bindings = page_published_landing_artifact::Entity::find()
-        .filter(page_published_landing_artifact::Column::Id.is_in(body_ids))
+        .filter(page_published_landing_artifact::Column::PageBodyId.is_in(body_ids))
         .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
         .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
         .filter(page_published_landing_artifact::Column::Locale.is_in(locales.iter().cloned()))

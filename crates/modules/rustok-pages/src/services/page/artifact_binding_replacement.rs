@@ -691,7 +691,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
 
         latest_by_locale.insert(
             operation.locale.clone(),
-            (prior_source.page_body_id, prior_rebuild),
+            (prior_source.page_body_id, prior_rebuild.clone()),
         );
         cursor = operation.result_version;
     }

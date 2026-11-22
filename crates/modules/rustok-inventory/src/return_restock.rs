@@ -190,7 +190,7 @@ pub async fn restock_returned_items(
         .values()
         .map(Movement::level_key)
         .collect::<BTreeSet<_>>();
-    let levels = fetch_return_levels(&txn, &context, &level_keys).await?;
+    let mut levels = fetch_return_levels(&txn, &context, &level_keys).await?;
 
     let now = Utc::now();
     let mut additions = BTreeMap::<(Uuid, Uuid), i32>::new();

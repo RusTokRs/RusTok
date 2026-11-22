@@ -788,7 +788,7 @@ impl SettingsService {
         // silently restoring a stale secret or skipping the outbox event.
         const MAX_WRITE_ATTEMPTS: usize = 8;
         for _ in 0..MAX_WRITE_ATTEMPTS {
-            if let Some(snapshot) = attempt_write_platform_settings(
+            if let Some(snapshot) = Self::attempt_write_platform_settings(
                 ctx,
                 event_bus,
                 validators,
@@ -811,13 +811,13 @@ impl SettingsService {
 
     #[allow(clippy::too_many_arguments)]
     async fn attempt_write_platform_settings(
-        ctx: &AppContext,
-        event_bus: &EventBus,
-        validators: &SettingsValidators,
+        ctx: &ServerRuntimeContext,
+        event_bus: &TransactionalEventBus,
+        validators: &ValidatorRegistry,
         tenant_id: Uuid,
         actor_id: Uuid,
         cat: &str,
-        settings: &serde_json::Value,
+        settings: &Value,
         expected_schema_version: Option<i32>,
     ) -> Result<Option<SettingsSnapshot>, SettingsError> {
         let tx = ctx.db().begin().await?;
