@@ -82,6 +82,7 @@ impl Scan<'_> {
                 || pattern_id == "P-NIL-IDENTITY-FALLBACK"
                 || pattern_id == "P-SQLITE-UNLOCKED-RACE"
                 || pattern_id == "P-SILENT-EVENT-DISCARD"
+                || pattern_id == "P-THISERROR-SOURCE-FIELD-COLLISION"
             {
                 Confidence::High
             } else {
@@ -492,6 +493,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let mut static_delimiters = Vec::new();
     let mut async_depth = None;
     let mut pending_async = false;
+    let mut thiserror_depth = None;
+    let mut pending_thiserror = false;
     let mut in_fn_params = false;
     let mut fn_param_parens = 0usize;
     let mut guards: BTreeMap<String, (usize, usize)> = BTreeMap::new();
@@ -672,6 +675,40 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             }
         }
 
+        let thiserror_derive =
+            re!(r"#\s*\[\s*derive\s*\([^]]*\b(?:thiserror::)?Error\b").is_match(code_part);
+        if thiserror_derive {
+            pending_thiserror = true;
+        }
+        if pending_thiserror {
+            if opens > 0 {
+                thiserror_depth = Some(depth);
+                pending_thiserror = false;
+            } else if code_part.contains(';') {
+                pending_thiserror = false;
+            }
+        }
+        if thiserror_depth.is_some() && !test_context {
+            if re!(r"\bsource\s*:\s*(?:String|&str|Box<str>)\b").is_match(code_part) {
+                let has_source_false = code_part.contains("#[source(false)]")
+                    || scan.lines[..index]
+                        .iter()
+                        .rev()
+                        .take(3)
+                        .any(|prev| prev.syntax.contains("#[source(false)]"));
+                if !has_source_false {
+                    scan.add(
+                        line_number,
+                        "P-THISERROR-SOURCE-FIELD-COLLISION",
+                        "Colliding thiserror Source Field",
+                        Severity::High,
+                        "Field named 'source' with a String type inside a #[derive(thiserror::Error)] type. thiserror treats 'source' as the error cause (std::error::Error::source), causing E0599 compilation error.",
+                        "Rename field to 'message', 'details', or annotate it with #[source(false)].",
+                    );
+                }
+            }
+        }
+
         if let Some(captures) =
             re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z_]\w*)")
                 .captures(code_part)
@@ -846,6 +883,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
         if static_depth.is_some_and(|scope| depth <= scope) {
             static_depth = None;
+        }
+        if thiserror_depth.is_some_and(|scope| depth <= scope) {
+            thiserror_depth = None;
         }
     }
     scan.findings

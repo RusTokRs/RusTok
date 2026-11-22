@@ -1902,6 +1902,32 @@ own document contract.
 Detection: `rg -n 'as_f64\(\)|JSON\.parse\(|JSON\.stringify\(' crates/modules/rustok-modules/src/settings.rs apps/next-admin/src/features/modules/components`;
 inspect numeric values and whether the parsed document is ever written back.
 
+## P-THISERROR-SOURCE-FIELD-COLLISION — Avoid String fields named source in thiserror types
+
+- **Category:** Domain error typing and macro attribute collision.
+- **Logic dimensions:** Branch completeness, anti-swallowing.
+- **Observed behavior:** In a struct or enum derived with `#[derive(thiserror::Error)]`, declaring a field named `source: String` (or `&str` / `Box<str>`) causes `thiserror`'s derive macro to infer `source` as an error cause (`std::error::Error::source`). Because `String` does not implement `std::error::Error`, the compiler rejects the derived code with `error[E0599]: the method as_dyn_error exists for reference &String, but its trait bounds were not satisfied`.
+- **Remediation:** Name the payload field `message`, `details`, or `cause`, or explicitly disable the automatic source inference by annotating the field with `#[source(false)]`.
+
+```rust
+// Forbidden: collisions between field name and thiserror source inference
+#[derive(Debug, thiserror::Error)]
+pub enum FieldDefinitionError {
+    #[error("unknown field type: {source}")]
+    UnknownFieldType { source: String },
+}
+
+// Canonical remediation: use descriptive field name or explicit #[source(false)]
+#[derive(Debug, thiserror::Error)]
+pub enum FieldDefinitionError {
+    #[error("unknown field type: {message}")]
+    UnknownFieldType { message: String },
+}
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>`.
+Doctor flags fields named `source` with string types inside types deriving `thiserror::Error`.
+
 
 ## Distributed event delivery, leases, and backpressure
 
