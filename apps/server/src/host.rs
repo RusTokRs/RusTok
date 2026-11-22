@@ -435,7 +435,7 @@ async fn connect_database(
 
 async fn load_config() -> Result<HostConfig> {
     let environment =
-        crate::common::settings::resolve_environment_name().map_err(Error::BadRequest)?;
+        crate::common::settings::resolve_environment_name().map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()

@@ -333,11 +333,45 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
     );
     let parent = output.parent().context("plan parent missing")?;
     fs::create_dir_all(parent)?;
+    let parent = parent.canonicalize()?;
     ensure!(
-        parent.canonicalize()?.starts_with(&boundary),
+        parent.starts_with(&boundary),
         "plan path escapes target/migrations"
     );
+    let output = parent.join(output.file_name().context("plan directory name missing")?);
     fs::create_dir(&output)?;
+
+    let plan = match write_source_plan(root, &output, reference_commit, main_commit, candidate_head)
+    {
+        Ok(plan) => plan,
+        Err(error) => {
+            return match remove_unpublished_plan(&output) {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(error.context(format!(
+                    "could not remove incomplete plan directory {}: {cleanup:#}",
+                    output.display()
+                ))),
+            };
+        }
+    };
+    println!(
+        "migration source plan {}",
+        output.join("plan.json").display()
+    );
+    println!(
+        "No Git branch or worktree was created. Candidate input SHA256 {}",
+        plan.candidate.sha256
+    );
+    Ok(())
+}
+
+fn write_source_plan(
+    root: &Path,
+    output: &Path,
+    reference_commit: String,
+    main_commit: String,
+    candidate_head: String,
+) -> Result<Plan> {
     let original = output.join("reference");
     let candidate = output.join("candidate");
     fs::create_dir(&original)?;
@@ -347,6 +381,10 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
     ensure!(
         working_snapshot(root, None)? == candidate_snapshot,
         "working source changed during snapshot; create a new plan"
+    );
+    ensure!(
+        commit(root, "main")? == main_commit && commit(root, "HEAD")? == candidate_head,
+        "main or HEAD changed during snapshot; create a new plan"
     );
     let plan = Plan {
         schema_version: 1,
@@ -359,18 +397,18 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
         replacement_admission:
             "blocked pending trusted release, upgrade, activation and recovery gates".into(),
     };
-    write_new(
-        &output.join("plan.json"),
-        &serde_json::to_vec_pretty(&plan)?,
-    )?;
-    println!(
-        "migration source plan {}",
-        output.join("plan.json").display()
+    let pending = output.join("pending-plan.json");
+    write_new(&pending, &serde_json::to_vec_pretty(&plan)?)?;
+    fs::rename(pending, output.join("plan.json"))?;
+    Ok(plan)
+}
+
+fn remove_unpublished_plan(output: &Path) -> Result<()> {
+    ensure!(
+        output.canonicalize()? == output && !output.join("plan.json").try_exists()?,
+        "plan directory moved or already contains a published plan"
     );
-    println!(
-        "No Git branch or worktree was created. Candidate input SHA256 {}",
-        plan.candidate.sha256
-    );
+    fs::remove_dir_all(output)?;
     Ok(())
 }
 
@@ -1112,7 +1150,8 @@ mod tests {
             let destination = fixture.join("snapshot");
             fs::create_dir(&repository)?;
             fs::create_dir(&destination)?;
-            git(&repository, &["init", "--quiet"])?;
+            git(&repository, &["init", "--quiet", "--initial-branch=main"])?;
+            fs::write(repository.join(".gitignore"), "/target/\n")?;
             fs::write(
                 repository.join(".gitattributes"),
                 "ignored.rs export-ignore\n",
@@ -1143,6 +1182,29 @@ mod tests {
             validate_snapshot(&destination, &expected)?;
             fs::write(destination.join("ignored.rs"), "changed helper")?;
             assert!(validate_snapshot(&destination, &expected).is_err());
+
+            let output = Path::new("target/migrations/retry");
+            let source = repository.join("ignored.rs");
+            fs::remove_file(&source)?;
+            fs::create_dir(&source)?;
+            let error = prepare(&repository, &identity, output).unwrap_err();
+            assert!(
+                error.to_string().contains("not a regular file"),
+                "{error:#}"
+            );
+            assert!(!repository.join(output).try_exists()?);
+
+            fs::remove_dir(&source)?;
+            fs::write(&source, "candidate bytes")?;
+            prepare(&repository, &identity, output)?;
+            let output = repository.join(output);
+            let plan_bytes = fs::read(output.join("plan.json"))?;
+            let plan: Plan = serde_json::from_slice(&plan_bytes)?;
+            validate_snapshot(&output.join("reference"), &plan.reference)?;
+            validate_snapshot(&output.join("candidate"), &plan.candidate)?;
+            assert!(!output.join("pending-plan.json").try_exists()?);
+            assert!(prepare(&repository, &identity, &output).is_err());
+            assert_eq!(fs::read(output.join("plan.json"))?, plan_bytes);
             Ok(())
         })();
         ensure!(

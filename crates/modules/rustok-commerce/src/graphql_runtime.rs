@@ -451,30 +451,12 @@ pub fn attach_schema_data(
         .shared_get::<FulfillmentProviderRegistry>()
         .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
 
-    let payment_read_runtime = inputs
-        .shared_get::<CommercePaymentReadRuntime>()
-        .unwrap_or_else(|| {
-            CommercePaymentReadRuntime::new(
-                inputs
-                    .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
-                    .unwrap_or_else(|| {
-                        rustok_payment::PaymentAdminReadRuntime::in_process(inputs.db_clone())
-                    }),
-                inputs
-                    .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
-                    .unwrap_or_else(|| {
-                        rustok_payment::PaymentOrderReadRuntime::in_process(inputs.db_clone())
-                    }),
-                inputs
-                    .shared_get::<rustok_payment::PaymentCartReadRuntime>()
-                    .unwrap_or_else(|| {
-                        rustok_payment::PaymentCartReadRuntime::in_process(inputs.db_clone())
-                    }),
-            )
-        });
-    let payment_command_runtime = inputs
-        .shared_get::<CommercePaymentCommandRuntime>()
-        .unwrap_or_else(|| CommercePaymentCommandRuntime::from_graphql_inputs(inputs));
+    let payment_read_runtime = inputs.shared_get::<CommercePaymentReadRuntime>().ok_or(
+        CommerceGraphqlRuntimeError::MissingHostDependency("CommercePaymentReadRuntime"),
+    )?;
+    let payment_command_runtime = inputs.shared_get::<CommercePaymentCommandRuntime>().ok_or(
+        CommerceGraphqlRuntimeError::MissingHostDependency("CommercePaymentCommandRuntime"),
+    )?;
     let order_read_runtime = inputs
         .shared_get::<CommerceOrderReadRuntime>()
         .ok_or(CommerceGraphqlRuntimeError::MissingHostDependency(

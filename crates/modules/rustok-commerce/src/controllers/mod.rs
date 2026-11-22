@@ -331,14 +331,12 @@ pub enum CommerceControllerError {
 
 impl CommerceHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> Result<Self, CommerceControllerError> {
-        let event_bus = runtime
-            .shared_get::<TransactionalEventBus>()
-            .ok_or(CommerceControllerError::MissingHostDependency(
-                "TransactionalEventBus",
-            ))?;
-        let payment_provider_registry = runtime
-            .shared_get::<PaymentProviderRegistry>()
-            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
+        let event_bus = runtime.shared_get::<TransactionalEventBus>().ok_or(
+            CommerceControllerError::MissingHostDependency("TransactionalEventBus"),
+        )?;
+        let payment_provider_registry = runtime.shared_get::<PaymentProviderRegistry>().ok_or(
+            CommerceControllerError::MissingHostDependency("PaymentProviderRegistry"),
+        )?;
         let fulfillment_provider_registry = runtime
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
@@ -426,26 +424,19 @@ impl CommerceHttpRuntime {
             ))?;
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
-            .unwrap_or_else(|| {
-                rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone())
-            });
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentAdminReadRuntime",
+            ))?;
         let payment_admin_collection_command_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
-            .unwrap_or_else(|| {
-                rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
-                    runtime.db_clone(),
-                    payment_provider_registry.clone(),
-                    checkout_execution_admission_port(runtime.db_clone()),
-                )
-            });
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentAdminCollectionCommandRuntime",
+            ))?;
         let payment_admin_refund_command_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
-            .unwrap_or_else(|| {
-                rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
-                    runtime.db_clone(),
-                    payment_provider_registry.clone(),
-                )
-            });
+            .ok_or(CommerceControllerError::MissingHostDependency(
+                "PaymentAdminRefundCommandRuntime",
+            ))?;
         let product_catalog_read_runtime = runtime
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .ok_or(CommerceControllerError::MissingHostDependency(

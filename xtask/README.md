@@ -314,6 +314,11 @@ It binds paths, file modes, deletions and bytes. Symlinks, reparse points,
 submodules and unresolved index conflicts fail. The original reference is a
 local comparison input, not a trusted release boundary.
 
+`plan.json` is published after both snapshots are written and the working
+source, `main`, and `HEAD` are rechecked. If preparation fails, it removes its
+incomplete output so the same path can be retried. A path that already exists
+belongs to its original run and is rejected.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.

@@ -445,7 +445,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         || name == "cli.rs"
         || parts
             .iter()
-            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
+            .any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask" | "rustok-doctor"));
     let mut scan = Scan {
         file,
         lines: source::lines(content),

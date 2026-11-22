@@ -88,6 +88,67 @@ pub(crate) fn product_catalog_port_error(
     })
 }
 
+async fn read_product_brand_links(
+    ctx: &Context<'_>,
+    tenant: &TenantContext,
+    product_id: Uuid,
+    locale: Option<&str>,
+) -> Result<Vec<rustok_product::dto::ProductBrandResponse>> {
+    let request_context = ctx.data_opt::<RequestContext>();
+    let mut port_context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::service("rustok-commerce.graphql-product-brands"),
+        locale
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(tenant.default_locale.as_str()),
+        request_context
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string()),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    if let Some(channel) = request_context.and_then(|request| request.channel_slug.as_deref()) {
+        port_context = port_context.with_channel(channel);
+    }
+    let runtime = match ctx.data_opt::<crate::graphql_runtime::CommerceGraphqlRuntimeData>() {
+        Some(runtime) => runtime.product_catalog_read_runtime(),
+        None => crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+            ctx.data::<DatabaseConnection>()?.clone(),
+            ctx.data::<TransactionalEventBus>()?.clone(),
+        ),
+    };
+    match runtime
+        .read_port()
+        .read_product_projection(
+            port_context.clone(),
+            rustok_product::ProductProjectionRequest {
+                product_id,
+                locale: None,
+                fallback_locale: Some(tenant.default_locale.clone()),
+            },
+        )
+        .await
+    {
+        Ok(product) if product.tenant_id == tenant.id && product.id == product_id => {
+            Ok(product.brands)
+        }
+        Ok(_) => Err(product_catalog_port_error(
+            &port_context,
+            PortError::invariant_violation(
+                "product.brand_links_scope_mismatch",
+                "Product brand links could not be read safely",
+            ),
+            "read_product_brand_links",
+        )),
+        Err(error) if error.kind == PortErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(product_catalog_port_error(
+            &port_context,
+            error,
+            "read_product_brand_links",
+        )),
+    }
+}
+
 fn require_product_bundle_read(ctx: &Context<'_>) -> Result<()> {
     require_commerce_permission(
         ctx,
@@ -763,15 +824,11 @@ impl ProductCatalogQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-        // Authoritative resolution: product-owned product_brands
-        let primary_brand_link = rustok_product::entities::product_brand::Entity::find()
-            .filter(rustok_product::entities::product_brand::Column::TenantId.eq(tenant.id))
-            .filter(rustok_product::entities::product_brand::Column::ProductId.eq(product_id))
-            .filter(rustok_product::entities::product_brand::Column::IsPrimary.eq(true))
-            .one(db)
-            .await?;
+        let primary_brand_link =
+            read_product_brand_links(ctx, tenant, product_id, locale.as_deref())
+                .await?
+                .into_iter()
+                .find(|link| link.is_primary);
 
         if let Some(link) = primary_brand_link {
             let service = rustok_brand::BrandService::new(db.clone());
@@ -805,16 +862,7 @@ impl ProductCatalogQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
-        // Query product_brands ordered by is_primary DESC, position ASC
-        let links = rustok_product::entities::product_brand::Entity::find()
-            .filter(rustok_product::entities::product_brand::Column::TenantId.eq(tenant.id))
-            .filter(rustok_product::entities::product_brand::Column::ProductId.eq(product_id))
-            .order_by_desc(rustok_product::entities::product_brand::Column::IsPrimary)
-            .order_by_asc(rustok_product::entities::product_brand::Column::Position)
-            .all(db)
-            .await?;
+        let links = read_product_brand_links(ctx, tenant, product_id, locale.as_deref()).await?;
 
         if !links.is_empty() {
             let brand_ids: Vec<Uuid> = links.iter().map(|l| l.brand_id).collect();

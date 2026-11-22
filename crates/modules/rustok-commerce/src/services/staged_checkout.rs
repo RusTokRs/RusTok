@@ -1,11 +1,11 @@
 use rustok_api::PortError;
 #[cfg(test)]
 use rustok_api::PortErrorKind;
-use rustok_cart::AtomicCartCheckoutHandle;
+use rustok_cart::{AtomicCartCheckoutHandle, CartCheckoutPort};
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -81,6 +81,11 @@ impl StagedCheckoutService {
             journal: CheckoutOperationJournal::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
+    }
+
+    pub fn with_cart_owner(mut self, cart_owner: Arc<dyn CartCheckoutPort>) -> Self {
+        self.journal = self.journal.with_cart_owner(cart_owner);
+        self
     }
 
     pub fn with_lease_seconds(mut self, lease_seconds: i64) -> Self {

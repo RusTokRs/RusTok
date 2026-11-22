@@ -689,6 +689,71 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
 }
 
 #[tokio::test]
+async fn checkout_operation_admission_uses_the_selected_cart_owner() {
+    use rustok_commerce::services::{
+        BeginCheckoutOperation, CheckoutOperationError, CheckoutOperationJournal,
+    };
+
+    let (db, cart_service, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("embedded cart");
+    let input = BeginCheckoutOperation {
+        tenant_id,
+        cart_id: cart.id,
+        idempotency_key: "cart-owner-admission".to_string(),
+        request_hash: "0123456789abcdef".to_string(),
+        snapshot_hash: None,
+    };
+    let journal = CheckoutOperationJournal::new(db, mock_transactional_event_bus());
+    let (owner_db, _, _, _) = setup().await;
+    let selected = journal
+        .clone()
+        .with_cart_owner(rustok_cart::in_process_cart_checkout_port(owner_db));
+
+    assert!(matches!(
+        selected.begin(input.clone()).await,
+        Err(CheckoutOperationError::Validation(_))
+    ));
+    assert!(
+        journal
+            .find_by_key(tenant_id, cart.id, &input.idempotency_key)
+            .await
+            .expect("journal lookup")
+            .is_none()
+    );
+
+    let unavailable_db = sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("unavailable owner fixture");
+    let unavailable = journal
+        .clone()
+        .with_cart_owner(rustok_cart::in_process_cart_checkout_port(unavailable_db));
+    assert!(matches!(
+        unavailable.begin(input.clone()).await,
+        Err(CheckoutOperationError::CartOwnerRead { retryable: true })
+    ));
+
+    let created = journal.begin(input.clone()).await.expect("admitted cart");
+    let replay = unavailable.begin(input).await.expect("retained operation");
+    assert_eq!(replay.id, created.id);
+}
+
+#[tokio::test]
 async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_side_effects() {
     let (db, cart_service, _, _) = setup().await;
     let tenant_id = Uuid::new_v4();

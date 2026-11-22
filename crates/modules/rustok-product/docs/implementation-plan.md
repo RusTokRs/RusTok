@@ -648,7 +648,13 @@ lost responses against PostgreSQL. Selecting gRPC does not replicate Product dat
   Product command changed a localized title, its refresh went through the standalone relay,
   and the Axum consumer read the projection over gRPC, stored the canonical mutation in Index,
   and acknowledged the broker. The host database had no local row for the product.
-  Large replay pages, remote absence and storefront admission remain open.
+  The separate Product/Channel PostgreSQL fixture passed again on 2026-11-22 with
+  eleven localized entries containing 512 KiB descriptions. The gRPC adapter returned
+  bounded pages, including continuation between two locales of one Product, and the
+  scan returned every key once. Transport tests also passed for JSON escaping, empty
+  terminal pages, owner continuations and a nonretryable oversized-entry refusal.
+  Exact-key replay responses retain their unary size constraint. Remote absence and
+  storefront admission remain open.
   Verify tenant and permissions checks, deadlines and trace propagation. Include
   Flex schema gRPC in the trace check: it currently forwards correlation and
   deadline but does not carry `traceparent`. Verify that the same gRPC client

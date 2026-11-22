@@ -204,7 +204,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(snapshot) = keyring_snapshot_from_context(runtime_ctx) else {
         return base::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(|err| Error::BadRequest(err.to_string()))?
     else {
         return Ok(());
     };
@@ -220,7 +220,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
         });
     if !authority_already_configured {
         let authority =
-            comments_tcp_authority_from_snapshot(&snapshot).map_err(Error::BadRequest)?;
+            comments_tcp_authority_from_snapshot(&snapshot).map_err(|err| Error::BadRequest(err.to_string()))?;
         runtime_ctx.shared_insert(base::SharedCommentsTcpAuthorityResolver(authority));
     }
 

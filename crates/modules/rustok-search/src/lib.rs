@@ -71,7 +71,7 @@ pub use forum_contract_ingress::{
     FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress, ForumSearchContractIngressError,
     ForumSearchContractIngressOutcome,
 };
-pub use forum_owner_checkpoint::{
+pub use forum_owner_contracts::{
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
     MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, resolve_forum_projection_owner_tenant_heads,
 };

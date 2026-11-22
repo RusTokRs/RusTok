@@ -179,7 +179,7 @@ export function verifyCommerceCheckoutInventoryAdoption({
   );
   before(
     owner,
-    "load_tenant_variant(",
+    "load_tenant_variants(",
     "load_inventory_item_for_update(",
     "tenant proof before item locks",
   );

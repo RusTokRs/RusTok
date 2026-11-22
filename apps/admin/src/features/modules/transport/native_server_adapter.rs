@@ -44,6 +44,10 @@ where
 }
 
 #[cfg(feature = "ssr")]
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(reqwest::Client::new);
+
+#[cfg(feature = "ssr")]
 pub async fn registry_governance_http_request_native<B, T>(
     method: reqwest::Method,
     path: String,
@@ -64,8 +68,7 @@ where
             format!("/{path}")
         }
     );
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = HTTP_CLIENT
         .request(method, url)
         .bearer_auth(token)
         .header("X-Tenant-ID", tenant);

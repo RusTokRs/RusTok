@@ -60,9 +60,12 @@ triggers."
    code to `compensation_required`.
 3. The completion shape is Rust policy: `requires_completed_at()` defines which statuses carry
    `completed_at`; `release_lease_with_error` and `mark_terminal` write it accordingly.
-4. Cross-aggregate tenant checks run in Rust before the journal changes state: `ensure_cart_tenant`,
-   `ensure_order_tenant`, and `ensure_payment_collection_tenant` query the owning entities with the
-   tenant in the predicate.
+4. Cross-aggregate tenant checks run in Rust before the journal writes a new binding. Cart
+   admission reads the Cart checkout snapshot through `CartCheckoutPort` and verifies the
+   tenant and cart IDs. An existing operation with the same request replays from the journal.
+   Order and Payment checkpoints still read tenant-scoped owner entities in the shared-storage
+   profile. The [FBA owner ports decision](./2026-11-11-canonical-fba-owner-ports.md) defines
+   the target boundary for those checks.
 5. The database keeps only declarative schema shape: column types, `NOT NULL`, enumeration `CHECK`
    constraints, the completion-shape `CHECK`, and the `ux_checkout_operations_active_cart` unique
    index. Behavioral triggers on `checkout_operations` are removed.

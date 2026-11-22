@@ -62,6 +62,8 @@ unrun regressions, not SQL/runtime certification or completion of Product step 8
 - Expose the Medusa-style REST transport slice under `/store/*` and `/admin/*`.
 - Resolve storefront cart line items from server-owned catalog/pricing data using `variant_id + quantity`, instead of trusting client-provided title and price.
 - Orchestrate submodules of the ecommerce family through owner-crate services and typed ports, without masking owner APIs behind umbrella aliases.
+- Require the host to select the mounted REST and GraphQL Payment runtimes. Embedded callers can compose in-process adapters explicitly.
+- Read Product-owned brand associations through the Product catalog read port. Brand records and the historical association fallback use Brand-owned data.
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.

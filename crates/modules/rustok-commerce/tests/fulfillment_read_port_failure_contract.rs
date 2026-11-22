@@ -185,6 +185,10 @@ async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
     .await
     .expect("tenant fixture should be inserted");
 
+    enable_module(db, tenant_id, "commerce").await;
+}
+
+async fn enable_module(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
@@ -192,13 +196,13 @@ async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
         vec![
             Uuid::new_v4().into(),
             tenant_id.into(),
-            "commerce".into(),
+            slug.to_owned().into(),
             true.into(),
             json!({}).to_string().into(),
         ],
     ))
     .await
-    .expect("commerce module should be enabled");
+    .expect("fixture module should be enabled");
 }
 
 fn host_runtime(
@@ -214,8 +218,24 @@ fn host_runtime(
         .with_shared_value(CommercePaymentReadRuntime::in_process(db.clone()))
         .with_shared_value(CommercePaymentCommandRuntime::in_process(
             db.clone(),
-            payment_provider_registry,
+            payment_provider_registry.clone(),
         ))
+        .with_shared_value(rustok_payment::PaymentAdminReadRuntime::in_process(
+            db.clone(),
+        ))
+        .with_shared_value(
+            rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
+                db.clone(),
+                payment_provider_registry.clone(),
+                rustok_commerce::checkout_execution_admission_port(db.clone()),
+            ),
+        )
+        .with_shared_value(
+            rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
+                db.clone(),
+                payment_provider_registry,
+            ),
+        )
         .with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
         .with_shared_value(
             rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone()),
@@ -278,6 +298,156 @@ fn graphql_schema(
     .data(auth)
     .data(runtime_data)
     .finish()
+}
+
+#[tokio::test]
+async fn commerce_graphql_requires_host_selected_payment_reads_and_commands() {
+    use rustok_commerce::graphql_runtime::{CommerceGraphqlRuntimeError, attach_schema_data};
+
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let registry = PaymentProviderRegistry::with_manual_provider();
+    let host = HostRuntimeContext::new(db.clone()).with_shared_value(registry);
+    let inputs = GraphqlRuntimeInputs::new(host.clone());
+    assert!(matches!(
+        attach_schema_data(&inputs),
+        Err(CommerceGraphqlRuntimeError::MissingHostDependency(
+            "CommercePaymentReadRuntime"
+        ))
+    ));
+
+    let inputs = GraphqlRuntimeInputs::new(
+        host.with_shared_value(CommercePaymentReadRuntime::in_process(db)),
+    );
+    assert!(matches!(
+        attach_schema_data(&inputs),
+        Err(CommerceGraphqlRuntimeError::MissingHostDependency(
+            "CommercePaymentCommandRuntime"
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn commerce_http_requires_host_selected_payment_registry() {
+    use rustok_commerce::controllers::{CommerceControllerError, axum_router};
+
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let host = HostRuntimeContext::new(db).with_shared_value(mock_transactional_event_bus());
+    assert!(matches!(
+        axum_router(&host),
+        Err(CommerceControllerError::MissingHostDependency(
+            "PaymentProviderRegistry"
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn legacy_manual_fulfillment_uses_order_owner_storage() {
+    use rustok_commerce::services::{
+        FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+    };
+    use rustok_fulfillment::{dto::CreateFulfillmentInput, providers::FulfillmentProviderRegistry};
+
+    let commerce_db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let order_db = setup_test_db().await;
+    support::ensure_commerce_schema(&order_db).await;
+    let order_reads =
+        rustok_order::in_process_order_read_port(order_db, mock_transactional_event_bus());
+    let service = FulfillmentOrchestrationService::new(commerce_db)
+        .with_order_read_port(order_reads)
+        .with_provider_registry(FulfillmentProviderRegistry::with_manual_provider());
+
+    let order_id = Uuid::new_v4();
+    let result = service
+        .create_manual_fulfillment(
+            Uuid::new_v4(),
+            CreateFulfillmentInput {
+                order_id,
+                shipping_option_id: None,
+                customer_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: None,
+                metadata: json!({}),
+            },
+        )
+        .await;
+    assert!(
+        matches!(result, Err(FulfillmentOrchestrationError::OrderNotFound(id)) if id == order_id),
+        "expected missing order from the selected owner: {result:?}"
+    );
+}
+
+struct UnavailableProduct;
+
+#[async_trait]
+impl rustok_product::ProductCatalogReadPort for UnavailableProduct {
+    async fn read_product_projection(
+        &self,
+        context: PortContext,
+        _request: rustok_product::ProductProjectionRequest,
+    ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+        assert_eq!(context.correlation_id, "test-correlation-id");
+        Err(PortError::unavailable("product.offline", OWNER_SENTINEL))
+    }
+
+    async fn read_variant_product_projection(
+        &self,
+        _context: PortContext,
+        _request: rustok_product::VariantProductProjectionRequest,
+    ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+        panic!("brand links use the Product projection")
+    }
+
+    async fn list_published_products(
+        &self,
+        _context: PortContext,
+        _request: rustok_product::PublishedProductsRequest,
+    ) -> Result<rustok_product::StorefrontProductList, PortError> {
+        panic!("brand links use the exact Product projection")
+    }
+}
+
+#[tokio::test]
+async fn product_brand_queries_propagate_the_selected_owner_failure() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    enable_module(&db, tenant_id, "brand").await;
+    let host = host_runtime(&db, Arc::new(ScriptedFulfillmentReadPort::recording()))
+        .with_shared_value(rustok_product::ProductCatalogReadRuntime::external(
+            Arc::new(UnavailableProduct),
+        ));
+    let runtime_data =
+        rustok_commerce::graphql_runtime::attach_schema_data(&GraphqlRuntimeInputs::new(host))
+            .expect("commerce GraphQL runtime data should compose");
+    let schema = Schema::build(
+        CommerceQuery,
+        CommerceMutation::default(),
+        EmptySubscription,
+    )
+    .data(db)
+    .data(tenant_context(tenant_id))
+    .data(request_context(tenant_id))
+    .data(runtime_data)
+    .finish();
+    let product_id = Uuid::new_v4();
+    for (field, selection) in [("productBrand", "id"), ("productBrands", "brandId")] {
+        let response = schema
+            .execute(format!(
+                r#"{{ {field}(productId: "{product_id}") {{ {selection} }} }}"#,
+            ))
+            .await;
+        assert_eq!(response.errors.len(), 1, "{:?}", response.errors);
+        let error = &response.errors[0];
+        assert_eq!(error.message, "Product data is temporarily unavailable");
+        assert_eq!(
+            error.extensions.as_ref().and_then(|ext| ext.get("code")),
+            Some(&async_graphql::Value::from(
+                "PRODUCT_TEMPORARILY_UNAVAILABLE"
+            )),
+        );
+    }
 }
 
 fn rest_router(
@@ -619,7 +789,7 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
         assert_eq!(call.context.channel, None);
         assert_eq!(
             call.context.correlation_id,
-            format!("commerce-admin-fulfillment:get_fulfillment:{fulfillment_id}")
+            format!("commerce-admin-fulfillment:show_fulfillment:{fulfillment_id}")
         );
     }
 }

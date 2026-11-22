@@ -318,18 +318,20 @@ pub async fn complete_storefront_checkout_input_with_product_runtime(
             .with_marketplace_ledger_port(ledger_port)
     };
     let pipeline = pipeline.with_payment_provider_registry(payment_provider_registry.clone());
+    let cart_checkout_port = in_process_cart_checkout_port(runtime.db_clone());
     let staged = crate::StagedCheckoutService::new(
         plan_builder,
         pipeline,
         atomic_cart.handle,
         runtime.db_clone(),
         event_bus.clone(),
-    );
+    )
+    .with_cart_owner(cart_checkout_port.clone());
     let compensation = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
         event_bus,
         reservation_port,
-        in_process_cart_checkout_port(runtime.db_clone()),
+        cart_checkout_port,
     )
     .with_payment_provider_registry(payment_provider_registry);
 
@@ -523,6 +525,12 @@ fn map_checkout_error(
         crate::RecoveringStagedCheckoutError::Journal(_) => (
             StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
             "journal",
+        ),
+        crate::RecoveringStagedCheckoutError::Staged(crate::StagedCheckoutError::Operation(
+            crate::CheckoutOperationError::CartOwnerRead { retryable: true },
+        )) => (
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
+            "cart_owner_read_retryable",
         ),
         crate::RecoveringStagedCheckoutError::Staged(crate::StagedCheckoutError::Checkout(
             crate::CheckoutError::BoundaryFailure {

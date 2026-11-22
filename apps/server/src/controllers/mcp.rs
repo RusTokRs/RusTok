@@ -1071,7 +1071,7 @@ fn map_mcp_authority_error(
 }
 
 fn parse_actor_type(value: &str) -> Result<McpActorType> {
-    McpActorType::from_str(value).map_err(crate::error::Error::BadRequest)
+    McpActorType::from_str(value).map_err(|err| crate::error::Error::BadRequest(err.to_string()))
 }
 
 fn map_client_summary(model: crate::models::mcp_clients::Model) -> McpClientSummaryResponse {

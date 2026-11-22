@@ -109,8 +109,13 @@ for (const [source, value, label] of [
   [hostRuntime, 'host.with_shared_value(runtime)', 'host attachment'],
   [commerceHttp, 'fn fulfillment_read_port(', 'HTTP port getter'],
   [commerceHttp, '.shared_get::<crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>()', 'HTTP host lookup'],
-  [commerceHttp, 'Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext', 'HTTP fail-closed requirement'],
 ]) requireText(source, value, label);
+
+const requiredHttpRuntime =
+  /\.shared_get::<crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime>\(\)\s*\.ok_or\(\s*CommerceControllerError::MissingHostDependency\(\s*"CommerceFulfillmentLifecycleReadRuntime"\s*,?\s*\)\s*,?\s*\)\?/;
+if (!requiredHttpRuntime.test(commerceHttp)) {
+  failures.push('HTTP routes must require CommerceFulfillmentLifecycleReadRuntime from host composition');
+}
 
 const constructor = between(
   fulfillmentShim,

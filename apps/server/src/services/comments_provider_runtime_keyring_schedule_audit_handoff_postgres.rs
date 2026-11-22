@@ -20,9 +20,11 @@ use super::{
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_MAX_CLAIM_SECONDS: u64 = 300;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum CommentsTcpDelegationScheduleAuditHandoffError {
+    #[error("conflict")]
     Conflict,
+    #[error("unavailable")]
     Unavailable,
 }
 

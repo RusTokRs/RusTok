@@ -10,12 +10,8 @@ use rustok_core::{Error, Result};
 use crate::forum_owner_contracts::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRequest,
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
-    MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, SharedForumProjectionOwnerRevisionSourcePort,
-    resolve_forum_projection_owner_revisions, resolve_forum_projection_owner_tenant_heads,
-};
-pub use crate::forum_owner_contracts::{
-    ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
-    MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, resolve_forum_projection_owner_tenant_heads,
+    SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
+    resolve_forum_projection_owner_tenant_heads,
 };
 use crate::projection_driver::SearchProjectionDriver;
 
