@@ -124,7 +124,8 @@ owner contracts and are not established by Index tests.
 PostgreSQL 16 service for the focused Cargo tests, which also cover Outbox replay and transactional
 transport delegation on SQLite. Product host composition and non-embedded Index operator tests run
 in a separate required job, in parallel with the PostgreSQL tests. That job also verifies that
-manifest-created OAuth apps commit on success and roll back on a later ownership conflict. The
+manifest-created OAuth apps commit on success and roll back on a later ownership conflict, using
+an isolated SQLite fixture composed from the canonical identity and OAuth migrations. The
 native Cargo jobs and standalone SSR use Rust 1.97.1: the host graphs reach the locked Rig
 requirements, with the server doing so through migration composition even without default features.
 The canonical digest job and the hydrate and CSR profiles use Rust 1.96. Hydrate and CSR compile

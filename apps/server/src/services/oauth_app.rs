@@ -2066,7 +2066,7 @@ mod tests {
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
         PaginatorTrait, QueryFilter, Schema, Set,
     };
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
     use serial_test::serial;
 
     #[tokio::test]
@@ -2113,9 +2113,57 @@ mod tests {
         id
     }
 
+    // The manifest regression tests exercise the real Auth and identity schema,
+    // not the unrelated module migrations in the whole-platform SQLite fixture.
+    struct OAuthManifestTestMigrator;
+
+    #[async_trait::async_trait]
+    impl MigratorTrait for OAuthManifestTestMigrator {
+        fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+            let mut required: std::collections::HashSet<_> =
+                rustok_migrations::identity::migrations()
+                    .into_iter()
+                    .chain(
+                        rustok_auth::migrations::migrations()
+                            .into_iter()
+                            .filter(|migration| {
+                                migration.name().contains("_oauth_")
+                                    || migration.name()
+                                        == "m20260713_000001_create_auth_invite_consumptions"
+                            }),
+                    )
+                    .map(|migration| migration.name().to_owned())
+                    .collect();
+            // The platform also owns columns used by the user and OAuth token models.
+            required.extend([
+                "m20261025_000001_add_user_login_lockout".to_owned(),
+                "m20261025_000005_add_oauth_token_family".to_owned(),
+                "m20261101_000001_add_user_password_changed_at".to_owned(),
+            ]);
+
+            let migrations = Migrator::migrations()
+                .into_iter()
+                .filter(|migration| required.remove(migration.name()))
+                .collect();
+            assert!(
+                required.is_empty(),
+                "missing OAuth fixture migrations: {required:?}"
+            );
+            migrations
+        }
+    }
+
+    async fn test_db_with_manifest_tenant() -> (DatabaseConnection, tenants::Model) {
+        seed_test_tenant(setup_test_db_with_migrations::<OAuthManifestTestMigrator>().await).await
+    }
+
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         ensure_oauth_schema(&db).await;
+        seed_test_tenant(db).await
+    }
+
+    async fn seed_test_tenant(db: DatabaseConnection) -> (DatabaseConnection, tenants::Model) {
         let tenant =
             tenants::ActiveModel::new("Test tenant", &format!("tenant-{}", Uuid::new_v4()))
                 .insert(&db)
@@ -4122,7 +4170,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
-        let (db, tenant) = test_db_with_tenant().await;
+        let (db, tenant) = test_db_with_manifest_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
         let manual_model = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
@@ -4209,7 +4257,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans() {
-        let (db, tenant) = test_db_with_tenant().await;
+        let (db, tenant) = test_db_with_manifest_tenant().await;
 
         let orphan_app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
