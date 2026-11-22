@@ -292,13 +292,13 @@ fn product_title_search_condition(
     tenant_id: Uuid,
     search: &str,
 ) -> sea_orm::Condition {
-    let pattern = format!("%{search}%");
+    let pattern = crate::services::catalog::helpers::product_title_substring_like_pattern(search);
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = ?\n                  AND pt.title LIKE ?\n            )"
+            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = ?\n                  AND pt.title LIKE ? ESCAPE '!'\n            )"
         }
         _ => {
-            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = $1\n                  AND pt.title LIKE $2\n            )"
+            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = $1\n                  AND pt.title LIKE $2 ESCAPE '!'\n            )"
         }
     };
 

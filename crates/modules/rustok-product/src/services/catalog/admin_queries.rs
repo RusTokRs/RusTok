@@ -212,14 +212,14 @@ fn admin_product_title_search_condition(
     backend: sea_orm::DbBackend,
     search: &str,
 ) -> sea_orm::Condition {
-    let pattern = format!("%{search}%");
+    let pattern = product_title_substring_like_pattern(search);
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
             "EXISTS (
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE ?
+                  AND pt.title LIKE ? ESCAPE '!'
             )"
         }
         _ => {
@@ -227,7 +227,7 @@ fn admin_product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE $1
+                  AND pt.title LIKE $1 ESCAPE '!'
             )"
         }
     };

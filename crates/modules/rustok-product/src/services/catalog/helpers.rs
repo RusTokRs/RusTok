@@ -10,6 +10,20 @@ use rustok_core::field_schema::{
 
 use super::attached_localized_storage;
 use crate::services::flex_schema_projection::ProductFlexSchemaSource;
+/// A literal substring search across SQLite and PostgreSQL. `LIKE` interprets
+/// percent, underscore and the escape character unless escaped explicitly.
+pub fn product_title_substring_like_pattern(search: &str) -> String {
+    let mut pattern = String::from("%");
+    for character in search.chars() {
+        if matches!(character, '%' | '_' | '!') {
+            pattern.push('!');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
 pub fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
@@ -1146,9 +1160,17 @@ mod category_filter_subtree_tests {
 #[cfg(test)]
 mod product_handle_and_visibility_tests {
     use super::{
-        is_metadata_visible_for_public_channel, product_translation_handle, slugify,
+        is_metadata_visible_for_public_channel, product_title_substring_like_pattern,
+        product_translation_handle, slugify,
     };
     use serde_json::json;
+
+    #[test]
+    fn product_title_substring_search_treats_like_metacharacters_as_literals() {
+        assert_eq!(product_title_substring_like_pattern("100%_ready!"), "%100!%!_ready!!%");
+        assert_eq!(product_title_substring_like_pattern("a b"), "%a b%");
+        assert_eq!(product_title_substring_like_pattern(""), "%%");
+    }
 
     #[test]
     fn slugify_preserves_unicode_letters_and_numbers() {
