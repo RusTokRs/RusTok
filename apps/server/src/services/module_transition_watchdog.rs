@@ -38,6 +38,8 @@ impl ModuleTransitionWatchdogHandle {
     }
 }
 
+// Recheck the stop signal between separate durable reconciliation effects.
+// Once an effect starts, let it finish before considering the next one.
 pub fn spawn_module_transition_watchdog_handle(
     db: DatabaseConnection,
     poll_interval_ms: u64,
@@ -110,6 +112,12 @@ pub fn spawn_module_transition_watchdog_handle(
                         }
                     }
 
+                    // The previous stale-operation page may have awaited the
+                    // database while shutdown was signaled. Do not admit a new
+                    // independent retention-reaping operation after that stop.
+                    if *stop_rx.borrow() {
+                        break;
+                    }
                     match reap_expired_retention_holds(&db).await {
                         Ok(report) if report.has_changes() => {
                             info!(
@@ -132,6 +140,11 @@ pub fn spawn_module_transition_watchdog_handle(
                         }
                     }
 
+                    // Finish the current reap, but do not start an additional
+                    // checkpoint transition after host shutdown was requested.
+                    if *stop_rx.borrow() {
+                        break;
+                    }
                     match evaluate_transition_watchdog(&db).await {
                         Ok(updated) if !updated.is_empty() => {
                             for checkpoint in updated {
