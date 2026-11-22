@@ -787,109 +787,133 @@ impl SettingsService {
         // snapshot. A bounded CAS loop prevents a concurrent writer from
         // silently restoring a stale secret or skipping the outbox event.
         const MAX_WRITE_ATTEMPTS: usize = 8;
-        for attempt in 0..MAX_WRITE_ATTEMPTS {
-            let tx = ctx.db().begin().await?;
-            let existing = Entity::find_by_category(&tx, tenant_id, cat).await?;
-            if let Some(expected) = expected_schema_version {
-                let current = existing.as_ref().map(|row| row.schema_version).unwrap_or(0);
-                if current != expected {
-                    tx.rollback().await?;
-                    return Err(SettingsError::WriteConflict);
-                }
+        for _ in 0..MAX_WRITE_ATTEMPTS {
+            if let Some(snapshot) = attempt_write_platform_settings(
+                ctx,
+                event_bus,
+                validators,
+                tenant_id,
+                actor_id,
+                cat,
+                &settings,
+                expected_schema_version,
+            )
+            .await?
+            {
+                return Ok(snapshot);
             }
-            let settings = preserve_secrets_from_row(cat, existing.as_ref(), settings.clone());
-            validators
-                .validate(cat, &settings)
-                .map_err(SettingsError::ValidationFailed)?;
-            let settings = if cat == category::CACHE {
-                prepare_cache_settings_for_write(ctx, settings)?
-            } else {
-                settings
-            };
-
-            let next_schema_version = match existing.as_ref() {
-                Some(existing) => existing.schema_version.checked_add(1).ok_or_else(|| {
-                    SettingsError::ValidationFailed(vec![
-                        "settings schema_version overflow".to_string(),
-                    ])
-                })?,
-                None => 1,
-            };
-
-            let wrote = match existing.as_ref() {
-                Some(existing) => {
-                    let updated = Entity::update_many()
-                        .col_expr(
-                            platform_settings::Column::Settings,
-                            Expr::value(settings.clone()),
-                        )
-                        .col_expr(platform_settings::Column::UpdatedBy, Expr::value(actor_id))
-                        .col_expr(
-                            platform_settings::Column::SchemaVersion,
-                            Expr::value(next_schema_version),
-                        )
-                        .col_expr(
-                            platform_settings::Column::UpdatedAt,
-                            Expr::value(chrono::Utc::now().fixed_offset()),
-                        )
-                        .filter(platform_settings::Column::Id.eq(existing.id))
-                        .filter(platform_settings::Column::TenantId.eq(tenant_id))
-                        .filter(platform_settings::Column::Category.eq(cat))
-                        .filter(
-                            platform_settings::Column::SchemaVersion.eq(existing.schema_version),
-                        )
-                        .exec(&tx)
-                        .await?;
-                    updated.rows_affected == 1
-                }
-                None => {
-                    match ActiveModel::new(tenant_id, cat, settings.clone(), Some(actor_id))
-                        .insert(&tx)
-                        .await
-                    {
-                        Ok(_) => true,
-                        Err(error) if is_unique_violation(&error) => false,
-                        Err(error) => return Err(error.into()),
-                    }
-                }
-            };
-
-            if !wrote {
-                tx.rollback().await?;
-                if attempt + 1 == MAX_WRITE_ATTEMPTS {
-                    return Err(SettingsError::WriteConflict);
-                }
-                continue;
-            }
-
-            event_bus
-                .publish_in_tx(
-                    &tx,
-                    tenant_id,
-                    Some(actor_id),
-                    DomainEvent::PlatformSettingsChanged {
-                        category: cat.to_string(),
-                        changed_by: actor_id,
-                    },
-                )
-                .await
-                .map_err(|e| {
-                    sea_orm::DbErr::Custom(format!(
-                        "Failed to publish settings event to outbox: {e}"
-                    ))
-                })?;
-
-            tx.commit().await?;
-            return Ok(SettingsSnapshot {
-                settings: redact_secrets(cat, settings),
-                schema_version: next_schema_version,
-            });
         }
 
         Err(SettingsError::WriteConflict)
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
+
+    #[allow(clippy::too_many_arguments)]
+    async fn attempt_write_platform_settings(
+        ctx: &AppContext,
+        event_bus: &EventBus,
+        validators: &SettingsValidators,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        cat: &str,
+        settings: &serde_json::Value,
+        expected_schema_version: Option<i32>,
+    ) -> Result<Option<SettingsSnapshot>, SettingsError> {
+        let tx = ctx.db().begin().await?;
+        let existing = Entity::find_by_category(&tx, tenant_id, cat).await?;
+        if let Some(expected) = expected_schema_version {
+            let current = existing.as_ref().map(|row| row.schema_version).unwrap_or(0);
+            if current != expected {
+                tx.rollback().await?;
+                return Err(SettingsError::WriteConflict);
+            }
+        }
+        let settings = preserve_secrets_from_row(cat, existing.as_ref(), settings.clone());
+        validators
+            .validate(cat, &settings)
+            .map_err(SettingsError::ValidationFailed)?;
+        let settings = if cat == category::CACHE {
+            prepare_cache_settings_for_write(ctx, settings)?
+        } else {
+            settings
+        };
+
+        let next_schema_version = match existing.as_ref() {
+            Some(existing) => existing.schema_version.checked_add(1).ok_or_else(|| {
+                SettingsError::ValidationFailed(vec![
+                    "settings schema_version overflow".to_string(),
+                ])
+            })?,
+            None => 1,
+        };
+
+        let wrote = match existing.as_ref() {
+            Some(existing) => {
+                let updated = Entity::update_many()
+                    .col_expr(
+                        platform_settings::Column::Settings,
+                        Expr::value(settings.clone()),
+                    )
+                    .col_expr(platform_settings::Column::UpdatedBy, Expr::value(actor_id))
+                    .col_expr(
+                        platform_settings::Column::SchemaVersion,
+                        Expr::value(next_schema_version),
+                    )
+                    .col_expr(
+                        platform_settings::Column::UpdatedAt,
+                        Expr::value(chrono::Utc::now().fixed_offset()),
+                    )
+                    .filter(platform_settings::Column::Id.eq(existing.id))
+                    .filter(platform_settings::Column::TenantId.eq(tenant_id))
+                    .filter(platform_settings::Column::Category.eq(cat))
+                    .filter(
+                        platform_settings::Column::SchemaVersion.eq(existing.schema_version),
+                    )
+                    .exec(&tx)
+                    .await?;
+                updated.rows_affected == 1
+            }
+            None => {
+                match ActiveModel::new(tenant_id, cat, settings.clone(), Some(actor_id))
+                    .insert(&tx)
+                    .await
+                {
+                    Ok(_) => true,
+                    Err(error) if is_unique_violation(&error) => false,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        };
+
+        if !wrote {
+            tx.rollback().await?;
+            return Ok(None);
+        }
+
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::PlatformSettingsChanged {
+                    category: cat.to_string(),
+                    changed_by: actor_id,
+                },
+            )
+            .await
+            .map_err(|e| {
+                sea_orm::DbErr::Custom(format!(
+                    "Failed to publish settings event to outbox: {e}"
+                ))
+            })?;
+
+        tx.commit().await?;
+        Ok(Some(SettingsSnapshot {
+            settings: redact_secrets(cat, settings),
+            schema_version: next_schema_version,
+        }))
+    }
 
     fn yaml_defaults_for(ctx: &ServerRuntimeContext, cat: &str) -> Value {
         let rs = ctx.settings();

@@ -1220,18 +1220,20 @@ pub(crate) async fn revoke_rollouts_for_release(
         return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
     }
     let state = load_rollout_state(transaction, true).await?;
-    let mut rollout_ids = Vec::new();
-    for rollout_id in [state.desired_id, state.observed_id].into_iter().flatten() {
-        if !rollout_ids.contains(&rollout_id) {
-            rollout_ids.push(rollout_id);
+    let mut rollouts = Vec::new();
+    if let Some(desired_id) = state.desired_id {
+        rollouts.push(load_rollout(transaction, desired_id, true).await?);
+    }
+    if let Some(observed_id) = state.observed_id {
+        if state.desired_id != Some(observed_id) {
+            rollouts.push(load_rollout(transaction, observed_id, true).await?);
         }
     }
     let mut next_state_revision = state.revision;
     let mut desired_rollout_id = state.desired_id;
     let mut observed_rollout_id = state.observed_id;
     let mut status_events = Vec::new();
-    for rollout_id in rollout_ids {
-        let rollout = load_rollout(transaction, rollout_id, true).await?;
+    for rollout in rollouts {
         if rollout.distribution_release_id != release_id {
             continue;
         }

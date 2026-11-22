@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
 use rustok_page_builder::{
@@ -261,12 +263,23 @@ impl PageBuilderArtifactService {
         )
         .await?
         {
-            for candidate in candidates {
-                if let Some(artifact) =
-                    load_bound_artifact_in_tx(&txn, tenant_id, page_id, &candidate).await?
-                {
-                    resolved = Some(artifact);
+            let bindings =
+                find_landing_bindings_batch_in_tx(&txn, tenant_id, page_id, &candidates).await?;
+            let mut selected_binding = None;
+            for candidate in &candidates {
+                if let Some(binding) = bindings.get(candidate) {
+                    selected_binding = Some(binding);
                     break;
+                }
+            }
+            if let Some(binding) = selected_binding {
+                let record = page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)
+                    .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?;
+                if let Some(record) = record {
+                    verify_static_landing_artifact(&record)?;
+                    resolved = Some(parse_published_landing_artifact(&record)?);
                 }
             }
         }
@@ -301,15 +314,9 @@ impl PageBuilderArtifactService {
         )
         .await?
         {
-            for candidate in candidates {
-                if find_landing_binding_in_tx(&txn, tenant_id, page_id, &candidate)
-                    .await?
-                    .is_some()
-                {
-                    bound = true;
-                    break;
-                }
-            }
+            let bindings =
+                find_landing_bindings_batch_in_tx(&txn, tenant_id, page_id, &candidates).await?;
+            bound = candidates.iter().any(|c| bindings.contains_key(c));
         }
 
         txn.commit().await?;
@@ -423,6 +430,40 @@ fn is_visible_for_channel(channel_slugs: &[String], channel_slug: Option<&str>) 
         return false;
     };
     channel_slugs.iter().any(|allowed| allowed == &channel_slug)
+}
+
+async fn find_landing_bindings_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locales: &[String],
+) -> PagesResult<HashMap<String, page_published_landing_artifact::Model>> {
+    if locales.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let bodies = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
+        .filter(page_body::Column::PageId.eq(page_id))
+        .filter(page_body::Column::Locale.is_in(locales.iter().cloned()))
+        .filter(page_body::Column::Format.eq(rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT))
+        .all(txn)
+        .await?;
+    if bodies.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let body_ids: Vec<Uuid> = bodies.iter().map(|b| b.id).collect();
+    let bindings = page_published_landing_artifact::Entity::find()
+        .filter(page_published_landing_artifact::Column::Id.is_in(body_ids))
+        .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
+        .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
+        .filter(page_published_landing_artifact::Column::Locale.is_in(locales.iter().cloned()))
+        .all(txn)
+        .await?;
+    let mut map = HashMap::new();
+    for binding in bindings {
+        map.insert(binding.locale.clone(), binding);
+    }
+    Ok(map)
 }
 
 /// The landing binding of the page's current Page Builder body in `locale`, if it is published.
