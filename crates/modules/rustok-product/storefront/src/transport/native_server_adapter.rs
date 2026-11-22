@@ -237,6 +237,23 @@ fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffective
 }
 
 #[cfg(feature = "ssr")]
+fn filterable_attribute_options(
+    attributes: impl IntoIterator<Item = rustok_product::services::ProductAttributeListRecord>,
+) -> Vec<crate::model::ProductCatalogSearchOption> {
+    attributes
+        .into_iter()
+        .filter(|attribute| attribute.is_filterable)
+        .map(|attribute| {
+            let label = first_non_empty([attribute.label, attribute.code.clone()]);
+            crate::model::ProductCatalogSearchOption {
+                value: attribute.code.clone(),
+                label: format!("{label} ({})", attribute.code),
+            }
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
@@ -270,19 +287,11 @@ async fn storefront_catalog_search_options_native(
                 label: first_non_empty([category.path, category.name, category.code]),
             })
             .collect();
-        let attribute_options = product_read_call(&scope, service.list_attributes(context))
-            .await
-            .map_err(map_product_port_error)?
-            .into_iter()
-            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
-            .map(|attribute| {
-                let label = first_non_empty([attribute.label, attribute.code.clone()]);
-                ProductCatalogSearchOption {
-                    value: attribute.code.clone(),
-                    label: format!("{label} ({})", attribute.code),
-                }
-            })
-            .collect();
+        let attribute_options = filterable_attribute_options(
+            product_read_call(&scope, service.list_attributes(context))
+                .await
+                .map_err(map_product_port_error)?,
+        );
 
         Ok(ProductCatalogSearchOptions {
             category_options,
@@ -600,5 +609,37 @@ async fn storefront_buyer_quote_native(
         Err(ServerFnError::new(
             "Native buyer quotes require the SSR server",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod filterable_search_option_tests {
+    use super::*;
+    use rustok_product::services::{AttributeValueType, ProductAttributeListRecord};
+
+    fn attribute(code: &str, is_filterable: bool, is_sortable: bool) -> ProductAttributeListRecord {
+        ProductAttributeListRecord {
+            id: uuid::Uuid::new_v4(),
+            code: code.to_owned(),
+            value_type: AttributeValueType::Select,
+            scope: "product".to_owned(),
+            is_localized: false,
+            is_filterable,
+            is_searchable: false,
+            is_sortable,
+            show_on_storefront: true,
+            label: code.to_owned(),
+        }
+    }
+
+    #[test]
+    fn storefront_search_options_exclude_sortable_only_attributes() {
+        let options = filterable_attribute_options([
+            attribute("color", true, false),
+            attribute("internal_rank", false, true),
+            attribute("size", true, true),
+        ]);
+        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(codes, vec!["color", "size"]);
     }
 }

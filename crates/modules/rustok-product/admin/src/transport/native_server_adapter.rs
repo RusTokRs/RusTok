@@ -346,6 +346,23 @@ fn map_category_record(
 }
 
 #[cfg(feature = "ssr")]
+fn filterable_attribute_options(
+    attributes: impl IntoIterator<Item = crate::model::ProductAttributeSummary>,
+) -> Vec<ProductCatalogSearchOption> {
+    attributes
+        .into_iter()
+        .filter(|attribute| attribute.is_filterable)
+        .map(|attribute| {
+            let label = first_non_empty([attribute.label, attribute.code.clone()]);
+            ProductCatalogSearchOption {
+                value: attribute.code.clone(),
+                label: format!("{label} ({})", attribute.code),
+            }
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
@@ -794,21 +811,14 @@ async fn product_admin_catalog_search_options_native(
                 label: first_non_empty([category.path, category.name, category.code]),
             })
             .collect();
-        let attributes = service
-            .list_attributes(tenant.id, locale.trim())
-            .await
-            .map_err(|error| map_product_service_error(error, "catalog_search_attributes"))?
-            .into_iter()
-            .map(map_attribute_record)
-            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
-            .map(|attribute| {
-                let label = first_non_empty([attribute.label, attribute.code.clone()]);
-                ProductCatalogSearchOption {
-                    value: attribute.code.clone(),
-                    label: format!("{label} ({})", attribute.code),
-                }
-            })
-            .collect();
+        let attributes = filterable_attribute_options(
+            service
+                .list_attributes(tenant.id, locale.trim())
+                .await
+                .map_err(|error| map_product_service_error(error, "catalog_search_attributes"))?
+                .into_iter()
+                .map(map_attribute_record),
+        );
 
         Ok(ProductCatalogSearchOptions {
             category_options: categories,
@@ -1690,5 +1700,37 @@ async fn product_admin_bind_category_attribute_native(
         Err(ServerFnError::new(
             "product/admin/bind-category-attribute requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod filterable_search_option_tests {
+    use super::*;
+    use crate::model::ProductAttributeSummary;
+
+    fn attribute(code: &str, is_filterable: bool, is_sortable: bool) -> ProductAttributeSummary {
+        ProductAttributeSummary {
+            id: uuid::Uuid::new_v4().to_string(),
+            code: code.to_owned(),
+            value_type: "select".to_owned(),
+            scope: "product".to_owned(),
+            is_localized: false,
+            is_filterable,
+            is_searchable: false,
+            is_sortable,
+            show_on_storefront: true,
+            label: code.to_owned(),
+        }
+    }
+
+    #[test]
+    fn native_catalog_search_options_exclude_sortable_only_attributes() {
+        let options = filterable_attribute_options([
+            attribute("color", true, false),
+            attribute("internal_rank", false, true),
+            attribute("size", true, true),
+        ]);
+        let codes = options.into_iter().map(|option| option.value).collect::<Vec<_>>();
+        assert_eq!(codes, vec!["color", "size"]);
     }
 }
