@@ -127,8 +127,8 @@ in a separate required job, in parallel with the PostgreSQL tests. That job also
 manifest-created OAuth apps commit on success and roll back on a later ownership conflict. The
 native Cargo jobs and standalone SSR use Rust 1.97.1: the host graphs reach the locked Rig
 requirements, with the server doing so through migration composition even without default features.
-The canonical digest job and the hydrate and CSR profiles use Rust 1.96. Hydrate and CSR compile the Index admin crate
-separately and reject Leptos SSR features in the browser host graph.
+The canonical digest job and the hydrate and CSR profiles use Rust 1.96. Hydrate and CSR compile
+the Index admin crate separately and reject Leptos SSR features in the browser host graph.
 Matching pushes to `main`, `agent/**` and `arena/**` trigger the same checks as a manual dispatch.
 For failed Cargo checks or event digest comparisons, see the `Index CI diagnostics` annotation
 and the full job log. These checks do not replace retained deployment evidence or an authenticated
@@ -155,9 +155,11 @@ for profile in hydrate csr; do
   cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$profile" --target wasm32-unknown-unknown
   cargo check --locked -p rustok-admin --lib --no-default-features --features "$profile" --target wasm32-unknown-unknown
 done
-cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
-cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
-cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
+cargo test --locked -p rustok-server --no-default-features --features mod-product --lib -- \
+  --test-threads=1 \
+  index_native_json_routes_enforce_request_scope_without_embedded_admin \
+  index_standalone_relay_preserves_scope_and_exact_recovery_kind \
+  index_admin_csr_commands_validate_against_the_operator_schema
 ```
 
 Repeat the server fixtures with embedded-admin assets and features before validating the embedded

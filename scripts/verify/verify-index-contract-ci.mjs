@@ -107,6 +107,7 @@ requireInJob('product-host', [
   `${serverCheck} --lib`,
   `${serverCheck} --test product_index_refresh_redelivery_postgres_iggy`,
   "!cancelled() && steps.product_server.outcome == 'success'",
+  `${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product --lib --\n          --test-threads=1`,
   `${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib`,
 ]);
 for (const [path, fixture] of [
@@ -114,7 +115,7 @@ for (const [path, fixture] of [
   ['services/app_router.rs', 'index_standalone_relay_preserves_scope_and_exact_recovery_kind'],
   ['graphql/index_replay.rs', 'index_admin_csr_commands_validate_against_the_operator_schema'],
 ]) {
-  requireInJob('product-host', [`${runCheck} cargo test --locked -p rustok-server --no-default-features --features mod-product --lib ${fixture}`]);
+  requireInJob('product-host', [fixture]);
   if (!read(`apps/server/src/${path}`).includes(`async fn ${fixture}()`)) fail(`${fixture} is not a server test`);
 }
 for (const fixture of [
@@ -205,6 +206,7 @@ for (const pathMarker of [
   '"apps/server/src/services/app_lifecycle.rs"',
   '"apps/server/src/services/cache_settings_admin.rs"',
   '"apps/server/src/services/event_bus.rs"',
+  '"apps/server/src/services/event_transport_factory.rs"',
   '"apps/server/src/services/index_reconciliation_operator.rs"',
   '"apps/server/src/services/index_replay_runtime_composition.rs"',
   '"apps/admin/Cargo.toml"',

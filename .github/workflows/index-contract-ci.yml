@@ -37,6 +37,7 @@ on:
       - "apps/server/src/services/app_lifecycle.rs"
       - "apps/server/src/services/cache_settings_admin.rs"
       - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
       - "Cargo.toml"
@@ -110,6 +111,7 @@ on:
       - "apps/server/src/services/app_lifecycle.rs"
       - "apps/server/src/services/cache_settings_admin.rs"
       - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/index_reconciliation_operator.rs"
       - "apps/server/src/services/index_replay_runtime_composition.rs"
       - "Cargo.toml"
@@ -324,10 +326,12 @@ jobs:
         run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
       - name: Run Index operator transport tests without embedded admin
         if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
-        run: |
-          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_native_json_routes_enforce_request_scope_without_embedded_admin
-          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_standalone_relay_preserves_scope_and_exact_recovery_kind
-          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib index_admin_csr_commands_validate_against_the_operator_schema
+        run: >-
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib --
+          --test-threads=1
+          index_native_json_routes_enforce_request_scope_without_embedded_admin
+          index_standalone_relay_preserves_scope_and_exact_recovery_kind
+          index_admin_csr_commands_validate_against_the_operator_schema
       - name: Verify OAuth manifest sync on its owner transaction
         if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
         run: >-
