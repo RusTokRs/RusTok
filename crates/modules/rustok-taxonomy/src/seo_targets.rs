@@ -1,4 +1,3 @@
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::collections::BTreeMap;
@@ -7,9 +6,10 @@ use uuid::Uuid;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetOpenGraphRecord, SeoTargetProvider,
-    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
-    SeoTemplateFieldMap, builtin_slug, schema,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetOpenGraphRecord,
+    SeoTargetProvider, SeoTargetResult as AnyResult, SeoTargetRouteResolveRequest,
+    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
+    builtin_slug, schema,
 };
 
 use crate::TaxonomyScopeType;
@@ -50,7 +50,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .filter(taxonomy_term::Column::Id.eq(request.target_id))
             .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
             .all(&runtime.db)
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
         let Some(term) = terms.into_iter().next() else {
             return Ok(None);
@@ -65,7 +66,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             request.locale,
             Some(request.default_locale),
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
 
         let Some(category) = categories.into_iter().next() else {
             return Ok(None);
@@ -78,7 +80,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .filter(taxonomy_term_translation::Column::TenantId.eq(request.tenant_id))
             .filter(taxonomy_term_translation::Column::TermId.eq(category.id))
             .all(&runtime.db)
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
         let alternates = if !all_translations.is_empty() {
             all_translations
@@ -170,7 +173,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .inner_join(taxonomy_term::Entity)
             .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
             .one(&runtime.db)
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
         if let Some(translation) = matched {
             return Ok(Some(SeoRouteMatchRecord {
@@ -191,7 +195,7 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .after
             .map(Uuid::parse_str)
             .transpose()
-            .map_err(|_| anyhow::anyhow!("invalid taxonomy SEO bulk cursor"))?;
+            .map_err(|_| SeoTargetError::provider("invalid taxonomy SEO bulk cursor"))?;
         let limit = request.limit.max(1);
         let mut query = taxonomy_term::Entity::find()
             .filter(taxonomy_term::Column::TenantId.eq(request.tenant_id))
@@ -203,7 +207,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .order_by_asc(taxonomy_term::Column::Id)
             .limit(limit + 1)
             .all(&runtime.db)
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
         let has_next_page = terms.len() as u64 > limit;
         terms.truncate(limit as usize);
         let next_cursor = if has_next_page {
@@ -231,7 +236,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
                 request.locale,
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
             for category in categories {
                 summaries.push(SeoBulkSummaryRecord {
@@ -260,7 +266,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
             .order_by_asc(taxonomy_term::Column::CanonicalKey)
             .all(&runtime.db)
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
         let term_ids: Vec<Uuid> = terms.iter().map(|term| term.id).collect();
         let all_translations = if !term_ids.is_empty() {
@@ -301,7 +308,8 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
                 request.default_locale,
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+        .map_err(SeoTargetError::provider)?;
 
             for category in categories {
                 let route = format!("/categories/{}", category.slug);

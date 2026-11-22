@@ -959,6 +959,52 @@ flowchart TD
 
 ---
 
+### Pattern 41: Shadow Macro & Module Include Hijack (`P-SHADOW-MACRO-HIJACK`)
+* **Category:** Module Architecture & Maintainability. **Dimension:** Branch completeness & state transition.
+* **Problem:** Masking external crates or shadowing standard library macros (e.g. defining local `mod rustok_pricing_shim`, `macro_rules! format { ... }`, or `use self::shim as ...`) and then textually embedding target code via `include!("...")` to alter its compile-time behavior without explicit interfaces. This breaks language server navigation, rust-analyzer, incremental compilation, and creates confusing AST scoping bugs.
+* **Pattern Solution:**
+  1. Refactor underlying services to accept explicit typed parameters, configuration structs, or traits instead of ambient module names.
+  2. Implement proper error boundary wrappers with `thiserror` rather than hijacking macro expansions.
+* **Detection:** Doctor rule `P-SHADOW-MACRO-HIJACK`: flags local `macro_rules!` format/println or `..._shim` module definitions followed by `include!(...)`.
+
+---
+
+### Pattern 42: Inherent Impl Splitting via Textual Inclusion (`P-SPLIT-INHERENT-IMPL-HACK`)
+* **Category:** Code Structure & Clean Architecture. **Dimension:** Modular cohesion.
+* **Problem:** In Rust, inherent method blocks (`impl Foo { ... }`) must reside in the exact module where `struct Foo` is defined. To mechanically split large files without designing traits or free functions, authors cut methods into sibling `.rs` files and stitch them back together with multiple `include!("foo/subfile.rs")`. This produces bogus `unused import: super::*` warnings and prevents files from functioning as valid standalone Rust modules.
+* **Pattern Solution:**
+  1. Extract capabilities into domain traits: traits can be implemented in any module across the crate (`impl MyTrait for Foo`).
+  2. Or extract free helper functions in submodules (`pub(super) async fn do_work(service: &Foo, ...)`), with `impl Foo` serving as a clean dispatcher.
+  3. Keep coherent inherent methods in the parent module if state is tightly coupled.
+* **Detection:** Doctor rule `P-ZERO-INCLUDE` / `P-SPLIT-INHERENT-IMPL-HACK`: flags any `include!(...)` used to stitch source code files together.
+
+---
+
+### Pattern 43: Production Dependency Hidden in Dev-Dependencies (`P-DEV-DEP-PROD-LEAK`)
+* **Category:** Build Invariants & Dependency Sovereignty. **Dimension:** Preconditions & bounds.
+* **Problem:** A library crate or domain module references an external or workspace dependency in production code (`src/` or `migrations/`), but that dependency is declared exclusively under `[dev-dependencies]` in `Cargo.toml`.
+  - When running `cargo check -p <crate>` or `cargo test`, Cargo implicitly compiles dev-dependencies, masking the deficiency during local crate development.
+  - However, when downstream consumer crates depend on the library (e.g. `rustok-server` or CLI tools), or when compiling `--lib` without dev-dependencies, Cargo excludes dev-dependencies. The compilation abruptly crashes with `error[E0433]: cannot find module or crate X in this scope`.
+* **Pattern Solution:**
+  1. Inspect whether the dependency is genuinely required in production or migrations.
+  2. If required, move the dependency into `[dependencies]` in `Cargo.toml`.
+  3. If optional or target-specific, feature-gate both the dependency in `[dependencies]` and its usage in code (`#[cfg(feature = "...")]`).
+* **Detection:** Doctor rule `P-DEV-DEP-PROD-LEAK`: cross-references crates declared exclusively in `[dev-dependencies]` against non-test production source files.
+
+---
+
+### Pattern 44: Erased Error Display in Function-Pointer MapErr (`P-MAP-ERR-STRING-CONVERSION-MISMATCH`)
+* **Category:** Type Safety & Error Propagation. **Dimension:** Branch completeness & typed errors.
+* **Problem:** Passing an error variant or constructor function expecting `String` (e.g. `.map_err(AiError::Validation)`, `.map_err(async_graphql::Error::new)`, `.map_err(Error::BadRequest)`, `.map_err(Error::Cache)`) directly as a function pointer to `.map_err(...)` when the source error type `E` implements `Display` or `std::error::Error`, but does NOT implement `Into<String>`.
+  - This passes compiler checks if the file is gated behind an inactive feature flag, but violently fails with `E0631: type mismatch in function arguments` or `E0277: the trait bound String: From<CustomError> is not satisfied` the moment the feature or downstream crate is activated.
+* **Pattern Solution:**
+  1. Implement `From<CustomError> for TargetError` to allow direct `?` propagation with zero mapping overhead.
+  2. Or write explicit closure conversions: `.map_err(|err| TargetError::Validation(err.to_string()))`.
+  3. Avoid relying on accidental implicit `String` conversions across crate boundaries.
+* **Detection:** Doctor rule `P-MAP-ERR-STRING-CONVERSION-MISMATCH`: flags `.map_err(Variant)` where `Variant` is a known `(String)` constructor passed to non-String errors.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
@@ -1023,6 +1069,10 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SILENT-EVENT-DISCARD` | Reliability | Event and outbox dispatch failures propagate | High: let _ = or .ok() on outbox/event publish |
 | `P-LOOP-HELPER-AWAIT` | Performance | Queries in loops batched even through helper methods | Heuristic: database helper calls inside loop bodies |
 | `P-BYTE-SLICE-PANIC` | Reliability | Byte slice decoders verify length before constant range indexing | Heuristic: range index on buffer without bounds check |
+| `P-SHADOW-MACRO-HIJACK` | Architecture | Modules and macros not shadowed before textual inclusion | High: local shims or macro_rules! before include! |
+| `P-SPLIT-INHERENT-IMPL-HACK` | Architecture | Inherent impl blocks not mechanically split across include! files | High: series of include! stitching struct impls |
+| `P-DEV-DEP-PROD-LEAK` | Build invariants | Production code only uses dependencies declared in [dependencies] | High: dev-only dependency referenced in non-test source |
+| `P-MAP-ERR-STRING-CONVERSION-MISMATCH` | Type safety | Error variant function pointers match parameter types | Heuristic: .map_err(Constructor) with string-variant on typed error |
 
 ---
 
@@ -1851,6 +1901,32 @@ own document contract.
 
 Detection: `rg -n 'as_f64\(\)|JSON\.parse\(|JSON\.stringify\(' crates/modules/rustok-modules/src/settings.rs apps/next-admin/src/features/modules/components`;
 inspect numeric values and whether the parsed document is ever written back.
+
+## P-THISERROR-SOURCE-FIELD-COLLISION — Avoid String fields named source in thiserror types
+
+- **Category:** Domain error typing and macro attribute collision.
+- **Logic dimensions:** Branch completeness, anti-swallowing.
+- **Observed behavior:** In a struct or enum derived with `#[derive(thiserror::Error)]`, declaring a field named `source: String` (or `&str` / `Box<str>`) causes `thiserror`'s derive macro to infer `source` as an error cause (`std::error::Error::source`). Because `String` does not implement `std::error::Error`, the compiler rejects the derived code with `error[E0599]: the method as_dyn_error exists for reference &String, but its trait bounds were not satisfied`.
+- **Remediation:** Name the payload field `message`, `details`, or `cause`, or explicitly disable the automatic source inference by annotating the field with `#[source(false)]`.
+
+```rust
+// Forbidden: collisions between field name and thiserror source inference
+#[derive(Debug, thiserror::Error)]
+pub enum FieldDefinitionError {
+    #[error("unknown field type: {source}")]
+    UnknownFieldType { source: String },
+}
+
+// Canonical remediation: use descriptive field name or explicit #[source(false)]
+#[derive(Debug, thiserror::Error)]
+pub enum FieldDefinitionError {
+    #[error("unknown field type: {message}")]
+    UnknownFieldType { message: String },
+}
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>`.
+Doctor flags fields named `source` with string types inside types deriving `thiserror::Error`.
 
 
 ## Distributed event delivery, leases, and backpressure

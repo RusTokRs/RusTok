@@ -110,7 +110,9 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
     }
 
     let provider = build_tracer_provider(&config)?;
-    let _ = TRACER_PROVIDER.set(provider.clone());
+    if let Err(_) = TRACER_PROVIDER.set(provider.clone()) {
+        tracing::debug!("OpenTelemetry tracer provider already initialized");
+    }
     global::set_tracer_provider(provider);
 
     tracing::info!(
@@ -151,7 +153,9 @@ pub fn build_otel_layer(
 
     let provider = build_tracer_provider(config)?;
     let tracer = provider.tracer(config.service_name.clone());
-    let _ = TRACER_PROVIDER.set(provider.clone());
+    if let Err(_) = TRACER_PROVIDER.set(provider.clone()) {
+        tracing::debug!("OpenTelemetry tracer provider already initialized");
+    }
     global::set_tracer_provider(provider);
 
     Ok(tracer)
@@ -169,7 +173,9 @@ pub async fn init_otel_layer(
 pub async fn shutdown() {
     tracing::info!("Shutting down OpenTelemetry");
     if let Some(provider) = TRACER_PROVIDER.get() {
-        let _ = provider.shutdown();
+        if let Err(e) = provider.shutdown() {
+            tracing::warn!(error = %e, "Failed to shutdown OpenTelemetry tracer provider");
+        }
     }
 }
 

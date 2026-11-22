@@ -30,7 +30,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         }
     }
 
-    pub(super) async fn prepare(
+    pub(crate) async fn prepare(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -77,7 +77,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(collection)
     }
 
-    pub(super) async fn authorize(
+    pub(crate) async fn authorize(
         &self,
         context: &PortContext,
         owner_operation: &'static str,

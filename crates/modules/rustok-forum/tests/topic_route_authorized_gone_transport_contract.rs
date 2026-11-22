@@ -3,9 +3,9 @@ const GRAPHQL_MOD: &str = include_str!("../src/graphql/mod.rs");
 const SERVICES_MOD: &str = include_str!("../src/services/mod.rs");
 const STOREFRONT_MODEL: &str = include_str!("../storefront/src/model.rs");
 const GRAPHQL_ADAPTER: &str =
-    include_str!("../storefront/src/transport/topic_route_graphql_adapter.rs");
+    include_str!("../storefront/src/transport/graphql_adapter.rs");
 const NATIVE_ADAPTER: &str =
-    include_str!("../storefront/src/transport/native_server_adapter_topic_route.rs");
+    include_str!("../storefront/src/transport/native_server_adapter.rs");
 const HOST: &str = include_str!("../../../../apps/storefront/src/forum_topic_route.rs");
 
 fn require(source: &str, markers: &[&str]) {

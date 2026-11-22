@@ -1,4 +1,3 @@
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
@@ -6,10 +5,10 @@ use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
-    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
-    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
-    populate_image_template_fields, schema,
+    SeoTargetCapabilities, SeoTargetError, SeoTargetLoadRequest, SeoTargetLoadScope,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest,
+    SeoTargetSlug, SeoTemplateFieldMap, builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 
@@ -56,7 +55,8 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
             request.locale,
             request.default_locale,
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
         let Some(page) = page else {
             return Ok(None);
         };
@@ -80,7 +80,8 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                 request.channel_slug,
             ),
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
 
         Ok(Some(map_page_response(
             page,
@@ -106,7 +107,8 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                 slug.as_str(),
                 Some(request.default_locale),
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         Ok(page
             .filter(|page| channel_visible(page.channel_slugs.as_slice(), request.channel_slug))
@@ -129,7 +131,8 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                 request.after,
                 request.limit,
             )
-            .await?;
+            .await
+            .map_err(SeoTargetError::provider)?;
 
         let mut summaries = Vec::with_capacity(items.len());
         for item in items {
@@ -168,7 +171,8 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                     after.as_deref(),
                     BULK_FETCH_SIZE,
                 )
-                .await?;
+                .await
+            .map_err(SeoTargetError::provider)?;
 
             for item in items {
                 if let Some(candidate) = load_page_sitemap_candidate(
@@ -214,7 +218,7 @@ async fn load_page_if_present(
     {
         Ok(page) => Ok(Some(page)),
         Err(PagesError::PageNotFound(_)) => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(SeoTargetError::provider(error)),
     }
 }
 
@@ -330,7 +334,8 @@ async fn load_published_landing_markup(
             Some(default_locale),
             channel_slug,
         )
-        .await?;
+        .await
+        .map_err(SeoTargetError::provider)?;
     Ok(landing.map(|landing| landing.body_html))
 }
 
@@ -569,7 +574,8 @@ fn page_route_for_slug(locale: &str, slug: Option<&str>) -> String {
 }
 
 fn parse_page_route(route: &str) -> AnyResult<Option<String>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
+    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
+        .map_err(SeoTargetError::provider)?;
     let mut segments = parsed
         .path_segments()
         .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())

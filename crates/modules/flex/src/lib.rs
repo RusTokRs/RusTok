@@ -123,9 +123,9 @@ pub use orchestration::{
 };
 pub use parsing::{FieldDefinitionsConfigParseError, parse_field_definitions_config};
 pub use registry::{
-    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionSource,
-    FieldDefinitionView, FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
-    field_definition_cache_invalidation_target, field_definition_created_event,
+    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionError, FieldDefinitionService,
+    FieldDefinitionSource, FieldDefinitionView, FieldDefinitionViewSource,
+    UpdateFieldDefinitionCommand, field_definition_cache_invalidation_target, field_definition_created_event,
     field_definition_deleted_event, field_definition_description_json,
     field_definition_from_source, field_definition_label_json, field_definition_position_or_next,
     field_definition_type_name, field_definition_updated_event, field_definition_validation_json,

@@ -2,7 +2,6 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
@@ -17,7 +16,8 @@ use rustok_seo::{
 };
 use rustok_seo_targets::{
     SeoLoadedTargetRecord, SeoTargetAlternateRoute, SeoTargetCapabilities, SeoTargetLoadRequest,
-    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRuntimeContext, SeoTemplateFieldMap,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetResult as AnyResult,
+    SeoTargetRuntimeContext, SeoTemplateFieldMap,
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{

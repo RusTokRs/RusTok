@@ -1504,7 +1504,11 @@ fn map_search_settings_payload(
     }
 }
 
-include!("native_server_adapter/mapping.rs");
+#[cfg(feature = "ssr")]
+#[path = "native_server_adapter/mapping.rs"]
+mod mapping;
+#[cfg(feature = "ssr")]
+use mapping::*;
 
 #[cfg(feature = "ssr")]
 fn map_core_error(error: rustok_core::Error) -> ServerFnError {

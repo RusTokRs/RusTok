@@ -74,12 +74,15 @@ impl Scan<'_> {
             rule_name,
             severity,
             confidence: if pattern_id == "P-ZERO-INCLUDE"
+                || pattern_id == "P-SHADOW-MACRO-HIJACK"
+                || pattern_id == "P-SPLIT-INHERENT-IMPL-HACK"
                 || pattern_id == "P-TRY-FROM-LEN-PANIC"
                 || pattern_id == "P-MIGRATION-PANIC"
                 || pattern_id == "P-DISTRIBUTED-LEASE-OWNER"
                 || pattern_id == "P-NIL-IDENTITY-FALLBACK"
                 || pattern_id == "P-SQLITE-UNLOCKED-RACE"
                 || pattern_id == "P-SILENT-EVENT-DISCARD"
+                || pattern_id == "P-THISERROR-SOURCE-FIELD-COLLISION"
             {
                 Confidence::High
             } else {
@@ -490,6 +493,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let mut static_delimiters = Vec::new();
     let mut async_depth = None;
     let mut pending_async = false;
+    let mut thiserror_depth = None;
+    let mut pending_thiserror = false;
     let mut in_fn_params = false;
     let mut fn_param_parens = 0usize;
     let mut guards: BTreeMap<String, (usize, usize)> = BTreeMap::new();
@@ -563,6 +568,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
 
         if scan.migration
+            && !scan.cli_file
             && !scan.test_file
             && test_scopes.is_empty()
             && !pending_test
@@ -666,6 +672,40 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                 pending_static = false;
             } else {
                 pending_static = !terminated;
+            }
+        }
+
+        let thiserror_derive =
+            re!(r"#\s*\[\s*derive\s*\([^]]*\b(?:thiserror::)?Error\b").is_match(code_part);
+        if thiserror_derive {
+            pending_thiserror = true;
+        }
+        if pending_thiserror {
+            if opens > 0 {
+                thiserror_depth = Some(depth);
+                pending_thiserror = false;
+            } else if code_part.contains(';') {
+                pending_thiserror = false;
+            }
+        }
+        if thiserror_depth.is_some() && !test_context {
+            if re!(r"\bsource\s*:\s*(?:String|&str|Box<str>)\b").is_match(code_part) {
+                let has_source_false = code_part.contains("#[source(false)]")
+                    || scan.lines[..index]
+                        .iter()
+                        .rev()
+                        .take(3)
+                        .any(|prev| prev.syntax.contains("#[source(false)]"));
+                if !has_source_false {
+                    scan.add(
+                        line_number,
+                        "P-THISERROR-SOURCE-FIELD-COLLISION",
+                        "Colliding thiserror Source Field",
+                        Severity::High,
+                        "Field named 'source' with a String type inside a #[derive(thiserror::Error)] type. thiserror treats 'source' as the error cause (std::error::Error::source), causing E0599 compilation error.",
+                        "Rename field to 'message', 'details', or annotate it with #[source(false)].",
+                    );
+                }
             }
         }
 
@@ -844,6 +884,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         if static_depth.is_some_and(|scope| depth <= scope) {
             static_depth = None;
         }
+        if thiserror_depth.is_some_and(|scope| depth <= scope) {
+            thiserror_depth = None;
+        }
     }
     scan.findings
 }
@@ -915,6 +958,15 @@ fn check_rules(
             scan.add(number, "P-ZERO-INCLUDE", "Zero Include Slop", Severity::High,
                 format!("Forbidden file-stitching macro '{}'. Use canonical 'mod ...;' and public exports.", &found[0]),
                 format!("Declare mod {module}; and expose only the required items."));
+
+            let has_shadow_shim = scan.lines[..index]
+                .iter()
+                .any(|prev| prev.syntax.contains("_shim") || prev.syntax.contains("macro_rules! format"));
+            if has_shadow_shim {
+                scan.add(number, "P-SHADOW-MACRO-HIJACK", "Shadow Macro & Module Include Hijack", Severity::High,
+                    format!("Shadow module or macro hijacking before include!('{}'). Local shims or macros used to alter ambient scope.", included),
+                    "Refactor underlying code with explicit typed parameters, traits, or error boundaries.");
+            }
         }
     }
 
@@ -1234,6 +1286,19 @@ fn check_rules(
             );
         }
 
+        if re!(r"\.map_err\s*\(\s*(?:[A-Za-z_]\w*::)+(?:Validation|BadRequest|Mcp|Cache|InvalidConfig)\s*\)").is_match(text)
+            || re!(r"\.map_err\s*\(\s*async_graphql::Error::new\s*\)").is_match(text)
+        {
+            scan.add(
+                number,
+                "P-MAP-ERR-STRING-CONVERSION-MISMATCH",
+                "Bare Function Pointer MapErr to String-Taking Error Constructor",
+                Severity::High,
+                "Passing a String-taking error variant or constructor directly as a function pointer to .map_err(). Non-String errors implementing Display will fail to compile under active features.",
+                "Pass an explicit closure '.map_err(|err| Variant(err.to_string()))' or implement From<E> for TargetError.",
+            );
+        }
+
         if (text.starts_with("if ") || text.starts_with("let "))
             && re!(r"\b(?:capacity|permits|in_flight|queue_depth)\s*\.\s*load\s*\(").is_match(text)
         {
@@ -1301,7 +1366,7 @@ fn check_rules(
             && !text.contains("hasher")
             && !scan.has_invariant(index, text)
             && re!(r"\b(?:bytes|data|slice|payload|buf)\s*\[\s*\d+\s*\.\.\s*\d+\s*\]").is_match(text)
-            && !scan.lines.iter().take(index).rev().take(6).any(|prev| prev.syntax.contains(".len()"))
+            && !scan.lines.iter().take(index).rev().take(12).any(|prev| prev.syntax.contains(".len()"))
         {
             scan.add(
                 number,

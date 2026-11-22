@@ -65,7 +65,9 @@ impl MetricsHandle {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
         let mut buffer = Vec::new();
-        encoder.encode(&metric_families, &mut buffer).ok();
+        if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
+            tracing::error!(%e, "Failed to encode Prometheus metrics in MetricsHandle::render");
+        }
         String::from_utf8(buffer).unwrap_or_else(|_| String::from("Failed to encode metrics"))
     }
 
@@ -246,8 +248,12 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
     page_builder_provider_metrics::register(registry)?;
     rbac_invalidation_metrics::register(registry)?;
 
-    let _ = REGISTRY.set(registry.clone());
-    let _ = METRICS_HANDLE.set(handle.clone());
+    if let Err(_) = REGISTRY.set(registry.clone()) {
+        tracing::debug!("Prometheus global registry already initialized");
+    }
+    if let Err(_) = METRICS_HANDLE.set(handle.clone()) {
+        tracing::debug!("Prometheus global metrics handle already initialized");
+    }
     Ok(Some(handle))
 }
 

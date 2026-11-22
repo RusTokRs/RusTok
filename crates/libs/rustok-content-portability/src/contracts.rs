@@ -304,7 +304,7 @@ impl<T> ExportResult<T> {
 ///         // 2. Transform to domain entity
 ///         // 3. Persist
 ///         // 4. Return result
-///         todo!()
+///         Ok(ImportResult::success(BlogPost::default(), "item_1".to_string()))
 ///     }
 /// }
 /// ```
@@ -384,7 +384,7 @@ pub trait ContentImporter<Source: Send + 'static, Target: Send + 'static>: Send 
 ///         context: ExportContext,
 ///     ) -> Result<serde_json::Value, PortabilityError> {
 ///         // Transform domain entity to target format
-///         todo!()
+///         Ok(serde_json::to_value(&source)?)
 ///     }
 /// }
 /// ```

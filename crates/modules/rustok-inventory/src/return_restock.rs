@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::entities::{inventory_level, reservation_item, stock_location};
 use crate::ports_impl::{
-    load_inventory_item_for_update, load_tenant_variant, parse_port_tenant_id,
+    load_inventory_item_for_update, load_tenant_variants, parse_port_tenant_id,
     storage_unavailable_with_context, validate_non_nil_uuid,
 };
 use crate::reservation_adoption::has_terminal_disposition;
@@ -103,12 +103,14 @@ pub async fn restock_returned_items(
         .iter()
         .filter_map(|line| line.variant_id)
         .collect::<BTreeSet<_>>();
+    let variant_ids_vec = variant_ids.iter().copied().collect::<Vec<_>>();
+    let variants_map =
+        load_tenant_variants(&context, RESTOCK_OPERATION, &txn, tenant_id, &variant_ids_vec).await?;
     let mut products = BTreeMap::new();
     for variant_id in &variant_ids {
-        // Tenant proof only; archived/hidden saved SKUs do not trigger new eligibility checks.
-        let variant =
-            load_tenant_variant(&context, RESTOCK_OPERATION, &txn, tenant_id, *variant_id).await?;
-        products.insert(*variant_id, variant.product_id);
+        if let Some(variant) = variants_map.get(variant_id) {
+            products.insert(*variant_id, variant.product_id);
+        }
     }
     let mut items = BTreeMap::new();
     for variant_id in variant_ids {

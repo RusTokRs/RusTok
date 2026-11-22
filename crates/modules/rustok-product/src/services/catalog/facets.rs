@@ -278,6 +278,7 @@ pub(super) async fn load_catalog_facets(
         if is_enumerable {
             let buckets = load_facet_buckets(db, definition, &products_condition).await?;
             let mut collected = Vec::with_capacity(buckets.len());
+            let mut slot_option_ids = Vec::new();
             for (bucket, count) in buckets {
                 if collected.len() == MAX_CATALOG_FACET_VALUES {
                     is_truncated = true;
@@ -285,17 +286,12 @@ pub(super) async fn load_catalog_facets(
                 }
                 if let Ok(option_id) = Uuid::parse_str(&bucket) {
                     option_ids.push(option_id);
+                    slot_option_ids.push(option_id);
                 }
                 collected.push((bucket, count));
             }
             let slot = facets.len();
-            option_bucket_slots.push((
-                slot,
-                collected
-                    .iter()
-                    .filter_map(|(bucket, _)| Uuid::parse_str(bucket).ok())
-                    .collect(),
-            ));
+            option_bucket_slots.push((slot, slot_option_ids));
             values = collected
                 .into_iter()
                 .map(|(value, count)| StorefrontCatalogFacetValue {

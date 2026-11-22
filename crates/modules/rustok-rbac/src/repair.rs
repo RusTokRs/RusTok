@@ -234,12 +234,13 @@ where
         }
     }
 
+    let mut tenant_permissions = load_tenant_permissions(db, tenant_id).await?;
     for (resource, action) in expected_permissions {
         if existing_by_key.contains_key(&(resource.clone(), action.clone())) {
             continue;
         }
         role_changed = true;
-        let existing_permission_id = find_permission(db, tenant_id, &resource, &action).await?;
+        let existing_permission_id = tenant_permissions.get(&(resource.clone(), action.clone())).copied();
         if existing_permission_id.is_none()
             && planned_permissions.insert((tenant_id, resource.clone(), action.clone()))
         {
@@ -252,14 +253,16 @@ where
                 Some(permission_id) => permission_id,
                 None => {
                     create_permission(db, tenant_id, &resource, &action).await?;
-                    find_permission(db, tenant_id, &resource, &action)
+                    let permission_id = find_permission(db, tenant_id, &resource, &action)
                         .await?
                         .ok_or_else(|| {
                             RbacSystemRoleRepairError::Database(
                                 "permission insert completed without a persisted permission"
                                     .to_string(),
                             )
-                        })?
+                        })?;
+                    tenant_permissions.insert((resource.clone(), action.clone()), permission_id);
+                    permission_id
                 }
             };
             let role_id = role_id.ok_or_else(|| {
@@ -376,6 +379,41 @@ where
         ],
     )
     .await
+}
+
+async fn load_tenant_permissions<C>(
+    db: &C,
+    tenant_id: Uuid,
+) -> Result<HashMap<(String, String), Uuid>, RbacSystemRoleRepairError>
+where
+    C: ConnectionTrait,
+{
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DbBackend::Sqlite => {
+            "SELECT id, resource, action FROM permissions WHERE tenant_id = ?1"
+        }
+        _ => {
+            "SELECT id, resource, action FROM permissions WHERE tenant_id = $1"
+        }
+    };
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into()],
+        ))
+        .await
+        .map_err(database_error)?;
+
+    let mut map = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+        let resource: String = row.try_get("", "resource").map_err(database_error)?;
+        let action: String = row.try_get("", "action").map_err(database_error)?;
+        map.insert((resource, action), id);
+    }
+    Ok(map)
 }
 
 async fn find_permission<C>(

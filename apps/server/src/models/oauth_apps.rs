@@ -381,6 +381,31 @@ where
         .await
 }
 
+pub async fn load_batch_translations<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Vec<oauth_app_translations::Model>>, DbErr>
+where
+    C: ConnectionTrait,
+{
+    if app_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let rows = oauth_app_translations::Entity::find()
+        .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
+        .filter(oauth_app_translations::Column::AppId.is_in(app_ids.to_vec()))
+        .order_by_asc(oauth_app_translations::Column::Locale)
+        .all(db)
+        .await?;
+    let mut map: std::collections::HashMap<Uuid, Vec<oauth_app_translations::Model>> =
+        std::collections::HashMap::with_capacity(app_ids.len());
+    for row in rows {
+        map.entry(row.app_id).or_default().push(row);
+    }
+    Ok(map)
+}
+
 pub fn translation_lifecycle(app: &Model) -> OAuthAppTranslationLifecycle {
     oauth_app_translation_lifecycle(app.is_active, app.revoked_at.is_some())
 }
@@ -630,7 +655,7 @@ impl Model {
         })
     }
 
-    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, String> {
+    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, rustok_api::PermissionParseError> {
         self.granted_permissions_list()
             .into_iter()
             .map(|value| Permission::from_str(&value))

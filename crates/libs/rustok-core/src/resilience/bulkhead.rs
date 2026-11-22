@@ -53,6 +53,27 @@ impl Default for BulkheadConfig {
     }
 }
 
+/// Error when acquiring a bulkhead permit
+#[derive(Debug, thiserror::Error)]
+pub enum PermitAcquireError {
+    /// Bulkhead is saturated and `max_wait_duration` is `None`
+    #[error("Bulkhead is full, request rejected immediately")]
+    Full,
+
+    /// Waited for `max_wait_duration` but no permit became available
+    #[error("Timed out waiting for a bulkhead permit")]
+    Timeout,
+}
+
+impl<E> From<PermitAcquireError> for BulkheadError<E> {
+    fn from(err: PermitAcquireError) -> Self {
+        match err {
+            PermitAcquireError::Full => BulkheadError::Full,
+            PermitAcquireError::Timeout => BulkheadError::Timeout,
+        }
+    }
+}
+
 /// Bulkhead error
 #[derive(Debug, thiserror::Error)]
 pub enum BulkheadError<E = String> {
@@ -104,11 +125,7 @@ impl Bulkhead {
     {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
 
-        let _permit = self.acquire_permit().await.map_err(|e| match e {
-            BulkheadError::Full => BulkheadError::Full,
-            BulkheadError::Timeout => BulkheadError::Timeout,
-            BulkheadError::Upstream(_) => unreachable!("acquire_permit never returns Upstream"),
-        })?;
+        let _permit = self.acquire_permit().await?;
 
         let concurrent = self.current_concurrent();
         tracing::debug!(
@@ -131,7 +148,7 @@ impl Bulkhead {
     }
 
     /// Acquire a semaphore permit, respecting `max_wait_duration`
-    async fn acquire_permit(&self) -> Result<OwnedSemaphorePermit, BulkheadError> {
+    async fn acquire_permit(&self) -> Result<OwnedSemaphorePermit, PermitAcquireError> {
         match self.config.max_wait_duration {
             None => {
                 // Fail fast — no waiting
@@ -143,7 +160,7 @@ impl Bulkhead {
                             max = self.config.max_concurrent_calls,
                             "Bulkhead: full, request rejected"
                         );
-                        Err(BulkheadError::Full)
+                        Err(PermitAcquireError::Full)
                     }
                 }
             }
@@ -153,7 +170,7 @@ impl Bulkhead {
                     Ok(Err(_)) => {
                         // Semaphore closed (only happens if dropped)
                         self.total_rejected.fetch_add(1, Ordering::Relaxed);
-                        Err(BulkheadError::Full)
+                        Err(PermitAcquireError::Full)
                     }
                     Err(_elapsed) => {
                         self.total_rejected.fetch_add(1, Ordering::Relaxed);
@@ -162,7 +179,7 @@ impl Bulkhead {
                             max = self.config.max_concurrent_calls,
                             "Bulkhead: timed out waiting for permit"
                         );
-                        Err(BulkheadError::Timeout)
+                        Err(PermitAcquireError::Timeout)
                     }
                 }
             }

@@ -237,7 +237,7 @@ fn write_verified_file(
     drop(file);
     let received = digest_from_hasher(hasher);
     if received != expected_digest {
-        let _ = fs::remove_file(&pending);
+        cleanup_pending_file(&pending);
         return Err(ModulePayloadCacheError::DigestMismatch {
             expected: expected_digest.to_string(),
             received,
@@ -246,11 +246,11 @@ fn write_verified_file(
     match fs::rename(&pending, target) {
         Ok(()) => Ok(()),
         Err(_source) if target.exists() => {
-            let _ = fs::remove_file(&pending);
+            cleanup_pending_file(&pending);
             verify_regular_digest(target, expected_digest)
         }
         Err(source) => {
-            let _ = fs::remove_file(&pending);
+            cleanup_pending_file(&pending);
             Err(io_error(target, source))
         }
     }
@@ -282,14 +282,26 @@ fn write_json_atomically<T: Serialize>(
     match fs::rename(&pending, target) {
         Ok(()) => Ok(()),
         Err(_source) if target.exists() => {
-            let _ = fs::remove_file(&pending);
+            cleanup_pending_file(&pending);
             Err(ModulePayloadCacheError::InvalidPreparationMarker(
                 target.display().to_string(),
             ))
         }
         Err(source) => {
-            let _ = fs::remove_file(&pending);
+            cleanup_pending_file(&pending);
             Err(io_error(target, source))
+        }
+    }
+}
+
+fn cleanup_pending_file(path: &Path) {
+    if let Err(error) = fs::remove_file(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "failed to remove pending module cache file during cleanup"
+            );
         }
     }
 }

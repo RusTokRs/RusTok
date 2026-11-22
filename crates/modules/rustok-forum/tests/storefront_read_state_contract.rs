@@ -6,8 +6,6 @@ use rustok_forum::{ForumMutation, ForumQuery};
 
 const GRAPHQL_ADAPTER: &str = include_str!("../storefront/src/transport/graphql_adapter.rs");
 const NATIVE_ADAPTER: &str = include_str!("../storefront/src/transport/native_server_adapter.rs");
-const NATIVE_BULK_ADAPTER: &str =
-    include_str!("../storefront/src/transport/native_server_adapter_bulk.rs");
 const TRANSPORT_SELECTOR: &str = include_str!("../storefront/src/transport/mod.rs");
 
 #[test]
@@ -85,12 +83,12 @@ fn storefront_adapters_use_only_exact_visibility_safe_composition() {
     }
     assert!(NATIVE_ADAPTER.contains("list_topics_with_unread_audience_visible"));
     assert!(NATIVE_ADAPTER.contains("mark_topic_read_current_audience_visible"));
-    assert!(NATIVE_BULK_ADAPTER.contains("mark_category_read_audience_visible"));
-    assert!(NATIVE_BULK_ADAPTER.contains("mark_all_read_audience_visible"));
-    assert!(NATIVE_BULK_ADAPTER.contains("MarkCategoryRead"));
-    assert!(NATIVE_BULK_ADAPTER.contains("MarkAllRead"));
+    assert!(NATIVE_ADAPTER.contains("mark_category_read_audience_visible"));
+    assert!(NATIVE_ADAPTER.contains("mark_all_read_audience_visible"));
+    assert!(NATIVE_ADAPTER.contains("MarkCategoryRead"));
+    assert!(NATIVE_ADAPTER.contains("MarkAllRead"));
 
-    for source in [GRAPHQL_ADAPTER, NATIVE_ADAPTER, NATIVE_BULK_ADAPTER] {
+    for source in [GRAPHQL_ADAPTER, NATIVE_ADAPTER] {
         assert!(!source.contains("summarize_topic_ids"));
         assert!(!source.contains("forum_topic_read_states"));
         assert!(!source.contains("forum_replies::"));

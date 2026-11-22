@@ -429,7 +429,8 @@ rustok_api::impl_field_definition_source!(product_field_definitions_storage::Mod
 pub fn product_field_definition_from_row(
     row: product_field_definitions_storage::Model,
 ) -> Result<FieldDefinition, CommerceError> {
-    rustok_core::field_schema::field_definition_from_source(&row).map_err(CommerceError::Validation)
+    rustok_core::field_schema::field_definition_from_source(&row)
+        .map_err(|err| CommerceError::Validation(err.to_string()))
 }
 
 pub fn pick_product_translation<'a>(

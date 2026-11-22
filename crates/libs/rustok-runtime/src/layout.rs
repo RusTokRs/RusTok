@@ -478,16 +478,20 @@ pub fn bind_instance_placement(
         });
     }
     if layout.root().is_dir() {
-        let mut pending_markers = std::fs::read_dir(layout.root())
+        let mut pending_markers = Vec::new();
+        for entry in std::fs::read_dir(layout.root())
             .map_err(|source| io_error(layout.root(), source))?
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                name.starts_with(".rustok-instance.") && name.ends_with(".pending")
-            });
-        if let Some(entry) = pending_markers.next() {
-            if pending_markers.next().is_some() {
+        {
+            let entry = entry.map_err(|source| io_error(layout.root(), source))?;
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with(".rustok-instance.") && name_str.ends_with(".pending") {
+                pending_markers.push(entry);
+            }
+        }
+        let mut pending_iter = pending_markers.into_iter();
+        if let Some(entry) = pending_iter.next() {
+            if pending_iter.next().is_some() {
                 return Err(InstanceLayoutError::InvalidRoot(format!(
                     "instance root `{}` contains multiple pending instance markers",
                     layout.root().display()

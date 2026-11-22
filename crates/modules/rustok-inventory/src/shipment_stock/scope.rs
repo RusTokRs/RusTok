@@ -1,6 +1,6 @@
 use super::*;
 use crate::entities::{inventory_item, stock_location};
-use crate::ports_impl::{load_inventory_item_for_update, load_tenant_variant};
+use crate::ports_impl::{load_inventory_item_for_update, load_tenant_variants};
 use crate::reservation_adoption::has_terminal_disposition;
 use sea_orm::FromQueryResult;
 
@@ -141,11 +141,15 @@ pub(super) async fn lock_items(
         .iter()
         .filter_map(|line| line.variant_id)
         .collect::<BTreeSet<_>>();
+    let variant_ids_vec = variants.iter().copied().collect::<Vec<_>>();
+    let variants_map =
+        load_tenant_variants(context, OPERATION, txn, tenant_id, &variant_ids_vec).await?;
     let mut items = BTreeMap::new();
     let mut products = BTreeMap::new();
     for variant_id in &variants {
-        let variant = load_tenant_variant(context, OPERATION, txn, tenant_id, *variant_id).await?;
-        products.insert(*variant_id, variant.product_id);
+        if let Some(variant) = variants_map.get(variant_id) {
+            products.insert(*variant_id, variant.product_id);
+        }
     }
     for variant_id in variants {
         let item = load_inventory_item_for_update(context, OPERATION, txn, variant_id)

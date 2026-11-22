@@ -601,6 +601,14 @@ mod rustok_cart_shim {
 
 mod rustok_pricing_shim {
     pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;
+    #[expect(
+        unused_imports,
+        reason = "contracted export required by verify-commerce-graphql-cart-pricing-context"
+    )]
+    #[expect(
+        unused_imports,
+        reason = "contracted export required by verify-commerce-graphql-cart-pricing-context"
+    )]
     pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
 }
 

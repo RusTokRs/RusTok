@@ -2,6 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
+use thiserror::Error;
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("unknown {kind} code: {value}")]
+pub struct ParsePlatformCodeError {
+    pub kind: &'static str,
+    pub value: String,
+}
 
 macro_rules! platform_code {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
@@ -26,12 +34,15 @@ macro_rules! platform_code {
         }
 
         impl FromStr for $name {
-            type Err = String;
+            type Err = $crate::platform_build::ParsePlatformCodeError;
 
             fn from_str(value: &str) -> Result<Self, Self::Err> {
                 match value {
                     $($value => Ok(Self::$variant),)+
-                    _ => Err(format!("unknown {} code: {value}", stringify!($name))),
+                    _ => Err($crate::platform_build::ParsePlatformCodeError {
+                        kind: stringify!($name),
+                        value: value.to_string(),
+                    }),
                 }
             }
         }

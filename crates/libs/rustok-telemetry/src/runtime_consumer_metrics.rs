@@ -194,9 +194,12 @@ pub fn record_worker_start(consumer: &str) {
         .in_flight_started_timestamp_seconds
         .with_label_values(&[consumer])
         .set(0);
-    let _ = RUNTIME_CONSUMER_METRICS
-        .last_success_timestamp_seconds
-        .with_label_values(&[consumer]);
+    // Ensure the series is registered for this consumer without resetting any prior timestamp.
+    drop(
+        RUNTIME_CONSUMER_METRICS
+            .last_success_timestamp_seconds
+            .with_label_values(&[consumer]),
+    );
     RUNTIME_CONSUMER_METRICS
         .position_snapshot_timestamp_seconds
         .with_label_values(&[consumer])

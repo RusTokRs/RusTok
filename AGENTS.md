@@ -34,7 +34,7 @@ If two mandatory rules genuinely conflict, surface the conflict and resolve it t
 
 ## 2. Required start protocol
 
-Full-stack (§2.1), cross-cutting (§2.1.1), and architecture/documentation (§2.1.2) audit execution protocols are conditional. They apply only when the user explicitly requests execution or continuation of the corresponding audit plan, including its canonical trigger. Reading this file, requesting an ideal implementation, or performing ordinary development does not activate an audit protocol.
+Full-stack (§2.1), cross-cutting (§2.1.1), architecture/documentation (§2.1.2), and GitNexus deep graph (§2.1.3) audit execution protocols are conditional. They apply only when the user explicitly requests execution or continuation of the corresponding audit plan, including its canonical trigger. Reading this file, requesting an ideal implementation, or performing ordinary development does not activate an audit protocol.
 
 For ordinary features, bug fixes, and targeted refactoring, agents MUST NOT start or advance audit ledger phases, read audit-only ledgers or exhaustive audit runbooks solely because they are referenced here, or silently expand the task into an unrelated full-crate audit. The general start protocol below, all repository-wide engineering rules, root-cause investigation, affected-boundary completeness, and cross-client parity remain mandatory. Only audit-specific exhaustive *whole-crate* inspection, zero-known-defect remediation across unrelated crate functionality, and phase-completion requirements are conditional.
 
@@ -96,6 +96,28 @@ When that instruction is given, the contributor or AI agent MUST:
 5. **Consolidate and De-slop:** Consolidate redundant, fragmented, or machine-generated placeholder documents into high-signal specifications; archive or delete finished ephemeral implementation plans.
 6. **Scoped Verification:** Run `npm run verify:docs`, `npm run verify:adrs`, `npm run verify:manifest`, and relevant scoped crate checks. Ensure zero documentation errors or broken links.
 7. Mark the phase complete in `docs/standards/docs-governance-ledger.md` and record verified changes.
+
+### 2.1.3 GitNexus Deep Graph Audit Contract (GDAC)
+
+The canonical trigger for the exhaustive knowledge-graph audit across all 245 packages and 18 analysis vectors using GitNexus is:
+
+`реализуй план gitnexus`
+*(or `реализуй план аудита gitnexus` / `execute gitnexus audit plan`)*
+
+When that instruction is given, the contributor or AI agent MUST:
+1. Read this `AGENTS.md`, `docs/index.md`, `docs/standards/gitnexus-capabilities-reference.md`, and the active section of `docs/standards/gitnexus-deep-audit-plan.md`. The plan/ledger is the single living audit-progress record for GitNexus-driven passes; do not create parallel audit plans.
+2. Identify the active cycle (`Cycle N`) and the next pending crate/component in `docs/standards/gitnexus-deep-audit-plan.md`.
+3. Verify the target component across all 18 GitNexus analysis vectors (topology, database sovereignty, cohesion, processes, dead/WIP code, encapsulation, UI parity, shape drift, CDG guards, data flows, taint security, outbox events, impact, temporal coupling, agent tools, trait completeness, middleware wrappers, cross-repo contracts).
+4. **Preserve Good WIP Logic (No Blind Deletions):** Follow the Decision Trees in §1 of the plan. Distinguish valuable unfinished or unwired features from obsolete legacy code. Wire up incomplete features into routes/processes; cover extension points with tests; delete only verified legacy dead code.
+5. Remediate ALL discovered defects within the in-scope crate in the same change set ("Косяков нет — теперь иду дальше").
+6. Run scoped checks: `cargo check -p <crate>`, `cargo test -p <crate>`, `node .gitnexus/run.cjs detect-changes --scope all --repo .`.
+7. Mark all 18 vector checkboxes complete (`[x]`) for the component in the audit matrix and record verified logic chains.
+8. **Perpetual Infinite Cycle Protocol ("Все стёрли — и всё заново"):** When all 245 packages in the cycle reach 100% completion:
+   - Record the cycle completion summary (date, commit SHA, resolved defects).
+   - Increment the active cycle: `Cycle N+1 (Fresh Pass from Scratch)`.
+   - Reset all matrix checkboxes back to `[ ]` across all 245 packages so that agents do not skip previously audited code on future passes.
+   - Run `node .gitnexus/run.cjs analyze --pdg --force` to refresh the graph for the fresh cycle.
+   - Immediately begin auditing from the first pending component of the new cycle.
 
 
 Before changing repository content, contributors and agents MUST:

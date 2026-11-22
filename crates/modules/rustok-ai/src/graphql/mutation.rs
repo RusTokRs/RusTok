@@ -243,7 +243,7 @@ impl AiMutation {
         let operator = operator_context(ctx, auth).await?;
         let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
-            .map_err(async_graphql::Error::new)?;
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         let provider_slug = runtime
             .provider_targets()
             .get(&provider_target_id)
@@ -293,7 +293,7 @@ impl AiMutation {
         let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
         let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
-            .map_err(async_graphql::Error::new)?;
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::update_provider_profile(
             db,

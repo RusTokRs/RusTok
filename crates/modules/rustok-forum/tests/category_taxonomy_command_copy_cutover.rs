@@ -112,12 +112,10 @@ async fn canonical_category_commands_do_not_write_legacy_translation_mirror() ->
 #[test]
 fn category_owner_writes_have_no_legacy_translation_dependency() {
     const ADAPTER: &str = include_str!("../src/services/category_taxonomy_sync.rs");
-    const OWNER: &str = include_str!("../src/services/category_projection_owner.rs");
-    const IMPORT: &str = include_str!("../src/services/category_import.rs");
+    const CATEGORY: &str = include_str!("../src/services/category.rs");
 
     assert!(!ADAPTER.contains("forum_category_translation"));
-    assert!(!OWNER.contains("forum_category_translation"));
-    assert!(!IMPORT.contains("forum_category_translation"));
+    assert!(!CATEGORY.contains("forum_category_translation"));
     assert!(ADAPTER.contains("load_module_category_locale_copy_in_tx"));
     assert!(ADAPTER.contains("sync_module_category_with_owned_aliases_in_tx"));
 }

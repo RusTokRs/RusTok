@@ -31,6 +31,20 @@ status: active
 >    ```
 >    *(or `реализуй план сквозного аудита`)*
 >    Operates on **[`docs/standards/cross-cutting-review-ledger.md`](./standards/cross-cutting-review-ledger.md)**: traverses system-wide slices (FBA, FFA, RBAC, Cache, Outbox, API, Tenancy, DB, Workers, Telemetry, Settings, i18n) using `codegraph_explore` to trace end-to-end blast radius.
+>
+> 3. **Exhaustive 18-Vector Knowledge-Graph Audit (GitNexus / GDAC):**
+>    ```
+>    реализуй план gitnexus
+>    ```
+>    *(or `реализуй план аудита gitnexus` / `execute gitnexus audit plan`)*
+>    Operates on **[`docs/standards/gitnexus-deep-audit-plan.md`](./standards/gitnexus-deep-audit-plan.md)**: sequentially audits all 245 packages across 18 analysis vectors (topology, database sovereignty, cohesion, processes, dead/WIP code, encapsulation, UI parity, shape drift, CDG guards, data flows, taint security, outbox events, impact, temporal coupling, agent tools, trait completeness, middleware wrappers, cross-repo contracts) with perpetual cyclic progression.
+>
+> 4. **Architecture, Documentation & ADR Governance (DAR):**
+>    ```
+>    реализуй план аудита документации
+>    ```
+>    *(or `реализуй план актуализации adr`)*
+>    Operates on **[`docs/standards/docs-governance-ledger.md`](./standards/docs-governance-ledger.md)**: reconciles documentation, architecture diagrams, and ADR contracts with code reality.
 
 ---
 

@@ -87,8 +87,8 @@ pub use digest::{
     SHA256_BLOCK_BYTES, SHA256_DIGEST_BYTES, fixed_work_sha256_eq, hmac_sha256, sha256_digest,
 };
 pub use event_delivery::{
-    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,
-    SharedEventDeliveryControl,
+    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryControlError,
+    EventDeliveryUpdateOutcome, SharedEventDeliveryControl,
 };
 pub use locale::{
     LocaleTypeError, PLATFORM_FALLBACK_LOCALE, RuntimeLocale, StoredLocale, TenantLocale,
@@ -124,10 +124,12 @@ pub use module_work::{
 };
 pub use patch::Patch;
 pub use permissions::{
-    Action, Permission, Resource, has_any_effective_permission, has_effective_permission,
+    Action, ActionParseError, Permission, PermissionParseError, Resource, ResourceParseError,
+    has_any_effective_permission, has_effective_permission,
 };
 pub use platform_build::{
-    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    ParsePlatformCodeError, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
+    PlatformDeploymentProfile,
 };
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,

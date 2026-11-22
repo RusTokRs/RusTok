@@ -3635,6 +3635,7 @@ mod revision_tests {
             tags: None,
             custom_fields: None,
             status: None,
+            brands: None,
             revision: Some(4),
         };
 

@@ -2,7 +2,18 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use uuid::Uuid;
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum EventDeliveryControlError {
+    #[error("invalid event delivery profile: {0}")]
+    InvalidProfile(String),
+    #[error("event delivery configuration failed: {0}")]
+    Configuration(String),
+    #[error("event delivery profile update failed: {0}")]
+    UpdateFailed(String),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventDeliveryConfigurationSnapshot {
@@ -21,13 +32,15 @@ pub struct EventDeliveryUpdateOutcome {
 
 #[async_trait]
 pub trait EventDeliveryControl: Send + Sync {
-    async fn configuration(&self) -> Result<EventDeliveryConfigurationSnapshot, String>;
+    async fn configuration(
+        &self,
+    ) -> Result<EventDeliveryConfigurationSnapshot, EventDeliveryControlError>;
 
     async fn update_profile(
         &self,
         profile: String,
         actor_id: Uuid,
-    ) -> Result<EventDeliveryUpdateOutcome, String>;
+    ) -> Result<EventDeliveryUpdateOutcome, EventDeliveryControlError>;
 }
 
 #[derive(Clone)]

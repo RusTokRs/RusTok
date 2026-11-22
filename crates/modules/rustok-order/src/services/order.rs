@@ -1564,7 +1564,7 @@ async fn load_order_custom_fields_schema(
 fn order_field_definition_from_row(
     row: order_field_definitions_storage::Model,
 ) -> OrderResult<FieldDefinition> {
-    field_definition_from_source(&row).map_err(OrderError::Validation)
+    field_definition_from_source(&row).map_err(|err| OrderError::Validation(err.to_string()))
 }
 
 fn split_order_metadata_payload(

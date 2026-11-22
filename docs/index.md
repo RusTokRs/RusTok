@@ -27,6 +27,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
    - [Continuous Code Review (By-Module Crate Audit)](./standards/continuous-review-ledger.md)
    - [Cross-Cutting Architectural Review (CCAR)](./standards/cross-cutting-review-ledger.md)
    - [Architecture & Documentation Governance (DAR)](./standards/docs-governance-ledger.md)
+   - [GitNexus Deep Graph Audit (GDAC)](./standards/gitnexus-deep-audit-plan.md)
 
 ## Required Starting Documents
 

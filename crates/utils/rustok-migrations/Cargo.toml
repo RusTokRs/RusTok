@@ -78,6 +78,7 @@ composition = [
 
 [dependencies]
 rustok-api = { workspace = true, optional = true }
+sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
@@ -143,7 +144,6 @@ async-trait.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
-sea-orm.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
