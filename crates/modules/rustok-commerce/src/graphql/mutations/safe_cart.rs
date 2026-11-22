@@ -605,6 +605,10 @@ mod rustok_pricing_shim {
         unused_imports,
         reason = "contracted export required by verify-commerce-graphql-cart-pricing-context"
     )]
+    #[expect(
+        unused_imports,
+        reason = "contracted export required by verify-commerce-graphql-cart-pricing-context"
+    )]
     pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
 }
 
