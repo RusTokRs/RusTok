@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-01 — Shared Platform Foundation Libraries (`crates/libs/*`)
-- **Next Pending Component:** [`crates/libs/rustok-telemetry`](../../crates/libs/rustok-telemetry)
+- **Next Pending Component:** [`crates/libs/rustok-content-portability`](../../crates/libs/rustok-content-portability)
 - **Current main SHA:** `67f842e7e8`
 - **Active Branch:** `main`
 
@@ -193,7 +193,7 @@ flowchart TD
 | `rustok-outbox-storage` | `crates/libs/rustok-outbox-storage` | [x] | [x] | [x] | [x] |
 | `rustok-runtime` | `crates/libs/rustok-runtime` | [x] | [x] | [x] | [x] |
 | `rustok-manifest` | `crates/libs/rustok-manifest` | [x] | [x] | [x] | [x] |
-| `rustok-telemetry` | `crates/libs/rustok-telemetry` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-telemetry` | `crates/libs/rustok-telemetry` | [x] | [x] | [x] | [x] |
 | `rustok-content-portability` | `crates/libs/rustok-content-portability` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-seo-targets` | `crates/libs/rustok-seo-targets` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-translation-targets` | `crates/libs/rustok-translation-targets` | [ ] | [ ] | [ ] | [ ] |
