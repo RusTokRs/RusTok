@@ -157,6 +157,7 @@ impl CatalogService {
         {
             query = query.filter(product_title_search_condition(
                 self.db.get_database_backend(),
+                tenant_id,
                 search,
             ));
         }
@@ -335,6 +336,7 @@ impl CatalogService {
         if let Some(search) = search {
             query = query.filter(product_title_search_condition(
                 self.db.get_database_backend(),
+                tenant_id,
                 search,
             ));
         }
@@ -532,6 +534,7 @@ impl CatalogService {
 
 pub(super) fn product_title_search_condition(
     backend: sea_orm::DbBackend,
+    tenant_id: Uuid,
     search: &str,
 ) -> sea_orm::Condition {
     let pattern = product_title_substring_like_pattern(search);
@@ -541,6 +544,7 @@ pub(super) fn product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
+                  AND pt.tenant_id = ?
                   AND pt.title LIKE ? ESCAPE '!'
             )"
         }
@@ -549,14 +553,18 @@ pub(super) fn product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE $1 ESCAPE '!'
+                  AND pt.tenant_id = $1
+                  AND pt.title LIKE $2 ESCAPE '!'
             )"
         }
     };
 
     sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
         exists_sql,
-        vec![sea_orm::Value::from(pattern)],
+        vec![
+            sea_orm::Value::from(tenant_id),
+            sea_orm::Value::from(pattern),
+        ],
     ))
 }
 
@@ -652,5 +660,25 @@ mod seo_scan_bounds_tests {
         assert_eq!(validate_published_product_scan_limit(500).unwrap(), 500);
         assert!(validate_published_product_scan_limit(501).is_err());
         assert!(validate_published_product_scan_limit(u64::MAX).is_err());
+    }
+}
+
+#[cfg(test)]
+mod product_title_search_tenant_tests {
+    use super::*;
+    use sea_orm::{DbBackend, QueryTrait};
+
+    #[test]
+    fn title_filter_uses_tenant_scoped_translation_rows_on_both_backends() {
+        let tenant_id = Uuid::new_v4();
+        for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
+            let statement = entities::product::Entity::find()
+                .filter(product_title_search_condition(backend, tenant_id, "desk"))
+                .build(backend);
+            assert!(statement.sql.contains("pt.product_id = products.id"));
+            assert!(statement.sql.contains("pt.tenant_id ="));
+            assert!(statement.sql.contains("ESCAPE '!'"));
+            assert_eq!(statement.values.as_ref().map(|v| v.0.len()), Some(2));
+        }
     }
 }

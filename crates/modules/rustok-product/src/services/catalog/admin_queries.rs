@@ -88,6 +88,7 @@ impl CatalogService {
         if let Some(search) = list_query.search.as_deref() {
             query = query.filter(admin_product_title_search_condition(
                 self.db.get_database_backend(),
+                tenant_id,
                 search,
             ));
         }
@@ -210,6 +211,7 @@ impl CatalogService {
 
 fn admin_product_title_search_condition(
     backend: sea_orm::DbBackend,
+    tenant_id: Uuid,
     search: &str,
 ) -> sea_orm::Condition {
     let pattern = product_title_substring_like_pattern(search);
@@ -219,6 +221,7 @@ fn admin_product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
+                  AND pt.tenant_id = ?
                   AND pt.title LIKE ? ESCAPE '!'
             )"
         }
@@ -227,13 +230,17 @@ fn admin_product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE $1 ESCAPE '!'
+                  AND pt.tenant_id = $1
+                  AND pt.title LIKE $2 ESCAPE '!'
             )"
         }
     };
 
     sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
         exists_sql,
-        vec![sea_orm::Value::from(pattern)],
+        vec![
+            sea_orm::Value::from(tenant_id),
+            sea_orm::Value::from(pattern),
+        ],
     ))
 }
