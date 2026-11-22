@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn persisted_provider_result(
+pub(crate) fn persisted_provider_result(
     context: &PortContext,
     owner_operation: &'static str,
     operation: &crate::entities::provider_operation::Model,
@@ -60,7 +60,7 @@ pub(super) fn persisted_provider_result(
     })
 }
 
-pub(super) fn insert_metadata_string(
+pub(crate) fn insert_metadata_string(
     metadata: &mut Value,
     key: &str,
     value: String,
@@ -87,7 +87,7 @@ pub(super) fn insert_metadata_string(
     Ok(())
 }
 
-pub(super) fn metadata_string<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
+pub(crate) fn metadata_string<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
     metadata
         .get(key)
         .and_then(Value::as_str)
@@ -95,7 +95,7 @@ pub(super) fn metadata_string<'a>(metadata: &'a Value, key: &str) -> Option<&'a 
         .filter(|value| !value.is_empty())
 }
 
-pub(super) fn merge_metadata(current: Value, patch: Value) -> Value {
+pub(crate) fn merge_metadata(current: Value, patch: Value) -> Value {
     match (current, patch) {
         (Value::Object(mut current), Value::Object(patch)) => {
             for (key, value) in patch {
@@ -107,7 +107,7 @@ pub(super) fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-pub(super) fn require_checkout_payment_read_admission(
+pub(crate) fn require_checkout_payment_read_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
@@ -123,7 +123,7 @@ pub(super) fn require_checkout_payment_read_admission(
         })
 }
 
-pub(super) fn require_checkout_payment_write_admission(
+pub(crate) fn require_checkout_payment_write_admission(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
@@ -147,7 +147,7 @@ pub(super) fn require_checkout_payment_write_admission(
     })
 }
 
-pub(super) fn log_checkout_payment_execution_admission_rejection(
+pub(crate) fn log_checkout_payment_execution_admission_rejection(
     context: &PortContext,
     owner_operation: &'static str,
     admission: &'static str,
@@ -220,7 +220,7 @@ pub(super) fn log_checkout_payment_execution_admission_rejection(
     }
 }
 
-pub(super) fn require_operation_context(
+pub(crate) fn require_operation_context(
     context: &PortContext,
     owner_operation: &'static str,
     checkout_operation_id: Uuid,
@@ -251,7 +251,7 @@ pub(super) fn require_operation_context(
     Ok(())
 }
 
-pub(super) fn parse_tenant_id(
+pub(crate) fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
@@ -274,7 +274,7 @@ pub(super) fn parse_tenant_id(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum CheckoutPaymentExecutionReconciliationReason {
+pub(crate) enum CheckoutPaymentExecutionReconciliationReason {
     MissingNormalizedDurableResult,
     MalformedDurableResult,
     InvalidSuccessfulProviderResponse,
@@ -294,7 +294,7 @@ pub(super) enum CheckoutPaymentExecutionReconciliationReason {
 }
 
 impl CheckoutPaymentExecutionReconciliationReason {
-    pub(super) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::MissingNormalizedDurableResult => "missing_normalized_durable_result",
             Self::MalformedDurableResult => "malformed_durable_result",
@@ -328,7 +328,7 @@ impl CheckoutPaymentExecutionReconciliationReason {
     }
 }
 
-pub(super) fn manual_reconciliation(
+pub(crate) fn manual_reconciliation(
     context: &PortContext,
     owner_operation: &'static str,
     reason: CheckoutPaymentExecutionReconciliationReason,
@@ -361,16 +361,16 @@ pub(super) fn manual_reconciliation(
 }
 
 #[derive(Debug)]
-pub(super) struct CheckoutPaymentExecutionPaymentErrorFacts {
-    pub(super) error_variant: &'static str,
-    pub(super) text_field_count: usize,
-    pub(super) text_total_length: usize,
-    pub(super) uuid_field_count: usize,
-    pub(super) uuid_non_nil_count: usize,
-    pub(super) opaque_payload_present: bool,
+pub(crate) struct CheckoutPaymentExecutionPaymentErrorFacts {
+    pub(crate) error_variant: &'static str,
+    pub(crate) text_field_count: usize,
+    pub(crate) text_total_length: usize,
+    pub(crate) uuid_field_count: usize,
+    pub(crate) uuid_non_nil_count: usize,
+    pub(crate) opaque_payload_present: bool,
 }
 
-pub(super) fn checkout_payment_execution_payment_error_facts(
+pub(crate) fn checkout_payment_execution_payment_error_facts(
     error: &PaymentError,
 ) -> CheckoutPaymentExecutionPaymentErrorFacts {
     let (
@@ -478,7 +478,7 @@ pub(super) fn checkout_payment_execution_payment_error_facts(
     }
 }
 
-pub(super) fn stable_payment_error_code(error: &PaymentError) -> &'static str {
+pub(crate) fn stable_payment_error_code(error: &PaymentError) -> &'static str {
     match error {
         PaymentError::Database(_) => "payment.database_unavailable",
         PaymentError::Validation(_) => "payment.validation",
@@ -494,7 +494,7 @@ pub(super) fn stable_payment_error_code(error: &PaymentError) -> &'static str {
     }
 }
 
-pub(super) fn payment_error_to_port_error(
+pub(crate) fn payment_error_to_port_error(
     context: &PortContext,
     owner_operation: &'static str,
     error: PaymentError,

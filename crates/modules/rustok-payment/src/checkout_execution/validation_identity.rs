@@ -1,11 +1,11 @@
 use super::*;
 
-pub(super) struct JournaledProviderResult {
-    pub(super) operation_id: Uuid,
-    pub(super) result: PaymentProviderOperationResult,
+pub(crate) struct JournaledProviderResult {
+    pub(crate) operation_id: Uuid,
+    pub(crate) result: PaymentProviderOperationResult,
 }
 
-pub(super) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError> {
+pub(crate) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError> {
     if identity.checkout_operation_id.is_nil()
         || identity.cart_id.is_nil()
         || identity.order_id.is_nil()
@@ -43,7 +43,7 @@ pub(super) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<()
     Ok(())
 }
 
-pub(super) fn validate_optional_collection_identity(
+pub(crate) fn validate_optional_collection_identity(
     collection: &PaymentCollectionResponse,
     identity: &CheckoutPaymentIdentity,
 ) -> Result<(), PortError> {
@@ -71,7 +71,7 @@ pub(super) fn validate_optional_collection_identity(
     Ok(())
 }
 
-pub(super) fn validate_collection(
+pub(crate) fn validate_collection(
     collection: &PaymentCollectionResponse,
     tenant_id: Uuid,
     identity: &CheckoutPaymentIdentity,
@@ -115,7 +115,7 @@ pub(super) fn validate_collection(
     Ok(())
 }
 
-pub(super) fn checkout_stage_metadata(
+pub(crate) fn checkout_stage_metadata(
     base: Value,
     identity: &CheckoutPaymentIdentity,
     stage: &str,
@@ -152,7 +152,7 @@ pub(super) fn checkout_stage_metadata(
     Value::Object(root)
 }
 
-pub(super) fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
+pub(crate) fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
     collection
         .provider_id
         .clone()

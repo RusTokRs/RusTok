@@ -1,7 +1,7 @@
 use super::*;
 
 impl InProcessCheckoutPaymentExecutionPort {
-    pub(super) async fn enrich_provider_request(
+    pub(crate) async fn enrich_provider_request(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -74,7 +74,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(request)
     }
 
-    pub(super) async fn commit_existing_provider_operation(
+    pub(crate) async fn commit_existing_provider_operation(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -105,7 +105,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(())
     }
 
-    pub(super) async fn mark_journal_committed(
+    pub(crate) async fn mark_journal_committed(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -180,7 +180,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(())
     }
 
-    pub(super) async fn mark_local_persistence_failed(
+    pub(crate) async fn mark_local_persistence_failed(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
