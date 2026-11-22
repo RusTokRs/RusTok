@@ -655,7 +655,7 @@ impl Model {
         })
     }
 
-    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, String> {
+    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, rustok_api::PermissionParseError> {
         self.granted_permissions_list()
             .into_iter()
             .map(|value| Permission::from_str(&value))

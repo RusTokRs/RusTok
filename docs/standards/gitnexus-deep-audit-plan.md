@@ -5,8 +5,8 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-01 — Shared Platform Foundation Libraries (`crates/libs/*`)
-- **Next Pending Component:** [`crates/libs/rustok-core`](../../crates/libs/rustok-core)
-- **Current main SHA:** `2cc5d38043`
+- **Next Pending Component:** [`crates/libs/rustok-fba`](../../crates/libs/rustok-fba)
+- **Current main SHA:** `9c0abde868`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -186,8 +186,8 @@ flowchart TD
 ### Phase GN-01 — Shared Foundation Libraries (`crates/libs/*` — 12 пакетов)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
-| `rustok-core` | `crates/libs/rustok-core` | [ ] | [ ] | [ ] | [ ] |
-| `rustok-api` | `crates/libs/rustok-api` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-core` | `crates/libs/rustok-core` | [x] | [x] | [x] | [x] |
+| `rustok-api` | `crates/libs/rustok-api` | [x] | [x] | [x] | [x] |
 | `rustok-fba` | `crates/libs/rustok-fba` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-events` | `crates/libs/rustok-events` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-outbox-storage` | `crates/libs/rustok-outbox-storage` | [ ] | [ ] | [ ] | [ ] |

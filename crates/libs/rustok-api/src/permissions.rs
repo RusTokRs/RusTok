@@ -1,6 +1,37 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use thiserror::Error;
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("unknown resource: {0}")]
+pub struct ResourceParseError(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("unknown action: {0}")]
+pub struct ActionParseError(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum PermissionParseError {
+    #[error("missing action separator ':' in permission string")]
+    MissingAction,
+    #[error("unknown resource: {0}")]
+    UnknownResource(String),
+    #[error("unknown action: {0}")]
+    UnknownAction(String),
+}
+
+impl From<ResourceParseError> for PermissionParseError {
+    fn from(err: ResourceParseError) -> Self {
+        Self::UnknownResource(err.0)
+    }
+}
+
+impl From<ActionParseError> for PermissionParseError {
+    fn from(err: ActionParseError) -> Self {
+        Self::UnknownAction(err.0)
+    }
+}
 
 /// Platform resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -135,7 +166,7 @@ impl fmt::Display for Resource {
 }
 
 impl FromStr for Resource {
-    type Err = String;
+    type Err = ResourceParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim() {
@@ -198,7 +229,7 @@ impl FromStr for Resource {
             "conversations" => Ok(Self::Conversations),
             "messages" => Ok(Self::Messages),
             "newsletter" => Ok(Self::Newsletter),
-            _ => Err(format!("Unknown resource: {value}")),
+            _ => Err(ResourceParseError(value.to_string())),
         }
     }
 }
@@ -248,7 +279,7 @@ impl fmt::Display for Action {
 }
 
 impl FromStr for Action {
-    type Err = String;
+    type Err = ActionParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim() {
@@ -267,7 +298,7 @@ impl FromStr for Action {
             "cancel" => Ok(Self::Cancel),
             "resolve" => Ok(Self::Resolve),
             "override" => Ok(Self::Override),
-            _ => Err(format!("Unknown action: {value}")),
+            _ => Err(ActionParseError(value.to_string())),
         }
     }
 }
@@ -296,13 +327,13 @@ pub fn has_any_effective_permission(permissions: &[Permission], required: &[Perm
 }
 
 impl FromStr for Permission {
-    type Err = String;
+    type Err = PermissionParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let trimmed = value.trim();
         let (resource, action) = trimmed
             .rsplit_once(':')
-            .ok_or_else(|| "Missing action".to_string())?;
+            .ok_or(PermissionParseError::MissingAction)?;
         Ok(Self {
             resource: Resource::from_str(resource.trim())?,
             action: Action::from_str(action.trim())?,

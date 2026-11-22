@@ -121,8 +121,12 @@ impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissio
                 let resource: String = row.try_get("", "resource")?;
                 let action: String = row.try_get("", "action")?;
                 Ok(Permission::new(
-                    resource.parse().map_err(sea_orm::DbErr::Type)?,
-                    action.parse().map_err(sea_orm::DbErr::Type)?,
+                    resource
+                        .parse()
+                        .map_err(|err: rustok_api::ResourceParseError| sea_orm::DbErr::Type(err.to_string()))?,
+                    action
+                        .parse()
+                        .map_err(|err: rustok_api::ActionParseError| sea_orm::DbErr::Type(err.to_string()))?,
                 ))
             })
             .collect()

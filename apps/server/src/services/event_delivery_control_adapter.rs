@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{
-    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,
+    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryControlError,
+    EventDeliveryUpdateOutcome,
 };
 use uuid::Uuid;
 
@@ -22,10 +23,12 @@ impl ServerEventDeliveryControl {
 
 #[async_trait]
 impl EventDeliveryControl for ServerEventDeliveryControl {
-    async fn configuration(&self) -> Result<EventDeliveryConfigurationSnapshot, String> {
+    async fn configuration(
+        &self,
+    ) -> Result<EventDeliveryConfigurationSnapshot, EventDeliveryControlError> {
         let configuration = EventDeliverySettingsService::configuration(&self.runtime)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| EventDeliveryControlError::Configuration(error.to_string()))?;
         let active_profile = self
             .runtime
             .shared_get::<std::sync::Arc<EventRuntime>>()
@@ -33,7 +36,7 @@ impl EventDeliveryControl for ServerEventDeliveryControl {
             .unwrap_or(configuration.active_profile);
         let iggy = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(&self.runtime)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| EventDeliveryControlError::Configuration(error.to_string()))?;
 
         Ok(EventDeliveryConfigurationSnapshot {
             active_profile: active_profile.as_str().to_string(),
@@ -48,12 +51,15 @@ impl EventDeliveryControl for ServerEventDeliveryControl {
         &self,
         profile: String,
         actor_id: Uuid,
-    ) -> Result<EventDeliveryUpdateOutcome, String> {
-        let profile = EventDeliveryProfile::parse(&profile)
-            .ok_or_else(|| "profile must be one of: outbox, outbox_iggy".to_string())?;
+    ) -> Result<EventDeliveryUpdateOutcome, EventDeliveryControlError> {
+        let profile = EventDeliveryProfile::parse(&profile).ok_or_else(|| {
+            EventDeliveryControlError::InvalidProfile(
+                "profile must be one of: outbox, outbox_iggy".to_string(),
+            )
+        })?;
         EventDeliverySettingsService::save_profile(&self.runtime, profile, actor_id)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| EventDeliveryControlError::UpdateFailed(error.to_string()))?;
         let active_profile = self
             .runtime
             .shared_get::<std::sync::Arc<EventRuntime>>()
