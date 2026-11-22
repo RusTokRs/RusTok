@@ -294,21 +294,26 @@ pub fn ProductGridPage() -> impl IntoView {
         set_last_loaded_page.set(next.page);
     });
 
-    // Refreshes and mode changes restart at page one. In infinite mode this
-    // also prevents a refreshed page from being appended to a stale prefix.
+    // A paged catalog refreshes the *current* server page, not page one.
+    // Infinite mode restarts at page one so a refreshed page cannot be
+    // appended to stale earlier pages.
     let (observed_refresh_nonce, set_observed_refresh_nonce) = signal(0_u64);
     let refresh_query_writer = route_query_writer.clone();
     Effect::new(move |_| {
         let generation = refresh_nonce.get();
         if generation != observed_refresh_nonce.get_untracked() {
             set_observed_refresh_nonce.set(generation);
-            pagination.update(|state| state.set_page(1));
-            let state = pagination.get_untracked();
+            let mut state = pagination.get_untracked();
+            if state.mode == PaginationMode::Infinite {
+                state.set_page(1);
+                pagination.set(state);
+                refresh_query_writer.replace_value("page", "1");
+            }
             set_last_requested_pagination.set((state.page, state.page_size));
             set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
             set_infinite_items.set(Vec::new());
             set_last_loaded_page.set(0);
-            refresh_query_writer.replace_value("page", "1");
+            selection.update(|selected| selected.clear());
         }
     });
 
