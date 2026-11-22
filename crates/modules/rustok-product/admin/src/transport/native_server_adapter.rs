@@ -351,7 +351,9 @@ fn filterable_attribute_options(
 ) -> Vec<ProductCatalogSearchOption> {
     attributes
         .into_iter()
-        .filter(|attribute| attribute.is_filterable)
+        .filter(|attribute| {
+            attribute.is_filterable && matches!(attribute.scope.as_str(), "product" | "both")
+        })
         .map(|attribute| {
             let label = first_non_empty([attribute.label, attribute.code.clone()]);
             ProductCatalogSearchOption {
