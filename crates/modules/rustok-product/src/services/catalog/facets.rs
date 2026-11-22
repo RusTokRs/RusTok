@@ -704,7 +704,7 @@ fn facet_products_condition(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        condition = condition.add(product_title_search_condition(backend, search));
+        condition = condition.add(product_title_search_condition(backend, tenant_id, search));
     }
     for other in other_conditions {
         condition = condition.add(other);
