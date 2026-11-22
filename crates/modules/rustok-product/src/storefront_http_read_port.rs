@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, locale_tags_match};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::entities::{product, product_translation};
@@ -112,7 +112,40 @@ fn validate_request(
             "published products page size is invalid",
         ));
     }
+    crate::services::catalog::types::validate_storefront_product_search(request.search.as_deref())
+        .map_err(|_| {
+            PortError::validation("product.search_invalid", "published product search is invalid")
+        })?;
     Ok(())
+}
+
+/// Keep channel visibility in SQL: counting and pagination use the same visible rows.
+fn legacy_storefront_http_products_query(
+    tenant_id: Uuid,
+    backend: sea_orm::DbBackend,
+    public_channel_slug: Option<&str>,
+    vendor: Option<&str>,
+    product_type: Option<&str>,
+    search: Option<&str>,
+) -> sea_orm::Select<product::Entity> {
+    let mut query = product::Entity::find()
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .filter(product::Column::Status.eq(product::ProductStatus::Active))
+        .filter(product::Column::PublishedAt.is_not_null())
+        .filter(crate::services::catalog::helpers::product_channel_visibility_condition(
+            backend,
+            public_channel_slug,
+        ));
+    if let Some(vendor) = vendor {
+        query = query.filter(product::Column::Vendor.eq(vendor));
+    }
+    if let Some(product_type) = product_type {
+        query = query.filter(product::Column::ProductType.eq(product_type));
+    }
+    if let Some(search) = search.map(str::trim).filter(|value| !value.is_empty()) {
+        query = query.filter(product_title_search_condition(backend, tenant_id, search));
+    }
+    query
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -133,47 +166,25 @@ async fn list_legacy_storefront_http_products(
         .checked_sub(1)
         .and_then(|page| page.checked_mul(per_page))
         .ok_or_else(|| CommerceError::Validation("page and per_page are too large".to_owned()))?;
-    let offset_usize = usize::try_from(offset)
-        .map_err(|_| CommerceError::Validation("page and per_page are too large".to_owned()))?;
     let db = service.database();
 
-    let mut query = product::Entity::find()
-        .filter(product::Column::TenantId.eq(tenant_id))
-        .filter(product::Column::Status.eq(product::ProductStatus::Active))
-        .filter(product::Column::PublishedAt.is_not_null());
-    if let Some(vendor) = vendor {
-        query = query.filter(product::Column::Vendor.eq(vendor));
-    }
-    if let Some(product_type) = product_type {
-        query = query.filter(product::Column::ProductType.eq(product_type));
-    }
-    if let Some(search) = search {
-        query = query.filter(product_title_search_condition(
-            db.get_database_backend(),
-            tenant_id,
-            search,
-        ));
-    }
-
-    let visible_products = query
+    let query = legacy_storefront_http_products_query(
+        tenant_id,
+        db.get_database_backend(),
+        public_channel_slug,
+        vendor,
+        product_type,
+        search,
+    );
+    let total = query.clone().count(db).await?;
+    let products = query
         .order_by_desc(product::Column::PublishedAt)
         .order_by_desc(product::Column::CreatedAt)
+        .order_by_desc(product::Column::Id)
+        .offset(offset)
+        .limit(per_page)
         .all(db)
-        .await?
-        .into_iter()
-        .filter(|product| {
-            crate::services::catalog::helpers::is_metadata_visible_for_public_channel(
-                &product.metadata,
-                public_channel_slug,
-            )
-        })
-        .collect::<Vec<_>>();
-    let total = visible_products.len() as u64;
-    let products = visible_products
-        .into_iter()
-        .skip(offset_usize)
-        .take(per_page as usize)
-        .collect::<Vec<_>>();
+        .await?;
 
     let product_ids = products
         .iter()
@@ -433,6 +444,68 @@ mod diagnostic_policy_tests {
             assert!(!error.retryable);
             assert!(!error.message.contains("private-"));
         }
+    }
+
+    #[test]
+    fn legacy_http_page_query_filters_visibility_before_sql_pagination() {
+        use sea_orm::{DbBackend, QueryTrait};
+
+        let sqlite = legacy_storefront_http_products_query(
+            Uuid::new_v4(),
+            DbBackend::Sqlite,
+            Some("web"),
+            Some("vendor"),
+            None,
+            Some("desk"),
+        )
+        .order_by_desc(product::Column::PublishedAt)
+        .order_by_desc(product::Column::CreatedAt)
+        .order_by_desc(product::Column::Id)
+        .offset(10)
+        .limit(5)
+        .build(DbBackend::Sqlite)
+        .sql;
+        assert!(sqlite.contains("json_each"), "SQLite must filter channels in SQL");
+        assert!(sqlite.contains("product_translations"), "search must remain in SQL");
+        assert!(sqlite.contains("LIMIT"), "page size must limit the database query");
+        assert!(sqlite.contains("OFFSET"), "the database must apply page offset");
+
+        let postgres = legacy_storefront_http_products_query(
+            Uuid::new_v4(),
+            DbBackend::Postgres,
+            Some("web"),
+            None,
+            None,
+            None,
+        )
+        .offset(0)
+        .limit(5)
+        .build(DbBackend::Postgres)
+        .sql;
+        assert!(postgres.contains("channel_visibility"), "PostgreSQL must filter channels");
+        assert!(postgres.contains("LIMIT"));
+    }
+
+    #[test]
+    fn legacy_http_search_is_bounded_by_product_owned_input_policy() {
+        let mut request = LegacyStorefrontHttpProductsRequest {
+            locale: None,
+            fallback_locale: None,
+            public_channel_slug: None,
+            vendor: None,
+            product_type: None,
+            search: Some("x".repeat(
+                crate::services::catalog::types::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1,
+            )),
+            page: 1,
+            per_page: 10,
+        };
+        let error = validate_request(&context(), &request).expect_err("search must be bounded");
+        assert_eq!(error.code, "product.search_invalid");
+        assert_eq!(error.kind, PortErrorKind::Validation);
+
+        request.search = Some(" desk ".to_owned());
+        assert!(validate_request(&context(), &request).is_ok());
     }
 
     #[test]
