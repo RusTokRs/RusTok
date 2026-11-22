@@ -30,13 +30,14 @@ ordering, keyset, bounded-offset, lookahead, and exact-count semantics.
 Each many projection is a correlated JSONB aggregate subquery. It starts at the root
 identity, traverses the complete explicit path through `index_links` and live
 `index_entities`, and returns one JSON array. Empty or missing relations return an empty
-array rather than SQL `NULL`.
+array rather than SQL `NULL`. Oversized results fail the page budget rather than silently
+returning a partial relation.
 
 ## Deterministic row aggregation
 
 Every terminal relation row is encoded internally as two aligned arrays:
 
-- `entity_ids` contains one UUID for every relation-path prefix;
+- `identities` contains a UUID and locale key for every relation-path prefix;
 - `values` contains one tagged `IndexValue` for every selected field in the group.
 
 Missing stored fields use the tagged `IndexValue::Null` shape. List-cardinality fields

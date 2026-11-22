@@ -109,6 +109,8 @@ impl IndexSource for ReconciliationSource {
 struct Fixture {
     db: DatabaseConnection,
     runner: PostgresIndexReconciliationRunner,
+    sources: crate::SharedIndexSourceRegistry,
+    registry: Arc<SchemaRegistry>,
     calls: Arc<AtomicUsize>,
 }
 
@@ -181,9 +183,16 @@ impl Fixture {
         let sources = source_catalog.materialize(&schema_catalog).unwrap();
         let mut registry = SchemaRegistry::new();
         registry.register(schema).unwrap();
+        let registry = Arc::new(registry);
         let runner =
-            PostgresIndexReconciliationRunner::new(db.clone(), sources, Arc::new(registry));
-        Self { db, runner, calls }
+            PostgresIndexReconciliationRunner::new(db.clone(), sources.clone(), registry.clone());
+        Self {
+            db,
+            runner,
+            sources,
+            registry,
+            calls,
+        }
     }
 
     fn request(
@@ -287,7 +296,7 @@ async fn two_pass_reconciliation_catches_insert_behind_first_cursor() {
 
     assert_eq!(outcome.status(), IndexReconciliationRunStatus::Complete);
     assert_eq!(outcome.retry_after(), None);
-    assert_eq!(outcome.next_attempt(), None);
+    assert_eq!(outcome.next_failure_ordinal(), None);
     assert_eq!(outcome.passes_completed(), 2);
     assert_eq!(outcome.pages_processed(), 5);
     assert_eq!(outcome.mutation_count(), 5);
@@ -367,7 +376,7 @@ async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
     let fixture = Fixture::failing(FailureMode::Retryable).await;
     let mut job_id = None;
 
-    for (index, (attempt, seconds, next_attempt)) in
+    for (index, (attempt, seconds, next_failure_ordinal)) in
         [(1_u32, 5_u64, 2_u32), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
             .into_iter()
             .enumerate()
@@ -384,7 +393,7 @@ async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
         );
         assert_eq!(outcome.attempt_count(), Some(attempt));
         assert_eq!(outcome.retry_after(), Some(Duration::from_secs(seconds)));
-        assert_eq!(outcome.next_attempt(), Some(next_attempt));
+        assert_eq!(outcome.next_failure_ordinal(), Some(next_failure_ordinal));
         assert_eq!(outcome.pages_processed(), 0);
         if let Some(expected) = job_id {
             assert_eq!(outcome.job_id(), Some(expected));
@@ -439,7 +448,7 @@ async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
     assert_eq!(exhausted.job_id(), job_id);
     assert_eq!(exhausted.attempt_count(), Some(5));
     assert_eq!(exhausted.retry_after(), None);
-    assert_eq!(exhausted.next_attempt(), None);
+    assert_eq!(exhausted.next_failure_ordinal(), None);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 5);
     assert_eq!(
         scalar_string(
@@ -480,7 +489,7 @@ async fn permanent_failure_terminalizes_without_retry_metadata() {
     );
     assert_eq!(outcome.attempt_count(), Some(1));
     assert_eq!(outcome.retry_after(), None);
-    assert_eq!(outcome.next_attempt(), None);
+    assert_eq!(outcome.next_failure_ordinal(), None);
     assert_eq!(outcome.pages_processed(), 0);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
     assert_eq!(
@@ -545,5 +554,66 @@ fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
             IndexReconciliationBudget::new(10, 2, 1, 9, Duration::from_secs(60)),
         )
         .is_err()
+    );
+}
+
+#[tokio::test]
+async fn reconciliation_completion_requires_same_scope_and_terminal_pass_cursor() {
+    use crate::{
+        INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerPolicy,
+        PostgresIndexReconciliationWorkAdapter,
+    };
+    use rustok_runtime::{ModuleWorkHandler, ModuleWorkOutcome, ModuleWorkSource};
+    let fixture = Fixture::new(None).await;
+    let yielded = fixture
+        .runner
+        .run(fixture.request("first", 1, 2))
+        .await
+        .unwrap();
+    assert_eq!(yielded.status(), IndexReconciliationRunStatus::Yielded);
+    let adapter = PostgresIndexReconciliationWorkAdapter::new(
+        fixture.db.clone(),
+        fixture.sources.clone(),
+        fixture.registry.clone(),
+        IndexReconciliationSchedulerPolicy::default(),
+    );
+    let item = adapter
+        .claim(INDEX_RECONCILIATION_WORKER)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(Some(item.id), yielded.job_id());
+    assert!(
+        adapter
+            .complete(&item, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    let outcome = adapter.execute(item.clone()).await.unwrap();
+    assert_eq!(outcome, ModuleWorkOutcome::Completed);
+    adapter.complete(&item, outcome).await.unwrap();
+
+    let mut different = item.clone();
+    different.tenant_id = Uuid::new_v4();
+    assert!(
+        adapter
+            .complete(&different, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    different = item.clone();
+    different.payload["pass_count"] = json!(1);
+    assert!(
+        adapter
+            .complete(&different, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
+    );
+    fixture.db.execute_unprepared("UPDATE index_jobs SET cursor=json_set(cursor, '$.completed_passes', 1) WHERE kind='reconcile'").await.unwrap();
+    assert!(
+        adapter
+            .complete(&item, ModuleWorkOutcome::Completed)
+            .await
+            .is_err()
     );
 }

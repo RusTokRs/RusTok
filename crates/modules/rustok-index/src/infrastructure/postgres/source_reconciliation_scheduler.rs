@@ -17,6 +17,9 @@ use crate::{
     SharedIndexSourceRegistry,
 };
 
+use super::source_job_discovery::{
+    DiscoveredJobVersion, MAX_DISCARDED_CANDIDATES_PER_POLL, defer_due_job, discovery_scope,
+};
 use super::{
     IndexReconciliationBudget, IndexReconciliationRunError, IndexReconciliationRunRequest,
     IndexReconciliationRunStatus, PostgresIndexReconciliationRunner,
@@ -143,20 +146,14 @@ impl Default for IndexReconciliationSchedulerPolicy {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct StoredReconciliationJobRequest {
-    contract: String,
-    source_name: String,
-    pass_count: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ReconciliationWorkPayload {
     contract: String,
     module_name: String,
     entity_name: String,
     schema_version: u32,
     pass_count: u32,
+    lease_generation: i64,
+    retry_epoch: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -165,12 +162,15 @@ struct DueReconciliationWork {
     job_id: Uuid,
     schema: SchemaRef,
     pass_count: u32,
+    lease_generation: i64,
+    retry_epoch: i64,
 }
 
 #[derive(Clone)]
 pub struct PostgresIndexReconciliationWorkAdapter {
     db: DatabaseConnection,
     sources: SharedIndexSourceRegistry,
+    schemas: Arc<SchemaRegistry>,
     runner: PostgresIndexReconciliationRunner,
     policy: IndexReconciliationSchedulerPolicy,
 }
@@ -182,10 +182,12 @@ impl PostgresIndexReconciliationWorkAdapter {
         schemas: Arc<SchemaRegistry>,
         policy: IndexReconciliationSchedulerPolicy,
     ) -> Self {
-        let runner = PostgresIndexReconciliationRunner::new(db.clone(), sources.clone(), schemas);
+        let runner =
+            PostgresIndexReconciliationRunner::new(db.clone(), sources.clone(), schemas.clone());
         Self {
             db,
             sources,
+            schemas,
             runner,
             policy,
         }
@@ -199,7 +201,9 @@ impl PostgresIndexReconciliationWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    fn decode_item(item: &ModuleWorkItem) -> Result<(SchemaRef, u32, Uuid), ModuleWorkError> {
+    fn decode_item(
+        item: &ModuleWorkItem,
+    ) -> Result<(SchemaRef, ReconciliationWorkPayload, Uuid), ModuleWorkError> {
         if item.worker_slug != INDEX_RECONCILIATION_WORKER
             || item.id.is_nil()
             || item.tenant_id.is_nil()
@@ -215,15 +219,17 @@ impl PostgresIndexReconciliationWorkAdapter {
         if payload.contract != RECONCILIATION_WORK_ITEM_CONTRACT
             || payload.schema_version == 0
             || payload.pass_count == 0
+            || payload.lease_generation < 0
+            || payload.retry_epoch < 0
         {
             return Err(invalid_work_item());
         }
         let schema = SchemaRef {
-            module: ModuleName::new(payload.module_name).map_err(|_| invalid_work_item())?,
-            entity: EntityName::new(payload.entity_name).map_err(|_| invalid_work_item())?,
+            module: ModuleName::new(&payload.module_name).map_err(|_| invalid_work_item())?,
+            entity: EntityName::new(&payload.entity_name).map_err(|_| invalid_work_item())?,
             version: SchemaVersion::new(payload.schema_version),
         };
-        Ok((schema, payload.pass_count, invocation_id))
+        Ok((schema, payload, invocation_id))
     }
 
     fn work_item(work: DueReconciliationWork) -> Result<ModuleWorkItem, ModuleWorkError> {
@@ -233,6 +239,8 @@ impl PostgresIndexReconciliationWorkAdapter {
             entity_name: work.schema.entity.as_str().to_owned(),
             schema_version: work.schema.version.get(),
             pass_count: work.pass_count,
+            lease_generation: work.lease_generation,
+            retry_epoch: work.retry_epoch,
         })
         .map_err(|_| invalid_stored_job())?;
         Ok(ModuleWorkItem {
@@ -282,7 +290,9 @@ impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter {
         if worker_slug != INDEX_RECONCILIATION_WORKER {
             return Ok(None);
         }
-        let Some(work) = discover_due_reconciliation(&self.db, &self.sources).await? else {
+        let Some(work) =
+            discover_due_reconciliation(&self.db, &self.sources, &self.schemas).await?
+        else {
             return Ok(None);
         };
         Self::work_item(work).map(Some)
@@ -290,10 +300,69 @@ impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter {
 
     async fn complete(
         &self,
-        _item: &ModuleWorkItem,
-        _outcome: ModuleWorkOutcome,
+        item: &ModuleWorkItem,
+        outcome: ModuleWorkOutcome,
     ) -> Result<(), ModuleWorkError> {
-        // The canonical reconciliation runner owns every durable transition.
+        use super::source_reconciliation_runner::{ReconciliationCursor, ReconciliationJobRequest};
+        let (schema, payload, _) = Self::decode_item(item)?;
+        let backend = self.db.get_database_backend();
+        ensure_supported_backend(backend)?;
+        let source = self
+            .sources
+            .source_for_schema(&schema)
+            .ok_or_else(unverified)?;
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                "SELECT state, request, cursor, CAST(attempt_count AS BIGINT) AS lease_generation,
+                    CAST(retry_epoch AS BIGINT) AS retry_epoch FROM index_jobs
+             WHERE tenant_id = $1 AND job_id = $2 AND kind = 'reconcile' AND scope_kind = 'schema'
+                AND module_name = $3 AND entity_name = $4 AND schema_version = $5",
+                vec![
+                    uuid_value(item.tenant_id, backend),
+                    uuid_value(item.id, backend),
+                    payload.module_name.into(),
+                    payload.entity_name.into(),
+                    i64::from(payload.schema_version).into(),
+                ],
+            ))
+            .await
+            .map_err(|_| unverified())?
+            .ok_or_else(unverified)?;
+        let state: String = row.try_get("", "state").map_err(|_| unverified())?;
+        let request: JsonValue = row.try_get("", "request").map_err(|_| unverified())?;
+        let request: ReconciliationJobRequest =
+            serde_json::from_value(request).map_err(|_| unverified())?;
+        if request.contract != RECONCILIATION_JOB_REQUEST_CONTRACT
+            || request.source_name != source.source_name()
+            || request.pass_count != payload.pass_count
+        {
+            return Err(unverified());
+        }
+        let discovered = DiscoveredJobVersion {
+            generation: payload.lease_generation,
+            retry_epoch: payload.retry_epoch,
+        };
+        let persisted = DiscoveredJobVersion {
+            generation: stored_counter(&row, "lease_generation")?,
+            retry_epoch: stored_counter(&row, "retry_epoch")?,
+        };
+        if !discovered.verifies_outcome(persisted, &state, outcome) {
+            return Err(unverified());
+        }
+        if state == "succeeded" {
+            let cursor: JsonValue = row.try_get("", "cursor").map_err(|_| unverified())?;
+            let cursor: ReconciliationCursor =
+                serde_json::from_value(cursor).map_err(|_| unverified())?;
+            cursor
+                .validate(request.pass_count)
+                .map_err(|_| unverified())?;
+            if cursor.completed_passes != request.pass_count || cursor.source_cursor.is_some() {
+                return Err(unverified());
+            }
+        }
+        // The runner owns the durable write. Completion only verifies the original row.
         Ok(())
     }
 }
@@ -305,7 +374,7 @@ impl ModuleWorkHandler for PostgresIndexReconciliationWorkAdapter {
     }
 
     async fn execute(&self, item: ModuleWorkItem) -> Result<ModuleWorkOutcome, ModuleWorkError> {
-        let (schema, pass_count, invocation_id) = Self::decode_item(&item)?;
+        let (schema, payload, invocation_id) = Self::decode_item(&item)?;
         let request = IndexReconciliationRunRequest::new(
             item.tenant_id,
             schema,
@@ -314,25 +383,60 @@ impl ModuleWorkHandler for PostgresIndexReconciliationWorkAdapter {
                 self.policy.page_limit(),
                 self.policy.max_pages(),
                 self.policy.heartbeat_every_pages(),
-                pass_count,
+                payload.pass_count,
                 self.policy.lease_duration(),
             ),
         )
-        .map_err(|_| ModuleWorkError::Handler(RUN_FAILED_CODE.to_owned()))?;
-        let outcome = self
-            .runner
-            .run(request)
-            .await
-            .map_err(|_| ModuleWorkError::Handler(RUN_FAILED_CODE.to_owned()))?;
+        .and_then(|request| {
+            request.for_discovered_job(
+                item.id,
+                DiscoveredJobVersion {
+                    generation: payload.lease_generation,
+                    retry_epoch: payload.retry_epoch,
+                },
+            )
+        });
+        let run = match request {
+            Ok(request) => self
+                .runner
+                .run(request)
+                .await
+                .map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        };
+        let outcome = match run {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(job_id = %item.id, tenant_id = %item.tenant_id, %error, "Index reconciliation dispatch failed");
+                defer_due_job(
+                    &self.db,
+                    item.tenant_id,
+                    item.id,
+                    "reconcile",
+                    payload.lease_generation,
+                    payload.retry_epoch,
+                    RUN_FAILED_CODE,
+                )
+                .await
+                .map_err(|_| ModuleWorkError::Handler(RUN_FAILED_CODE.to_owned()))?;
+                return Err(ModuleWorkError::Handler(RUN_FAILED_CODE.to_owned()));
+            }
+        };
         Ok(match outcome.status() {
             IndexReconciliationRunStatus::Cancelled => ModuleWorkOutcome::Cancelled,
-            IndexReconciliationRunStatus::Busy
-            | IndexReconciliationRunStatus::AlreadyComplete
-            | IndexReconciliationRunStatus::Complete
-            | IndexReconciliationRunStatus::Yielded
-            | IndexReconciliationRunStatus::RetryScheduled
-            | IndexReconciliationRunStatus::FailedPermanent
-            | IndexReconciliationRunStatus::FailedExhausted => ModuleWorkOutcome::Completed,
+            IndexReconciliationRunStatus::Busy => ModuleWorkOutcome::Held {
+                message: "index.reconciliation_busy".into(),
+            },
+            IndexReconciliationRunStatus::AlreadyComplete
+            | IndexReconciliationRunStatus::Complete => ModuleWorkOutcome::Completed,
+            IndexReconciliationRunStatus::Yielded
+            | IndexReconciliationRunStatus::RetryScheduled => ModuleWorkOutcome::Retryable {
+                message: "index.reconciliation_pending".into(),
+            },
+            IndexReconciliationRunStatus::FailedPermanent
+            | IndexReconciliationRunStatus::FailedExhausted => ModuleWorkOutcome::Rejected {
+                message: "index.reconciliation_dead_lettered".into(),
+            },
         })
     }
 }
@@ -340,20 +444,42 @@ impl ModuleWorkHandler for PostgresIndexReconciliationWorkAdapter {
 async fn discover_due_reconciliation(
     db: &DatabaseConnection,
     sources: &SharedIndexSourceRegistry,
+    schemas: &SchemaRegistry,
 ) -> Result<Option<DueReconciliationWork>, ModuleWorkError> {
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
-    let row = db
-        .query_one_raw(Statement::from_string(
-            backend,
-            due_reconciliation_sql(backend),
-        ))
-        .await
-        .map_err(|_| ModuleWorkError::Source(DISCOVERY_FAILED_CODE.to_owned()))?;
-    let Some(row) = row else {
-        return Ok(None);
-    };
-    decode_due_work(&row, backend, sources).map(Some)
+    let (scope, values) = discovery_scope(backend, schemas, sources);
+    for _ in 0..MAX_DISCARDED_CANDIDATES_PER_POLL {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                due_reconciliation_sql(&scope),
+                values.clone(),
+            ))
+            .await
+            .map_err(|_| ModuleWorkError::Source(DISCOVERY_FAILED_CODE.to_owned()))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        match decode_due_work(&row, backend, sources) {
+            Ok(work) => return Ok(Some(work)),
+            Err(error) => {
+                defer_due_job(
+                    db,
+                    stored_uuid(&row, "tenant_id", backend)?,
+                    stored_uuid(&row, "job_id", backend)?,
+                    "reconcile",
+                    stored_counter(&row, "lease_generation")?,
+                    stored_counter(&row, "retry_epoch")?,
+                    INVALID_STORED_JOB_CODE,
+                )
+                .await
+                .map_err(|_| ModuleWorkError::Source(DISCOVERY_FAILED_CODE.to_owned()))?;
+                tracing::warn!(%error, "Deferred malformed Index reconciliation job");
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn decode_due_work(
@@ -372,7 +498,7 @@ fn decode_due_work(
     let entity_name: String = row
         .try_get("", "entity_name")
         .map_err(|_| invalid_stored_job())?;
-    let schema_version: i64 = row
+    let schema_version: i32 = row
         .try_get("", "schema_version")
         .map_err(|_| invalid_stored_job())?;
     let schema_version = u32::try_from(schema_version).map_err(|_| invalid_stored_job())?;
@@ -387,7 +513,7 @@ fn decode_due_work(
     let request_json: JsonValue = row
         .try_get("", "request")
         .map_err(|_| invalid_stored_job())?;
-    let request: StoredReconciliationJobRequest =
+    let request: super::source_reconciliation_runner::ReconciliationJobRequest =
         serde_json::from_value(request_json).map_err(|_| invalid_stored_job())?;
     if request.contract != RECONCILIATION_JOB_REQUEST_CONTRACT || request.pass_count == 0 {
         return Err(invalid_stored_job());
@@ -410,6 +536,8 @@ fn decode_due_work(
         job_id,
         schema,
         pass_count: request.pass_count,
+        lease_generation: stored_counter(row, "lease_generation")?,
+        retry_epoch: stored_counter(row, "retry_epoch")?,
     })
 }
 
@@ -419,6 +547,10 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ModuleWorkError> {
         DbBackend::Sqlite if cfg!(test) => Ok(()),
         _ => Err(ModuleWorkError::Source(DISCOVERY_FAILED_CODE.to_owned())),
     }
+}
+
+fn uuid_value(id: Uuid, backend: DbBackend) -> sea_orm::Value {
+    super::source_replay_job::uuid_value(id, backend)
 }
 
 fn stored_uuid(
@@ -436,37 +568,28 @@ fn stored_uuid(
     }
 }
 
-fn due_reconciliation_sql(backend: DbBackend) -> String {
-    match backend {
-        DbBackend::Postgres | DbBackend::Sqlite => {}
-        // INVARIANT: scheduler backend was validated
-        _ => unreachable!("scheduler backend was validated"),
-    }
-    "WITH ranked AS (\
-     SELECT tenant_id, job_id, state, module_name, entity_name, schema_version, request, \
-     available_at, lease_expires_at, created_at, \
-     ROW_NUMBER() OVER (\
-       PARTITION BY tenant_id, module_name, entity_name, schema_version \
-       ORDER BY CASE state \
-         WHEN 'succeeded' THEN 0 \
-         WHEN 'running' THEN 1 \
-         WHEN 'pending' THEN 2 \
-         ELSE 3 END, created_at DESC\
-     ) AS scope_rank \
-     FROM index_jobs \
-     WHERE kind = 'reconcile' \
-       AND scope_kind = 'schema' \
-       AND state IN ('pending', 'running', 'succeeded', 'failed')\
-     ) \
-     SELECT tenant_id, job_id, module_name, entity_name, schema_version, request \
-     FROM ranked \
-     WHERE scope_rank = 1 \
-       AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) \
-         OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP)) \
-     ORDER BY CASE state WHEN 'running' THEN 0 ELSE 1 END, \
-       COALESCE(lease_expires_at, available_at), created_at, tenant_id, job_id \
-     LIMIT 1"
-        .to_owned()
+fn stored_counter(row: &QueryResult, column: &str) -> Result<i64, ModuleWorkError> {
+    row.try_get("", column).map_err(|_| invalid_stored_job())
+}
+
+fn due_reconciliation_sql(scope: &str) -> String {
+    format!("WITH ranked AS (
+        SELECT tenant_id, job_id, state, module_name, entity_name, schema_version, scope_kind, request,
+            available_at, lease_expires_at, created_at, attempt_count, retry_epoch,
+            ROW_NUMBER() OVER (PARTITION BY tenant_id, module_name, entity_name, schema_version
+                ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1
+                WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC) AS scope_rank
+        FROM index_jobs WHERE kind = 'reconcile' AND scope_kind = 'schema'
+            AND state IN ('pending', 'running', 'succeeded', 'failed')
+    ) SELECT tenant_id, job_id, module_name, entity_name, schema_version, request,
+          CAST(attempt_count AS BIGINT) AS lease_generation, CAST(retry_epoch AS BIGINT) AS retry_epoch
+      FROM ranked AS j WHERE scope_rank = 1 AND {scope} AND available_at <= CURRENT_TIMESTAMP
+          AND (state = 'pending' OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))
+      ORDER BY available_at, created_at, tenant_id, job_id LIMIT 1")
+}
+
+fn unverified() -> ModuleWorkError {
+    ModuleWorkError::Source("index.reconciliation_scheduler.result_unverified".to_owned())
 }
 
 fn invalid_stored_job() -> ModuleWorkError {
@@ -485,7 +608,7 @@ mod tests {
     use rustok_runtime::{
         HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler,
     };
-    use sea_orm::{Database, DbBackend};
+    use sea_orm::Database;
 
     use super::{
         IndexReconciliationSchedulerPolicy, IndexReconciliationWorkRegistration,
@@ -505,8 +628,8 @@ mod tests {
 
     #[test]
     fn discovery_sql_ranks_scope_authority_and_is_read_only() {
-        for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
-            let sql = due_reconciliation_sql(backend);
+        {
+            let sql = due_reconciliation_sql("TRUE");
             for marker in [
                 "ROW_NUMBER() OVER",
                 "PARTITION BY tenant_id, module_name, entity_name, schema_version",
@@ -514,7 +637,7 @@ mod tests {
                 "WHEN 'running' THEN 1",
                 "WHEN 'pending' THEN 2",
                 "scope_rank = 1",
-                "state = 'pending' AND available_at <= CURRENT_TIMESTAMP",
+                "available_at <= CURRENT_TIMESTAMP",
                 "state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP",
                 "LIMIT 1",
             ] {
@@ -534,6 +657,8 @@ mod tests {
             "entity_name": "item",
             "schema_version": 1,
             "pass_count": 1,
+            "lease_generation": 0,
+            "retry_epoch": 0,
             "unexpected": true
         });
         assert!(serde_json::from_value::<ReconciliationWorkPayload>(value).is_err());

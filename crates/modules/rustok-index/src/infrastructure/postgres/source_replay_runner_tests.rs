@@ -325,7 +325,7 @@ async fn pending_cancel_request_terminalizes_without_a_worker() {
 }
 
 #[tokio::test]
-async fn running_cancel_request_is_observed_after_the_current_page() {
+async fn running_cancel_request_fences_in_flight_mutations_and_checkpoint() {
     let fixture = Fixture::new(3, None, Some(0)).await;
     let outcome = fixture
         .runner
@@ -333,7 +333,7 @@ async fn running_cancel_request_is_observed_after_the_current_page() {
         .await
         .unwrap();
     assert_eq!(outcome.status(), IndexReplayRunStatus::Cancelled);
-    assert_eq!(outcome.pages_processed(), 1);
+    assert_eq!(outcome.pages_processed(), 0);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         scalar_i64(
@@ -343,14 +343,16 @@ async fn running_cancel_request_is_observed_after_the_current_page() {
         .await,
         1,
     );
-    assert_eq!(
-        scalar_string(
-            &fixture.db,
-            "SELECT CAST(cursor AS TEXT) AS value FROM index_checkpoints WHERE checkpoint_kind = 'rebuild'",
-        )
-        .await,
-        "1",
-    );
+    for table in ["index_entities", "index_inbox", "index_checkpoints"] {
+        assert_eq!(
+            scalar_i64(
+                &fixture.db,
+                &format!("SELECT COUNT(*) AS value FROM {table}")
+            )
+            .await,
+            0
+        );
+    }
 }
 
 #[tokio::test]

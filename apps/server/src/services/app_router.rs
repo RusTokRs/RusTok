@@ -7,6 +7,7 @@ use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
 use rustok_core::ModuleRuntimeExtensions;
+use rustok_index_admin::transport::IndexAdminReplayStop;
 use std::sync::Arc;
 
 use tower::ServiceExt;
@@ -459,7 +460,10 @@ pub fn compose_application_router(
         runtime.registry.clone(),
     );
     let server_fn_runtime_ctx = {
+        // Native replay must observe the same safe-point stop signal as GraphQL replay.
+        let stop = crate::services::stop_handle::StopHandle::ensure(&middleware_runtime_ctx);
         let runtime_ctx = HostRuntimeContext::new(middleware_runtime_ctx.db_clone())
+            .with_shared_value(IndexAdminReplayStop::new(move || stop.is_stopping()))
             .with_shared_value(transactional_event_bus_from_context(
                 &middleware_runtime_ctx,
             ))
@@ -687,6 +691,183 @@ mod tests {
     use super::nonce_trusted_admin_elements;
     #[cfg(feature = "embed-admin-assets")]
     use rustok_web::CspNonce;
+
+    #[tokio::test]
+    async fn index_native_json_routes_enforce_request_scope_without_embedded_admin() {
+        use axum::routing::post;
+        use rustok_api::{
+            AuthContext, AuthContextExtension, Permission, TenantContext, TenantContextExtension,
+        };
+        use uuid::Uuid;
+
+        let app = AxumRouter::new().route(
+            "/api/fn/{*fn_name}",
+            post(|req| async {
+                leptos_axum::handle_server_fns_with_context(
+                    || {
+                        leptos::prelude::provide_context(rustok_api::HostRuntimeContext::new(
+                            sea_orm::DatabaseConnection::default(),
+                        ));
+                    },
+                    req,
+                )
+                .await
+            }),
+        );
+        let tenant_id = Uuid::new_v4();
+        let tenant = TenantContext {
+            id: tenant_id,
+            slug: "fixture".into(),
+            name: "Fixture".into(),
+            domain: None,
+            default_locale: "en".into(),
+            settings: serde_json::json!({}),
+            is_active: true,
+        };
+        let reader = AuthContext {
+            tenant_id,
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            permissions: vec![Permission::SETTINGS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "user".into(),
+        };
+        let mut operator = reader.clone();
+        operator.permissions.push(Permission::MODULES_MANAGE);
+        let mut wrong_tenant = operator.clone();
+        wrong_tenant.tenant_id = Uuid::new_v4();
+        for (path, json, auth, expected) in [
+            ("bootstrap", "{}", None, "Authentication required"),
+            (
+                "bootstrap",
+                "{}",
+                Some(&wrong_tenant),
+                "Index admin access is denied",
+            ),
+            (
+                "cancel-job",
+                r#"{"input":{"job_id":"malformed"}}"#,
+                Some(&reader),
+                "modules:manage required",
+            ),
+            (
+                "retry-job",
+                r#"{"input":{"job_id":"malformed","kind":"replay","reason":"reviewed"}}"#,
+                Some(&operator),
+                "Index replay runtime is unavailable",
+            ),
+        ] {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri(format!("/api/fn/index/{path}"))
+                .header("content-type", "application/json")
+                .header("accept", "application/json")
+                .body(Body::from(json))
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(TenantContextExtension(tenant.clone()));
+            if let Some(auth) = auth {
+                request
+                    .extensions_mut()
+                    .insert(AuthContextExtension(auth.clone()));
+            }
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert!(!response.status().is_success());
+            let body = to_bytes(response.into_body(), 4096).await.unwrap();
+            assert!(
+                String::from_utf8_lossy(&body).contains(expected),
+                "{path}: {body:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn index_standalone_relay_preserves_scope_and_exact_recovery_kind() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        use axum::{Json, http::HeaderMap, routing::post};
+        use rustok_index_admin::transport::IndexAdminUpstream;
+        use serde_json::{Value, json};
+
+        const PATH: &str = "/api/fn/index/retry-job";
+        const JOB: &str = "a11c2db0-e2fd-417e-9199-f0cb11d4276c";
+        let body =
+            json!({"input": {"job_id": JOB, "kind": "reconciliation", "reason": "Reviewed"}});
+        let received = Arc::new(AtomicUsize::new(0));
+        let api = AxumRouter::new().route(
+            PATH,
+            post({
+                let received = received.clone();
+                let body = body.clone();
+                move |headers: HeaderMap, Json(payload): Json<Value>| {
+                    let (received, body) = (received.clone(), body.clone());
+                    async move {
+                        received.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(headers["authorization"], "Bearer fixture-token");
+                        assert_eq!(headers["x-tenant-slug"], "fixture");
+                        assert_eq!(headers["x-tenant-id"], "fixture");
+                        assert_eq!(headers["x-rustok-index-relay"], "1");
+                        assert!(!headers.contains_key("cookie"));
+                        assert_eq!(payload, body);
+                        Json(json!({"job_id": JOB, "outcome": "REQUEUED", "retry_epoch": 3}))
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream =
+            IndexAdminUpstream::new(&format!("http://{}", listener.local_addr().unwrap()));
+        let api_task = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+        let standalone = AxumRouter::new().route(
+            PATH,
+            post(move |req| {
+                let upstream = upstream.clone();
+                async move {
+                    leptos_axum::handle_server_fns_with_context(
+                        move || leptos::prelude::provide_context(upstream.clone()),
+                        req,
+                    )
+                    .await
+                }
+            }),
+        );
+        let request = |tenant_id: &str| {
+            Request::builder()
+                .method("POST")
+                .uri(PATH)
+                .header("content-type", "application/json")
+                .header("accept", "application/json")
+                .header("authorization", "Bearer fixture-token")
+                .header("x-tenant-slug", "fixture")
+                .header("x-tenant-id", tenant_id)
+                .header("cookie", "not-forwarded=fixture")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        let denied = standalone
+            .clone()
+            .oneshot(request("other-tenant"))
+            .await
+            .unwrap();
+        assert!(!denied.status().is_success());
+        assert_eq!(received.load(Ordering::SeqCst), 0);
+        let response = standalone.oneshot(request("fixture")).await.unwrap();
+        api_task.abort();
+        assert!(api_task.await.unwrap_err().is_cancelled());
+        assert_eq!(received.load(Ordering::SeqCst), 1);
+        assert!(response.status().is_success());
+        let data: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(
+            data,
+            json!({"job_id": JOB, "outcome": "REQUEUED", "retry_epoch": 3})
+        );
+    }
 
     #[tokio::test]
     async fn mount_application_shell_routes_requests_to_nested_routers() {

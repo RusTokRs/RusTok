@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::error::{Error, Result};
 
-#[cfg(feature = "mod-blog")]
 use crate::graphql::auth_rate_limit::auth_graphql_rate_limiter_from_context;
+#[cfg(feature = "mod-blog")]
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;

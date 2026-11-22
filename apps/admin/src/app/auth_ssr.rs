@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{HeaderMap, HeaderValue, Request, header},
+    http::{HeaderMap, HeaderValue, Method, Request, header},
     middleware::Next,
     response::Response,
 };
@@ -72,6 +72,13 @@ pub async fn verified_snapshot_from_headers(
 /// re-exchanges the cookie, and rotation is always propagated on the
 /// response that consumed the previous token.
 pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Response {
+    // Index AJAX calls relay bearer credentials to the backend. Do not rotate the SSR cookie for
+    // these requests: parallel diagnostics reads must not race the auth provider's refresh.
+    if request.method() == Method::POST
+        && rustok_index_admin::transport::IndexAdminUpstream::is_request_path(request.uri().path())
+    {
+        return next.run(request).await;
+    }
     let (snapshot, set_cookie) = verified_snapshot_from_headers(request.headers()).await;
     request.extensions_mut().insert(snapshot);
 

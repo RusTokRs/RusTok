@@ -11,10 +11,11 @@ uses the existing single shared replay runtime, exact original job and durable c
       the original notification UUID/token remains delivery/ACK identity. Define unrun regressions.
 - [x] Author transactional original-ID enqueue and exact existing-job acquisition/run fences,
       retained cancellation/terminal history, bounded selected-only work and durable result checks.
-- [ ] Integrate the existing retry owner before terminalization and define a failure budget that
-      does not consume normal yielded lease acquisitions. Current page errors park terminally.
-- [ ] Provide authorized, auditable recovery of the original failed/cancelled job without replacing
-      identity/checkpoint. Full native/HTTP/GraphQL/Next/Leptos operator parity is pending.
+- [x] Author retry-store integration with a failure budget independent of normal lease acquisition
+      and page-budget yield.
+- [x] Author authorized, audited recovery of the original failed replay or reconciliation job.
+      Recovery preserves replay checkpoint identity; reconciliation starts its configured passes again.
+      The native and GraphQL requeue contracts still require end-to-end verification.
 - [ ] Compile/run focused regressions and validate PostgreSQL concurrency, crash/yield/restart,
       real current authority/credentials, schema installation, broker delivery and operational cutover.
 
@@ -24,7 +25,7 @@ credential refresh with the Secrets owner's fresh-resolution operation, refused 
 enqueue and unproven already-complete acquisition, made mutation-inbox INTEGER decoding explicit
 for PostgreSQL duplicate delivery, and aligned regression SQL with the actual
 `index_entities.is_deleted` storage contract. New/updated regressions remain uncompiled/unrun.
-This is a correction of the selected slice, not a new retry/recovery capability or audit phase.
+These source changes do not advance the M6 evidence gate or an audit phase.
 
 Source/worker/empty-source/failure definitions are not executed evidence. See
 [refresh identity](m5-source-refresh-event.md),
@@ -50,7 +51,15 @@ No Index/Inventory or Product step-8 readiness is promoted; existing audit statu
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- Transport profile: native-only; parallel GraphQL admin parity is planned but not yet implemented.
+- Internal native-only exception: the Index admin dashboard bootstraps a combined tenant
+  storage, readiness and operator snapshot that has no public GraphQL/REST contract.
+  Trunk CSR uses `/api/fn/index/bootstrap` for that snapshot only. Standalone SSR uses its
+  configured API origin to relay the protected native functions.
+- CSR uses the shared GraphQL client for bounded replay, replay cancellation, and exact-kind
+  replay/reconciliation requeue. SSR/hydrate uses native commands with the same tenant/operator
+  guards and host shutdown signal. Commands never fall back across transports. GraphQL also
+  exposes secondary-index maintenance separately. Browser and runtime verification is pending;
+  this does not add a headless snapshot or a Next.js Index page.
 
 ## Mission
 
@@ -646,7 +655,8 @@ stale fencing and persisted upsert/retained-delete results. Index remains owner-
 
 - [x] Expose schema, storage/partition, and rebuild/drift diagnostics in the Leptos admin dashboard.
 - [x] Expose live lag, inbox, failure metrics, and query execution diagnostics.
-- [x] Add rebuild/cancel operator actions in `rustok-index-admin` (native server functions, strict tenant binding, `MODULES_MANAGE` guards, and pure view-model action formatters).
+- [x] Author rebuild/cancel commands in `rustok-index-admin` (native SSR/hydrate, CSR GraphQL,
+      strict tenant binding, `MODULES_MANAGE` guards, and pure view-model action formatters).
 - [x] Add retry operator actions and live failure recovery metrics.
 - [ ] Publish new FBA contracts and runtime evidence.
 - [ ] Migrate consumers and delete final compatibility code.
@@ -891,13 +901,12 @@ This section retains historical milestone delivery and evidence markers required
 - Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
 - Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.
 - Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.
-- [x] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.
 - There is no remaining independent source-only M6 replay expansion justified by the current contract.
 - Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
 - Execute/admit retained multi-host reclaim evidence.
 - Partition replay remains blocked
 - Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds
-- [x] Add a dedicated authorization-first Targeted GraphQL transport over IndexReplayTargetedDispatchPort
+- [x] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.
 - M6 explicit source absence watermark registry and Product locale provider
 - Register Product locale absence
 - M6 concrete orphan-link evidence reader and command-bound edge-removal owner: complete

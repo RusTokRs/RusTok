@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -54,10 +54,11 @@ enum TaggedIndexValueOwned {
 
 #[derive(Serialize, Deserialize)]
 enum BinaryIndexValue<'a> {
+    // Always use a concrete string decoder in non-self-describing formats such as Postcard.
     Null,
     Boolean(bool),
     Integer(i64),
-    Decimal(Decimal),
+    Decimal(String),
     String(&'a str),
     Uuid(Uuid),
     Timestamp(DateTime<Utc>),
@@ -69,7 +70,7 @@ enum BinaryIndexValueOwned {
     Null,
     Boolean(bool),
     Integer(i64),
-    Decimal(Decimal),
+    Decimal(String),
     String(String),
     Uuid(Uuid),
     Timestamp(DateTime<Utc>),
@@ -98,7 +99,7 @@ impl Serialize for IndexValue {
                 Self::Null => BinaryIndexValue::Null,
                 Self::Boolean(v) => BinaryIndexValue::Boolean(*v),
                 Self::Integer(v) => BinaryIndexValue::Integer(*v),
-                Self::Decimal(v) => BinaryIndexValue::Decimal(*v),
+                Self::Decimal(v) => BinaryIndexValue::Decimal(v.to_string()),
                 Self::String(v) => BinaryIndexValue::String(v.as_str()),
                 Self::Uuid(v) => BinaryIndexValue::Uuid(*v),
                 Self::Timestamp(v) => BinaryIndexValue::Timestamp(*v),
@@ -132,7 +133,9 @@ impl<'de> Deserialize<'de> for IndexValue {
                 BinaryIndexValueOwned::Null => Self::Null,
                 BinaryIndexValueOwned::Boolean(v) => Self::Boolean(v),
                 BinaryIndexValueOwned::Integer(v) => Self::Integer(v),
-                BinaryIndexValueOwned::Decimal(v) => Self::Decimal(v),
+                BinaryIndexValueOwned::Decimal(v) => {
+                    Self::Decimal(Decimal::from_str_exact(&v).map_err(serde::de::Error::custom)?)
+                }
                 BinaryIndexValueOwned::String(v) => Self::String(v),
                 BinaryIndexValueOwned::Uuid(v) => Self::Uuid(v),
                 BinaryIndexValueOwned::Timestamp(v) => Self::Timestamp(v),
@@ -143,6 +146,17 @@ impl<'de> Deserialize<'de> for IndexValue {
 }
 
 impl IndexValue {
+    /// Index stores UTC RFC3339 timestamps with a four-digit year. This makes a bytewise comparison
+    /// of the canonical seconds and fractional seconds lossless and independent of the DB timezone.
+    pub(crate) fn is_storable_scalar(&self) -> bool {
+        match self {
+            Self::Null | Self::List(_) => false,
+            Self::Timestamp(value) => (0..=9999).contains(&value.year()),
+            Self::String(value) => !value.contains('\0'),
+            _ => true,
+        }
+    }
+
     pub fn value_type(&self) -> Option<IndexValueType> {
         match self {
             Self::Null => None,
@@ -163,6 +177,17 @@ mod tests {
     use serde_json::json;
 
     use super::IndexValue;
+
+    #[test]
+    fn decimal_round_trips_in_the_binary_cursor_wire() {
+        let value = IndexValue::Decimal(Decimal::new(1_234_500, 4));
+        let bytes = postcard::to_stdvec(&value).unwrap();
+        let decoded: IndexValue = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap(),
+            serde_json::to_value(value).unwrap()
+        );
+    }
 
     #[test]
     fn decimal_tagged_json_uses_exact_string_wire() {

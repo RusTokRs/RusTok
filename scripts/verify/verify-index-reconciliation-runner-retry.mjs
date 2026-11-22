@@ -35,7 +35,7 @@ const runner = requireMarkers(runnerPath, [
   'IndexReconciliationRetryDisposition, IndexReconciliationRetryError,',
   'PostgresIndexReconciliationRetryStore, PostgresMutationStore,',
   'RetryScheduled,', 'FailedPermanent,', 'FailedExhausted,',
-  'retry_after: Option<Duration>,', 'next_attempt: Option<u32>,',
+  'retry_after: Option<Duration>,', 'next_failure_ordinal: Option<u32>,',
   'async fn finish_page_error(', 'fn retry_failure(',
   'RetryTransition(#[source] IndexReconciliationRetryError)',
 ]);
@@ -46,9 +46,12 @@ for (const forbidden of [
 ]) {
   if (production.includes(forbidden)) fail(`${runnerPath} contains ${forbidden}`);
 }
-const callMarker = 'finish_page_error(&self.db, &lease, outcome, run_error).await';
-if (production.split(callMarker).length - 1 !== 4) {
-  fail(`${runnerPath} must retain exactly four page-failure call sites`);
+for (const marker of [
+  'finish_page_error(&self.db, &lease, outcome, error)',
+  'IndexReconciliationRunError::PageDeadline',
+  'failure.code() == "job_lease_lost"',
+]) {
+  if (!production.includes(marker)) fail(`${runnerPath} is missing ${marker}`);
 }
 for (const marker of [
   'IndexReconciliationRetryDisposition::RetryScheduled {',
@@ -84,7 +87,7 @@ requireMarkers(testsPath, [
 requireMarkers(docsPath, [
   'Status: `host_scheduler_source_complete_owner_execution_pending`.',
   '`RetryScheduled`', '`FailedPermanent`', '`FailedExhausted`',
-  'attempt 1 failure -> pending for 5 seconds',
+  'failure 1 -> pending for 5 seconds',
   'The generic `ModuleWorkScheduler` owns polling cadence and graceful StopHandle shutdown',
   'maintainer-run',
 ]);

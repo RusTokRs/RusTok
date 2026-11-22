@@ -36,7 +36,7 @@ requireMarkers('crates/modules/rustok-index/src/application/localized_cursor.rs'
 const compiler = requireMarkers('crates/modules/rustok-index/src/application/postgres_localized_query.rs', [
   'identity_order_direction: OrderDirection',
   'compile_keyset(query, plan, cursor, &mut bindings)',
-  'compile_order(query, plan, &mut bindings)',
+  'compile_order(query, plan)',
   'OrderDirection::Asc => format!(',
   'OrderDirection::Desc => format!(',
   '.entity_id > {entity_id}',

@@ -11,6 +11,7 @@ const MAX_OFFSET_DEPTH: u64 = 10_000;
 const MAX_SELECTED_FIELDS: usize = 100;
 const MAX_ORDER_EXPRESSIONS: usize = 8;
 const MAX_FILTER_NODES: usize = 128;
+const MAX_FILTER_OPERANDS: usize = 1024;
 const MAX_LINK_PATH_DEPTH: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +63,40 @@ impl FilterExpr {
             _ => 1,
         }
     }
+}
+
+/// Charge the entire request, including multiple `In` lists and localized branches.
+pub(super) fn validate_filter_budget<'a>(
+    roots: impl IntoIterator<Item = &'a FilterExpr>,
+) -> Result<(), DomainError> {
+    let mut remaining: Vec<_> = roots.into_iter().collect();
+    let mut nodes = 0;
+    let mut operands = 0;
+    while let Some(filter) = remaining.pop() {
+        nodes += 1;
+        let queued = match filter {
+            FilterExpr::And(children) | FilterExpr::Or(children) => children.len(),
+            FilterExpr::Not(_) => 1,
+            _ => 0,
+        };
+        if nodes + remaining.len() > MAX_FILTER_NODES
+            || queued > MAX_FILTER_NODES - nodes - remaining.len()
+        {
+            return Err(DomainError::FilterTooComplex);
+        }
+        match filter {
+            FilterExpr::And(children) | FilterExpr::Or(children) => remaining.extend(children),
+            FilterExpr::Not(child) => remaining.push(child.as_ref()),
+            FilterExpr::In(_, values) => {
+                operands += values.len().min(MAX_FILTER_OPERANDS + 1);
+            }
+            _ => operands += 1,
+        }
+        if operands > MAX_FILTER_OPERANDS {
+            return Err(DomainError::TooManyFilterOperands);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,13 +207,7 @@ impl IndexQuery {
         if self.order_by.len() > MAX_ORDER_EXPRESSIONS {
             return Err(DomainError::TooManyOrderExpressions);
         }
-        if self
-            .filter
-            .as_ref()
-            .is_some_and(|filter| filter.node_count() > MAX_FILTER_NODES)
-        {
-            return Err(DomainError::FilterTooComplex);
-        }
+        validate_filter_budget(self.filter.iter())?;
         if self
             .referenced_paths()
             .into_iter()

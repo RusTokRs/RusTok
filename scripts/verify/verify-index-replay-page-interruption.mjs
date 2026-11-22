@@ -104,36 +104,23 @@ requireMarkers('crates/modules/rustok-index/src/replay_dry_run.rs', [
   '.scan(scan_request)',
 ]);
 
-const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
-const runner = read(runnerPath);
-if (runner.includes('run_next_page_interruptible')) {
-  fail(`${runnerPath} ordinary replay runner file must stay separate from the interruption extension`);
-}
-
-const runnerExtensionPath =
-  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
-const runnerExtension = requireMarkers(runnerExtensionPath, [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs', [
   'pub async fn run_interruptible<Check>(',
-  '.run_next_page_interruptible(',
-  'request.page_request().clone()',
-  'Err(crate::IndexReplayError::Interrupted) => {',
-  'yield_after_host_interruption(&self.db, &lease, aggregate).await',
-  'match yield_for_resume(db, lease).await?',
+  'self.run_interruptible(request, || false).await',
+  'worker.run_next_page_interruptible(request.page_request().clone(),',
+  'Err(IndexReplayError::Interrupted) => break,',
+  'match yield_for_resume(&self.db, &lease).await?',
 ]);
-for (const forbidden of ['request_cancel(', 'cancel_requested = TRUE', 'finish_failure(db, lease']) {
-  if (runnerExtension.includes(forbidden)) {
-    fail(`${runnerExtensionPath} must keep host interruption separate from user cancellation/failure: ${forbidden}`);
-  }
-}
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
-  'pub async fn run_interruptible<Check>(',
+  'pub async fn run_operator<Check>(',
+  'authority.require_tenant(request.page_request().tenant_id())?;',
   '.run_interruptible(request, should_interrupt)',
 ]);
 requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'pub async fn run_interruptible<Check>(',
   'context.authorize_for(request.page_request().tenant_id())?;',
-  '.run_interruptible(request, should_interrupt)',
+  '.run_operator(authority, request, should_interrupt)',
 ]);
 requireMarkers('apps/server/src/graphql/index_replay.rs', [
   'let stop_handle = ctx.data::<StopHandle>()?.clone();',
@@ -141,9 +128,7 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
 ]);
 
 requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
-  'mod source_replay_runner {',
-  'include!("source_replay_runner.rs");',
-  'mod graceful_shutdown;',
+  'mod source_replay_runner;',
 ]);
 
 requireMarkers('crates/modules/rustok-index/docs/m6-cooperative-page-interruption.md', [

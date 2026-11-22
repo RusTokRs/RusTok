@@ -66,7 +66,7 @@ state, and an optional opaque token.
 
 ## GraphQL transports
 
-The root mutation now contains two deliberately separate operations:
+The root mutation contains two deliberately separate diagnosis operations:
 
 - `diagnoseIndexEntity(input: IndexDriftDiagnosisInput!)` for one caller-known exact entity;
 - `diagnoseIndexSourcePage(input: IndexDriftSourcePageDiagnosisInput!)` for one bounded owner-source
@@ -83,6 +83,11 @@ checkpoint, scheduler, lifecycle, or repair input.
 The payload exposes current-page aggregate counters, bounded finding receipts, completion state, and
 one opaque token. It exposes no raw cursor, owner/index payload, fields, links, source identity,
 secret reference, key material, SQL, or database cause.
+
+`requeueIndexReconciliation(input: IndexJobRequeueInput!)` is a separate recovery command.
+After checking the authenticated tenant and `modules:manage`, it delegates to
+`IndexReconciliationOperatorRuntime::requeue_dead_letter`. There is no public command to
+create a reconciliation run or acquire a worker lease.
 
 ## Confidential continuation composition
 
@@ -116,7 +121,7 @@ Composition performs no secret resolution, source scan, diagnosis SQL, or task s
 - stale Index-only and orphan-link discovery;
 - finding resolve/ignore lifecycle;
 - targeted/full/shadow repair;
-- reconciliation command transports and operator-visible scheduler health.
+- reconciliation run/cancel transports and operator-visible scheduler health.
 
 ## Validation ownership
 

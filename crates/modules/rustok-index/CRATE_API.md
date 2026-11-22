@@ -160,43 +160,20 @@ durable. Stable event UUIDs are delivery identities, so a checkpoint failure saf
 old page through inbox deduplication. Checkpoint watermarks remain monotonic and completion is a
 JSON null cursor.
 
-`PostgresIndexReplayJobStore` owns one schema-scoped `rebuild` job for an exact
-tenant/source/schema. It validates the `index_replay_job_v1` request and active persisted schema,
-serializes acquisition with an advisory lock, heartbeats an unexpired lease, reclaims expired
-work with an incremented attempt fence, and rejects stale heartbeat or terminal updates.
-`PostgresIndexReplayCheckpointStore` requires an acquired `IndexReplayJobLease`; both reads and
-writes lock and validate the exact `(job_id, worker_id, attempt_count)` before accessing the
-checkpoint. Terminal success requires the same active lease and an exact durable null-cursor
-checkpoint.
+`PostgresIndexReplayJobStore` claims exact schema/locale `rebuild` jobs under a scope lock.
+`PostgresIndexReplayCheckpointStore` checks the original job, scope, worker and generation
+before reading or writing a checkpoint, including a post-write lease check before commit.
+Terminal success requires the durable null cursor. Replay and reconciliation share page-driving
+and durable failure-accounting rules; recovery requeues the original failed job, not a reset
+lease generation or a new ID.
 
-`PostgresIndexReplayRunner` resolves the source only from `SharedIndexSourceRegistry`, executes
-at most 1024 pages per invocation, heartbeats between pages, yields unfinished work to an
-immediately claimable pending attempt, and observes durable cancellation before and after page
-work. Cancellation committed first cannot be overwritten by success, failure, or yield.
-
-The server freezes `SharedIndexSourceRegistry` after module registration, calls
-`materialize_postgres_index_replay_runtime`, and publishes `SharedIndexReplayRuntime` only when
-both immutable schema and source registries exist. It then publishes the guarded
-`IndexReplayOperatorRuntime`, which requires an exact request-bound tenant/actor permission
-snapshot and `modules:manage` before delegating bounded run or cancellation. Transport adapters
-must not call the raw shared replay runtime directly.
-
-Runtime composition performs no SQL and starts no task. Runtime presence does not claim tenant
-schema readiness, source availability, scheduler ownership, graceful shutdown, command
-transport authorization, successful replay, or retained PostgreSQL evidence.
-
-Still open are in-page interruption/timeouts, authorized GraphQL/HTTP/CLI command surfaces,
-automatic retry/backoff and dead-letter state, host scheduling and task shutdown ownership,
-locale/partition replay dimensions, production source adapters, reconciliation/drift repair,
-and retained multi-instance PostgreSQL evidence.
-
-Exact Decimal tagged-order transport is source-complete. Aggregate cursor continuation,
-retained PostgreSQL/reference aggregate evidence, additional source schemas, transport
-authorization, and first storefront/admin/search authoritative consumer cutover remain open.
-
-No compatibility contract exists for deleted behavior. `IndexDocument`, `DocumentType`, old
-ports/adapters, source DTOs/indexers/models/migrations, `IndexerRuntimeConfig`,
-`IndexerContext`, and the old scheduler must not return.
+`SharedIndexReplayRuntime` exposes operator entrypoints requiring `IndexJobOperatorAuthority`,
+which adapters derive from the authenticated tenant, actor and effective `modules:manage`
+permission. `SharedIndexSecondaryIndexRuntime` is PostgreSQL-only and publishes no boot DDL.
+Native diagnostics and GraphQL commands are distinct transports over these guarded owners.
+See [Index operations and recovery](docs/operations.md) for storage cutover, bounded query
+execution, owner-fenced repairs, and maintainer validation. Presence of a runtime handle does
+not establish tenant readiness, source availability or execution evidence.
 
 ## Dependencies on Other RusToK Crates
 

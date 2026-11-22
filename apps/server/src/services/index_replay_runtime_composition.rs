@@ -27,8 +27,8 @@ pub use replay_shadow_transport::{
 
 use std::fmt;
 
-use rustok_api::{Permission, has_effective_permission};
 use rustok_core::ModuleRuntimeExtensions;
+use rustok_index::{IndexJobOperatorAuthority, IndexJobOperatorError};
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use uuid::Uuid;
@@ -61,16 +61,22 @@ impl IndexReplayOperatorContext {
         self.actor_id
     }
 
-    fn authorize_for(&self, requested_tenant: Uuid) -> Result<(), IndexReplayOperatorError> {
+    pub(crate) fn authorize_for(
+        &self,
+        requested_tenant: Uuid,
+    ) -> Result<IndexJobOperatorAuthority, IndexReplayOperatorError> {
         if requested_tenant != self.tenant_id {
             return Err(IndexReplayOperatorError::TenantMismatch);
         }
         let permissions = permissions_for(&self.tenant_id, &self.actor_id)
             .ok_or(IndexReplayOperatorError::MissingRequestAuthority)?;
-        if !has_effective_permission(&permissions, &Permission::MODULES_MANAGE) {
-            return Err(IndexReplayOperatorError::Forbidden);
-        }
-        Ok(())
+        IndexJobOperatorAuthority::authorize(
+            self.tenant_id,
+            requested_tenant,
+            self.actor_id,
+            &permissions,
+        )
+        .map_err(Into::into)
     }
 }
 
@@ -86,6 +92,18 @@ pub enum IndexReplayOperatorError {
     Forbidden,
     #[error(transparent)]
     Replay(#[from] rustok_index::IndexReplayRunError),
+    #[error(transparent)]
+    Recovery(#[from] rustok_index::IndexJobRecoveryError),
+}
+
+impl From<IndexJobOperatorError> for IndexReplayOperatorError {
+    fn from(error: IndexJobOperatorError) -> Self {
+        match error {
+            IndexJobOperatorError::Forbidden => Self::Forbidden,
+            IndexJobOperatorError::Replay(error) => Self::Replay(error),
+            IndexJobOperatorError::Recovery(error) => Self::Recovery(error),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -130,8 +148,7 @@ impl IndexReplayOperatorRuntime {
         context: IndexReplayOperatorContext,
         request: rustok_index::IndexReplayRunRequest,
     ) -> Result<rustok_index::IndexReplayRunOutcome, IndexReplayOperatorError> {
-        context.authorize_for(request.page_request().tenant_id())?;
-        self.inner.run(request).await.map_err(Into::into)
+        self.run_interruptible(context, request, || false).await
     }
 
     /// Runs one bounded exact-key Targeted invocation through the same exact request-bound
@@ -168,9 +185,9 @@ impl IndexReplayOperatorRuntime {
     where
         Check: FnMut() -> bool,
     {
-        context.authorize_for(request.page_request().tenant_id())?;
+        let authority = context.authorize_for(request.page_request().tenant_id())?;
         self.inner
-            .run_interruptible(request, should_interrupt)
+            .run_operator(authority, request, should_interrupt)
             .await
             .map_err(Into::into)
     }
@@ -180,9 +197,22 @@ impl IndexReplayOperatorRuntime {
         context: IndexReplayOperatorContext,
         job_id: Uuid,
     ) -> Result<rustok_index::IndexReplayCancelOutcome, IndexReplayOperatorError> {
-        context.authorize_for(context.tenant_id())?;
+        let authority = context.authorize_for(context.tenant_id())?;
         self.inner
-            .request_cancel(context.tenant_id(), job_id)
+            .cancel_operator_replay(authority, job_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn requeue_failed(
+        &self,
+        context: IndexReplayOperatorContext,
+        job_id: Uuid,
+        reason: String,
+    ) -> Result<rustok_index::IndexJobRequeueOutcome, IndexReplayOperatorError> {
+        let authority = context.authorize_for(context.tenant_id())?;
+        self.inner
+            .requeue_operator_replay(authority, job_id, reason)
             .await
             .map_err(Into::into)
     }

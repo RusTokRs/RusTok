@@ -33,7 +33,9 @@ export function verifyIndexSourceRefreshEvent({ root = repository } = {}) {
     "source.source_name() != expected_source_name",
     "IndexSourceLoadRequest::new(vec![key.clone()])",
     ".load(request)",
-    "source_version < minimum_source_version",
+    "[mutation] => mutation",
+    ".refresh_revision_at(0).ok_or_else(|| { IndexSourceRefreshEventProcessError::AmbiguousSourceMutation",
+    "refresh_revision < minimum_source_version",
     "mutation.event_id().is_nil()",
     ".apply_replay_mutation(schema_registry, &expected_source_name, mutation)",
   ];

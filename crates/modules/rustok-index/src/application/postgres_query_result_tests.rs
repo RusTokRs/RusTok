@@ -107,11 +107,16 @@ fn compiled_row(
                 output_alias,
                 relation_alias,
             } => {
-                let value = if relation_alias.as_str() == "t0" {
-                    CompiledPostgresCell::Uuid(root_entity_id)
-                } else {
-                    linked_entity_id.map_or(CompiledPostgresCell::Null, CompiledPostgresCell::Uuid)
-                };
+                assert_eq!(relation_alias, "t0");
+                let _ = row.insert(
+                    output_alias.clone(),
+                    CompiledPostgresCell::Uuid(root_entity_id),
+                );
+            }
+            CompiledQueryColumn::RelationIdentity { output_alias, .. } => {
+                let value = linked_entity_id.map_or(CompiledPostgresCell::Null, |id| {
+                    CompiledPostgresCell::Json(serde_json::json!([id, ""]))
+                });
                 let _ = row.insert(output_alias.clone(), value);
             }
             CompiledQueryColumn::Field { output_alias, .. } => {
@@ -140,6 +145,32 @@ fn exact_count_row(value: i64) -> CompiledPostgresRow {
         "__exact_count".to_owned(),
         CompiledPostgresCell::Integer(value),
     )])
+}
+
+#[test]
+fn nil_root_identity_is_rejected_even_without_cursor_generation() {
+    let registry = registry();
+    let mut query = query(Uuid::new_v4());
+    query.pagination = Pagination::Offset {
+        limit: 2,
+        offset: 0,
+    };
+    let page = registry.compile_postgres_page_query(&query).unwrap();
+    let row = compiled_row(
+        &page,
+        Uuid::nil(),
+        None,
+        &[
+            IndexValue::Uuid(Uuid::nil()),
+            IndexValue::Null,
+            IndexValue::Null,
+        ],
+        &[IndexValue::Null],
+    );
+    assert!(matches!(
+        registry.decode_postgres_query_page(&query, &page, vec![row], Some(exact_count_row(1))),
+        Err(PostgresQueryDecodeError::NullRootIdentity(alias)) if alias == "__t0_entity_id"
+    ));
 }
 
 #[test]

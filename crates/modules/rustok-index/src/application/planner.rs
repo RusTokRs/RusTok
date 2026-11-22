@@ -9,7 +9,8 @@ use thiserror::Error;
 
 use crate::domain::{
     FieldCardinality, FieldName, FieldPath, FilterExpr, IndexQuery, IndexQueryScope,
-    IndexValueType, LinkCardinality, LinkName, OrderDirection, Pagination, SchemaRef,
+    IndexValueType, LinkCardinality, LinkName, OrderDirection, Pagination, SchemaFingerprint,
+    SchemaRef,
 };
 
 use super::{
@@ -46,6 +47,7 @@ pub struct PlannedJoin {
     pub source_schema: SchemaRef,
     pub link: LinkName,
     pub target_schema: SchemaRef,
+    pub target_fingerprint: SchemaFingerprint,
     pub source_fields: Vec<FieldName>,
     pub target_fields: Vec<FieldName>,
     pub cardinality: LinkCardinality,
@@ -81,6 +83,7 @@ pub struct PlannedManyProjection {
 pub struct ExecutableQueryPlan {
     pub scope: IndexQueryScope,
     pub root_schema: SchemaRef,
+    pub root_fingerprint: SchemaFingerprint,
     pub root_alias: String,
     pub path_aliases: BTreeMap<Vec<LinkName>, String>,
     pub joins: Vec<PlannedJoin>,
@@ -192,6 +195,10 @@ impl SchemaRegistry {
                 source_alias: aliases[&parent].clone(),
                 source_schema,
                 link: link.name.clone(),
+                target_fingerprint: self
+                    .get(&target_schema)
+                    .ok_or_else(|| SchemaRegistryError::SchemaNotFound(target_schema.clone()))?
+                    .fingerprint,
                 target_schema: target_schema.clone(),
                 source_fields: link.source_fields.clone(),
                 target_fields: link.target_fields.clone(),
@@ -271,6 +278,10 @@ impl SchemaRegistry {
         Ok(ExecutableQueryPlan {
             scope: query.scope.clone(),
             root_schema: query.schema.clone(),
+            root_fingerprint: self
+                .get(&query.schema)
+                .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?
+                .fingerprint,
             root_alias: ROOT_ALIAS.to_owned(),
             path_aliases: aliases,
             joins,

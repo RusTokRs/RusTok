@@ -34,7 +34,7 @@ const graphql = requireMarkers(graphqlPath, [
   'pub duplicate_count: i32',
   'pub stale_count: i32',
   'async fn run_index_replay_targeted(',
-  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_targeted_run(tenant_id, actor_id, input)',
   '.run_targeted(operator_context, request)',
   '.map_err(map_targeted_operator_error)?',
   'fn prepare_authorized_targeted_run(',
@@ -68,7 +68,7 @@ if (prepare < 0 || authorize <= prepare || schema <= authorize || bound <= schem
 }
 
 const mutation = graphql.indexOf('async fn run_index_replay_targeted(');
-const preparationCall = graphql.indexOf('prepare_authorized_targeted_run(tenant.id, auth.user_id, input)', mutation);
+const preparationCall = graphql.indexOf('prepare_authorized_targeted_run(tenant_id, actor_id, input)', mutation);
 const runtime = graphql.indexOf('let runtime = replay_runtime(ctx)?;', preparationCall);
 const guardedRun = graphql.indexOf('.run_targeted(operator_context, request)', runtime);
 if (mutation < 0 || preparationCall <= mutation || runtime <= preparationCall || guardedRun <= runtime) {

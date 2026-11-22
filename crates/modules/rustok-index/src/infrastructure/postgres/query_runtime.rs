@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_core::ModuleRuntimeExtensions;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend};
 use thiserror::Error;
 
 use crate::application::{SharedIndexQueryRuntime, SharedIndexSchemaRegistry};
@@ -9,6 +9,7 @@ use crate::domain::SchemaRef;
 
 use super::{
     PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionError, PostgresIndexQueryPort,
+    SharedIndexSecondaryIndexRuntime,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -84,6 +85,12 @@ pub fn materialize_postgres_index_query_runtime(
         }
     }
 
+    if db.get_database_backend() == DbBackend::Postgres {
+        extensions.insert(SharedIndexSecondaryIndexRuntime::new(
+            db.clone(),
+            registry.clone(),
+        ));
+    }
     let runtime = SharedIndexQueryRuntime::new(Arc::new(PostgresIndexQueryPort::with_admissions(
         db,
         registry.shared(),

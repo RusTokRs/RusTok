@@ -109,7 +109,7 @@ impl PostgresIndexReplayJobStore {
                 backend,
                 // With a unique (tenant, job UUID), any second row proves a conflicting
                 // original identity; two rows suffice even for long cancelled history.
-                format!("{} LIMIT 2", select_replay_job_history_sql(backend, true)),
+                select_replay_job_history_sql(backend, true),
                 replay_scope_values(&scope, backend),
             ))
             .await

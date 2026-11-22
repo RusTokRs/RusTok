@@ -62,7 +62,7 @@ for (const marker of [
   'IndexCheckpoints::Table',
   'IndexJobs::Table',
   'IndexConsistencyFindings::Table',
-  'CREATE TABLE index_reconciliation_recovery_audits',
+  'CREATE TABLE index_job_recovery_audits',
 ]) {
   if (!migrations.includes(marker)) fail(`canonical storage table missing ${marker}`);
 }
@@ -148,23 +148,28 @@ for (const marker of [
 for (const marker of [
   'ADD COLUMN retry_epoch INTEGER NOT NULL DEFAULT 0',
   'CHECK (retry_epoch >= 0)',
+  'ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0',
+  'CHECK (failure_count >= 0)',
   'tenant_id UUID NOT NULL',
   'audit_id UUID NOT NULL',
   'job_id UUID NOT NULL',
+  "CHECK (job_kind IN ('rebuild', 'reconcile'))",
   'actor_id UUID NOT NULL',
   "CHECK (action = 'requeue')",
   'reason VARCHAR(512) NOT NULL',
   'prior_attempt_count INTEGER NOT NULL',
   'UNIQUE (tenant_id, job_id, retry_epoch)',
-  'index_reconciliation_recovery_audits_immutable_update',
-  'index_reconciliation_recovery_audits_immutable_delete',
-  'Index reconciliation recovery audits are append-only',
+  'index_job_recovery_audits_immutable_update',
+  'index_job_recovery_audits_immutable_delete',
+  'BEFORE TRUNCATE ON index_job_recovery_audits',
+  'index_job_recovery_audits_no_replacement',
+  'Index job recovery audits are append-only',
 ]) {
-  if (!recovery.includes(marker)) fail(`reconciliation recovery migration missing ${marker}`);
+  if (!recovery.includes(marker)) fail(`job recovery migration missing ${marker}`);
 }
 for (const forbidden of ['ON DELETE CASCADE', 'ON UPDATE CASCADE']) {
   if (recovery.includes(forbidden)) {
-    fail(`append-only reconciliation recovery audit must not contain ${forbidden}`);
+    fail(`append-only job recovery audit must not contain ${forbidden}`);
   }
 }
 
@@ -172,7 +177,7 @@ for (const marker of [
   'index_module_registers_canonical_storage_migrations',
   'canonical_storage_migrations_round_trip_on_sqlite',
   'm20260803_000004_create_index_reconciliation_recovery',
-  'index_reconciliation_recovery_audits',
+  'index_job_recovery_audits',
   'recovery audit rows must reject updates',
   'recovery audit rows must reject deletes',
   'source-version changes must not strand links on an older entity version',

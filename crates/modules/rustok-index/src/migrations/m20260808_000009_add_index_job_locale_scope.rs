@@ -17,42 +17,38 @@ const STRICT_SCOPE_CHECK: &str = "(scope_kind = 'global' AND module_name IS NULL
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        match manager.get_connection().get_database_backend() {
-            DbBackend::Postgres => {
-                replace_postgres_scope_constraint(
-                    manager,
-                    LOCALE_SCOPE_CONSTRAINT_NAME,
-                    LOCALE_SCOPE_CHECK,
-                )
-                .await?;
-                replace_postgres_scope_index(manager, true).await
-            }
-            DbBackend::Sqlite => rebuild_sqlite_table(manager, LOCALE_SCOPE_CHECK, true).await,
-            _ => Err(DbErr::Custom(
-                "rustok-index replay locale job scope migration supports PostgreSQL and SQLite"
-                    .to_owned(),
-            )),
-        }
+        migrate_scope(manager, true).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        match manager.get_connection().get_database_backend() {
-            DbBackend::Postgres => {
-                replace_postgres_scope_constraint(
-                    manager,
-                    STRICT_SCOPE_CONSTRAINT_NAME,
-                    STRICT_SCOPE_CHECK,
-                )
-                .await?;
-                replace_postgres_scope_index(manager, false).await
-            }
-            DbBackend::Sqlite => rebuild_sqlite_table(manager, STRICT_SCOPE_CHECK, false).await,
-            _ => Err(DbErr::Custom(
-                "rustok-index replay locale job scope migration supports PostgreSQL and SQLite"
-                    .to_owned(),
-            )),
-        }
+        migrate_scope(manager, false).await
     }
+}
+
+async fn migrate_scope(manager: &SchemaManager<'_>, include_locale: bool) -> Result<(), DbErr> {
+    let backend = manager.get_database_backend();
+    if !matches!(backend, DbBackend::Postgres | DbBackend::Sqlite) {
+        return Err(DbErr::Custom(
+            "rustok-index replay locale job scope migration supports PostgreSQL and SQLite"
+                .to_owned(),
+        ));
+    }
+    let (constraint, check) = if include_locale {
+        (LOCALE_SCOPE_CONSTRAINT_NAME, LOCALE_SCOPE_CHECK)
+    } else {
+        (STRICT_SCOPE_CONSTRAINT_NAME, STRICT_SCOPE_CHECK)
+    };
+    // A down migration can legitimately reject a live locale-scoped job. In that case the
+    // original constraint, data, and indexes must remain untouched. Keep the SQLite copy and
+    // replacement on the same connection and transaction as well.
+    let transaction = manager.begin().await?;
+    if backend == DbBackend::Postgres {
+        replace_postgres_scope_constraint(&transaction, constraint, check).await?;
+        replace_postgres_scope_index(&transaction, include_locale).await?;
+    } else {
+        rebuild_sqlite_table(&transaction, check, include_locale).await?;
+    }
+    transaction.commit().await
 }
 
 async fn replace_postgres_scope_constraint(
@@ -80,12 +76,8 @@ async fn replace_postgres_scope_constraint(
     let quoted_replacement = quote_postgres_identifier(replacement_name);
     connection
         .execute_unprepared(&format!(
-            "ALTER TABLE {TABLE_NAME} DROP CONSTRAINT {quoted_constraint}"
-        ))
-        .await?;
-    connection
-        .execute_unprepared(&format!(
-            "ALTER TABLE {TABLE_NAME} ADD CONSTRAINT {quoted_replacement} CHECK ({replacement_check})"
+            "ALTER TABLE {TABLE_NAME} DROP CONSTRAINT {quoted_constraint}, \
+             ADD CONSTRAINT {quoted_replacement} CHECK ({replacement_check})"
         ))
         .await?;
     Ok(())
@@ -120,12 +112,12 @@ async fn rebuild_sqlite_table(
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(
-            "CREATE TABLE {TEMP_TABLE_NAME} (tenant_id TEXT NOT NULL, job_id TEXT NOT NULL, kind VARCHAR(32) NOT NULL, state VARCHAR(16) NOT NULL DEFAULT 'pending', scope_kind VARCHAR(16) NOT NULL, module_name VARCHAR(128), entity_name VARCHAR(128), schema_version INTEGER, entity_id TEXT, locale_key VARCHAR(32), request JSON NOT NULL, cursor JSON, attempt_count INTEGER NOT NULL DEFAULT 0, retry_epoch INTEGER NOT NULL DEFAULT 0 CHECK (retry_epoch >= 0), available_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, lease_owner VARCHAR(191), lease_expires_at TEXT, heartbeat_at TEXT, cancel_requested BOOLEAN NOT NULL DEFAULT FALSE, last_error_code VARCHAR(128), last_error_details JSON, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT, PRIMARY KEY (tenant_id, job_id), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE CASCADE, CHECK (kind IN ('schema_apply', 'secondary_index', 'rebuild', 'reconcile', 'consistency_check')), CHECK (state IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')), CHECK (attempt_count >= 0), CHECK (schema_version IS NULL OR schema_version > 0), CHECK (locale_key IS NULL OR (length(locale_key) <= 32 AND locale_key = trim(locale_key))), CHECK ({scope_check}), CHECK ((state = 'running' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) OR (state <> 'running' AND lease_owner IS NULL AND lease_expires_at IS NULL)), CHECK ((state IN ('succeeded', 'failed', 'cancelled') AND completed_at IS NOT NULL) OR (state IN ('pending', 'running') AND completed_at IS NULL)))"
+            "CREATE TABLE {TEMP_TABLE_NAME} (tenant_id TEXT NOT NULL, job_id TEXT NOT NULL, kind VARCHAR(32) NOT NULL, state VARCHAR(16) NOT NULL DEFAULT 'pending', scope_kind VARCHAR(16) NOT NULL, module_name VARCHAR(128), entity_name VARCHAR(128), schema_version INTEGER, entity_id TEXT, locale_key VARCHAR(32), request JSON NOT NULL, cursor JSON, attempt_count INTEGER NOT NULL DEFAULT 0, retry_epoch INTEGER NOT NULL DEFAULT 0 CHECK (retry_epoch >= 0), failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0), available_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, lease_owner VARCHAR(191), lease_expires_at TEXT, heartbeat_at TEXT, cancel_requested BOOLEAN NOT NULL DEFAULT FALSE, last_error_code VARCHAR(128), last_error_details JSON, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT, PRIMARY KEY (tenant_id, job_id), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE CASCADE, CHECK (kind IN ('schema_apply', 'secondary_index', 'rebuild', 'reconcile', 'consistency_check')), CHECK (state IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')), CHECK (attempt_count >= 0), CHECK (schema_version IS NULL OR schema_version > 0), CHECK (locale_key IS NULL OR (length(locale_key) <= 32 AND locale_key = trim(locale_key))), CHECK ({scope_check}), CHECK ((state = 'running' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) OR (state <> 'running' AND lease_owner IS NULL AND lease_expires_at IS NULL)), CHECK ((state IN ('succeeded', 'failed', 'cancelled') AND completed_at IS NOT NULL) OR (state IN ('pending', 'running') AND completed_at IS NULL)))"
         ))
         .await?;
     connection
         .execute_unprepared(&format!(
-            "INSERT INTO {TEMP_TABLE_NAME} (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, request, cursor, attempt_count, retry_epoch, available_at, lease_owner, lease_expires_at, heartbeat_at, cancel_requested, last_error_code, last_error_details, created_at, updated_at, completed_at) SELECT tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, request, cursor, attempt_count, retry_epoch, available_at, lease_owner, lease_expires_at, heartbeat_at, cancel_requested, last_error_code, last_error_details, created_at, updated_at, completed_at FROM {TABLE_NAME}"
+            "INSERT INTO {TEMP_TABLE_NAME} (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, request, cursor, attempt_count, retry_epoch, failure_count, available_at, lease_owner, lease_expires_at, heartbeat_at, cancel_requested, last_error_code, last_error_details, created_at, updated_at, completed_at) SELECT tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, request, cursor, attempt_count, retry_epoch, failure_count, available_at, lease_owner, lease_expires_at, heartbeat_at, cancel_requested, last_error_code, last_error_details, created_at, updated_at, completed_at FROM {TABLE_NAME}"
         ))
         .await?;
     connection

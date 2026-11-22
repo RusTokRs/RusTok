@@ -40,6 +40,7 @@ csr = [
   "rustok-auth-admin/csr",
   "rustok-page-builder-admin/csr",
   "rustok-blog-admin/csr",
+  "rustok-index-admin/csr",
   "rustok-forum-admin/csr",
   "rustok-party-admin/csr",
   "rustok-deal-admin/csr",

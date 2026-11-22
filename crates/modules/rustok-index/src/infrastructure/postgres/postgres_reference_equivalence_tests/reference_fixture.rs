@@ -111,13 +111,14 @@ impl<'a> ReferenceFixture<'a> {
                     !field.traverses_many && field.path.links().starts_with(&join.path)
                 })
             })
-            .map(|join| IndexRelationIdentity {
-                path: join.path.clone(),
-                entity_id: self
-                    .relation_chains(root, &join.path)
-                    .first()
-                    .and_then(|chain| chain.last())
-                    .map(|record| record.key.entity_id),
+            .map(|join| {
+                let chains = self.relation_chains(root, &join.path);
+                let record = chains.first().and_then(|chain| chain.last());
+                IndexRelationIdentity {
+                    path: join.path.clone(),
+                    entity_id: record.map(|record| record.key.entity_id),
+                    locale: record.and_then(|record| record.key.locale.clone()),
+                }
             })
             .collect();
         let fields = plan
@@ -148,6 +149,7 @@ impl<'a> ReferenceFixture<'a> {
                                 .map(|(path, record)| IndexRelationIdentity {
                                     path,
                                     entity_id: Some(record.key.entity_id),
+                                    locale: record.key.locale.clone(),
                                 })
                                 .collect(),
                             fields: projection
@@ -348,11 +350,11 @@ impl<'a> ReferenceFixture<'a> {
         query: &IndexQuery,
     ) -> Ordering {
         for (order, cursor_value) in query.order_by.iter().zip(&cursor.order_values) {
-            let comparison = compare_optional_to_cursor(
+            let comparison = compare_optional_values(
                 self.values_for_path(record, &order.field)
                     .into_iter()
                     .next(),
-                cursor_value,
+                Some(cursor_value),
             );
             if comparison != Ordering::Equal {
                 return apply_direction(comparison, order.direction);
@@ -449,24 +451,10 @@ fn apply_direction(ordering: Ordering, direction: OrderDirection) -> Ordering {
 
 fn compare_optional_values(left: Option<&IndexValue>, right: Option<&IndexValue>) -> Ordering {
     match (left, right) {
+        (None | Some(IndexValue::Null), None | Some(IndexValue::Null)) => Ordering::Equal,
+        (None | Some(IndexValue::Null), _) => Ordering::Greater,
+        (_, None | Some(IndexValue::Null)) => Ordering::Less,
         (Some(left), Some(right)) => compare_values(left, right).unwrap_or(Ordering::Equal),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
-    }
-}
-
-fn compare_optional_to_cursor(
-    record_value: Option<&IndexValue>,
-    cursor_value: &IndexValue,
-) -> Ordering {
-    match (record_value, cursor_value) {
-        (None, IndexValue::Null) | (Some(IndexValue::Null), IndexValue::Null) => Ordering::Equal,
-        (None, _) | (Some(IndexValue::Null), _) => Ordering::Greater,
-        (Some(_), IndexValue::Null) => Ordering::Less,
-        (Some(record_value), cursor_value) => {
-            compare_values(record_value, cursor_value).unwrap_or(Ordering::Equal)
-        }
     }
 }
 

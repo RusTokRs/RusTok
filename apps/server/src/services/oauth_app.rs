@@ -15,8 +15,9 @@ use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -1306,15 +1307,12 @@ fn ensure_manifest_app_ownership(
 }
 
 /// Upsert an embedded app (no credentials needed)
-async fn upsert_embedded_app<C>(
-    db: &C,
+async fn upsert_embedded_app(
+    db: &DatabaseTransaction,
     tenant_id: Uuid,
     slug: &str,
     scopes: &[&str],
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
+) -> Result<()> {
     let existing = OAuthApps::find()
         .filter(
             sea_orm::Condition::all()
@@ -1410,7 +1408,7 @@ where
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         }
-        .insert(db)
+        .insert_in_transaction(db)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -1428,8 +1426,8 @@ where
 
 /// Upsert a first-party app (creates credentials on first creation)
 #[allow(clippy::too_many_arguments)]
-async fn upsert_first_party_app<C>(
-    db: &C,
+async fn upsert_first_party_app(
+    db: &DatabaseTransaction,
     tenant_id: Uuid,
     slug: &str,
     name: &str,
@@ -1438,10 +1436,7 @@ async fn upsert_first_party_app<C>(
     scopes: &[&str],
     grant_types: &[&str],
     granted_permissions: &[String],
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
+) -> Result<()> {
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
@@ -1534,7 +1529,7 @@ where
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         }
-        .insert(db)
+        .insert_in_transaction(db)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -2071,7 +2066,7 @@ mod tests {
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
         PaginatorTrait, QueryFilter, Schema, Set,
     };
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
     use serial_test::serial;
 
     #[tokio::test]
@@ -2118,9 +2113,57 @@ mod tests {
         id
     }
 
+    // The manifest regression tests exercise the real Auth and identity schema,
+    // not the unrelated module migrations in the whole-platform SQLite fixture.
+    struct OAuthManifestTestMigrator;
+
+    #[async_trait::async_trait]
+    impl MigratorTrait for OAuthManifestTestMigrator {
+        fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+            let mut required: std::collections::HashSet<_> =
+                rustok_migrations::identity::migrations()
+                    .into_iter()
+                    .chain(
+                        rustok_auth::migrations::migrations()
+                            .into_iter()
+                            .filter(|migration| {
+                                migration.name().contains("_oauth_")
+                                    || migration.name()
+                                        == "m20260713_000001_create_auth_invite_consumptions"
+                            }),
+                    )
+                    .map(|migration| migration.name().to_owned())
+                    .collect();
+            // The platform also owns columns used by the user and OAuth token models.
+            required.extend([
+                "m20261025_000001_add_user_login_lockout".to_owned(),
+                "m20261025_000005_add_oauth_token_family".to_owned(),
+                "m20261101_000001_add_user_password_changed_at".to_owned(),
+            ]);
+
+            let migrations = Migrator::migrations()
+                .into_iter()
+                .filter(|migration| required.remove(migration.name()))
+                .collect();
+            assert!(
+                required.is_empty(),
+                "missing OAuth fixture migrations: {required:?}"
+            );
+            migrations
+        }
+    }
+
+    async fn test_db_with_manifest_tenant() -> (DatabaseConnection, tenants::Model) {
+        seed_test_tenant(setup_test_db_with_migrations::<OAuthManifestTestMigrator>().await).await
+    }
+
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         ensure_oauth_schema(&db).await;
+        seed_test_tenant(db).await
+    }
+
+    async fn seed_test_tenant(db: DatabaseConnection) -> (DatabaseConnection, tenants::Model) {
         let tenant =
             tenants::ActiveModel::new("Test tenant", &format!("tenant-{}", Uuid::new_v4()))
                 .insert(&db)
@@ -2989,25 +3032,28 @@ mod tests {
         .insert(&db)
         .await
         .expect("create authorization subject");
+        let user_id = user.id;
         OAuthAppService::grant_consent_strict(
             &db,
             app.id,
-            user.id,
+            user_id,
             tenant.id,
             vec!["openid".to_string()],
         )
         .await
         .expect("grant active consent");
 
-        let issue = |tenant_id| OAuthAppService::generate_authorization_code(
-            &db,
-            app.id,
-            user.id,
-            tenant_id,
-            "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()],
-            "challenge".to_string(),
-        );
+        let issue = |tenant_id| {
+            OAuthAppService::generate_authorization_code(
+                &db,
+                app.id,
+                user_id,
+                tenant_id,
+                "https://partner.example.com/callback".to_string(),
+                vec!["openid".to_string()],
+                "challenge".to_string(),
+            )
+        };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
 
         // A stale preflight cannot bind a code to a redirect the app no longer
@@ -3998,7 +4044,7 @@ mod tests {
     #[serial]
     async fn manifest_sync_reactivates_embedded_app_with_revocation_timestamp() {
         let (db, tenant) = test_db_with_tenant().await;
-        let now = Utc::now();
+        let now = Utc::now().fixed_offset();
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -4016,11 +4062,11 @@ mod tests {
             manifest_ref: Set(Some("leptos-admin".to_string())),
             auto_created: Set(true),
             is_active: Set(true),
-            revoked_at: Set(Some(now.clone())),
+            revoked_at: Set(Some(now)),
             last_used_at: Set(None),
             metadata: Set(serde_json::json!({})),
-            created_at: Set(now.clone().into()),
-            updated_at: Set(now.into()),
+            created_at: Set(now),
+            updated_at: Set(now),
         }
         .insert(&db)
         .await
@@ -4124,9 +4170,9 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
-        let (db, tenant) = test_db_with_tenant().await;
+        let (db, tenant) = test_db_with_manifest_tenant().await;
         let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
-        let manual = OAuthAppActiveModel {
+        let manual_model = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("Operator-owned app".to_string()),
@@ -4148,10 +4194,11 @@ mod tests {
             metadata: Set(serde_json::json!({"owner":"operator"})),
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
-        }
-        .insert(&db)
-        .await
-        .expect("insert manually managed app");
+        };
+        let manual =
+            oauth_apps::scope_runtime_copy_locale("en".to_string(), manual_model.insert(&db))
+                .await
+                .expect("insert manually managed app");
 
         let mut manifest = crate::modules::ModulesManifest::default();
         manifest.build.server.embed_admin = true;
@@ -4210,7 +4257,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans() {
-        let (db, tenant) = test_db_with_tenant().await;
+        let (db, tenant) = test_db_with_manifest_tenant().await;
 
         let orphan_app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
@@ -4388,6 +4435,14 @@ mod tests {
                 "client_credentials".to_string(),
             ],
         );
+
+        for (app, expected_name) in [(next_admin, "next Admin"), (storefront, "shop storefront")] {
+            let copy = oauth_apps::resolve_translation(&db, tenant.id, app.id, "en")
+                .await
+                .expect("read manifest-generated OAuth copy")
+                .expect("manifest-generated copy commits with the OAuth app");
+            assert_eq!(copy.name, expected_name);
+        }
 
         let orphan = apps
             .iter()

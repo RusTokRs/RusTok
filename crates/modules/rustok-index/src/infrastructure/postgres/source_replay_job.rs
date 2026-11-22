@@ -12,7 +12,13 @@ use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{IndexSchema, LocaleKey, LocaleMode, SchemaRef};
+use crate::{IndexSchema, LocaleKey, LocaleMode, SchemaFingerprint, SchemaRef};
+
+use super::source_job_discovery::DiscoveredJobVersion;
+
+use super::source_job_lease::{
+    deadline_after_seconds, due_job_where, job_is_due, live_lease_where, placeholder_prefix,
+};
 
 const REPLAY_JOB_REQUEST_CONTRACT_V1: &str = "index_replay_job_v1";
 const REPLAY_JOB_REQUEST_CONTRACT_V2: &str = "index_replay_job_v2";
@@ -30,6 +36,8 @@ pub struct IndexReplayJobLeaseRequest {
     worker_id: String,
     lease_seconds: u64,
     job_id: Option<Uuid>,
+    discovered_version: Option<DiscoveredJobVersion>,
+    expected_schema: Option<(SchemaFingerprint, IndexSchema)>,
 }
 
 impl IndexReplayJobLeaseRequest {
@@ -92,6 +100,8 @@ impl IndexReplayJobLeaseRequest {
             worker_id,
             lease_seconds,
             job_id: None,
+            discovered_version: None,
+            expected_schema: None,
         })
     }
 
@@ -102,6 +112,20 @@ impl IndexReplayJobLeaseRequest {
         }
         self.job_id = Some(job_id);
         Ok(self)
+    }
+
+    pub(super) fn with_discovered_version(mut self, version: Option<DiscoveredJobVersion>) -> Self {
+        self.discovered_version = version;
+        self
+    }
+
+    pub(super) fn with_schema_contract(
+        mut self,
+        fingerprint: SchemaFingerprint,
+        schema: IndexSchema,
+    ) -> Self {
+        self.expected_schema = Some((fingerprint, schema));
+        self
     }
 
     pub fn tenant_id(&self) -> Uuid {
@@ -181,7 +205,7 @@ impl IndexReplayJobLease {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IndexReplayJobAcquireOutcome {
     Acquired(IndexReplayJobLease),
-    Busy,
+    Busy { job_id: Uuid },
     AlreadyComplete { job_id: Uuid },
 }
 
@@ -207,6 +231,8 @@ pub enum IndexReplayJobError {
     SchemaNotRegistered(SchemaRef),
     #[error("Index replay schema is retired: {0}")]
     SchemaRetired(SchemaRef),
+    #[error("persisted Index replay schema does not match the selected contract: {0}")]
+    SchemaContractMismatch(SchemaRef),
     #[error("Index replay schema does not support locale-scoped jobs: {0}")]
     LocaleScopeUnsupported(SchemaRef),
     #[error("Index replay scope is blocked by failed job {job_id} after attempt {attempt_count}")]
@@ -375,6 +401,16 @@ impl PostgresIndexReplayJobStore {
                     actual: stored.job_id,
                 });
             }
+            if let Some(version) = request.discovered_version {
+                let retry_epoch: i64 = row
+                    .try_get("", "retry_epoch_value")
+                    .map_err(storage_error)?;
+                if !version.matches(stored.attempt_count, retry_epoch) {
+                    return Ok(IndexReplayJobAcquireOutcome::Busy {
+                        job_id: stored.job_id,
+                    });
+                }
+            }
             if stored.source_name != request.source_name {
                 return Err(IndexReplayJobError::InvalidStoredJob(
                     "request.source_name does not match the replay scope owner".to_owned(),
@@ -393,10 +429,14 @@ impl PostgresIndexReplayJobStore {
                     });
                 }
                 "running" if !stored.claimable => {
-                    return Ok(IndexReplayJobAcquireOutcome::Busy);
+                    return Ok(IndexReplayJobAcquireOutcome::Busy {
+                        job_id: stored.job_id,
+                    });
                 }
                 "pending" if !stored.claimable => {
-                    return Ok(IndexReplayJobAcquireOutcome::Busy);
+                    return Ok(IndexReplayJobAcquireOutcome::Busy {
+                        job_id: stored.job_id,
+                    });
                 }
                 "pending" | "running" => {
                     claimable = Some(stored);
@@ -420,9 +460,13 @@ impl PostgresIndexReplayJobStore {
         let attempt_count;
         if let Some(stored) = claimable {
             job_id = stored.job_id;
-            attempt_count = stored.attempt_count.checked_add(1).ok_or_else(|| {
-                IndexReplayJobError::InvalidStoredJob("attempt count overflow".to_owned())
-            })?;
+            attempt_count = stored
+                .attempt_count
+                .checked_add(1)
+                .filter(|count| i32::try_from(*count).is_ok())
+                .ok_or_else(|| {
+                    IndexReplayJobError::InvalidStoredJob("attempt count overflow".to_owned())
+                })?;
             let claimed = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
@@ -635,11 +679,7 @@ pub(super) async fn assert_active_replay_job_lease(
         ))
         .await
         .map_err(storage_error)?;
-    let Some(row) = row else {
-        return Err(IndexReplayJobError::LeaseLost);
-    };
-    let active: bool = row.try_get("", "active").map_err(storage_error)?;
-    if !active {
+    if row.is_none() {
         return Err(IndexReplayJobError::LeaseLost);
     }
     Ok(())
@@ -658,6 +698,8 @@ async fn require_complete_checkpoint(
         worker_id: lease.worker_id.clone(),
         lease_seconds: 1,
         job_id: Some(lease.job_id),
+        discovered_version: None,
+        expected_schema: None,
     };
     require_complete_checkpoint_for_scope(transaction, &request, backend).await
 }
@@ -732,7 +774,7 @@ async fn finish_job(
     Ok(())
 }
 
-async fn lock_replay_scope(
+pub(super) async fn lock_replay_scope(
     transaction: &DatabaseTransaction,
     request: &IndexReplayJobLeaseRequest,
     backend: DbBackend,
@@ -779,7 +821,7 @@ async fn verify_schema_registration(
     if status != "active" {
         return Err(IndexReplayJobError::SchemaRetired(request.schema.clone()));
     }
-    if request.locale.is_some() {
+    if request.locale.is_some() || request.expected_schema.is_some() {
         let schema_json: JsonValue = row.try_get("", "schema_json").map_err(storage_error)?;
         let schema: IndexSchema = serde_json::from_value(schema_json).map_err(storage_error)?;
         if schema.reference != request.schema {
@@ -787,7 +829,19 @@ async fn verify_schema_registration(
                 "persisted Index schema identity does not match replay scope".to_owned(),
             ));
         }
-        if schema.locale_mode == LocaleMode::None {
+        if let Some((expected_fingerprint, expected_schema)) = &request.expected_schema {
+            let fingerprint: String = row
+                .try_get("", "schema_fingerprint")
+                .map_err(storage_error)?;
+            if fingerprint != expected_fingerprint.to_string()
+                || schema.canonical() != expected_schema.canonical()
+            {
+                return Err(IndexReplayJobError::SchemaContractMismatch(
+                    request.schema.clone(),
+                ));
+            }
+        }
+        if request.locale.is_some() && schema.locale_mode == LocaleMode::None {
             return Err(IndexReplayJobError::LocaleScopeUnsupported(
                 request.schema.clone(),
             ));
@@ -841,17 +895,19 @@ impl StorageTextError {
 }
 
 fn validate_worker_id(worker_id: &str) -> Result<(), IndexReplayJobError> {
-    validate_storage_text(worker_id, MAX_WORKER_ID_BYTES)
-        .map_err(|reason| IndexReplayJobError::InvalidWorkerId {
+    validate_storage_text(worker_id, MAX_WORKER_ID_BYTES).map_err(|reason| {
+        IndexReplayJobError::InvalidWorkerId {
             reason: reason.as_str(),
-        })
+        }
+    })
 }
 
 fn validate_error_code(error_code: &str) -> Result<(), IndexReplayJobError> {
-    validate_storage_text(error_code, MAX_ERROR_CODE_BYTES)
-        .map_err(|reason| IndexReplayJobError::InvalidErrorCode {
+    validate_storage_text(error_code, MAX_ERROR_CODE_BYTES).map_err(|reason| {
+        IndexReplayJobError::InvalidErrorCode {
             reason: reason.as_str(),
-        })
+        }
+    })
 }
 
 fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), StorageTextError> {
@@ -895,15 +951,6 @@ fn storage_error(error: impl std::fmt::Display) -> IndexReplayJobError {
     IndexReplayJobError::Storage(error.to_string())
 }
 
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
-}
-
 pub(super) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
@@ -913,7 +960,7 @@ pub(super) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     }
 }
 
-fn stored_uuid(
+pub(super) fn stored_uuid(
     row: &QueryResult,
     column: &str,
     backend: DbBackend,
@@ -953,9 +1000,31 @@ fn replay_scope_values(request: &IndexReplayJobLeaseRequest, backend: DbBackend)
 
 fn select_schema_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
+    let lock = if backend == DbBackend::Postgres {
+        " FOR SHARE"
+    } else {
+        ""
+    };
     format!(
-        "SELECT status, schema_json FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1"
+        "SELECT status, schema_json, schema_fingerprint FROM index_schemas WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 LIMIT 1{lock}"
     )
+}
+
+pub(super) async fn select_current_replay_job(
+    transaction: &DatabaseTransaction,
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Result<Option<Uuid>, IndexReplayJobError> {
+    transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            select_replay_jobs_sql(backend),
+            replay_scope_values(request, backend),
+        ))
+        .await
+        .map_err(storage_error)?
+        .map(|row| stored_uuid(&row, "job_id", backend))
+        .transpose()
 }
 
 fn select_replay_jobs_sql(backend: DbBackend) -> String {
@@ -964,72 +1033,61 @@ fn select_replay_jobs_sql(backend: DbBackend) -> String {
 
 fn select_replay_job_history_sql(backend: DbBackend, include_cancelled: bool) -> String {
     let prefix = placeholder_prefix(backend);
-    let (attempt_count, claimable, locale_match) = match backend {
-        DbBackend::Postgres => (
-            "CAST(attempt_count AS BIGINT)",
-            "((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))",
-            format!("locale_key IS NOT DISTINCT FROM {prefix}6"),
-        ),
-        DbBackend::Sqlite => (
-            "CAST(attempt_count AS INTEGER)",
-            "CASE WHEN (state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP) THEN TRUE ELSE FALSE END",
-            format!("locale_key IS {prefix}6"),
-        ),
-        // INVARIANT: unsupported database backend was validated
+    let claimable = job_is_due(backend);
+    let locale_match = match backend {
+        DbBackend::Postgres => format!("locale_key IS NOT DISTINCT FROM {prefix}6"),
+        DbBackend::Sqlite => format!("locale_key IS {prefix}6"),
         _ => unreachable!("unsupported database backend was validated"),
     };
-    let state_filter = if include_cancelled {
-        ""
+    let (state_filter, limit) = if include_cancelled {
+        ("", 2)
     } else {
-        " AND state IN ('pending', 'running', 'succeeded', 'failed')"
+        (
+            " AND state IN ('pending', 'running', 'succeeded', 'failed')",
+            1,
+        )
     };
     format!(
-        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match}{state_filter} ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
+        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, CAST(attempt_count AS BIGINT) AS attempt_count_value, CAST(retry_epoch AS BIGINT) AS retry_epoch_value, CASE WHEN {claimable} THEN TRUE ELSE FALSE END AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match}{state_filter} ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC, job_id DESC LIMIT {limit}"
     )
 }
 
 fn insert_job_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 10);
+    let lease_expires = deadline_after_seconds(backend, 10);
     format!(
         "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, locale_key, request, attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at) VALUES ({prefix}1, {prefix}2, 'rebuild', 'running', {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, 1, CURRENT_TIMESTAMP, {prefix}9, {lease_expires}, CURRENT_TIMESTAMP)"
     )
 }
 
 fn claim_job_sql(backend: DbBackend) -> String {
+    let due = due_job_where(backend, "rebuild");
     let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND ((state = 'pending' AND available_at <= CURRENT_TIMESTAMP) OR (state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP))"
+        "UPDATE index_jobs SET state = 'running', lease_owner = {prefix}3, attempt_count = {prefix}4, lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, completed_at = NULL, last_error_code = NULL, last_error_details = NULL WHERE {due}"
     )
 }
 
 fn heartbeat_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    let lease_expires = lease_expires_expression(backend, 5);
+    let lease = live_lease_where(backend, "rebuild", 1, false);
+    let lease_expires = deadline_after_seconds(backend, 5);
     format!(
-        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 AND lease_expires_at > CURRENT_TIMESTAMP"
+        "UPDATE index_jobs SET lease_expires_at = {lease_expires}, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn finish_job_sql(backend: DbBackend) -> String {
+    let lease = live_lease_where(backend, "rebuild", 4, false);
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE index_jobs SET state = {prefix}1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = {prefix}2, last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = {prefix}4 AND job_id = {prefix}5 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}6 AND attempt_count = {prefix}7 AND lease_expires_at > CURRENT_TIMESTAMP"
+        "UPDATE index_jobs SET state = {prefix}1, lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = CURRENT_TIMESTAMP, last_error_code = {prefix}2, last_error_details = {prefix}3, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE {lease}"
     )
 }
 
 fn active_lease_sql(backend: DbBackend) -> String {
-    let prefix = placeholder_prefix(backend);
-    let lock = match backend {
-        DbBackend::Postgres => " FOR UPDATE",
-        DbBackend::Sqlite => "",
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    };
-    format!(
-        "SELECT CASE WHEN lease_expires_at > CURRENT_TIMESTAMP THEN TRUE ELSE FALSE END AS active FROM index_jobs WHERE tenant_id = {prefix}1 AND job_id = {prefix}2 AND kind = 'rebuild' AND state = 'running' AND lease_owner = {prefix}3 AND attempt_count = {prefix}4 LIMIT 1{lock}"
-    )
+    let lease = live_lease_where(backend, "rebuild", 1, false);
+    format!("SELECT job_id FROM index_jobs WHERE {lease}")
 }
 
 fn complete_checkpoint_sql(backend: DbBackend) -> String {
@@ -1043,18 +1101,4 @@ fn complete_checkpoint_sql(backend: DbBackend) -> String {
     format!(
         "SELECT cursor FROM index_checkpoints WHERE tenant_id = {prefix}1 AND checkpoint_kind = 'rebuild' AND source_name = {prefix}2 AND module_name = {prefix}3 AND entity_name = {prefix}4 AND schema_version = {prefix}5 AND locale_key = {prefix}6 AND partition_key = '' LIMIT 1{lock}"
     )
-}
-
-fn lease_expires_expression(backend: DbBackend, parameter: usize) -> String {
-    let prefix = placeholder_prefix(backend);
-    match backend {
-        DbBackend::Postgres => {
-            format!("CURRENT_TIMESTAMP + ({prefix}{parameter} * INTERVAL '1 second')")
-        }
-        DbBackend::Sqlite => {
-            format!("datetime('now', '+' || {prefix}{parameter} || ' seconds')")
-        }
-        // INVARIANT: unsupported database backend was validated
-        _ => unreachable!("unsupported database backend was validated"),
-    }
 }

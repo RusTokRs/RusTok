@@ -10,6 +10,7 @@ use super::{
     LocalizedCursorValidationError, LocalizedEntityQueryValidationError, LocalizedIndexCursor,
     PostgresQueryCompileError, PostgresQueryDecodeError, QueryPlanError, SchemaRegistry,
     SchemaRegistryError, postgres_localized_query::localized_plan_fingerprint,
+    postgres_query_result::decode_root_identity,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -166,6 +167,7 @@ fn expected_columns(plan: &super::ExecutableQueryPlan) -> Vec<CompiledQueryColum
 fn column_output_alias(column: &CompiledQueryColumn) -> &str {
     match column {
         CompiledQueryColumn::EntityId { output_alias, .. }
+        | CompiledQueryColumn::RelationIdentity { output_alias, .. }
         | CompiledQueryColumn::Field { output_alias, .. }
         | CompiledQueryColumn::OrderValue { output_alias, .. } => output_alias,
     }
@@ -181,21 +183,7 @@ fn decode_row(
     compiled: &super::CompiledPostgresQuery,
     row: &CompiledPostgresRow,
 ) -> Result<DecodedLocalizedRow, PostgresLocalizedQueryDecodeError> {
-    let root_entity_id = match required_cell(row, "__t0_entity_id")? {
-        CompiledPostgresCell::Uuid(value) if !value.is_nil() => *value,
-        CompiledPostgresCell::Uuid(_) | CompiledPostgresCell::Null => {
-            return Err(
-                PostgresQueryDecodeError::NullRootIdentity("__t0_entity_id".to_owned()).into(),
-            );
-        }
-        _ => {
-            return Err(PostgresQueryDecodeError::UnexpectedCellType {
-                alias: "__t0_entity_id".to_owned(),
-                expected: "a non-nil UUID",
-            }
-            .into());
-        }
-    };
+    let root_entity_id = decode_root_identity(row, "__t0_entity_id")?;
 
     let mut fields = Vec::new();
     let mut order_values = Vec::new();
@@ -224,7 +212,8 @@ fn decode_row(
                 validate_value(field, &value, false)?;
                 order_values.push(value);
             }
-            CompiledQueryColumn::EntityId { .. } => {}
+            CompiledQueryColumn::EntityId { .. } | CompiledQueryColumn::RelationIdentity { .. } => {
+            }
         }
     }
 

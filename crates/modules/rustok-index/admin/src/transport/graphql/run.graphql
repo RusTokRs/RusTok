@@ -1,0 +1,9 @@
+mutation IndexAdminRunReplay($input: IndexReplayRunInput!) {
+  result: runIndexReplay(input: $input) {
+    status
+    job_id: jobId
+    retry_after_seconds: retryAfterSeconds
+    pages_processed: pagesProcessed
+    mutations_applied: appliedCount
+  }
+}

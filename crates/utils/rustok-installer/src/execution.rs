@@ -662,15 +662,16 @@ where
 }
 
 #[cfg(feature = "host-runtime")]
-async fn persist_failure_state<P>(
+async fn persist_failure_state<P, R>(
     ports: &P,
-    runtime: &P::Runtime,
+    runtime: &R,
     session: &InstallSessionRecord,
     target: InstallState,
     cause: InstallExecutionError,
 ) -> InstallExecutionError
 where
-    P: InstallPersistencePort<P::Runtime>,
+    P: InstallPersistencePort<R>,
+    R: Send + Sync,
 {
     match ports.set_state(runtime, session, target).await {
         Ok(_) => cause,

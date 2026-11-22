@@ -44,10 +44,10 @@ const transport = requireMarkers(transportPath, [
   'async fn run_index_replay_targeted(',
   'async fn run_index_replay_shadow(',
   'async fn cancel_index_replay(',
-  'prepare_authorized_run(tenant.id, auth.user_id, input)',
-  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
-  'prepare_authorized_shadow_run(tenant.id, auth.user_id, input)',
-  'prepare_authorized_cancel(tenant.id, auth.user_id, input)',
+  'prepare_authorized_run(tenant_id, actor_id, input)',
+  'prepare_authorized_targeted_run(tenant_id, actor_id, input)',
+  'prepare_authorized_shadow_run(tenant_id, actor_id, input)',
+  'prepare_authorized_cancel(tenant_id, actor_id, input)',
   'permissions_for(&tenant_id, &actor_id)',
   'has_effective_permission(&permissions, &Permission::MODULES_MANAGE)',
   'rustok_index::LocaleKey::new(locale)',
@@ -242,7 +242,7 @@ requireMarkers('crates/modules/rustok-index/src/application/source_registry.rs',
   'IndexSourceError::TooManyLoadKeys',
   'IndexSourceError::DuplicateLoadKey',
 ]);
-requireMarkers('apps/server/src/services/app_lifecycle.rs', [
+requireMarkers('apps/server/src/services/stop_handle.rs', [
   'pub struct StopHandle',
   'pub fn subscribe(&self)',
   'pub async fn stop(&self)',

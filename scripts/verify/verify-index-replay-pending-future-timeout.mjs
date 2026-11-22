@@ -52,6 +52,12 @@ const adapter = requireMarkers(adapterPath, [
   'assert_active_replay_job_lease(&transaction, &self.lease, backend)',
   'upsert_checkpoint_sql(backend)',
 ]);
+const mutationTimeout = adapter.indexOf('bounded_replay_mutation(async {');
+const mutationApply = adapter.indexOf('self.apply(registry, &delivery)');
+const mutationBlockEnd = adapter.indexOf('.map_err(classify_mutation_failure)', mutationApply);
+if (mutationTimeout < 0 || mutationApply <= mutationTimeout || mutationBlockEnd <= mutationApply) {
+  fail('the replay sink must apply the configured fenced store inside the bounded mutation future');
+}
 const readIdentity = adapter.indexOf('validate_checkpoint_identity(&self.lease, key)?;');
 const readTimeout = adapter.indexOf('bounded_replay_checkpoint_read(async {', readIdentity);
 if (readIdentity < 0 || readTimeout <= readIdentity) {
@@ -65,22 +71,25 @@ if (commitIdentity < 0 || commitTimeout <= commitIdentity) {
 
 const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
-  'let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(',
+  'with_job_fence(JobMutationFence {',
+  'attempt_count: lease.attempt_count(),',
+  'kind: "rebuild"',
+  'let page = drive_page(',
   'let page = match page_result {',
   'if cancel_if_requested(&self.db, &lease).await? {',
-  'let details = replay_failure_details(&error);',
-  'finish_failure(&self.db, &lease, details).await?',
+  'let failure = replay_retry_failure(&error)?;',
+  'store.record_failure(&lease, &failure).await',
   'IndexReplayError::MutationFailed { failure, .. }',
   '| IndexReplayError::CheckpointReadFailed(failure)',
   '| IndexReplayError::CheckpointCommitFailed(failure)',
   'failure.kind() == IndexReplayFailureKind::Retryable',
-  '"retryable": retryable',
+  'IndexReplayRetryDisposition::RetryScheduled',
 ]);
 const pageResult = runner.indexOf('let page = match page_result {');
 const pageFailure = runner.indexOf('Err(error) => {', pageResult);
 const cancelCheck = runner.indexOf('if cancel_if_requested(&self.db, &lease).await? {', pageFailure);
-const failureDetails = runner.indexOf('let details = replay_failure_details(&error);', cancelCheck);
-const finishFailure = runner.indexOf('finish_failure(&self.db, &lease, details).await?', failureDetails);
+const failureDetails = runner.indexOf('let failure = replay_retry_failure(&error)?;', cancelCheck);
+const finishFailure = runner.indexOf('store.record_failure(&lease, &failure).await', failureDetails);
 if (
   pageResult < 0 ||
   pageFailure <= pageResult ||
@@ -102,7 +111,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-replay-pending-future-timeou
   '`index_replay_checkpoint_commit_timeout`',
   'does **not** prove that the database operation was rolled back or cancelled',
   'user cancellation that won the race remains `Cancelled`',
-  '`retryable: true`',
+  '`RetryScheduled`',
   '`StopHandle` interruption remains a separate safe-point-only',
   '`m6-replay-page-lease-heartbeat.md`',
 ]);

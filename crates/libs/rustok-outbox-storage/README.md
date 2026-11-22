@@ -5,7 +5,10 @@ Shared SQL storage for Outbox events and owner-operation receipts. Apply
 database. The platform migrator uses the same schema helpers.
 
 Use `TransactionalEventBus` and `idempotency::complete` inside the transaction
-that persists the owner mutation. Where a receipt coordinates an independent
+that persists the owner mutation. The transport-backed `publish_*_in_tx` methods
+require the caller's `DatabaseTransaction`; the bus delegates through the
+transport's transactional capability, including when a wrapper forwards it.
+Where a receipt coordinates an independent
 aggregate claim, `idempotency::renew_lease` postpones reclamation for
 operations that outlive the five-minute processing lease, and
 `idempotency::lock_current` verifies and locks the receipt in

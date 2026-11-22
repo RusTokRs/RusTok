@@ -1,16 +1,50 @@
-﻿name: Index Contract CI
+name: Index Contract CI
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - "crates/libs/rustok-events/**"
+      - "crates/libs/rustok-outbox-storage/**"
+      - "crates/modules/rustok-ai/src/direct.rs"
+      - "crates/modules/rustok-ai/src/direct_order_generation.rs"
+      - "crates/modules/rustok-ai/src/service/mcp.rs"
+      - "crates/modules/rustok-auth/src/graphql/rate_limit.rs"
+      - "crates/utils/rustok-installer/src/execution.rs"
+      - "crates/modules/rustok-channel/admin/**"
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/lib.rs"
+      - "crates/modules/rustok-distribution/src/tests.rs"
       - "crates/modules/rustok-distribution/src/product_index/**"
       - "crates/modules/rustok-distribution/src/product_variant_index.rs"
       - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/graphql/index_replay*.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/controllers/marketplace_registry.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/mcp_management.rs"
+      - "apps/server/src/services/mcp_scaffold_workspace.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
+      - "apps/server/src/controllers/admin_events.rs"
+      - "apps/server/src/controllers/health.rs"
+      - "apps/server/src/graphql/system.rs"
+      - "apps/server/src/host_authority.rs"
+      - "apps/server/src/services/app_lifecycle.rs"
+      - "apps/server/src/services/cache_settings_admin.rs"
+      - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/index_reconciliation_operator.rs"
+      - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "Cargo.toml"
+      - "apps/admin/Cargo.toml"
+      - "apps/admin/src/app/auth_ssr.rs"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/src/shared/api/mod.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -24,6 +58,7 @@ on:
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
       - "scripts/verify/verify-index-source-replay-contract.mjs"
+      - "scripts/verify/verify-index-source-refresh-event.mjs"
       - "scripts/verify/verify-index-replay-locale-job-scope.mjs"
       - "scripts/verify/verify-index-replay-locale-checkpoint-worker.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
@@ -31,6 +66,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - "scripts/ci/index-check.sh"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
@@ -40,14 +76,49 @@ on:
     branches:
       - main
       - "agent/**"
+      - "arena/**"
     paths:
       - "crates/libs/rustok-events/**"
+      - "crates/libs/rustok-outbox-storage/**"
+      - "crates/modules/rustok-ai/src/direct.rs"
+      - "crates/modules/rustok-ai/src/direct_order_generation.rs"
+      - "crates/modules/rustok-ai/src/service/mcp.rs"
+      - "crates/modules/rustok-auth/src/graphql/rate_limit.rs"
+      - "crates/utils/rustok-installer/src/execution.rs"
+      - "crates/modules/rustok-channel/admin/**"
       - "crates/modules/rustok-product/**"
       - "crates/modules/rustok-index/**"
       - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/lib.rs"
+      - "crates/modules/rustok-distribution/src/tests.rs"
       - "crates/modules/rustok-distribution/src/product_index/**"
       - "crates/modules/rustok-distribution/src/product_variant_index.rs"
       - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/graphql/index_replay*.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "apps/server/src/controllers/marketplace_registry.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/mcp_management.rs"
+      - "apps/server/src/services/mcp_scaffold_workspace.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
+      - "apps/server/src/controllers/admin_events.rs"
+      - "apps/server/src/controllers/health.rs"
+      - "apps/server/src/graphql/system.rs"
+      - "apps/server/src/host_authority.rs"
+      - "apps/server/src/services/app_lifecycle.rs"
+      - "apps/server/src/services/cache_settings_admin.rs"
+      - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/index_reconciliation_operator.rs"
+      - "apps/server/src/services/index_replay_runtime_composition.rs"
+      - "Cargo.toml"
+      - "apps/admin/Cargo.toml"
+      - "apps/admin/src/app/auth_ssr.rs"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/src/shared/api/mod.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -61,6 +132,7 @@ on:
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
       - "scripts/verify/verify-index-source-replay-contract.mjs"
+      - "scripts/verify/verify-index-source-refresh-event.mjs"
       - "scripts/verify/verify-index-replay-locale-job-scope.mjs"
       - "scripts/verify/verify-index-replay-locale-checkpoint-worker.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
@@ -68,6 +140,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - "scripts/ci/index-check.sh"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
@@ -84,7 +157,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  RUST_TOOLCHAIN: "1.96.0"
+  # Override rust-toolchain.toml's `stable`, so Cargo uses the toolchain that owns the WASM stdlib.
+  RUSTUP_TOOLCHAIN: "1.96.0"
 
 jobs:
   source-contracts:
@@ -118,6 +192,8 @@ jobs:
         run: node scripts/verify/verify-index-schema-scoped-source-event-id.mjs
       - name: Verify Index source replay contract
         run: node scripts/verify/verify-index-source-replay-contract.mjs
+      - name: Verify Index source refresh commit-before-ack contract
+        run: node scripts/verify/verify-index-source-refresh-event.mjs
       - name: Verify Index replay locale job scope contract
         run: node scripts/verify/verify-index-replay-locale-job-scope.mjs
       - name: Verify event digest admission contract
@@ -144,51 +220,180 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: index-contract-ci
       - name: Regenerate canonical event digests
-        run: cargo run --locked -p rustok-events --example event_contract_digests -- --write
+        run: bash scripts/ci/index-check.sh cargo run --locked -p rustok-events --example event_contract_digests -- --write
       - name: Require committed canonical event digests
-        run: git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
+        run: bash scripts/ci/index-check.sh git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
 
   focused-cargo:
     name: Events Product Index cargo checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Use the same native toolchain as the host checks.
+      RUSTUP_TOOLCHAIN: "1.97.1"
+      RUSTOK_INDEX_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rustok_index_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: index-contract-ci
       - name: Verify Index crate compilation
-        run: cargo check --locked -p rustok-index --lib
-      - name: Verify complete Index crate unit tests
-        run: cargo test --locked -p rustok-index --lib
+        id: index_compile
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index --lib
+      # Test schemas are isolated, but advisory lock keys are database-wide.
+      - name: Run Index crate tests with PostgreSQL enabled
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --lib -- --test-threads=1
+      - name: Run Index repair and recovery PostgreSQL integration tests
+        if: ${{ !cancelled() && steps.index_compile.outcome == 'success' }}
+        # Collect all three target results without hiding a failure in any of them.
+        run: >-
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-index --no-fail-fast
+          --test drift_repair_concrete_execution_postgres_test
+          --test drift_repair_recovery_postgres_test
+          --test source_reconciliation_dead_letter_admission_postgres_test
+          -- --test-threads=1
       - name: Check Events Product and Index targets
-        run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
+      # Keep independent checks observable after a failure in a different package.
+      - name: Run Outbox transport storage regressions
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-outbox --test sqlite_transport_regression_test
       - name: Check selected Product distribution bridge
-        run: cargo check --locked -p rustok-distribution --features mod-product --lib
+        id: product_distribution
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-distribution --features mod-product --lib
       - name: Check Product current-schema promotion PostgreSQL evidence harness
-        run: cargo check --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres
-      - name: Check Product refresh host consumer composition
-        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
-      - name: Check Product refresh PostgreSQL/Iggy evidence harness
-        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
+        if: ${{ !cancelled() && steps.product_distribution.outcome == 'success' }}
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres
       - name: Verify canonical event contract test
-        run: cargo test --locked -p rustok-events --test canonical_contracts
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-events --test canonical_contracts
       - name: Verify generic source refresh commit-before-ack contract
-        run: cargo test --locked -p rustok-index source_refresh_event --lib
+        if: ${{ !cancelled() && steps.index_compile.outcome == 'success' }}
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index source_refresh_event --lib
       - name: Verify typed Product refresh delivery
-        run: cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib
+        if: ${{ !cancelled() && steps.product_distribution.outcome == 'success' }}
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib
+
+  product-host:
+    name: Product refresh and Index operator host checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The host migrator includes modules that reach the locked Rig graph.
+      RUSTUP_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: index-product-host
+          cache-on-failure: true
+      - name: Check Product refresh host consumer composition
+        id: product_server
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
+      - name: Check Product refresh PostgreSQL/Iggy evidence harness
+        if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
+      - name: Run Index operator transport tests without embedded admin
+        if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
+        run: >-
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib --
+          --test-threads=1
+          index_native_json_routes_enforce_request_scope_without_embedded_admin
+          index_standalone_relay_preserves_scope_and_exact_recovery_kind
+          index_admin_csr_commands_validate_against_the_operator_schema
+      - name: Verify OAuth manifest sync on its owner transaction
+        if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
+        run: >-
+          bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product --lib --
+          sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
+          manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug
       - name: Verify Product refresh host envelope projection and retry boundary
-        run: cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
+        if: ${{ !cancelled() && steps.product_server.outcome == 'success' }}
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
+
+  admin-profiles:
+    name: Index admin (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ssr, hydrate, csr]
+    env:
+      ADMIN_PROFILE: ${{ matrix.profile }}
+      # The full standalone host also builds the locked rig 0.46 graph (Rust 1.97.1).
+      RUSTUP_TOOLCHAIN: ${{ matrix.profile == 'ssr' && '1.97.1' || '1.96.0' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+      - name: Install WASM target for the active toolchain
+        if: matrix.profile != 'ssr'
+        run: rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: index-admin-${{ matrix.profile }}
+          cache-on-failure: ${{ matrix.profile == 'ssr' }}
+      - name: Run Index admin native adapter tests
+        if: matrix.profile == 'ssr'
+        run: bash scripts/ci/index-check.sh cargo test --locked -p rustok-index-admin --no-default-features --features ssr
+      - name: Check standalone admin server composition
+        if: matrix.profile == 'ssr'
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --bin rustok-admin --no-default-features --features ssr
+      - name: Check Index admin in isolation
+        if: matrix.profile != 'ssr'
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-index-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
+      - name: Reject Leptos SSR features in the admin browser graph
+        if: matrix.profile != 'ssr'
+        shell: bash
+        run: |
+          tree=$(bash scripts/ci/index-check.sh cargo tree --locked -p rustok-admin --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown --edges features,no-dev --invert leptos) || {
+            status=$?
+            printf '%s\n' "$tree"
+            exit "$status"
+          }
+          if grep -Fq 'leptos feature "ssr"' <<<"$tree"; then
+            echo '::error::The admin browser profile enables Leptos SSR. This selects native server-function bodies instead of browser clients.'
+            printf '%s\n' "$tree"
+            exit 1
+          fi
+      - name: Check the admin browser profile
+        if: matrix.profile != 'ssr'
+        run: bash scripts/ci/index-check.sh cargo check --locked -p rustok-admin --lib --no-default-features --features "$ADMIN_PROFILE" --target wasm32-unknown-unknown
 
   gate:
     name: Index Contract Gate
@@ -197,6 +402,8 @@ jobs:
       - source-contracts
       - canonical-digest
       - focused-cargo
+      - product-host
+      - admin-profiles
     runs-on: ubuntu-latest
     steps:
       - name: Require all focused checks
@@ -204,7 +411,9 @@ jobs:
         run: |
           if [[ "${{ needs.source-contracts.result }}" != "success" ]] || \
              [[ "${{ needs.canonical-digest.result }}" != "success" ]] || \
-             [[ "${{ needs.focused-cargo.result }}" != "success" ]]; then
+             [[ "${{ needs.focused-cargo.result }}" != "success" ]] || \
+             [[ "${{ needs.product-host.result }}" != "success" ]] || \
+             [[ "${{ needs.admin-profiles.result }}" != "success" ]]; then
             echo "::error::Index contract CI did not complete successfully."
             exit 1
           fi

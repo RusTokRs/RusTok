@@ -65,7 +65,7 @@ impl InProcessMcpAdapter {
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?;
+                .map_err(|err| AiError::Mcp(err.to_string()))?;
                 (
                     serde_json::to_value(&response).map_err(json_err)?,
                     vec![scaffold_source_lineage(
@@ -83,7 +83,7 @@ impl InProcessMcpAdapter {
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?;
+                .map_err(|err| AiError::Mcp(err.to_string()))?;
                 (
                     serde_json::to_value(&response).map_err(json_err)?,
                     vec![scaffold_source_lineage(
@@ -101,7 +101,7 @@ impl InProcessMcpAdapter {
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?;
+                .map_err(|err| AiError::Mcp(err.to_string()))?;
                 (
                     serde_json::to_value(&response).map_err(json_err)?,
                     vec![scaffold_source_lineage(

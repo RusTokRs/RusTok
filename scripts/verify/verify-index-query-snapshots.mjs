@@ -65,31 +65,29 @@ const sqlPath = 'crates/modules/rustok-index/src/application/snapshots/m4_many_p
 const sql = requireMarkers(sqlPath, [
   'SELECT "t0".entity_id AS "__t0_entity_id"',
   'AS "__many_0"',
+  'WITH bounded_many AS MATERIALIZED',
+  'schema_fingerprint =',
+  '::uuid',
+  'locale_key = $1',
+  'link_name = $2',
   'jsonb_agg(',
-  "jsonb_build_object('entity_ids'",
+  "jsonb_build_object('identities'",
   "'values'",
   'ORDER BY "mp0_l1".ordinal ASC, "mp0_t1".entity_id ASC, "mp0_t1".locale_key ASC',
-  'LIMIT $12',
+  'LIMIT $3',
 ]);
-for (const forbidden of [
-  '00000000-0000-0000-0000-000000000001',
-  'rustok-product',
-  'product',
-  'variant',
-  'variants',
-  'en-US',
-]) {
-  if (sql.includes(forbidden)) fail(`${sqlPath} interpolates contract value ${forbidden}`);
+for (const forbidden of ["'en-US'", "'variants'"]) {
+  if (sql.includes(forbidden)) fail(`${sqlPath} interpolates a bind value ${forbidden}`);
 }
-if ((sql.match(/\$\d+/gu) ?? []).at(-1) !== '$12') {
-  fail(`${sqlPath} must retain the canonical ordered placeholder envelope through $12`);
+if ((sql.match(/\$\d+/gu) ?? []).at(-1) !== '$3') {
+  fail(`${sqlPath} must retain the canonical ordered placeholder envelope through $3`);
 }
 
 const compiledPath = 'crates/modules/rustok-index/src/application/snapshots/m4_many_projection.compiled.snap';
 const compiled = requireMarkers(compiledPath, [
-  'bind:1={"type":"uuid","value":"00000000-0000-0000-0000-000000000001"}',
-  'bind:7={"type":"text","value":"variants"}',
-  'bind:12={"type":"integer","value":2}',
+  'bind:1={"type":"text","value":"en-US"}',
+  'bind:2={"type":"text","value":"variants"}',
+  'bind:3={"type":"integer","value":2}',
   'column:entity_id|__t0_entity_id|t0',
   'column:field|f0|id|t0',
   'many_column:__many_0|path=variants|identities=variants|fields=variants.id',

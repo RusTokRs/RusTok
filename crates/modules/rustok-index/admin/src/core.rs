@@ -2,7 +2,8 @@ use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFi
 
 use crate::i18n::t;
 use crate::model::{
-    CancelActionResult, IndexAdminBootstrap, ReplayActionResult, RetryActionResult,
+    CancelActionResult, CancelActionStatus, IndexAdminBootstrap, IndexJobSnapshot,
+    ReplayActionResult, ReplayActionStatus, RetryActionResult, RetryActionStatus, SchemaReadiness,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +24,14 @@ pub struct IndexSchemaRowViewModel {
     pub fields_count: String,
     pub links_count: String,
     pub owner_module: String,
+    pub readiness: String,
+    pub can_replay: bool,
+}
+
+impl IndexSchemaRowViewModel {
+    pub fn key(&self) -> String {
+        format!("{}::{}@{}", self.module, self.entity, self.raw_version)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +44,13 @@ pub struct IndexTableRowViewModel {
 pub struct IndexSourceRowViewModel {
     pub name: String,
     pub entity: String,
-    pub mode: String,
+    pub owner_module: String,
+}
+
+impl IndexSourceRowViewModel {
+    pub fn key(&self) -> String {
+        format!("{} / {}", self.name, self.entity)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,12 +58,15 @@ pub struct IndexAdminOverviewViewModel {
     pub stat_cards: Vec<IndexStatCardViewModel>,
     pub module_description: String,
     pub engine_type: String,
-    pub current_milestone: String,
-    pub rewrite_status: String,
+    pub module_version: String,
     pub partition_status: String,
     pub tables: Vec<IndexTableRowViewModel>,
     pub schemas: Vec<IndexSchemaRowViewModel>,
     pub sources: Vec<IndexSourceRowViewModel>,
+    pub source_catalog_available: bool,
+    pub can_manage_jobs: bool,
+    pub operator_unavailable: Option<String>,
+    pub recent_jobs: Vec<IndexJobSnapshot>,
     pub operations_summary: Vec<IndexStatCardViewModel>,
     pub inbox_summary: Vec<IndexStatCardViewModel>,
     pub job_summary: Vec<IndexStatCardViewModel>,
@@ -59,6 +77,25 @@ pub fn build_index_admin_overview_view_model(
     locale: Option<&str>,
     bootstrap: IndexAdminBootstrap,
 ) -> IndexAdminOverviewViewModel {
+    let source_catalog_available = bootstrap.operations.registered_sources.is_some();
+    let can_manage_jobs = bootstrap.operations.replay_available && bootstrap.operations.can_manage;
+    let operator_unavailable = if !bootstrap.operations.replay_available {
+        Some(t(
+            locale,
+            "index.action.runtimeUnavailable",
+            "The replay runtime is not mounted.",
+        ))
+    } else if !bootstrap.operations.can_manage {
+        Some(t(
+            locale,
+            "index.action.readOnly",
+            "Read-only: changing jobs requires MODULES_MANAGE.",
+        ))
+    } else {
+        None
+    };
+    let engine_type = format!("{} {}", bootstrap.storage.backend, bootstrap.storage.layout);
+    let unavailable = t(locale, "index.info.unavailable", "Unavailable");
     let stat_cards = vec![
         IndexStatCardViewModel {
             label: t(locale, "index.info.tenant", "Tenant"),
@@ -72,25 +109,36 @@ pub fn build_index_admin_overview_view_model(
         },
         IndexStatCardViewModel {
             label: t(locale, "index.info.engine", "Storage Engine"),
-            value: bootstrap.module.engine_type.clone(),
+            value: engine_type.clone(),
             hint: Some(format!(
                 "{} / {}",
                 bootstrap.storage.backend, bootstrap.storage.layout
             )),
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.info.milestone", "Active Milestone"),
-            value: bootstrap.module.current_milestone.clone(),
-            hint: Some(bootstrap.module.rewrite_status.clone()),
+            label: t(locale, "index.info.version", "Module Version"),
+            value: bootstrap.module.version.clone(),
+            hint: None,
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.info.schemasCount", "Registered Schemas"),
+            label: t(locale, "index.info.schemasCount", "Schema Contracts"),
             value: bootstrap.schemas.len().to_string(),
             hint: None,
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.info.sourcesCount", "Replay Sources"),
-            value: bootstrap.operations.registered_sources.len().to_string(),
+            label: t(
+                locale,
+                "index.info.sourcesCount",
+                "Selected Source Bindings",
+            ),
+            value: bootstrap
+                .operations
+                .registered_sources
+                .as_ref()
+                .map_or_else(
+                    || unavailable.to_owned(),
+                    |sources| sources.len().to_string(),
+                ),
             hint: None,
         },
         IndexStatCardViewModel {
@@ -109,14 +157,18 @@ pub fn build_index_admin_overview_view_model(
             raw_version: s.version,
             qualified_name: format!("{}.{}", s.module, s.entity),
             version: format!("v{}", s.version),
-            fingerprint: if s.fingerprint.len() > 16 {
-                format!("{}...", &s.fingerprint[..16])
+            fingerprint: if s.fingerprint.chars().count() > 16 {
+                format!("{}...", s.fingerprint.chars().take(16).collect::<String>())
             } else {
                 s.fingerprint
             },
             fields_count: s.field_count.to_string(),
             links_count: s.link_count.to_string(),
-            owner_module: s.owner_module,
+            owner_module: s.owner_module.unwrap_or_else(|| unavailable.to_owned()),
+            readiness: describe_readiness(locale, s.readiness).to_owned(),
+            can_replay: can_manage_jobs
+                && s.source_selected
+                && s.readiness == SchemaReadiness::Ready,
         })
         .collect();
 
@@ -133,31 +185,24 @@ pub fn build_index_admin_overview_view_model(
     let sources = bootstrap
         .operations
         .registered_sources
+        .unwrap_or_default()
         .into_iter()
         .map(|src| IndexSourceRowViewModel {
             name: src.name,
             entity: src.entity,
-            mode: src.mode,
+            owner_module: src.owner_module,
         })
         .collect();
 
-    let operations_summary = vec![
-        IndexStatCardViewModel {
-            label: t(locale, "index.ops.replayRunner", "Replay Runner"),
-            value: bootstrap.operations.replay_runner,
-            hint: None,
+    let operations_summary = vec![IndexStatCardViewModel {
+        label: t(locale, "index.ops.replayRunner", "Replay Runner"),
+        value: if bootstrap.operations.replay_available {
+            t(locale, "index.info.mounted", "Mounted")
+        } else {
+            unavailable.clone()
         },
-        IndexStatCardViewModel {
-            label: t(locale, "index.ops.reconciliation", "Reconciliation"),
-            value: bootstrap.operations.reconciliation_mode,
-            hint: None,
-        },
-        IndexStatCardViewModel {
-            label: t(locale, "index.ops.driftRepair", "Drift Repair"),
-            value: bootstrap.operations.drift_repair,
-            hint: None,
-        },
-    ];
+        hint: None,
+    }];
 
     let inbox = &bootstrap.operations.inbox_metrics;
     let inbox_summary = vec![
@@ -174,13 +219,18 @@ pub fn build_index_admin_overview_view_model(
                 .map(|s| format!("{} s lag", s)),
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.inbox.deadLetter", "Dead-letter"),
-            value: inbox.dead_letter_messages.to_string(),
+            label: t(locale, "index.inbox.applied", "Applied"),
+            value: inbox.applied_messages.to_string(),
             hint: None,
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.inbox.failed", "Failed"),
-            value: inbox.failed_messages.to_string(),
+            label: t(locale, "index.inbox.rejected", "Rejected"),
+            value: inbox.rejected_messages.to_string(),
+            hint: None,
+        },
+        IndexStatCardViewModel {
+            label: t(locale, "index.inbox.processing", "Processing"),
+            value: inbox.processing_messages.to_string(),
             hint: None,
         },
     ];
@@ -209,21 +259,31 @@ pub fn build_index_admin_overview_view_model(
         },
     ];
 
-    let qd = &bootstrap.operations.query_diagnostics;
+    let qd = bootstrap.operations.query_diagnostics.as_ref();
     let query_diagnostics_summary = vec![
         IndexStatCardViewModel {
             label: t(locale, "index.query.catalogStatus", "Query Catalog Status"),
-            value: qd.catalog_status.clone(),
+            value: if qd.is_some() {
+                t(locale, "index.info.mounted", "Mounted")
+            } else {
+                unavailable.clone()
+            },
             hint: None,
         },
         IndexStatCardViewModel {
             label: t(locale, "index.query.admissionRules", "Admission Rules"),
-            value: qd.admission_rules_count.to_string(),
+            value: qd.map_or_else(
+                || unavailable.clone(),
+                |qd| qd.admission_rules_count.to_string(),
+            ),
             hint: None,
         },
         IndexStatCardViewModel {
             label: t(locale, "index.query.linkRules", "Link Availability Rules"),
-            value: qd.link_availability_rules_count.to_string(),
+            value: qd.map_or_else(
+                || unavailable.clone(),
+                |qd| qd.link_availability_rules_count.to_string(),
+            ),
             hint: None,
         },
         IndexStatCardViewModel {
@@ -232,7 +292,7 @@ pub fn build_index_admin_overview_view_model(
                 "index.query.partitionStrategy",
                 "Partition Strategy",
             ),
-            value: qd.partition_strategy.clone(),
+            value: bootstrap.storage.partition_status.clone(),
             hint: None,
         },
     ];
@@ -240,13 +300,16 @@ pub fn build_index_admin_overview_view_model(
     IndexAdminOverviewViewModel {
         stat_cards,
         module_description: bootstrap.module.description,
-        engine_type: bootstrap.module.engine_type,
-        current_milestone: bootstrap.module.current_milestone,
-        rewrite_status: bootstrap.module.rewrite_status,
+        engine_type,
+        module_version: bootstrap.module.version,
         partition_status: bootstrap.storage.partition_status,
         tables,
         schemas,
         sources,
+        source_catalog_available,
+        can_manage_jobs,
+        operator_unavailable,
+        recent_jobs: bootstrap.operations.recent_jobs,
         operations_summary,
         inbox_summary,
         job_summary,
@@ -268,62 +331,195 @@ pub fn format_index_admin_bootstrap_error(
     )
 }
 
-pub fn format_replay_action_result(locale: Option<&str>, result: &ReplayActionResult) -> String {
-    if result.success {
-        format!(
-            "{}: {} ({}: {}, {}: {})",
-            t(
-                locale,
-                "index.action.rebuildSuccess",
-                "Rebuild completed successfully"
-            ),
-            result.status,
+fn describe_readiness(locale: Option<&str>, readiness: SchemaReadiness) -> String {
+    match readiness {
+        SchemaReadiness::Ready => t(
+            locale,
+            "index.schema.ready",
+            "Registered and matches runtime",
+        ),
+        SchemaReadiness::Missing => t(
+            locale,
+            "index.schema.missing",
+            "Not registered for this tenant",
+        ),
+        SchemaReadiness::Inactive => t(locale, "index.schema.inactive", "Inactive"),
+        SchemaReadiness::Unselected => t(
+            locale,
+            "index.schema.unselected",
+            "Not selected by the runtime",
+        ),
+        SchemaReadiness::ContractMismatch => t(
+            locale,
+            "index.schema.mismatch",
+            "Stored schema differs from runtime",
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedbackTone {
+    Success,
+    Neutral,
+    Error,
+}
+
+pub fn format_replay_action_result(
+    locale: Option<&str>,
+    result: &ReplayActionResult,
+) -> (FeedbackTone, String) {
+    use FeedbackTone::*;
+    let (tone, key, fallback) = match result.status {
+        ReplayActionStatus::Busy => (
+            Neutral,
+            "index.action.replayBusy",
+            "Replay is busy or in backoff",
+        ),
+        ReplayActionStatus::AlreadyComplete => (
+            Success,
+            "index.action.replayAlreadyComplete",
+            "Replay was already complete",
+        ),
+        ReplayActionStatus::Complete => {
+            (Success, "index.action.rebuildSuccess", "Replay completed")
+        }
+        ReplayActionStatus::Cancelled => {
+            (Neutral, "index.action.replayCancelled", "Replay cancelled")
+        }
+        ReplayActionStatus::Yielded => (
+            Neutral,
+            "index.action.replayYielded",
+            "Replay yielded; more pages remain",
+        ),
+        ReplayActionStatus::RetryScheduled => (
+            Neutral,
+            "index.action.replayRetry",
+            "Replay retry scheduled",
+        ),
+        ReplayActionStatus::FailedPermanent => (
+            Error,
+            "index.action.replayPermanent",
+            "Replay failed permanently",
+        ),
+        ReplayActionStatus::FailedExhausted => (
+            Error,
+            "index.action.replayExhausted",
+            "Replay retry budget exhausted",
+        ),
+    };
+    let mut text = t(locale, key, fallback);
+    if let Some(seconds) = result.retry_after_seconds {
+        text.push_str(&format!(
+            " ({}: {seconds})",
+            t(locale, "index.action.retryDelay", "Retry delay in seconds")
+        ));
+    }
+    if let Some(job_id) = &result.job_id {
+        text.push_str(&format!(" · {job_id}"));
+    }
+    if result.pages_processed > 0 {
+        text.push_str(&format!(
+            " · {}: {}, {}: {}",
             t(locale, "index.action.pagesProcessed", "Pages processed"),
             result.pages_processed,
             t(locale, "index.action.mutationsApplied", "Mutations applied"),
-            result.mutations_applied,
-        )
-    } else {
-        result.message.clone()
+            result.mutations_applied
+        ));
     }
+    (tone, text)
 }
 
-pub fn format_retry_action_result(locale: Option<&str>, result: &RetryActionResult) -> String {
-    if result.success {
-        let epoch_hint = result
-            .retry_epoch
-            .map(|e| format!(" (epoch {e})"))
-            .unwrap_or_default();
-        format!(
-            "{}: {}{} (job: {})",
-            t(
-                locale,
-                "index.action.retrySuccess",
-                "Job successfully requeued"
-            ),
-            result.outcome,
-            epoch_hint,
-            result.job_id,
-        )
-    } else {
-        result.message.clone()
+pub fn format_retry_action_result(
+    locale: Option<&str>,
+    result: &RetryActionResult,
+) -> (FeedbackTone, String) {
+    use FeedbackTone::*;
+    let (tone, key, fallback) = match result.outcome {
+        RetryActionStatus::Requeued => (
+            Success,
+            "index.action.retrySuccess",
+            "Original job requeued",
+        ),
+        RetryActionStatus::NotFound => (
+            Error,
+            "index.action.jobNotFound",
+            "Job not found for this tenant",
+        ),
+        RetryActionStatus::NotFailed => (
+            Neutral,
+            "index.action.retryNotFailed",
+            "Job is not failed; nothing was requeued",
+        ),
+        RetryActionStatus::ScopeUnavailable => (
+            Error,
+            "index.action.retryScopeUnavailable",
+            "The original job scope is no longer available",
+        ),
+    };
+    let mut text = format!("{} · {}", t(locale, key, fallback), result.job_id);
+    if let Some(epoch) = result.retry_epoch {
+        text.push_str(&format!(
+            " ({} {epoch})",
+            t(locale, "index.action.retryEpoch", "epoch")
+        ));
     }
+    (tone, text)
 }
 
-pub fn format_cancel_action_result(locale: Option<&str>, result: &CancelActionResult) -> String {
-    if result.success {
-        format!(
-            "{}: {} (job: {})",
-            t(
-                locale,
-                "index.action.cancelSuccess",
-                "Cancellation requested successfully"
-            ),
-            result.outcome,
-            result.job_id,
+pub fn format_cancel_action_result(
+    locale: Option<&str>,
+    result: &CancelActionResult,
+) -> (FeedbackTone, String) {
+    use FeedbackTone::*;
+    let (tone, key, fallback) = match result.outcome {
+        CancelActionStatus::Requested => (
+            Neutral,
+            "index.action.cancelRequested",
+            "Cancellation requested; the job has not stopped yet",
+        ),
+        CancelActionStatus::Cancelled => {
+            (Success, "index.action.replayCancelled", "Replay cancelled")
+        }
+        CancelActionStatus::AlreadySucceeded => (
+            Neutral,
+            "index.action.replayAlreadyComplete",
+            "Replay was already complete",
+        ),
+        CancelActionStatus::AlreadyFailed => (
+            Neutral,
+            "index.action.cancelAlreadyFailed",
+            "Replay had already failed",
+        ),
+        CancelActionStatus::AlreadyCancelled => (
+            Neutral,
+            "index.action.cancelAlreadyCancelled",
+            "Replay was already cancelled",
+        ),
+        CancelActionStatus::NotFound => (
+            Error,
+            "index.action.jobNotFound",
+            "Job not found for this tenant",
+        ),
+    };
+    (
+        tone,
+        format!("{} · {}", t(locale, key, fallback), result.job_id),
+    )
+}
+
+pub fn source_catalog_empty_message(locale: Option<&str>, available: bool) -> String {
+    if available {
+        t(
+            locale,
+            "index.source.empty",
+            "No replay sources registered.",
         )
     } else {
-        result.message.clone()
+        t(
+            locale,
+            "index.source.unavailable",
+            "Source registry is not mounted.",
+        )
     }
 }
 
@@ -387,6 +583,11 @@ pub fn index_schema_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .width(120)
             .align(ColumnAlign::Right)
             .not_sortable(),
+        GridColumnDef::new(
+            "readiness",
+            t(locale, "index.schema.readiness", "Registration"),
+        )
+        .width(220),
     ]
 }
 
@@ -555,7 +756,7 @@ pub fn index_source_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         .width(200)
         .align(ColumnAlign::Left),
         GridColumnDef::new(
-            "mode",
+            "owner",
             if is_ru {
                 "Режим воспроизведения"
             } else {
@@ -588,9 +789,9 @@ pub fn matches_index_source_filter(
             {
                 return false;
             }
-            ("mode", FilterValue::Text(q))
+            ("owner", FilterValue::Text(q))
                 if !source
-                    .mode
+                    .owner_module
                     .to_ascii_lowercase()
                     .contains(&q.to_ascii_lowercase()) =>
             {
@@ -615,7 +816,7 @@ pub fn filter_index_sources(
                 if !term.is_empty()
                     && !s.name.to_ascii_lowercase().contains(&term)
                     && !s.entity.to_ascii_lowercase().contains(&term)
-                    && !s.mode.to_ascii_lowercase().contains(&term)
+                    && !s.owner_module.to_ascii_lowercase().contains(&term)
                 {
                     return false;
                 }
@@ -643,9 +844,7 @@ mod tests {
                 slug: "index".to_string(),
                 name: "Index".to_string(),
                 description: "Cross-module relational index and query engine.".to_string(),
-                rewrite_status: "in_progress".to_string(),
-                current_milestone: "M7 (Product / Variant / SalesChannel Graph)".to_string(),
-                engine_type: "PostgreSQL JSONB".to_string(),
+                version: "0.1.0".to_owned(),
             },
             storage: IndexStorageSnapshot {
                 backend: "PostgreSQL".to_string(),
@@ -674,7 +873,9 @@ mod tests {
                     fingerprint: "abcdef1234567890abcdef1234567890".to_string(),
                     field_count: 12,
                     link_count: 2,
-                    owner_module: "rustok-distribution".to_string(),
+                    owner_module: Some("rustok-distribution".to_string()),
+                    readiness: SchemaReadiness::Ready,
+                    source_selected: true,
                 },
                 IndexSchemaSnapshot {
                     module: "catalog".to_string(),
@@ -683,25 +884,25 @@ mod tests {
                     fingerprint: "1234567890abcdef1234567890abcdef".to_string(),
                     field_count: 4,
                     link_count: 0,
-                    owner_module: "rustok-distribution".to_string(),
+                    owner_module: Some("rustok-distribution".to_string()),
+                    readiness: SchemaReadiness::Ready,
+                    source_selected: true,
                 },
             ],
             operations: IndexOperationsSnapshot {
-                replay_runner: "bounded_1024_pages".to_string(),
-                reconciliation_mode: "multi_pass_cursor".to_string(),
-                drift_repair: "recovery_aware".to_string(),
-                registered_sources: vec![IndexSourceDescriptorSnapshot {
+                replay_available: true,
+                can_manage: true,
+                registered_sources: Some(vec![IndexSourceDescriptorSnapshot {
                     name: "product-postgres-primary".to_string(),
                     entity: "product".to_string(),
-                    mode: "scan_and_load".to_string(),
-                }],
+                    owner_module: "distribution".to_string(),
+                }]),
                 inbox_metrics: IndexInboxMetricsSnapshot {
                     total_messages: 14,
                     pending_messages: 3,
                     processing_messages: 1,
-                    completed_messages: 9,
-                    failed_messages: 1,
-                    dead_letter_messages: 0,
+                    applied_messages: 9,
+                    rejected_messages: 1,
                     oldest_pending_age_seconds: Some(42),
                 },
                 job_metrics: IndexJobMetricsSnapshot {
@@ -713,12 +914,11 @@ mod tests {
                     cancelled_jobs: 0,
                     retry_recovery_count: 2,
                 },
-                query_diagnostics: IndexQueryDiagnosticsSnapshot {
-                    catalog_status: "Active".to_string(),
+                query_diagnostics: Some(IndexQueryDiagnosticsSnapshot {
                     admission_rules_count: 2,
                     link_availability_rules_count: 1,
-                    partition_strategy: "fail_closed_shadow_only".to_string(),
-                },
+                }),
+                recent_jobs: Vec::new(),
             },
         }
     }
@@ -730,10 +930,7 @@ mod tests {
         assert_eq!(view_model.stat_cards.len(), 7);
         assert_eq!(view_model.stat_cards[0].value, "demo");
         assert_eq!(view_model.stat_cards[2].value, "PostgreSQL JSONB");
-        assert_eq!(
-            view_model.stat_cards[3].value,
-            "M7 (Product / Variant / SalesChannel Graph)"
-        );
+        assert_eq!(view_model.stat_cards[3].value, "0.1.0");
         assert_eq!(view_model.stat_cards[4].value, "2"); // 2 schemas
         assert_eq!(view_model.stat_cards[5].value, "1"); // 1 source
         assert_eq!(view_model.stat_cards[6].value, "3"); // 3 tables
@@ -751,18 +948,18 @@ mod tests {
         assert_eq!(view_model.sources.len(), 1);
         assert_eq!(view_model.sources[0].name, "product-postgres-primary");
 
-        assert_eq!(view_model.operations_summary.len(), 3);
-        assert_eq!(view_model.operations_summary[0].value, "bounded_1024_pages");
+        assert_eq!(view_model.operations_summary.len(), 1);
+        assert_eq!(view_model.operations_summary[0].value, "Mounted");
 
         // Inbox metrics summary
-        assert_eq!(view_model.inbox_summary.len(), 4);
+        assert_eq!(view_model.inbox_summary.len(), 5);
         assert_eq!(view_model.inbox_summary[0].value, "14"); // total
         assert_eq!(view_model.inbox_summary[1].value, "3"); // pending
         assert_eq!(
             view_model.inbox_summary[1].hint,
             Some("42 s lag".to_string())
         );
-        assert_eq!(view_model.inbox_summary[2].value, "0"); // dead-letter
+        assert_eq!(view_model.inbox_summary[2].value, "9"); // applied
 
         // Job metrics summary
         assert_eq!(view_model.job_summary.len(), 4);
@@ -778,129 +975,108 @@ mod tests {
     }
 
     #[test]
+    fn schema_keys_do_not_use_the_ambiguous_display_label() {
+        let mut sample = sample_bootstrap();
+        sample.schemas[0].module = "demo.catalog".into();
+        sample.schemas[1].module = "demo".into();
+        sample.schemas[1].entity = "catalog.product".into();
+        sample.schemas[1].version = sample.schemas[0].version;
+        let model = build_index_admin_overview_view_model(Some("en"), sample);
+        assert_eq!(
+            model.schemas[0].qualified_name,
+            model.schemas[1].qualified_name
+        );
+        assert_ne!(model.schemas[0].key(), model.schemas[1].key());
+    }
+
+    #[test]
+    fn source_rows_are_distinct_per_schema_and_unavailable_is_not_empty() {
+        let mut sample = sample_bootstrap();
+        let source = sample.operations.registered_sources.as_mut().unwrap();
+        let mut second = source[0].clone();
+        second.entity = "catalog::variant@1".to_owned();
+        source.push(second);
+        sample.operations.can_manage = false;
+        let rows = build_index_admin_overview_view_model(Some("en"), sample.clone());
+        assert_eq!(rows.sources.len(), 2);
+        assert_ne!(rows.sources[0].key(), rows.sources[1].key());
+        assert!(!rows.can_manage_jobs);
+        assert!(rows.schemas.iter().all(|row| !row.can_replay));
+
+        sample.operations.can_manage = true;
+        sample.operations.replay_available = false;
+        sample.operations.registered_sources = None;
+        let unavailable = build_index_admin_overview_view_model(Some("en"), sample);
+        assert!(!unavailable.can_manage_jobs);
+        assert!(!unavailable.source_catalog_available);
+    }
+
+    #[test]
     fn overview_view_model_localizes_properly_in_russian() {
         let view_model = build_index_admin_overview_view_model(Some("ru"), sample_bootstrap());
 
         assert_eq!(view_model.stat_cards[0].label, "Тенант");
         assert_eq!(view_model.stat_cards[1].label, "Основная локаль");
         assert_eq!(view_model.stat_cards[2].label, "Движок хранения");
-        assert_eq!(view_model.stat_cards[3].label, "Текущий майлстоун");
+        assert_eq!(view_model.stat_cards[3].label, "Версия модуля");
     }
 
     #[test]
-    fn format_replay_action_result_works_in_english_and_russian() {
-        let result = ReplayActionResult {
-            success: true,
-            job_id: Some("00000000-0000-0000-0000-000000000001".to_string()),
-            status: "complete".to_string(),
-            pages_processed: 5,
-            mutations_applied: 42,
-            message: "Replay completed successfully".to_string(),
+    fn pending_and_terminal_job_receipts_are_not_success_aliases() {
+        let mut result = ReplayActionResult {
+            job_id: Some("original-job".to_owned()),
+            status: ReplayActionStatus::Yielded,
+            retry_after_seconds: None,
+            pages_processed: 8,
+            mutations_applied: 5,
         };
-
-        let en_str = format_replay_action_result(Some("en"), &result);
-        assert!(en_str.contains("Rebuild completed successfully: complete"));
-        assert!(en_str.contains("Pages processed: 5"));
-        assert!(en_str.contains("Mutations applied: 42"));
-
-        let ru_str = format_replay_action_result(Some("ru"), &result);
-        assert!(ru_str.contains("Переиндексация успешно выполнена: complete"));
-        assert!(ru_str.contains("Обработано страниц: 5"));
-        assert!(ru_str.contains("Применено мутаций: 42"));
-
-        let err_result = ReplayActionResult {
-            success: false,
-            job_id: None,
-            status: "failed".to_string(),
-            pages_processed: 0,
-            mutations_applied: 0,
-            message: "Database connection failed".to_string(),
+        for status in [
+            ReplayActionStatus::Busy,
+            ReplayActionStatus::Yielded,
+            ReplayActionStatus::Cancelled,
+            ReplayActionStatus::RetryScheduled,
+        ] {
+            result.status = status;
+            let (tone, message) = format_replay_action_result(Some("en"), &result);
+            assert_eq!(tone, FeedbackTone::Neutral);
+            assert!(message.contains("original-job"));
+            assert!(!message.contains("completed"));
+        }
+        result.status = ReplayActionStatus::FailedExhausted;
+        assert_eq!(
+            format_replay_action_result(Some("ru"), &result).0,
+            FeedbackTone::Error
+        );
+        let missing = CancelActionResult {
+            job_id: "absent".to_owned(),
+            outcome: CancelActionStatus::NotFound,
         };
         assert_eq!(
-            format_replay_action_result(Some("en"), &err_result),
-            "Database connection failed"
+            format_cancel_action_result(Some("en"), &missing).0,
+            FeedbackTone::Error
         );
-    }
-
-    #[test]
-    fn format_cancel_action_result_works_in_english_and_russian() {
-        let result = CancelActionResult {
-            success: true,
-            job_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            outcome: "requested".to_string(),
-            message: "Cancellation requested".to_string(),
-        };
-
-        let en_str = format_cancel_action_result(Some("en"), &result);
-        assert!(en_str.contains("Cancellation requested successfully: requested"));
-        assert!(en_str.contains("job: 00000000-0000-0000-0000-000000000002"));
-
-        let ru_str = format_cancel_action_result(Some("ru"), &result);
-        assert!(ru_str.contains("Запрос на отмену задачи отправлен: requested"));
-
-        let err_result = CancelActionResult {
-            success: false,
-            job_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            outcome: "not_found".to_string(),
-            message: "Job not found".to_string(),
-        };
-        assert_eq!(
-            format_cancel_action_result(Some("en"), &err_result),
-            "Job not found"
-        );
-    }
-
-    #[test]
-    fn input_structs_can_be_instantiated() {
-        let trigger_input = TriggerReplayInput {
-            schema_module: "catalog".to_string(),
-            schema_entity: "product".to_string(),
-            schema_version: 1,
-            locale: Some("en".to_string()),
-        };
-        assert_eq!(trigger_input.schema_module, "catalog");
-
-        let cancel_input = CancelJobInput {
-            job_id: "test-uuid".to_string(),
-        };
-        assert_eq!(cancel_input.job_id, "test-uuid");
-
-        let retry_input = RetryJobInput {
-            job_id: "test-uuid-retry".to_string(),
-            reason: Some("manual operator retry".to_string()),
-        };
-        assert_eq!(retry_input.job_id, "test-uuid-retry");
-    }
-
-    #[test]
-    fn format_retry_action_result_works_in_english_and_russian() {
-        let result = RetryActionResult {
-            success: true,
-            job_id: "00000000-0000-0000-0000-000000000003".to_string(),
-            outcome: "requeued".to_string(),
+        let recovery = RetryActionResult {
+            job_id: "original-job".to_owned(),
+            outcome: RetryActionStatus::Requeued,
             retry_epoch: Some(3),
-            message: "Job successfully requeued (epoch 3)".to_string(),
         };
+        let (tone, message) = format_retry_action_result(Some("en"), &recovery);
+        assert_eq!(tone, FeedbackTone::Success);
+        assert!(message.contains("epoch 3"));
+    }
 
-        let en_str = format_retry_action_result(Some("en"), &result);
-        assert!(en_str.contains("requeued"));
-        assert!(en_str.contains("epoch 3"));
-        assert!(en_str.contains("00000000-0000-0000-0000-000000000003"));
-
-        let ru_str = format_retry_action_result(Some("ru"), &result);
-        assert!(!ru_str.is_empty());
-
-        let not_failed = RetryActionResult {
-            success: false,
-            job_id: "00000000-0000-0000-0000-000000000003".to_string(),
-            outcome: "not_failed".to_string(),
-            retry_epoch: None,
-            message: "Job is not in a failed state".to_string(),
-        };
-        assert_eq!(
-            format_retry_action_result(Some("en"), &not_failed),
-            "Job is not in a failed state"
-        );
+    #[test]
+    fn missing_runtime_does_not_create_fake_counts_or_enable_replay() {
+        let mut bootstrap = sample_bootstrap();
+        bootstrap.operations.registered_sources = None;
+        bootstrap.operations.replay_available = false;
+        bootstrap.operations.query_diagnostics = None;
+        let model = build_index_admin_overview_view_model(Some("en"), bootstrap);
+        assert!(!model.source_catalog_available);
+        assert!(model.sources.is_empty());
+        assert_eq!(model.stat_cards[5].value, "Unavailable");
+        assert_eq!(model.query_diagnostics_summary[1].value, "Unavailable");
+        assert!(model.schemas.iter().all(|schema| !schema.can_replay));
     }
 
     #[test]
@@ -930,6 +1106,8 @@ mod tests {
             fields_count: "5".into(),
             links_count: "1".into(),
             owner_module: "rustok-catalog".into(),
+            readiness: "Ready".into(),
+            can_replay: true,
         };
         let s2 = IndexSchemaRowViewModel {
             module: "order".into(),
@@ -941,6 +1119,8 @@ mod tests {
             fields_count: "8".into(),
             links_count: "2".into(),
             owner_module: "rustok-order".into(),
+            readiness: "Ready".into(),
+            can_replay: true,
         };
         let list = vec![s1.clone(), s2.clone()];
 
@@ -1001,12 +1181,12 @@ mod tests {
             IndexSourceRowViewModel {
                 name: "products_replay".to_string(),
                 entity: "product".to_string(),
-                mode: "streaming".to_string(),
+                owner_module: "streaming".to_string(),
             },
             IndexSourceRowViewModel {
                 name: "orders_replay".to_string(),
                 entity: "order".to_string(),
-                mode: "snapshot".to_string(),
+                owner_module: "snapshot".to_string(),
             },
         ];
 

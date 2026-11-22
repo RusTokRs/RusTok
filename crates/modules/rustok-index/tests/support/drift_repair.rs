@@ -24,8 +24,8 @@ use rustok_index::{
     IndexSourceAbsenceCatalog, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
     IndexSourceCatalog, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
     IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName,
-    LinkedEntityKey, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
-    SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+    LinkedEntityKey, LocaleKey, LocaleMode, ModuleName, PostgresIndexOrphanLinkAuthorityFence,
+    SchemaRef, SchemaVersion, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
     infrastructure::postgres::{
         IndexDriftDigestFindingRequest, IndexDriftFindingScope, IndexDriftFindingSeverity,
         MutationDelivery, PostgresIndexDriftFindingWriter,
@@ -37,7 +37,8 @@ use rustok_index::{
     },
 };
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend,
+    Statement, TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use sha2::{Digest, Sha256};
@@ -195,39 +196,116 @@ impl FixtureSchemas {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FixtureAuthority {
+    db: DatabaseConnection,
     mutations: Arc<RwLock<BTreeMap<EntityKey, IndexMutation>>>,
     absences: Arc<RwLock<BTreeMap<EntityKey, u64>>>,
 }
 
 impl FixtureAuthority {
-    pub fn set_mutation(&self, mutation: IndexMutation) {
+    // The owner fixture has in-memory records but serializes changes with the same transactional
+    // PostgreSQL lock that its orphan fence reads. This is not the Index entity lock.
+    async fn write_guard(&self) -> DatabaseTransaction {
+        let tx = self.db.begin().await.expect("begin owner write");
+        tx.execute_unprepared("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':fixture-owner', 0))")
+            .await.expect("lock owner writes");
+        tx
+    }
+
+    pub async fn set_mutation(&self, mutation: IndexMutation) {
+        let tx = self.write_guard().await;
         self.mutations
             .write()
             .expect("fixture mutation lock")
             .insert(mutation.key().clone(), mutation);
+        tx.commit().await.expect("commit owner write");
     }
 
-    pub fn clear_mutation(&self, key: &EntityKey) {
+    pub async fn clear_mutation(&self, key: &EntityKey) {
+        let tx = self.write_guard().await;
         self.mutations
             .write()
             .expect("fixture mutation lock")
             .remove(key);
+        tx.commit().await.expect("commit owner write");
     }
 
-    pub fn set_absence(&self, key: EntityKey, source_version: u64) {
+    pub async fn set_absence(&self, key: EntityKey, source_version: u64) {
+        let tx = self.write_guard().await;
         self.absences
             .write()
             .expect("fixture absence lock")
             .insert(key, source_version);
+        tx.commit().await.expect("commit owner write");
     }
 
-    pub fn clear_absence(&self, key: &EntityKey) {
+    pub async fn clear_absence(&self, key: &EntityKey) {
+        let tx = self.write_guard().await;
         self.absences
             .write()
             .expect("fixture absence lock")
             .remove(key);
+        tx.commit().await.expect("commit owner write");
+    }
+}
+
+#[async_trait]
+impl PostgresIndexOrphanLinkAuthorityFence for FixtureAuthority {
+    async fn verify_and_lock(
+        &self,
+        transaction: &DatabaseTransaction,
+        target: &IndexDriftRepairTarget,
+    ) -> Result<(), IndexDriftRepairFailure> {
+        let changed =
+            || IndexDriftRepairFailure::retryable("index_drift_repair_source_changed").unwrap();
+        let IndexDriftRepairTarget::OrphanLink {
+            source_key,
+            indexed_source_version,
+            link_name,
+            ordinal,
+            target,
+            target_absence_source_version,
+        } = target
+        else {
+            return Err(changed());
+        };
+        transaction.execute_unprepared("SELECT pg_advisory_xact_lock_shared(hashtextextended(current_schema() || ':fixture-owner', 0))")
+            .await.map_err(|_| changed())?;
+        let mutations = self.mutations.read().expect("fixture mutation lock");
+        let Some(IndexMutation::Upsert { record, .. }) = mutations.get(source_key) else {
+            return Err(changed());
+        };
+        if record.source_version != *indexed_source_version
+            || record
+                .links
+                .iter()
+                .find(|link| &link.name == link_name)
+                .and_then(|link| link.targets.get(*ordinal as usize))
+                != Some(target)
+        {
+            return Err(changed());
+        }
+        let key = EntityKey {
+            tenant_id: source_key.tenant_id,
+            schema: target.schema.clone(),
+            entity_id: target.entity_id,
+            locale: target.locale.clone(),
+        };
+        let absence = match mutations.get(&key) {
+            Some(IndexMutation::Upsert { .. }) => None,
+            Some(IndexMutation::Delete { source_version, .. }) => Some(*source_version),
+            None => self
+                .absences
+                .read()
+                .expect("fixture absence lock")
+                .get(&key)
+                .copied(),
+        };
+        if absence != Some(*target_absence_source_version) {
+            return Err(changed());
+        }
+        Ok(())
     }
 }
 
@@ -280,11 +358,22 @@ pub struct FixtureRuntime {
     pub absence: SharedIndexSourceAbsenceRegistry,
     pub authority: FixtureAuthority,
     pub contracts: FixtureSchemas,
+    missing_locale: Option<LocaleKey>,
 }
 
 impl FixtureRuntime {
     pub async fn setup(database: &TestDatabase) -> TestResult<Self> {
-        let contracts = FixtureSchemas::new()?;
+        Self::setup_with_missing_locale(database, None).await
+    }
+
+    pub async fn setup_with_missing_locale(
+        database: &TestDatabase,
+        missing_locale: Option<LocaleKey>,
+    ) -> TestResult<Self> {
+        let mut contracts = FixtureSchemas::new()?;
+        if missing_locale.is_some() {
+            contracts.missing.locale_mode = LocaleMode::Required;
+        }
         let mut schema_catalog = IndexSchemaSourceCatalog::new();
         for schema in contracts.all() {
             schema_catalog.register(SOURCE_OWNER, schema)?;
@@ -292,7 +381,11 @@ impl FixtureRuntime {
         let shared = schema_catalog.materialize()?;
         let schemas = shared.shared();
 
-        let authority = FixtureAuthority::default();
+        let authority = FixtureAuthority {
+            db: database.connection().await?,
+            mutations: Arc::default(),
+            absences: Arc::default(),
+        };
         let mut source_catalog = IndexSourceCatalog::new();
         source_catalog.register(
             SOURCE_OWNER,
@@ -330,6 +423,7 @@ impl FixtureRuntime {
             absence,
             authority,
             contracts,
+            missing_locale,
         })
     }
 
@@ -338,7 +432,7 @@ impl FixtureRuntime {
             tenant_id,
             schema: self.contracts.missing.reference.clone(),
             entity_id,
-            locale: None,
+            locale: self.missing_locale.clone(),
         }
     }
 
@@ -439,7 +533,7 @@ pub async fn apply_record(
     PostgresMutationStore::new(database.connection().await?)
         .apply(runtime.schemas.as_ref(), &delivery)
         .await?;
-    runtime.authority.set_mutation(mutation);
+    runtime.authority.set_mutation(mutation).await;
     Ok(())
 }
 
@@ -467,14 +561,22 @@ pub async fn create_missing_finding(
         absence_source_version,
         b"index_present",
     );
+    let scope = match key.locale {
+        Some(locale) => IndexDriftFindingScope::Entity {
+            schema: key.schema,
+            entity_id: key.entity_id,
+            locale,
+        },
+        None => IndexDriftFindingScope::EntityWithoutLocale {
+            schema: key.schema,
+            entity_id: key.entity_id,
+        },
+    };
     let request = IndexDriftDigestFindingRequest::new(
         database.tenant_id,
         MISSING_CHECK,
         IndexDriftFindingSeverity::Error,
-        IndexDriftFindingScope::EntityWithoutLocale {
-            schema: key.schema.clone(),
-            entity_id: key.entity_id,
-        },
+        scope,
         expected,
         actual,
     )?;
@@ -664,10 +766,15 @@ pub async fn missing_owner(
     )?))
 }
 
-pub async fn orphan_owner(database: &TestDatabase) -> TestResult<Arc<dyn IndexDriftRepairOwner>> {
-    let base: Arc<dyn IndexDriftRepairOwner> = Arc::new(
-        PostgresIndexDriftOrphanLinkRepairOwner::new(database.connection().await?)?,
-    );
+pub async fn orphan_owner(
+    database: &TestDatabase,
+    runtime: &FixtureRuntime,
+) -> TestResult<Arc<dyn IndexDriftRepairOwner>> {
+    let base: Arc<dyn IndexDriftRepairOwner> =
+        Arc::new(PostgresIndexDriftOrphanLinkRepairOwner::new(
+            database.connection().await?,
+            Arc::new(runtime.authority.clone()),
+        )?);
     Ok(Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
         database.connection().await?,
         base,
@@ -975,13 +1082,25 @@ fn hash_entity_key(hasher: &mut Sha256, key: &EntityKey) {
     hash_component(hasher, key.tenant_id.as_bytes());
     hash_schema(hasher, &key.schema);
     hash_component(hasher, key.entity_id.as_bytes());
-    hash_component(hasher, b"no_locale");
+    hash_locale(hasher, key.locale.as_ref());
 }
 
 fn hash_linked_key(hasher: &mut Sha256, key: &LinkedEntityKey) {
     hash_schema(hasher, &key.schema);
     hash_component(hasher, key.entity_id.as_bytes());
-    hash_component(hasher, b"no_locale");
+    hash_locale(hasher, key.locale.as_ref());
+}
+
+fn hash_locale(hasher: &mut Sha256, locale: Option<&LocaleKey>) {
+    // The confirmed-finding commitment distinguishes a localized key from an
+    // absent locale; the reservation rejects evidence for any other identity.
+    match locale {
+        Some(locale) => {
+            hash_component(hasher, b"locale");
+            hash_component(hasher, locale.as_str().as_bytes());
+        }
+        None => hash_component(hasher, b"no_locale"),
+    }
 }
 
 fn hash_schema(hasher: &mut Sha256, schema: &SchemaRef) {

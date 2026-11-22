@@ -28,26 +28,13 @@ const runner = requireMarkers(runnerPath, [
   'lease.locale()',
   'checkpoint.locale_key = {prefix}9',
   "checkpoint.partition_key = ''",
-  'await_page_with_lease_heartbeats(',
+  'drive_page(',
 ]);
 if (runner.includes("checkpoint.locale_key = ''")) {
   fail(`${runnerPath} must not hard-code schema locale in the terminal success fence`);
 }
 for (const forbidden of ['partition_key()', 'partition: Option', 'targeted_rebuild', 'shadow_rebuild']) {
   if (runner.includes(forbidden)) fail(`${runnerPath} absorbed forbidden later scope: ${forbidden}`);
-}
-
-const gracefulPath =
-  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
-const graceful = requireMarkers(gracefulPath, [
-  'let lease_request = lease_request_for_run(&request, source_name)?;',
-  'let page_future = worker.run_next_page_interruptible(',
-  'request.page_request().clone(),',
-  'await_page_with_lease_heartbeats(',
-  'yield_after_host_interruption',
-]);
-if (graceful.includes('IndexReplayJobLeaseRequest::new(')) {
-  fail(`${gracefulPath} must use the common scoped lease helper`);
 }
 
 const graphqlPath = 'apps/server/src/graphql/index_replay.rs';

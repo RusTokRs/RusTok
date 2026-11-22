@@ -33,11 +33,11 @@ requireMarkers('crates/modules/rustok-index/src/application/query_runtime.rs', [
 
 const postgres = requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs', [
   'CompiledPostgresLocalizedPageQuery',
-  'domain::{IndexQuery, LocalizedEntityQuery, SchemaRef}',
+  'domain::{IndexQuery, IndexSchema, LocalizedEntityQuery, SchemaRef}',
   'fn admitted_localized_page_query(',
   'self.apply_admissions(&query.query, page_query.compiled_mut())?;',
   'fn apply_admissions(',
-  '.apply_link_target_availability(query, compiled)',
+  '.apply_link_target_availability(query, compiled, &self.registry)',
   'descriptor.admission().apply(compiled)',
   'async fn configure_snapshot_and_verify(',
   'READ_ONLY_SNAPSHOT_SQL',

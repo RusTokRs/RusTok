@@ -150,6 +150,8 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .not_null(),
                     )
+                    .col(ColumnDef::new(IndexEntities::RecordFingerprint).string_len(64).not_null())
+                    .check(Expr::cust("length(record_fingerprint) = 64 AND record_fingerprint = lower(record_fingerprint)"))
                     .col(ColumnDef::new(IndexEntities::Payload).json_binary())
                     .col(
                         ColumnDef::new(IndexEntities::IsDeleted)
@@ -447,6 +449,7 @@ enum IndexEntities {
     LocaleKey,
     SourceVersion,
     SchemaFingerprint,
+    RecordFingerprint,
     Payload,
     IsDeleted,
     CreatedAt,

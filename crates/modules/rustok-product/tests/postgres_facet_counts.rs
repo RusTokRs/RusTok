@@ -17,7 +17,8 @@
 //! ```
 
 use rustok_product::{
-    AdminProductListQuery, CatalogService, StorefrontCatalogFacet, StorefrontProductListQuery,
+    AdminProductListQuery, AdminProductListQueryExt, CatalogService, StorefrontCatalogFacet,
+    StorefrontProductListQuery, StorefrontProductListQueryExt,
 };
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};

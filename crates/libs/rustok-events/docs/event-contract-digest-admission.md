@@ -55,6 +55,16 @@ command above, and
 that exact output. Both events remain initial schema-version contracts; no
 parallel or compatibility event family was introduced.
 
+## Registry-only admission (2026-11-21)
+
+The [Index Contract CI run on `dfc9f64`](https://github.com/RusTokRs/RusTok/actions/runs/44953989407/job/136998009427)
+ran the canonical Rust generator successfully. The generated diff changed only
+`registry`; all four wire-schema digests were already current on that revision.
+The committed artifact applies that exact generated diff. The dated pending
+notes below record what was unverified when written; they do not describe the
+current artifact bytes. This admission is not runtime or delivery evidence. The
+verify workflow and canonical artifact equality test remain unchanged.
+
 ## Pending admission (2026-10-07)
 
 A new typed family was added to the canonical contract by the e-commerce deep review, remediation

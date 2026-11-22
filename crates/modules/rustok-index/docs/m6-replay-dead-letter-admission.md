@@ -1,6 +1,6 @@
 # M6 replay dead-letter admission
 
-Status: `source_complete_operator_requeue_pending`
+Status: source complete; execution verification pending.
 
 ## Purpose
 
@@ -23,7 +23,7 @@ state authority before creation time:
 
 Expired `running` work and eligible `pending` work preserve their existing reclaim path. A delayed
 retry produced by `PostgresIndexReplayRetryStore` remains `Busy` until
-`available_at <= CURRENT_TIMESTAMP`; an older failed row cannot bypass that active retry state.
+`available_at` is due; an older failed row cannot bypass that active retry state.
 
 When the failed row is authoritative, acquisition returns
 `IndexReplayJobError::DeadLettered` with only:
@@ -37,7 +37,7 @@ values, mutation data, SQL, and stack text are not available through the admissi
 
 ## Identity and retry boundary
 
-A blocked scope inserts no new `index_jobs` row, changes no checkpoint, resets no attempt budget,
+A blocked scope inserts no new `index_jobs` row, changes no checkpoint, resets no failure budget,
 and does not mutate the failed job. The existing failed row remains the durable operator decision
 point.
 
@@ -47,27 +47,17 @@ This contract complements the merged retry transition store:
 - permanent or exhausted work may move the same job from `running` to `failed`;
 - once `failed` is authoritative, ordinary acquisition cannot bypass it with a new job UUID.
 
-The current replay runner can also terminalize a page failure through its existing failure path.
-Dead-letter admission applies to either producer of a valid failed replay job; it does not claim
-that runner failure classification is already wired into the retry store.
+The replay runner records classified page failures through `PostgresIndexReplayRetryStore`.
+Exhaustion counts durable failures, not lease acquisitions or page-budget yields.
 
 ## Ownership boundaries
 
-This slice does not add or claim:
-
-- operator dead-letter listing or detail inspection;
-- authorized requeue or a failed-to-pending transition;
-- actor, reason, approval, or audit evidence for requeue;
-- retry-budget reset or retry-epoch semantics;
-- host scheduling of eligible pending jobs;
-- replay-runner integration with `PostgresIndexReplayRetryStore`;
-- graceful scheduler shutdown or fleet coordination;
-- retained PostgreSQL failure, exhaustion, restart, concurrent admission, or requeue evidence;
-- migration, table-shape, source, cursor, mutation, checkpoint, or event-identity changes.
-
-A later requeue contract must authorize the exact tenant and schema scope, identify the blocked
-job, define attempt/epoch semantics, retain actor and reason audit data, and preserve concurrent
-admission fencing. This source slice deliberately provides none of those mutation capabilities.
+Ordinary acquisition remains read-only on a failed scope. The separate authorized requeue
+operation restores the original job to `pending`, preserves its lease generation and checkpoint,
+resets its failure budget, advances the epoch, and commits actor/reason audit evidence with the
+transition. The generic host scheduler can discover due work after that transition. See
+[Index operations](./operations.md) for the transport and recovery contract. This does not
+establish retained PostgreSQL failure, restart, concurrent admission, or requeue evidence.
 
 The canonical implementation-plan item `Add bounded retry/backoff, dead-letter state, and global
 scheduling ownership` remains open.
@@ -83,5 +73,4 @@ Focused source coverage retains:
 - existing success, busy, reclaim, checkpoint, schema, source, and stored-request invariants remain
   in the same fixture suite.
 
-Formatting, Cargo checks/tests, JavaScript verifiers, live PostgreSQL scenarios, workflows, and CI
-are maintainer-run and were not executed by the implementation agent.
+Behavioral verification (Cargo tests, source verifiers and PostgreSQL scenarios) is maintainer-run.

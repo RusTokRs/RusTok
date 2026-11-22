@@ -26,6 +26,7 @@ use super::{
     drift_repair_recovery::{
         RecoveryAwareIndexDriftRepairOwner, RecoveryAwareIndexDriftRepairStore,
     },
+    mutation_store::lock_entity_key,
 };
 
 const OWNER_NAME: &str = "index_orphan_link_remove_owner";
@@ -73,11 +74,24 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
         phase: OrphanLinkEvidencePhase,
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
         let target = exact_orphan_link_target(authorized, finding)?;
+        let command_id = authorized.command().command_id();
+        // A committed delivery proves past work, not current convergence. It permits only
+        // read-only receipt recovery, even when the original owner revision is no longer live.
+        if phase == OrphanLinkEvidencePhase::Before
+            && read_delivery_state(&self.db, command_id, target, MATERIALIZED_UNAVAILABLE).await?
+                == OrphanMutationDeliveryState::Applied
+        {
+            return recovery_evidence(command_id, target);
+        }
         let first_source = self.load_source_authority(target).await?;
         let first_target = self.load_target_authority(target).await?;
-        let materialized = self
-            .load_materialized(target, authorized.command().command_id())
-            .await?;
+        let materialized = self.load_materialized(target, command_id).await?;
+        if phase == OrphanLinkEvidencePhase::Before
+            && materialized.delivery == OrphanMutationDeliveryState::Applied
+        {
+            // The mutation may have committed between the preflight and this snapshot.
+            return recovery_evidence(command_id, target);
+        }
         let second_source = self.load_source_authority(target).await?;
         let second_target = self.load_target_authority(target).await?;
         if first_source != second_source || first_target != second_target {
@@ -218,28 +232,12 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
         target: OrphanLinkTargetRef<'_>,
         command_id: Uuid,
     ) -> Result<OrphanMaterialized, IndexDriftRepairFailure> {
-        let source_row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1",
-                entity_values(target.source_key),
-            ))
-            .await
-            .map_err(|_| retryable_failure(MATERIALIZED_UNAVAILABLE))?;
-        let source = match source_row {
-            None => OrphanMaterializedSource::Missing,
-            Some(row) => {
-                let source_version = positive_source_version(&row)?;
-                let is_deleted = row
-                    .try_get::<bool>("", "is_deleted")
-                    .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
-                if is_deleted {
-                    OrphanMaterializedSource::Deleted(source_version)
-                } else {
-                    OrphanMaterializedSource::Live(source_version)
-                }
-            }
-        };
+        let source =
+            read_materialized_record(transaction, target.source_key, MATERIALIZED_UNAVAILABLE)
+                .await?;
+        let target_record =
+            read_materialized_record(transaction, &target.target_key(), MATERIALIZED_UNAVAILABLE)
+                .await?;
 
         let link_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -257,26 +255,12 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
             Some(_) => OrphanMaterializedLink::Changed,
         };
 
-        let payload_digest = link_removal_payload_digest(command_id, target);
-        let delivery_row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 LIMIT 1",
-                vec![
-                    target.source_key.tenant_id.into(),
-                    DELIVERY_SOURCE.to_owned().into(),
-                    command_id.to_string().into(),
-                ],
-            ))
-            .await
-            .map_err(|_| retryable_failure(MATERIALIZED_UNAVAILABLE))?;
-        let delivery = match delivery_row {
-            None => OrphanMutationDeliveryState::Missing,
-            Some(row) => decode_delivery_state(&row, target, &payload_digest)?,
-        };
+        let delivery =
+            read_delivery_state(transaction, command_id, target, MATERIALIZED_UNAVAILABLE).await?;
 
         Ok(OrphanMaterialized {
             source,
+            target: target_record,
             link,
             delivery,
         })
@@ -319,39 +303,71 @@ impl fmt::Debug for PostgresIndexDriftOrphanLinkEvidenceReader {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IndexOrphanLinkRemovalOutcome {
+enum IndexOrphanLinkRemovalOutcome {
     Applied,
     Duplicate,
 }
 
+/// Owner-provided, transactional proof for exact destructive orphan removal.
+///
+/// Lock (or prove immutable) the source revision and exact edge and the target's absence revision
+/// in `transaction`, including when the target row does not exist. The locks must serialize with
+/// the owners' writes, not just Index's materialization, and remain effective until commit or
+/// rollback. Implementations must refuse unsupported owner/scope pairs or moving authority; a
+/// point-in-time lookup or a transaction against an independent store is not a fence.
+/// If an owner writes both stores synchronously, it must acquire owner locks before Index locks;
+/// two owners that participate in one repair must agree on a stable owner-lock order.
+/// Admission also requires permanent absence, or an owner guarantee that a later resurrection
+/// advances the affected source revisions to restore their edges. Index redelivery is idempotent.
+#[async_trait]
+pub trait PostgresIndexOrphanLinkAuthorityFence: Send + Sync {
+    async fn verify_and_lock(
+        &self,
+        transaction: &DatabaseTransaction,
+        target: &IndexDriftRepairTarget,
+    ) -> Result<(), IndexDriftRepairFailure>;
+}
+
 #[derive(Clone)]
-pub struct PostgresIndexOrphanLinkMutationStore {
+struct PostgresIndexOrphanLinkMutationStore {
     db: DatabaseConnection,
+    authority: Arc<dyn PostgresIndexOrphanLinkAuthorityFence>,
 }
 
 impl PostgresIndexOrphanLinkMutationStore {
-    pub fn new(db: DatabaseConnection) -> Result<Self, IndexDriftRepairFailure> {
-        ensure_postgres(&db)?;
-        Ok(Self { db })
-    }
-
     async fn apply(
         &self,
         command_id: Uuid,
+        repair_target: &IndexDriftRepairTarget,
         target: OrphanLinkTargetRef<'_>,
     ) -> Result<IndexOrphanLinkRemovalOutcome, IndexDriftRepairFailure> {
         let payload_digest = link_removal_payload_digest(command_id, target);
         let transaction = self
             .db
             .begin_with_config(
-                Some(IsolationLevel::Serializable),
+                Some(IsolationLevel::ReadCommitted),
                 Some(AccessMode::ReadWrite),
             )
             .await
             .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
-        let result = self
-            .apply_in_transaction(&transaction, command_id, target, &payload_digest)
-            .await;
+        let result = async {
+            transaction
+                .execute_unprepared(
+                    "SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '25s'",
+                )
+                .await
+                .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
+            // The owner locks precede Index entity locks. Both sets remain held through commit.
+            tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                self.authority.verify_and_lock(&transaction, repair_target),
+            )
+            .await
+            .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))??;
+            self.apply_in_transaction(&transaction, command_id, target, &payload_digest)
+                .await
+        }
+        .await;
         match result {
             Ok(outcome) => {
                 transaction
@@ -397,13 +413,25 @@ impl PostgresIndexOrphanLinkMutationStore {
             .await
             .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
         if inserted.rows_affected() == 0 {
-            return self
-                .resolve_existing_delivery(transaction, command_id, target, payload_digest)
-                .await;
+            return recover_applied_delivery(transaction, command_id, target).await;
         }
 
-        lock_entity_key(transaction, target.source_key).await?;
+        // Serialize against the normal mutation writer for both keys, including a target that has
+        // no row yet. Take locks in stable order and read the current projection after locking.
+        let target_key = target.target_key();
+        let mut keys = [target.source_key, &target_key];
+        keys.sort();
+        for key in keys {
+            lock_entity_key(transaction, key, DbBackend::Postgres)
+                .await
+                .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
+        }
         require_exact_live_source(transaction, target).await?;
+        let target_record =
+            read_materialized_record(transaction, &target_key, OWNER_UNAVAILABLE).await?;
+        if !target_absent_at(target_record, target.target_absence_source_version) {
+            return Err(retryable_failure(SOURCE_CHANGED));
+        }
         require_exact_link(transaction, target).await?;
 
         let deleted = transaction
@@ -421,31 +449,42 @@ impl PostgresIndexOrphanLinkMutationStore {
         complete_delivery(transaction, command_id, target, payload_digest).await?;
         Ok(IndexOrphanLinkRemovalOutcome::Applied)
     }
+}
 
-    async fn resolve_existing_delivery(
-        &self,
-        transaction: &DatabaseTransaction,
-        command_id: Uuid,
-        target: OrphanLinkTargetRef<'_>,
-        payload_digest: &str,
-    ) -> Result<IndexOrphanLinkRemovalOutcome, IndexDriftRepairFailure> {
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 LIMIT 1 FOR UPDATE",
-                vec![
-                    target.source_key.tenant_id.into(),
-                    DELIVERY_SOURCE.to_owned().into(),
-                    command_id.to_string().into(),
-                ],
-            ))
-            .await
-            .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?
-            .ok_or_else(|| retryable_failure(OWNER_UNAVAILABLE))?;
-        match decode_delivery_state(&row, target, payload_digest)? {
-            OrphanMutationDeliveryState::Applied => Ok(IndexOrphanLinkRemovalOutcome::Duplicate),
-            OrphanMutationDeliveryState::Missing => Err(retryable_failure(OWNER_UNAVAILABLE)),
-        }
+async fn read_delivery_state<C: ConnectionTrait>(
+    db: &C,
+    command_id: Uuid,
+    target: OrphanLinkTargetRef<'_>,
+    unavailable_code: &str,
+) -> Result<OrphanMutationDeliveryState, IndexDriftRepairFailure> {
+    let row = db.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 LIMIT 1",
+        vec![
+            target.source_key.tenant_id.into(),
+            DELIVERY_SOURCE.to_owned().into(),
+            command_id.to_string().into(),
+        ],
+    )).await.map_err(|_| retryable_failure(unavailable_code))?;
+    match row {
+        None => Ok(OrphanMutationDeliveryState::Missing),
+        Some(row) => decode_delivery_state(
+            &row,
+            target,
+            &link_removal_payload_digest(command_id, target),
+        ),
+    }
+}
+
+async fn recover_applied_delivery<C: ConnectionTrait>(
+    db: &C,
+    command_id: Uuid,
+    target: OrphanLinkTargetRef<'_>,
+) -> Result<IndexOrphanLinkRemovalOutcome, IndexDriftRepairFailure> {
+    match read_delivery_state(db, command_id, target, OWNER_UNAVAILABLE).await? {
+        OrphanMutationDeliveryState::Applied => Ok(IndexOrphanLinkRemovalOutcome::Duplicate),
+        // An absent witness is never authority to execute the old destructive command again.
+        OrphanMutationDeliveryState::Missing => Err(retryable_failure(OWNER_UNAVAILABLE)),
     }
 }
 
@@ -463,9 +502,13 @@ pub struct PostgresIndexDriftOrphanLinkRepairOwner {
 }
 
 impl PostgresIndexDriftOrphanLinkRepairOwner {
-    pub fn new(db: DatabaseConnection) -> Result<Self, IndexDriftRepairFailure> {
+    pub fn new(
+        db: DatabaseConnection,
+        authority: Arc<dyn PostgresIndexOrphanLinkAuthorityFence>,
+    ) -> Result<Self, IndexDriftRepairFailure> {
+        ensure_postgres(&db)?;
         Ok(Self {
-            mutations: PostgresIndexOrphanLinkMutationStore::new(db)?,
+            mutations: PostgresIndexOrphanLinkMutationStore { db, authority },
         })
     }
 }
@@ -491,10 +534,14 @@ impl IndexDriftRepairOwner for PostgresIndexDriftOrphanLinkRepairOwner {
             return IndexDriftRepairOwnerOutcome::not_applied("orphan_link_not_repairable")
                 .map_err(|_| permanent_failure(OWNER_CONTRACT_INVALID));
         }
-        let outcome = self
-            .mutations
-            .apply(authorized.command().command_id(), target)
-            .await?;
+        let command_id = authorized.command().command_id();
+        let outcome = if before.digest() == recovery_evidence_digest(command_id, target) {
+            recover_applied_delivery(&self.mutations.db, command_id, target).await?
+        } else {
+            self.mutations
+                .apply(command_id, authorized.command().target(), target)
+                .await?
+        };
         let receipt = owner_receipt_digest(authorized, finding, target, outcome);
         IndexDriftRepairOwnerOutcome::applied(receipt)
             .map_err(|_| permanent_failure(OWNER_CONTRACT_INVALID))
@@ -541,6 +588,7 @@ pub fn materialize_postgres_index_drift_orphan_link_repair_service(
     db: DatabaseConnection,
     sources: SharedIndexSourceRegistry,
     absence: SharedIndexSourceAbsenceRegistry,
+    authority: Arc<dyn PostgresIndexOrphanLinkAuthorityFence>,
 ) -> Result<IndexDriftRepairService, IndexDriftRepairFailure> {
     ensure_postgres(&db)?;
     let evidence = Arc::new(PostgresIndexDriftOrphanLinkEvidenceReader::new(
@@ -548,8 +596,9 @@ pub fn materialize_postgres_index_drift_orphan_link_repair_service(
         sources,
         absence,
     )?);
-    let base_owner: Arc<dyn IndexDriftRepairOwner> =
-        Arc::new(PostgresIndexDriftOrphanLinkRepairOwner::new(db.clone())?);
+    let base_owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
+        PostgresIndexDriftOrphanLinkRepairOwner::new(db.clone(), authority)?,
+    );
     let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
         db.clone(),
         base_owner,
@@ -608,6 +657,7 @@ enum OrphanMutationDeliveryState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct OrphanMaterialized {
     source: OrphanMaterializedSource,
+    target: OrphanMaterializedSource,
     link: OrphanMaterializedLink,
     delivery: OrphanMutationDeliveryState,
 }
@@ -688,7 +738,10 @@ fn classify_evidence(
     );
     let source_admitted =
         materialized.source == OrphanMaterializedSource::Live(target.indexed_source_version);
-    if !authority_admitted || !source_admitted {
+    if !authority_admitted
+        || !source_admitted
+        || !target_absent_at(materialized.target, target.target_absence_source_version)
+    {
         return IndexDriftRepairEvidenceState::Changed;
     }
     match (phase, materialized.link, materialized.delivery) {
@@ -696,11 +749,6 @@ fn classify_evidence(
             OrphanLinkEvidencePhase::Before,
             OrphanMaterializedLink::Exact,
             OrphanMutationDeliveryState::Missing,
-        )
-        | (
-            OrphanLinkEvidencePhase::Before,
-            OrphanMaterializedLink::Absent,
-            OrphanMutationDeliveryState::Applied,
         ) => IndexDriftRepairEvidenceState::Repairable,
         (
             OrphanLinkEvidencePhase::After,
@@ -757,6 +805,17 @@ fn evidence_digest(
             hash_component(&mut hasher, &version.to_be_bytes());
         }
     }
+    match materialized.target {
+        OrphanMaterializedSource::Missing => hash_component(&mut hasher, b"index_target_missing"),
+        OrphanMaterializedSource::Live(version) => {
+            hash_component(&mut hasher, b"index_target_live");
+            hash_component(&mut hasher, &version.to_be_bytes());
+        }
+        OrphanMaterializedSource::Deleted(version) => {
+            hash_component(&mut hasher, b"index_target_deleted");
+            hash_component(&mut hasher, &version.to_be_bytes());
+        }
+    }
     hash_component(
         &mut hasher,
         match materialized.link {
@@ -781,6 +840,28 @@ fn evidence_digest(
         },
     );
     hex::encode(hasher.finalize())
+}
+
+fn recovery_evidence_digest(command_id: Uuid, target: OrphanLinkTargetRef<'_>) -> String {
+    let mut hasher = Sha256::new();
+    hash_component(&mut hasher, EVIDENCE_DOMAIN);
+    hash_component(&mut hasher, b"resume_applied_delivery");
+    hash_component(
+        &mut hasher,
+        link_removal_payload_digest(command_id, target).as_bytes(),
+    );
+    hex::encode(hasher.finalize())
+}
+
+fn recovery_evidence(
+    command_id: Uuid,
+    target: OrphanLinkTargetRef<'_>,
+) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
+    IndexDriftRepairEvidence::new(
+        IndexDriftRepairEvidenceState::Repairable,
+        recovery_evidence_digest(command_id, target),
+    )
+    .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))
 }
 
 fn link_removal_payload_digest(command_id: Uuid, target: OrphanLinkTargetRef<'_>) -> String {
@@ -848,7 +929,7 @@ fn decode_delivery_state(
     let module_name = required_text(row, "module_name")?;
     let entity_name = required_text(row, "entity_name")?;
     let schema_version = row
-        .try_get::<i64>("", "schema_version")
+        .try_get::<i32>("", "schema_version")
         .map_err(|_| permanent_failure(OWNER_CONTRACT_INVALID))?;
     let entity_id = row
         .try_get::<Uuid>("", "entity_id")
@@ -861,7 +942,7 @@ fn decode_delivery_state(
     if mutation_kind != "delete"
         || module_name != target.source_key.schema.module.as_str()
         || entity_name != target.source_key.schema.entity.as_str()
-        || schema_version != i64::from(target.source_key.schema.version.get())
+        || u32::try_from(schema_version).ok() != Some(target.source_key.schema.version.get())
         || entity_id != target.source_key.entity_id
         || locale_key != locale_text(target.source_key.locale.as_ref())
         || source_version != target.indexed_source_version
@@ -944,28 +1025,38 @@ async fn complete_delivery(
     Ok(())
 }
 
-async fn lock_entity_key(
+async fn read_materialized_record(
     transaction: &DatabaseTransaction,
     key: &EntityKey,
-) -> Result<(), IndexDriftRepairFailure> {
-    let lock_key = format!(
-        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
-        key.tenant_id,
-        key.schema.module.as_str(),
-        key.schema.entity.as_str(),
-        key.schema.version.get(),
-        key.entity_id,
-        locale_text(key.locale.as_ref()),
-    );
-    transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-            vec![lock_key.into()],
-        ))
-        .await
-        .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
-    Ok(())
+    unavailable_code: &'static str,
+) -> Result<OrphanMaterializedSource, IndexDriftRepairFailure> {
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities \
+         WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 \
+         AND schema_version = $4 AND entity_id = $5 AND locale_key = $6",
+        entity_values(key),
+    )).await.map_err(|_| retryable_failure(unavailable_code))?;
+    let Some(row) = row else {
+        return Ok(OrphanMaterializedSource::Missing);
+    };
+    let version = positive_source_version(&row)?;
+    if row
+        .try_get::<bool>("", "is_deleted")
+        .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?
+    {
+        Ok(OrphanMaterializedSource::Deleted(version))
+    } else {
+        Ok(OrphanMaterializedSource::Live(version))
+    }
+}
+
+fn target_absent_at(target: OrphanMaterializedSource, absence_revision: u64) -> bool {
+    match target {
+        OrphanMaterializedSource::Missing => true,
+        OrphanMaterializedSource::Deleted(version) => version <= absence_revision,
+        OrphanMaterializedSource::Live(_) => false,
+    }
 }
 
 fn row_matches_target(
@@ -975,7 +1066,7 @@ fn row_matches_target(
     let module = required_text(row, "target_module")?;
     let entity = required_text(row, "target_entity")?;
     let version = row
-        .try_get::<i64>("", "target_schema_version")
+        .try_get::<i32>("", "target_schema_version")
         .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
     let entity_id = row
         .try_get::<Uuid>("", "target_entity_id")
@@ -985,7 +1076,7 @@ fn row_matches_target(
         .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
     Ok(module == target.schema.module.as_str()
         && entity == target.schema.entity.as_str()
-        && version == i64::from(target.schema.version.get())
+        && u32::try_from(version).ok() == Some(target.schema.version.get())
         && entity_id == target.entity_id
         && locale == locale_text(target.locale.as_ref()))
 }
@@ -1177,6 +1268,7 @@ mod tests {
                 OrphanTargetAuthority::Absent(9),
                 OrphanMaterialized {
                     source: OrphanMaterializedSource::Live(7),
+                    target: OrphanMaterializedSource::Missing,
                     link: OrphanMaterializedLink::Exact,
                     delivery: OrphanMutationDeliveryState::Missing,
                 },
@@ -1187,7 +1279,7 @@ mod tests {
     }
 
     #[test]
-    fn applied_absence_is_retryable_before_and_converged_after() {
+    fn applied_absence_is_not_a_fresh_repair_but_can_converge() {
         let (source, linked, link_name) = target();
         let target = OrphanLinkTargetRef {
             source_key: &source,
@@ -1199,6 +1291,7 @@ mod tests {
         };
         let materialized = OrphanMaterialized {
             source: OrphanMaterializedSource::Live(7),
+            target: OrphanMaterializedSource::Missing,
             link: OrphanMaterializedLink::Absent,
             delivery: OrphanMutationDeliveryState::Applied,
         };
@@ -1207,6 +1300,8 @@ mod tests {
             exact_link_present: true,
         };
         let target_authority = OrphanTargetAuthority::Absent(9);
+        // capture() handles an exact applied delivery through read-only receipt recovery.
+        // The live-evidence classifier must never admit another destructive repair for it.
         assert_eq!(
             classify_evidence(
                 target,
@@ -1215,7 +1310,7 @@ mod tests {
                 materialized,
                 OrphanLinkEvidencePhase::Before,
             ),
-            IndexDriftRepairEvidenceState::Repairable,
+            IndexDriftRepairEvidenceState::Changed,
         );
         assert_eq!(
             classify_evidence(
@@ -1227,6 +1322,14 @@ mod tests {
             ),
             IndexDriftRepairEvidenceState::Converged,
         );
+    }
+
+    #[test]
+    fn newer_target_projection_refuses_a_stale_absence_watermark() {
+        assert!(target_absent_at(OrphanMaterializedSource::Missing, 9));
+        assert!(target_absent_at(OrphanMaterializedSource::Deleted(9), 9));
+        assert!(!target_absent_at(OrphanMaterializedSource::Deleted(10), 9));
+        assert!(!target_absent_at(OrphanMaterializedSource::Live(10), 9));
     }
 
     #[test]
@@ -1250,6 +1353,7 @@ mod tests {
                 OrphanTargetAuthority::Absent(9),
                 OrphanMaterialized {
                     source: OrphanMaterializedSource::Live(7),
+                    target: OrphanMaterializedSource::Missing,
                     link: OrphanMaterializedLink::Absent,
                     delivery: OrphanMutationDeliveryState::Missing,
                 },

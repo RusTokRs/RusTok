@@ -300,7 +300,8 @@ fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<
 fn map_index_error(error: IndexQueryExecutionError) -> PortError {
     match error {
         IndexQueryExecutionError::SchemaNotReady { .. }
-        | IndexQueryExecutionError::Storage { .. } => PortError::unavailable(
+        | IndexQueryExecutionError::Storage { .. }
+        | IndexQueryExecutionError::BudgetExceeded { .. } => PortError::unavailable(
             "social_graph.index_privacy_unavailable",
             "social graph Index privacy state is temporarily unavailable",
         ),

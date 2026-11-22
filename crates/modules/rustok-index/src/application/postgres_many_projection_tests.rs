@@ -108,14 +108,14 @@ fn decodes_aligned_nested_identity_and_value_arrays() {
     let page_query = registry.compile_postgres_page_query(&query).unwrap();
     let root_id = Uuid::from_u128(100);
     let first = Uuid::from_u128(10);
-    let second = Uuid::from_u128(20);
+    let second = first; // the same target UUID at a second locale is a distinct relation
     let nested = json!([
         {
-            "entity_ids": [first],
+            "identities": [[first, "en-US"]],
             "values": [tagged(IndexValue::Uuid(first)), tagged(IndexValue::Integer(10))]
         },
         {
-            "entity_ids": [second],
+            "identities": [[second, "fr"]],
             "values": [tagged(IndexValue::Uuid(second)), tagged(IndexValue::Integer(20))]
         }
     ]);
@@ -133,6 +133,22 @@ fn decodes_aligned_nested_identity_and_value_arrays() {
     assert_eq!(projection.items[0].relations[0].entity_id, Some(first));
     assert_eq!(projection.items[0].fields[1].value, IndexValue::Integer(10));
     assert_eq!(projection.items[1].relations[0].entity_id, Some(second));
+    assert_eq!(
+        projection.items[0].relations[0]
+            .locale
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "en-US"
+    );
+    assert_eq!(
+        projection.items[1].relations[0]
+            .locale
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "fr"
+    );
 }
 
 #[test]
@@ -146,7 +162,7 @@ fn rejects_nested_identity_and_field_arity_drift() {
     let identity_error = row(
         root_id,
         json!([{
-            "entity_ids": [],
+            "identities": [],
             "values": [tagged(IndexValue::Uuid(variant)), tagged(IndexValue::Integer(10))]
         }]),
     );
@@ -162,7 +178,7 @@ fn rejects_nested_identity_and_field_arity_drift() {
     let field_error = row(
         root_id,
         json!([{
-            "entity_ids": [variant],
+            "identities": [[variant, "en-US"]],
             "values": [tagged(IndexValue::Uuid(variant))]
         }]),
     );
@@ -187,7 +203,7 @@ fn rejects_nil_and_duplicate_nested_identity_chains() {
     let nil_identity = row(
         root_id,
         json!([{
-            "entity_ids": [Uuid::nil()],
+            "identities": [[Uuid::nil(), "en-US"]],
             "values": [tagged(IndexValue::Uuid(variant)), tagged(IndexValue::Integer(10))]
         }]),
     );
@@ -198,11 +214,11 @@ fn rejects_nil_and_duplicate_nested_identity_chains() {
 
     let duplicate = json!([
         {
-            "entity_ids": [variant],
+            "identities": [[variant, "en-US"]],
             "values": [tagged(IndexValue::Uuid(variant)), tagged(IndexValue::Integer(10))]
         },
         {
-            "entity_ids": [variant],
+            "identities": [[variant, "en-US"]],
             "values": [tagged(IndexValue::Uuid(variant)), tagged(IndexValue::Integer(20))]
         }
     ]);

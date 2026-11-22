@@ -99,12 +99,64 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
 
     let manager = SchemaManager::new(&db);
     let migrations = IndexModule.migrations();
-    for migration in &migrations {
+    let (locale_migration, foundation) = migrations.split_last().expect("locale scope migration");
+    for migration in foundation {
         migration
             .up(&manager)
             .await
             .unwrap_or_else(|error| panic!("{} should apply: {error}", migration.name()));
     }
+
+    db.execute_unprepared(
+        "INSERT INTO index_jobs (tenant_id, job_id, kind, scope_kind, request, attempt_count, retry_epoch, failure_count)
+         VALUES ('11111111-1111-1111-1111-111111111111', '70707070-7070-7070-7070-707070707070', 'rebuild', 'global', '{}', 7, 2, 3)",
+    ).await.expect("pending job before the table rebuild");
+    locale_migration
+        .up(&manager)
+        .await
+        .expect("locale scopes should apply");
+    let insert_locale_job = "INSERT INTO index_jobs (tenant_id, job_id, kind, scope_kind, module_name, entity_name, schema_version, locale_key, request)
+         VALUES ('11111111-1111-1111-1111-111111111111', '90909090-9090-9090-9090-909090909090', 'rebuild', 'locale', 'catalog', 'product', 1, 'en-US', '{}')";
+    db.execute_unprepared(insert_locale_job)
+        .await
+        .expect("locale job should be accepted");
+    assert!(
+        locale_migration.down(&manager).await.is_err(),
+        "refuse rollback with locale jobs"
+    );
+    let removed = db
+        .execute_unprepared("DELETE FROM index_jobs WHERE scope_kind = 'locale'")
+        .await
+        .unwrap();
+    assert_eq!(
+        removed.rows_affected(),
+        1,
+        "a failed down must preserve the job"
+    );
+    db.execute_unprepared(insert_locale_job)
+        .await
+        .expect("a failed down leaves locale scope active");
+    db.execute_unprepared("DELETE FROM index_jobs WHERE scope_kind = 'locale'")
+        .await
+        .unwrap();
+    locale_migration
+        .down(&manager)
+        .await
+        .expect("down should work after removing locale jobs");
+    assert!(
+        db.execute_unprepared(insert_locale_job).await.is_err(),
+        "down restores the strict scope constraint"
+    );
+    locale_migration
+        .up(&manager)
+        .await
+        .expect("locale scope should apply again");
+    let job = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "SELECT attempt_count, retry_epoch, failure_count FROM index_jobs WHERE job_id = '70707070-7070-7070-7070-707070707070'".to_owned(),
+    )).await.unwrap().expect("the round trip preserves the original job");
+    assert_eq!(job.try_get::<i64>("", "attempt_count").unwrap(), 7);
+    assert_eq!(job.try_get::<i64>("", "retry_epoch").unwrap(), 2);
+    assert_eq!(job.try_get::<i64>("", "failure_count").unwrap(), 3);
 
     let rows = db
         .query_all_raw(Statement::from_string(
@@ -130,7 +182,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
             "index_inbox".to_owned(),
             "index_jobs".to_owned(),
             "index_links".to_owned(),
-            "index_reconciliation_recovery_audits".to_owned(),
+            "index_job_recovery_audits".to_owned(),
             "index_schemas".to_owned(),
         ])
     );
@@ -142,7 +194,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
     .await
     .expect("schema row should be accepted");
     db.execute_unprepared(&format!(
-        r#"INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, payload) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '22222222-2222-2222-2222-222222222222', 'en-US', 1, '{fingerprint}', '{{"status":"active"}}')"#
+        r#"INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, record_fingerprint, payload) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '22222222-2222-2222-2222-222222222222', 'en-US', 1, '{fingerprint}', '{fingerprint}', '{{"status":"active"}}')"#
     ))
     .await
     .expect("live entity should be accepted");
@@ -170,7 +222,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
     );
     assert!(
         db.execute_unprepared(&format!(
-            "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, payload, is_deleted) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '55555555-5555-5555-5555-555555555555', 'en-US', 1, '{fingerprint}', NULL, FALSE)"
+            "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, record_fingerprint, payload, is_deleted) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '55555555-5555-5555-5555-555555555555', 'en-US', 1, '{fingerprint}', '{fingerprint}', NULL, FALSE)"
         ))
         .await
         .is_err(),
@@ -178,7 +230,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
     );
     assert!(
         db.execute_unprepared(&format!(
-            "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, payload, is_deleted) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '66666666-6666-6666-6666-666666666666', 'en-US', 1, '{fingerprint}', '{{}}', TRUE)"
+            "INSERT INTO index_entities (tenant_id, module_name, entity_name, schema_version, entity_id, locale_key, source_version, schema_fingerprint, record_fingerprint, payload, is_deleted) VALUES ('11111111-1111-1111-1111-111111111111', 'catalog', 'product', 1, '66666666-6666-6666-6666-666666666666', 'en-US', 1, '{fingerprint}', '{fingerprint}', '{{}}', TRUE)"
         ))
         .await
         .is_err(),
@@ -220,21 +272,28 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
         "running jobs require a complete lease"
     );
     db.execute_unprepared(
-        "INSERT INTO index_reconciliation_recovery_audits (tenant_id, audit_id, job_id, actor_id, action, reason, prior_attempt_count, retry_epoch) VALUES ('11111111-1111-1111-1111-111111111111', '12121212-1212-1212-1212-121212121212', '77777777-7777-7777-7777-777777777777', '13131313-1313-1313-1313-131313131313', 'requeue', 'operator approved retry', 1, 1)",
+        "INSERT INTO index_job_recovery_audits (tenant_id, audit_id, job_id, actor_id, action, reason, prior_attempt_count, retry_epoch, job_kind) VALUES ('11111111-1111-1111-1111-111111111111', '12121212-1212-1212-1212-121212121212', '77777777-7777-7777-7777-777777777777', '13131313-1313-1313-1313-131313131313', 'requeue', 'operator approved retry', 1, 1, 'reconcile')",
     )
     .await
     .expect("bounded recovery audit should be accepted");
     assert!(
-        db.execute_unprepared("UPDATE index_reconciliation_recovery_audits SET reason = 'changed'")
+        db.execute_unprepared("UPDATE index_job_recovery_audits SET reason = 'changed'")
             .await
             .is_err(),
         "recovery audit rows must reject updates"
     );
     assert!(
-        db.execute_unprepared("DELETE FROM index_reconciliation_recovery_audits")
+        db.execute_unprepared("DELETE FROM index_job_recovery_audits")
             .await
             .is_err(),
         "recovery audit rows must reject deletes"
+    );
+    assert!(
+        db.execute_unprepared(
+            "INSERT OR REPLACE INTO index_job_recovery_audits (tenant_id, audit_id, job_id, actor_id, action, reason, prior_attempt_count, retry_epoch, job_kind)
+             VALUES ('11111111-1111-1111-1111-111111111111', '14141414-1414-1414-1414-141414141414', '77777777-7777-7777-7777-777777777777', '13131313-1313-1313-1313-131313131313', 'requeue', 'overwrite through epoch conflict', 1, 1, 'reconcile')",
+        ).await.is_err(),
+        "the SQLite REPLACE conflict action must not erase the original audit",
     );
     db.execute_unprepared(
         "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, scope_kind, details) VALUES ('11111111-1111-1111-1111-111111111111', '99999999-9999-9999-9999-999999999999', 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'entity_digest', 'error', 'global', '{}')",

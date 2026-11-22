@@ -232,6 +232,7 @@ rustok-translation-targets = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
 rustok-seo       = { workspace = true, optional = true }
 rustok-index.workspace = true
+rustok-index-admin = { path = "../../crates/modules/rustok-index/admin", default-features = false, features = ["ssr"] }
 rustok-search = { workspace = true, features = ["graphql"] }
 rustok-tenant.workspace = true
 rustok-rbac = { workspace = true, features = ["graphql"] }

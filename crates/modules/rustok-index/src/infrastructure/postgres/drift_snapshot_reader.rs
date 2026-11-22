@@ -350,12 +350,12 @@ async fn load_links(
         )
         .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
         let ordinal = row
-            .try_get::<i64>("", "ordinal")
+            .try_get::<i32>("", "ordinal")
             .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
         let ordinal =
             usize::try_from(ordinal).map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
         let target_version = row
-            .try_get::<i64>("", "target_schema_version")
+            .try_get::<i32>("", "target_schema_version")
             .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
         let target_version = u32::try_from(target_version)
             .ok()

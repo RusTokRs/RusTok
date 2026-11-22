@@ -90,7 +90,7 @@ impl TenantService {
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
-        let model = match (TenantActiveModel {
+        let active_model = TenantActiveModel {
             id: Set(id),
             name: Set(name),
             slug: Set(slug.clone()),
@@ -100,10 +100,8 @@ impl TenantService {
             is_active: Set(true),
             created_at: Set(now),
             updated_at: Set(now),
-        })
-        .insert(&txn)
-        .await
-        {
+        };
+        let model = match active_model.insert(&txn).await {
             Ok(model) => model,
             Err(error) => {
                 if !is_unique_violation(&error) {

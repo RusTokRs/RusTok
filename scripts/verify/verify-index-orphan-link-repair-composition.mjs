@@ -30,11 +30,13 @@ requireMarkers('postgresMod', [
   'mod drift_orphan_link_repair;',
   'PostgresIndexDriftOrphanLinkEvidenceReader',
   'PostgresIndexDriftOrphanLinkRepairOwner',
+  'PostgresIndexOrphanLinkAuthorityFence',
   'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
 requireMarkers('lib', [
   'PostgresIndexDriftOrphanLinkEvidenceReader',
   'PostgresIndexDriftOrphanLinkRepairOwner',
+  'PostgresIndexOrphanLinkAuthorityFence',
   'materialize_postgres_index_drift_orphan_link_repair_service',
 ]);
 for (const forbidden of ['IndexOrphanLinkRemovalOutcome', 'PostgresIndexOrphanLinkMutationStore']) {
@@ -46,7 +48,9 @@ for (const forbidden of ['IndexOrphanLinkRemovalOutcome', 'PostgresIndexOrphanLi
 requireMarkers('source', [
   'pub struct PostgresIndexDriftOrphanLinkEvidenceReader',
   'impl IndexDriftRepairEvidenceReader for PostgresIndexDriftOrphanLinkEvidenceReader',
-  'pub struct PostgresIndexOrphanLinkMutationStore',
+  'struct PostgresIndexOrphanLinkMutationStore',
+  'pub trait PostgresIndexOrphanLinkAuthorityFence',
+  'self.authority.verify_and_lock(&transaction, repair_target)',
   'pub struct PostgresIndexDriftOrphanLinkRepairOwner',
   'impl IndexDriftRepairOwner for PostgresIndexDriftOrphanLinkRepairOwner',
   'struct OrphanLinkOnlyRepairStore',
@@ -63,7 +67,7 @@ requireMarkers('source', [
   'index_orphan_link_repair_owner_receipt_v1',
   'let first_source = self.load_source_authority(target).await?;',
   'let first_target = self.load_target_authority(target).await?;',
-  '.load_materialized(target, authorized.command().command_id())',
+  '.load_materialized(target, command_id)',
   'let second_source = self.load_source_authority(target).await?;',
   'let second_target = self.load_target_authority(target).await?;',
   'first_source != second_source || first_target != second_target',
@@ -75,10 +79,9 @@ requireMarkers('source', [
   'SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities',
   'SELECT target_module, target_entity, target_schema_version, target_entity_id, target_locale_key FROM index_links',
   'SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox',
-  'OrphanMaterializedLink::Absent,\n            OrphanMutationDeliveryState::Applied',
   'OrphanLinkEvidencePhase::After,\n            OrphanMaterializedLink::Absent,\n            OrphanMutationDeliveryState::Applied',
-  'Some(IsolationLevel::Serializable)',
-  'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+  'Some(IsolationLevel::ReadCommitted)',
+  'lock_entity_key(transaction, key, DbBackend::Postgres)',
   'INSERT INTO index_inbox',
   "'delete'",
   'command_id.to_string()',
@@ -108,23 +111,62 @@ for (const forbidden of [
   }
 }
 
-const capture = production.indexOf('    async fn capture(');
-const firstSource = production.indexOf('let first_source = self.load_source_authority(target).await?;', capture);
-const firstTarget = production.indexOf('let first_target = self.load_target_authority(target).await?;', firstSource);
-const materialized = production.indexOf('.load_materialized(target, authorized.command().command_id())', firstTarget);
-const secondSource = production.indexOf('let second_source = self.load_source_authority(target).await?;', materialized);
-const secondTarget = production.indexOf('let second_target = self.load_target_authority(target).await?;', secondSource);
-const changed = production.indexOf('first_source != second_source || first_target != second_target', secondTarget);
-if (
-  capture < 0 ||
-  firstSource <= capture ||
-  firstTarget <= firstSource ||
-  materialized <= firstTarget ||
-  secondSource <= materialized ||
-  secondTarget <= secondSource ||
-  changed <= secondTarget
-) {
-  throw new Error('orphan evidence must bracket one materialized snapshot with stable source and target reads');
+function requireOrder(label, text, markers) {
+  let cursor = 0;
+  for (const marker of markers) {
+    const position = text.indexOf(marker, cursor);
+    if (position < 0) throw new Error(`${label} missing ordered marker ${marker}`);
+    cursor = position + marker.length;
+  }
+}
+
+const capture = production.slice(
+  production.indexOf('    async fn capture('), production.indexOf('    async fn load_source_authority('),
+);
+requireOrder('orphan evidence', capture, [
+  'if phase == OrphanLinkEvidencePhase::Before',
+  'read_delivery_state(&self.db, command_id, target, MATERIALIZED_UNAVAILABLE).await?',
+  '== OrphanMutationDeliveryState::Applied',
+  'return recovery_evidence(command_id, target);',
+  'let first_source = self.load_source_authority(target).await?;',
+  'let first_target = self.load_target_authority(target).await?;',
+  '.load_materialized(target, command_id)',
+  'if phase == OrphanLinkEvidencePhase::Before',
+  'materialized.delivery == OrphanMutationDeliveryState::Applied',
+  'return recovery_evidence(command_id, target);',
+  'let second_source = self.load_source_authority(target).await?;',
+  'let second_target = self.load_target_authority(target).await?;',
+  'first_source != second_source || first_target != second_target',
+  'let state = classify_evidence(',
+]);
+
+const proofStart = production.indexOf('async fn read_delivery_state<');
+const recoveryStart = production.indexOf('async fn recover_applied_delivery<', proofStart);
+const recoveryEnd = production.indexOf('impl fmt::Debug for PostgresIndexOrphanLinkMutationStore', recoveryStart);
+const proof = production.slice(proofStart, recoveryStart);
+const readOnlyRecovery = production.slice(recoveryStart, recoveryEnd);
+requireOrder('command-bound proof', proof, [
+  'WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3',
+  'target.source_key.tenant_id.into()',
+  'DELIVERY_SOURCE.to_owned().into()',
+  'command_id.to_string().into()',
+  'decode_delivery_state(',
+  '&link_removal_payload_digest(command_id, target)',
+]);
+requireOrder('receipt-only recovery', readOnlyRecovery, [
+  'match read_delivery_state(db, command_id, target, OWNER_UNAVAILABLE).await?',
+  'OrphanMutationDeliveryState::Applied => Ok(IndexOrphanLinkRemovalOutcome::Duplicate)',
+  'OrphanMutationDeliveryState::Missing => Err(retryable_failure(OWNER_UNAVAILABLE))',
+]);
+requireMarkers('source', [
+  'stored_payload != payload_digest',
+  '\"applied\" => Ok(OrphanMutationDeliveryState::Applied)',
+  '\"resume_applied_delivery\"',
+]);
+for (const forbidden of ['apply(', 'apply_in_transaction(', 'INSERT ', 'UPDATE ', 'DELETE ', '.execute']) {
+  if ((proof + readOnlyRecovery).includes(forbidden)) {
+    throw new Error(`historical receipt recovery must not mutate indexes or recreate proof: ${forbidden}`);
+  }
 }
 
 const ownerStart = production.indexOf('impl IndexDriftRepairOwner for PostgresIndexDriftOrphanLinkRepairOwner');
@@ -133,8 +175,12 @@ if (ownerStart < 0 || ownerEnd <= ownerStart) {
   throw new Error('orphan-link repair owner implementation was not found');
 }
 const owner = production.slice(ownerStart, ownerEnd);
-requireMarkers('source', [
-  '.mutations\n            .apply(authorized.command().command_id(), target)',
+requireOrder('owner dispatch', owner, [
+  'before.state() != IndexDriftRepairEvidenceState::Repairable',
+  'if before.digest() == recovery_evidence_digest(command_id, target)',
+  'recover_applied_delivery(&self.mutations.db, command_id, target).await?',
+  '} else {',
+  '.apply(command_id, authorized.command().target(), target)',
   'owner_receipt_digest(authorized, finding, target, outcome)',
 ]);
 for (const forbidden of [
@@ -157,40 +203,40 @@ if (mutationStart < 0 || ownerStruct <= mutationStart) {
   throw new Error('typed orphan-link mutation store must precede and own persistence for the repair owner');
 }
 const mutationStore = production.slice(mutationStart, ownerStruct);
-for (const marker of [
+requireOrder('transactional write authority', mutationStore, [
+  '.begin_with_config(',
+  'self.authority.verify_and_lock(&transaction, repair_target)',
+  'self.apply_in_transaction(&transaction, command_id, target, &payload_digest)',
+  '.commit()',
+]);
+requireOrder('fenced orphan-link mutation', mutationStore, [
+  'async fn apply_in_transaction(',
   'INSERT INTO index_inbox',
-  'lock_entity_key(transaction, target.source_key).await?;',
+  'if inserted.rows_affected() == 0',
+  'return recover_applied_delivery(transaction, command_id, target).await;',
+  'lock_entity_key(transaction, key, DbBackend::Postgres)',
   'require_exact_live_source(transaction, target).await?;',
+  'if !target_absent_at(target_record, target.target_absence_source_version)',
   'require_exact_link(transaction, target).await?;',
   'DELETE FROM index_links',
   'complete_delivery(transaction, command_id, target, payload_digest).await?;',
-]) {
-  if (!mutationStore.includes(marker)) {
-    throw new Error(`typed orphan-link mutation store missing ${marker}`);
-  }
-}
+]);
 
-const classify = production.indexOf('fn classify_evidence(');
-const beforeExact = production.indexOf(
+const classifyStart = production.indexOf('fn classify_evidence(');
+const classifyEnd = production.indexOf('\nfn ', classifyStart + 1);
+const classify = production.slice(classifyStart, classifyEnd);
+requireOrder('live evidence classification', classify, [
   'OrphanLinkEvidencePhase::Before,\n            OrphanMaterializedLink::Exact,\n            OrphanMutationDeliveryState::Missing',
-  classify,
-);
-const beforeRetry = production.indexOf(
-  'OrphanLinkEvidencePhase::Before,\n            OrphanMaterializedLink::Absent,\n            OrphanMutationDeliveryState::Applied',
-  classify,
-);
-const afterApplied = production.indexOf(
   'OrphanLinkEvidencePhase::After,\n            OrphanMaterializedLink::Absent,\n            OrphanMutationDeliveryState::Applied',
-  classify,
-);
-if (classify < 0 || beforeExact <= classify || beforeRetry <= beforeExact || afterApplied <= beforeRetry) {
-  throw new Error('orphan-link evidence phases must admit exact before, crash retry before, then applied after convergence');
+]);
+if (classify.includes('OrphanLinkEvidencePhase::Before,\n            OrphanMaterializedLink::Absent')) {
+  throw new Error('an absent edge can never admit a fresh destructive mutation');
 }
 
 requireMarkers('genericDoc', [
   'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   '`materialize_postgres_index_drift_orphan_link_repair_service`',
-  '`PostgresIndexOrphanLinkMutationStore`',
+  '`PostgresIndexOrphanLinkAuthorityFence`',
   'treats an absent link as convergence only when the exact command-bound inbox delivery',
 ]);
 requireMarkers('doc', [
@@ -200,7 +246,9 @@ requireMarkers('doc', [
   'delivery ID equal to the durable repair command UUID',
   'does not issue SQL',
   'Ordinals above the removed row are intentionally not rewritten',
-  'No tests, Node verifiers, formatting, Cargo checks',
+  'Double-reading authority is diagnostic, not a write fence.',
+  'If the witness\nvanishes, recovery fails closed.',
+  'NotRepaired(after_not_converged)',
 ]);
 requireMarkers('plan', [
   'M6 - retain concrete repair execution evidence',

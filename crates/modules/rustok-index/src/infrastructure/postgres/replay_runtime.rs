@@ -1,6 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use rustok_core::ModuleRuntimeExtensions;
+use rustok_core::{
+    ModuleRuntimeExtensions,
+    rbac::{Permission, has_effective_permission},
+};
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use uuid::Uuid;
@@ -13,9 +16,60 @@ use crate::{
 };
 
 use super::{
+    IndexJobRecoveryError, IndexJobRequeueOutcome, IndexJobRequeueRequest,
     IndexReconciliationSchedulerCompositionError, PostgresIndexReplayRunner, PostgresMutationStore,
     register_postgres_index_reconciliation_work, register_postgres_index_replay_work,
 };
+
+/// Derived only from authenticated host context and request-bound effective permissions.
+/// No job, action DTO or browser input carries permission to run or recover work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexJobOperatorAuthority {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+}
+
+impl IndexJobOperatorAuthority {
+    pub fn authorize(
+        tenant_id: Uuid,
+        authenticated_tenant_id: Uuid,
+        actor_id: Uuid,
+        permissions: &[Permission],
+    ) -> Result<Self, IndexJobOperatorError> {
+        if tenant_id.is_nil()
+            || actor_id.is_nil()
+            || authenticated_tenant_id != tenant_id
+            || !has_effective_permission(permissions, &Permission::MODULES_MANAGE)
+        {
+            return Err(IndexJobOperatorError::Forbidden);
+        }
+        Ok(Self {
+            tenant_id,
+            actor_id,
+        })
+    }
+
+    pub(super) fn tenant_id(self) -> Uuid {
+        self.tenant_id
+    }
+
+    fn require_tenant(self, tenant_id: Uuid) -> Result<(), IndexJobOperatorError> {
+        if self.tenant_id != tenant_id {
+            return Err(IndexJobOperatorError::Forbidden);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum IndexJobOperatorError {
+    #[error("Index job operation is not authorized for the requested tenant")]
+    Forbidden,
+    #[error(transparent)]
+    Replay(#[from] IndexReplayRunError),
+    #[error(transparent)]
+    Recovery(#[from] IndexJobRecoveryError),
+}
 
 /// Cloneable operator capability for bounded Index replay execution.
 ///
@@ -40,7 +94,7 @@ impl SharedIndexReplayRuntime {
         }
     }
 
-    pub async fn run(
+    pub(crate) async fn run(
         &self,
         request: IndexReplayRunRequest,
     ) -> Result<IndexReplayRunOutcome, IndexReplayRunError> {
@@ -63,27 +117,54 @@ impl SharedIndexReplayRuntime {
     /// Runs one bounded replay invocation with a host-owned cooperative stop probe.
     ///
     /// The probe is intentionally synchronous and carries no transport or storage failure surface.
-    /// It is sampled only by the runner's existing durable safe points. Callers that do not own a
-    /// host lifecycle should use [`Self::run`] instead.
-    pub async fn run_interruptible<Check>(
+    /// It is sampled only at durable safe points. Pass `|| false` when no stop probe exists.
+    pub async fn run_operator<Check>(
         &self,
+        authority: IndexJobOperatorAuthority,
         request: IndexReplayRunRequest,
         should_interrupt: Check,
-    ) -> Result<IndexReplayRunOutcome, IndexReplayRunError>
+    ) -> Result<IndexReplayRunOutcome, IndexJobOperatorError>
     where
         Check: FnMut() -> bool,
     {
-        self.runner
+        authority.require_tenant(request.page_request().tenant_id())?;
+        Ok(self
+            .runner
             .run_interruptible(request, should_interrupt)
-            .await
+            .await?)
     }
 
-    pub async fn request_cancel(
+    pub async fn cancel_operator_replay(
         &self,
-        tenant_id: Uuid,
+        authority: IndexJobOperatorAuthority,
         job_id: Uuid,
-    ) -> Result<IndexReplayCancelOutcome, IndexReplayRunError> {
-        self.runner.request_cancel(tenant_id, job_id).await
+    ) -> Result<IndexReplayCancelOutcome, IndexJobOperatorError> {
+        Ok(self
+            .runner
+            .request_cancel(authority.tenant_id, job_id)
+            .await?)
+    }
+
+    pub async fn requeue_operator_replay(
+        &self,
+        authority: IndexJobOperatorAuthority,
+        job_id: Uuid,
+        reason: impl Into<String>,
+    ) -> Result<IndexJobRequeueOutcome, IndexJobOperatorError> {
+        let request =
+            IndexJobRequeueRequest::new(authority.tenant_id, job_id, authority.actor_id, reason)?;
+        Ok(self.runner.requeue_failed(request).await?)
+    }
+
+    pub async fn requeue_operator_reconciliation(
+        &self,
+        authority: IndexJobOperatorAuthority,
+        job_id: Uuid,
+        reason: impl Into<String>,
+    ) -> Result<IndexJobRequeueOutcome, IndexJobOperatorError> {
+        let request =
+            IndexJobRequeueRequest::new(authority.tenant_id, job_id, authority.actor_id, reason)?;
+        Ok(self.runner.requeue_failed_reconciliation(request).await?)
     }
 }
 
@@ -166,7 +247,35 @@ mod tests {
         register_index_schema_source, register_index_source,
     };
 
-    use super::{IndexReplayRuntimeCompositionError, materialize_postgres_index_replay_runtime};
+    use super::{
+        IndexJobOperatorAuthority, IndexJobOperatorError, IndexReplayRuntimeCompositionError,
+        Permission, materialize_postgres_index_replay_runtime,
+    };
+
+    #[test]
+    fn replay_operator_authority_requires_the_exact_tenant_and_manage_permission() {
+        let tenant = uuid::Uuid::from_u128(1);
+        let actor = uuid::Uuid::from_u128(2);
+        let other_tenant = uuid::Uuid::from_u128(3);
+        let manage = [Permission::MODULES_MANAGE];
+        for (request_tenant, actor, permissions) in [
+            (other_tenant, actor, &manage),
+            (tenant, uuid::Uuid::nil(), &manage),
+            (tenant, actor, &[Permission::MODULES_READ]),
+        ] {
+            assert!(matches!(
+                IndexJobOperatorAuthority::authorize(request_tenant, tenant, actor, permissions),
+                Err(IndexJobOperatorError::Forbidden)
+            ));
+        }
+        let authority = IndexJobOperatorAuthority::authorize(tenant, tenant, actor, &manage)
+            .expect("tenant-bound manage permission authorizes replay");
+        assert!(authority.require_tenant(tenant).is_ok());
+        assert!(matches!(
+            authority.require_tenant(other_tenant),
+            Err(IndexJobOperatorError::Forbidden)
+        ));
+    }
 
     struct NoopSource;
 

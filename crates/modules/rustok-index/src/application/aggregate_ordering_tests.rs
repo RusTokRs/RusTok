@@ -130,7 +130,8 @@ fn decimal_aggregate_uses_numeric_order_and_exact_string_wire() {
             .sql
             .contains("jsonb_build_object('type', 'decimal', 'value', to_jsonb(((SELECT MAX(")
     );
-    assert!(compiled.sql.contains(")::text)) END AS \"__order_0\""));
+    // The second END closes the projection budget guard, not the Decimal wire conversion.
+    assert!(compiled.sql.contains(")::text)) END END AS \"__order_0\""));
     assert!(compiled.sql.contains("DESC NULLS FIRST"));
 }
 

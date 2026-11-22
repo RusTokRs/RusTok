@@ -15,7 +15,9 @@ accept arbitrary SQL or JSON, mount a transport, or resolve the finding lifecycl
 ## Internal composition
 
 `materialize_postgres_index_drift_orphan_link_repair_service` requires an explicit repair authorizer,
-a PostgreSQL connection, a frozen source registry, and a frozen absence registry. It composes:
+a PostgreSQL connection, frozen source and absence registries, and an owner-supplied
+`PostgresIndexOrphanLinkAuthorityFence`. No destructive owner can be constructed without this
+capability. It composes:
 
 - `PostgresIndexDriftOrphanLinkEvidenceReader`;
 - `PostgresIndexDriftOrphanLinkRepairOwner`;
@@ -38,7 +40,7 @@ absence version, or finding identity fails closed.
 
 ## Evidence capture
 
-Before and after evidence use the same bounded sequence:
+For fresh repair and for post-commit convergence, evidence uses the same bounded sequence:
 
 1. load the exact source entity from its authoritative source;
 2. load the exact linked target or retained target-absence watermark;
@@ -53,14 +55,14 @@ version. The materialized source entity must remain live at the exact indexed ve
 
 ### Before phase
 
-Before evidence is `Repairable` only when either:
+Fresh before evidence is `Repairable` only when the exact materialized link exists, current
+authority matches, and no command-bound delivery exists.
 
-- the exact materialized link exists and no command-bound delivery exists; or
-- the exact materialized link is absent and the exact command-bound delivery is already `applied`.
-
-The second case is the crash-retry path. Link removal and inbox completion share one database
-transaction, so an applied delivery is the durable proof that this command removed the edge. A
-physically absent link without that proof is never admitted as repair progress.
+An exact `applied` delivery can instead supply before evidence for read-only crash recovery.
+Link removal and inbox completion share one transaction, so that delivery proves this command
+removed the edge. It authorizes recovery of the receipt, not a second deletion. If the witness
+vanishes, recovery fails closed. A physically absent link without that proof is never admitted
+as repair progress.
 
 ### After phase
 
@@ -72,8 +74,9 @@ After evidence is `Converged` only when:
 - the exact materialized link is absent;
 - the exact command-bound inbox delivery is `applied` with the expected payload digest.
 
-A different target at the ordinal, an absent source entity, a tombstoned source entity, a changed
-source version, a restored target, or an absent/mismatched inbox delivery is `Changed`.
+Changed source or target authority, a restored edge, or an absent inbox delivery does not prove
+convergence. If the exact original delivery is known to be applied but convergence changed, retain
+the owner's receipt in `NotRepaired(after_not_converged)` without repeating the deletion.
 
 ## Typed link-removal owner
 
@@ -98,15 +101,19 @@ The store uses the existing `index_inbox` identity `(tenant_id, source_name, del
 The `delete` category is only the existing inbox storage family. The source name and payload digest
 bind the operation to exact link removal and prevent confusion with entity tombstones.
 
-Within one serializable transaction the store:
+Within one read-committed transaction the store:
 
-1. reserves or replays the exact inbox delivery;
-2. acquires the canonical source-entity advisory lock;
-3. verifies the source entity is live at the exact version;
-4. verifies the exact link row and target identity;
+1. requires the owner fence to revalidate and hold the exact source revision/edge and target
+   absence until this transaction ends; owners must coordinate writes or prove immutability;
+2. reserves or replays the exact inbox delivery;
+3. acquires canonical Index entity locks for both keys in a stable order, including missing targets;
+4. verifies the exact live source, absence of a newer target, and unchanged target/ordinal;
 5. deletes exactly that row without rewriting the source entity or other links;
 6. marks the inbox delivery applied.
 
+Double-reading authority is diagnostic, not a write fence. Independently mutable owners without
+a transaction-safe fence are not admitted. A later target revival must advance affected source
+revisions to republish those edges, or the owner must guarantee permanent absence.
 A duplicate command returns the existing applied delivery. Payload reuse under the same delivery ID,
 pending/rejected delivery state, source movement, or link substitution fails closed.
 

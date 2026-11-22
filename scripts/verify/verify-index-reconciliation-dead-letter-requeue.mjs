@@ -21,8 +21,10 @@ const requireMarkers = (relative, markers) => {
 const migrationPath =
   'crates/modules/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs';
 const recoveryPath =
-  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_recovery.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_job_recovery.rs';
 const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
+const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
+const nativePath = 'crates/modules/rustok-index/admin/src/transport/native_server_adapter.rs';
 const schedulerPath =
   'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
 const docsPath =
@@ -32,27 +34,35 @@ const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 
 requireMarkers(migrationPath, [
   'ADD COLUMN retry_epoch INTEGER NOT NULL DEFAULT 0',
-  'CREATE TABLE index_reconciliation_recovery_audits',
+  'CREATE TABLE index_job_recovery_audits',
   'actor_id UUID NOT NULL',
   'reason VARCHAR(512) NOT NULL',
   'UNIQUE (tenant_id, job_id, retry_epoch)',
-  'index_reconciliation_recovery_audits_immutable_update',
-  'index_reconciliation_recovery_audits_immutable_delete',
+  'index_job_recovery_audits_immutable_update',
+  'index_job_recovery_audits_immutable_delete',
+  'index_job_recovery_audits_immutable_truncate',
+  'index_job_recovery_audits_no_replacement',
 ]);
 const recovery = requireMarkers(recoveryPath, [
-  'pub struct IndexReconciliationRequeueRequest',
-  'pub struct PostgresIndexReconciliationRecoveryStore',
-  'pub async fn requeue_failed(',
+  'pub struct IndexJobRequeueRequest',
+  'pub(super) struct PostgresIndexJobRecoveryStore',
+  'async fn requeue_failed(',
   'lock_reconciliation_scope(',
-  'if locked.state != "failed"',
-  'update_failed_job_sql(backend)',
+  'if scope.state != "failed" || locked.state != "failed"',
+  'update_failed_job_sql(backend, kind)',
   'insert_audit_sql(backend)',
   "state = 'pending'",
-  'attempt_count = 0',
+  'failure_count = 0',
   'retry_epoch = {prefix}5',
-  'transaction.commit()',
-  'transaction.rollback()',
+  '.commit()',
+  '.rollback()',
+  'locked.attempt_count != scope.attempt_count || locked.retry_epoch != scope.retry_epoch',
+  'if current != Some(request.job_id)',
 ]);
+const transition = recovery.slice(recovery.indexOf('fn update_failed_job_sql('), recovery.indexOf('fn insert_audit_sql('));
+if (/\brequest\s*=|\battempt_count\s*=\s*0/.test(transition)) {
+  fail('requeuing must not replace the original job request or reset its lease generation');
+}
 const production = recovery.split('\n#[cfg(test)]')[0];
 for (const forbidden of [
   'INSERT INTO index_jobs', '.sources.scan(', 'tokio::spawn', 'tokio::time::sleep',
@@ -64,18 +74,49 @@ for (const forbidden of [
 requireMarkers(operatorPath, [
   'pub async fn requeue_dead_letter(',
   'context.authorize_for(context.tenant_id())?;',
-  'IndexReconciliationRequeueRequest::new(',
+  'IndexJobRequeueRequest::new(',
   'context.tenant_id(),',
   'context.actor_id(),',
   '.requeue_failed(request)',
 ]);
+const graphql = read(graphqlPath);
+const input = graphql.slice(graphql.indexOf('pub struct IndexJobRequeueInput {'), graphql.indexOf('pub enum IndexJobRequeueStatus'));
+if (!/pub struct IndexJobRequeueInput \{\s*pub job_id: Uuid,\s*pub reason: String,\s*\}/u.test(input)) {
+  fail('requeue input must not admit tenant, actor, attempt or cursor overrides');
+}
+for (const [field, dispatch] of [
+  ['requeue_index_replay', '.requeue_failed(operator, input.job_id, input.reason)'],
+  ['requeue_index_reconciliation', '.requeue_dead_letter(operator, input.job_id, input.reason)'],
+]) {
+  const start = graphql.indexOf(`async fn ${field}(`);
+  const end = graphql.indexOf('\n    }', start);
+  const body = graphql.slice(start, end);
+  const scope = body.indexOf('request_scope(ctx)?');
+  const permission = body.indexOf('authorize(tenant_id, actor_id)', scope);
+  const call = body.indexOf(dispatch, permission);
+  if (scope < 0 || permission <= scope || call <= permission) {
+    fail(`${field} must authorize the request before dispatching the exact job kind`);
+  }
+}
+requireMarkers(nativePath, [
+  'let (authority, runtime, _) = operator_context().await?;',
+  'let outcome = match input.kind {',
+  'RetryJobKind::Replay =>',
+  'RetryJobKind::Reconciliation =>',
+  '.requeue_operator_replay(authority, job_id, reason)',
+  '.requeue_operator_reconciliation(authority, job_id, reason)',
+  'IndexJobRequeueOutcome::NotFound => (RetryActionStatus::NotFound, None)',
+]);
+
 requireMarkers(schedulerPath, [
-  "state = 'pending' AND available_at <= CURRENT_TIMESTAMP",
+  "available_at <= CURRENT_TIMESTAMP",
   '.runner',
   '.run(request)',
 ]);
 requireMarkers(docsPath, [
-  'Status: `source_complete_authorized_server_composition_transport_pending`.',
+  'Status: source complete; native and GraphQL execution verification pending.',
+  'resets `failure_count` to zero without resetting the lease generation',
+  '`requeueIndexReconciliation` binds tenant and actor in the resolver.',
   'preserves the existing job UUID',
   'The audit insert and job reset commit or roll back together',
   'accepts no tenant or actor argument',

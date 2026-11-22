@@ -25,7 +25,7 @@ const runtime = requireMarkers(runtimePath, [
   'pub async fn run_targeted(',
   'request: IndexSourceLoadRequest',
   '.run(crate::IndexReplayModeSelection::Targeted(request))',
-  'pub async fn run_interruptible<Check>(',
+  'pub async fn run_operator<Check>(',
   'Check: FnMut() -> bool',
   '.run_interruptible(request, should_interrupt)',
   'pub enum IndexReplayRuntimeCompositionError',
@@ -52,7 +52,7 @@ const runtime = requireMarkers(runtimePath, [
 ]);
 for (const forbidden of [
   'tokio::spawn', 'tokio::time::sleep', 'loop {', '.query_one(',
-  '.query_all(', '.execute(', '.begin()', 'permissions_for(', 'Permission::', 'StopHandle',
+  '.query_all(', '.execute(', '.begin()', 'permissions_for(', 'StopHandle',
 ]) {
   if (runtime.includes(forbidden)) fail(`${runtimePath} contains ${forbidden}`);
 }
@@ -78,8 +78,8 @@ const server = requireMarkers(serverPath, [
   'pub async fn run_shadow(',
   'self.shadow.run(request).await.map_err(Into::into)',
   'pub async fn run_interruptible<Check>(',
-  '.run_interruptible(request, should_interrupt)',
-  'Permission::MODULES_MANAGE',
+  '.run_operator(authority, request, should_interrupt)',
+  'IndexJobOperatorAuthority::authorize(',
   'permissions_for(&self.tenant_id, &self.actor_id)',
   'materialize_postgres_index_sources(extensions, db.clone())',
   'materialize_index_source_registry(extensions)',
@@ -98,7 +98,7 @@ const graphqlPath = 'apps/server/src/graphql/index_replay.rs';
 const graphqlProduction = read(graphqlPath).split('\n#[cfg(test)]')[0];
 for (const required of [
   'async fn run_index_replay_targeted(',
-  'prepare_authorized_targeted_run(tenant.id, auth.user_id, input)',
+  'prepare_authorized_targeted_run(tenant_id, actor_id, input)',
   '.run_targeted(operator_context, request)',
 ]) {
   if (!graphqlProduction.includes(required)) fail(`${graphqlPath} is missing guarded Targeted transport marker ${required}`);

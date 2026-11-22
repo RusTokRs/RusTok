@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Index
+
+- Fence durable replay and reconciliation dispatch, writes and recovery against stale ownership; preserve original jobs and audit operator requeues. Check PostgreSQL lease expiry after locking the job row so a delayed heartbeat cannot renew an expired generation.
+- Share typed PostgreSQL query and secondary-index definitions, preserve precise cursor and relation identities, and reject oversized query results.
+- Read real tenant-scoped Index diagnostics and route SSR/hydrate and CSR operator actions through the authenticated runtime. See the [Index operations guide](crates/modules/rustok-index/docs/operations.md) before applying the pending storage changes.
+
 ### Added
 
 #### Newsletter Module (M-9)

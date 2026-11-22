@@ -32,6 +32,7 @@ rand.workspace = true
 thiserror.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 async-graphql = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }
 
 sea-orm-migration = { workspace = true }
@@ -39,7 +40,7 @@ sea-orm.workspace = true
 
 [features]
 default = []
-graphql = ["dep:async-graphql", "dep:rustok-telemetry", "rustok-api/server"]
+graphql = ["dep:async-graphql", "dep:http", "dep:rustok-telemetry", "rustok-api/server"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

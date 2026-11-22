@@ -1,18 +1,19 @@
 use leptos::prelude::*;
-use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    IndexAdminOverviewViewModel, IndexSchemaRowViewModel, IndexSourceRowViewModel,
+    FeedbackTone, IndexAdminOverviewViewModel, IndexSchemaRowViewModel, IndexSourceRowViewModel,
     IndexTableRowViewModel, build_index_admin_overview_view_model, filter_index_schemas,
     filter_index_sources, filter_index_tables, format_cancel_action_result,
     format_index_admin_bootstrap_error, format_replay_action_result, format_retry_action_result,
     index_schema_grid_columns, index_source_grid_columns, index_table_grid_columns,
+    source_catalog_empty_message,
 };
 use crate::i18n::t;
-use crate::model::{CancelJobInput, RetryJobInput, TriggerReplayInput};
+use crate::model::{CancelJobInput, RetryJobInput, RetryJobKind, TriggerReplayInput};
 use crate::transport;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,21 @@ enum AdminTab {
     Schemas,
     Storage,
     Operations,
+}
+
+/// A completed action can refresh the snapshot only for the request scope that started it.
+/// Refresh on both typed success and failure: network errors do not prove that no write committed.
+fn finish_scoped_action<S: Eq, T>(
+    request: &S,
+    current: Option<&S>,
+    result: T,
+    apply: impl FnOnce(T),
+    refresh: impl FnOnce(),
+) {
+    if current == Some(request) {
+        apply(result);
+        refresh();
+    }
 }
 
 /// Builds a resource the response resolves.
@@ -42,101 +58,184 @@ where
 
 #[component]
 pub fn IndexAdmin() -> impl IntoView {
+    let auth = use_auth();
+    let auth_scope = Memo::new(move |_| auth.client_scope());
     let token = use_token();
     let tenant = use_tenant();
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
-    let bootstrap = loaded_resource(
-        move || (token.get(), tenant.get()),
-        move |_| async move { transport::fetch_bootstrap().await },
+    let index_bootstrap = loaded_resource(
+        move || (auth_scope.get().generation, token.get(), tenant.get()),
+        |(generation, token, tenant)| async move {
+            // Only the credential-free generation is serialized with the resource result.
+            (generation, transport::fetch_bootstrap(token, tenant).await)
+        },
     );
 
     let (active_tab, set_active_tab) = signal(AdminTab::Overview);
-    let (action_message, set_action_message) = signal::<Option<(bool, String)>>(None);
+    let (action_message, set_action_message) = signal::<Option<(FeedbackTone, String)>>(None);
     let (is_busy, set_is_busy) = signal(false);
     let (cancel_job_id, set_cancel_job_id) = signal(String::new());
+    let retry_kind = RwSignal::new(RetryJobKind::Replay);
     let (retry_job_id, set_retry_job_id) = signal(String::new());
     let (retry_reason, set_retry_reason) = signal(String::new());
 
+    // Never use a disposed route's signals or a session that no longer matches browser authority.
+    let current_action_scope = move || {
+        let scope = auth_scope.try_get_untracked()?;
+        if !scope.is_ready() {
+            return None;
+        }
+        let token = token.try_get_untracked().flatten()?;
+        let tenant = tenant.try_get_untracked().flatten()?;
+        transport::is_current_scope(&token, &tenant).then_some((scope, token, tenant))
+    };
+
+    Effect::new(move |_| {
+        let _ = auth_scope.get();
+        set_action_message.set(None);
+        set_cancel_job_id.set(String::new());
+        retry_kind.set(RetryJobKind::Replay);
+        set_retry_job_id.set(String::new());
+        set_retry_reason.set(String::new());
+    });
+
     let on_rebuild = {
         let locale = locale.clone();
-        move |schema_module: String, schema_entity: String, schema_version: u32| {
+        move |generation: u64, schema_module: String, schema_entity: String, schema_version: u32| {
+            let Some(request) = current_action_scope() else {
+                return;
+            };
+            if request.0.generation != generation || is_busy.try_get_untracked() != Some(false) {
+                return;
+            }
             let locale_clone = locale.clone();
             set_is_busy.set(true);
             set_action_message.set(None);
             leptos::task::spawn_local(async move {
+                if current_action_scope().as_ref() != Some(&request) {
+                    set_is_busy.try_set(false);
+                    return;
+                }
                 let input = TriggerReplayInput {
                     schema_module,
                     schema_entity,
                     schema_version,
                     locale: None,
                 };
-                match transport::trigger_replay(input).await {
-                    Ok(res) => {
-                        let text = format_replay_action_result(locale_clone.as_deref(), &res);
-                        set_action_message.set(Some((res.success, text)));
-                    }
-                    Err(err) => {
-                        set_action_message.set(Some((false, err.to_string())));
-                    }
-                }
-                set_is_busy.set(false);
+                let result = transport::trigger_replay(
+                    Some(request.1.clone()),
+                    Some(request.2.clone()),
+                    input,
+                )
+                .await;
+                finish_scoped_action(
+                    &request,
+                    current_action_scope().as_ref(),
+                    result,
+                    |result| match result {
+                        Ok(res) => {
+                            set_action_message.set(Some(format_replay_action_result(
+                                locale_clone.as_deref(),
+                                &res,
+                            )));
+                        }
+                        Err(err) => {
+                            set_action_message.set(Some((FeedbackTone::Error, err.to_string())));
+                        }
+                    },
+                    || index_bootstrap.refetch(),
+                );
+                set_is_busy.try_set(false);
             });
         }
     };
 
     let on_cancel = {
         let locale = locale.clone();
-        move |job_id: String| {
+        move |generation: u64, job_id: String| {
+            let Some(request) = current_action_scope() else {
+                return;
+            };
+            if request.0.generation != generation || is_busy.try_get_untracked() != Some(false) {
+                return;
+            }
             let locale_clone = locale.clone();
             set_is_busy.set(true);
             set_action_message.set(None);
             leptos::task::spawn_local(async move {
-                let input = CancelJobInput { job_id };
-                match transport::cancel_job(input).await {
-                    Ok(res) => {
-                        let text = format_cancel_action_result(locale_clone.as_deref(), &res);
-                        set_action_message.set(Some((res.success, text)));
-                    }
-                    Err(err) => {
-                        set_action_message.set(Some((false, err.to_string())));
-                    }
+                if current_action_scope().as_ref() != Some(&request) {
+                    set_is_busy.try_set(false);
+                    return;
                 }
-                set_is_busy.set(false);
+                let input = CancelJobInput { job_id };
+                let result =
+                    transport::cancel_job(Some(request.1.clone()), Some(request.2.clone()), input)
+                        .await;
+                finish_scoped_action(
+                    &request,
+                    current_action_scope().as_ref(),
+                    result,
+                    |result| match result {
+                        Ok(res) => {
+                            set_action_message.set(Some(format_cancel_action_result(
+                                locale_clone.as_deref(),
+                                &res,
+                            )));
+                        }
+                        Err(err) => {
+                            set_action_message.set(Some((FeedbackTone::Error, err.to_string())));
+                        }
+                    },
+                    || index_bootstrap.refetch(),
+                );
+                set_is_busy.try_set(false);
             });
         }
     };
 
     let on_retry = {
         let locale = locale.clone();
-        move |job_id: String, reason: String| {
+        move |generation: u64, input: RetryJobInput| {
+            let Some(request) = current_action_scope() else {
+                return;
+            };
+            if request.0.generation != generation || is_busy.try_get_untracked() != Some(false) {
+                return;
+            }
             let locale_clone = locale.clone();
             set_is_busy.set(true);
             set_action_message.set(None);
             leptos::task::spawn_local(async move {
-                let input = RetryJobInput {
-                    job_id,
-                    reason: if reason.trim().is_empty() {
-                        None
-                    } else {
-                        Some(reason)
-                    },
-                };
-                match transport::retry_job(input).await {
-                    Ok(res) => {
-                        let text = format_retry_action_result(locale_clone.as_deref(), &res);
-                        set_action_message.set(Some((res.success, text)));
-                    }
-                    Err(err) => {
-                        set_action_message.set(Some((false, err.to_string())));
-                    }
+                if current_action_scope().as_ref() != Some(&request) {
+                    set_is_busy.try_set(false);
+                    return;
                 }
-                set_is_busy.set(false);
+                let result =
+                    transport::retry_job(Some(request.1.clone()), Some(request.2.clone()), input)
+                        .await;
+                finish_scoped_action(
+                    &request,
+                    current_action_scope().as_ref(),
+                    result,
+                    |result| match result {
+                        Ok(res) => {
+                            set_action_message.set(Some(format_retry_action_result(
+                                locale_clone.as_deref(),
+                                &res,
+                            )));
+                        }
+                        Err(err) => {
+                            set_action_message.set(Some((FeedbackTone::Error, err.to_string())));
+                        }
+                    },
+                    || index_bootstrap.refetch(),
+                );
+                set_is_busy.try_set(false);
             });
         }
     };
 
-    let index_bootstrap = bootstrap;
     view! {
         <div class="space-y-6">
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -157,20 +256,28 @@ pub fn IndexAdmin() -> impl IntoView {
                             {t(locale.as_deref(), "index.subtitle", "Platform-owned cross-module relational index and query engine.")}
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        disabled=move || is_busy.get()
+                        class="self-start rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                        on:click=move |_| index_bootstrap.refetch()
+                    >
+                        {t(locale.as_deref(), "index.action.refresh", "Refresh status")}
+                    </button>
                 </div>
             </header>
 
             // Action Feedback Banner
             {
                 let banner_locale = locale.clone();
-                move || action_message.get().map(|(success, msg)| {
-                    let (bg_class, text_class, border_class) = if success {
-                        ("bg-emerald-500/10", "text-emerald-600 dark:text-emerald-400", "border-emerald-500/20")
-                    } else {
-                        ("bg-destructive/10", "text-destructive", "border-destructive/20")
+                move || action_message.get().map(|(tone, msg)| {
+                    let (bg_class, text_class, border_class) = match tone {
+                        FeedbackTone::Success => ("bg-emerald-500/10", "text-emerald-600 dark:text-emerald-400", "border-emerald-500/20"),
+                        FeedbackTone::Neutral => ("bg-muted", "text-muted-foreground", "border-border"),
+                        FeedbackTone::Error => ("bg-destructive/10", "text-destructive", "border-destructive/20"),
                     };
                     view! {
-                        <div class=format!("flex items-center justify-between rounded-xl border {border_class} {bg_class} px-4 py-3 text-sm {text_class} shadow-sm transition-all")>
+                        <div role="status" class=format!("flex items-center justify-between rounded-xl border {border_class} {bg_class} px-4 py-3 text-sm {text_class} shadow-sm transition-all")>
                             <div class="flex items-center gap-2">
                                 <span class="font-semibold">{t(banner_locale.as_deref(), "index.action.status", "Action Status")}:</span>
                                 <span>{msg}</span>
@@ -190,7 +297,14 @@ pub fn IndexAdmin() -> impl IntoView {
             <Suspense fallback=move || view! { <div class="h-48 animate-pulse rounded-2xl bg-muted"></div> }>
                 {move || {
                     let tab_locale = locale.clone();
-                    index_bootstrap.get().map(|result| match result {
+                    let scope = auth_scope.get();
+                    let current_tenant = tenant.get();
+                    index_bootstrap.get().filter(|(generation, result)| {
+                        scope.is_ready() && scope.generation == *generation
+                            && result.as_ref().map_or(true, |bootstrap| {
+                                current_tenant.as_deref() == Some(bootstrap.tenant.slug.as_str())
+                            })
+                    }).map(|(generation, result)| match result {
                         Ok(bootstrap) => {
                             let vm = build_index_admin_overview_view_model(
                                 tab_locale.as_deref(),
@@ -288,7 +402,10 @@ pub fn IndexAdmin() -> impl IntoView {
                                         let on_retry = on_retry.clone();
                                         move || match active_tab.get() {
                                             AdminTab::Overview => view_overview(locale_str.as_deref(), &vm_clone),
-                                            AdminTab::Schemas => view_schemas(locale_str.clone(), &vm_clone, is_busy, on_rebuild.clone()),
+                                            AdminTab::Schemas => view_schemas(locale_str.clone(), &vm_clone, is_busy, {
+                                                let on_rebuild = on_rebuild.clone();
+                                                move |module, entity, version| on_rebuild(generation, module, entity, version)
+                                            }),
                                             AdminTab::Storage => view_storage(locale_str.as_deref(), &vm_clone),
                                             AdminTab::Operations => view_operations(
                                                 locale_str.clone(),
@@ -296,12 +413,19 @@ pub fn IndexAdmin() -> impl IntoView {
                                                 is_busy,
                                                 cancel_job_id,
                                                 set_cancel_job_id,
-                                                on_cancel.clone(),
+                                                {
+                                                    let on_cancel = on_cancel.clone();
+                                                    move |job_id| on_cancel(generation, job_id)
+                                                },
+                                                retry_kind,
                                                 retry_job_id,
                                                 set_retry_job_id,
                                                 retry_reason,
                                                 set_retry_reason,
-                                                on_retry.clone(),
+                                                {
+                                                    let on_retry = on_retry.clone();
+                                                    move |input| on_retry(generation, input)
+                                                },
                                             ),
                                         }
                                     }
@@ -339,8 +463,8 @@ fn view_overview(locale: Option<&str>, vm: &IndexAdminOverviewViewModel) -> AnyV
                         <div class="mt-1 text-sm font-medium text-card-foreground">{vm.engine_type.clone()}</div>
                     </div>
                     <div class="rounded-xl border border-border/70 bg-muted/40 p-4">
-                        <div class="text-xs font-semibold text-muted-foreground uppercase">{t(locale, "index.info.milestone", "Active Milestone")}</div>
-                        <div class="mt-1 text-sm font-medium text-card-foreground">{vm.current_milestone.clone()}</div>
+                        <div class="text-xs font-semibold text-muted-foreground uppercase">{t(locale, "index.info.version", "Module Version")}</div>
+                        <div class="mt-1 text-sm font-medium text-card-foreground">{vm.module_version.clone()}</div>
                     </div>
                     <div class="rounded-xl border border-border/70 bg-muted/40 p-4">
                         <div class="text-xs font-semibold text-muted-foreground uppercase">{t(locale, "index.info.partitionStatus", "Partition Policy")}</div>
@@ -451,17 +575,21 @@ where
                 }
                 .into_any()
             }
+            "readiness" => {
+                view! { <span class="text-xs">{schema.readiness.clone()}</span> }.into_any()
+            }
             "actions" => {
                 let module = schema.module.clone();
                 let entity = schema.entity.clone();
                 let version = schema.raw_version;
+                let can_replay = schema.can_replay;
                 let on_rebuild = cell_on_rebuild.clone();
                 let btn_locale = cell_locale.clone();
                 view! {
                     <div class="flex items-center justify-end">
                         <button
                             type="button"
-                            disabled=move || is_busy.get()
+                            disabled=move || is_busy.get() || !can_replay
                             class="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             on:click={
                                 let on_rebuild = on_rebuild.clone();
@@ -533,26 +661,6 @@ where
                     <div class="flex items-center gap-2">
                         <button
                             type="button"
-                            disabled=move || is_busy.get()
-                            class="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors"
-                            on:click={
-                                let on_rebuild = on_rebuild.clone();
-                                let schemas_map = all_schemas.clone();
-                                move |_| {
-                                let sel = selection.get();
-                                for schema in &schemas_map {
-                                    let key = format!("{}:{}", schema.qualified_name, schema.raw_version);
-                                    if sel.is_selected(&key) {
-                                        on_rebuild(schema.module.clone(), schema.entity.clone(), schema.raw_version);
-                                    }
-                                }
-                                }
-                            }
-                        >
-                            {if is_ru { "Переиндексировать выбранные" } else { "Rebuild Selected" }}
-                        </button>
-                        <button
-                            type="button"
                             class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
                             on:click=move |_| selection.update(|s| s.clear())
                         >
@@ -566,7 +674,7 @@ where
             <DataGrid
                 columns=columns
                 data=Signal::derive(move || paged_schemas.get())
-                key_fn=|item: &IndexSchemaRowViewModel| format!("{}:{}", item.qualified_name, item.raw_version)
+                key_fn=IndexSchemaRowViewModel::key
                 cell_renderer=cell_renderer
                 is_loading=Signal::derive(move || is_busy.get())
                 empty_message=empty_msg
@@ -694,6 +802,7 @@ fn view_operations<F, G>(
     cancel_job_id: ReadSignal<String>,
     set_cancel_job_id: WriteSignal<String>,
     on_cancel: F,
+    retry_kind: RwSignal<RetryJobKind>,
     retry_job_id: ReadSignal<String>,
     set_retry_job_id: WriteSignal<String>,
     retry_reason: ReadSignal<String>,
@@ -702,7 +811,7 @@ fn view_operations<F, G>(
 ) -> AnyView
 where
     F: Fn(String) + Clone + 'static,
-    G: Fn(String, String) + Clone + 'static,
+    G: Fn(RetryJobInput) + Clone + 'static,
 {
     let empty_locale = locale.clone();
     let btn_locale = locale.clone();
@@ -715,6 +824,8 @@ where
     let source_search = RwSignal::new(String::new());
     let source_filters = RwSignal::new(ColumnFilters::new());
     let source_selection = RwSignal::new(RowSelection::new());
+    let can_manage_jobs = vm.can_manage_jobs;
+    let source_catalog_available = vm.source_catalog_available;
     let source_pagination = RwSignal::new(GridPagination::new(1, 20, vm.sources.len() as u64));
 
     let all_sources = vm.sources.clone();
@@ -758,9 +869,9 @@ where
                 </span>
             }
             .into_any(),
-            "mode" => view! {
+            "owner" => view! {
                 <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground font-mono">
-                    {src.mode}
+                    {src.owner_module}
                 </span>
             }
             .into_any(),
@@ -780,6 +891,9 @@ where
                     <p class="mt-1 text-sm text-muted-foreground">
                         {t(locale.as_deref(), "index.action.operatorControlsDesc", "Trigger bounded replay runs, cancel or retry existing jobs.")}
                     </p>
+                    {vm.operator_unavailable.clone().map(|message| view! {
+                        <p class="mt-2 text-sm text-muted-foreground">{message}</p>
+                    })}
                 </div>
 
                 // Cancel Job Form
@@ -799,7 +913,7 @@ where
                     <div>
                         <button
                             type="button"
-                            disabled=move || is_busy.get() || cancel_job_id.get().trim().is_empty()
+                            disabled=move || !can_manage_jobs || is_busy.get() || cancel_job_id.get().trim().is_empty()
                             class="w-full inline-flex items-center justify-center rounded-xl bg-destructive/10 text-destructive border border-destructive/20 px-4 py-2 text-sm font-semibold hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             on:click={
                                 let on_cancel = on_cancel.clone();
@@ -817,7 +931,7 @@ where
                                     if is_busy.get() {
                                         t(btn_locale.as_deref(), "index.action.cancelling", "Cancelling...")
                                     } else {
-                                        t(btn_locale.as_deref(), "index.action.cancel", "Cancel Job")
+                                        t(btn_locale.as_deref(), "index.action.cancel", "Cancel replay")
                                     }
                                 }
                             }
@@ -833,11 +947,29 @@ where
                         {t(locale.as_deref(), "index.action.retryControls", "Retry / Requeue Failed Job")}
                     </h2>
                     <p class="mt-1 text-sm text-muted-foreground">
-                        {t(locale.as_deref(), "index.action.retryControlsDesc", "Requeue a failed reconciliation job for another attempt. Requires MODULES_MANAGE permission.")}
+                        {t(locale.as_deref(), "index.action.retryControlsDesc", "Requeue the original failed replay or reconciliation job. A reason is required.")}
                     </p>
                 </div>
 
-                <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <label class="space-y-1.5">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            {t(locale.as_deref(), "index.action.retryKind", "Job kind")}
+                        </span>
+                        <select
+                            disabled=move || !can_manage_jobs || is_busy.get()
+                            prop:value=move || retry_kind.get().as_str()
+                            on:change=move |event| match event_target_value(&event).as_str() {
+                                "replay" => retry_kind.set(RetryJobKind::Replay),
+                                "reconciliation" => retry_kind.set(RetryJobKind::Reconciliation),
+                                _ => (),
+                            }
+                            class="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground"
+                        >
+                            <option value="replay">{t(locale.as_deref(), "index.action.retryKindReplay", "Replay")}</option>
+                            <option value="reconciliation">{t(locale.as_deref(), "index.action.retryKindReconciliation", "Reconciliation")}</option>
+                        </select>
+                    </label>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             {t(locale.as_deref(), "index.action.retryJobId", "Job ID to Retry")}
@@ -852,7 +984,7 @@ where
                     </div>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            {t(locale.as_deref(), "index.action.retryReason", "Reason (optional)")}
+                            {t(locale.as_deref(), "index.action.retryReason", "Reason (required)")}
                         </label>
                         <input
                             type="text"
@@ -866,15 +998,15 @@ where
                 <div>
                     <button
                         type="button"
-                        disabled=move || is_busy.get() || retry_job_id.get().trim().is_empty()
+                        disabled=move || !can_manage_jobs || is_busy.get() || retry_job_id.get().trim().is_empty() || retry_reason.get().trim().is_empty()
                         class="inline-flex items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-5 py-2 text-sm font-semibold hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         on:click={
                             let on_retry = on_retry.clone();
                             move |_| {
                                 let id = retry_job_id.get().trim().to_string();
                                 let reason = retry_reason.get().trim().to_string();
-                                if !id.is_empty() {
-                                    on_retry(id, reason);
+                                if !id.is_empty() && !reason.is_empty() {
+                                    on_retry(RetryJobInput { job_id: id, kind: retry_kind.get(), reason });
                                 }
                             }
                         }
@@ -924,6 +1056,29 @@ where
                 </div>
             </section>
 
+            <section class="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 class="text-lg font-semibold">{t(locale.as_deref(), "index.jobs.recent", "Recent Replay and Reconciliation Jobs")}</h2>
+                <ul class="space-y-2">
+                    {vm.recent_jobs.iter().cloned().map(|job| view! {
+                        <li class="rounded-lg border border-border px-3 py-2 text-sm">
+                            <div class="font-medium">
+                                {job.schema} " · " {job.locale.unwrap_or_else(|| t(locale.as_deref(), "index.jobs.schemaWide", "All locales"))}
+                                " · " {job.kind} " · " {job.state.clone()}
+                            </div>
+                            <div class="font-mono text-xs text-muted-foreground">{job.job_id}</div>
+                            <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <span>{t(locale.as_deref(), "index.jobs.failures", "Failures")} ": " {job.failure_count}</span>
+                                {job.available_at.map(|at| view! { <span>{t(locale.as_deref(), "index.jobs.availableAt", "Available at")} ": " {at}</span> })}
+                                {(job.state == "running" && job.cancel_requested).then(|| view! {
+                                    <span>{t(locale.as_deref(), "index.jobs.cancelling", "Cancellation requested")}</span>
+                                })}
+                                <span>{job.last_error_code}</span>
+                            </div>
+                        </li>
+                    }).collect_view()}
+                </ul>
+            </section>
+
             // Query Diagnostics metrics
             <section class="space-y-3">
                 <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -960,7 +1115,7 @@ where
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h2 class="text-lg font-semibold text-card-foreground">
-                            {t(locale.as_deref(), "index.tab.operations", "Registered Replay Sources")}
+                            {t(locale.as_deref(), "index.source.title", "Selected Replay Sources")}
                         </h2>
                         <p class="text-xs text-muted-foreground mt-0.5">
                             {if is_ru { "Зарегистрированные источники реплея и стриминга" } else { "Registered streaming and snapshot replay pipelines" }}
@@ -995,9 +1150,9 @@ where
                 <DataGrid
                     columns=source_columns
                     data=Signal::derive(move || paged_sources.get())
-                    key_fn=|src: &IndexSourceRowViewModel| src.name.clone()
+                    key_fn=IndexSourceRowViewModel::key
                     cell_renderer=source_cell_renderer
-                    empty_message={t(empty_locale.as_deref(), "index.source.empty", "No replay sources registered.").to_string()}
+                    empty_message={source_catalog_empty_message(empty_locale.as_deref(), source_catalog_available)}
                     selection=source_selection
                     pagination=source_pagination
                     filters=source_filters
@@ -1008,4 +1163,24 @@ where
         </div>
     }
     .into_any()
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use std::cell::Cell;
+
+    use super::finish_scoped_action;
+
+    #[test]
+    fn completed_action_refreshes_once_but_not_after_scope_changes() {
+        let refreshed = Cell::new(0);
+        let displayed = Cell::new(None);
+        let apply = |result| displayed.set(Some(result));
+        let refresh = || refreshed.set(refreshed.get() + 1);
+        finish_scoped_action(&"first", Some(&"first"), "retry", apply, refresh);
+        finish_scoped_action(&"first", Some(&"second"), "stale result", apply, refresh);
+        finish_scoped_action(&"first", None, "no active scope", apply, refresh);
+        assert_eq!(refreshed.get(), 1);
+        assert_eq!(displayed.get(), Some("retry"));
+    }
 }

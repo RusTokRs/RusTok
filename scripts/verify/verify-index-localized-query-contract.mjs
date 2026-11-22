@@ -28,7 +28,7 @@ requireMarkers('crates/modules/rustok-index/src/domain/localized_query.rs', [
   'pub fn with_localized_projection_fields(',
   'pub fn with_identity_order_direction(',
   'pub fn canonical_fallback_locale(&self)',
-  'ordinary_nodes + any_locale_nodes > MAX_LOCALIZED_FILTER_NODES',
+  '.chain(self.any_locale_filter.iter())',
 ]);
 requireMarkers('crates/modules/rustok-index/src/application/localized_validation.rs', [
   'LocaleRequiredSchema(SchemaRef)',

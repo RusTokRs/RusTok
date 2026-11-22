@@ -323,6 +323,7 @@ mod tests {
         let now = Utc::now();
         entity::ActiveModel {
             id: Set(event_id),
+            tenant_id: Set(Some(tenant_id)),
             event_type: Set("sample.event".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({"tenant_id": tenant_id})),
@@ -385,6 +386,7 @@ mod tests {
         for _ in 0..3 {
             entity::ActiveModel {
                 id: Set(Uuid::new_v4()),
+                tenant_id: Set(Some(tenant_id)),
                 event_type: Set("sample.failed".to_string()),
                 schema_version: Set(1),
                 payload: Set(serde_json::json!({"tenant_id": tenant_id})),
@@ -433,6 +435,8 @@ mod tests {
 
         entity::ActiveModel {
             id: Set(event_id),
+            // An unbackfilled row must prefer its canonical JSON tenant over legacy data.
+            tenant_id: Set(None),
             event_type: Set("sample.failed".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({
@@ -508,6 +512,7 @@ mod tests {
         let id = Uuid::new_v4();
         entity::ActiveModel {
             id: Set(id),
+            tenant_id: Set(None),
             event_type: Set("legacy.failed".to_string()),
             schema_version: Set(1),
             payload: Set(serde_json::json!({

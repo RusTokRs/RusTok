@@ -1,8 +1,12 @@
-use rustok_core::events::EventTransport;
-use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration};
+use std::sync::Arc;
+
+use rustok_core::events::{EventTransport, ReliabilityLevel};
+use rustok_core::{Error, Result};
+use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope, RbacRoleMutationEvent};
+use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait, TransactionTrait,
+    ConnectOptions, Database, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
+    TransactionTrait,
 };
 use sea_orm_migration::MigrationTrait;
 use sea_orm_migration::prelude::SchemaManager;
@@ -73,10 +77,14 @@ async fn repeated_publish_of_the_same_envelope_is_idempotent_on_sqlite() {
         .publish(envelope.clone())
         .await
         .expect("first publish should insert the canonical row");
+    let mut replay = envelope;
+    replay.timestamp += chrono::Duration::seconds(1);
+    replay.trace_id = Some("retry-trace".into());
+    replay.retry_count += 1;
     transport
-        .publish(envelope)
+        .publish(replay)
         .await
-        .expect("retry of the same envelope should be accepted");
+        .expect("retry with the same canonical facts should be accepted");
 
     assert_eq!(SysEvents::find().count(&db).await.unwrap(), 1);
 }
@@ -112,6 +120,88 @@ async fn repeated_event_id_with_different_facts_is_rejected_on_sqlite() {
         .expect_err("reusing an envelope ID for different facts must fail");
     assert!(error.to_string().contains("different canonical facts"));
     assert_eq!(SysEvents::find().count(&db).await.unwrap(), 1);
+}
+
+struct ForwardingTransport(OutboxTransport);
+
+#[async_trait::async_trait]
+impl EventTransport for ForwardingTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+        Err(Error::Validation(
+            "test requires transactional publication".into(),
+        ))
+    }
+
+    fn supports_transactional_writes(&self) -> bool {
+        self.0.supports_transactional_writes()
+    }
+
+    async fn write_root_in_transaction(
+        &self,
+        txn: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        self.0.write_root_in_transaction(txn, envelope).await
+    }
+
+    async fn write_contract_in_transaction(
+        &self,
+        txn: &DatabaseTransaction,
+        envelope: ContractEventEnvelope,
+    ) -> Result<()> {
+        self.0.write_contract_in_transaction(txn, envelope).await
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        self.0.reliability_level()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[tokio::test]
+async fn wrapped_transport_writes_root_and_caused_contract_on_the_owner_transaction() {
+    let db = setup_test_db().await;
+    let bus = TransactionalEventBus::new(Arc::new(ForwardingTransport(OutboxTransport::new(
+        db.clone(),
+    ))));
+    let txn = db.begin().await.expect("start owner transaction");
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let root_id = bus
+        .publish_in_tx_with_envelope_id(
+            &txn,
+            tenant_id,
+            None,
+            DomainEvent::UserLoggedIn { user_id },
+        )
+        .await
+        .expect("append root fact via transport capability");
+    let contract_id = bus
+        .publish_contract_in_tx_with_causation_and_envelope_id(
+            &txn,
+            tenant_id,
+            None,
+            root_id,
+            RbacRoleMutationEvent::user_role_assignment_repaired(user_id, "admin", 1),
+        )
+        .await
+        .expect("append contract fact via transport capability");
+
+    assert_eq!(SysEvents::find().count(&txn).await.unwrap(), 2);
+    let row = SysEvents::find_by_id(contract_id)
+        .one(&txn)
+        .await
+        .expect("read contract on the caller transaction")
+        .expect("contract must be visible before rollback");
+    let envelope: ContractEventEnvelope = serde_json::from_value(row.payload).unwrap();
+    assert_eq!(envelope.id(), contract_id);
+    assert_eq!(envelope.causation_id(), Some(root_id));
+    assert_eq!(envelope.tenant_id(), tenant_id);
+    txn.rollback().await.expect("roll back owner transaction");
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
 }
 
 #[tokio::test]

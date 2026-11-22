@@ -14,16 +14,17 @@ Leptos admin UI adapter package for the `rustok-index` module.
 - Keeps index-specific operator visibility inside the module package (M11 Admin requirement).
 - Displays registered schemas catalog (names, versions, SHA-256 fingerprints, fields, links).
 - Displays storage foundation (canonical tables, PostgreSQL JSONB storage layout, partition policy).
-- Displays replay and reconciliation operations status (bounded replay runner, multi-pass reconciliation, drift repair).
+- Displays live replay and reconciliation job state, recent failures, queue lag, and recovery counts.
 - Participates in the manifest-driven admin UI composition path through `rustok-module.toml`.
 - Keeps the admin surface in FFA shape: Leptos-free `core.rs`, module-owned `transport/` facade, and explicit `ui/leptos.rs` render adapter.
-- Uses native Leptos `#[server]` functions for the bootstrap surface; this overview is currently a documented native-only single-adapter state because no public external operator contract exists yet.
+- Uses an authenticated native-only bootstrap under the [internal diagnostics exception](../docs/implementation-plan.md#ffafba-status).
+- Routes replay, cancel and exact-kind requeue through native functions on SSR/hydrate and GraphQL on CSR/Trunk. No command falls back across transports.
 
 ## Entry Points
 
 - `IndexAdmin` - re-exported root admin page component for the module with tabbed diagnostics views.
 - `src/core.rs` - framework-agnostic view-model and error formatting helpers (100% Leptos-free).
-- `src/transport/` - native server-function bootstrap facade.
+- `src/transport/` - facade for native bootstrap and guarded native/GraphQL actions.
 - `src/ui/leptos.rs` - Leptos render/bind adapter with responsive tabs and KPI stat cards.
 
 ## Interactions

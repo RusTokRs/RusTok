@@ -14,6 +14,8 @@
 /// Supported locales
 use rustok_api::extract_locale_tag_from_header;
 
+pub use rustok_api::locale::MAX_LOCALE_TAG_LEN;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
     #[default]

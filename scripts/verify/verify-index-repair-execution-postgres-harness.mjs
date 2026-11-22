@@ -67,6 +67,8 @@ requireMarkers('environment', [
 
 requireMarkers('recovery', [
   'migrations_recovery_guard_and_concurrent_reservation_are_executable',
+  'pg_blocking_pids(a.pid)',
+  'release_when_both_wait(&monitor, blocker, blocker_pid)',
   'tokio::join!',
   'IndexDriftRepairNotStartedReason::FindingBusy',
   'count_repair_commands(&database, finding_id).await?, 1',
@@ -105,7 +107,9 @@ requireMarkers('execution', [
   'absence-moved',
   'normal-mutation',
   'before_not_repairable',
-  'index_drift_repair_owner_unavailable',
+  'index_drift_repair_source_changed',
+  'orphan_fence_survives_commit_and_crash_recovery_preserves_restored_edge',
+  'after_not_converged',
 ]);
 
 for (const name of ['support', 'environment', 'recovery', 'execution']) {

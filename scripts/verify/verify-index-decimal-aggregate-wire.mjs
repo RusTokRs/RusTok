@@ -51,9 +51,15 @@ requireMarkers(compilerPath, [
   '| IndexValueType::Timestamp',
 ]);
 
+const valuePath = 'crates/modules/rustok-index/src/application/postgres_value_sql.rs';
+const value = requireMarkers(valuePath, [
+  'IndexValueType::Decimal => format!("({text}::numeric)")',
+  "(member.value->>'value')::numeric = {value}",
+]);
+forbidMarkers(valuePath, value, ['::double precision', '::real', 'f64']);
+
 const sqlPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
-  'IndexValueType::Decimal => format!("({scalar_text})::numeric")',
   'fn aggregate_order_wire_value(',
   'IndexValueType::Decimal => format!("to_jsonb(({scalar})::text)")',
   '_ => format!("to_jsonb({scalar})")',
@@ -71,7 +77,7 @@ requireMarkers('crates/modules/rustok-index/src/application/aggregate_ordering_t
   'decimal_aggregate_uses_numeric_order_and_exact_string_wire',
   'registry(IndexValueType::Decimal)',
   'jsonb_build_object(\'type\', \'decimal\', \'value\', to_jsonb(((SELECT MAX(',
-  ')::text)) END AS \\"__order_0\\"',
+  ')::text)) END END AS \\"__order_0\\"',
   'aggregate_cursor_and_uuid_modes_fail_closed',
 ]);
 

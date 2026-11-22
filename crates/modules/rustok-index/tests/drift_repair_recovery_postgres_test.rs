@@ -1,15 +1,19 @@
 #[path = "support/drift_repair.rs"]
 mod support;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rustok_index::{
     IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
     IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairNotStartedReason,
     IndexDriftRepairOutcome, IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryOutcome,
+    LocaleKey,
 };
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    TransactionTrait,
+};
 use uuid::Uuid;
 
 use support::{
@@ -49,7 +53,11 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
     let Some(database) = TestDatabase::setup("repair_recovery").await? else {
         return Ok(());
     };
-    let runtime = FixtureRuntime::setup(&database).await?;
+    // The same finding survives to the down migration, which restores required locale scope.
+    // Use a valid localized finding rather than deleting it or weakening the old constraint.
+    let runtime =
+        FixtureRuntime::setup_with_missing_locale(&database, Some(LocaleKey::new("en-US")?))
+            .await?;
 
     let key = runtime.missing_key(database.tenant_id, Uuid::new_v4());
     support::apply_record(
@@ -59,8 +67,8 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         "repair-evidence-missing-seed",
     )
     .await?;
-    runtime.authority.clear_mutation(&key);
-    runtime.authority.set_absence(key.clone(), 9);
+    runtime.authority.clear_mutation(&key).await;
+    runtime.authority.set_absence(key.clone(), 9).await;
     let (finding_id, target) = create_missing_finding(&database, &runtime, key, 7, 9).await?;
 
     let command_a = repair_command(
@@ -89,8 +97,26 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         recovery_store(&database).await?,
     )?;
 
-    let (outcome_a, outcome_b) =
-        tokio::join!(service_a.execute(&command_a), service_b.execute(&command_b),);
+    // Both Serializable snapshots must start before either reservation is committed.
+    // A third transaction holds the finding row while both stores reach their lock.
+    let monitor = database.connection().await?;
+    let blocker_db = database.connection().await?;
+    let blocker = blocker_db.begin().await?;
+    let blocker_pid: i32 = blocker
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_backend_pid() AS pid FROM index_consistency_findings WHERE tenant_id = $1 AND finding_id = $2 FOR UPDATE",
+            vec![database.tenant_id.into(), finding_id.into()],
+        ))
+        .await?
+        .expect("exact finding is present")
+        .try_get("", "pid")?;
+    let (outcome_a, outcome_b, unblocked) = tokio::join!(
+        service_a.execute(&command_a),
+        service_b.execute(&command_b),
+        release_when_both_wait(&monitor, blocker, blocker_pid),
+    );
+    unblocked?;
     assert_eq!(
         [&outcome_a, &outcome_b]
             .into_iter()
@@ -100,6 +126,7 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
             ))
             .count(),
         1,
+        "expected one admitted reservation: {outcome_a:?}; {outcome_b:?}",
     );
     assert_eq!(
         [&outcome_a, &outcome_b]
@@ -112,6 +139,7 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
             ))
             .count(),
         1,
+        "expected the other command to report FindingBusy: {outcome_a:?}; {outcome_b:?}",
     );
     assert_eq!(count_repair_commands(&database, finding_id).await?, 1);
 
@@ -225,7 +253,39 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         .await?
     );
     assert!(!table_exists(&database, "index_consistency_finding_repair_commands").await?);
+    assert!(!table_exists(&database, "index_consistency_findings").await?);
     database.cleanup().await
+}
+
+async fn release_when_both_wait(
+    monitor: &DatabaseConnection,
+    blocker: DatabaseTransaction,
+    blocker_pid: i32,
+) -> TestResult<()> {
+    let waited = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut poll = tokio::time::interval(Duration::from_millis(10));
+        loop {
+            poll.tick().await;
+            // One waiter may be directly behind the other via the tuple lock.
+            let waiting: i64 = monitor
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "WITH RECURSIVE blocked(pid) AS (SELECT $1::integer UNION SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid)) WHERE a.datname = current_database()) SELECT COUNT(*) - 1 AS waiters FROM blocked",
+                    vec![blocker_pid.into()],
+                ))
+                .await?
+                .expect("waiter count is present")
+                .try_get("", "waiters")?;
+            if waiting >= 2 {
+                return Ok::<_, sea_orm::DbErr>(());
+            }
+        }
+    })
+    .await;
+    blocker.rollback().await?;
+    waited
+        .map_err(|_| std::io::Error::other("both reservations did not reach the finding lock"))??;
+    Ok(())
 }
 
 async fn reserved_command_id(database: &TestDatabase, finding_id: Uuid) -> TestResult<Uuid> {
