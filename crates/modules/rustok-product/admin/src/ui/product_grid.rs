@@ -1,7 +1,10 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
+use leptos_ui_routing::use_route_query_writer;
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
-use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid::{
+    ColumnFilters, GridPagination, PaginationMode, RowSelection, DEFAULT_PAGE_SIZE,
+};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -10,13 +13,17 @@ use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, serialize_attribute_filters,
 };
 use crate::catalog_transport;
-use crate::core::{ProductKind, filter_products, item_product_kind, product_grid_columns};
+use crate::core::{
+    ProductKind, filter_products, item_product_kind, product_admin_pagination_from_response,
+    product_grid_columns,
+};
 use crate::facets::{build_product_admin_facet_labels, build_product_admin_facet_panel};
-use crate::model::ProductListItem;
+use crate::model::{ProductList, ProductListItem};
 
 #[component]
 pub fn ProductGridPage() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let route_query_writer = use_route_query_writer();
     let locale = route_context.locale.clone();
     let is_ru = locale.as_deref() == Some("ru");
     let base_route = route_context.admin_module_route_base("product");
@@ -35,13 +42,53 @@ pub fn ProductGridPage() -> impl IntoView {
     let columns = product_grid_columns(locale.as_deref());
     let (filters, set_filters) = signal(ColumnFilters::new());
     let selection = RwSignal::new(RowSelection::new());
-    let pagination = RwSignal::new(GridPagination::new(1, 20, 0));
 
     // Catalog controls travel through the URL, so the owner list contract
-    // (category, typed attribute filters, deterministic date order) survives
-    // navigation, refresh, and deep links.
+    // (category, typed attribute filters, deterministic date order and page)
+    // survives navigation, refresh, and deep links.
     let catalog_controls = catalog_transport::product_admin_list_input_from_route();
     provide_context(catalog_controls.clone());
+    let requested_page = usize::try_from(catalog_controls.page).unwrap_or(usize::MAX);
+    let requested_page_size =
+        usize::try_from(catalog_controls.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+    let pagination = RwSignal::new(GridPagination::new(1, requested_page_size, 0));
+    let (last_requested_pagination, set_last_requested_pagination) =
+        signal((requested_page, requested_page_size));
+    let (page_request_nonce, set_page_request_nonce) = signal(0_u64);
+    let request_current_page = {
+        let pagination = pagination;
+        let last_requested_pagination = last_requested_pagination;
+        let set_last_requested_pagination = set_last_requested_pagination;
+        let set_page_request_nonce = set_page_request_nonce;
+        move || {
+            let state = pagination.get_untracked();
+            let requested = (state.page, state.page_size);
+            if last_requested_pagination.get_untracked() != requested {
+                set_last_requested_pagination.set(requested);
+                set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            }
+        }
+    };
+    let (infinite_items, set_infinite_items) = signal(Vec::<ProductListItem>::new());
+    let (last_loaded_page, set_last_loaded_page) = signal(0_usize);
+    let (last_applied_request, set_last_applied_request) = signal(None::<u64>);
+    let (last_auth_context, set_last_auth_context) =
+        signal((token.get_untracked(), tenant.get_untracked()));
+    let auth_context_query_writer = route_query_writer.clone();
+    Effect::new(move |_| {
+        let current_context = (token.get(), tenant.get());
+        if current_context != last_auth_context.get_untracked() {
+            set_last_auth_context.set(current_context);
+            pagination.update(|state| state.set_page(1));
+            let state = pagination.get_untracked();
+            set_last_requested_pagination.set((state.page, state.page_size));
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            set_last_applied_request.set(None);
+            set_infinite_items.set(Vec::new());
+            set_last_loaded_page.set(0);
+            auth_context_query_writer.replace_value("page", "1");
+        }
+    });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
     let current_category = catalog_controls.category_id.clone().unwrap_or_default();
     let current_attribute_filters =
@@ -72,35 +119,185 @@ pub fn ProductGridPage() -> impl IntoView {
         },
     );
 
-    // Load products resource
+    // The owner returns one page plus its total. The grid receives the page
+    // and metadata separately so it never slices a partial catalog locally.
     let res_locale = locale.clone();
     let res_controls = catalog_controls.clone();
     let products_resource = Resource::new(
         move || {
             (
-                token.get(),
-                tenant.get(),
+                token.get_untracked(),
+                tenant.get_untracked(),
                 res_locale.clone(),
                 res_controls.clone(),
-                refresh_nonce.get(),
+                last_requested_pagination.get_untracked(),
+                page_request_nonce.get(),
             )
         },
-        move |(tok, ten, loc, controls, _generation)| async move {
+        move |(tok, ten, loc, mut controls, (page, page_size), request_id)| async move {
+            controls.page = u64::try_from(page).unwrap_or(u64::MAX);
+            controls.per_page = u64::try_from(page_size).unwrap_or(DEFAULT_PAGE_SIZE as u64);
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = catalog_transport::fetch_products(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                loc,
-                controls,
+            let tenant_id = bootstrap.current_tenant.id;
+            let mut products = catalog_transport::fetch_products(
+                tok.clone(),
+                ten.clone(),
+                tenant_id.clone(),
+                loc.clone(),
+                controls.clone(),
             )
             .await
             .map_err(|e| e.to_string())?;
-            Ok::<Vec<ProductListItem>, String>(res.items)
+
+            // Some owner implementations return an empty out-of-range page
+            // rather than clamping it. Normalize and retry once so SSR and
+            // hydration both receive rows for the last real page.
+            if page_request_nonce.get_untracked() != request_id {
+                return Ok::<(u64, ProductList), String>((request_id, products));
+            }
+            let current_pagination = pagination.get_untracked();
+            let normalized =
+                product_admin_pagination_from_response(current_pagination, &products);
+            let response_page = usize::try_from(products.page).unwrap_or(usize::MAX);
+            let response_page_size =
+                usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+            if (response_page, response_page_size) != (normalized.page, normalized.page_size) {
+                controls.page = u64::try_from(normalized.page).unwrap_or(u64::MAX);
+                controls.per_page =
+                    u64::try_from(normalized.page_size).unwrap_or(DEFAULT_PAGE_SIZE as u64);
+                products = catalog_transport::fetch_products(
+                    tok,
+                    ten,
+                    tenant_id,
+                    loc,
+                    controls,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+
+                let retried =
+                    product_admin_pagination_from_response(current_pagination, &products);
+                let retried_page = usize::try_from(products.page).unwrap_or(usize::MAX);
+                let retried_page_size =
+                    usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+                if (retried_page, retried_page_size) != (retried.page, retried.page_size) {
+                    return Err("Product catalog pagination response is inconsistent".to_string());
+                }
+            }
+
+            let final_pagination =
+                product_admin_pagination_from_response(pagination.get_untracked(), &products);
+            if page_request_nonce.get_untracked() == request_id {
+                // Resource fetchers also run during SSR; update the controlled
+                // grid state here so the first server-rendered page has the
+                // owner's page number and total before client effects exist.
+                pagination.set(final_pagination);
+            }
+
+            Ok::<(u64, ProductList), String>((request_id, products))
         },
     );
+    let products_page = Memo::new(move |_| {
+        let request_id = page_request_nonce.get();
+        products_resource
+            .get()
+            .and_then(Result::ok)
+            .and_then(|(loaded_request, products)| {
+                (loaded_request == request_id).then_some(products)
+            })
+    });
+    // Server metadata is authoritative. Out-of-range deep links are clamped
+    // to the last real page and fetched again before rendering.
+    let page_result_writer = route_query_writer.clone();
+    Effect::new(move |_| {
+        let Some(products) = products_page.get() else {
+            return;
+        };
+        let request_id = page_request_nonce.get();
+        if last_applied_request.get_untracked() == Some(request_id) {
+            return;
+        }
+
+        let current = pagination.get_untracked();
+        let requested = last_requested_pagination.get_untracked();
+        let next = product_admin_pagination_from_response(current, &products);
+        pagination.set(next);
+        set_last_applied_request.set(Some(request_id));
+
+        let response_page = usize::try_from(products.page).unwrap_or(usize::MAX);
+        let response_page_size =
+            usize::try_from(products.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+        let normalized_pagination = (next.page, next.page_size);
+        if (response_page, response_page_size) != normalized_pagination {
+            set_last_requested_pagination.set(normalized_pagination);
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            page_result_writer.update(
+                vec![
+                    ("page".to_string(), Some(next.page.to_string())),
+                    ("per_page".to_string(), Some(next.page_size.to_string())),
+                ],
+                true,
+            );
+            return;
+        }
+
+        if requested != normalized_pagination {
+            set_last_requested_pagination.set(normalized_pagination);
+            page_result_writer.update(
+                vec![
+                    ("page".to_string(), Some(next.page.to_string())),
+                    ("per_page".to_string(), Some(next.page_size.to_string())),
+                ],
+                true,
+            );
+        }
+
+        if next.mode == PaginationMode::Infinite
+            && next.page > 1
+            && last_loaded_page.get_untracked().saturating_add(1) == next.page
+        {
+            set_infinite_items.update(|items| items.extend(products.items.clone()));
+        } else {
+            set_infinite_items.set(products.items.clone());
+        }
+        set_last_loaded_page.set(next.page);
+    });
+
+    // Refreshes and mode changes restart at page one. In infinite mode this
+    // also prevents a refreshed page from being appended to a stale prefix.
+    let (observed_refresh_nonce, set_observed_refresh_nonce) = signal(0_u64);
+    let refresh_query_writer = route_query_writer.clone();
+    Effect::new(move |_| {
+        let generation = refresh_nonce.get();
+        if generation != observed_refresh_nonce.get_untracked() {
+            set_observed_refresh_nonce.set(generation);
+            pagination.update(|state| state.set_page(1));
+            let state = pagination.get_untracked();
+            set_last_requested_pagination.set((state.page, state.page_size));
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            set_infinite_items.set(Vec::new());
+            set_last_loaded_page.set(0);
+            refresh_query_writer.replace_value("page", "1");
+        }
+    });
+
+    let (previous_mode, set_previous_mode) = signal(PaginationMode::Paged);
+    let mode_query_writer = route_query_writer.clone();
+    Effect::new(move |_| {
+        let mode = pagination.get().mode;
+        if mode != previous_mode.get_untracked() {
+            set_previous_mode.set(mode);
+            pagination.update(|state| state.set_page(1));
+            let state = pagination.get_untracked();
+            set_last_requested_pagination.set((state.page, state.page_size));
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            set_infinite_items.set(Vec::new());
+            set_last_loaded_page.set(0);
+            mode_query_writer.replace_value("page", "1");
+        }
+    });
 
     // Owner-counted facet buckets for the same URL-driven controls. Counting is optional: no
     // facet capability, no transport, or no countable attribute all degrade to "no panel" instead
@@ -151,12 +348,17 @@ pub fn ProductGridPage() -> impl IntoView {
     let facet_panel_controls = catalog_controls.clone();
     let facet_panel_labels = build_product_admin_facet_labels(locale.as_deref());
 
-    // Reactive filtered data
+    // Reactive filtering stays layered over the currently loaded page(s);
+    // the server-owned total and page boundaries are never recomputed locally.
     let filtered_data = Memo::new(move |_| {
-        let raw = products_resource
-            .get()
-            .and_then(Result::ok)
-            .unwrap_or_default();
+        let raw = if pagination.get().mode == PaginationMode::Infinite {
+            infinite_items.get()
+        } else {
+            products_page
+                .get()
+                .map(|products| products.items)
+                .unwrap_or_default()
+        };
         let query = search_query.get().trim().to_lowercase();
         let current_filters = filters.get();
 
@@ -598,8 +800,35 @@ pub fn ProductGridPage() -> impl IntoView {
         navigate(&href, Default::default());
     });
 
+    let filter_query_writer = route_query_writer.clone();
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         set_filters.set(new_filters);
+        if last_requested_pagination.get_untracked().0 != 1 {
+            set_infinite_items.set(Vec::new());
+            set_last_loaded_page.set(0);
+        }
+        filter_query_writer.replace_value("page", "1");
+        request_current_page();
+    });
+
+    let page_query_writer = route_query_writer.clone();
+    let on_page_change = Callback::new(move |page: usize| {
+        page_query_writer.replace_value("page", page.to_string());
+        request_current_page();
+    });
+
+    let page_size_query_writer = route_query_writer.clone();
+    let on_page_size_change = Callback::new(move |page_size: usize| {
+        set_infinite_items.set(Vec::new());
+        set_last_loaded_page.set(0);
+        page_size_query_writer.update(
+            vec![
+                ("page".to_string(), Some("1".to_string())),
+                ("per_page".to_string(), Some(page_size.to_string())),
+            ],
+            true,
+        );
+        request_current_page();
     });
 
     let new_simple_href = format!("{base_route}/new?type=simple");
@@ -630,7 +859,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     <h1 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
                         <span>{if is_ru { "Каталог товаров" } else { "Product Catalog" }}</span>
                         <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                            {move || filtered_data.get().len()}
+                            {move || pagination.get().total}
                         </span>
                     </h1>
                     <p class="text-xs text-muted-foreground mt-0.5">
@@ -647,11 +876,21 @@ pub fn ProductGridPage() -> impl IntoView {
                     <div class="relative min-w-[200px] sm:min-w-[240px]">
                         <input
                             type="text"
-                            placeholder=if is_ru { "Быстрый поиск..." } else { "Quick search..." }
+                            placeholder=if is_ru {
+                                "Поиск загруженных товаров..."
+                            } else {
+                                "Search loaded products..."
+                            }
                             prop:value=move || search_query.get()
                             on:input=move |ev| {
                                 set_search_query.set(event_target_value(&ev));
+                                if last_requested_pagination.get_untracked().0 != 1 {
+                                    set_infinite_items.set(Vec::new());
+                                    set_last_loaded_page.set(0);
+                                }
                                 pagination.update(|p| p.set_page(1));
+                                route_query_writer.replace_value("page", "1");
+                                request_current_page();
                             }
                             class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition"
                         />
@@ -860,6 +1099,12 @@ pub fn ProductGridPage() -> impl IntoView {
                 method="get"
                 class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
             >
+                <input type="hidden" name="page" value="1" />
+                <input
+                    type="hidden"
+                    name="per_page"
+                    prop:value=move || pagination.get().page_size.to_string()
+                />
                 <div class="space-y-1 xl:col-span-5">
                     <h2 class="text-sm font-semibold text-foreground">{catalog_labels.title.clone()}</h2>
                     <p class="text-xs text-muted-foreground">{catalog_labels.subtitle.clone()}</p>
@@ -928,10 +1173,17 @@ pub fn ProductGridPage() -> impl IntoView {
                 data=Signal::derive(move || filtered_data.get())
                 key_fn=|item: &ProductListItem| item.id.clone()
                 cell_renderer=cell_renderer
-                is_loading=Signal::derive(move || is_busy.get() || products_resource.get().is_none())
+                is_loading=Signal::derive(move || {
+                    let resource_result = products_resource.get();
+                    is_busy.get()
+                        || (products_page.get().is_none()
+                            && resource_result.map(|result| result.is_ok()).unwrap_or(true))
+                })
                 empty_message=if is_ru { "Товары не найдены" } else { "No products found" }.to_string()
                 selection=selection
                 pagination=pagination
+                on_page_change=on_page_change
+                on_page_size_change=on_page_size_change
                 on_filter_change=on_filters_change
                 on_row_click=on_row_click
             />

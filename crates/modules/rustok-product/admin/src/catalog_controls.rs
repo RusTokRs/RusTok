@@ -1,9 +1,12 @@
-use rustok_grid::facet::{parse_selection, serialize_selection};
+use rustok_grid::{
+    DEFAULT_PAGE_SIZE,
+    facet::{parse_selection, serialize_selection},
+};
 use rustok_ui_core::normalize_optional_ui_text;
 
 use crate::i18n::t;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductAdminListInput {
     pub search: Option<String>,
     pub status: Option<String>,
@@ -11,6 +14,23 @@ pub struct ProductAdminListInput {
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
     pub attribute_filters: Vec<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+impl Default for ProductAdminListInput {
+    fn default() -> Self {
+        Self {
+            search: None,
+            status: None,
+            category_id: None,
+            sort_by: Some("published_at".to_string()),
+            sort_direction: Some("desc".to_string()),
+            attribute_filters: Vec::new(),
+            page: 1,
+            per_page: DEFAULT_PAGE_SIZE as u64,
+        }
+    }
 }
 
 pub(crate) fn build_product_admin_list_input(
@@ -20,6 +40,8 @@ pub(crate) fn build_product_admin_list_input(
     sort_by: Option<String>,
     sort_direction: Option<String>,
     attribute_filters: Option<String>,
+    page: Option<String>,
+    per_page: Option<String>,
 ) -> ProductAdminListInput {
     ProductAdminListInput {
         search: normalize_optional_ui_text(search),
@@ -29,6 +51,8 @@ pub(crate) fn build_product_admin_list_input(
         sort_direction: normalize_optional_ui_text(sort_direction)
             .or_else(|| Some("desc".to_string())),
         attribute_filters: normalize_attribute_filters(attribute_filters),
+        page: normalize_page(page),
+        per_page: normalize_page_size(per_page),
     }
 }
 
@@ -87,6 +111,23 @@ pub(crate) fn build_product_admin_catalog_controls_labels(
     }
 }
 
+const MAX_ADMIN_PRODUCT_PAGE_SIZE: u64 = 100;
+
+fn normalize_page(value: Option<String>) -> u64 {
+    value
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|page| *page > 0)
+        .unwrap_or(1)
+}
+
+fn normalize_page_size(value: Option<String>) -> u64 {
+    value
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|page_size| *page_size > 0)
+        .map(|page_size| page_size.min(MAX_ADMIN_PRODUCT_PAGE_SIZE))
+        .unwrap_or(DEFAULT_PAGE_SIZE as u64)
+}
+
 fn normalize_attribute_filters(value: Option<String>) -> Vec<String> {
     normalize_optional_ui_text(value)
         .map(|value| parse_selection(value.as_str()))
@@ -106,12 +147,16 @@ mod tests {
             None,
             None,
             Some(" color=red ; weight = 12.5 ".to_string()),
+            Some("3".to_string()),
+            Some("50".to_string()),
         );
         assert_eq!(controls.search.as_deref(), Some("camera"));
         assert_eq!(controls.status.as_deref(), Some("ACTIVE"));
         assert_eq!(controls.category_id.as_deref(), Some("category"));
         assert_eq!(controls.sort_by.as_deref(), Some("published_at"));
         assert_eq!(controls.sort_direction.as_deref(), Some("desc"));
+        assert_eq!(controls.page, 3);
+        assert_eq!(controls.per_page, 50);
         assert_eq!(
             controls.attribute_filters,
             vec!["color=red".to_string(), "weight = 12.5".to_string()]
@@ -121,4 +166,39 @@ mod tests {
             "color=red;weight = 12.5"
         );
     }
+
+    #[test]
+    fn admin_catalog_pagination_rejects_zero_and_bounds_page_size() {
+        let controls = build_product_admin_list_input(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("0".to_string()),
+            Some("1000".to_string()),
+        );
+
+        assert_eq!(controls.page, 1);
+        assert_eq!(controls.per_page, MAX_ADMIN_PRODUCT_PAGE_SIZE);
+    }
+
+    #[test]
+    fn admin_catalog_pagination_defaults_invalid_values() {
+        let controls = build_product_admin_list_input(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("not-a-page".to_string()),
+            Some("0".to_string()),
+        );
+
+        assert_eq!(controls.page, 1);
+        assert_eq!(controls.per_page, DEFAULT_PAGE_SIZE as u64);
+    }
+
 }

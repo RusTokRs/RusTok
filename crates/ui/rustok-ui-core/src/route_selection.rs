@@ -35,6 +35,7 @@ pub enum AdminQueryKey {
     ChannelSlug,
     Quantity,
     Page,
+    PerPage,
     Query,
 }
 
@@ -74,6 +75,7 @@ impl AdminQueryKey {
             Self::ChannelSlug => "channel_slug",
             Self::Quantity => "quantity",
             Self::Page => "page",
+            Self::PerPage => "per_page",
             Self::Query => "q",
         }
     }
@@ -113,6 +115,7 @@ impl AdminQueryKey {
             "channel_slug" => Some(Self::ChannelSlug),
             "quantity" => Some(Self::Quantity),
             "page" => Some(Self::Page),
+            "per_page" => Some(Self::PerPage),
             "q" => Some(Self::Query),
             _ => None,
         }
@@ -154,8 +157,11 @@ const CHANNEL_DEPENDENCIES: &[AdminQueryDependency] = &[
 
 const PRODUCT_ROUTE_KEYS: &[AdminQueryKey] = &[
     AdminQueryKey::ProductId,
+    AdminQueryKey::CategoryId,
     AdminQueryKey::AttributeId,
     AdminQueryKey::OptionId,
+    AdminQueryKey::Page,
+    AdminQueryKey::PerPage,
 ];
 const PRODUCT_DEPENDENCIES: &[AdminQueryDependency] = &[AdminQueryDependency {
     parent: AdminQueryKey::AttributeId,
@@ -393,6 +399,33 @@ mod tests {
         assert!(!sanitized.contains_key("id"));
         assert!(!sanitized.contains_key(AdminQueryKey::OrderId.as_str()));
         assert!(!sanitized.contains_key(AdminQueryKey::Locale.as_str()));
+    }
+
+    #[test]
+    fn product_route_keeps_catalog_filters_and_server_pagination() {
+        let sanitized = sanitize_admin_route_query(
+            Some("product"),
+            None,
+            &query(&[
+                ("category_id", "cat_01"),
+                ("page", "3"),
+                ("per_page", "50"),
+                ("product_id", "prod_01"),
+            ]),
+        );
+
+        assert_eq!(
+            sanitized.get(AdminQueryKey::CategoryId.as_str()).map(String::as_str),
+            Some("cat_01")
+        );
+        assert_eq!(
+            sanitized.get(AdminQueryKey::Page.as_str()).map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            sanitized.get(AdminQueryKey::PerPage.as_str()).map(String::as_str),
+            Some("50")
+        );
     }
 
     #[test]

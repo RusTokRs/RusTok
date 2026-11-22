@@ -1,15 +1,13 @@
 //! Canonical Product admin transport facade.
 //!
-//! Every Product admin surface reads the owner through this module. It owns the
-//! final read boundary: each primary and category read is wrapped in a
-//! correlation-aware `graphql_error_safety::GraphqlReadContext` before the
-//! private gateway executes it, so backend-controlled text never reaches the UI
-//! and the complete typed error is never logged.
+//! Every Product admin surface reads the owner through this module. Transport
+//! selection is profile-driven: native server functions serve SSR/hydrate builds,
+//! while GraphQL serves CSR builds. A failed operation is never retried through a
+//! different transport. GraphQL errors are sanitized by the correlation-aware
+//! `graphql_error_safety::GraphqlReadContext` before reaching the UI.
 //!
-//! The catalog list stays native-first: the owner server function is attempted
-//! first and the GraphQL document is the fallback. Writes keep their retry and
-//! idempotency identity in `transport` and are re-exported here so the mounted
-//! surface has one import path.
+//! Writes keep their retry and idempotency identity in `transport` and are
+//! re-exported here so the mounted surface has one import path.
 
 pub(crate) use crate::transport::attribute_lifecycle::{
     read as read_attribute_lifecycle, update as update_attribute_definition,
@@ -96,6 +94,8 @@ pub(crate) struct ProductAdminRouteControls {
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
     pub attribute_filters: Option<String>,
+    pub page: Option<String>,
+    pub per_page: Option<String>,
 }
 
 impl ProductAdminRouteControls {
@@ -113,6 +113,8 @@ impl ProductAdminRouteControls {
             attribute_filters: route_context
                 .query_value("attribute_filters")
                 .map(ToString::to_string),
+            page: route_context.query_value("page").map(ToString::to_string),
+            per_page: route_context.query_value("per_page").map(ToString::to_string),
         }
     }
 }
@@ -135,6 +137,8 @@ pub(crate) fn product_admin_list_input_from_route() -> ProductAdminListInput {
         route_controls.sort_by,
         route_controls.sort_direction,
         route_controls.attribute_filters,
+        route_controls.page,
+        route_controls.per_page,
     )
 }
 
@@ -170,41 +174,41 @@ pub(crate) async fn fetch_products(
     locale: Option<String>,
     controls: ProductAdminListInput,
 ) -> Result<ProductList, ApiError> {
-    match legacy::admin_catalog_native::fetch_products(
-        tenant_id.clone(),
-        locale.clone(),
-        controls.clone(),
-    )
-    .await
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let context = GraphqlReadContext::for_products(
-                token.as_deref(),
-                tenant_slug.as_deref(),
-                tenant_id.as_str(),
-                locale.as_deref(),
-                controls.search.as_deref(),
-                controls.status.as_deref(),
-            );
-            legacy::admin_catalog_graphql::fetch_products(
-                token,
-                tenant_slug,
-                tenant_id,
-                locale,
-                controls,
-            )
+        let _ = (token, tenant_slug);
+        legacy::admin_catalog_native::fetch_products(tenant_id, locale, controls)
             .await
-            .map_err(|error| context.map_error(error))
-        }
+            .map_err(Into::into)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        let context = GraphqlReadContext::for_products(
+            token.as_deref(),
+            tenant_slug.as_deref(),
+            tenant_id.as_str(),
+            locale.as_deref(),
+            controls.search.as_deref(),
+            controls.status.as_deref(),
+        );
+        legacy::admin_catalog_graphql::fetch_products(
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+            controls,
+        )
+        .await
+        .map_err(|error| context.map_error(error))
     }
 }
 
-/// Admin catalog facets: native-first with the GraphQL root as the fallback transport.
+/// Admin catalog facets use the transport selected for the current build profile.
 ///
 /// Counting is optional and must never take the grid down: an owner without the admin facet
-/// capability, or a transport that rejects the optional root, degrades to "no facets" so the list
-/// itself keeps working. That is why this wrapper reports `Option` rather than an error.
+/// capability, or the selected transport rejecting the optional root, degrades to "no facets" so
+/// the list itself keeps working. That is why this wrapper reports `Option` rather than an error.
 pub(crate) async fn fetch_admin_catalog_facets(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -213,38 +217,44 @@ pub(crate) async fn fetch_admin_catalog_facets(
     controls: ProductAdminListInput,
     facet_codes: Vec<String>,
 ) -> Option<Vec<crate::model::AdminCatalogFacet>> {
-    if let Ok(value) = legacy::admin_catalog_native::fetch_admin_catalog_facets(
-        tenant_id.clone(),
-        locale.clone(),
-        controls.clone(),
-        facet_codes.clone(),
-    )
-    .await
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
-        return Some(value);
+        let _ = (token, tenant_slug);
+        legacy::admin_catalog_native::fetch_admin_catalog_facets(
+            tenant_id,
+            locale,
+            controls,
+            facet_codes,
+        )
+        .await
+        .ok()
     }
-    let context = GraphqlReadContext::for_products(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        locale.as_deref(),
-        controls.search.as_deref(),
-        controls.status.as_deref(),
-    );
-    legacy::admin_catalog_graphql::fetch_facets(
-        token,
-        tenant_slug,
-        tenant_id,
-        locale,
-        controls,
-        facet_codes,
-    )
-    .await
-    .map(Some)
-    .unwrap_or_else(|error| {
-        context.map_error(error);
-        None
-    })
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        let context = GraphqlReadContext::for_products(
+            token.as_deref(),
+            tenant_slug.as_deref(),
+            tenant_id.as_str(),
+            locale.as_deref(),
+            controls.search.as_deref(),
+            controls.status.as_deref(),
+        );
+        legacy::admin_catalog_graphql::fetch_facets(
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+            controls,
+            facet_codes,
+        )
+        .await
+        .map(Some)
+        .unwrap_or_else(|error| {
+            context.map_error(error);
+            None
+        })
+    }
 }
 
 pub(crate) async fn fetch_product(

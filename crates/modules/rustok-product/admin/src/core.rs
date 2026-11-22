@@ -8,6 +8,7 @@ pub(crate) mod write_journal;
 use rustok_api::locale_tags_match;
 use rustok_grid::{
     ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
+    GridPagination, DEFAULT_PAGE_SIZE,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use std::collections::HashMap;
@@ -2264,6 +2265,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .width(320)
             .min_width(220)
             .align(ColumnAlign::Left)
+            .not_sortable()
             .filter(GridFilterType::Text {
                 placeholder: Some(if is_ru {
                     "Поиск по названию / slug...".to_string()
@@ -2274,6 +2276,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         GridColumnDef::new("product_type", if is_ru { "Тип" } else { "Type" })
             .width(130)
             .align(ColumnAlign::Left)
+            .not_sortable()
             .filter(GridFilterType::Select {
                 options: vec![
                     FilterOption {
@@ -2333,6 +2336,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         )
         .width(150)
         .align(ColumnAlign::Left)
+        .not_sortable()
         .filter(GridFilterType::Text {
             placeholder: Some(if is_ru {
                 "Фильтр SKU / вендор...".to_string()
@@ -2343,6 +2347,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
             .width(120)
             .align(ColumnAlign::Left)
+            .not_sortable()
             .filter(GridFilterType::Select {
                 options: vec![
                     FilterOption {
@@ -2387,6 +2392,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
             .width(140)
             .align(ColumnAlign::Left)
+            .not_sortable()
             .filter(GridFilterType::DateRange {
                 from_placeholder: Some(if is_ru {
                     "С".to_string()
@@ -2499,6 +2505,18 @@ pub fn filter_products(items: &[ProductListItem], filters: &ColumnFilters) -> Ve
         })
         .cloned()
         .collect()
+}
+
+/// Reconciles the grid's server-owned pagination state with the Product list response.
+pub(crate) fn product_admin_pagination_from_response(
+    current: GridPagination,
+    response: &ProductList,
+) -> GridPagination {
+    let page = usize::try_from(response.page).unwrap_or(usize::MAX);
+    let page_size = usize::try_from(response.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+    let mut pagination = GridPagination::new(page, page_size, response.total);
+    pagination.set_mode(current.mode);
+    pagination
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -3051,6 +3069,35 @@ mod tests {
 
     fn without_bidi_isolates(value: &str) -> String {
         value.replace(['\u{2068}', '\u{2069}'], "")
+    }
+
+    #[test]
+    fn admin_catalog_pagination_uses_owner_total_and_clamps_out_of_range_pages() {
+        let response = ProductList {
+            items: Vec::new(),
+            total: 41,
+            page: 2,
+            per_page: 20,
+            has_next: true,
+        };
+        let pagination =
+            product_admin_pagination_from_response(GridPagination::new(1, 20, 0), &response);
+
+        assert_eq!(pagination.page, 2);
+        assert_eq!(pagination.page_size, 20);
+        assert_eq!(pagination.total, 41);
+        assert!(pagination.has_next);
+
+        let out_of_range = ProductList {
+            page: 99,
+            has_next: false,
+            ..response
+        };
+        let pagination =
+            product_admin_pagination_from_response(GridPagination::new(1, 20, 0), &out_of_range);
+
+        assert_eq!(pagination.page, 3);
+        assert!(!pagination.has_next);
     }
 
     fn admin_bootstrap() -> ProductAdminBootstrap {
