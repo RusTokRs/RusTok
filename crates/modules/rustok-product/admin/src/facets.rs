@@ -158,16 +158,39 @@ pub struct ProductAdminFacetPanelView {
 pub fn build_product_admin_facet_codes(
     options: &crate::model::ProductCatalogSearchOptions,
 ) -> Vec<String> {
+    build_product_admin_facet_codes_for_filters(options, &[])
+}
+
+/// Prioritize filters that are already selected, so the eight-facet limit
+/// never hides an active facet's clear/toggle control behind unrelated options.
+pub fn build_product_admin_facet_codes_for_filters(
+    options: &crate::model::ProductCatalogSearchOptions,
+    selected_filters: &[String],
+) -> Vec<String> {
     let mut codes: Vec<String> = Vec::new();
-    for option in &options.attribute_options {
-        let code = option.value.trim();
-        if code.is_empty() || codes.iter().any(|existing| existing == code) {
-            continue;
+    for prefer_selected in [true, false] {
+        for option in &options.attribute_options {
+            let code = option.value.trim();
+            if code.is_empty()
+                || codes
+                    .iter()
+                    .any(|existing| existing.eq_ignore_ascii_case(code))
+            {
+                continue;
+            }
+            let selected = selected_filters.iter().any(|filter| {
+                filter
+                    .split_once('=')
+                    .is_some_and(|(selected_code, _)| selected_code.trim().eq_ignore_ascii_case(code))
+            });
+            if selected != prefer_selected {
+                continue;
+            }
+            if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
+                return codes;
+            }
+            codes.push(code.to_string());
         }
-        if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
-            break;
-        }
-        codes.push(code.to_string());
     }
     codes
 }
