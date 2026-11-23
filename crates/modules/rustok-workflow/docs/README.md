@@ -1,5 +1,44 @@
 # `rustok-workflow` Documentation
 
+## Durable cron scheduling and recovery (proposed ADR, 2026-11-23)
+
+Workflow owns `workflow_cron_cursors`, `workflow_cron_firings`, and immutable
+`workflow_cron_reconciliation_decisions`. The migration is additive and must
+be applied before the host starts the cron scheduler; missing schema fails
+bootstrap. The cursor and at most 32 due slots advance in one transaction
+under a compare-and-set generation, with unique
+`(workflow_id, schedule_revision, scheduled_at)` admission. A bounded active
+workflow page is scanned on each tick; the revision changes on workflow edits,
+including mutations of its step graph. The first cursor is bounded by a 24-hour
+initial catch-up horizon; persistent cursors catch up later downtime over
+multiple ticks. A queue row is claimed by one replica with a conditional
+pending-to-running write, and its UUID becomes the Workflow execution's stable
+`trigger_event_id`.
+
+Completed and failed execution receipts are replayed without executing
+steps twice. An existing running or `reconciliation_required` receipt is
+*never* interpreted as safe to replay. External HTTP/notification/script
+errors enter reconciliation rather than performing blind `OnError::Retry`
+or `OnError::Skip`; validation errors that run before effects retain typed
+validation failures. The event listener now awaits its execution instead of
+acknowledging after a detached spawn.
+
+The tenant-scoped REST GET `/api/workflows/cron/reconciliation` and GraphQL
+`workflowCronReconciliation` require `workflow_executions:list`.
+The REST POST `/api/workflows/cron/reconciliation/{firing_id}` and GraphQL
+`reconcileWorkflowCronFiring` require `workflows:manage` plus a human actor
+and explicit, bounded evidence. `confirm_terminal` requires an existing
+terminal execution. `requeue_confirmed_unstarted` is allowed only when no
+execution journal exists and the operator explicitly attests that the prior
+worker is stopped/fenced. The decision and evidence are committed in the same
+transaction as the firing status; a stale attempt cannot commit afterward.
+
+This contract does not make arbitrary external providers exactly-once, and
+an attestation is not a technical proof that a still-running remote side
+effect was cancelled. Review any old `running` execution before retry; do
+not reset it based solely on time. The migration and tests have not been run.
+Architecture is tracked in [the proposed ADR](../../../../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md).
+
 ## Cron execution task lifecycle (2026-11-23)
 
 The Workflow owner tracks cron-fired execution tasks in its scheduler-owned
@@ -47,8 +86,9 @@ events and must not become a second event bus or transport runtime.
 - event-driven trigger handling is published through `WorkflowModule::register_event_listeners(...)`, and `WorkflowCronScheduler` remains a separate host background runtime and is not considered an `event_listener`;
 - workflow-generated events are published through the outbox path, not through a separate internal loop.
 - event-triggered execution is idempotent by `(workflow_id, trigger_event_id)`: repeated
-  delivery, including delivery after a handler restart, returns the existing
-  execution and does not re-run steps; the guarantee is anchored by a unique index in the database.
+  delivery of a *terminal* execution returns the existing result without
+  re-running steps; an unresolved running or reconciliation-required journal
+  fails closed and keeps its durable event source unacknowledged.
 
 ## Verification
 
