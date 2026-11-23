@@ -261,3 +261,5 @@ Direct Fly workspace preview requests now use the same consumer facade provider-
 rollout `preview_enabled()` gate as the normal Leptos preview panel. Both the Leptos and
 Dioxus dispatch paths reject disabled previews before calling the facade and clear pending
 preview state rather than leaving an in-progress indicator stranded.
+
+The shared `FlyEditorWorkspace` already accepts a `capabilities` prop to disable palette, style and authoring controls. Dioxus now forwards the controller's effective permissions rather than omitting that prop and allowing the workspace to default to full editing affordances.

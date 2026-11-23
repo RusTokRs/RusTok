@@ -557,6 +557,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             on_intent: Some(on_workspace_intent),
                             on_change: None,
                             messages: workspace_messages.clone(),
+                            capabilities: Some(capabilities),
                             csp_nonce: workspace_csp_nonce.clone(),
                         }
                     },
