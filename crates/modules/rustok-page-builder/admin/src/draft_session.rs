@@ -2427,6 +2427,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         page_id: &str,
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
+        request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         validate_operation_id(operation_id)?;
         let Some(record) = self.backend.load_record(token, owner)? else {
@@ -2439,7 +2440,10 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             });
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
-        Ok(lookup_operation_receipt(&record.operation_receipts, operation_id))
+        match request_hash {
+            Some(hash) => check_operation_receipt_hash(&record.operation_receipts, operation_id, hash),
+            None => Ok(lookup_operation_receipt(&record.operation_receipts, operation_id)),
+        }
     }
 
     fn commit_with_operation_receipt(
