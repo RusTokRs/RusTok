@@ -47,3 +47,8 @@ The Dioxus workspace's local FlyEditor signal is retained only for standalone mo
 not shadow a later host document, selection or undo/redo availability. The host may provide
 `selected_component_id`, `host_can_undo`, and `host_can_redo` alongside `initial_page` and
 `capabilities`. Standalone mode still uses its own live editor document and history.
+
+The Dioxus layer panel is scoped to the same active page index as its preview, through
+the canonical `editor_layer_items_for_page` projection. It does not show components from
+other pages as if they were selectable in the active canvas; an out-of-range page yields
+no layer rows, not an accidental fallback to the first page.

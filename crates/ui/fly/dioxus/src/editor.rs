@@ -10,7 +10,7 @@ use fly::{
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorMessages, PaletteBlockAccess,
-    PaletteBlockItem, ThemeTokenItem, editor_layer_items, palette_block_items_with_access,
+    PaletteBlockItem, ThemeTokenItem, editor_layer_items_for_page, palette_block_items_with_access,
     theme_token_items,
 };
 
@@ -433,10 +433,8 @@ pub fn FlyEditorWorkspace(
     });
     let on_begin_drag = intent_mode.then_some(begin_palette_drag);
 
-    let page_selection = match initial_page {
-        Some(index) => PageSelection::Index(index),
-        None => PageSelection::First,
-    };
+    let active_page_index = initial_page.unwrap_or(0);
+    let page_selection = PageSelection::Index(active_page_index);
     let current_document = {
         let local = editor.read();
         workspace_render_document(authoritative_document.as_ref(), &local).clone()
@@ -446,7 +444,9 @@ pub fn FlyEditorWorkspace(
         &page_selection,
         &RenderPolicy::default(),
     );
-    let layers = editor_layer_items(&current_document);
+    // The canvas previews one active page: the layer panel must not expose
+    // components from other pages as if they belong to that canvas.
+    let layers = editor_layer_items_for_page(&current_document, active_page_index);
     let tokens = theme_token_items(&current_document);
     let selected = if intent_mode {
         selected_component_id
@@ -716,6 +716,29 @@ mod controlled_workspace_regression_tests {
                 }
             }]
         })).expect("Fly document")
+    }
+
+    #[test]
+    fn layer_rows_are_scoped_to_the_rendered_page() {
+        let project = GrapesJsCodec::decode_value(json!({
+            "pages": [
+                { "id": "home", "component": {
+                    "id": "home-root", "type": "wrapper",
+                    "components": [{ "id": "home-hero", "type": "text" }]
+                }},
+                { "id": "about", "component": {
+                    "id": "about-root", "type": "wrapper",
+                    "components": [{ "id": "about-hero", "type": "text" }]
+                }}
+            ]
+        })).expect("two-page project");
+        let home = editor_layer_items_for_page(&project, 0);
+        let about = editor_layer_items_for_page(&project, 1);
+        assert!(home.iter().any(|item| item.id == "home-hero"));
+        assert!(!home.iter().any(|item| item.id == "about-hero"));
+        assert!(about.iter().any(|item| item.id == "about-hero"));
+        assert!(!about.iter().any(|item| item.id == "home-hero"));
+        assert!(editor_layer_items_for_page(&project, 99).is_empty());
     }
 
     #[test]
