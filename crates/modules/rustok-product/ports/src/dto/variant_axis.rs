@@ -122,7 +122,7 @@ pub struct SetVariantAxesInput {
 pub const MAX_VARIANT_AXES: usize = 32;
 pub const MAX_VARIANT_AXIS_VALUES: usize = 256;
 /// One Product-wide bound shared by creation, deletion, reconfiguration and complete projections.
-/// Public detail/quote selection is complete within the Product-wide bound, never a truncated SKU matrix.
+/// Public detail/quote selection is complete within this bound, never a truncated SKU matrix.
 pub const MAX_STOREFRONT_PRODUCT_VARIANTS: u64 = MAX_PRODUCT_VARIANTS as u64;
 pub const MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS;
 pub const MAX_VARIANT_AXIS_RECONFIGURATION_CONFLICTS: usize = 16;
