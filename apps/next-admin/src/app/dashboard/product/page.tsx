@@ -63,6 +63,12 @@ export default async function ProductPage({ searchParams }: PageProps) {
   });
   const rawStatus = pickParam(params.status);
   const canonicalStatus = normalizeProductStatus(rawStatus)?.toLowerCase();
+  const hasNonCanonicalStatus =
+    params.status !== undefined &&
+    (Array.isArray(params.status) && params.status.length !== 1
+      ? true
+      : !rawStatus?.trim() ||
+        rawStatus.trim() !== (canonicalStatus ?? ''));
   const rawTitle = pickParam(params.title);
   const rawSearch = pickParam(params.search);
   const trimmedTitle = rawTitle?.trim() ?? '';
@@ -85,9 +91,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
     (rawPerPage !== undefined &&
       (rawPerPage.trim() !== String(perPage) ||
         (Array.isArray(params.perPage) && params.perPage.length !== 1))) ||
-    (rawStatus !== undefined &&
-      (rawStatus.trim() !== (canonicalStatus ?? '') ||
-        (Array.isArray(params.status) && params.status.length !== 1))) ||
+    hasNonCanonicalStatus ||
     hasNonCanonicalTitle ||
     hasLegacySearch
   ) {
