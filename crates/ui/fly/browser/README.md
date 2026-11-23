@@ -72,3 +72,9 @@ and error notifications. A newer selection request cannot hide the timeout of a 
 Same-origin navigation/intent-endpoint admission rejects raw backslashes and ASCII control
 or whitespace characters before URL resolution, including the `about:blank`/srcdoc fallback
 that previously treated ambiguous root-relative paths as safe.
+
+When an unconfirmed write causes the adapter to abandon queued mutations, it emits a
+`fly:browser-intents-discarded` event with the unsent intent names and count, exposes
+`data-fly-queued-intents-discarded`, and adds an accessible status message without hiding the
+original revision/transport error. The queue is never quietly treated as saved. The marker is
+cleared by a confirmed later write or adapter stop.

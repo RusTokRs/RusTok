@@ -12,6 +12,7 @@ const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
 const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
 const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
 const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
+const UNSENT_INTENTS_CODE = "INTENT_QUEUE_DISCARDED";
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -873,6 +874,7 @@ export class FlyBrowserAdapter {
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
     delete this.root.dataset.flyResourceLimited;
+    delete this.root.dataset.flyQueuedIntentsDiscarded;
     this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
     clearBrowserProblem(this);
     this.lastSequence = null;
@@ -1523,6 +1525,9 @@ export class FlyBrowserAdapter {
           updateNetworkIndicator(this.root, "error", "WRITE_UNCONFIRMED");
         }
       }
+      if (current && acknowledgedAuthoritativeResult) {
+        delete this.root.dataset.flyQueuedIntentsDiscarded;
+      }
       if (current && response.ok && isObject(result)) {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") {
@@ -1625,8 +1630,35 @@ export class FlyBrowserAdapter {
         ) {
           // Retry requires a fresh user decision and a known server snapshot:
           // never replay writes that were clicked against an uncertain base.
-          for (const queued of this.queuedAuthoritativeIntents.splice(0)) {
-            queued.resolve(null);
+          const discarded = this.queuedAuthoritativeIntents.splice(0);
+          for (const queued of discarded) queued.resolve(null);
+          if (discarded.length > 0 && this.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
+            // Rejecting a queue silently would lose user gestures. Preserve
+            // the original failure (often a revision conflict) and announce
+            // the discarded commands as additional, unsent work.
+            this.root.dataset.flyQueuedIntentsDiscarded = String(discarded.length);
+            const message = discarded.length === 1
+              ? "One queued editor change was not sent because the preceding request was not confirmed."
+              : `${discarded.length} queued editor changes were not sent because the preceding request was not confirmed.`;
+            this.root.dispatchEvent(new CustomEvent("fly:browser-intents-discarded", {
+              bubbles: true,
+              detail: {
+                code: UNSENT_INTENTS_CODE,
+                count: discarded.length,
+                intents: discarded.map(({ input }) => input.intent),
+                error: message,
+                instanceId: this.instanceId,
+                pageId: this.pageId,
+              },
+            }));
+            const status = ensureProblemStatus(this);
+            queueMicrotask(() => {
+              if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
+              if (!this.root.dataset.flyBrowserProblem) {
+                this.root.dataset.flyBrowserProblem = UNSENT_INTENTS_CODE;
+              }
+              status.textContent = [status.textContent, message].filter(Boolean).join(" ");
+            });
           }
         } else {
           while (this.queuedAuthoritativeIntents.length > 0) {

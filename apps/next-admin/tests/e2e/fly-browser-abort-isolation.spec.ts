@@ -440,6 +440,14 @@ test('a failed or unconfirmed mutation never releases queued writes onto a stale
     if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
     const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
     if (!adapter) throw new Error('Fly adapter missing');
+    const discarded: Array<{ count: number; intents: string[] }> = [];
+    root.addEventListener('fly:browser-intents-discarded', (event) => {
+      const { count, intents } = (event as CustomEvent<{
+        count: number;
+        intents: string[];
+      }>).detail;
+      discarded.push({ count, intents });
+    });
     const first = adapter.emitIntent('patch_selected', { value: 'first' });
     const second = adapter.emitIntent('patch_selected', { value: 'second' });
     deferred[0](new Response(JSON.stringify({
@@ -451,7 +459,9 @@ test('a failed or unconfirmed mutation never releases queued writes onto a stale
       requests,
       secondResult,
       revision: root.dataset.flyRevision,
-      status: root.dataset.flyNetworkStatus
+      status: root.dataset.flyNetworkStatus,
+      discarded,
+      discardedCount: root.dataset.flyQueuedIntentsDiscarded
     };
     adapter.stop();
     return outcome;
@@ -461,7 +471,9 @@ test('a failed or unconfirmed mutation never releases queued writes onto a stale
     requests: ['patch_selected'],
     secondResult: null,
     revision: 'rev-1',
-    status: 'error'
+    status: 'error',
+    discarded: [{ count: 1, intents: ['patch_selected'] }],
+    discardedCount: '1'
   });
 });
 
