@@ -50,9 +50,15 @@ pub fn AdapterWorkspacePanel(
         error_runtime.fail(error);
     });
     let on_intent = Callback::new(move |envelope: BrowserIntentEnvelope| {
-        let result = intent_runtime
-            .controller
-            .try_update(|controller| crate::dispatch_browser_intent(controller, envelope));
+        // These are trusted in-process Leptos callbacks, not HTTP payloads. The
+        // shared Fly constructors deliberately have no host revision; attach it
+        // here before the same server-side mutation gate used by SSR requests.
+        let result = intent_runtime.controller.try_update(|controller| {
+            let mut envelope = envelope;
+            envelope.revision = Some(controller.revision_id().to_string());
+            envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
+            crate::dispatch_browser_intent(controller, envelope)
+        });
         match result {
             Some(Ok(_)) => intent_runtime.last_error.set(None),
             Some(Err(error)) => intent_runtime.fail(error.to_string()),

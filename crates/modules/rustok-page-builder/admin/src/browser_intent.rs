@@ -508,11 +508,14 @@ fn validate_revision(
     if !is_mutating_intent(envelope) {
         return Ok(());
     }
-    if let Some(revision) = envelope
+    // Revision is mandatory for every mutation. A missing revision used to
+    // skip the entire concurrency guard, so an unversioned browser request
+    // could mutate whichever server snapshot happened to be current.
+    let revision = envelope
         .revision
         .as_deref()
-        .filter(|&revision| revision != controller.revision_id())
-    {
+        .ok_or_else(|| BrowserIntentDispatchError::MissingField("revision".to_string()))?;
+    if revision != controller.revision_id() {
         return Err(BrowserIntentDispatchError::RevisionConflict {
             expected: controller.revision_id().to_string(),
             actual: revision.to_string(),
@@ -864,6 +867,31 @@ mod tests {
             assert_eq!(preview.runtime.context, json!({}));
             assert_eq!(preview.runtime.scenario_id, None);
         }
+    }
+
+    #[test]
+    fn mutating_browser_requests_require_a_revision_even_if_the_intent_is_valid() {
+        let mut controller = controller();
+        let mut unversioned = intent("insert_block", json!({"block_id": "text"}));
+        unversioned.revision = None;
+        let before = controller.clone();
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, unversioned),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
+        ));
+        assert_eq!(controller, before);
+
+        let mut whitespace = intent("remove_selected", json!({}));
+        whitespace.revision = Some("  ".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, whitespace),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
+        ));
+
+        // Read-only preview and navigation state do not require mutation fencing.
+        let mut select = intent("select", json!({"component_id": "hero"}));
+        select.revision = None;
+        dispatch_browser_intent(&mut controller, select).expect("unversioned selection");
     }
 
     #[test]

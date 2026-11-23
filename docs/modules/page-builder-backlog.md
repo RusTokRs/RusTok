@@ -1166,3 +1166,9 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
   backlog.
 - An item leaves this list only by landing (with its ADR) or by an explicit
   decision recorded in `DECISIONS/`; "Pending" without an owner is not a state.
+
+2026-11-23 mutation admission follow-up: the Page Builder browser dispatcher now requires a
+non-empty revision for all mutating intents. The trusted in-process Leptos adapter callback stamps
+its current revision and project hash before dispatch; HTTP-originated requests must submit the
+observed revision. Missing revisions previously bypassed the optimistic concurrency check. Host
+behavior and all client callers still require end-to-end integration verification.

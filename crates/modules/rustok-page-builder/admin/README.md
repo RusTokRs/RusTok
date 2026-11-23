@@ -174,3 +174,8 @@ In-flight save flags are transient and reset when an editor session is deseriali
 network requests cannot be resumed from serialized state. The reactive admin runtime now starts
 save tracking for both the facade and callback transport paths and requires a submitted hash for
 publish requests; an implicit read of the later working-tree hash is not an acknowledgement.
+
+All mutating browser intents must now carry the current persisted revision. Unversioned
+read-only selections remain allowed. The trusted Leptos adapter callback stamps the revision
+and project hash from its controller before invoking the same checked dispatch path; remote
+browser clients must send their observed revision and cannot obtain a fresh one implicitly.
