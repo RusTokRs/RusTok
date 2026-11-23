@@ -60,7 +60,7 @@ pub fn AdapterWorkspacePanel(
             crate::dispatch_browser_intent(controller, envelope)
         });
         match result {
-            Some(Ok(_)) => intent_runtime.last_error.set(None),
+            Some(Ok(result)) => intent_runtime.apply_browser_result(result),
             Some(Err(error)) => intent_runtime.fail(error.to_string()),
             None => {
                 intent_runtime.fail("Page Builder controller is no longer available".to_string())

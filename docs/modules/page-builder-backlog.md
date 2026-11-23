@@ -1193,3 +1193,8 @@ Dioxus functional gap addressed in source: Page Builder Dioxus Save and workspac
 previously stopped at the UI reducer without executing `PageBuilderAdminFacade`. Those effects
 now reach the facade and return attempt-safe publish completions or errors. Mounted Dioxus
 facade/preview behavior still needs maintainer runtime evidence after the implementation phase.
+
+Leptos adapter functional gap addressed in source: typed `FlyEditorWorkspace` callback now
+consumes the returned browser intent effects, dispatching Publish/Preview to the consumer facade
+and preserving the request's hash/sequence and preview context. Previously those effects were
+ignored. Live Leptos SSR/CSR rendering and persistence remain for the maintainer's end checks.

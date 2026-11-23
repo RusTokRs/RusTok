@@ -216,3 +216,9 @@ Dioxus host-context/prop equality now considers the full draft controller and ev
 facade, contribution, runtime and workspace toggle. Previously only page ID and persisted
 revision were compared, so local edits and changes in injected providers could be treated as
 unchanged props and suppress a needed rerender. Regression coverage authored, not run.
+
+The Leptos FlyEditorWorkspace's typed `on_intent` callback now forwards Publish/Preview
+and announcement effects to `AdminEditorRuntime`. Before this change, it discarded all effects
+after the controller mutation: Save/Preview could look interactive but never reach the consumer
+facade. The runtime compares the command sequence and expected project hash before dispatch and
+registers the browser-provided preview context for response correlation.

@@ -268,6 +268,67 @@ impl AdminEditorRuntime {
         }
     }
 
+    /// Route the effects produced by a trusted Leptos workspace intent to
+    /// the same consumer facade as toolbar commands. Merely dispatching the
+    /// intent changed local state but silently dropped Publish/Preview before.
+    pub fn apply_browser_result(&self, result: crate::BrowserIntentDispatchResult) {
+        self.last_error.set(None);
+        for effect in result.effects {
+            match effect {
+                crate::BrowserIntentEffect::Announce { message } => {
+                    self.announce(message);
+                }
+                crate::BrowserIntentEffect::Request {
+                    request,
+                    expected_hash,
+                    command_sequence,
+                } => {
+                    let (actual_hash, actual_sequence, active_page_index) =
+                        self.controller.with(|controller| {
+                            (
+                                controller.editor().revision().project_hash,
+                                controller.editor().revision().command_sequence,
+                                controller.active_page_index(),
+                            )
+                        });
+                    if command_sequence != actual_sequence {
+                        self.fail("Browser editor request is stale; refresh the current draft");
+                        continue;
+                    }
+                    let expected_hash = match expected_hash {
+                        Some(hex) if hex == actual_hash.hex() => Some(actual_hash),
+                        Some(_) => {
+                            self.fail("Browser editor request has a mismatched project hash");
+                            continue;
+                        }
+                        None => None,
+                    };
+                    if let PageBuilderCapabilityRequest::Preview(preview) = &request {
+                        if self.preview_in_progress.get_untracked() {
+                            self.fail("Preview already in progress");
+                            continue;
+                        }
+                        // The browser provides its own runtime context. Capture
+                        // that context and active page before the async preview
+                        // so the response can be checked against what was sent.
+                        let context = preview.runtime.context.clone();
+                        let scenario = preview.runtime.scenario_id.clone();
+                        self.runtime_context.set(context.clone());
+                        self.runtime_context_configured.set(true);
+                        self.active_runtime_scenario.set(scenario.clone());
+                        self.preview_request.set(Some((
+                            actual_hash,
+                            active_page_index,
+                            context,
+                            scenario,
+                        )));
+                    }
+                    self.execute_request(request, expected_hash);
+                }
+            }
+        }
+    }
+
     pub fn dispatch_result(&self, intent: Result<UiIntent, String>) {
         match intent {
             Ok(intent) => self.dispatch(intent),
