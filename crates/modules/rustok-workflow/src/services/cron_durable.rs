@@ -541,6 +541,38 @@ mod tests {
         assert_eq!(audit[0].actor_id, actor_id);
         assert_eq!(audit[0].previous_attempt_token, Some(token));
         assert_eq!(audit[0].evidence, evidence);
+
+        // A later attempt has a durable execution journal; it cannot be
+        // requeued even with a second operator attestation.
+        let execution_id = Uuid::new_v4();
+        workflow_execution::ActiveModel {
+            id: Set(execution_id),
+            workflow_id: Set(wf_id),
+            tenant_id: Set(tenant_id),
+            trigger_event_id: Set(Some(item.id)),
+            status: Set(ExecutionStatus::Completed),
+            context: Set(serde_json::Value::Null),
+            error: Set(None),
+            started_at: Set(at(now)),
+            completed_at: Set(Some(at(now))),
+        }.insert(&db).await.unwrap();
+
+        assert!(settle_claim(
+            &db, &requeued, next_token, firing::RECONCILIATION_REQUIRED,
+            Some(execution_id), Some("acknowledgement_lost"),
+        ).await.unwrap());
+        assert!(reconcile_firing(&db, tenant_id, item.id, actor_id,
+            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
+        ).await.is_err(), "a started execution must never be blindly requeued");
+
+        let completed = reconcile_firing(&db, tenant_id, item.id, actor_id,
+            CronReconciliationDecision::ConfirmTerminal, evidence, false,
+        ).await.unwrap();
+        assert_eq!(completed.status, firing::COMPLETED);
+        assert_eq!(completed.execution_id, Some(execution_id));
+        assert!(claim_firing(&db, &completed, now).await.unwrap().is_none());
+        let audit = review::Entity::find().all(&db).await.unwrap();
+        assert_eq!(audit.len(), 2);
     }
 
     #[tokio::test]
