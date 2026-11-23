@@ -1163,7 +1163,7 @@ pub fn ProductGridPage() -> impl IntoView {
             // the URL, so deep links and refreshes resolve the same list.
             <form
                 method="get"
-                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
+                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
             >
                 <input type="hidden" name="page" value="1" />
                 {move || catalog_controls.get().search.map(|value| view! {
@@ -1171,6 +1171,9 @@ pub fn ProductGridPage() -> impl IntoView {
                 })}
                 {move || catalog_controls.get().status.map(|value| view! {
                     <input type="hidden" name="status" value=value />
+                })}
+                {move || catalog_controls.get().vendor.map(|value| view! {
+                    <input type="hidden" name="vendor" value=value />
                 })}
                 <input
                     type="hidden"
@@ -1197,16 +1200,6 @@ pub fn ProductGridPage() -> impl IntoView {
                             }).collect_view())
                             .unwrap_or_default()}
                     </select>
-                </label>
-                <label class="grid gap-2 text-xs text-foreground">
-                    <span class="font-medium">{catalog_labels.vendor.clone()}</span>
-                    <input
-                        name="vendor"
-                        type="text"
-                        prop:value=move || catalog_controls.get().vendor.unwrap_or_default()
-                        placeholder=catalog_labels.vendor_placeholder.clone()
-                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
-                    />
                 </label>
                 <label class="grid gap-2 text-xs text-foreground">
                     <span class="font-medium">{catalog_labels.attribute_filters.clone()}</span>
