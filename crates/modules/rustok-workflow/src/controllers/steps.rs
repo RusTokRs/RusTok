@@ -42,6 +42,18 @@ fn map_workflow_step_error(
             "Workflow step operation could not be completed safely",
             "unexpected_execution_not_found",
         ),
+        WorkflowError::CronReconciliationConflict(_) => (
+            StatusCode::CONFLICT,
+            "workflow_cron_reconciliation_conflict",
+            "Workflow cron firing cannot be reconciled in its current state",
+            "cron_reconciliation_conflict",
+        ),
+        WorkflowError::InvalidCronReconciliationEvidence => (
+            StatusCode::BAD_REQUEST,
+            "workflow_cron_reconciliation_evidence_invalid",
+            "Workflow cron reconciliation requires valid evidence",
+            "invalid_reconciliation_evidence",
+        ),
         WorkflowError::ExecutionOutcomeUncertain(_) => (
             StatusCode::CONFLICT,
             "workflow_execution_reconciliation_required",
