@@ -77,6 +77,25 @@ test('blank and duplicate status query values are canonicalized before hydration
   assert.match(nextPage, /hasNonCanonicalStatus \|\|/);
 });
 
+test('vendor, category, sort and attribute filters are canonical before hydration', () => {
+  for (const name of [
+    'hasNonCanonicalVendor',
+    'hasNonCanonicalCategoryId',
+    'hasNonCanonicalSortBy',
+    'hasNonCanonicalSortDirection',
+    'hasNonCanonicalAttributeFilters'
+  ]) {
+    assert.match(nextPage, new RegExp(name));
+  }
+  assert.match(nextPage, /rawStatus !== rawStatus\.trim\(\)/);
+  assert.match(nextPage, /return \[\.\.\.new Set\(normalized\)\]/);
+  assert.match(nextPage, /query\.set\('vendor', vendor\)/);
+  assert.match(nextPage, /query\.set\('category_id', categoryId\)/);
+  assert.match(nextPage, /query\.set\('sort_by', sortBy\)/);
+  assert.match(nextPage, /query\.set\('sort_direction', sortDirection\)/);
+  assert.match(nextPage, /query\.set\('attribute_filters', canonicalAttributeFilters\)/);
+});
+
 test('legacy search URLs are migrated into the visible title column filter', () => {
   assert.match(nextPage, /const rawTitle = pickParam\(params\.title\)/);
   assert.match(nextPage, /const rawSearch = pickParam\(params\.search\)/);
