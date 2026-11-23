@@ -1,6 +1,27 @@
 use rustok_graphql::GraphqlHttpError;
 use uuid::Uuid;
 
+pub(crate) const SELECTED_PRODUCT_ADMIN_TRANSPORT: &str =
+    if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        "native"
+    } else {
+        "graphql"
+    };
+
+const SELECTED_PRODUCT_ADMIN_READ_BOUNDARY: &str =
+    if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        "product_admin_native_reads"
+    } else {
+        "product_admin_graphql_reads"
+    };
+
+const SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY: &str =
+    if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        "product_admin_native_mutations"
+    } else {
+        "product_admin_graphql_mutations"
+    };
+
 pub(crate) struct GraphqlReadContext {
     operation: &'static str,
     boundary: &'static str,
@@ -10,11 +31,13 @@ pub(crate) struct GraphqlReadContext {
     tenant_id_length: Option<usize>,
     resource_id_length: Option<usize>,
     category_id_length: Option<usize>,
+    vendor_length: Option<usize>,
+    attribute_filter_count: Option<usize>,
     locale_length: Option<usize>,
     search_length: Option<usize>,
     status_length: Option<usize>,
     currency_code_length: Option<usize>,
-    native_fallback_attempted: bool,
+    selected_transport: &'static str,
 }
 
 const PRODUCT_ADMIN_GRAPHQL_OWNER: &str = "rustok_product.admin";
@@ -28,7 +51,6 @@ impl GraphqlReadContext {
         Self::new("fetch_bootstrap", token, tenant_slug)
     }
 
-    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn for_products(
         token: Option<&str>,
@@ -43,7 +65,33 @@ impl GraphqlReadContext {
         context.locale_length = text_length(locale);
         context.search_length = text_length(search);
         context.status_length = text_length(status);
-        context.native_fallback_attempted = false;
+        context.boundary = SELECTED_PRODUCT_ADMIN_READ_BOUNDARY;
+        context.selected_transport = SELECTED_PRODUCT_ADMIN_TRANSPORT;
+        context
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn for_admin_catalog_facets(
+        token: Option<&str>,
+        tenant_slug: Option<&str>,
+        tenant_id: &str,
+        locale: Option<&str>,
+        search: Option<&str>,
+        status: Option<&str>,
+        vendor: Option<&str>,
+        category_id: Option<&str>,
+        attribute_filter_count: usize,
+    ) -> Self {
+        let mut context = Self::new("admin_catalog_facets", token, tenant_slug);
+        context.tenant_id_length = Some(tenant_id.chars().count());
+        context.locale_length = text_length(locale);
+        context.search_length = text_length(search);
+        context.status_length = text_length(status);
+        context.vendor_length = text_length(vendor);
+        context.category_id_length = text_length(category_id);
+        context.attribute_filter_count = Some(attribute_filter_count);
+        context.boundary = SELECTED_PRODUCT_ADMIN_READ_BOUNDARY;
+        context.selected_transport = SELECTED_PRODUCT_ADMIN_TRANSPORT;
         context
     }
 
@@ -182,10 +230,10 @@ impl GraphqlReadContext {
         locale: &str,
     ) -> Self {
         let mut context = Self::new(operation, token, tenant_slug);
-        context.boundary = PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY;
+        context.boundary = SELECTED_PRODUCT_ADMIN_READ_BOUNDARY;
+        context.selected_transport = SELECTED_PRODUCT_ADMIN_TRANSPORT;
         context.tenant_id_length = Some(tenant_id.chars().count());
         context.locale_length = Some(locale.chars().count());
-        context.native_fallback_attempted = true;
         context
     }
 
@@ -203,7 +251,9 @@ impl GraphqlReadContext {
             search_length: None,
             status_length: None,
             currency_code_length: None,
-            native_fallback_attempted: false,
+            vendor_length: None,
+            attribute_filter_count: None,
+            selected_transport: "graphql",
         }
     }
 
@@ -248,7 +298,8 @@ impl GraphqlReadContext {
                 error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
-                correlation_id = %self.correlation_id,
+                correlation_id_present = !self.correlation_id.is_empty(),
+                correlation_id_length = self.correlation_id.chars().count(),
                 token_present = self.token_present,
                 tenant_slug_present = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -258,6 +309,9 @@ impl GraphqlReadContext {
                 resource_id_length = ?self.resource_id_length,
                 category_id_present = self.category_id_length.is_some(),
                 category_id_length = ?self.category_id_length,
+                vendor_present = self.vendor_length.is_some(),
+                vendor_length = ?self.vendor_length,
+                attribute_filter_count = ?self.attribute_filter_count,
                 locale_present = self.locale_length.is_some(),
                 locale_length = ?self.locale_length,
                 search_present = self.search_length.is_some(),
@@ -266,7 +320,7 @@ impl GraphqlReadContext {
                 status_length = ?self.status_length,
                 currency_code_present = self.currency_code_length.is_some(),
                 currency_code_length = ?self.currency_code_length,
-                native_fallback_attempted = self.native_fallback_attempted,
+                selected_transport = self.selected_transport,
                 error_kind,
                 code,
                 boundary = self.boundary,
@@ -278,7 +332,8 @@ impl GraphqlReadContext {
                 error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
-                correlation_id = %self.correlation_id,
+                correlation_id_present = !self.correlation_id.is_empty(),
+                correlation_id_length = self.correlation_id.chars().count(),
                 token_present = self.token_present,
                 tenant_slug_present = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -288,6 +343,9 @@ impl GraphqlReadContext {
                 resource_id_length = ?self.resource_id_length,
                 category_id_present = self.category_id_length.is_some(),
                 category_id_length = ?self.category_id_length,
+                vendor_present = self.vendor_length.is_some(),
+                vendor_length = ?self.vendor_length,
+                attribute_filter_count = ?self.attribute_filter_count,
                 locale_present = self.locale_length.is_some(),
                 locale_length = ?self.locale_length,
                 search_present = self.search_length.is_some(),
@@ -296,7 +354,7 @@ impl GraphqlReadContext {
                 status_length = ?self.status_length,
                 currency_code_present = self.currency_code_length.is_some(),
                 currency_code_length = ?self.currency_code_length,
-                native_fallback_attempted = self.native_fallback_attempted,
+                selected_transport = self.selected_transport,
                 error_kind,
                 code,
                 boundary = self.boundary,
@@ -324,9 +382,8 @@ pub(crate) struct GraphqlMutationContext {
     resource_id_length: Option<usize>,
     status_length: Option<usize>,
     draft_present: bool,
+    selected_transport: &'static str,
 }
-
-const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_mutations";
 
 impl GraphqlMutationContext {
     pub(crate) fn for_create_product(
@@ -404,6 +461,7 @@ impl GraphqlMutationContext {
             resource_id_length: None,
             status_length: None,
             draft_present: false,
+            selected_transport: SELECTED_PRODUCT_ADMIN_TRANSPORT,
         }
     }
 
@@ -452,7 +510,8 @@ impl GraphqlMutationContext {
                 error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
-                correlation_id = %self.correlation_id,
+                correlation_id_present = !self.correlation_id.is_empty(),
+                correlation_id_length = self.correlation_id.chars().count(),
                 token_present = self.token_present,
                 tenant_slug_present = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -465,7 +524,8 @@ impl GraphqlMutationContext {
                 draft_present = self.draft_present,
                 error_kind,
                 code,
-                boundary = PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY,
+                selected_transport = self.selected_transport,
+                boundary = SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY,
                 "product admin GraphQL mutation failed"
             );
         } else {
@@ -474,7 +534,8 @@ impl GraphqlMutationContext {
                 error_payload_length = ?error_payload_length,
                 owner = PRODUCT_ADMIN_GRAPHQL_OWNER,
                 owner_operation = self.operation,
-                correlation_id = %self.correlation_id,
+                correlation_id_present = !self.correlation_id.is_empty(),
+                correlation_id_length = self.correlation_id.chars().count(),
                 token_present = self.token_present,
                 tenant_slug_present = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -487,7 +548,8 @@ impl GraphqlMutationContext {
                 draft_present = self.draft_present,
                 error_kind,
                 code,
-                boundary = PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY,
+                selected_transport = self.selected_transport,
+                boundary = SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY,
                 "product admin GraphQL mutation was rejected"
             );
         }
