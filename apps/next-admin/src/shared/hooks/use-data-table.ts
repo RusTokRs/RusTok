@@ -228,7 +228,9 @@ export function useDataTable<TData extends RowData = any>(
   const [filterValues, setFilterValues] = useQueryStates(filterParsers);
 
   const filterNavigationVersion = React.useRef(0);
-  const pendingLocalRouteSignature = React.useRef<string | null>(null);
+  // More than one local route write can be in flight while the server renders.
+  // Keep their signatures ordered so an older response cannot invalidate a newer edit.
+  const pendingLocalRouteSignatures = React.useRef<string[]>([]);
 
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
@@ -292,10 +294,12 @@ export function useDataTable<TData extends RowData = any>(
         );
       }
 
-      pendingLocalRouteSignature.current =
-        expectedRouteSignature === currentRouteSignature
-          ? null
-          : expectedRouteSignature;
+      if (
+        expectedRouteSignature !== currentRouteSignature &&
+        !pendingLocalRouteSignatures.current.includes(expectedRouteSignature)
+      ) {
+        pendingLocalRouteSignatures.current.push(expectedRouteSignature);
+      }
 
       if (page !== 1) void setPage(1);
       void setFilterValues(values);
@@ -310,12 +314,16 @@ export function useDataTable<TData extends RowData = any>(
   useIsomorphicLayoutEffect(() => {
     if (lastUrlRouteSignature.current !== currentRouteSignature) {
       lastUrlRouteSignature.current = currentRouteSignature;
-      if (pendingLocalRouteSignature.current === currentRouteSignature) {
-        pendingLocalRouteSignature.current = null;
+      const matchedLocalNavigation =
+        pendingLocalRouteSignatures.current.indexOf(currentRouteSignature);
+      if (matchedLocalNavigation !== -1) {
+        // Consume this navigation and all older writes it supersedes, while
+        // preserving any newer local route writes that are still in flight.
+        pendingLocalRouteSignatures.current.splice(0, matchedLocalNavigation + 1);
         return;
       }
 
-      pendingLocalRouteSignature.current = null;
+      pendingLocalRouteSignatures.current = [];
       filterNavigationVersion.current += 1;
       setColumnFilters(initialColumnFilters);
     }
