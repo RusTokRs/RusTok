@@ -232,6 +232,18 @@ export function useDataTable<TData extends RowData = any>(
   // Keep their signatures ordered so an older response cannot invalidate a newer edit.
   const pendingLocalRouteSignatures = React.useRef<string[]>([]);
 
+  // Back/Forward is observable before the App Router finishes its render.
+  // Invalidate the debounce at popstate time, not only after the new props commit.
+  React.useEffect(() => {
+    const invalidatePendingFilterNavigation = () => {
+      filterNavigationVersion.current += 1;
+      pendingLocalRouteSignatures.current = [];
+    };
+    window.addEventListener('popstate', invalidatePendingFilterNavigation);
+    return () =>
+      window.removeEventListener('popstate', invalidatePendingFilterNavigation);
+  }, []);
+
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
 
