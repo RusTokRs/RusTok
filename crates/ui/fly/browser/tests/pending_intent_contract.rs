@@ -1,4 +1,5 @@
 mod support;
+use fly_browser::BrowserIntentKind;
 use support::contains;
 
 #[test]
@@ -34,4 +35,27 @@ fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_aut
         !source.contains("queueMicrotask(() => void this.retryPendingOperation())"),
         "ambiguous outcomes must never trigger an automatic mutation retry"
     );
+}
+
+#[test]
+fn every_non_mutating_rust_intent_is_read_only_in_the_browser_receipt_policy() {
+    let source = include_str!("../assets/fly-browser.js");
+    let start = source
+        .find("const READ_ONLY_INTENTS = new Set([")
+        .expect("read-only intent set");
+    let end = start
+        + source[start..]
+            .find("]);")
+            .expect("read-only intent set end");
+    let read_only = &source[start..end];
+    for kind in BrowserIntentKind::ALL {
+        if !kind.is_mutating() {
+            let intent = format!("\\\"{}\\\"", kind.as_str());
+            assert!(
+                read_only.contains(&intent),
+                "non-mutating intent `{}` must not consume durable operation receipts",
+                kind.as_str()
+            );
+        }
+    }
 }
