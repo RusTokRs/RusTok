@@ -1,5 +1,16 @@
 # rustok-workflow / CRATE_API
 
+## Lifecycle and admission guards
+
+- Cron syntax is validated with the runtime parser when a Workflow enters
+  `active`, when an active cron is modified, and when an active workflow
+  version is restored. Draft configurations may be incomplete.
+- A destructive `WorkflowService::delete` rejects running/uncertain
+  executions or pending/running/unresolved cron firings with
+  `WorkflowDeletionBlocked` (`409` via REST). This protects active recovery
+  evidence against parent cascade. Completed history remains subject to the
+  existing explicit workflow deletion/retention contract.
+
 ## Step execution contract
 
 - An explicit `timeout_ms` bounds **each** step execution attempt to 1–3,600,000 ms (one hour). `None` means no engine-level deadline. Owner service validates new/updated/restored step configurations, and the engine applies the bound to first and retry attempts.
