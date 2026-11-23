@@ -1247,6 +1247,73 @@ mod cron_revision_tests {
     }
 
     #[tokio::test]
+    async fn active_cron_requires_valid_expression_and_failed_edits_are_atomic() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let service = WorkflowService::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = service.create(
+            tenant_id, None,
+            CreateWorkflowInput {
+                name: "Draft schedule".to_owned(),
+                description: None,
+                trigger_config: serde_json::json!({
+                    "type": "cron",
+                    "expression": "not a cron"
+                }),
+                webhook_slug: None,
+                webhook_secret: None,
+            },
+        ).await.unwrap();
+
+        assert!(matches!(
+            service.update(
+                tenant_id, workflow_id, None,
+                UpdateWorkflowInput {
+                    status: Some(WorkflowStatus::Active),
+                    ..Default::default()
+                },
+            ).await,
+            Err(WorkflowError::InvalidTriggerConfig(_)),
+        ));
+        let record = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(record.status, WorkflowStatus::Draft);
+
+        let valid = serde_json::json!({
+            "type": "cron", "expression": "0 * * * * *"
+        });
+        service.update(
+            tenant_id, workflow_id, None,
+            UpdateWorkflowInput {
+                status: Some(WorkflowStatus::Active),
+                trigger_config: Some(valid.clone()),
+                ..Default::default()
+            },
+        ).await.unwrap();
+
+        assert!(matches!(
+            service.update(
+                tenant_id, workflow_id, None,
+                UpdateWorkflowInput {
+                    trigger_config: Some(serde_json::json!({
+                        "type": "cron", "expression": ""
+                    })),
+                    ..Default::default()
+                },
+            ).await,
+            Err(WorkflowError::InvalidTriggerConfig(_)),
+        ));
+        let record = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(record.status, WorkflowStatus::Active);
+        assert_eq!(record.trigger_config, valid,
+            "invalid active edits may not partially overwrite the trigger");
+    }
+
+    #[tokio::test]
     async fn mutating_step_graph_advances_owning_workflow_revision() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
