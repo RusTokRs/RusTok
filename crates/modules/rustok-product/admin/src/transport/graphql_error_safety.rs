@@ -42,7 +42,6 @@ pub(crate) struct GraphqlReadContext {
 
 const PRODUCT_ADMIN_GRAPHQL_OWNER: &str = "rustok_product.admin";
 const PRODUCT_ADMIN_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_reads";
-const PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY: &str = "product_admin_category_graphql_reads";
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
@@ -261,25 +260,25 @@ impl GraphqlReadContext {
         let (error_kind, code, public_error, technical_failure) = match &error {
             GraphqlHttpError::Network => (
                 "network",
-                "product.admin_graphql_network_unavailable",
+                "product.admin_transport_network_unavailable",
                 GraphqlHttpError::Network,
                 true,
             ),
             GraphqlHttpError::Http(_) => (
                 "http",
-                "product.admin_graphql_http_unavailable",
+                "product.admin_transport_http_unavailable",
                 GraphqlHttpError::Http(PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE.to_string()),
                 true,
             ),
             GraphqlHttpError::Unauthorized => (
                 "unauthorized",
-                "product.admin_graphql_authentication_required",
+                "product.admin_transport_authentication_required",
                 GraphqlHttpError::Unauthorized,
                 false,
             ),
             GraphqlHttpError::Graphql(_) => (
                 "graphql",
-                "product.admin_graphql_request_rejected",
+                "product.admin_transport_request_rejected",
                 GraphqlHttpError::Graphql(PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE.to_string()),
                 false,
             ),
@@ -324,7 +323,7 @@ impl GraphqlReadContext {
                 error_kind,
                 code,
                 boundary = self.boundary,
-                "product admin GraphQL read failed"
+                "product admin read failed"
             );
         } else {
             tracing::warn!(
@@ -358,7 +357,7 @@ impl GraphqlReadContext {
                 error_kind,
                 code,
                 boundary = self.boundary,
-                "product admin GraphQL read was rejected"
+                "product admin read was rejected"
             );
         }
 
@@ -469,13 +468,13 @@ impl GraphqlMutationContext {
         let (error_kind, code, public_error, technical_failure) = match &error {
             GraphqlHttpError::Network => (
                 "network",
-                "product.admin_graphql_network_unavailable",
+                "product.admin_transport_network_unavailable",
                 GraphqlHttpError::Network,
                 true,
             ),
             GraphqlHttpError::Http(_) => (
                 "http",
-                "product.admin_graphql_http_unavailable",
+                "product.admin_transport_http_unavailable",
                 GraphqlHttpError::Http(
                     "Product admin service is temporarily unavailable".to_string(),
                 ),
@@ -483,13 +482,13 @@ impl GraphqlMutationContext {
             ),
             GraphqlHttpError::Unauthorized => (
                 "unauthorized",
-                "product.admin_graphql_authentication_required",
+                "product.admin_transport_authentication_required",
                 GraphqlHttpError::Unauthorized,
                 false,
             ),
             GraphqlHttpError::Graphql(_) => (
                 "graphql",
-                "product.admin_graphql_request_rejected",
+                "product.admin_transport_request_rejected",
                 GraphqlHttpError::Graphql(
                     "Product admin request could not be completed".to_string(),
                 ),
@@ -526,7 +525,7 @@ impl GraphqlMutationContext {
                 code,
                 selected_transport = self.selected_transport,
                 boundary = SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY,
-                "product admin GraphQL mutation failed"
+                "product admin mutation failed"
             );
         } else {
             tracing::warn!(
@@ -550,7 +549,7 @@ impl GraphqlMutationContext {
                 code,
                 selected_transport = self.selected_transport,
                 boundary = SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY,
-                "product admin GraphQL mutation was rejected"
+                "product admin mutation was rejected"
             );
         }
 
