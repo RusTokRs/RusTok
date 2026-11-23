@@ -796,6 +796,11 @@ export class FlyBrowserAdapter {
     // `credentials: "same-origin"` on the intent request, so a token copy in script-readable
     // storage would only widen the XSS surface without authenticating anything new.
     this.draftSession = readDraftSession(this.pageId);
+    this.requiresOperationReceipts = root.dataset.flyDraftContract === "strict";
+    this.pendingOperation = this.requiresOperationReceipts
+      ? readPendingOperation(this.pageId)
+      : null;
+    this.pendingOperationUnresolved = Boolean(this.pendingOperation);
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
     this.intentRequestGeneration = 0;
@@ -1406,6 +1411,13 @@ export class FlyBrowserAdapter {
       return Promise.resolve(null);
     }
     const request = normalizedIntent(this, { intent, payload });
+    if (
+      this.requiresOperationReceipts &&
+      this.pendingOperationUnresolved &&
+      request.intent !== "resolve_operation"
+    ) {
+      return Promise.resolve(this.rejectPendingOperation(request));
+    }
     // Fence before DOM listeners can consume an edit intent; POST-only gating
     // would let another host apply a gesture from a stale document locally.
     if (request.intent && !READ_ONLY_INTENTS.has(request.intent) && this.peerWriteConflict) {
@@ -1420,6 +1432,71 @@ export class FlyBrowserAdapter {
     );
     if (this.postIntents) return this.postIntent(request);
     return Promise.resolve(null);
+  }
+
+  clearPendingOperation() {
+    clearPendingOperationStorage(this.pageId);
+    this.pendingOperation = null;
+    this.pendingOperationUnresolved = false;
+    clearPendingOperationNotice(this);
+  }
+
+  rejectPendingOperation(request) {
+    this.root.dispatchEvent(new CustomEvent("fly:browser-intent-rejected", {
+      bubbles: true,
+      detail: {
+        code: "PENDING_OPERATION_UNRESOLVED",
+        intent: request?.intent || null,
+        pageId: this.pageId,
+        operationId: this.pendingOperation?.request?.operation_id || null,
+      },
+    }));
+    showPendingOperationNotice(this, this.pendingOperation?.invalid ? "invalid" : "unknown");
+    return null;
+  }
+
+  async resolvePendingOperation() {
+    if (!this.requiresOperationReceipts || !this.pendingOperation) return null;
+    if (this.pendingOperation.invalid) {
+      this.pendingOperationUnresolved = true;
+      showPendingOperationNotice(this, "invalid");
+      return null;
+    }
+    const operationId = this.pendingOperation.request?.operation_id;
+    if (typeof operationId !== "string" || !operationId) {
+      this.pendingOperationUnresolved = true;
+      showPendingOperationNotice(this, "invalid");
+      return null;
+    }
+    this.pendingOperationUnresolved = true;
+    showPendingOperationNotice(this, "checking");
+    return this.postIntent({
+      intent: "resolve_operation",
+      payload: {},
+      operation_id: operationId,
+    }, { resolvingPending: true });
+  }
+
+  async retryPendingOperation() {
+    const pending = this.pendingOperation;
+    if (!this.requiresOperationReceipts || !pending || pending.invalid || !isObject(pending.request)) {
+      showPendingOperationNotice(this, "invalid");
+      return null;
+    }
+    const request = pending.request;
+    if (
+      request.page_id !== this.pageId ||
+      request.draft_token !== this.draftSession?.token ||
+      typeof request.operation_id !== "string" ||
+      !Number.isSafeInteger(request.draft_generation)
+    ) {
+      showPendingOperationNotice(this, "unavailable");
+      return null;
+    }
+    return this.postIntent(request, {
+      preserveOriginalRequest: true,
+      retryPending: true,
+    });
   }
 
   shouldPost(type) {
