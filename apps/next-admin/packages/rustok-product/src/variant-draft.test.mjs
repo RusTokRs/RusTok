@@ -449,3 +449,37 @@ test('explicit price clearing remains an empty replacement and quantity is patch
     { inventoryQuantity: 9, prices: [] }
   );
 });
+
+
+test('changing one currency price preserves every other currency in the replacement set', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [
+      { currencyCode: 'USD', amount: '12.50', compareAtAmount: null },
+      { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+    ]
+  };
+  assert.deepEqual(
+    clone(
+      buildVariantUpdatePatch(current, {
+        sku: 'SKU-1',
+        barcode: 'BAR-1',
+        inventoryQuantity: 8,
+        inventoryPolicy: 'deny',
+        prices: [
+          { currencyCode: 'USD', amount: '13.00', compareAtAmount: null },
+          { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+        ]
+      })
+    ),
+    {
+      prices: [
+        { currencyCode: 'USD', amount: '13.00', compareAtAmount: null },
+        { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+      ]
+    }
+  );
+});

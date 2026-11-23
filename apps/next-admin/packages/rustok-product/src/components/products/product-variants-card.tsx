@@ -256,7 +256,7 @@ export function ProductVariantsCard({
       !editingVariant || qty !== editingVariant.inventoryQuantity;
     if (
       inventoryQuantityChanged &&
-      (!/^\\d+$/.test(formStock) ||
+      (!/^\d+$/.test(formStock) ||
         !Number.isInteger(qty) ||
         qty > MAX_INVENTORY_QUANTITY)
     ) {
@@ -264,7 +264,8 @@ export function ProductVariantsCard({
       return;
     }
 
-    let mappedPrices: ProductVariantPrice[];
+    let mappedPrices: ProductVariantPrice[] = [];
+    let updatePatch: UpdateVariantInput | null = null;
     try {
       // Scalar/price editing does not submit assignments. A stale dialog tuple
       // after an axis refresh must not block that unrelated edit.
@@ -276,14 +277,33 @@ export function ProductVariantsCard({
           })),
           formAxisValues
         );
+        mappedPrices = formPrices.map((price) => ({
+          currencyCode: price.currencyCode,
+          amount: parsePriceAmount(price.amount),
+          compareAtAmount: price.compareAtAmount.trim()
+            ? parsePriceAmount(price.compareAtAmount)
+            : null
+        }));
+      } else {
+        // Compare raw form values first. Parse only a changed price set so a
+        // SKU-only edit cannot accidentally replay or normalize stale prices.
+        updatePatch = buildVariantUpdatePatch(editingVariant, {
+          sku: formSku,
+          barcode: formBarcode,
+          inventoryQuantity: qty,
+          inventoryPolicy: formPolicy,
+          prices: formPrices
+        });
+        if (updatePatch.prices) {
+          updatePatch.prices = updatePatch.prices.map((price) => ({
+            ...price,
+            amount: parsePriceAmount(price.amount),
+            compareAtAmount: price.compareAtAmount?.trim()
+              ? parsePriceAmount(price.compareAtAmount)
+              : null
+          }));
+        }
       }
-      mappedPrices = formPrices.map((price) => ({
-        currencyCode: price.currencyCode,
-        amount: parsePriceAmount(price.amount),
-        compareAtAmount: price.compareAtAmount.trim()
-          ? parsePriceAmount(price.compareAtAmount)
-          : null
-      }));
       setError(null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Invalid price.');
@@ -293,13 +313,7 @@ export function ProductVariantsCard({
     setIsBusy(true);
     try {
       if (editingVariant) {
-        const patch = buildVariantUpdatePatch(editingVariant, {
-          sku: formSku,
-          barcode: formBarcode,
-          inventoryQuantity: qty,
-          inventoryPolicy: formPolicy,
-          prices: mappedPrices
-        });
+        const patch = updatePatch ?? {};
         if (Object.keys(patch).length === 0) {
           setDialogOpen(false);
           return;
