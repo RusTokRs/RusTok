@@ -23,14 +23,18 @@ pub struct ViewportPreset {
 
 impl ViewportPreset {
     pub fn apply(&self, current: ViewportState) -> ViewportState {
-        ViewportState {
+        let mut viewport = ViewportState {
             width: self.width,
             height: self.height,
             zoom: self.default_zoom,
             scroll_x: current.scroll_x,
             scroll_y: current.scroll_y,
         }
-        .normalized()
+        .normalized();
+        // Preserve the preset contract: horizontal scrolling must not exceed
+        // the newly selected preview width.
+        viewport.scroll_x = viewport.scroll_x.min(f64::from(viewport.width));
+        viewport
     }
 }
 

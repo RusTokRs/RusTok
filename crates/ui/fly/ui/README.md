@@ -72,3 +72,7 @@ coordinates never emits non-finite CSS dimensions.
 SaveStarted also checks current edit permission and unresolved conflicts. If the host has
 synchronized a hash, SaveSucceeded must match the submitted hash rather than merely the latest
 server revision; a mismatched acknowledgement leaves the active save untouched.
+
+Pointer movement over one million CSS pixels is rejected as malformed input at the resize
+boundary, preventing otherwise finite but impractically huge CSS sizes. Viewport preset
+application continues clamping horizontal scroll to the selected width.

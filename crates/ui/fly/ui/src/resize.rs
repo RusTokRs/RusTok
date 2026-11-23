@@ -90,6 +90,9 @@ pub struct ResizeResult {
     pub height_changed: bool,
 }
 
+/// A single pointer gesture is bounded independently of optional component size policy.
+const MAX_RESIZE_POINTER_DELTA_PX: f64 = 1_000_000.0;
+
 impl ResizeSession {
     pub fn update(&self, pointer_x: f64, pointer_y: f64) -> ResizeResult {
         // Browser geometry can become invalid during iframe disposal or a
@@ -109,6 +112,13 @@ impl ResizeSession {
         }
         let dx = pointer_x - self.start_x;
         let dy = pointer_y - self.start_y;
+        if !dx.is_finite()
+            || !dy.is_finite()
+            || dx.abs() > MAX_RESIZE_POINTER_DELTA_PX
+            || dy.abs() > MAX_RESIZE_POINTER_DELTA_PX
+        {
+            return unchanged();
+        }
         let aspect = if self.start_rect.height > 0.0 {
             self.start_rect.width / self.start_rect.height
         } else {
