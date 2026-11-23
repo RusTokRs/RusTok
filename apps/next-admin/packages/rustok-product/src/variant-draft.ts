@@ -10,9 +10,9 @@ import type {
 } from './api/types';
 import type { CombinationAxis } from './combinations';
 import { chooseCombination, CombinationError } from './combinations.ts';
-import { isEligibleAxis } from './schema-policy';
 import { MAX_INVENTORY_QUANTITY } from './limits';
 import { parsePriceAmount } from './money';
+import { isEligibleAxis } from './schema-policy';
 
 /** A bounded explicit selection, never an automatically materialized Cartesian product. */
 export const MAX_INITIAL_VARIANTS = 128;
