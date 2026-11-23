@@ -825,11 +825,33 @@ mod tests {
         assert_eq!(quarantine_stale_attempts(
             &db, Utc::now() + ChronoDuration::minutes(15),
         ).await.unwrap(), 1);
+        let actor_id = Uuid::new_v4();
+        let evidence = "External provider case verified and prior worker process fully fenced";
         assert!(reconcile_firing(
-            &db, tenant_id, first.id, Uuid::new_v4(),
+            &db, tenant_id, first.id, actor_id,
             CronReconciliationDecision::RequeueConfirmedUnstarted,
-            "Operator attested worker termination but journal exists",
-            true,
+            evidence, true,
         ).await.is_err());
+        assert!(reconcile_firing(
+            &db, tenant_id, first.id, actor_id,
+            CronReconciliationDecision::ConfirmExternalFailed,
+            evidence, false,
+        ).await.is_err(), "an active worker cannot be overridden by an unverified review");
+
+        let resolved = reconcile_firing(
+            &db, tenant_id, first.id, actor_id,
+            CronReconciliationDecision::ConfirmExternalFailed,
+            evidence, true,
+        ).await.unwrap();
+        assert_eq!(resolved.status, firing::COMPLETED);
+        let journal = WorkflowExecutionEntity::find_by_id(execution_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(journal.status, ExecutionStatus::Failed);
+        assert!(!heartbeat_claim(&db, first, token).await.unwrap(),
+            "a previous worker may not extend an operator-settled attempt");
+        let audit = review::Entity::find().all(&db).await.unwrap();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].actor_id, actor_id);
+        assert_eq!(audit[0].evidence, evidence);
     }
 }
