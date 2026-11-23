@@ -84,6 +84,11 @@ test('overlapping local filter navigations and browser history cannot replay sta
   );
   assert.match(
     hookSource,
+    /useIsomorphicLayoutEffect\(\(\) => \{\s*const invalidatePendingFilterNavigation/
+  );
+
+  assert.match(
+    hookSource,
     /window\.removeEventListener\(\s*'popstate',\s*invalidatePendingFilterNavigation\s*\)/
   );
   assert.match(hookSource, /invalidatePendingFilterNavigation = \(\) => \{/);
