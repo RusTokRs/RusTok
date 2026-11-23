@@ -61,7 +61,7 @@ test('overlapping local filter navigations and browser history cannot replay sta
   assert.match(hookSource, /pendingRouteWrites\.length > 0/);
   assert.match(
     hookSource,
-    /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !== expectedRouteSignature/
+    /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !==\s+expectedRouteSignature/
   );
   assert.match(hookSource, /pendingLocalColumnFilterSignature = React\.useRef<string \| null>\(null\)/);
   assert.match(hookSource, /pendingLocalColumnFilterSignature\.current = columnFiltersSignature\(next\)/);
