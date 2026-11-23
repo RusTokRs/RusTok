@@ -694,33 +694,28 @@ fn browser_operation_request_hash(
 fn compact_operation_receipt(
     response: &PagesBrowserIntentResponse,
 ) -> Result<Value, PagesBrowserIntentError> {
-    let mut value = serde_json::to_value(response)
+    let save_failure = response.save_failure.as_ref()
+        .map(serde_json::to_value)
+        .transpose()
         .map_err(|error| PagesBrowserIntentError::OperationFingerprint(error.to_string()))?;
-    if let Some(result) = value.get_mut("result").and_then(Value::as_object_mut) {
-        result.remove("project_data");
-        result.insert("effects".to_string(), json!([]));
-    }
-    // Save failures can contain transport/provider text. Keep the durable receipt
-    // compact and bounded; the full diagnostic was already sent in the first response.
-    let bounded_error = value
-        .get("save_failure")
+    let bounded_error = save_failure.as_ref()
         .and_then(Value::as_object)
         .and_then(|failure| failure.get("error"))
         .and_then(Value::as_str)
-        .map(|error| error.chars().take(512).collect::<String>());
-    if let Some(error) = bounded_error
-        && let Some(failure) = value.get_mut("save_failure").and_then(Value::as_object_mut)
-    {
-        failure.insert("error".to_string(), Value::String(error));
-    }
-    if let Some(object) = value.as_object_mut() {
-        object.remove("persistence");
-        object.insert("runtime_context".to_string(), json!({}));
-        object.insert("reload".to_string(), Value::Bool(true));
-        object.insert("operation_status".to_string(), json!("committed"));
-        object.insert("operation_replayed".to_string(), Value::Bool(false));
-    }
-    Ok(value)
+        .map(|error| error.chars().take(128).collect::<String>());
+    let save_failure = match (save_failure, bounded_error) {
+        (Some(mut value), Some(error)) => {
+            if let Some(failure) = value.as_object_mut() {
+                failure.insert("error".to_string(), Value::String(error));
+            }
+            Some(value)
+        }
+        (value, _) => value,
+    };
+    // The current draft session is the source of truth for revision and UI state.
+    // A receipt only needs to remember whether this committed operation left a
+    // persistence failure that must still be surfaced after a reload.
+    Ok(json!({ "save_failure": save_failure }))
 }
 
 fn operation_response_from_receipt(
@@ -1296,11 +1291,10 @@ mod tests {
             operation_replayed: false,
         };
         let compact = compact_operation_receipt(&response).expect("compact receipt");
-        assert!(compact["result"].get("project_data").is_none());
-        assert_eq!(compact["result"]["effects"], json!([]));
-        assert_eq!(compact["runtime_context"], json!({}));
-        assert_eq!(compact["reload"], Value::Bool(true));
-        assert_eq!(compact["operation_status"], json!("committed"));
+        assert!(compact.get("result").is_none());
+        assert!(compact.get("runtime_context").is_none());
+        assert!(compact.get("persistence").is_none());
+        assert_eq!(compact["save_failure"], Value::Null);
 
         let session = SsrDraftSessionSnapshot {
             token: "draft-token".to_string(),

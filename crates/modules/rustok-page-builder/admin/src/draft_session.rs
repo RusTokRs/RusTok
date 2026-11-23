@@ -77,9 +77,9 @@ pub enum SsrDraftOperationCommit {
 
 /// Maximum number of distinct browser operation identities retained per draft session.
 /// Receipts are never evicted silently: once this bound is reached, writes fail closed.
-pub const MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION: usize = 256;
+pub const MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION: usize = 2048;
 /// Operation acknowledgements are compact projections, never full document snapshots.
-pub const MAX_DRAFT_OPERATION_RECEIPT_BYTES: usize = 8 * 1024;
+pub const MAX_DRAFT_OPERATION_RECEIPT_BYTES: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PersistentDraftSessionRecord {
