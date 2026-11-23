@@ -3,6 +3,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::variant::MAX_PRODUCT_VARIANTS;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum VariantAxisPolicy {
@@ -120,7 +122,6 @@ pub struct SetVariantAxesInput {
 pub const MAX_VARIANT_AXES: usize = 32;
 pub const MAX_VARIANT_AXIS_VALUES: usize = 256;
 /// One Product-wide bound shared by creation, deletion, reconfiguration and complete projections.
-pub const MAX_PRODUCT_VARIANTS: usize = 256;
 /// Public detail/quote selection is complete within the Product-wide bound, never a truncated SKU matrix.
 pub const MAX_STOREFRONT_PRODUCT_VARIANTS: u64 = MAX_PRODUCT_VARIANTS as u64;
 pub const MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS;
