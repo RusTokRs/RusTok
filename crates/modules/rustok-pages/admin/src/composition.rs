@@ -1544,6 +1544,17 @@ fn PagesFlyBuilder(
             tenant_id: tenant_slug,
             user_id: user.id,
         });
+    // Every editable SSR canvas starts with an owner-bound session. The first
+    // browser mutation therefore already carries a durable token/generation,
+    // so a lost first response can be reconciled by its operation receipt.
+    let can_edit = editor_policy.evaluate_detailed().effective.edit;
+    if can_edit && draft_owner.is_none() {
+        return view! {
+            <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert" data-pages-draft-owner-error="true">
+                "The editor could not establish an authenticated draft owner. Editing is stopped to protect the draft."
+            </div>
+        }.into_any();
+    }
     // Never render a saved page under a draft token that failed to load. The browser
     // would keep sending that token and could otherwise silently seed a new session.
     let route_draft = match load_route_draft(
@@ -1570,13 +1581,6 @@ fn PagesFlyBuilder(
             }.into_any();
         }
     };
-    // Bind browser requests to exactly the snapshot rendered below, not an
-    // independently cached generation from sessionStorage.
-    provide_context(SsrDraftRenderBinding {
-        session: route_draft
-            .as_ref()
-            .map(|draft| (draft.token.clone(), draft.generation)),
-    });
     let stale_draft = route_draft
         .as_ref()
         .is_some_and(|draft| draft.controller.revision_id() != revision_id);
@@ -1587,18 +1591,71 @@ fn PagesFlyBuilder(
     } else {
         None
     };
-    let (controller, runtime_context) = match route_draft {
-        Some(mut draft) => (
-            mark_stale_draft_conflict(&mut draft.controller, &revision_id)
-                .map(|_| draft.controller),
-            draft.runtime_context,
-        ),
-        None => (
-            builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text)
-                .map_err(crate::browser_intent::PagesBrowserIntentError::from),
-            generated_context,
-        ),
+    let (mut controller, runtime_context, rendered_draft) = match route_draft {
+        Some(mut draft) => {
+            let binding = Some((draft.token.clone(), draft.generation));
+            (
+                mark_stale_draft_conflict(&mut draft.controller, &revision_id)
+                    .map(|_| draft.controller),
+                draft.runtime_context,
+                binding,
+            )
+        }
+        None => {
+            let controller = builder::controller_from_project(
+                &page.id,
+                &revision_id,
+                &seed.project_data_text,
+            )
+            .map_err(crate::browser_intent::PagesBrowserIntentError::from);
+            if can_edit {
+                match controller {
+                    Ok(controller) => {
+                        match pages_browser_draft_store().commit_with_context(
+                            None,
+                            None,
+                            controller,
+                            generated_context.clone(),
+                            draft_owner.as_ref(),
+                        ) {
+                            Ok(session) => (
+                                Ok(session.controller),
+                                session.runtime_context,
+                                Some((session.token, session.generation)),
+                            ),
+                            Err(error) => (Err(error.into()), generated_context, None),
+                        }
+                    }
+                    Err(error) => (Err(error), generated_context, None),
+                }
+            } else {
+                (controller, generated_context, None)
+            }
+        }
     };
+    // A custom store that does not implement atomic operation receipts cannot
+    // safely serve an editable browser session. Probe its read path before
+    // exposing the editing controls; never silently fall back to generation-only writes.
+    if can_edit {
+        if let Some((draft_token, _)) = rendered_draft.as_ref() {
+            if let Err(error) = pages_browser_draft_store().lookup_operation_receipt(
+                draft_token,
+                &page.id,
+                draft_owner.as_ref(),
+                "__receipt_capability_probe__",
+                None,
+            ) {
+                controller = Err(error.into());
+            }
+        } else {
+            controller = Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
+        }
+    }
+    // Bind browser requests to exactly the snapshot rendered below, not an
+    // independently cached generation from sessionStorage.
+    provide_context(SsrDraftRenderBinding {
+        session: rendered_draft.clone(),
+    });
 
     match controller {
         Ok(controller) => {
@@ -1607,12 +1664,11 @@ fn PagesFlyBuilder(
             // The preview is served by the host as its own document, so its policy is the policy
             // of the page rather than the policy of this console. The address names the session
             // the editor is showing, so a preview of an edited draft is a preview of that draft.
-            // The token is the one the route already put in the address: it is the editor's own
-            // session, and the route refuses it unless its owner is the verified caller.
-            // A draft token is `[A-Za-z0-9_-]` by construction (`SsrDraftSessionStore` refuses
-            // anything else), so it needs no escaping to travel in the address, and the route
-            // hands it back to the same owner-checked load the editor used.
-            let preview_endpoint = match draft_token.as_deref() {
+            // The token is the owner-bound session rendered into this canvas (including the
+            // first session created above), and the route verifies the same owner on every load.
+            // Draft tokens are restricted to `[A-Za-z0-9_-]` by the store, so they are safe in
+            // this query value without introducing a second escaping contract.
+            let preview_endpoint = match rendered_draft.as_ref().map(|(token, _)| token.as_str()) {
                 Some(token) => format!("/api/admin/pages/{page_id}/preview?draft={token}"),
                 None => format!("/api/admin/pages/{page_id}/preview"),
             };
