@@ -13,6 +13,26 @@ pub(crate) fn may_admit_next_worker_operation(
     !*stop_rx.borrow()
 }
 
+/// Check shutdown before invoking the next durable operation, then await the
+/// admitted operation to completion. A graceful stop must not drop the owner
+/// future between a non-transactional side effect and its acknowledgement.
+///
+/// This is a process-local admission check, not a distributed lease or a
+/// guarantee against process death or the host's bounded forced abort.
+pub(crate) async fn run_admitted_worker_operation<Operation, Future>(
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
+    operation: Operation,
+) -> Option<Future::Output>
+where
+    Operation: FnOnce() -> Future,
+    Future: std::future::Future,
+{
+    if !may_admit_next_worker_operation(stop_rx) {
+        return None;
+    }
+    Some(operation().await)
+}
+
 /// Await a cancellable, pre-publication worker bootstrap step. Startup often
 /// holds its registration mutex while resolving cache state or joining old
 /// workers; if that I/O stalls, shutdown's bounded handle snapshot must not
@@ -116,7 +136,7 @@ impl StopHandle {
 mod tests {
     use super::{
         StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation,
-        run_until_stopped,
+        run_admitted_worker_operation, run_until_stopped,
     };
 
     #[tokio::test]
@@ -226,6 +246,44 @@ mod tests {
             .expect("listener exits promptly on stop")
             .expect("listener wrapper joins");
         cancelled_rx.await.expect("listener future was cancelled");
+    }
+
+    #[tokio::test]
+    async fn stopped_host_never_invokes_next_durable_operation() {
+        let (stop, receiver) = StopHandle::new();
+        stop.stop().await;
+        let invoked = std::cell::Cell::new(false);
+        let result = run_admitted_worker_operation(&receiver, || {
+            invoked.set(true);
+            async { 42_u32 }
+        })
+        .await;
+        assert_eq!(result, None);
+        assert!(!invoked.get(), "the effectful operation must not be admitted");
+    }
+
+    #[tokio::test]
+    async fn stop_during_admitted_durable_operation_waits_for_its_acknowledgement() {
+        let (stop, receiver) = StopHandle::new();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let operation = tokio::spawn(async move {
+            run_admitted_worker_operation(&receiver, || async move {
+                started_tx.send(()).expect("durable operation started");
+                finish_rx.await.expect("durable operation completes");
+                42_u32
+            })
+            .await
+        });
+
+        started_rx.await.expect("operation entered");
+        stop.stop().await;
+        assert!(
+            !operation.is_finished(),
+            "graceful stop must not cancel an already-admitted durable operation"
+        );
+        finish_tx.send(()).expect("allow acknowledgement");
+        assert_eq!(operation.await.expect("worker joins"), Some(42));
     }
 
     #[tokio::test]
