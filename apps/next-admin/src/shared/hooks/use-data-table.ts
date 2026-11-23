@@ -306,11 +306,16 @@ export function useDataTable<TData extends RowData = any>(
         );
       }
 
+      const pendingRouteWrites = pendingLocalRouteSignatures.current;
+      // The server props may still describe the route before an earlier local
+      // write. Preserve an explicit return to that older signature as a later
+      // local navigation instead of mistaking its response for browser history.
       if (
-        expectedRouteSignature !== currentRouteSignature &&
-        !pendingLocalRouteSignatures.current.includes(expectedRouteSignature)
+        (expectedRouteSignature !== currentRouteSignature ||
+          pendingRouteWrites.length > 0) &&
+        pendingRouteWrites[pendingRouteWrites.length - 1] !== expectedRouteSignature
       ) {
-        pendingLocalRouteSignatures.current.push(expectedRouteSignature);
+        pendingRouteWrites.push(expectedRouteSignature);
       }
 
       if (page !== 1) void setPage(1);
