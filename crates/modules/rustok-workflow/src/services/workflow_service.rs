@@ -1029,3 +1029,62 @@ fn step_to_response(s: crate::entities::WorkflowStep) -> WorkflowStepResponse {
         timeout_ms: s.timeout_ms,
     }
 }
+
+#[cfg(test)]
+mod cron_revision_tests {
+    use super::*;
+    use chrono::Duration as ChronoDuration;
+    use sea_orm::Database;
+    use sea_orm_migration::SchemaManager;
+    use crate::entities::{OnError, StepType};
+
+    #[tokio::test]
+    async fn mutating_step_graph_advances_owning_workflow_revision() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let baseline = Utc::now() - ChronoDuration::days(2);
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Versioned schedule".to_owned()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type":"cron","expression":"0 * * * * *"
+            })),
+            created_by: Set(None),
+            created_at: Set(baseline.fixed_offset()),
+            updated_at: Set(baseline.fixed_offset()),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let before = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        let before_revision = crate::services::cron_durable::schedule_revision(
+            &before, "0 * * * * *",
+        );
+        WorkflowService::new(db.clone()).add_step(
+            tenant_id, workflow_id,
+            CreateWorkflowStepInput {
+                position: 0,
+                step_type: StepType::Action,
+                config: serde_json::json!({"action":"noop"}),
+                on_error: OnError::Stop,
+                timeout_ms: None,
+            }
+        ).await.unwrap();
+        let after = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert!(after.updated_at > before.updated_at);
+        assert_ne!(before_revision, crate::services::cron_durable::schedule_revision(
+            &after, "0 * * * * *",
+        ));
+    }
+}
