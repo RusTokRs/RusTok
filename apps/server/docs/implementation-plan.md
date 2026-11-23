@@ -3173,3 +3173,19 @@ batch-exhausted cycles. Failure retries after `min(interval, 60s)`, while
 successful and full-batch timing remains unchanged. The existing atomic failure
 counter and stop-aware sleep are retained. A focused delay-selection regression
 was authored but not executed; no Cargo or SQL verification was run.
+
+
+## Server audit continuation — Pages cache duplicate scope (2026-11-23)
+
+The server's Pages invalidation adapter previously reused a single static
+`BoundedCacheEventDedupe` for every `CacheService` in the process. Separate
+host/runtime cache instances have independent namespace-generation stores,
+so the same event ID could mark the first backend's invalidation as completed
+while the second backend was never bumped. The second host could even fail
+receipt validation because its generations remained zero. The dedupe registry
+now follows the concrete shared cache backend identity, with weak references,
+a bounded number of live entries, and a fail-open-to-extra-rotation fallback
+if full. Ports sharing the same cache backend still serialize duplicate events.
+A regression for two independent services and two ports sharing one service
+was authored but not executed. No compilation, tests, formatting, or live
+cache checks were performed, per maintainer instruction.

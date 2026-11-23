@@ -1456,3 +1456,10 @@ broker/restart/operator-client evidence remain open. No tests/build/SQL/runtime 
 - [Index drift source page GraphQL transport](./index-drift-source-page-graphql-transport.md)
 - [Index replay GraphQL transport](./index-replay-graphql-transport.md)
 - [Index replay GraphQL shutdown evidence](./index-replay-graphql-shutdown-evidence.md)
+
+- Pages cache event deduplication is scoped to the backend used by a
+  `CacheService`, rather than one process-global event-ID set. Two independent
+  runtime caches receiving the same event each rotate their own generations;
+  separately constructed ports over the same cache still suppress duplicate
+  rotations. The bounded weak backend registry does not keep retired hosts
+  or their dedupe state alive.

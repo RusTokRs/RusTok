@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -12,12 +12,42 @@ use rustok_pages::{
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
-static SUCCESSFUL_PAGE_INVALIDATIONS: OnceLock<Arc<BoundedCacheEventDedupe>> = OnceLock::new();
+// Dedupe belongs to the cache backend that must observe the invalidation, not
+// to the entire process. Two independent CacheService instances can have
+// independent namespace generations, even when they process the same event ID.
+// Weak references avoid retaining an old backend/dedupe across host restarts.
+const MAX_PAGE_CACHE_DEDUPE_BACKENDS: usize = 256;
+type SharedPagesDedupeRegistry =
+    Vec<(Weak<dyn CacheBackend>, Weak<BoundedCacheEventDedupe>)>;
+static PAGE_CACHE_DEDUPES: OnceLock<Mutex<SharedPagesDedupeRegistry>> = OnceLock::new();
 
-fn successful_page_invalidations() -> Arc<BoundedCacheEventDedupe> {
-    SUCCESSFUL_PAGE_INVALIDATIONS
-        .get_or_init(|| Arc::new(BoundedCacheEventDedupe::default()))
-        .clone()
+fn successful_page_invalidations_for(
+    backend: &Arc<dyn CacheBackend>,
+) -> Arc<BoundedCacheEventDedupe> {
+    let registry = PAGE_CACHE_DEDUPES.get_or_init(|| Mutex::new(Vec::new()));
+    let mut entries = registry
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    entries.retain(|(key, dedupe)| key.strong_count() > 0 && dedupe.strong_count() > 0);
+    for (key, dedupe) in entries.iter() {
+        if let (Some(registered_backend), Some(registered_dedupe)) =
+            (key.upgrade(), dedupe.upgrade())
+        {
+            if Arc::ptr_eq(&registered_backend, backend) {
+                return registered_dedupe;
+            }
+        }
+    }
+
+    let dedupe = Arc::new(BoundedCacheEventDedupe::default());
+    if entries.len() < MAX_PAGE_CACHE_DEDUPE_BACKENDS {
+        entries.push((Arc::downgrade(backend), Arc::downgrade(&dedupe)));
+    } else {
+        // A full optimization registry must never suppress invalidation.
+        // An unshared dedupe may bump an extra generation, which is safe.
+        tracing::warn!("Pages cache dedupe registry reached its live backend capacity");
+    }
+    dedupe
 }
 
 #[derive(Clone)]
@@ -25,7 +55,7 @@ pub struct ServerPagesCachePort {
     cache: CacheService,
     generations: CacheNamespaceGenerationStore,
     backend: Arc<OnceCell<Arc<dyn CacheBackend>>>,
-    successful_invalidations: Arc<BoundedCacheEventDedupe>,
+    successful_invalidations: Arc<OnceCell<Arc<BoundedCacheEventDedupe>>>,
 }
 
 impl ServerPagesCachePort {
@@ -34,7 +64,7 @@ impl ServerPagesCachePort {
             cache: cache.clone(),
             generations: cache.namespace_generations(),
             backend: Arc::new(OnceCell::new()),
-            successful_invalidations: successful_page_invalidations(),
+            successful_invalidations: Arc::new(OnceCell::new()),
         }
     }
 
@@ -48,6 +78,16 @@ impl ServerPagesCachePort {
                         PAGES_STOREFRONT_CACHE_MAX_CAPACITY,
                     )
                     .await
+            })
+            .await
+            .clone()
+    }
+
+    async fn successful_invalidations(&self) -> Arc<BoundedCacheEventDedupe> {
+        self.successful_invalidations
+            .get_or_init(|| async {
+                let backend = self.backend().await;
+                successful_page_invalidations_for(&backend)
             })
             .await
             .clone()
@@ -81,11 +121,9 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
         &self,
         request: PageCacheInvalidationRequest,
     ) -> Result<PageCacheInvalidationReceipt, PageCacheError> {
-        let _event_guard = self
-            .successful_invalidations
-            .serialize_event(request.event_id)
-            .await;
-        if self.successful_invalidations.is_duplicate(request.event_id) {
+        let successful_invalidations = self.successful_invalidations().await;
+        let _event_guard = successful_invalidations.serialize_event(request.event_id).await;
+        if successful_invalidations.is_duplicate(request.event_id) {
             tracing::debug!(
                 event_id = %request.event_id,
                 correlation_id = %request.correlation_id,
@@ -112,7 +150,7 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
         }
         receipt.validate_for(&request)?;
         // INVARIANT: event dedupe observation after successful cache invalidation.
-        self.successful_invalidations.observe(request.event_id);
+        successful_invalidations.observe(request.event_id);
         Ok(receipt)
     }
 }
@@ -205,6 +243,37 @@ mod tests {
         assert_eq!(duplicate, first);
         assert_eq!(
             port.generation_snapshot(request.tenant_id).await.unwrap(),
+            PageCacheGenerationSnapshot::new(1, 1, 1)
+        );
+    }
+
+    #[tokio::test]
+    async fn independent_cache_services_do_not_suppress_each_others_invalidation() {
+        let first_cache = local_only_cache();
+        let second_cache = local_only_cache();
+        let first = ServerPagesCachePort::new(&first_cache);
+        let second = ServerPagesCachePort::new(&second_cache);
+        let event = request(PageCacheInvalidationCause::Published);
+
+        let first_receipt = first.invalidate(event.clone()).await.unwrap();
+        let second_receipt = second.invalidate(event.clone()).await.unwrap();
+        assert_eq!(first_receipt.route_generation, Some(1));
+        assert_eq!(second_receipt.route_generation, Some(1));
+        assert_eq!(
+            second.generation_snapshot(event.tenant_id).await.unwrap(),
+            PageCacheGenerationSnapshot::new(1, 1, 1),
+            "another cache backend must not be treated as already invalidated"
+        );
+
+        // Cloned ports and separately constructed ports over the same service
+        // still share the optimization and must not rotate twice.
+        let duplicate = ServerPagesCachePort::new(&second_cache)
+            .invalidate(event.clone())
+            .await
+            .unwrap();
+        assert_eq!(duplicate, second_receipt);
+        assert_eq!(
+            second.generation_snapshot(event.tenant_id).await.unwrap(),
             PageCacheGenerationSnapshot::new(1, 1, 1)
         );
     }
