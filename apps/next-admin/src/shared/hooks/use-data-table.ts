@@ -334,9 +334,9 @@ export function useDataTable<TData extends RowData = any>(
       const matchedLocalNavigation =
         pendingLocalRouteSignatures.current.indexOf(currentRouteSignature);
       if (matchedLocalNavigation !== -1) {
-        // Consume this navigation and all older writes it supersedes, while
-        // preserving any newer local route writes that are still in flight.
-        pendingLocalRouteSignatures.current.splice(0, matchedLocalNavigation + 1);
+        // Remove only the response we observed. Older or newer local writes
+        // may still complete later, so their signatures must remain recognizable.
+        pendingLocalRouteSignatures.current.splice(matchedLocalNavigation, 1);
         return;
       }
 
