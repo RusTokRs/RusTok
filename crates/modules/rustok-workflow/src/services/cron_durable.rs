@@ -775,6 +775,25 @@ mod tests {
         let item = pending_firings(&db, 1).await.unwrap().remove(0);
         let token = claim_firing(&db, &item, now - ChronoDuration::minutes(15))
             .await.unwrap().expect("first attempt owns the claim");
+        let previously_stale = firing::Entity::find_by_id(item.id)
+            .one(&db).await.unwrap().unwrap();
+        assert!(heartbeat_claim(&db, &item, token).await.unwrap());
+        assert!(!quarantine_stale_candidate(
+            &db, &previously_stale,
+            now - ChronoDuration::minutes(STALE_ATTEMPT_MINUTES), now,
+        ).await.unwrap(), "a refreshed heartbeat must win over a stale scan");
+        let running = firing::Entity::find_by_id(item.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(running.status, firing::RUNNING);
+
+        // Simulate an actually dead worker by moving the heartbeat back.
+        firing::Entity::update_many()
+            .col_expr(
+                firing::Column::ClaimedAt,
+                Expr::value(at(now - ChronoDuration::minutes(15))),
+            )
+            .filter(firing::Column::Id.eq(item.id))
+            .filter(firing::Column::AttemptToken.eq(token))
+            .exec(&db).await.unwrap();
         assert_eq!(quarantine_stale_attempts(&db, now).await.unwrap(), 1);
         assert!(pending_firings(&db, 10).await.unwrap().iter().all(|row| row.id != item.id));
 
