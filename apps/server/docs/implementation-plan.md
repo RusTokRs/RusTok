@@ -1,5 +1,31 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — durable worker shutdown and dispatcher recovery retry (2026-11-23)
+
+The Product Media release loop previously raced its owner batch against a stop
+notification using `tokio::select!`. A graceful stop could cancel the batch
+after an external Media release but before the owner confirmed absence and
+acknowledged its committed queue row. It now checks stop before admitting a
+batch and awaits the already admitted batch to completion. Paid-order label
+recovery also rechecks stop after waking on its ticker, before starting an
+external provider sweep. Both use one server-local admission helper that never
+cancels an operation after it starts. Source regressions cover stop-before-start
+and stop-during-operation behavior.
+
+Repeated module dispatcher bootstrap used to return immediately when the
+required dispatcher was already healthy, so independently reserved optional
+Product Media, paid-order label, financial or payment recovery workers could
+never be retried after an initially absent dependency. The already-live path
+now revisits those idempotent child starters. A focused `mod-product` regression
+verifies a pre-published healthy dispatcher can register its missing Product
+Media release worker and remains shutdown-drainable.
+
+The graceful-stop behavior does not guarantee process-crash completion or
+override the host's bounded forced-abort deadline. Replay, ownership,
+cross-replica fencing and external side-effect reconciliation remain the
+durable operation owner's responsibility. All added tests are source-only
+and unrun by request; no compilation, formatting or runtime checks were done.
+
 ## Server audit continuation — scheduler startup liveness (2026-11-23)
 
 The module-work and Workflow cron scheduler initializers previously treated a stored
