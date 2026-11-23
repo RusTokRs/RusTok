@@ -206,4 +206,6 @@ and creation-date column filters are intentionally not offered until the
 owner's admin list contract supports those predicates; category and typed
 attribute filtering remain in the catalog controls/facet panel. Vendor means
 an exact Product vendor match, matching the owner and Next admin contract.
+Leptos text/number filter cells invalidate their inner debounce on browser
+Back/Forward, including when the restored filter value itself is unchanged.
 Rust/source regression coverage is authored but not executed.
