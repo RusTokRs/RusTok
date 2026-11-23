@@ -478,9 +478,9 @@ mod props_regression_tests {
             patch: ComponentPatch::default().set_field("content", json!("two")),
         })).expect("edit");
         assert_eq!(original.controller.revision_id(), changed.controller.revision_id());
-        assert_ne!(original, changed, "draft edit must trigger prop update");
+        assert!(original != changed, "draft edit must trigger prop update");
         let mut workspace = original.clone();
         workspace.adapter_workspace = true;
-        assert_ne!(original, workspace, "mount mode must trigger prop update");
+        assert!(original != workspace, "mount mode must trigger prop update");
     }
 }
