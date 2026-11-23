@@ -419,7 +419,9 @@ fn main() {
     use rustok_admin::app::App;
 
     console_error_panic_hook::set_once();
-    let _ = console_log::init_with_level(log::Level::Debug);
+    if let Err(error) = console_log::init_with_level(log::Level::Debug) {
+        web_sys::console::warn_1(&format!("console_log init: {error}").into());
+    }
     mount_to_body(|| {
         // The server host hands the response nonce to module surfaces from the request. In the
         // browser there is no request: the host that served this document put the nonce on the

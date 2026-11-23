@@ -163,7 +163,7 @@ pub fn RichTextEditorFrame(
         }
 
         let messages_json =
-            serde_json::to_string(&copy.messages).expect("richtext messages must serialize");
+            serde_json::to_string(&copy.messages).unwrap_or_else(|_| "{}".to_string());
         let editor_handle = StoredValue::new_local(None::<JsValue>);
         let callback_handles = StoredValue::new_local(
             None::<(
@@ -182,7 +182,7 @@ pub fn RichTextEditorFrame(
                 editor_error.set(Some(controlled_serialization_error.clone()));
                 return;
             };
-            let _ = set_richtext_document(&handle, &document_json);
+            drop(set_richtext_document(&handle, &document_json));
         });
 
         Effect::new(move |_| {
@@ -191,7 +191,7 @@ pub fn RichTextEditorFrame(
             let Some(handle) = editor_handle.get_value() else {
                 return;
             };
-            let _ = set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck);
+            drop(set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck));
         });
 
         Effect::new(move |_| {
@@ -199,7 +199,7 @@ pub fn RichTextEditorFrame(
             let Some(handle) = editor_handle.get_value() else {
                 return;
             };
-            let _ = set_richtext_editable(&handle, editable);
+            drop(set_richtext_editable(&handle, editable));
         });
 
         let iframe_ref = iframe_ref;
@@ -263,7 +263,7 @@ pub fn RichTextEditorFrame(
                     editor_handle.set_value(Some(mounted_handle.clone()));
                     callback_handles.set_value(Some((on_document_change, on_error)));
                     on_cleanup(move || {
-                        let _ = dispose_richtext_frame(&mounted_handle);
+                        drop(dispose_richtext_frame(&mounted_handle));
                         editor_handle.set_value(None);
                         callback_handles.set_value(None);
                     });

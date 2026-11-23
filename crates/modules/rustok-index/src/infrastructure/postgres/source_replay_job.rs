@@ -1035,9 +1035,8 @@ fn select_replay_job_history_sql(backend: DbBackend, include_cancelled: bool) ->
     let prefix = placeholder_prefix(backend);
     let claimable = job_is_due(backend);
     let locale_match = match backend {
-        DbBackend::Postgres => format!("locale_key IS NOT DISTINCT FROM {prefix}6"),
         DbBackend::Sqlite => format!("locale_key IS {prefix}6"),
-        _ => unreachable!("unsupported database backend was validated"),
+        _ => format!("locale_key IS NOT DISTINCT FROM {prefix}6"),
     };
     let (state_filter, limit) = if include_cancelled {
         ("", 2)

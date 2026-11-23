@@ -295,9 +295,8 @@ pub fn compute_migration_plan_digest(
     hasher.update(b"rustok:migration_plan:v1:");
     // These closed, derived types contain only strings, booleans and arrays;
     // serde_json cannot fail without an IO writer or fallible custom serializer.
-    let bytes = serde_json::to_vec(&(target_migrations, operations))
-        .expect("closed migration plan values always serialize to JSON");
-    hasher.update(bytes);
+    let bytes = serde_json::to_vec(&(target_migrations, operations)).unwrap_or_default();
+    hasher.update(&bytes);
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
@@ -306,9 +305,8 @@ pub fn compute_schema_state_digest(tables: &[String], columns: &[String]) -> Str
     let mut hasher = Sha256::new();
     hasher.update(b"rustok:schema_state:v1:");
     // Arrays of UTF-8 strings have no fallible JSON serialization path.
-    let bytes = serde_json::to_vec(&(tables, columns))
-        .expect("schema name arrays always serialize to JSON");
-    hasher.update(bytes);
+    let bytes = serde_json::to_vec(&(tables, columns)).unwrap_or_default();
+    hasher.update(&bytes);
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 

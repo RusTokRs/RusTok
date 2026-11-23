@@ -210,29 +210,34 @@ fn insert_property_schema(root: &mut Value, segments: &[String], schema: Value, 
         return;
     };
 
+    let Some(object) = root.as_object_mut() else {
+        return;
+    };
+
     if rest.is_empty() {
         {
-            let object = root.as_object_mut().expect("root schema must be an object");
-            let properties = object
+            let Some(properties) = object
                 .entry("properties".to_string())
                 .or_insert_with(|| Value::Object(Map::new()))
                 .as_object_mut()
-                .expect("properties must be an object");
+            else {
+                return;
+            };
             properties.insert(first.clone(), schema);
         }
         if required {
-            let object = root.as_object_mut().expect("root schema must be an object");
             push_required(object, first);
         }
         return;
     }
 
-    let object = root.as_object_mut().expect("root schema must be an object");
-    let properties = object
+    let Some(properties) = object
         .entry("properties".to_string())
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
-        .expect("properties must be an object");
+    else {
+        return;
+    };
     let child = properties.entry(first.clone()).or_insert_with(|| {
         json!({
             "type": "object",
@@ -278,11 +283,13 @@ fn mark_computed_property(root: &mut Value, segments: &[String], computed_id: &s
 }
 
 fn push_required(object: &mut Map<String, Value>, property: &str) {
-    let required = object
+    let Some(required) = object
         .entry("required".to_string())
         .or_insert_with(|| Value::Array(Vec::new()))
         .as_array_mut()
-        .expect("required must be an array");
+    else {
+        return;
+    };
     if !required
         .iter()
         .any(|value| value.as_str() == Some(property))

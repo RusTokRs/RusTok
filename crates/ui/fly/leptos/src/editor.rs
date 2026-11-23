@@ -505,8 +505,8 @@ pub fn FlyCanvasPreview(
                     if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
                         event.prevent_default();
                         if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
-                            let _ = html_element.set_attribute("contenteditable", "true");
-                            let _ = html_element.focus();
+                            drop(html_element.set_attribute("contenteditable", "true"));
+                            drop(html_element.focus());
                         }
                     }
                 }
@@ -533,7 +533,7 @@ pub fn FlyCanvasPreview(
                     let is_editable =
                         element.get_attribute("contenteditable").as_deref() == Some("true");
                     if is_editable {
-                        let _ = element.remove_attribute("contenteditable");
+                        drop(element.remove_attribute("contenteditable"));
                         if let Some(id) = element.get_attribute("data-fly-component-id") {
                             if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
                                 let text = html_element.inner_text();
@@ -566,9 +566,9 @@ pub fn FlyCanvasPreview(
                         .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
                     if let Some(target) = target {
                         if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
-                            let _ = element.remove_attribute("contenteditable");
+                            drop(element.remove_attribute("contenteditable"));
                             if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
-                                let _ = html_element.blur();
+                                drop(html_element.blur());
                             }
                         }
                     }

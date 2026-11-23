@@ -290,12 +290,11 @@ fn topological_computed_order(
         order.push(path.clone());
         if let Some(dependents) = outgoing.get(&path) {
             for dependent in dependents {
-                let degree = indegree
-                    .get_mut(dependent)
-                    .expect("computed dependent must have indegree");
-                *degree = degree.saturating_sub(1);
-                if *degree == 0 {
-                    ready.push_back(dependent.clone());
+                if let Some(degree) = indegree.get_mut(dependent) {
+                    *degree = degree.saturating_sub(1);
+                    if *degree == 0 {
+                        ready.push_back(dependent.clone());
+                    }
                 }
             }
         }

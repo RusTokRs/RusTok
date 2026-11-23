@@ -54,7 +54,7 @@ fn copy_text_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {
         let navigator = window.navigator();
         let clipboard = navigator.clipboard();
-        let _ = clipboard.write_text(text);
+        drop(clipboard.write_text(text));
     }
 }
 

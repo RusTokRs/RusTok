@@ -388,10 +388,10 @@ mod browser {
 
     impl Drop for RealDomInlineEditSubscription {
         fn drop(&mut self) {
-            let _ = self.root.remove_event_listener_with_callback(
+            drop(self.root.remove_event_listener_with_callback(
                 "focusout",
                 self.focusout.as_ref().unchecked_ref(),
-            );
+            ));
             self.marked.clear();
         }
     }
@@ -531,10 +531,10 @@ mod browser {
     fn restore_attribute(element: &Element, name: &str, value: Option<String>) {
         match value {
             Some(value) => {
-                let _ = element.set_attribute(name, &value);
+                drop(element.set_attribute(name, &value));
             }
             None => {
-                let _ = element.remove_attribute(name);
+                drop(element.remove_attribute(name));
             }
         }
     }

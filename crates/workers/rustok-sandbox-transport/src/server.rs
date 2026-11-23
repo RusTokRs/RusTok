@@ -97,7 +97,9 @@ impl SandboxWorkerGrpcService {
             );
             let result = execute_request(executor, sandbox_request, callback, cancellation).await;
             let terminal = terminal_frame(&execution_id, result);
-            let _ = outbound.send(Ok(terminal)).await;
+            if let Err(error) = outbound.send(Ok(terminal)).await {
+                tracing::warn!(%error, "failed to send terminal frame to outbound stream");
+            }
             reader.abort();
         })
     }
@@ -405,7 +407,9 @@ async fn dispatch_host_frame(
                 cancellation.cancel();
                 return false;
             };
-            let _ = sender.send(outcome);
+            if let Err(_dropped_outcome) = sender.send(outcome) {
+                tracing::debug!("capability call sender was dropped before outcome was delivered");
+            }
             true
         }
         Some(host_frame::Frame::CancelExecution(_)) => {
@@ -456,7 +460,9 @@ async fn fail_pending(pending: &PendingCalls, error: SandboxError) {
         .map(|(_, sender)| sender)
         .collect::<Vec<_>>();
     for sender in senders {
-        let _ = sender.send(Err(error.clone()));
+        if let Err(_dropped) = sender.send(Err(error.clone())) {
+            tracing::debug!("pending capability call receiver already dropped");
+        }
     }
 }
 
@@ -504,6 +510,6 @@ fn encode_terminal_error(error: SandboxError) -> Vec<u8> {
         serde_json::to_vec(&SandboxError::Internal(
             "could not encode sandbox terminal error".to_string(),
         ))
-        .expect("static SandboxError must serialize: invariant validated at startup")
+        .unwrap_or_else(|_| br#"{"type":"internal","message":"could not encode sandbox terminal error"}"#.to_vec())
     })
 }

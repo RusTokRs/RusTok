@@ -95,7 +95,9 @@ pub(crate) fn run_remote_validation_runner_once(
             });
 
     stop_heartbeats.store(true, Ordering::Relaxed);
-    let _ = heartbeat_handle.join();
+    if let Err(panic_err) = heartbeat_handle.join() {
+        eprintln!("heartbeat thread panicked: {panic_err:?}");
+    }
 
     if let Err(error) = result {
         let reason_code = claim

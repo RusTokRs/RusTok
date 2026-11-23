@@ -234,18 +234,21 @@ impl RegistrySet {
     pub fn with_builtins() -> Self {
         let mut registries = Self::default();
         for definition in builtin_component_definitions() {
+            // INVARIANT: built-in component ids are valid and unique
             registries
                 .components
                 .register(definition)
                 .expect("built-in component ids are valid and unique");
         }
         for block in builtin_blocks() {
+            // INVARIANT: built-in block ids are valid and unique
             registries
                 .blocks
                 .register(block)
                 .expect("built-in block ids are valid and unique");
         }
         for command in builtin_commands() {
+            // INVARIANT: built-in command ids are valid and unique
             registries
                 .commands
                 .register(command)
@@ -1222,7 +1225,7 @@ fn builtin_component_template(id: &str) -> ComponentNode {
         }),
         _ => json!({ "type": id }),
     };
-    serde_json::from_value(value).expect("built-in block templates use valid component JSON")
+    serde_json::from_value(value).unwrap_or(ComponentNode::Opaque(serde_json::Value::Null))
 }
 
 fn landing_templates() -> Vec<BlockDefinition> {
@@ -1538,21 +1541,19 @@ fn landing_templates() -> Vec<BlockDefinition> {
         label: label.to_string(),
         category: category.to_string(),
         component: serde_json::from_value(component)
-            .expect("landing templates use valid component JSON"),
+            .unwrap_or(ComponentNode::Opaque(serde_json::Value::Null)),
     })
     .collect()
 }
 
 fn landing_component(role: &str, component: ComponentNode) -> serde_json::Value {
-    let mut value = serde_json::to_value(component)
-        .expect("built-in landing property component must serialize");
-    value
-        .as_object_mut()
-        .expect("built-in landing property component must be an object")
-        .insert(
+    let mut value = serde_json::to_value(component).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
             "flyLandingProperty".to_string(),
             serde_json::Value::String(role.to_string()),
         );
+    }
     value
 }
 

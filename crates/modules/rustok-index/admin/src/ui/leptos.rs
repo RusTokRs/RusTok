@@ -92,7 +92,7 @@ pub fn IndexAdmin() -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        let _ = auth_scope.get();
+        auth_scope.track();
         set_action_message.set(None);
         set_cancel_job_id.set(String::new());
         retry_kind.set(RetryJobKind::Replay);

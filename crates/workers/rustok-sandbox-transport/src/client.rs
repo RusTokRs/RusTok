@@ -218,7 +218,9 @@ impl GrpcRhaiExecutor {
             tokio::select! {
                 _ = cancellation_poll.tick() => {
                     if cancellation.is_cancelled() {
-                        let _ = outbound.try_send(cancel_frame(execution_id));
+                        if let Err(error) = outbound.try_send(cancel_frame(execution_id)) {
+                            tracing::warn!(%error, "failed to send cancel frame to worker");
+                        }
                         return Err(SandboxError::Cancelled);
                     }
                 }
@@ -296,7 +298,9 @@ impl SandboxExecutor for GrpcRhaiExecutor {
             Ok(result) => result,
             Err(_) => {
                 cancellation.cancel();
-                let _ = outbound.try_send(cancel_frame(&execution_id));
+                if let Err(error) = outbound.try_send(cancel_frame(&execution_id)) {
+                    tracing::warn!(%error, "failed to send cancel frame to worker on timeout");
+                }
                 Err(SandboxError::Timeout {
                     limit_ms: deadline_ms,
                 })

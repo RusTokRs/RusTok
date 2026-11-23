@@ -40,7 +40,7 @@ impl SnapshotCatalog {
         let project_data = GrapesJsCodec::encode_value(document)?;
         let content_digest = ContentDigest::from_json(&project_data)?;
         self.snapshots.push_back(ProjectSnapshot {
-            id,
+            id: id.clone(),
             label: if label.trim().is_empty() {
                 format!("Snapshot {}", self.next_sequence.saturating_sub(1))
             } else {
@@ -54,7 +54,9 @@ impl SnapshotCatalog {
         while self.snapshots.len() > self.maximum_snapshots {
             self.snapshots.pop_front();
         }
-        Ok(self.snapshots.back().expect("captured snapshot"))
+        self.snapshots
+            .back()
+            .ok_or_else(|| FlyError::SnapshotNotFound(id))
     }
 
     pub fn get(&self, id: &str) -> Option<&ProjectSnapshot> {
