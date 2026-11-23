@@ -15,7 +15,7 @@ rendering, with zero UI-framework coupling.
 | `fly-web` | `web/` | **Stable** | Geometry, hit-testing, coordinate transforms, iframe origin validation, real-DOM inline grants, cleanup registry |
 | `fly-browser` | `browser/` | **Stable** | SSR JS bridge (`assets/fly-browser.js`, `assets/fly-actions.js`), CSRF derivation, `BrowserIntentEnvelope` contract |
 | `fly-leptos` | `leptos/` | **Stable** | `FlyEditorWorkspace`, full authoring panels (`FlyPalette`, `FlyLayerTree`, `FlyCanvasPreview`, `FlyPageProperties`, `FlyComponentProperties`, `FlyStyleRules`, `FlyAssets`, `FlyThemeTokens`), dual runtime support (`ssr + browser-js` default, opt-in `wasm-client`) |
-| `fly-dioxus` | `dioxus/` | **Foundation only** | Four layout shells for Dioxus 0.7 (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`), plus re-exports of `fly-web`. Full workspace parity scheduled for future release. |
+| `fly-dioxus` | `dioxus/` | **Workspace foundation** | Layout shells and an editor workspace for palette/layers/preview/tokens/history; iframe orchestration, overlays, pointer capture, resizing and complete drop handling are not yet implemented. |
 
 Authoring surfaces in RusToK Admin (`crates/modules/rustok-page-builder/admin`) leverage `fly-leptos` and `fly-browser` in the canonical `ssr + browser-js` runtime.
 
@@ -295,3 +295,8 @@ gives up on locale fallback.
 Rename `standalone-Cargo.toml` to `Cargo.toml` and build the root crate with
 `default-features = false`.
 All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`), ensuring zero coupling to the host project.
+
+Validated no-op commands (empty batches and idempotent document changes) no longer create
+history entries or advance the document revision. A no-op still validates the resulting project,
+and an empty batch still requires edit permission at the UI capability gate; it cannot mutate a
+read-only session or silently clear redo history.

@@ -31,6 +31,40 @@ fn editor() -> FlyEditor {
 }
 
 #[test]
+fn idempotent_and_empty_commands_do_not_consume_history_or_revision() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let report = editor.apply(EditorCommand::Batch { commands: vec![] })
+        .expect("empty batch is a verified no-op");
+    assert!(report.is_valid());
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
+
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "red"})),
+    }).expect("same value");
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
+
+    // Once a meaningful edit exists, an idempotent follow-up must not clear redo
+    // or create a second history entry.
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    editor.undo().expect("undo");
+    let revision_before = editor.revision().clone();
+    let redo_before = editor.history().redo_len();
+    editor.apply(EditorCommand::Batch { commands: vec![] }).expect("no-op");
+    assert_eq!(editor.revision(), &revision_before);
+    assert_eq!(editor.history().redo_len(), redo_before);
+    editor.redo().expect("redo remains available");
+}
+
+#[test]
 fn style_patch_merges_and_can_remove_individual_properties() {
     let mut editor = editor();
     editor
@@ -757,7 +791,7 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
         patch: ComponentPatch::default().merge_style(json!({ "margin": margin })),
     };
     editor.apply(patch("8px")).expect("first edit");
-    editor.revision_mut().begin_save();
+    editor.revision_mut().begin_save().expect("start save");
     editor.revision_mut().fail_save();
     assert!(editor.revision().save_failed);
 
@@ -772,15 +806,85 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
     assert!(editor.revision().save_failed);
 
     // Only a new save attempt or a successful acknowledge clears it.
-    editor.revision_mut().begin_save();
+    editor.revision_mut().begin_save().expect("retry save");
     assert!(!editor.revision().save_failed);
     editor.revision_mut().fail_save();
     let hash = editor.revision().project_hash;
+    editor.revision_mut().begin_save().expect("last retry");
     editor
         .revision_mut()
         .acknowledge(hash, "rev-2")
         .expect("acknowledge");
     assert!(!editor.revision().save_failed);
+    assert!(!editor.revision().dirty);
+}
+
+#[test]
+fn restoring_editor_does_not_resurrect_orphaned_save_requests() {
+    let mut editor = editor();
+    editor.revision_mut().begin_save().expect("begin");
+    let restored: FlyEditor = serde_json::from_value(
+        serde_json::to_value(&editor).expect("serialize")
+    ).expect("restore editor");
+    assert!(!restored.revision().save_in_progress);
+    assert!(!restored.revision().dirty);
+    let mut restored = restored;
+    restored.revision_mut().begin_save().expect("new process can save");
+}
+
+#[test]
+fn an_identical_retry_has_a_new_attempt_identity() {
+    let mut editor = editor();
+    let same_hash = editor.revision().project_hash;
+    let first = editor.revision_mut().begin_save_with_id().expect("first save");
+    editor.revision_mut().fail_save();
+    let second = editor.revision_mut().begin_save_with_id().expect("retry");
+    assert_ne!(first, second);
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted_attempt(same_hash, first, "stale"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    assert_eq!(editor.revision().active_save_attempt_id(), Some(second));
+    assert_eq!(editor.revision().last_acknowledged_revision, None);
+    editor.revision_mut()
+        .acknowledge_submitted_attempt(same_hash, second, "rev-new")
+        .expect("current attempt");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-new"));
+}
+
+#[test]
+fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("first edit");
+    let submitted_hash = editor.revision().project_hash;
+    editor.revision_mut().begin_save().expect("begin save");
+    assert!(editor.revision_mut().begin_save().is_err());
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"padding": "7px"})),
+    }).expect("new edit");
+    let working_hash = editor.revision().project_hash;
+    assert_ne!(submitted_hash, working_hash);
+    editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-2")
+        .expect("old snapshot persisted successfully");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-2"));
+    assert!(editor.revision().dirty);
+    assert_eq!(editor.revision().project_hash, working_hash);
+    assert!(!editor.revision().save_in_progress);
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-3"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    editor.revision_mut().begin_save().expect("save latest");
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-3"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    editor.revision_mut().acknowledge_submitted(working_hash, "rev-3")
+        .expect("save latest");
     assert!(!editor.revision().dirty);
 }
 

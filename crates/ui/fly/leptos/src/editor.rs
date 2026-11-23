@@ -1805,6 +1805,21 @@ pub fn FlyEditorWorkspace(
     #[prop(optional)] messages: Option<EditorMessages>,
     #[prop(optional)] initial_page: Option<usize>,
     #[prop(optional)] capabilities: Option<CapabilityState>,
+    /// Consumer-controlled editor state. These signals are intentionally
+    /// separate from standalone document props: only an intent-mode host owns
+    /// authoritative changes and the local FlyEditor remains independent.
+    #[prop(optional_no_strip)]
+    controlled_document: Option<Signal<ProjectDocument>>,
+    #[prop(optional_no_strip)]
+    controlled_selection: Option<Signal<Option<String>>>,
+    #[prop(optional_no_strip)]
+    controlled_page: Option<Signal<usize>>,
+    #[prop(optional_no_strip)]
+    controlled_can_undo: Option<Signal<bool>>,
+    #[prop(optional_no_strip)]
+    controlled_can_redo: Option<Signal<bool>>,
+    #[prop(optional_no_strip)]
+    controlled_capabilities: Option<Signal<CapabilityState>>,
     /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
     #[prop(optional_no_strip)]
     csp_nonce: Option<String>,
@@ -1817,7 +1832,6 @@ pub fn FlyEditorWorkspace(
     let redo_label = messages.redo.clone();
     let edit_label = messages.edit.clone();
     let preview_label = messages.preview.clone();
-    let page_summaries = document.page_summaries();
     let active_page = RwSignal::new(initial_page.unwrap_or(0));
     let interactive_mode = RwSignal::new(true);
     let registries = registries.unwrap_or_else(RegistrySet::with_builtins);
@@ -1825,8 +1839,74 @@ pub fn FlyEditorWorkspace(
     let palette_access = PaletteBlockAccess::from_optional_assembly(contribution_assembly.as_ref());
     let blocks = palette_block_items_with_access(&registries, &palette_access);
     let intent_instance = instance_id.unwrap_or_else(|| "fly-workspace".to_string());
+    let controlled_registries = registries.clone();
     let editor = RwSignal::new(FlyEditor::new(document, registries));
+    // Page tabs must follow changes to the document, not the original prop.
+    let page_summaries = Memo::new(move |_| editor.with(|ed| ed.document().page_summaries()));
     let ui = RwSignal::new(FlyUiStateMachine::new(Presentation::Full));
+    let effective_capabilities = Signal::derive(move || {
+        controlled_capabilities
+            .map(|source| source.get())
+            .or(capabilities)
+            .unwrap_or_else(CapabilityState::full)
+    });
+
+    if let Some(authoritative) = controlled_document.filter(|_| on_intent.is_some()) {
+        // A Page Builder host owns persistence, selection and active-page state.
+        // Reconcile those signals without remounting the entire workspace:
+        // remounting would lose its viewport/mode/focus on every typed intent.
+        Effect::new(move |_| {
+            let next_document = authoritative.get();
+            let next_selection = controlled_selection.map(|signal| signal.get());
+            let next_page = controlled_page.map(|signal| signal.get());
+            let document_changed =
+                editor.with_untracked(|ed| ed.document() != &next_document);
+            if document_changed {
+                let mut replacement = FlyEditor::new(
+                    next_document,
+                    controlled_registries.clone(),
+                );
+                if let Some(selection) = next_selection
+                    && let Err(error) = replacement.apply(EditorCommand::Select {
+                        component_id: selection,
+                    })
+                {
+                    report_workspace_error(
+                        on_error,
+                        "Synchronize selected component failed",
+                        &error,
+                    );
+                }
+                editor.set(replacement);
+            } else if let Some(selection) = next_selection {
+                let previous =
+                    editor.with_untracked(|ed| ed.selection().map(ToString::to_string));
+                if previous != selection {
+                    match editor.try_update(|ed| {
+                        ed.apply(EditorCommand::Select {
+                            component_id: selection,
+                        })
+                    }) {
+                        Some(Ok(_)) => {}
+                        Some(Err(error)) => report_workspace_error(
+                            on_error,
+                            "Synchronize selected component failed",
+                            &error,
+                        ),
+                        None => report_workspace_error_raw(
+                            on_error,
+                            "Synchronize selected component failed: editor signal unavailable",
+                        ),
+                    }
+                }
+            }
+            if let Some(page_index) = next_page
+                && active_page.get_untracked() != page_index
+            {
+                active_page.set(page_index);
+            }
+        });
+    }
 
     // Intent mode only: the drag is completed by a `drop` intent, which needs the host's
     // intent transport and canvas geometry. A local-document workspace has neither.
@@ -2735,6 +2815,8 @@ pub fn FlyEditorWorkspace(
         }
     };
 
+    let palette_messages = theme_messages.clone();
+
     view! {
         <section
             class="fly-editor fly-editor--full"
@@ -2747,8 +2829,12 @@ pub fn FlyEditorWorkspace(
                 <button
                     type="button"
                     disabled=move || {
-                        on_intent.is_none()
-                            && !undo_editor.with(|editor| editor.history().can_undo())
+                        !effective_capabilities.get().history
+                            || if on_intent.is_some() {
+                                controlled_can_undo.is_some_and(|signal| !signal.get())
+                            } else {
+                                !undo_editor.with(|editor| editor.history().can_undo())
+                            }
                     }
                     on:click=move |_| {
                         if let Some(on_intent) = on_intent {
@@ -2779,8 +2865,12 @@ pub fn FlyEditorWorkspace(
                 <button
                     type="button"
                     disabled=move || {
-                        on_intent.is_none()
-                            && !redo_editor.with(|editor| editor.history().can_redo())
+                        !effective_capabilities.get().history
+                            || if on_intent.is_some() {
+                                controlled_can_redo.is_some_and(|signal| !signal.get())
+                            } else {
+                                !redo_editor.with(|editor| editor.history().can_redo())
+                            }
                     }
                     on:click=move |_| {
                         if let Some(on_intent) = on_intent {
@@ -2843,12 +2933,12 @@ pub fn FlyEditorWorkspace(
                 let active = active_page.get();
                 view! {
                     <FlyPageTabs
-                        pages=page_summaries.clone()
+                        pages=page_summaries.get()
                         active=active
                         on_activate=on_activate
                         on_add=on_add_page
                         on_remove=on_remove_page
-                        capabilities=capabilities
+                        capabilities=Some(effective_capabilities.get())
                         messages=tabs_messages.clone()
                     />
                 }
@@ -2862,13 +2952,15 @@ pub fn FlyEditorWorkspace(
                         />
                     }
                 })}
-                <FlyPalette
-                    blocks=blocks
-                    on_insert=on_insert
-                    on_begin_drag=on_begin_drag
-                    capabilities=capabilities
-                    messages=theme_messages.clone()
-                />
+                {move || view! {
+                    <FlyPalette
+                        blocks=blocks.clone()
+                        on_insert=on_insert
+                        on_begin_drag=on_begin_drag
+                        capabilities=Some(effective_capabilities.get())
+                        messages=palette_messages.clone()
+                    />
+                }}
                 {move || {
                     let tokens = editor.with(|editor| theme_token_items(editor.document()));
                     view! {
@@ -2876,7 +2968,7 @@ pub fn FlyEditorWorkspace(
                             tokens=tokens
                             on_upsert=on_token_upsert
                             on_remove=on_token_remove
-                            capabilities=capabilities
+                            capabilities=Some(effective_capabilities.get())
                             messages=theme_messages.clone()
                         />
                     }
@@ -2891,7 +2983,7 @@ pub fn FlyEditorWorkspace(
                                 page_count=page_count
                                 on_apply=on_apply_page_properties
                                 on_move=on_move_page
-                                capabilities=capabilities
+                                capabilities=Some(effective_capabilities.get())
                                 messages=properties_messages.clone()
                             />
                         }
@@ -2933,7 +3025,7 @@ pub fn FlyEditorWorkspace(
                             <FlyComponentProperties
                                 view=view
                                 on_patch=on_patch_property
-                                capabilities=capabilities
+                                capabilities=Some(effective_capabilities.get())
                                 messages=component_messages.clone()
                             />
                         }
@@ -2952,7 +3044,7 @@ pub fn FlyEditorWorkspace(
                                 rules=catalog
                                 on_upsert=on_upsert_style
                                 on_preview_breakpoint=on_preview_breakpoint
-                                capabilities=capabilities
+                                capabilities=Some(effective_capabilities.get())
                                 messages=component_messages.clone()
                             />
                         }
@@ -2969,7 +3061,7 @@ pub fn FlyEditorWorkspace(
                             on_upsert=on_upsert_asset
                             on_remove=on_remove_asset
                             on_apply=on_apply_asset
-                            capabilities=capabilities
+                            capabilities=Some(effective_capabilities.get())
                             messages=asset_messages.clone()
                         />
                     }

@@ -90,10 +90,35 @@ pub struct ResizeResult {
     pub height_changed: bool,
 }
 
+/// A single pointer gesture is bounded independently of optional component size policy.
+const MAX_RESIZE_POINTER_DELTA_PX: f64 = 1_000_000.0;
+
 impl ResizeSession {
     pub fn update(&self, pointer_x: f64, pointer_y: f64) -> ResizeResult {
+        // Browser geometry can become invalid during iframe disposal or a
+        // malformed adapter event. Never generate NaNpx/infinitypx declarations.
+        let unchanged = || ResizeResult {
+            rect: self.start_rect,
+            width_changed: false,
+            height_changed: false,
+        };
+        if !pointer_x.is_finite()
+            || !pointer_y.is_finite()
+            || !self.start_x.is_finite()
+            || !self.start_y.is_finite()
+            || !self.start_rect.is_valid()
+        {
+            return unchanged();
+        }
         let dx = pointer_x - self.start_x;
         let dy = pointer_y - self.start_y;
+        if !dx.is_finite()
+            || !dy.is_finite()
+            || dx.abs() > MAX_RESIZE_POINTER_DELTA_PX
+            || dy.abs() > MAX_RESIZE_POINTER_DELTA_PX
+        {
+            return unchanged();
+        }
         let aspect = if self.start_rect.height > 0.0 {
             self.start_rect.width / self.start_rect.height
         } else {
@@ -148,6 +173,9 @@ impl ResizeSession {
             rect.y = original_bottom - rect.height;
         }
 
+        if !rect.is_valid() {
+            return unchanged();
+        }
         ResizeResult {
             width_changed: self.handle.changes_width()
                 && (rect.width - self.start_rect.width).abs() > f64::EPSILON,
@@ -231,6 +259,23 @@ mod tests {
     fn west_resize_preserves_right_edge() {
         let result = session(ResizeHandle::West).update(232.0, 100.0);
         assert!((result.rect.x + result.rect.width - 210.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn invalid_and_overflowing_pointer_geometry_cannot_generate_nan_css() {
+        let session = session(ResizeHandle::SouthEast);
+        for (x, y) in [
+            (f64::NAN, 100.0),
+            (f64::INFINITY, 100.0),
+            (f64::MAX, f64::MAX),
+        ] {
+            let result = session.update(x, y);
+            assert!(!result.width_changed);
+            assert!(!result.height_changed);
+            assert_eq!(result.rect, session.start_rect);
+            let patch = session.component_patch(result);
+            assert_eq!(patch.style, Some(Value::Object(Map::new())));
+        }
     }
 
     #[test]

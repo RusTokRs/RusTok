@@ -26,8 +26,9 @@ those layer on top via `fly-web`. The shell components render an accessible `<se
 wrapper and the host supplies the children. Dioxus-specific event hooks and
 coordinate translation helpers are **not** implemented — `key_stroke_from_event`-style conversions
 and pointer sessions live in `fly-web` behind `feature = "wasm-client"` and are consumed by the
-host directly. Dioxus `web`/`desktop` renderers are opt-in features and are compiled, but no
-Dioxus host consumes this crate yet.
+host directly. Dioxus `web`/`desktop` renderers remain opt-in features. The Page Builder admin
+Dioxus host consumes this workspace in its optional adapter mode, but full
+iframe/pointer/drop/resize parity is not yet implemented.
 
 ## Architecture
 
@@ -38,3 +39,16 @@ This crate depends strictly on:
 - `dioxus`: Dioxus 0.7 UI rendering framework.
 
 It contains **zero** Leptos dependencies and **zero** RusTok domain module persistence logic.
+
+## Controlled intent-mode document source of truth
+
+When `on_intent` is provided, the host's `document` prop is authoritative at every render.
+The Dioxus workspace's local FlyEditor signal is retained only for standalone mode and must
+not shadow a later host document, selection or undo/redo availability. The host may provide
+`selected_component_id`, `host_can_undo`, and `host_can_redo` alongside `initial_page` and
+`capabilities`. Standalone mode still uses its own live editor document and history.
+
+The Dioxus layer panel is scoped to the same active page index as its preview, through
+the canonical `editor_layer_items_for_page` projection. It does not show components from
+other pages as if they were selectable in the active canvas; an out-of-range page yields
+no layer rows, not an accidental fallback to the first page.

@@ -160,3 +160,143 @@ SSR draft session storage (`src/draft_session.rs`):
   concatenate to the same string share one cap.
 
 For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
+
+## Snapshot-bound save acknowledgements
+
+A successful Page Builder publish response acknowledges exactly the hash captured when the
+request began. Newer local edits remain dirty, while the persisted revision becomes the base for
+the next save. A local edit during an in-flight request is **not** a remote revision conflict.
+Duplicate save starts, acknowledgements without an active request, and acknowledgements for a
+nonmatching submitted snapshot are rejected. Browser/host transports must still correlate the
+actual request and response; the controller cannot recover that identity from an HTTP status.
+
+In-flight save flags are transient and reset when an editor session is deserialized, because
+network requests cannot be resumed from serialized state. The reactive admin runtime now starts
+save tracking for both the facade and callback transport paths and requires a submitted hash for
+publish requests; an implicit read of the later working-tree hash is not an acknowledgement.
+
+All mutating browser intents must now carry the current persisted revision. Unversioned
+read-only selections remain allowed. The trusted Leptos adapter callback stamps the revision
+and project hash from its controller before invoking the same checked dispatch path; remote
+browser clients must send their observed revision and cannot obtain a fresh one implicitly.
+
+Both Leptos and Dioxus trusted in-process editor workspaces attach their current revision and
+project hash to typed Fly intents before checked dispatch. The SSR page-form contract tests
+simulate that same host binding; no HTTP input is silently upgraded to a current revision.
+
+The browser intent dispatcher now applies selection hints, composed commands and response
+construction as one transactional gesture. A failed insertion or later step rolls the controller
+back instead of leaving a changed selection/clipboard or half-finished page operation. A snapshot
+is taken for mutating intents and intents with selection hints; pure read-only hover/select without
+hints retain the lightweight path. This adds a state snapshot to mutating browser dispatches;
+profile the cost with large projects before certifying performance.
+
+The controller now offers `mark_save_started_with_id`, `acknowledge_save_for_attempt` and
+`mark_save_failed_for_attempt`, which guard identical-hash retries against stale asynchronous
+completions. Existing hash-only entrypoints remain for legacy clients but are not sufficient to
+correlate retries. Local IDs are transient and are **not** a server idempotency key.
+
+The Leptos facade runtime captures the unique local save attempt when it dispatches a publish
+request. Publish response handlers now acknowledge or fail only that captured attempt, so a
+late old request cannot corrupt the state of a newer identical retry. This is not a guarantee
+for external callback transports, which need an explicit request/response correlation contract.
+
+The framework-neutral `EditorSessionState` now also supports attempt-bound save starts,
+publish acknowledgements and failures, so Dioxus and external host adapters can avoid accepting
+late responses to an identical retry. Legacy hash-only `SaveAcknowledged` remains available
+for compatibility, but is not a substitute for the attempt-bound response path.
+
+The Dioxus admin Save toolbar and FlyEditorWorkspace now consume the reducer's request effects
+and execute the supplied consumer facade instead of discarding them. Publish completion is
+attempt-aware, and a missing facade or an invalid response reports an error. Browser previews
+record their scenario/context before sending; active preview and save lifecycle flags are owned
+by the same session. Dioxus iframe/pointer/overlay feature parity still requires implementation.
+
+Dioxus host-context/prop equality now considers the full draft controller and every relevant
+facade, contribution, runtime and workspace toggle. Previously only page ID and persisted
+revision were compared, so local edits and changes in injected providers could be treated as
+unchanged props and suppress a needed rerender. Regression coverage authored, not run.
+
+The Leptos FlyEditorWorkspace's typed `on_intent` callback now forwards Publish/Preview
+and announcement effects to `AdminEditorRuntime`. Before this change, it discarded all effects
+after the controller mutation: Save/Preview could look interactive but never reach the consumer
+facade. The runtime compares the command sequence and expected project hash before dispatch and
+registers the browser-provided preview context for response correlation.
+
+Browser intent admission also rejects a supplied document page ID that disagrees with the
+controller's own page ID, including read-only intents. Leptos validates the completed workspace
+result's page, revision, hash and command sequence before dispatching any facade effects. This
+prevents a late/switching-document callback from executing effects against a different draft.
+
+All framework workspace Publish effects now honor the same runtime publish gate as the
+standard toolbar flow. Leptos re-evaluates the gate in `apply_browser_result`, while Dioxus
+checks it before starting a facade save; neither workspace can bypass host runtime readiness
+policy merely by producing a direct browser intent request.
+
+Dioxus workspace effect handling now rejects a mismatched owning document, server revision,
+project hash, or command sequence before calling a facade. Previously a mismatched effect hash
+was silently turned into `None` and the request sequence was ignored. Concurrent preview requests
+are blocked instead of replacing one another's request snapshot. All of these are source changes
+awaiting the final user-led checks.
+
+The Dioxus PageBuilderAdmin host now keys its child session by owning page ID and server
+revision. A route/document switch or an authoritative revision replacement remounts the editor
+instead of reusing `use_signal` state from the prior document. Same-revision local edits remain
+inside the existing session; consumers mounting the inner WithController component directly
+must provide their own stable instance key for owner changes. Source regression authored, not run.
+
+Dioxus now applies the effective tenant/RBAC capability profile on session creation, narrowed
+by the facade's provider status exactly as in the Leptos AdminCanvas, instead of always
+starting with Fly's default full editing permissions. Undo/Redo also require history capability;
+Save is disabled without edit permission, during an active/conflicted save, or with blocking
+validation diagnostics. Dispatch remains the authoritative guard against forged UI events.
+
+Dioxus editor capabilities are also updated reactively when a host prop or provider-limited
+profile changes on an already mounted session. The live Fly controller is narrowed without
+resetting draft content, using an untracked state read to avoid rerunning on every edit. If the
+host withdraws its profile, the base controller policy (not an old restricted snapshot) is used
+as the fallback. This is not an authorization substitute for the backend.
+
+Direct Fly workspace preview requests now use the same consumer facade provider-health and
+rollout `preview_enabled()` gate as the normal Leptos preview panel. Both the Leptos and
+Dioxus dispatch paths reject disabled previews before calling the facade and clear pending
+preview state rather than leaving an in-progress indicator stranded.
+
+The shared `FlyEditorWorkspace` already accepts a `capabilities` prop to disable palette, style and authoring controls. Dioxus now forwards the controller's effective permissions rather than omitting that prop and allowing the workspace to default to full editing affordances.
+
+Dioxus Page Builder now passes host selection, active page and undo/redo availability to the
+controlled Fly workspace, whose intent-mode canvas/layers/tokens render the latest controller
+document prop rather than a locally cached first-mount FlyEditor. This fixes stale visual state
+after edits without resetting the standalone editor's local history.
+
+The outer Dioxus host's session key also incorporates the incoming controller's document
+hash, command sequence, page index and selection. A host-side draft or selection replacement
+that does not change the server revision now remounts the child instead of continuing to display
+stale state from the first `use_signal` initialization. The editor's own internal changes do not
+alter the incoming host key. Direct use of the inner component still requires a stable owning
+component key or a caller-controlled remount when changing documents.
+
+Both Leptos and Dioxus FlyEditorWorkspace adapters now receive the RegistrySet cloned from
+the active AdminCanvasController. Previously they constructed fresh built-in-only registries,
+hiding blocks installed by the consumer and contribution host, even though the authoritative
+controller could already insert those blocks. The controller remains the registry owner; these
+are read-only workspace projections, not independent registration paths.
+
+Dioxus now clears a pending preview's prepared lifecycle state when its consumer facade is
+missing. Without this transition the request was never dispatched and could not receive a
+response, leaving the editor stuck reporting a preview in progress. A missing Publish facade
+still fails visibly without claiming a successful save.
+
+The Leptos AdapterWorkspacePanel now passes derived controller signals for the canonical
+project document, selected component, active page and undo/redo availability. The Fly workspace
+uses these signals in intent mode to refresh its internal view model after an edit or selection
+without remounting the entire widget (and without resetting its UI mode/viewport). The source
+of truth is still AdminCanvasController, never a parallel editor instance.
+
+The Leptos adapter passes live effective capabilities to the shared Fly workspace. Host RBAC
+and provider-health changes now affect page controls, palette, tokens, property/style editors,
+assets and history buttons without a full remount. Back-end authorization remains mandatory.
+
+Dioxus PageBuilderAdmin also forwards FlyEditorWorkspace's own validation/runtime errors through
+its `on_error` callback into the session's accessible Page Builder error alert. Previously
+invalid token input and editor-local errors could be silently lost because `on_error` was unset.

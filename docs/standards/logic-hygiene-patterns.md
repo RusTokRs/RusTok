@@ -25,6 +25,11 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
+| `P-FLY-CROSS-DOCUMENT-INTENT` | Browser intents accepted an optional page ID without comparing it to the controller's owning document; a stale/wrong document could pass revision validation. The dispatcher now rejects explicit page scope mismatches before applying any selection or command, and Leptos checks response scope before facade execution. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos runtime](../../crates/modules/rustok-page-builder/admin/src/editor/runtime.rs) |
+| `P-FLY-PARTIAL-INTENT` | Page Builder's browser dispatcher applied `selected_component_id` to editor selection before resolving the requested operation. If a later step failed (unknown palette block, duplicate paste, page navigation), it returned an error while retaining the earlier state mutation. The browser-intent boundary now snapshots and rolls back the composed gesture on failure; focused tests authored, unrun. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs) |
+| `P-FLY-SPLIT-VALIDATION-BOUNDS` | Action/form IDs used a second validator without the canonical 128-byte limit, and strict authored action URLs bypassed the 2048-byte limit already imposed on rendered attributes. Both admission paths now reuse the shared identifier and URL limits. Unit regressions authored, unrun. | [Action validation](../../crates/ui/fly/src/action/validation.rs), [URL policy](../../crates/ui/fly/src/safe_url.rs) |
+| `P-FLY-UNVERSIONED-MUTATION` | The Page Builder browser dispatcher treated an absent revision as an acceptable mutation rather than a missing precondition; a request without a base revision bypassed its optimistic concurrency check. Mutating intents now require an observed revision, while trusted Leptos/Dioxus callbacks stamp the current host revision. Focused regressions added, unrun. | [Browser intent admission](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos host adapter](../../crates/modules/rustok-page-builder/admin/src/editor/adapter_workspace.rs), [Dioxus host adapter](../../crates/modules/rustok-page-builder/admin/src/ui/dioxus.rs) |
+| `P-FLY-STALE-SAVE-ACK` | Fly UI cleared the dirty bit when a save for an earlier command sequence succeeded even though newer edits had been made in flight; the browser also cleared parked save failures on responses without a clean-state observation. The UI now compares the sequence captured at save start and the browser requires an explicit `dirty: false` before removing a standing failure. Focused regressions authored, unrun. | [Fly UI state machine](../../crates/ui/fly/ui/src/machine.rs), [Browser save state](../../crates/ui/fly/browser/assets/fly-browser.js), [Save warning regression](../../apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts) |
 | `P-PRODUCT-PAGED-FILTER-PUSHDOWN` | The native admin grid filtered only the currently loaded server page while pagination totals and owner results still described the full catalog. Column filters now push supported title/status/vendor predicates through the URL into the Product owner before pagination; unsupported product-type/date filters are not exposed. Source regressions are authored but not run. | [Mounted grid](../../crates/modules/rustok-product/admin/src/ui/product_grid.rs), [column contract](../../crates/modules/rustok-product/admin/src/core.rs) |
 | `P-PRODUCT-FACET-OPTION-PARITY` | Product's UUID-based option filter admitted archived or unrelated dictionary options while the code-based filter excluded archived options; facet bucket aggregation also emitted those options. Both filter forms and facet aggregation now require matching tenant, attribute, active option and value-assignment ownership. Rust source regressions were authored but not run. | [Product filter](../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs), [Product facets](../../crates/modules/rustok-product/src/services/catalog/facets.rs) |
 | `P-GENERATION-ACK-BEFORE-CACHE-EFFECT` | Tenant cache-generation recovery updated its durable checkpoint without clearing the independent effective-policy cache after missed Pub/Sub generations; ordinary in-order events also acknowledged before applying the cache effect. Recovered gaps now clear all tenant policies before checkpoint, in-order events ack after effects, invalid keys fail conservatively and all listener paths serialize. Tests authored but not run. | [Tenant generation listener](../../apps/server/src/services/tenant_cache_generation.rs), [Effective-policy cache](../../crates/modules/rustok-modules/src/policy_cache.rs) |
@@ -52,6 +57,82 @@ without evidence of a failure is recorded separately below.
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
 | `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 | `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
+
+### P-FLY-CROSS-DOCUMENT-INTENT — check document ownership as well as revision
+
+- **Category:** Multi-document UI safety and request authorization.
+- **Observed defect:** The browser envelope had an owning document `page_id`
+  but the dispatcher ignored mismatches and validated only revision/hash.
+  A stale callback from another page could be applied to the wrong editor.
+- **Canonical correction:** Reject an explicit owning page ID that does not
+  equal `controller.page_id()` before any command or selection. Independently
+  verify the completed workspace result belongs to the currently mounted
+  page/revision/hash/command sequence before processing its facade effects.
+- **Verification:** Source regression authored; integration evidence deferred.
+
+### P-FLY-PARTIAL-INTENT — one browser gesture is one transaction
+
+- **Category:** UI/command state atomicity and side-effect completeness.
+- **Observed defect:** The browser dispatcher changed selection before validating
+  an operation that might fail, leaking half-applied user intent into the editor
+  and clipboard. Multi-step actions likewise committed their first steps.
+- **Canonical correction:** Treat a compound browser intent as one transaction:
+  preserve the prior controller state, execute all steps, and restore it when
+  any step or final response construction fails. Non-mutating hot paths without
+  selection hints need no clone. Review performance with large projects.
+- **Fast detection:** `rg -n 'apply_selection_hint|dispatch_named_intent' crates/modules/rustok-page-builder/admin/src`.
+- **Verification:** Regression for selection hint followed by invalid insertion,
+  authored but not executed.
+
+### P-FLY-SPLIT-VALIDATION-BOUNDS — no weaker secondary validators
+
+- **Category:** User-input bounds, render/action parity and denial-of-service resistance.
+- **Observed defect:** Stored Fly action/form identifiers passed a duplicated ASCII-only
+  validator with no core 128-byte limit. The strict action URL policy also omitted
+  the 2048-byte limit used by rendered URL attributes.
+- **Canonical correction:** Reuse the exact canonical identifier validator and
+  URL length bound in every admission path, without a second independent policy.
+- **Fast detection:** `rg -n 'fn validate_identifier|MAXIMUM_URL_LENGTH' crates/ui/fly/src`.
+- **Verification:** Regression cases for 128/129-byte identifiers and 2048/2049-byte
+  URLs authored, not executed.
+
+### P-FLY-UNVERSIONED-MUTATION — missing concurrency tokens must not mean no check
+
+- **Category:** Browser mutation authorization, optimistic concurrency and
+  preconditions.
+- **Observed defect:** `validate_revision` in Page Builder checked revision
+  only when it happened to be present. Omission bypassed the check entirely
+  for insert, remove, save and all other mutating intents.
+- **Canonical correction:** Require the observed revision for every mutating
+  request, returning a typed missing-field error when absent. Non-mutating
+  selection/preview remains unversioned. Trusted in-process adapter callbacks
+  may add their controller revision at the dispatch boundary, but untrusted
+  HTTP input must never be silently upgraded.
+- **Fast detection:** `rg -n 'validate_revision|\.revision\.as_deref\(\)|dispatch_browser_intent' crates/modules/rustok-page-builder/admin/src`.
+- **Verification:** Browser-intent mutation/selection unit regressions authored,
+  unrun; both host/browser transports must be tested end-to-end.
+
+### P-FLY-STALE-SAVE-ACK — acknowledgements apply only to their snapshot
+
+- **Category:** Browser/editor state transitions, optimistic concurrency and
+  the side-effect completion dimension.
+- **Observed defect:** A save started for command sequence N, then a new edit
+  advanced to N+1. The success handler unconditionally cleared `dirty` and
+  overwrote the draft hash with the hash of the earlier saved snapshot.
+  Separately, a successful browser response without `dirty` erased a parked
+  revision-conflict warning, even though no save was confirmed.
+- **Canonical correction:** Carry the submitted sequence into save completion,
+  and clear the dirty state only when the current sequence still matches.
+  For persisted failure state, only a response that explicitly confirms a
+  clean working copy (`dirty: false`) may clear the warning. In JavaScript:
+  `if (state.dirty === false) clearSaveFailure(pageId)`; in Rust, compare
+  `saved_sequence == current_sequence` before clearing `dirty`.
+  A stronger cross-transport contract should also correlate every response
+  with a unique request token; do not mistake a successful HTTP status for
+  a verified persisted revision.
+- **Fast detection:** `rg -n 'SaveSucceeded|save_started_sequence|settleSaveFailure|dirty ===' crates/ui/fly`.
+- **Verification:** Unit and browser regressions authored but not executed;
+  mounted-host optimistic concurrency remains maintainer verification.
 
 ### P-GENERATION-ACK-BEFORE-CACHE-EFFECT — checkpoint only after invalidation
 

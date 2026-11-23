@@ -420,8 +420,18 @@ pub struct RevisionState {
     pub command_sequence: u64,
     pub last_acknowledged_revision: Option<String>,
     pub project_hash: ProjectHash,
+    /// A process-local in-flight operation cannot survive serialization: restoring it
+    /// would strand the editor in "saving" with no corresponding network request.
+    #[serde(skip)]
     pub save_in_progress: bool,
     pub save_failed: bool,
+    /// The exact snapshot currently being written. Transient: a restored editor
+    /// cannot safely resume a pending request without its transport.
+    #[serde(skip)]
+    saving_snapshot: Option<(ProjectHash, u64, u64)>,
+    /// Process-local attempt identity, distinct for identical hash/sequence retries.
+    #[serde(skip)]
+    save_attempt_sequence: u64,
 }
 
 impl RevisionState {
@@ -434,6 +444,8 @@ impl RevisionState {
             project_hash: document.hash(),
             save_in_progress: false,
             save_failed: false,
+            saving_snapshot: None,
+            save_attempt_sequence: 0,
         }
     }
 
@@ -448,25 +460,96 @@ impl RevisionState {
         self.project_hash = document.hash();
     }
 
-    pub fn begin_save(&mut self) {
+    pub fn begin_save(&mut self) -> FlyResult<()> {
+        self.begin_save_with_id().map(|_| ())
+    }
+
+    /// Start a uniquely numbered local attempt. A content hash is not a request ID.
+    pub fn begin_save_with_id(&mut self) -> FlyResult<u64> {
+        if self.save_in_progress {
+            return Err(FlyError::InvalidSaveState("save is already in progress".to_string()));
+        }
+        if self.save_conflict {
+            return Err(FlyError::InvalidSaveState(
+                "reload or reconcile the conflicting draft before saving".to_string(),
+            ));
+        }
+        let attempt_id = self.save_attempt_sequence.checked_add(1).ok_or_else(|| {
+            FlyError::InvalidSaveState("save attempt counter exhausted".to_string())
+        })?;
+        self.save_attempt_sequence = attempt_id;
+        self.saving_snapshot = Some((self.project_hash, self.command_sequence, attempt_id));
         self.save_in_progress = true;
         self.save_failed = false;
+        Ok(attempt_id)
+    }
+
+    pub fn active_save_attempt_id(&self) -> Option<u64> {
+        self.saving_snapshot.map(|(_, _, id)| id)
     }
 
     pub fn fail_save(&mut self) {
+        self.saving_snapshot = None;
         self.save_in_progress = false;
         self.save_failed = true;
-        self.save_conflict = false;
+        // An unrelated transport failure does not resolve an earlier conflict.
     }
 
     /// Record a lost update: the save was rejected because another session saved first.
     /// `dirty` stays set — the local changes exist and are not on the server.
     pub fn mark_save_conflict(&mut self) {
+        self.saving_snapshot = None;
+        self.dirty = true;
         self.save_in_progress = false;
         self.save_failed = true;
         self.save_conflict = true;
     }
 
+    /// Acknowledge the exact submitted snapshot, not the current working tree.
+    /// A successful response can arrive after more local edits; those edits remain dirty.
+    /// The caller must supply the hash captured when the request was dispatched.
+    pub fn acknowledge_submitted(
+        &mut self,
+        submitted_hash: ProjectHash,
+        revision: impl Into<String>,
+    ) -> FlyResult<()> {
+        let attempt_id = self.active_save_attempt_id().ok_or_else(|| {
+            FlyError::InvalidSaveState("no active save snapshot to acknowledge".to_string())
+        })?;
+        self.acknowledge_submitted_attempt(submitted_hash, attempt_id, revision)
+    }
+
+    /// Check the captured request attempt as well as the submitted hash.
+    /// Late responses to identical retries cannot complete the active save.
+    pub fn acknowledge_submitted_attempt(
+        &mut self,
+        submitted_hash: ProjectHash,
+        attempt_id: u64,
+        revision: impl Into<String>,
+    ) -> FlyResult<()> {
+        let (saving_hash, saving_sequence, saving_attempt_id) =
+            self.saving_snapshot.ok_or_else(|| {
+                FlyError::InvalidSaveState("no active save snapshot to acknowledge".to_string())
+            })?;
+        if !self.save_in_progress
+            || saving_hash != submitted_hash
+            || saving_attempt_id != attempt_id
+        {
+            return Err(FlyError::InvalidSaveState(
+                "save response does not match the active submitted attempt".to_string(),
+            ));
+        }
+        self.last_acknowledged_revision = Some(revision.into());
+        self.dirty = self.command_sequence != saving_sequence
+            || self.project_hash != submitted_hash;
+        self.saving_snapshot = None;
+        self.save_in_progress = false;
+        self.save_failed = false;
+        self.save_conflict = false;
+        Ok(())
+    }
+
+    /// Strict acknowledgement for consumers that require an unchanged working tree.
     pub fn acknowledge(
         &mut self,
         expected_hash: ProjectHash,
@@ -478,11 +561,6 @@ impl RevisionState {
                 actual: self.project_hash.hex(),
             });
         }
-        self.last_acknowledged_revision = Some(revision.into());
-        self.dirty = false;
-        self.save_in_progress = false;
-        self.save_failed = false;
-        self.save_conflict = false;
-        Ok(())
+        self.acknowledge_submitted(expected_hash, revision)
     }
 }

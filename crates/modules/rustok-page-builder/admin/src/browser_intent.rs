@@ -57,13 +57,35 @@ pub fn dispatch_browser_intent(
     envelope: BrowserIntentEnvelope,
 ) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
     let envelope = envelope.normalized()?;
+    if let Some(request_page_id) = envelope.page_id.as_deref() {
+        if request_page_id != controller.page_id() {
+            return Err(BrowserIntentDispatchError::PageScopeConflict {
+                expected: controller.page_id().to_string(),
+                actual: request_page_id.to_string(),
+            });
+        }
+    }
     validate_revision(controller, &envelope)?;
-    apply_selection_hint(controller, &envelope.payload)?;
-    let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
-    // Non-mutating intents (select/hover/…) get a lightweight result without
-    // the project document; mutating ones keep the full snapshot so any
-    // consumer that still relies on it sees no behavior change (audit §5.1).
-    result(controller, effects, is_mutating_intent(&envelope))
+    let mutating = is_mutating_intent(&envelope);
+    // An intent is one user gesture even when it internally performs several
+    // controller operations (selection hint + insert, duplicate copy + paste,
+    // create/move page + activate). A later failure must not commit only the
+    // first steps. Read-only hot paths without hints keep their clone-free path.
+    let snapshot = (mutating || envelope.payload.get("selected_component_id").is_some())
+        .then(|| controller.clone());
+    let dispatched = (|| {
+        apply_selection_hint(controller, &envelope.payload)?;
+        let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
+        // Read-only intents return lightweight snapshots; mutating ones include
+        // the full document for the consumer's current response contract.
+        result(controller, effects, mutating)
+    })();
+    if dispatched.is_err() {
+        if let Some(snapshot) = snapshot {
+            *controller = snapshot;
+        }
+    }
+    dispatched
 }
 
 fn dispatch_named_intent(
@@ -508,11 +530,14 @@ fn validate_revision(
     if !is_mutating_intent(envelope) {
         return Ok(());
     }
-    if let Some(revision) = envelope
+    // Revision is mandatory for every mutation. A missing revision used to
+    // skip the entire concurrency guard, so an unversioned browser request
+    // could mutate whichever server snapshot happened to be current.
+    let revision = envelope
         .revision
         .as_deref()
-        .filter(|&revision| revision != controller.revision_id())
-    {
+        .ok_or_else(|| BrowserIntentDispatchError::MissingField("revision".to_string()))?;
+    if revision != controller.revision_id() {
         return Err(BrowserIntentDispatchError::RevisionConflict {
             expected: controller.revision_id().to_string(),
             actual: revision.to_string(),
@@ -706,6 +731,8 @@ pub enum BrowserIntentDispatchError {
     RevisionConflict { expected: String, actual: String },
     #[error("browser project hash conflict: expected `{expected}`, received `{actual}`")]
     ProjectHashConflict { expected: String, actual: String },
+    #[error("browser page scope conflict: expected `{expected}`, received `{actual}`")]
+    PageScopeConflict { expected: String, actual: String },
 }
 
 fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str) -> String {
@@ -864,6 +891,70 @@ mod tests {
             assert_eq!(preview.runtime.context, json!({}));
             assert_eq!(preview.runtime.scenario_id, None);
         }
+    }
+
+    #[test]
+    fn browser_intents_cannot_cross_controller_document_scope() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let mut request = intent(
+            "insert_block",
+            json!({ "block_id": "text", "selected_component_id": "hero" }),
+        );
+        request.page_id = Some("foreign-page".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, request),
+            Err(BrowserIntentDispatchError::PageScopeConflict { .. })
+        ));
+        assert_eq!(controller, before);
+
+        let mut inspect = intent("select", json!({ "component_id": "hero" }));
+        inspect.page_id = Some("foreign-page".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, inspect),
+            Err(BrowserIntentDispatchError::PageScopeConflict { .. })
+        ));
+        assert_eq!(controller, before);
+    }
+
+    #[test]
+    fn browser_intent_failure_restores_selection_and_clipboard_from_the_same_gesture() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let request = intent(
+            "insert_block",
+            json!({
+                "block_id": "unregistered.block",
+                "selected_component_id": "hero"
+            }),
+        );
+        assert!(dispatch_browser_intent(&mut controller, request).is_err());
+        assert_eq!(controller, before);
+    }
+
+    #[test]
+    fn mutating_browser_requests_require_a_revision_even_if_the_intent_is_valid() {
+        let mut controller = controller();
+        let mut unversioned = intent("insert_block", json!({"block_id": "text"}));
+        unversioned.revision = None;
+        let before = controller.clone();
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, unversioned),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
+        ));
+        assert_eq!(controller, before);
+
+        let mut whitespace = intent("remove_selected", json!({}));
+        whitespace.revision = Some("  ".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, whitespace),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
+        ));
+
+        // Read-only preview and navigation state do not require mutation fencing.
+        let mut select = intent("select", json!({"component_id": "hero"}));
+        select.revision = None;
+        dispatch_browser_intent(&mut controller, select).expect("unversioned selection");
     }
 
     #[test]

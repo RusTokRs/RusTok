@@ -127,6 +127,19 @@ impl FlyEditor {
             return Ok(report);
         }
 
+        // A verified no-op must not consume a history slot or advance the
+        // revision. Still validate: an empty command cannot legalize a document
+        // that was already invalid when the editor was constructed.
+        if matches!(&command, EditorCommand::Batch { commands } if commands.is_empty()) {
+            let report = self.last_report.clone().unwrap_or_else(|| self.validate());
+            let errors = report.errors().cloned().collect::<Vec<_>>();
+            if !errors.is_empty() {
+                return Err(FlyError::Validation(errors));
+            }
+            self.last_report = Some(report.clone());
+            return Ok(report);
+        }
+
         // Keep even ID allocation transactional: a refused edit must not advance editor state.
         let mut generator = self.id_generator.clone();
 
@@ -151,6 +164,10 @@ impl FlyEditor {
                 let errors = inc_report.errors().cloned().collect::<Vec<_>>();
                 if !errors.is_empty() {
                     return Err(FlyError::Validation(errors));
+                }
+                if after == *self.document {
+                    self.last_report = Some(inc_report.clone());
+                    return Ok(inc_report);
                 }
                 let inverse = invert_command(&self.document, &command);
                 self.id_generator = generator;
@@ -193,6 +210,13 @@ impl FlyEditor {
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {
             return Err(FlyError::Validation(errors));
+        }
+
+        // An idempotent edit may pass validation without changing any project
+        // data. Preserve the existing revision and redo history in that case.
+        if after == *self.document {
+            self.last_report = Some(report.clone());
+            return Ok(report);
         }
 
         // The command now carries any IDs reissued during insertion, so its inverse names the

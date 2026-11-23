@@ -268,6 +268,88 @@ impl AdminEditorRuntime {
         }
     }
 
+    /// Route the effects produced by a trusted Leptos workspace intent to
+    /// the same consumer facade as toolbar commands. Merely dispatching the
+    /// intent changed local state but silently dropped Publish/Preview before.
+    pub fn apply_browser_result(&self, result: crate::BrowserIntentDispatchResult) {
+        let in_scope = self.controller.with(|controller| {
+            result.page_id == controller.page_id()
+                && result.revision_id == controller.revision_id()
+                && result.project_hash == controller.editor().revision().project_hash.hex()
+                && result.command_sequence == controller.editor().revision().command_sequence
+        });
+        if !in_scope {
+            self.fail("Browser workspace response no longer matches the active document");
+            return;
+        }
+        self.last_error.set(None);
+        for effect in result.effects {
+            match effect {
+                crate::BrowserIntentEffect::Announce { message } => {
+                    self.announce(message);
+                }
+                crate::BrowserIntentEffect::Request {
+                    request,
+                    expected_hash,
+                    command_sequence,
+                } => {
+                    let (actual_hash, actual_sequence, active_page_index) =
+                        self.controller.with(|controller| {
+                            (
+                                controller.editor().revision().project_hash,
+                                controller.editor().revision().command_sequence,
+                                controller.active_page_index(),
+                            )
+                        });
+                    if command_sequence != actual_sequence {
+                        self.fail("Browser editor request is stale; refresh the current draft");
+                        continue;
+                    }
+                    let expected_hash = match expected_hash {
+                        Some(hex) if hex == actual_hash.hex() => Some(actual_hash),
+                        Some(_) => {
+                            self.fail("Browser editor request has a mismatched project hash");
+                            continue;
+                        }
+                        None => None,
+                    };
+                    if request.capability() == BuilderCapabilityKind::Publish {
+                        if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
+                            let allowed = evaluation.allowed;
+                            let message = gate_error_message(&evaluation);
+                            self.runtime_publish_gate_evaluation.set(Some(evaluation));
+                            if !allowed {
+                                self.fail(message);
+                                continue;
+                            }
+                        }
+                    }
+                    if let PageBuilderCapabilityRequest::Preview(preview) = &request {
+                        if self.preview_in_progress.get_untracked() {
+                            self.fail("Preview already in progress");
+                            continue;
+                        }
+                        // The browser provides its own runtime context. Capture
+                        // that context and active page before the async preview
+                        // so the response can be checked against what was sent.
+                        let context = preview.runtime.context.clone();
+                        let scenario = preview.runtime.scenario_id.clone();
+                        self.runtime_context.set(context.clone());
+                        self.runtime_context_configured.set(true);
+                        self.active_runtime_scenario.set(scenario.clone());
+                        self.preview_request.set(Some((
+                            actual_hash,
+                            active_page_index,
+                            context,
+                            scenario,
+                        )));
+                    }
+                    self.execute_request(request, expected_hash);
+                }
+            }
+        }
+    }
+
     pub fn dispatch_result(&self, intent: Result<UiIntent, String>) {
         match intent {
             Ok(intent) => self.dispatch(intent),
@@ -300,30 +382,49 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         let capability = request.capability();
-        if let Some(facade) = self.facade.as_ref() {
-            let facade = Arc::clone(facade);
-            let runtime = self.clone();
-            let expected_hash = expected_hash.or_else(|| {
-                runtime
+        if capability == BuilderCapabilityKind::Preview
+            && self.facade
+                .as_ref()
+                .and_then(|facade| facade.provider_status())
+                .is_some_and(|status| !status.preview_enabled())
+        {
+            self.preview_in_progress.set(false);
+            self.preview_request.set(None);
+            self.fail("Server preview is disabled by the consumer provider or health policy");
+            return;
+        }
+        let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
+            if expected_hash.is_none() {
+                self.fail("Publish request has no submitted project hash");
+                return;
+            }
+            if self.facade.is_some() || self.on_request.is_some() {
+                let start = self
                     .controller
-                    .with(|controller| controller.ui().state.dirty.project_hash)
-            });
-            if capability == BuilderCapabilityKind::Publish {
-                let start = runtime
-                    .controller
-                    .try_update(|controller| controller.mark_save_started());
+                    .try_update(|controller| controller.mark_save_started_with_id());
                 match start {
-                    Some(Ok(())) => {}
+                    Some(Ok(attempt_id)) => Some(attempt_id),
                     Some(Err(error)) => {
-                        runtime.fail(error.to_string());
+                        self.fail(error.to_string());
                         return;
                     }
                     None => {
-                        runtime.fail("Page Builder controller is no longer available");
+                        self.fail("Page Builder controller is no longer available");
                         return;
                     }
                 }
-            } else if capability == BuilderCapabilityKind::Preview {
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(facade) = self.facade.as_ref() {
+            let facade = Arc::clone(facade);
+            let runtime = self.clone();
+            // A response must refer to the submitted request, never a hash read
+            // from the mutable working tree after other edits were made.
+            if capability == BuilderCapabilityKind::Preview {
                 runtime.preview_in_progress.set(true);
             }
 
@@ -392,11 +493,16 @@ impl AdminEditorRuntime {
                                     controller.page_id()
                                 ));
                             }
-                            let expected_hash = expected_hash
-                                .unwrap_or(controller.editor().revision().project_hash);
+                            let Some(expected_hash) = expected_hash else {
+                                return Err("Publish request has no submitted project hash".to_string());
+                            };
+                            let Some(attempt_id) = save_attempt_id else {
+                                return Err("Publish request has no tracked attempt".to_string());
+                            };
                             controller
-                                .acknowledge_save_for_hash(
+                                .acknowledge_save_for_attempt(
                                     expected_hash,
+                                    attempt_id,
                                     response.revision_id.clone(),
                                 )
                                 .map_err(|error| error.to_string())
@@ -407,8 +513,9 @@ impl AdminEditorRuntime {
                                 runtime.announce(runtime.save_succeeded.clone());
                             }
                             Some(Err(error)) => {
-                                runtime.mark_save_failed();
-                                runtime.fail(error);
+                                if runtime.finish_failed_request(capability, save_attempt_id) {
+                                    runtime.fail(error);
+                                }
                             }
                             None => runtime.fail(
                                 "Page Builder controller was disposed before save acknowledgement",
@@ -416,15 +523,17 @@ impl AdminEditorRuntime {
                         }
                     }
                     Ok(response) => {
-                        runtime.finish_failed_request(capability);
-                        runtime.fail(format!(
-                            "Page Builder facade returned `{}` for a `{capability}` request",
-                            response.capability()
-                        ));
+                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                            runtime.fail(format!(
+                                "Page Builder facade returned `{}` for a `{capability}` request",
+                                response.capability()
+                            ));
+                        }
                     }
                     Err(error) => {
-                        runtime.finish_failed_request(capability);
-                        runtime.fail(error.to_string());
+                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                            runtime.fail(error.to_string());
+                        }
                     }
                 }
             });
@@ -439,24 +548,28 @@ impl AdminEditorRuntime {
         }
     }
 
-    fn finish_failed_request(&self, capability: BuilderCapabilityKind) {
+    /// False means the completion belongs to an obsolete attempt. In that
+    /// case it must neither fail the newer save nor replace its UI message.
+    fn finish_failed_request(
+        &self,
+        capability: BuilderCapabilityKind,
+        attempt_id: Option<u64>,
+    ) -> bool {
         match capability {
-            BuilderCapabilityKind::Publish => self.mark_save_failed(),
+            BuilderCapabilityKind::Publish => {
+                let Some(attempt_id) = attempt_id else {
+                    return false;
+                };
+                self.controller
+                    .try_update(|controller| controller.mark_save_failed_for_attempt(attempt_id))
+                    .is_some_and(|result| result.unwrap_or(false))
+            }
             BuilderCapabilityKind::Preview => {
                 self.preview_in_progress.set(false);
                 self.preview_request.set(None);
+                true
             }
-            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => {}
-        }
-    }
-
-    fn mark_save_failed(&self) {
-        if self
-            .controller
-            .try_update(|controller| controller.mark_save_failed())
-            .is_none()
-        {
-            tracing::trace!("Controller signal disposed before mark_save_failed");
+            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => true,
         }
     }
 
