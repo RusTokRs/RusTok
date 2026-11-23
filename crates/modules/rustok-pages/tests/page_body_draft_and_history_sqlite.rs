@@ -87,6 +87,68 @@ async fn published_page_saves_land_in_the_body_draft_with_one_journal_row_each()
 }
 
 #[tokio::test]
+async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db().await?;
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let (page_id, _) = seed_published_page(&db, tenant_id).await?;
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+
+    // Simulate an existing write committed by a host whose clock was ahead.
+    let ahead = Utc::now() + chrono::Duration::minutes(5);
+    let mut active: page_body::ActiveModel = current_body(&db, tenant_id, page_id).await?.into();
+    active.updated_at = Set(ahead.into());
+    active.update(&db).await?;
+    let initial = current_body(&db, tenant_id, page_id).await?.updated_at.to_string();
+
+    let saved = service
+        .save_document(
+            tenant_id,
+            security.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: initial.clone(),
+                body: builder_body("future-v2"),
+            },
+        )
+        .await?;
+    let saved = saved.body.expect("saved draft");
+    assert!(saved.updated_at > initial, "save must advance the token");
+    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), saved.updated_at);
+
+    let journal = revisions(&db, tenant_id, page_id).await?;
+    let restored = service
+        .restore_body_revision(
+            tenant_id,
+            security.clone(),
+            page_id,
+            RestorePageBodyRevisionInput {
+                expected_revision: saved.updated_at.clone(),
+                revision_id: journal[0].id,
+            },
+        )
+        .await?;
+    let restored = restored.body.expect("restored draft");
+    assert!(restored.updated_at > saved.updated_at, "restore must advance the token");
+    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), restored.updated_at);
+
+    let error = service
+        .save_document(
+            tenant_id,
+            security,
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: saved.updated_at,
+                body: builder_body("stale"),
+            },
+        )
+        .await
+        .expect_err("stale revision must conflict");
+    assert!(error.to_string().contains("PAGE_DOCUMENT_REVISION_CONFLICT"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn rejected_saves_append_nothing_and_keep_the_working_copy() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db().await?;

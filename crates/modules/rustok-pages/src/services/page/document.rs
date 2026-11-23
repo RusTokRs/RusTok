@@ -19,7 +19,7 @@ use crate::entities::{page, page_body_revision, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{can_read_page_source, enforce_owned_scope};
 
-use super::helpers::{body_revision_timestamp, normalize_locale, normalize_page_body_input};
+use super::helpers::{next_body_revision_timestamp, normalize_locale, normalize_page_body_input};
 use super::{PAGE_KIND, PageService, PreparedPageBody, WorkingBody};
 
 pub const PAGE_DOCUMENT_REVISION_CONFLICT: &str = "PAGE_DOCUMENT_REVISION_CONFLICT";
@@ -83,7 +83,6 @@ impl PageService {
             )));
         }
 
-        let now = body_revision_timestamp(Utc::now());
         if locked_page.status == "published" {
             let draft = self
                 .find_draft_in_tx(&txn, tenant_id, page_id, &body.locale)
@@ -102,6 +101,12 @@ impl PageService {
                     actual_revision,
                 ));
             }
+            // The row lock protects the CAS; a repeated or regressed wall clock
+            // must not make an already consumed revision token valid again.
+            let now = next_body_revision_timestamp(
+                Utc::now(),
+                working.as_ref().map(|body| &body.updated_at),
+            )?;
 
             let draft = self
                 .upsert_draft_in_tx(&txn, tenant_id, page_id, &body, now, security.user_id)
@@ -131,6 +136,12 @@ impl PageService {
                     actual_revision,
                 ));
             }
+            // The row lock protects the CAS; a repeated or regressed wall clock
+            // must not make an already consumed revision token valid again.
+            let now = next_body_revision_timestamp(
+                Utc::now(),
+                working.as_ref().map(|body| &body.updated_at),
+            )?;
 
             self.upsert_body_in_tx(&txn, tenant_id, page_id, Some(body.clone()), now)
                 .await?;
@@ -175,16 +186,19 @@ impl PageService {
             &body.content,
         )
         .await?;
+        // Construct the acknowledgement before a competing writer can commit.
+        let response = self
+            .get_with_locale_fallback_in_tx(
+                &txn,
+                tenant_id,
+                &security,
+                page_id,
+                &response_locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await?;
         txn.commit().await?;
-
-        self.get_with_locale_fallback(
-            tenant_id,
-            security,
-            page_id,
-            &response_locale,
-            Some(PLATFORM_FALLBACK_LOCALE),
-        )
-        .await
+        Ok(response)
     }
 
     /// Restores one journaled body revision into the locale's working copy.
@@ -235,7 +249,6 @@ impl PageService {
             )));
         }
 
-        let now = body_revision_timestamp(Utc::now());
         let restored = PreparedPageBody {
             locale: revision.locale.clone(),
             content: revision.content.clone(),
@@ -259,6 +272,12 @@ impl PageService {
                     actual_revision,
                 ));
             }
+            // The row lock protects the CAS; a repeated or regressed wall clock
+            // must not make an already consumed revision token valid again.
+            let now = next_body_revision_timestamp(
+                Utc::now(),
+                working.as_ref().map(|body| &body.updated_at),
+            )?;
 
             let draft = self
                 .upsert_draft_in_tx(&txn, tenant_id, page_id, &restored, now, security.user_id)
@@ -288,6 +307,12 @@ impl PageService {
                     actual_revision,
                 ));
             }
+            // The row lock protects the CAS; a repeated or regressed wall clock
+            // must not make an already consumed revision token valid again.
+            let now = next_body_revision_timestamp(
+                Utc::now(),
+                working.as_ref().map(|body| &body.updated_at),
+            )?;
 
             self.upsert_body_in_tx(&txn, tenant_id, page_id, Some(restored.clone()), now)
                 .await?;
@@ -323,16 +348,19 @@ impl PageService {
         }
         // Restoring a page body must not roll back site-wide definitions from
         // an older journal entry. The next editor read overlays the live store.
+        // Construct the acknowledgement before a competing writer can commit.
+        let response = self
+            .get_with_locale_fallback_in_tx(
+                &txn,
+                tenant_id,
+                &security,
+                page_id,
+                &revision.locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await?;
         txn.commit().await?;
-
-        self.get_with_locale_fallback(
-            tenant_id,
-            security,
-            page_id,
-            &revision.locale,
-            Some(PLATFORM_FALLBACK_LOCALE),
-        )
-        .await
+        Ok(response)
     }
 
     /// Returns the newest body-revision journal metadata for one locale, newest first.

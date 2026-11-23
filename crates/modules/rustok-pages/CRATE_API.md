@@ -131,6 +131,19 @@ layout is copied by key and is not checked for locale availability.
 - Menu location is descriptive until a dedicated active-location identity is
   enforced. Adapters must not choose an arbitrary first menu by location.
 
+## Document acknowledgement and concurrency
+
+`PageService::save_document` and `restore_body_revision` compare the observed
+working-copy token in the Pages write transaction, generate a microsecond revision
+strictly newer than the current stored revision, append the body journal, and
+build their `PageResponse` inside the same transaction (including site symbols).
+The accepted write cannot be acknowledged with a subsequent writer's revision.
+
+This is not durable idempotency: an uncertain/aborted transport result still
+requires explicit reconciliation. PostgreSQL/MySQL serialize on the page row;
+SQLite may produce busy/locked write errors. Cross-backend concurrency checks
+and production release sign-off are pending.
+
 ## Events
 
 Page lifecycle events are published through `TransactionalEventBus` in the same
