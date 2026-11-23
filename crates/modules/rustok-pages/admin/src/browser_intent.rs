@@ -725,7 +725,7 @@ fn operation_response_from_receipt(
     replayed: bool,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
     let revision = session.controller.editor().revision();
-    let mut result = BrowserIntentDispatchResult {
+    let result = BrowserIntentDispatchResult {
         page_id: session.controller.page_id().to_string(),
         revision_id: session.controller.revision_id().to_string(),
         project_hash: revision.project_hash.hex(),
