@@ -19,6 +19,10 @@ import {
 import { MAX_COMBINATION_MEMBERS } from './combinations.ts';
 
 const productVariantLimits = readFileSync(
+  new URL('../../../../../crates/modules/rustok-product/ports/src/dto/mod.rs', import.meta.url),
+  'utf8'
+);
+const productVariantAxisLimits = readFileSync(
   new URL('../../../../../crates/modules/rustok-product/ports/src/dto/variant_axis.rs', import.meta.url),
   'utf8'
 );
@@ -57,7 +61,7 @@ test('Next SKU controls and Product owner share one bounded variant capacity', (
   assert.equal(MAX_COMBINATION_MEMBERS, MAX_PRODUCT_VARIANTS);
   assert.match(productVariantLimits, /pub const MAX_PRODUCT_VARIANTS: usize = 256/);
   assert.match(
-    productVariantLimits,
+    productVariantAxisLimits,
     /MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS/
   );
   assert.match(
