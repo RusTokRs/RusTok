@@ -8,7 +8,7 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{WorkflowError, WorkflowExecutionResponse, WorkflowService};
+use crate::{WorkflowCronReconciliationItem, WorkflowError, WorkflowExecutionResponse, WorkflowService};
 
 fn map_workflow_execution_error(
     error: WorkflowError,
@@ -159,6 +159,28 @@ pub async fn get_execution(
             )
         })?;
     Ok(Json(execution))
+}
+
+/// Review-only projection. A stale claim cannot be retried from this endpoint.
+pub async fn list_cron_reconciliation(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+) -> HttpResult<Json<Vec<WorkflowCronReconciliationItem>>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOW_EXECUTIONS_LIST],
+        "Permission denied: workflow_executions:list required",
+    )?;
+
+    let items = crate::services::reconciliation_required_for_tenant(
+        &runtime.db_clone(), tenant.id, 100,
+    )
+    .await
+    .map_err(|error| map_workflow_execution_error(
+        error, "list_cron_reconciliation", tenant.id, None, None,
+    ))?;
+    Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
 fn ensure_execution_permission(
