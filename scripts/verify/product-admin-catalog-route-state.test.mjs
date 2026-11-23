@@ -71,6 +71,12 @@ test('only eligible owner attribute options can appear in filters and facets', (
   assert.match(facets, /Alias::new\("archived_at"\)\)\)\.is_null\(\)/);
 });
 
+test('blank and duplicate status query values are canonicalized before hydration', () => {
+  assert.match(nextPage, /const hasNonCanonicalStatus/);
+  assert.match(nextPage, /!rawStatus\?\.trim\(\)/);
+  assert.match(nextPage, /hasNonCanonicalStatus \|\|/);
+});
+
 test('legacy search URLs are migrated into the visible title column filter', () => {
   assert.match(nextPage, /const rawTitle = pickParam\(params\.title\)/);
   assert.match(nextPage, /const rawSearch = pickParam\(params\.search\)/);
