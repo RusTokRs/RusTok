@@ -11,6 +11,7 @@ import type {
 import type { CombinationAxis } from './combinations';
 import { chooseCombination, CombinationError } from './combinations.ts';
 import { isEligibleAxis } from './schema-policy';
+import { MAX_INVENTORY_QUANTITY } from './limits';
 import { parsePriceAmount } from './money';
 
 /** A bounded explicit selection, never an automatically materialized Cartesian product. */
@@ -213,7 +214,7 @@ export function normalizeInitialCatalog(
     if (
       !Number.isInteger(variant.inventoryQuantity) ||
       variant.inventoryQuantity < 0 ||
-      variant.inventoryQuantity > 2147483647
+      variant.inventoryQuantity > MAX_INVENTORY_QUANTITY
     ) {
       throw new Error(
         'Initial inventory must be a non-negative 32-bit integer.'
