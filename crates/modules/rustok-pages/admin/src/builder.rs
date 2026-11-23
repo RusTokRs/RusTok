@@ -320,9 +320,17 @@ async fn dispatch_pages_page_builder_capability(
             format!("page-builder:{}:{}", input.page_id, input.revision_id),
         )
         .with_deadline(PAGE_BUILDER_PORT_DEADLINE)
-        .with_idempotency_key(format!(
-            "page-builder-save:{}:{}",
-            input.page_id, input.revision_id
+        // The port policy key must distinguish two different projects
+        // submitted against the same revision. A revision-only key silently
+        // conflates different attempted writes before Pages sees their
+        // canonical idempotency hashes.
+        .with_idempotency_key(document_save_attempt_key(
+            &tenant_slug,
+            &actor_id,
+            &input.page_id,
+            &input.revision_id,
+            &snapshot.default_locale,
+            &input.project_data,
         )),
         request => return Err(unsupported_request_error(request)),
     };
@@ -868,5 +876,40 @@ mod document_gate_tests {
             page_revision(&page_without_body(false)),
             page_revision(&page_without_body(true))
         );
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod document_save_attempt_key_tests {
+    use super::document_save_attempt_key;
+    use serde_json::json;
+
+    #[test]
+    fn write_identity_separates_actor_revision_and_payload() {
+        let document = json!({"pages": [{"id": "home"}]});
+        let key = document_save_attempt_key(
+            "tenant", "actor", "page", "r1", "en", &document,
+        );
+        assert_eq!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor-other", "page", "r1", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r2", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "en", &json!({"pages": []})),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "fr", &document),
+        );
+        assert!(key.len() <= 128, "ID must fit the Pages receipt key limit");
     }
 }
