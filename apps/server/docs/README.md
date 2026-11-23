@@ -510,6 +510,9 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   and retained after successful handle publication. All seven starters check
   the shared stop signal before publishing a worker. This is an
   in-process guarantee, not distributed leader election; durable queue
+  A previously published live handle no longer makes repeated startup appear
+  successful after the shared shutdown signal is set; the handle stays
+  registered for draining.
   ownership/receipt correctness remains with the Outbox, Search, Index,
   and Notifications domain workers.
 - Tenant cache-generation recovery also invalidates the entire
@@ -577,6 +580,12 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   and worker-specific failure transitions now require an unexpired matching
   claim token and attempt, so an expired worker cannot reschedule a row
   merely because no replacement has claimed it yet.
+  The direct Comments audit handoff claim/publish helpers now require the
+  caller's bounded `max_attempts` and use the same retry-ready SQL as the
+  worker; a deferred or source-dead-letter record cannot be claimed via the
+  former unrestricted shortcut. Publication additionally checks the dead-letter
+  fence in its row lock and final CAS, so manual recovery must requeue the
+  source row through its audited recovery API before a new publication attempt.
 - Notification candidate and fanout workers recheck shutdown **after**
   asynchronous tenant capability/policy evaluation (including deferrals),
   immediately before starting their next candidate processing, source

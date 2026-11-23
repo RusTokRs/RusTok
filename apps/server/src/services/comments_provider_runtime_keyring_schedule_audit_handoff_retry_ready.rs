@@ -15,7 +15,10 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         Option<CommentsTcpDelegationScheduleAuditHandoffClaim>,
         CommentsTcpDelegationScheduleAuditHandoffError,
     > {
-        if max_attempts == 0 {
+        if max_attempts == 0
+            || max_attempts
+                > super::super::keyring_schedule_audit_source_retry_postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS
+        {
             return Err(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable);
         }
         let max_attempts = i64::from(max_attempts);

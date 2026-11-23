@@ -2988,3 +2988,24 @@ private artifact.
 Not run at the user's request. Verify with `cargo fmt --all -- --check`,
 `cargo check -p rustok-server --lib`, and
 `cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.
+
+
+## Server audit continuation — Comments retry shortcuts and stop-time bootstrap (2026-11-23)
+
+The public Comments audit handoff `claim_next`/`publish_next` convenience path
+used a separate source-selection SQL statement. It could acquire deferred or
+terminal source-dead-letter rows without applying the worker's configured
+attempt budget, bypassing the recovery contract. Both entrypoints now require
+an explicit bounded attempt budget and delegate to the same retry-ready claim;
+invalid budgets above the canonical maximum fail closed. The publication
+read and compare-and-set also fence dead-letter state so a stale claimant
+cannot turn an operator-held source record into a published row. Audited
+`requeue_dead_letter` remains the only path to clear that state.
+
+The common published-worker liveness check also previously returned success
+for a live handle after shutdown had been signaled. Repeated startup now
+rejects that state without removing the join handle needed by shutdown.
+
+Source-level regression assertions were added for the PostgreSQL publication
+fences and the repeated-bootstrap shutdown state. No Cargo checks, tests,
+formatters, SQL execution, or multi-replica race tests were run, as requested.
