@@ -1,3 +1,22 @@
+
+## Cron execution task lifecycle (2026-11-23)
+
+The Workflow owner tracks cron-fired execution tasks in its scheduler-owned
+`JoinSet`, rather than detaching `tokio::spawn` handles. The host calls
+`WorkflowCronScheduler::start_with_stop`: a stop signal prevents admission of
+further scheduled executions, including after the workflow/step read awaits,
+and the scheduler joins already-started executions before returning. Completed
+tasks are reaped and panics observed during subsequent cron ticks. Aborting or
+dropping the scheduler's task cancels remaining children instead of leaving
+them detached. The existing `start` API still supports callers without a host
+stop signal, but it also owns its execution tasks.
+
+This is **process-local shutdown supervision**, not durable schedule delivery.
+Multiple hosts can still execute the same cron firing, skipped seconds or
+process death can miss firings, and forcibly aborted or crashed executions may
+retain `running` rows. Cross-replica claims, recovery, and execution idempotency
+need separate Workflow-owned durable design and verification. Tests are
+source-only and unrun here.
 # `rustok-workflow` Documentation
 
 `rustok-workflow` — visual automation module on the platform queue and
