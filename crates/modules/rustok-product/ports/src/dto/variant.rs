@@ -71,7 +71,11 @@ pub struct UpdateVariantInput {
     #[validate(nested)]
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
-    #[validate(length(max = 32, message = "Inventory policy must be max 32 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 32,
+        message = "Inventory policy must be 1-32 characters"
+    ))]
     pub inventory_policy: Option<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     #[schema(value_type = Option<String>)]
@@ -81,6 +85,21 @@ pub struct UpdateVariantInput {
     pub weight_unit: Patch<String>,
     #[validate(nested)]
     pub axis_values: Option<Vec<VariantAxisValueInput>>,
+}
+
+impl UpdateVariantInput {
+    /// Whether the caller supplied any mutation rather than an empty keep-all patch.
+    pub fn has_changes(&self) -> bool {
+        self.sku.is_changed()
+            || self.barcode.is_changed()
+            || self.shipping_profile_slug.is_changed()
+            || self.prices.is_some()
+            || self.inventory_quantity.is_some()
+            || self.inventory_policy.is_some()
+            || self.weight.is_changed()
+            || self.weight_unit.is_changed()
+            || self.axis_values.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -167,6 +186,26 @@ mod patch_tests {
         ] {
             assert_eq!(json.get(field), Some(&serde_json::Value::Null));
         }
+    }
+
+    #[test]
+    fn empty_variant_update_is_a_noop_but_empty_prices_are_an_explicit_change() {
+        assert!(!UpdateVariantInput::default().has_changes());
+
+        let clear_prices = UpdateVariantInput {
+            prices: Some(Vec::new()),
+            ..Default::default()
+        };
+        assert!(clear_prices.has_changes());
+    }
+
+    #[test]
+    fn inventory_policy_cannot_be_set_to_an_empty_value() {
+        let input = UpdateVariantInput {
+            inventory_policy: Some(String::new()),
+            ..Default::default()
+        };
+        assert!(input.validate().is_err());
     }
 
     #[test]

@@ -270,13 +270,13 @@ pub(super) async fn load_catalog_facets(
             category_subtree.as_deref(),
         );
 
-        let total_products = load_facet_total(db, &definition.id, &products_condition).await?;
+        let total_products = count_facet_total(db, &definition.id, &products_condition).await?;
 
         let is_enumerable = value_type.is_enumerable_facet();
         let mut values = Vec::new();
         let mut is_truncated = false;
         if is_enumerable {
-            let buckets = load_facet_buckets(db, definition, &products_condition).await?;
+            let buckets = aggregate_facet_buckets(db, definition, &products_condition).await?;
             let mut collected = Vec::with_capacity(buckets.len());
             let mut slot_option_ids = Vec::new();
             for (bucket, count) in buckets {
@@ -704,7 +704,7 @@ fn facet_products_condition(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        condition = condition.add(product_title_search_condition(backend, search));
+        condition = condition.add(product_title_search_condition(backend, tenant_id, search));
     }
     for other in other_conditions {
         condition = condition.add(other);
@@ -723,7 +723,7 @@ impl EnumerableFacet for AttributeValueType {
     }
 }
 
-async fn load_facet_total(
+async fn count_facet_total(
     db: &DatabaseConnection,
     attribute_id: &Uuid,
     products_condition: &Condition,
@@ -742,7 +742,7 @@ async fn load_facet_total(
         .unwrap_or(0))
 }
 
-async fn load_facet_buckets(
+async fn aggregate_facet_buckets(
     db: &DatabaseConnection,
     definition: &FacetDefinitionRow,
     products_condition: &Condition,

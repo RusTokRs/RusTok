@@ -1940,6 +1940,7 @@ impl CommerceQuery {
                     "legacy_products",
                 ))
             })?;
+        let has_next = products.has_next;
         let items = products
             .items
             .into_iter()
@@ -1981,7 +1982,7 @@ impl CommerceQuery {
             total: products.total,
             page,
             per_page,
-            has_next: page * per_page < products.total,
+            has_next,
         })
     }
 

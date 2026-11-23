@@ -103,27 +103,40 @@ impl PageRouteHistoryImportService {
         let mut inserted_snapshot_count = 0_u32;
         let mut inserted_gone_alias_count = 0_u32;
         let mut terminal_pages = BTreeSet::new();
-        let mut page_existence_cache = HashMap::<Uuid, bool>::new();
+
+        let distinct_page_ids = items
+            .iter()
+            .map(|item| item.page_id)
+            .collect::<BTreeSet<_>>();
+        let page_existence_cache =
+            load_pages_for_import_batch(&txn, tenant_id, &distinct_page_ids).await?;
+
+        let source_record_ids = items
+            .iter()
+            .map(|item| item.source_record_id.clone())
+            .collect::<BTreeSet<_>>();
+        let receipts_list = page_route_history_import::Entity::find()
+            .filter(page_route_history_import::Column::TenantId.eq(tenant_id))
+            .filter(page_route_history_import::Column::Source.eq(&source))
+            .filter(page_route_history_import::Column::SourceRecordId.is_in(source_record_ids))
+            .all(&txn)
+            .await?;
+        let mut receipts_by_source_record =
+            HashMap::<String, Vec<page_route_history_import::Model>>::new();
+        for receipt in receipts_list {
+            receipts_by_source_record
+                .entry(receipt.source_record_id.clone())
+                .or_default()
+                .push(receipt);
+        }
 
         for item in &items {
-            let receipts = page_route_history_import::Entity::find()
-                .filter(page_route_history_import::Column::TenantId.eq(tenant_id))
-                .filter(page_route_history_import::Column::Source.eq(&source))
-                .filter(
-                    page_route_history_import::Column::SourceRecordId.eq(&item.source_record_id),
-                )
-                .all(&txn)
-                .await?;
+            let empty_receipts = Vec::new();
+            let receipts = receipts_by_source_record
+                .get(&item.source_record_id)
+                .unwrap_or(&empty_receipts);
 
-            let page_exists = match page_existence_cache.get(&item.page_id) {
-                Some(exists) => *exists,
-                None => {
-                    let current_page = load_page_for_import(&txn, tenant_id, item.page_id).await?;
-                    let exists = current_page.is_some();
-                    page_existence_cache.insert(item.page_id, exists);
-                    exists
-                }
-            };
+            let page_exists = *page_existence_cache.get(&item.page_id).unwrap_or(&false);
 
             let (page_was_missing, replayed) = match receipts.as_slice() {
                 [] => (!page_exists, false),
@@ -251,34 +264,55 @@ fn prepare_input(
     Ok((source, prepared))
 }
 
-async fn load_page_for_import(
+async fn load_pages_for_import_batch(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    page_id: Uuid,
-) -> PagesResult<Option<page::Model>> {
+    page_ids: &BTreeSet<Uuid>,
+) -> PagesResult<HashMap<Uuid, bool>> {
+    if page_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
     // Inspect ownership without locking a foreign tenant row. Only the current tenant's row
     // participates in the import lock; otherwise a caller who knows another tenant's UUID could
     // create avoidable cross-tenant lock contention before the ownership check rejects the request.
-    let existing = page::Entity::find_by_id(page_id).one(txn).await?;
-    let Some(existing) = existing else {
-        return Ok(None);
-    };
-    // INVARIANT: Pre-lock cross-tenant check rejects foreign rows fail-closed before taking exclusive lock.
-    if existing.tenant_id != tenant_id {
-        return Err(route_history_import_conflict(
-            "Historical route import page identifier belongs to another tenant",
-        ));
-    }
-    let query = || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
-    Ok(match txn.get_database_backend() {
-        DbBackend::Sqlite => query().one(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        backend => {
-            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
-                "unsupported SeaORM database backend: {backend:?}"
-            ))));
+    let existing = page::Entity::find()
+        .filter(page::Column::Id.is_in(page_ids.iter().copied()))
+        .all(txn)
+        .await?;
+    for page in &existing {
+        // INVARIANT: Pre-lock cross-tenant check rejects foreign rows fail-closed before taking exclusive lock.
+        if page.tenant_id != tenant_id {
+            return Err(route_history_import_conflict(
+                "Historical route import page identifier belongs to another tenant",
+            ));
         }
-    })
+    }
+    let matching_ids: Vec<Uuid> = existing.into_iter().map(|p| p.id).collect();
+    if !matching_ids.is_empty() {
+        let query = || {
+            page::Entity::find()
+                .filter(page::Column::TenantId.eq(tenant_id))
+                .filter(page::Column::Id.is_in(matching_ids.clone()))
+        };
+        match txn.get_database_backend() {
+            DbBackend::Sqlite => {
+                query().all(txn).await?;
+            }
+            DbBackend::Postgres | DbBackend::MySql => {
+                query().lock_exclusive().all(txn).await?;
+            }
+            backend => {
+                return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                    "unsupported SeaORM database backend: {backend:?}"
+                ))));
+            }
+        }
+    }
+    let mut cache = HashMap::new();
+    for page_id in page_ids {
+        cache.insert(*page_id, matching_ids.contains(page_id));
+    }
+    Ok(cache)
 }
 
 async fn ensure_route_in_tx(

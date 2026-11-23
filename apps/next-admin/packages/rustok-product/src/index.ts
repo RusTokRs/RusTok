@@ -35,6 +35,12 @@ registerAdminModule({
 
 export { productNavItems } from './nav';
 export { parsePriceAmount, salePercent, discountedPrice } from './money';
+export {
+  normalizeProductAdminPagination,
+  MAX_PRODUCT_ADMIN_PAGE,
+  MAX_PRODUCT_ADMIN_PAGE_SIZE
+} from './product-list-pagination';
+import { normalizeProductAdminPagination } from './product-list-pagination';
 export * from './api/types';
 export * from './api/categories';
 export * from './api/brands';
@@ -91,8 +97,8 @@ export type ProductCatalogSearchOption = {
 };
 
 export const PRODUCTS_QUERY = `
-query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) {
-  products(tenantId: $tenantId, locale: $locale, filter: $filter) {
+query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: AdminProductCatalogFilter) {
+  adminProductCatalog(tenantId: $tenantId, locale: $locale, filter: $filter) {
     total
     page
     perPage
@@ -106,6 +112,7 @@ query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsF
       vendor
       productType
       shippingProfileSlug
+      primaryCategoryId
       tags
       createdAt
       publishedAt
@@ -190,7 +197,7 @@ query ProductCatalogSearchCategories($tenantId: UUID!, $locale: String!) {
 }`;
 
 type ProductsResponse = {
-  products: {
+  adminProductCatalog: {
     total: number;
     page: number;
     perPage: number;
@@ -221,6 +228,10 @@ export type ListProductsFilter = {
   search?: string;
   status?: string | null;
   vendor?: string | null;
+  categoryId?: string | null;
+  sortBy?: string | null;
+  sortDirection?: string | null;
+  attributeFilters?: string[] | null;
 };
 
 export function normalizeProductStatus(
@@ -245,12 +256,19 @@ export async function listProducts(
 
   const executor = opts.graphql ?? graphqlRequest;
   const normalizedStatus = normalizeProductStatus(filter.status);
+  const pagination = normalizeProductAdminPagination(filter);
   const gqlFilter = {
-    page: filter.page,
-    perPage: filter.perPage,
+    page: pagination.page,
+    perPage: pagination.perPage,
     search: filter.search?.trim() || undefined,
     status: normalizedStatus,
-    vendor: filter.vendor?.trim() || undefined
+    vendor: filter.vendor?.trim() || undefined,
+    categoryId: filter.categoryId?.trim() || undefined,
+    sortBy: filter.sortBy?.trim() || undefined,
+    sortDirection: filter.sortDirection?.trim() || undefined,
+    attributeFilters: filter.attributeFilters
+      ?.map((value) => value.trim())
+      .filter(Boolean)
   };
 
   const data = await executor<
@@ -271,7 +289,7 @@ export async function listProducts(
     opts.tenantSlug
   );
 
-  return data.products;
+  return data.adminProductCatalog;
 }
 
 export async function getProduct(opts: GqlOpts, id: string, locale?: string) {

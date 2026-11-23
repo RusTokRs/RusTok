@@ -43,10 +43,10 @@ pub(super) async fn load<C: ConnectionTrait>(
     tenant: Uuid,
     variant: Uuid,
 ) -> Result<Snapshot, E> {
-    load_with_budget(conn, tenant, variant, MAX_SOURCE_LEVELS).await
+    capture_with_budget(conn, tenant, variant, MAX_SOURCE_LEVELS).await
 }
 
-pub(super) async fn load_with_budget<C: ConnectionTrait>(
+pub(super) async fn capture_with_budget<C: ConnectionTrait>(
     conn: &C,
     tenant: Uuid,
     variant: Uuid,

@@ -198,6 +198,7 @@ pub struct StorefrontProductCatalogFilter {
 pub struct AdminProductCatalogFilter {
     pub search: Option<String>,
     pub status: Option<String>,
+    pub vendor: Option<String>,
     pub category_id: Option<Uuid>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
@@ -624,6 +625,10 @@ impl ProductCatalogQuery {
             .or_else(|| request_context.map(|context| context.locale.clone()))
             .unwrap_or_else(|| tenant.default_locale.clone());
         let filter = filter.unwrap_or_default();
+        let vendor = filter
+            .vendor
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let page = filter.page.unwrap_or(1);
         let per_page = filter.per_page.unwrap_or(24);
         if page == 0 || per_page == 0 || per_page > 100 {
@@ -670,7 +675,7 @@ impl ProductCatalogQuery {
                     fallback_locale: Some(tenant.default_locale.clone()),
                     query: list_query,
                     raw_status: None,
-                    vendor: None,
+                    vendor,
                     product_type: None,
                     empty_missing_title: false,
                     page,

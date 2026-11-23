@@ -232,7 +232,7 @@ async fn advance_in(
         let remaining = MAX_SOURCE_LEVELS
             .checked_sub(level_count)
             .ok_or(E::LimitExceeded)?;
-        let snapshot = super::snapshot::load_with_budget(txn, tenant, *id, remaining).await?;
+        let snapshot = super::snapshot::capture_with_budget(txn, tenant, *id, remaining).await?;
         level_count = level_count
             .checked_add(snapshot.level_count)
             .ok_or(E::LimitExceeded)?;

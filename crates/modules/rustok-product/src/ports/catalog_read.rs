@@ -319,7 +319,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             vendor.as_deref(),
             product_type.as_deref(),
             empty_missing_title,
-            empty_missing_title,
+            false,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
@@ -385,7 +385,7 @@ mod tests {
 
     fn base_context() -> PortContext {
         PortContext::new(
-            Uuid::nil().to_string(),
+            Uuid::new_v4().to_string(),
             PortActor::service("product-contract-test"),
             "ru",
             "corr-product-a",
@@ -434,6 +434,17 @@ mod tests {
         assert_eq!(error.kind, PortErrorKind::Validation);
         assert_eq!(error.code, "product.tenant_id_invalid");
         assert_eq!(error.message, "product request context is invalid");
+
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::service("product-contract-test"),
+            "ru",
+            "corr-product-nil",
+        );
+        let nil_error = parse_port_tenant_id(&nil_context, READ_PRODUCT_PROJECTION_OPERATION)
+            .expect_err("nil tenant UUID must be rejected");
+        assert_eq!(nil_error.kind, PortErrorKind::Validation);
+        assert_eq!(nil_error.code, "product.tenant_id_invalid");
     }
 
     #[test]

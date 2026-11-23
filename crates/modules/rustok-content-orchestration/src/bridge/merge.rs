@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::bridge::OwnerRoutes;
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, find_topic_in_tx, load_forum_reply_records_in_tx,
+    adjust_forum_category_counters_in_tx, find_topic_in_tx, find_topics_batch_in_tx,
+    load_forum_reply_records_batch_in_tx, load_topic_translations_batch_in_tx,
     load_topic_translations_in_tx, locales_from_topic_translations,
     next_forum_reply_position_in_tx, refresh_forum_topic_stats_in_tx,
     resequence_forum_topic_replies_in_tx,
@@ -44,14 +45,25 @@ pub(crate) async fn merge_topics(
         .collect::<BTreeSet<_>>();
     let mut source_locales_by_topic: Vec<(Uuid, Vec<String>)> = Vec::new();
 
+    let mut source_topics_by_id = find_topics_batch_in_tx(txn, tenant_id, &source_ids).await?;
+    let mut source_translations_by_id =
+        load_topic_translations_batch_in_tx(txn, tenant_id, &source_ids).await?;
+    let mut replies_by_topic_id =
+        load_forum_reply_records_batch_in_tx(txn, tenant_id, &source_ids).await?;
+
     for source_topic_id in &source_ids {
-        let source_topic = find_topic_in_tx(txn, tenant_id, *source_topic_id).await?;
-        let source_translations =
-            load_topic_translations_in_tx(txn, tenant_id, source_topic.id).await?;
+        let source_topic = source_topics_by_id
+            .remove(source_topic_id)
+            .ok_or_else(|| ContentError::node_not_found(*source_topic_id))?;
+        let source_translations = source_translations_by_id
+            .remove(source_topic_id)
+            .unwrap_or_default();
         let source_locales = locales_from_topic_translations(&source_translations)?;
         merge_locales.extend(source_locales.iter().cloned());
         source_locales_by_topic.push((source_topic.id, source_locales));
-        let replies = load_forum_reply_records_in_tx(txn, tenant_id, source_topic.id).await?;
+        let replies = replies_by_topic_id
+            .remove(source_topic_id)
+            .unwrap_or_default();
         for record in &replies {
             let mut active: forum_reply::ActiveModel = record.reply.clone().into();
             active.topic_id = Set(target_topic.id);

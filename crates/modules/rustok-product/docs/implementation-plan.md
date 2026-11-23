@@ -473,7 +473,12 @@ rustok-pricing` dependency cycle.
 ## FFA/FBA status
 
 - FFA status: `in_progress` — both owner UI surfaces exist and must preserve
-  the core/transport/UI split and native/GraphQL parity.
+  the core/transport/UI split and native/GraphQL parity. The mounted Leptos
+  admin catalog now carries `page`/`per_page` through the selected native
+  SSR/hydrate and GraphQL CSR transports; owner metadata drives server
+  pagination and out-of-range deep links are normalized/retried. Quick search
+  and table-column filters remain page-local. This source change is uncompiled
+  and unexecuted; FFA remains in progress.
 - FBA status: `boundary_ready` — the owner port, in-process profile, host runtime,
   declared consumer source cutovers, external gRPC adapter, validated connection
   policy, production client wiring, service-to-service authentication, standalone

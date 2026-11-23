@@ -1,3 +1,5 @@
+use std::collections::{BTreeSet, HashMap};
+
 use chrono::Utc;
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
@@ -305,6 +307,60 @@ async fn load_rebuild_source_in_tx(
     .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))
 }
 
+async fn load_rebuild_operations_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    rebuild_operation_ids: &BTreeSet<Uuid>,
+) -> PagesResult<HashMap<Uuid, page_artifact_rebuild_operation::Model>> {
+    if rebuild_operation_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let query = || {
+        page_artifact_rebuild_operation::Entity::find()
+            .filter(page_artifact_rebuild_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_artifact_rebuild_operation::Column::PageId.eq(page_id))
+            .filter(page_artifact_rebuild_operation::Column::Id.is_in(rebuild_operation_ids.iter().copied()))
+    };
+    let models = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().all(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
+        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+    };
+    let mut map = HashMap::with_capacity(models.len());
+    for model in models {
+        map.insert(model.id, model);
+    }
+    Ok(map)
+}
+
+async fn load_rebuild_sources_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    source_ids: &BTreeSet<Uuid>,
+) -> PagesResult<HashMap<Uuid, page_publish_rebuild_source::Model>> {
+    if source_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let query = || {
+        page_publish_rebuild_source::Entity::find()
+            .filter(page_publish_rebuild_source::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_rebuild_source::Column::PageId.eq(page_id))
+            .filter(page_publish_rebuild_source::Column::Id.is_in(source_ids.iter().copied()))
+    };
+    let models = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().all(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
+        backend => return Err(PagesError::validation(format!("unsupported SeaORM database backend: {:?}", backend))),
+    };
+    let mut map = HashMap::with_capacity(models.len());
+    for model in models {
+        map.insert(model.id, model);
+    }
+    Ok(map)
+}
+
 async fn load_binding_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -555,6 +611,19 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
         ));
     }
 
+    let rebuild_ids = operations
+        .iter()
+        .map(|op| op.rebuild_operation_id)
+        .collect::<BTreeSet<_>>();
+    let prior_rebuilds =
+        load_rebuild_operations_batch_in_tx(txn, tenant_id, page_id, &rebuild_ids).await?;
+    let source_ids = prior_rebuilds
+        .values()
+        .map(|r| r.source_id)
+        .collect::<BTreeSet<_>>();
+    let prior_sources =
+        load_rebuild_sources_batch_in_tx(txn, tenant_id, page_id, &source_ids).await?;
+
     let mut cursor = anchor_version;
     let mut latest_by_locale =
         std::collections::BTreeMap::<String, (Uuid, page_artifact_rebuild_operation::Model)>::new();
@@ -580,14 +649,15 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             ));
         }
 
-        let prior_rebuild =
-            load_rebuild_operation_in_tx(txn, tenant_id, page_id, operation.rebuild_operation_id)
-                .await?;
-        verify_rebuild_receipt(&prior_rebuild)?;
-        let prior_source =
-            load_rebuild_source_in_tx(txn, tenant_id, page_id, prior_rebuild.source_id).await?;
-        verify_rebuild_source(&prior_source)?;
-        ensure_rebuild_matches_source(&prior_rebuild, &prior_source)?;
+        let prior_rebuild = prior_rebuilds
+            .get(&operation.rebuild_operation_id)
+            .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))?;
+        verify_rebuild_receipt(prior_rebuild)?;
+        let prior_source = prior_sources
+            .get(&prior_rebuild.source_id)
+            .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))?;
+        verify_rebuild_source(prior_source)?;
+        ensure_rebuild_matches_source(prior_rebuild, prior_source)?;
         if prior_rebuild.source_publish_operation_id != publish.id
             || prior_source.operation_id != publish.id
             || operation.page_body_id != prior_source.page_body_id
@@ -621,7 +691,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
 
         latest_by_locale.insert(
             operation.locale.clone(),
-            (prior_source.page_body_id, prior_rebuild),
+            (prior_source.page_body_id, prior_rebuild.clone()),
         );
         cursor = operation.result_version;
     }

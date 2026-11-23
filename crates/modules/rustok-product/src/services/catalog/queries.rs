@@ -1,6 +1,47 @@
 use super::*;
 
+const MAX_PUBLISHED_PRODUCT_SCAN_LIMIT: u64 = 500;
+
+fn validate_published_product_scan_limit(limit: u64) -> CommerceResult<u64> {
+    if !(1..=MAX_PUBLISHED_PRODUCT_SCAN_LIMIT).contains(&limit) {
+        return Err(CommerceError::Validation(
+            "published product scan limit must be between 1 and 500".to_owned(),
+        ));
+    }
+    Ok(limit)
+}
+
 impl CatalogService {
+    /// Batch scope check for SEO public-route projections. SEO's compact
+    /// projection intentionally omits Product metadata, so public consumers
+    /// must check the authoritative Product rows before returning them.
+    pub(crate) async fn visible_published_product_ids(
+        &self,
+        tenant_id: Uuid,
+        product_ids: &[Uuid],
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<HashSet<Uuid>> {
+        if product_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Id.is_in(product_ids.to_vec()))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .all(&self.db)
+            .await?;
+
+        Ok(products
+            .into_iter()
+            .filter(|product| {
+                is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+            })
+            .map(|product| product.id)
+            .collect())
+    }
+
     #[instrument(skip(self))]
     pub async fn list_published_products_with_locale_fallback(
         &self,
@@ -31,7 +72,7 @@ impl CatalogService {
         after: Option<Uuid>,
         limit: u64,
     ) -> CommerceResult<(Vec<Uuid>, Option<Uuid>)> {
-        let limit = limit.max(1);
+        let limit = validate_published_product_scan_limit(limit)?;
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
@@ -116,6 +157,7 @@ impl CatalogService {
         {
             query = query.filter(product_title_search_condition(
                 self.db.get_database_backend(),
+                tenant_id,
                 search,
             ));
         }
@@ -269,6 +311,7 @@ impl CatalogService {
                 "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
             ));
         }
+        types::validate_storefront_product_search(search)?;
         let offset = page
             .checked_sub(1)
             .and_then(|page| page.checked_mul(per_page))
@@ -293,6 +336,7 @@ impl CatalogService {
         if let Some(search) = search {
             query = query.filter(product_title_search_condition(
                 self.db.get_database_backend(),
+                tenant_id,
                 search,
             ));
         }
@@ -301,6 +345,7 @@ impl CatalogService {
         let products = query
             .order_by_desc(entities::product::Column::PublishedAt)
             .order_by_desc(entities::product::Column::CreatedAt)
+            .order_by_desc(entities::product::Column::Id)
             .offset(offset)
             .limit(per_page)
             .all(&self.db)
@@ -489,16 +534,18 @@ impl CatalogService {
 
 pub(super) fn product_title_search_condition(
     backend: sea_orm::DbBackend,
+    tenant_id: Uuid,
     search: &str,
 ) -> sea_orm::Condition {
-    let pattern = format!("%{search}%");
+    let pattern = product_title_substring_like_pattern(search);
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
             "EXISTS (
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE ?
+                  AND pt.tenant_id = ?
+                  AND pt.title LIKE ? ESCAPE '!'
             )"
         }
         _ => {
@@ -506,14 +553,18 @@ pub(super) fn product_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE $1
+                  AND pt.tenant_id = $1
+                  AND pt.title LIKE $2 ESCAPE '!'
             )"
         }
     };
 
     sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
         exists_sql,
-        vec![sea_orm::Value::from(pattern)],
+        vec![
+            sea_orm::Value::from(tenant_id),
+            sea_orm::Value::from(pattern),
+        ],
     ))
 }
 
@@ -595,5 +646,39 @@ impl CatalogService {
                 )
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod seo_scan_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn seo_scan_rejects_zero_and_unbounded_batch_sizes() {
+        assert!(validate_published_product_scan_limit(0).is_err());
+        assert_eq!(validate_published_product_scan_limit(1).unwrap(), 1);
+        assert_eq!(validate_published_product_scan_limit(500).unwrap(), 500);
+        assert!(validate_published_product_scan_limit(501).is_err());
+        assert!(validate_published_product_scan_limit(u64::MAX).is_err());
+    }
+}
+
+#[cfg(test)]
+mod product_title_search_tenant_tests {
+    use super::*;
+    use sea_orm::{DbBackend, QueryTrait};
+
+    #[test]
+    fn title_filter_uses_tenant_scoped_translation_rows_on_both_backends() {
+        let tenant_id = Uuid::new_v4();
+        for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
+            let statement = entities::product::Entity::find()
+                .filter(product_title_search_condition(backend, tenant_id, "desk"))
+                .build(backend);
+            assert!(statement.sql.contains("pt.product_id = products.id"));
+            assert!(statement.sql.contains("pt.tenant_id ="));
+            assert!(statement.sql.contains("ESCAPE '!'"));
+            assert_eq!(statement.values.as_ref().map(|v| v.0.len()), Some(2));
+        }
     }
 }

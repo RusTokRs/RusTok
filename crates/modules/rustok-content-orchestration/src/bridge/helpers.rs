@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use chrono::Utc;
 use rustok_content::{
@@ -97,6 +97,34 @@ pub(crate) async fn find_topic_in_tx(
         .ok_or_else(|| ContentError::node_not_found(topic_id))
 }
 
+pub(crate) async fn find_topics_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_ids: &[Uuid],
+) -> ContentResult<HashMap<Uuid, forum_topic::Model>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let topics = forum_topic::Entity::find()
+        .filter(forum_topic::Column::TenantId.eq(tenant_id))
+        .filter(forum_topic::Column::Id.is_in(topic_ids.iter().copied()))
+        .all(txn)
+        .await?;
+    let mut map = HashMap::with_capacity(topics.len());
+    for topic in topics {
+        map.insert(topic.id, topic);
+    }
+    for topic_id in topic_ids {
+        if !map.contains_key(topic_id) {
+            return Err(ContentError::node_not_found(*topic_id));
+        }
+    }
+    Ok(map)
+}
+
 pub(crate) async fn load_topic_translations_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -113,6 +141,29 @@ pub(crate) async fn load_topic_translations_in_tx(
         .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
         .all(txn)
         .await?)
+}
+
+pub(crate) async fn load_topic_translations_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_ids: &[Uuid],
+) -> ContentResult<HashMap<Uuid, Vec<forum_topic_translation::Model>>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let rows = forum_topic_translation::Entity::find()
+        .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
+        .filter(forum_topic_translation::Column::TopicId.is_in(topic_ids.iter().copied()))
+        .all(txn)
+        .await?;
+    let mut map = HashMap::<Uuid, Vec<forum_topic_translation::Model>>::new();
+    for row in rows {
+        map.entry(row.topic_id).or_default().push(row);
+    }
+    Ok(map)
 }
 
 pub(crate) fn resolve_topic_translation<'a>(
@@ -176,6 +227,32 @@ pub(crate) async fn load_forum_reply_records_in_tx(
         .into_iter()
         .map(|reply| ForumReplyRecord { reply })
         .collect())
+}
+
+pub(crate) async fn load_forum_reply_records_batch_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_ids: &[Uuid],
+) -> ContentResult<HashMap<Uuid, Vec<ForumReplyRecord>>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let replies = forum_reply::Entity::find()
+        .filter(forum_reply::Column::TenantId.eq(tenant_id))
+        .filter(forum_reply::Column::TopicId.is_in(topic_ids.iter().copied()))
+        .order_by_asc(forum_reply::Column::Position)
+        .all(txn)
+        .await?;
+    let mut map = HashMap::<Uuid, Vec<ForumReplyRecord>>::new();
+    for reply in replies {
+        map.entry(reply.topic_id)
+            .or_default()
+            .push(ForumReplyRecord { reply });
+    }
+    Ok(map)
 }
 
 pub(crate) async fn resequence_forum_topic_replies_in_tx(

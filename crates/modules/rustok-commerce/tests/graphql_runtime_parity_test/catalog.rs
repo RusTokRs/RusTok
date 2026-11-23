@@ -725,3 +725,115 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
         Value::from("Parity Product")
     );
 }
+
+
+#[tokio::test]
+async fn admin_catalog_graphql_applies_vendor_filter_before_pagination() {
+    let (db, catalog, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    async fn create_vendor_product(
+        catalog: &CatalogService,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        vendor: &str,
+        slug: &str,
+        sku: &str,
+    ) {
+        let mut input = create_product_input();
+        input.vendor = Some(vendor.to_string());
+        input.translations[0].title = slug.to_string();
+        input.translations[0].handle = Some(unique_slug(slug));
+        input.variants[0].sku = Some(sku.to_string());
+        catalog
+            .create_product(tenant_id, actor_id, input)
+            .await
+            .expect("vendor test product should be created");
+    }
+
+    create_vendor_product(&catalog, tenant_id, actor_id, "Acme", "Acme First", "ACME-1").await;
+    create_vendor_product(&catalog, tenant_id, actor_id, "Acme", "Acme Second", "ACME-2").await;
+    create_vendor_product(&catalog, tenant_id, actor_id, "Other", "Other Vendor", "OTHER-1").await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+
+    let first_page = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminProductCatalog(
+                tenantId: "{tenant_id}",
+                locale: "en",
+                filter: {{ vendor: "Acme", page: 1, perPage: 1 }}
+              ) {{
+                total
+                page
+                perPage
+                hasNext
+                items {{ vendor title }}
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        first_page.errors.is_empty(),
+        "vendor-filtered admin catalog query failed: {:#?}",
+        first_page.errors
+    );
+    let first_page = first_page
+        .data
+        .into_json()
+        .expect("admin catalog page should serialize");
+    assert_eq!(first_page["adminProductCatalog"]["total"], Value::from(2));
+    assert_eq!(first_page["adminProductCatalog"]["page"], Value::from(1));
+    assert_eq!(first_page["adminProductCatalog"]["perPage"], Value::from(1));
+    assert_eq!(first_page["adminProductCatalog"]["hasNext"], Value::from(true));
+    assert_eq!(
+        first_page["adminProductCatalog"]["items"][0]["vendor"],
+        Value::from("Acme")
+    );
+
+    let second_page = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminProductCatalog(
+                tenantId: "{tenant_id}",
+                locale: "en",
+                filter: {{ vendor: "Acme", page: 2, perPage: 1 }}
+              ) {{
+                total
+                page
+                perPage
+                hasNext
+                items {{ vendor title }}
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        second_page.errors.is_empty(),
+        "second vendor-filtered admin catalog page failed: {:#?}",
+        second_page.errors
+    );
+    let second_page = second_page
+        .data
+        .into_json()
+        .expect("second admin catalog page should serialize");
+    assert_eq!(second_page["adminProductCatalog"]["total"], Value::from(2));
+    assert_eq!(second_page["adminProductCatalog"]["page"], Value::from(2));
+    assert_eq!(second_page["adminProductCatalog"]["hasNext"], Value::from(false));
+    assert_eq!(
+        second_page["adminProductCatalog"]["items"][0]["vendor"],
+        Value::from("Acme")
+    );
+}

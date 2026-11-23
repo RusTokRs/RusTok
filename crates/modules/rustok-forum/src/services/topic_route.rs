@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::normalize_locale_code;
 use sea_orm::{
@@ -443,10 +445,13 @@ impl ForumTopicRouteService {
         let routes = load_topic_translation_routes_in_tx(txn, tenant_id, topic_id).await?;
         let short_id = Self::short_identity(topic_id);
         let mut inserted = 0_u32;
+        let aliases_by_route = load_all_route_aliases_for_topic(txn, tenant_id, &short_id).await?;
 
         for route in routes {
-            let aliases =
-                load_route_aliases(txn, tenant_id, &route.locale, &short_id, &route.slug).await?;
+            let empty_aliases = Vec::new();
+            let aliases = aliases_by_route
+                .get(&(route.locale.clone(), route.slug.clone()))
+                .unwrap_or(&empty_aliases);
             match aliases.as_slice() {
                 [] => {
                     Self::record_gone_alias_in_tx(
@@ -1002,6 +1007,50 @@ fn current_route_from_row(row: QueryResult) -> ForumResult<CurrentTopicRoute> {
         topic_id: row.try_get("", "topic_id")?,
         slug: row.try_get("", "slug")?,
     })
+}
+
+async fn load_all_route_aliases_for_topic<C>(
+    db: &C,
+    tenant_id: Uuid,
+    short_id: &str,
+) -> ForumResult<HashMap<(String, String), Vec<StoredTopicRouteAlias>>>
+where
+    C: ConnectionTrait,
+{
+    let statement = match db.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT alias_id, topic_id, disposition, target_topic_id, target_locale, reason, locale, slug
+            FROM forum_topic_route_aliases
+            WHERE tenant_id = $1
+              AND short_id = $2
+            ORDER BY alias_id
+            "#,
+            vec![tenant_id.into(), short_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            SELECT alias_id, topic_id, disposition, target_topic_id, target_locale, reason, locale, slug
+            FROM forum_topic_route_aliases
+            WHERE tenant_id = ?
+              AND short_id = ?
+            ORDER BY alias_id
+            "#,
+            vec![tenant_id.into(), short_id.into()],
+        ),
+        backend => return Err(unsupported_backend(backend)),
+    };
+    let rows = db.query_all_raw(statement).await?;
+    let mut map = HashMap::<(String, String), Vec<StoredTopicRouteAlias>>::new();
+    for row in rows {
+        let locale: String = row.try_get("", "locale")?;
+        let slug: String = row.try_get("", "slug")?;
+        let alias = stored_alias_from_row(row)?;
+        map.entry((locale, slug)).or_default().push(alias);
+    }
+    Ok(map)
 }
 
 async fn load_route_aliases<C>(

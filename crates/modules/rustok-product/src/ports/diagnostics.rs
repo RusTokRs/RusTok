@@ -277,18 +277,21 @@ pub(super) fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        log_product_context_rejection(
-            context,
-            owner_operation,
-            "product.tenant_id_invalid",
-            "tenant_id",
-        );
-        PortError::validation(
-            "product.tenant_id_invalid",
-            "product request context is invalid",
-        )
-    })
+    Uuid::parse_str(&context.tenant_id)
+        .ok()
+        .filter(|tenant_id| !tenant_id.is_nil())
+        .ok_or_else(|| {
+            log_product_context_rejection(
+                context,
+                owner_operation,
+                "product.tenant_id_invalid",
+                "tenant_id",
+            );
+            PortError::validation(
+                "product.tenant_id_invalid",
+                "product request context is invalid",
+            )
+        })
 }
 
 // ── Storage/variant error helpers ───────────────────────────────────
