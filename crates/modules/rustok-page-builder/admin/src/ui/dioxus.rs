@@ -59,12 +59,29 @@ impl DioxusPageBuilderAdminHostContext {
     }
 }
 
+fn same_optional_arc<T: ?Sized>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+        _ => false,
+    }
+}
+
 impl PartialEq for DioxusPageBuilderAdminHostContext {
     fn eq(&self, other: &Self) -> bool {
-        self.controller.page_id() == other.controller.page_id()
-            && self.controller.revision_id() == other.controller.revision_id()
-            && self.runtime_context == other.runtime_context
+        self.controller == other.controller
+            && same_optional_arc(&self.facade, &other.facade)
+            && same_optional_arc(&self.trait_schemas, &other.trait_schemas)
+            && same_optional_arc(&self.contribution_assembly, &other.contribution_assembly)
             && self.editor_capabilities == other.editor_capabilities
+            && same_optional_arc(
+                &self.editor_capability_evaluation,
+                &other.editor_capability_evaluation,
+            )
+            && self.runtime_context == other.runtime_context
+            && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
+            && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
+            && self.adapter_workspace == other.adapter_workspace
     }
 }
 
@@ -253,10 +270,22 @@ pub struct PageBuilderAdminWithControllerProps {
 
 impl PartialEq for PageBuilderAdminWithControllerProps {
     fn eq(&self, other: &Self) -> bool {
-        self.controller.page_id() == other.controller.page_id()
-            && self.controller.revision_id() == other.controller.revision_id()
-            && self.runtime_context == other.runtime_context
+        // A document can change repeatedly before its server revision advances.
+        // Compare the actual controller state; page ID + revision alone would
+        // suppress rerenders of unsaved edits, undo/redo and selection.
+        self.controller == other.controller
+            && same_optional_arc(&self.facade, &other.facade)
+            && same_optional_arc(&self.trait_schemas, &other.trait_schemas)
+            && same_optional_arc(&self.contribution_assembly, &other.contribution_assembly)
             && self.editor_capabilities == other.editor_capabilities
+            && same_optional_arc(
+                &self.editor_capability_evaluation,
+                &other.editor_capability_evaluation,
+            )
+            && self.runtime_context == other.runtime_context
+            && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
+            && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
+            && self.adapter_workspace == other.adapter_workspace
     }
 }
 
@@ -421,5 +450,37 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod props_regression_tests {
+    use super::*;
+    use fly::{ComponentPatch, EditorCommand};
+    use serde_json::json;
+
+    #[test]
+    fn props_detect_draft_changes_without_a_new_server_revision() {
+        let controller = AdminCanvasController::new(
+            "home", "rev-1", json!({
+                "pages": [{
+                    "id": "home",
+                    "component": { "id": "root", "type": "wrapper", "components": [{
+                        "id": "hero", "type": "text", "content": "one"
+                    }] }
+                }]
+            }),
+        ).expect("controller");
+        let original = DioxusPageBuilderAdminHostContext::new(controller);
+        let mut changed = original.clone();
+        changed.controller.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_field("content", json!("two")),
+        })).expect("edit");
+        assert_eq!(original.controller.revision_id(), changed.controller.revision_id());
+        assert_ne!(original, changed, "draft edit must trigger prop update");
+        let mut workspace = original.clone();
+        workspace.adapter_workspace = true;
+        assert_ne!(original, workspace, "mount mode must trigger prop update");
     }
 }

@@ -211,3 +211,8 @@ and execute the supplied consumer facade instead of discarding them. Publish com
 attempt-aware, and a missing facade or an invalid response reports an error. Browser previews
 record their scenario/context before sending; active preview and save lifecycle flags are owned
 by the same session. Dioxus iframe/pointer/overlay feature parity still requires implementation.
+
+Dioxus host-context/prop equality now considers the full draft controller and every relevant
+facade, contribution, runtime and workspace toggle. Previously only page ID and persisted
+revision were compared, so local edits and changes in injected providers could be treated as
+unchanged props and suppress a needed rerender. Regression coverage authored, not run.
