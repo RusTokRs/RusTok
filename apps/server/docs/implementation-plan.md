@@ -1,5 +1,22 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — producer/dispatcher shutdown ordering (2026-11-23)
+
+The host previously joined Outbox relay shutdown concurrently with module event
+dispatcher shutdown. The dispatcher could unsubscribe while the relay was
+finishing a committed Outbox delivery and waiting for the local listener
+acknowledgement. Shutdown now joins all upstream producers (including the
+cooperatively draining relay) first, then requests the dispatcher stop, and
+finally drains the event forwarder. This keeps the required listener registry
+available for accepted relay work and the forwarder available for event writes
+from a finishing dispatcher handler. A focused test holds an in-flight relay
+drain and asserts that the dispatcher remains registered until it completes.
+
+Each stage still has the existing bounded shutdown/abort fallback. Process
+loss, a deadline exceeded by an external provider, and a rejected local
+consumer remain recoverable owner-side delivery outcomes, not exactly-once
+guarantees. Regression code is authored, not compiled or executed.
+
 ## Server audit continuation — cooperative Outbox relay drain (2026-11-23)
 
 The Outbox relay supervisor previously aborted its inner `JoinSet` on every
