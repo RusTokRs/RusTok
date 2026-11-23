@@ -36,6 +36,66 @@ const SORT_KEY = 'sort';
 const ARRAY_SEPARATOR = ',';
 const DEBOUNCE_MS = 300;
 const THROTTLE_MS = 50;
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
+function columnFiltersSignature(filters: ColumnFiltersState): string {
+  return JSON.stringify(
+    [...filters].sort((left, right) => left.id.localeCompare(right.id))
+  );
+}
+
+function routeQuerySignature(query: Record<string, string>): string {
+  return JSON.stringify(
+    Object.entries(query).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function mergeTableStateIntoRouteQuery(
+  routeQuery: Record<string, string>,
+  filterValues: Record<string, string | string[] | null>,
+  page: number,
+  perPage: number,
+  defaultPageSize: number
+): Record<string, string> {
+  const query = { ...routeQuery };
+
+  for (const [key, value] of Object.entries(filterValues)) {
+    if (value === null) {
+      delete query[key];
+    } else {
+      query[key] = Array.isArray(value)
+        ? value.join(ARRAY_SEPARATOR)
+        : value;
+    }
+  }
+
+  if (page !== 1 || Object.prototype.hasOwnProperty.call(query, PAGE_KEY)) {
+    query[PAGE_KEY] = String(page);
+  } else {
+    delete query[PAGE_KEY];
+  }
+
+  if (
+    perPage !== defaultPageSize ||
+    Object.prototype.hasOwnProperty.call(query, PER_PAGE_KEY)
+  ) {
+    query[PER_PAGE_KEY] = String(perPage);
+  } else {
+    delete query[PER_PAGE_KEY];
+  }
+
+  return query;
+}
+
+function tableStateSignature(
+  page: number,
+  perPage: number,
+  sorting: SortingState,
+  filters: string
+): string {
+  return JSON.stringify([page, perPage, sorting, filters]);
+}
 
 interface UseDataTableProps<TData extends RowData = any>
   extends
@@ -62,6 +122,8 @@ interface UseDataTableProps<TData extends RowData = any>
   enableAdvancedFilter?: boolean;
   scroll?: boolean;
   shallow?: boolean;
+  /** Full server route query, including non-table filters such as Product facets. */
+  routeQuery?: Record<string, string>;
   startTransition?: React.TransitionStartFunction;
 }
 
@@ -80,6 +142,7 @@ export function useDataTable<TData extends RowData = any>(
     enableAdvancedFilter = false,
     scroll = false,
     shallow = true,
+    routeQuery,
     startTransition,
     ...tableProps
   } = props;
@@ -201,13 +264,30 @@ export function useDataTable<TData extends RowData = any>(
 
   const [filterValues, setFilterValues] = useQueryStates(filterParsers);
 
-  const debouncedSetFilterValues = useDebouncedCallback(
-    (values: typeof filterValues) => {
-      void setPage(1);
-      void setFilterValues(values);
-    },
-    debounceMs
-  );
+  const filterNavigationVersion = React.useRef(0);
+  // More than one local route write can be in flight while the server renders.
+  // Keep their signatures ordered so an older response cannot invalidate a newer edit.
+  const pendingLocalRouteSignatures = React.useRef<string[]>([]);
+  const pendingLocalColumnFilterSignature = React.useRef<string | null>(null);
+
+  // Back/Forward is observable before the App Router finishes its render.
+  // Invalidate the debounce at popstate time, not only after the new props commit.
+  useIsomorphicLayoutEffect(() => {
+    const invalidatePendingFilterNavigation = () => {
+      filterNavigationVersion.current += 1;
+      pendingLocalRouteSignatures.current = [];
+      pendingLocalColumnFilterSignature.current = null;
+    };
+    window.addEventListener(
+      'popstate',
+      invalidatePendingFilterNavigation
+    );
+    return () =>
+      window.removeEventListener(
+        'popstate',
+        invalidatePendingFilterNavigation
+      );
+  }, []);
 
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
@@ -231,6 +311,120 @@ export function useDataTable<TData extends RowData = any>(
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
+  const currentFilterSignature = columnFiltersSignature(initialColumnFilters);
+  // Nuqs updates client state before the server component receives new props.
+  // Overlay those live table keys so pending writes are reconciled immediately.
+  const currentRouteQuery = routeQuery
+    ? mergeTableStateIntoRouteQuery(
+        routeQuery,
+        filterValues,
+        page,
+        perPage,
+        initialState?.pagination?.pageSize ?? 10
+      )
+    : null;
+  const currentRouteSignature = currentRouteQuery
+    ? routeQuerySignature(currentRouteQuery)
+    : tableStateSignature(page, perPage, sorting, currentFilterSignature);
+  const debouncedSetFilterValues = useDebouncedCallback(
+    (values: typeof filterValues, version: number) => {
+      // Any route navigation invalidates callbacks scheduled against the old URL.
+      if (version !== filterNavigationVersion.current) return;
+
+      const expectedFilters = Object.entries(values)
+        .filter(([, value]) => value !== null)
+        .map(([id, value]) => ({ id, value }));
+      const expectedFilterSignature = columnFiltersSignature(expectedFilters);
+
+      let expectedRouteSignature: string;
+      if (currentRouteQuery) {
+        const expectedQuery = { ...currentRouteQuery };
+        // nuqs does not rewrite the default page when it is already selected.
+        if (
+          page !== 1 ||
+          Object.prototype.hasOwnProperty.call(expectedQuery, PAGE_KEY)
+        ) {
+          expectedQuery[PAGE_KEY] = '1';
+        }
+        for (const [key, value] of Object.entries(values)) {
+          if (value === null) {
+            delete expectedQuery[key];
+          } else {
+            expectedQuery[key] = Array.isArray(value)
+              ? value.join(ARRAY_SEPARATOR)
+              : value;
+          }
+        }
+        expectedRouteSignature = routeQuerySignature(expectedQuery);
+      } else {
+        expectedRouteSignature = tableStateSignature(
+          1,
+          perPage,
+          sorting,
+          expectedFilterSignature
+        );
+      }
+
+      const pendingRouteWrites = pendingLocalRouteSignatures.current;
+      // The server props may still describe the route before an earlier local
+      // write. Preserve an explicit return to that older signature as a later
+      // local navigation instead of mistaking its response for browser history.
+      if (
+        (expectedRouteSignature !== currentRouteSignature ||
+          pendingRouteWrites.length > 0) &&
+        pendingRouteWrites[pendingRouteWrites.length - 1] !==
+          expectedRouteSignature
+      ) {
+        pendingRouteWrites.push(expectedRouteSignature);
+      } else if (
+        expectedRouteSignature === currentRouteSignature &&
+        pendingRouteWrites.length === 0 &&
+        pendingLocalColumnFilterSignature.current === expectedFilterSignature
+      ) {
+        // A no-op URL write has no route response to acknowledge it.
+        pendingLocalColumnFilterSignature.current = null;
+      }
+
+      if (page !== 1) void setPage(1);
+      void setFilterValues(values);
+    },
+    debounceMs
+  );
+
+  // Server navigation can change facets/category/page without changing the
+  // table's own filter keys. Compare the complete route query when supplied.
+  // Local filter writes are recognized so they do not cancel a newer edit.
+  const lastUrlRouteSignature = React.useRef(currentRouteSignature);
+  useIsomorphicLayoutEffect(() => {
+    if (lastUrlRouteSignature.current !== currentRouteSignature) {
+      lastUrlRouteSignature.current = currentRouteSignature;
+      const matchedLocalNavigation =
+        pendingLocalRouteSignatures.current.indexOf(currentRouteSignature);
+      if (
+        matchedLocalNavigation !== -1 &&
+        pendingLocalColumnFilterSignature.current !== null
+      ) {
+        // A matching local response must not overwrite a newer filter edit
+        // whose debounce has not yet reached the router.
+        // This navigation supersedes every older local write. Keep only
+        // newer signatures that are still expected to reach the router.
+        pendingLocalRouteSignatures.current.splice(0, matchedLocalNavigation + 1);
+        if (
+          pendingLocalColumnFilterSignature.current ===
+          columnFiltersSignature(initialColumnFilters)
+        ) {
+          pendingLocalColumnFilterSignature.current = null;
+        }
+        return;
+      }
+
+      pendingLocalRouteSignatures.current = [];
+      pendingLocalColumnFilterSignature.current = null;
+      filterNavigationVersion.current += 1;
+      setColumnFilters(initialColumnFilters);
+    }
+  }, [currentRouteSignature, initialColumnFilters]);
+
   const onColumnFiltersChange = React.useCallback(
     (updaterOrValue: Updater<ColumnFiltersState>) => {
       if (enableAdvancedFilter) return;
@@ -240,6 +434,8 @@ export function useDataTable<TData extends RowData = any>(
           typeof updaterOrValue === 'function'
             ? updaterOrValue(prev)
             : updaterOrValue;
+
+        pendingLocalColumnFilterSignature.current = columnFiltersSignature(next);
 
         const filterUpdates = next.reduce<
           Record<string, string | string[] | null>
@@ -261,7 +457,7 @@ export function useDataTable<TData extends RowData = any>(
           }
         }
 
-        debouncedSetFilterValues(filterUpdates);
+        debouncedSetFilterValues(filterUpdates, filterNavigationVersion.current);
         return next;
       });
     },

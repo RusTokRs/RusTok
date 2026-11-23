@@ -647,3 +647,15 @@ policy/secret rotation, schema/digest/backend/concurrency/broker/restart/deploym
 full native/HTTP/GraphQL/Next/Leptos operator recovery remain pending. No historical delivery is
 fabricated; no live baseline/cutover before preflight/recovery. Tests/build/SQL/migrations/runtime
 were not executed. Source/worker presence or initial enqueue is not Index or Product step-8 readiness.
+
+## Catalog filter and facet consistency (2026-11-23; source only)
+
+Product's catalog reads now use a case-normalized title substring predicate on both
+SQLite and PostgreSQL while preserving literal wildcard escaping and the tenant
+correlation on translation rows. For attribute dictionary selections, both option
+UUID and option-code lookup enforce the same Product attribute identity, tenant,
+non-detached value and non-archived option constraints. Select/multiselect facet
+buckets use the same active-option constraints so they cannot offer an option the
+corresponding list filter will ignore. The changes affect the shared owner read
+semantics used by storefront and admin, native and GraphQL; authored regressions
+are **not run**, and SQL/runtime verification remains with the maintainer.

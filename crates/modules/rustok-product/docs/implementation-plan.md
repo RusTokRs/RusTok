@@ -514,6 +514,7 @@ rustok-pricing` dependency cycle.
   `scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`,
   `scripts/verify/verify-product-admin-boundary.mjs`,
+  `scripts/verify/product-admin-catalog-route-state.test.mjs`,
   `scripts/verify/verify-product-admin-category-sort.mjs`,
   `scripts/verify/verify-product-storefront-boundary.mjs`,
   `scripts/verify/verify-product-storefront-category-sort.mjs`,

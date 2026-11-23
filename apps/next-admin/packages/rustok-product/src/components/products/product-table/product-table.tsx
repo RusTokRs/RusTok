@@ -49,7 +49,14 @@ export function ProductTable({
         perPage={perPage}
         routeQuery={routeQuery}
       />
-      <DataTableShell data={data} columns={columns} totalItems={totalItems} />
+      <DataTableShell
+        data={data}
+        columns={columns}
+        totalItems={totalItems}
+        defaultPageSize={perPage}
+        getRowId={(product) => product.id}
+        routeQuery={routeQuery}
+      />
     </div>
   );
 }

@@ -25,6 +25,8 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
+| `P-PRODUCT-PAGED-FILTER-PUSHDOWN` | The native admin grid filtered only the currently loaded server page while pagination totals and owner results still described the full catalog. Column filters now push supported title/status/vendor predicates through the URL into the Product owner before pagination; unsupported product-type/date filters are not exposed. Source regressions are authored but not run. | [Mounted grid](../../crates/modules/rustok-product/admin/src/ui/product_grid.rs), [column contract](../../crates/modules/rustok-product/admin/src/core.rs) |
+| `P-PRODUCT-FACET-OPTION-PARITY` | Product's UUID-based option filter admitted archived or unrelated dictionary options while the code-based filter excluded archived options; facet bucket aggregation also emitted those options. Both filter forms and facet aggregation now require matching tenant, attribute, active option and value-assignment ownership. Rust source regressions were authored but not run. | [Product filter](../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs), [Product facets](../../crates/modules/rustok-product/src/services/catalog/facets.rs) |
 | `P-GENERATION-ACK-BEFORE-CACHE-EFFECT` | Tenant cache-generation recovery updated its durable checkpoint without clearing the independent effective-policy cache after missed Pub/Sub generations; ordinary in-order events also acknowledged before applying the cache effect. Recovered gaps now clear all tenant policies before checkpoint, in-order events ack after effects, invalid keys fail conservatively and all listener paths serialize. Tests authored but not run. | [Tenant generation listener](../../apps/server/src/services/tenant_cache_generation.rs), [Effective-policy cache](../../crates/modules/rustok-modules/src/policy_cache.rs) |
 | `P-LOCALE-GENERATION-TRANSITION-RACE` | Local, Redis and periodic tenant-locale listeners shared a bounded generation map and readiness flag but could concurrently read, invalidate, acknowledge and update readiness. They now share one async gate across the entire effect/ack/readiness transition. A Tokio contention regression is authored but unrun. | [Tenant locale listener](../../apps/server/src/services/tenant_locale_generation.rs), [Regression](../../apps/server/src/services/tenant_locale_generation_tests.rs) |
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
@@ -2016,3 +2018,31 @@ backpressure state.
 **Regression check:** request shutdown with queued events and a transient
 transport failure, then assert that the worker retries, persists the same
 envelope, releases all queue permits, and exits before the shutdown deadline.
+
+### P-PRODUCT-FACET-OPTION-PARITY — Attribute dictionary integrity in list filters and facets
+
+- **Category / logic dimension:** read-model correctness; preconditions, tenant integrity,
+  and parity between enumeration and selection.
+- **Observed failure:** resolving an option by UUID bypassed eligibility checked by the
+  option-code path. The bucket query counted any assignment row, even after the
+  dictionary option was archived or the option/assignment attributes disagreed.
+  A visible facet could therefore navigate to a filter returning an inconsistent result.
+- **Canonical remediation:** both resolution paths and facet enumeration JOIN the
+  owning `product_attribute_options` row, require `option.tenant_id = value.tenant_id`,
+  `option.attribute_id = value.attribute_id`, `option.archived_at IS NULL`,
+  and correlate the intermediate assignment's tenant. Keep value detach checks
+  and the original Product tenant predicate. Do not treat a foreign identifier as
+  a valid dictionary selection merely because a join row references it.
+- **Fast detection:** `rg -n "product_attribute_value_options|facet_pavo|pavo.option_id" crates/modules/rustok-product/src/services/catalog`
+  and verify every option-filter or facet branch enforces all four conditions.
+- **Verification:** test both UUID and code selections, archived and foreign
+  option assignments, and parity of selectable values with the displayed buckets.
+  The source tests added with this fix have not been executed.
+
+### P-PRODUCT-PAGED-FILTER-PUSHDOWN — Server-paginated grids must push filters into the owner query
+
+- **Category / logic dimension:** read-model correctness; query semantics and pagination order.
+- **Observed failure:** the mounted Product grid used server pagination but applied column filters to the rows already returned for the current page. The visible rows could therefore be empty while matching products existed on another page; totals and page boundaries still described the unfiltered catalog. The filter controls also diverged from the Next admin query contract.
+- **Canonical remediation:** only expose column predicates supported by the owner list query; serialize those values into route state; restore them into the grid on SSR, hydration and browser history changes; execute the owner filter before count/order/offset/limit. Do not silently emulate a server predicate by filtering one fetched page. Until an owner predicate exists, do not expose that column as filterable.
+- **Fast detection:** inspect every `DataGrid` / `DataTableShell` with server pagination and trace each filter control to the request input. Confirm that `count` and page rows share the same filter set and that the UI does not run a local-only second filter.
+- **Verification:** seed matching and nonmatching products across multiple pages; filter on page 2; verify total, last page, Back/Forward restoration, clear-all, and parity between native and GraphQL/Next transports. Tests added for this case have not been executed.

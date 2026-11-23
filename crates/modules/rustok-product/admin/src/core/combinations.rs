@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashSet};
 
 pub(crate) const MAX_CANDIDATES: usize = 4096;
 pub(crate) const PAGE_SIZE: usize = 12;
-pub(crate) const MAX_MEMBERS: usize = 256;
+pub(crate) const MAX_MEMBERS: usize = rustok_product_ports::MAX_PRODUCT_VARIANTS;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CombinationOption {
