@@ -3,7 +3,7 @@ use crate::contribution_browser_intent::PagesBrowserIntentAccessError;
 use fly_ui::EditorCapability;
 use rustok_page_builder_admin::{
     BROWSER_CAPABILITY_DENIAL_CODE, BrowserCapabilityAccessError, BrowserIntentDispatchError,
-    PageBuilderAdminFacadeError, SsrDraftSessionError,
+    MAX_DRAFT_OPERATION_RECEIPT_BYTES, PageBuilderAdminFacadeError, SsrDraftSessionError,
 };
 use serde::{Deserialize, Serialize};
 
