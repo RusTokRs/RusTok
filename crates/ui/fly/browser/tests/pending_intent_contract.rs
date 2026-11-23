@@ -50,7 +50,7 @@ fn every_non_mutating_rust_intent_is_read_only_in_the_browser_receipt_policy() {
     let read_only = &source[start..end];
     for kind in BrowserIntentKind::ALL {
         if !kind.is_mutating() {
-            let intent = format!("\\\"{}\\\"", kind.as_str());
+            let intent = format!("\"{}\"", kind.as_str());
             assert!(
                 read_only.contains(&intent),
                 "non-mutating intent `{}` must not consume durable operation receipts",
