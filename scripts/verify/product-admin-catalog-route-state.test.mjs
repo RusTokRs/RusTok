@@ -9,6 +9,10 @@ const grid = readFileSync(
   new URL('../../crates/modules/rustok-product/admin/src/ui/product_grid.rs', import.meta.url),
   'utf8'
 );
+const productAdminCore = readFileSync(
+  new URL('../../crates/modules/rustok-product/admin/src/core.rs', import.meta.url),
+  'utf8'
+);
 const filters = readFileSync(
   new URL('../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs', import.meta.url),
   'utf8'
@@ -71,4 +75,16 @@ test('Next and native admin facets agree with owner case-insensitive attribute c
   assert.match(nextFacetPanel, /function hasFacetCode\(/);
   assert.match(nextFacetPanel, /function hasFacetValue\(/);
   assert.match(nativeCatalogControls, /code\.trim\(\)\.to_ascii_lowercase\(\)/);
+});
+
+test('Leptos catalog filters are pushed down before server pagination', () => {
+  assert.match(grid, /filters=filters/);
+  assert.match(grid, /new_filters\.get\("title"\)/);
+  assert.match(grid, /new_filters\.get\("status"\)/);
+  assert.match(grid, /new_filters\.get\("vendor"\)/);
+  assert.match(grid, /filter_query_writer\.update\(/);
+  assert.doesNotMatch(grid, /filter_products\(/);
+  assert.match(productAdminCore, /assert_eq!\(filterable, vec!\["title", "vendor", "status"\]\)/);
+  assert.match(productAdminCore, /GridColumnDef::new\("product_type".*?\.not_filterable\(\)/s);
+  assert.match(productAdminCore, /GridColumnDef::new\("created_at".*?\.not_filterable\(\)/s);
 });
