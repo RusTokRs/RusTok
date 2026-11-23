@@ -231,6 +231,7 @@ export function useDataTable<TData extends RowData = any>(
   // More than one local route write can be in flight while the server renders.
   // Keep their signatures ordered so an older response cannot invalidate a newer edit.
   const pendingLocalRouteSignatures = React.useRef<string[]>([]);
+  const pendingLocalColumnFilterSignature = React.useRef<string | null>(null);
 
   // Back/Forward is observable before the App Router finishes its render.
   // Invalidate the debounce at popstate time, not only after the new props commit.
@@ -238,6 +239,7 @@ export function useDataTable<TData extends RowData = any>(
     const invalidatePendingFilterNavigation = () => {
       filterNavigationVersion.current += 1;
       pendingLocalRouteSignatures.current = [];
+      pendingLocalColumnFilterSignature.current = null;
     };
     window.addEventListener('popstate', invalidatePendingFilterNavigation);
     return () =>
@@ -333,14 +335,24 @@ export function useDataTable<TData extends RowData = any>(
       lastUrlRouteSignature.current = currentRouteSignature;
       const matchedLocalNavigation =
         pendingLocalRouteSignatures.current.indexOf(currentRouteSignature);
-      if (matchedLocalNavigation !== -1) {
-        // Remove only the response we observed. Older or newer local writes
-        // may still complete later, so their signatures must remain recognizable.
+      if (
+        matchedLocalNavigation !== -1 &&
+        pendingLocalColumnFilterSignature.current !== null
+      ) {
+        // A matching local response must not overwrite a newer filter edit
+        // whose debounce has not yet reached the router.
         pendingLocalRouteSignatures.current.splice(matchedLocalNavigation, 1);
+        if (
+          pendingLocalColumnFilterSignature.current ===
+          columnFiltersSignature(initialColumnFilters)
+        ) {
+          pendingLocalColumnFilterSignature.current = null;
+        }
         return;
       }
 
       pendingLocalRouteSignatures.current = [];
+      pendingLocalColumnFilterSignature.current = null;
       filterNavigationVersion.current += 1;
       setColumnFilters(initialColumnFilters);
     }
@@ -355,6 +367,8 @@ export function useDataTable<TData extends RowData = any>(
           typeof updaterOrValue === 'function'
             ? updaterOrValue(prev)
             : updaterOrValue;
+
+        pendingLocalColumnFilterSignature.current = columnFiltersSignature(next);
 
         const filterUpdates = next.reduce<
           Record<string, string | string[] | null>
