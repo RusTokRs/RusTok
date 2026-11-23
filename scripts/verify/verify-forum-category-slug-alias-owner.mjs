@@ -13,8 +13,10 @@ const failures = [];
 const paths = {
   route: "crates/modules/rustok-forum/src/services/category_route.rs",
   retiredAlias: "crates/modules/rustok-forum/src/services/category_route_alias.rs",
-  owner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
+  owner: "crates/modules/rustok-forum/src/services/category_owner.rs",
+  forumPort: "crates/modules/rustok-forum/src/ports/taxonomy.rs",
   forumSync: "crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs",
+  taxonomyLookup: "crates/modules/rustok-taxonomy/src/module_term_lookup.rs",
   taxonomySync: "crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs",
   migration:
     "crates/modules/rustok-forum/src/migrations/m20260806_000026_add_forum_category_route_aliases.rs",
@@ -73,8 +75,9 @@ requireText(
 );
 
 for (const marker of [
-  "TaxonomyOwnerCategoryReader",
-  "resolve_term_route_for_module(",
+  "Arc<dyn ForumTaxonomyPort>",
+  ".load_scoped_categories(",
+  ".resolve_category_route(",
   "pub alias_id: Option<Uuid>",
   "ensure_active_category",
 ]) {
@@ -90,19 +93,28 @@ for (const marker of [
   "forum_category_route_aliases",
   "load_alias_route_candidates",
   "forum_category_taxonomy_binding",
+  "rustok_taxonomy::",
 ]) {
   forbidText(source.route, marker, paths.route);
 }
 
-requireText(
-  source.forumSync,
-  "sync_module_category_with_owned_aliases_in_tx(",
-  paths.forumSync,
-);
-requireText(source.forumSync, "aliases: Vec::new()", paths.forumSync);
+for (const marker of [
+  /port\.sync_category_copy_in_tx\(\s*txn,\s*tenant_id,/,
+  "ForumTaxonomySyncCategoryInput {",
+]) {
+  requireText(source.forumSync, marker, paths.forumSync);
+}
+for (const marker of [
+  "pub trait ForumTaxonomyPort",
+  "async fn resolve_category_route(",
+  "async fn sync_category_copy_in_tx(",
+]) {
+  requireText(source.forumPort, marker, paths.forumPort);
+}
 for (const marker of [
   "forum_category_route_aliases",
   "load_aliases_for_locale_in_tx",
+  "rustok_taxonomy::",
 ]) {
   forbidText(source.forumSync, marker, paths.forumSync);
 }
@@ -113,6 +125,13 @@ for (const marker of [
   "FORUM_CATEGORY_RENAMED_ROUTE_REASON",
 ]) {
   forbidText(source.owner, marker, paths.owner);
+}
+
+for (const marker of [
+  "resolve_term_route_for_module(",
+  "route_source_alias_id(",
+]) {
+  requireText(source.taxonomyLookup, marker, paths.taxonomyLookup);
 }
 
 for (const marker of [
@@ -165,4 +184,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("forum category slug alias owner verification passed");
+console.log("Forum category route port and Taxonomy alias owner source verification passed");
