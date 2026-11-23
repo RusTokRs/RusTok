@@ -722,6 +722,22 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(all(windows, target_env = "msvc"))]
+    #[test]
+    fn isolated_build_can_find_the_msvc_linker() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let source = fixture.root.join("linker_probe.rs");
+        fs::write(&source, "fn main() {}\n")?;
+        let mut compiler = build_command("rustc", &fixture.root)?;
+        compiler
+            .args(["--crate-name", "migration_linker_probe"])
+            .arg(source)
+            .arg("-o")
+            .arg(fixture.root.join("migration_linker_probe.exe"));
+        run_process(&mut compiler, 30, 4096)?;
+        Ok(())
+    }
+
     #[test]
     #[ignore = "reads the current repository snapshot and resolves its full Cargo metadata; no workspace compilation or database execution"]
     fn current_repository_resolution_has_captured_local_inputs() -> Result<()> {

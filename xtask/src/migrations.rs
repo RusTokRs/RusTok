@@ -972,6 +972,11 @@ fn build_command(binary: &str, source: &Path) -> Result<Command> {
             command.env(key, value);
         }
     }
+    // Rust's MSVC linker discovery uses the Windows system drive.
+    #[cfg(windows)]
+    if let Some(value) = std::env::var_os("SystemDrive") {
+        command.env("SystemDrive", value);
+    }
     command.current_dir(source).env(
         "GIT_CEILING_DIRECTORIES",
         std::env::join_paths([source.parent().context("build source parent missing")?])?,

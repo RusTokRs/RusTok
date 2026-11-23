@@ -328,11 +328,11 @@ clock differences under the [migration consolidation decision](../DECISIONS/2026
 Each isolated build has a two-hour deadline to
 allow for compiling the composed module graph with a cold build cache. Build
 sources are copied outside the active Git and Cargo ancestor tree.
-Global/ancestor Cargo configuration is rejected;
-ambient build variables and credentials are cleared. The command records actual
-Cargo/Rust versions, executable artifact paths, source/plan/tool/binary digests
-and the observed database result. Build caches still come from the local Cargo
-home. Source inputs are verified again after execution, including the build
+Global and ancestor Cargo configuration is rejected. Builds use a bounded
+environment that includes `SystemDrive` on Windows for MSVC linker discovery.
+The command records Cargo and Rust versions, executable artifact paths,
+source/plan/tool/binary digests and the observed database result. Builds reuse
+the local Cargo cache. Source inputs are verified again after execution, including the build
 copies used as migration working directories. Failed runs retain a failure
 record; temporary build sources, fixture databases and roles are cleaned up.
 
@@ -358,9 +358,11 @@ not grant release authority or replace the existing source-store/publication
 owners. All 15 tests in the migration command group passed with
 `--include-ignored`, including ten build-input regressions, real Cargo metadata
 collection on an isolated fixture, and a read-only probe of the current RusToK
-workspace (1084 resolved packages, 75 captured path packages). These are finite
-resolution checks. The complete updated `verify-fresh` database/build workflow
-has not been rerun; this step does not claim fresh PostgreSQL replay evidence.
+workspace (1084 resolved packages, 75 captured path packages). The isolated
+MSVC linker probe passed on Windows. The Blog pilot ran the complete
+`verify-fresh` workflow with two separately built migration plans on PostgreSQL
+16.13. See the [consolidation guide](../docs/guides/safe-database-migrations-and-squashing.md#implementation-gates)
+for the source boundary and remaining gates.
 
 Scoped verification for this command group:
 
