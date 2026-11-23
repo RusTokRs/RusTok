@@ -776,6 +776,7 @@ async fn aggregate_facet_buckets(
     let buckets = match value_type {
         AttributeValueType::Select | AttributeValueType::Multiselect => {
             let pavo = Alias::new("facet_pavo");
+            let pao = Alias::new("facet_pao");
             query
                 .column((pavo.clone(), Alias::new("option_id")))
                 .expr_as(
@@ -789,6 +790,28 @@ async fn aggregate_facet_buckets(
                     Expr::col((pavo.clone(), Alias::new("value_id")))
                         .equals((pav.clone(), Alias::new("id"))),
                 )
+                .join_as(
+                    JoinType::InnerJoin,
+                    Alias::new("product_attribute_options"),
+                    pao.clone(),
+                    Expr::col((pao.clone(), Alias::new("id")))
+                        .equals((pavo.clone(), Alias::new("option_id"))),
+                )
+                // A facet must not advertise an archived, foreign-tenant, or
+                // different-attribute option that its own filter cannot select.
+                .and_where(
+                    Expr::col((pavo.clone(), Alias::new("tenant_id")))
+                        .equals((pav.clone(), Alias::new("tenant_id"))),
+                )
+                .and_where(
+                    Expr::col((pao.clone(), Alias::new("tenant_id")))
+                        .equals((pav.clone(), Alias::new("tenant_id"))),
+                )
+                .and_where(
+                    Expr::col((pao.clone(), Alias::new("attribute_id")))
+                        .equals((pav.clone(), Alias::new("attribute_id"))),
+                )
+                .and_where(Expr::col((pao, Alias::new("archived_at"))).is_null())
                 .group_by_col((pavo.clone(), Alias::new("option_id")))
                 .cond_where(products_condition.clone())
                 .order_by_expr(Expr::cust("product_count"), Order::Desc)
