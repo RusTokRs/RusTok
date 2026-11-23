@@ -4,6 +4,25 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+## Server audit continuation — cooperative Outbox relay drain (2026-11-23)
+
+The Outbox relay supervisor previously aborted its inner `JoinSet` on every
+graceful stop. A pass can have dispatched an event to an external transport
+and still be awaiting its durable status acknowledgement, so aborting the
+future at that point manufactures an ambiguous result and unnecessary replay.
+The inner poller now watches shutdown before each pass and while sleeping,
+then finishes any admitted `OutboxRelayPort::process_pending_once` pass before
+returning. The supervisor joins the inner poller on stop rather than aborting
+it immediately; unexpected child exits still use the existing bounded restart
+supervision. A regression constructs a real SQLite Outbox row and a blocking
+transport, requests stop during publication, and verifies that the row is
+acknowledged `dispatched` after the transport completes.
+
+This is graceful process-local shutdown, not exactly-once external delivery:
+the host's five-second forced-abort deadline, broker ambiguity, crash/restart,
+and lease expiry still require owner-side fencing and idempotent consumers.
+Test code was authored but not run; no compilation or formatting was run.
+
 ## Server audit continuation — durable worker shutdown and dispatcher recovery retry (2026-11-23)
 
 The Product Media release loop previously raced its owner batch against a stop
@@ -666,7 +685,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   shutdown **only**: email delivery remains best-effort, without a durable
   queue, retry lease, or crash recovery.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. The optional Comments TCP listener and schedule-audit handoff worker use cancellation-safe startup reservations, reject a concurrent in-flight start rather than reporting false success, recheck shutdown before task admission, and do not treat an already-exited task as live. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. HTTP installer jobs are also held in a runtime-owned `JoinSet` and drained
-before the event forwarder. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
+before the event forwarder. The Outbox relay supervisor owns and gracefully drains its inner processing task before the host's bounded forced-abort fallback. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
 - Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.
