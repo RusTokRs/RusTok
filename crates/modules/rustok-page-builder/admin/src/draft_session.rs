@@ -59,6 +59,30 @@ pub struct SsrDraftRenderBinding {
 pub const DRAFT_SESSION_RECORD_FORMAT: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// A bounded, session-owned acknowledgement of one browser intent. The response is a compact
+/// transport projection; the canonical controller remains the session's source of truth.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SsrDraftOperationReceipt {
+    pub operation_id: String,
+    pub request_hash: String,
+    pub generation: u64,
+    pub response: Value,
+}
+
+/// Result of committing an operation receipt together with its new draft generation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SsrDraftOperationCommit {
+    Committed(SsrDraftSessionSnapshot),
+    Replayed(Value),
+}
+
+/// Maximum number of distinct browser operation identities retained per draft session.
+/// Receipts are never evicted silently: once this bound is reached, writes fail closed.
+pub const MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION: usize = 1024;
+/// Operation acknowledgements are compact projections, never full document snapshots.
+pub const MAX_DRAFT_OPERATION_RECEIPT_BYTES: usize = 16 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PersistentDraftSessionRecord {
     /// Shape of this record; absent in records written before the field existed, which is the
     /// format `0` this build still reads.
@@ -76,6 +100,10 @@ pub struct PersistentDraftSessionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<DraftSessionOwner>,
     pub expires_at_unix_secs: u64,
+    /// Optional extension to format 1: old binaries ignore it, and generation CAS remains the
+    /// safety fence if a rollback drops receipt metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operation_receipts: Vec<SsrDraftOperationReceipt>,
 }
 
 impl PersistentDraftSessionRecord {
@@ -109,6 +137,40 @@ impl PersistentDraftSessionRecord {
 }
 
 pub trait SsrDraftSessionStore: Send + Sync {
+    /// Looks up an operation acknowledgement without changing the session generation.
+    /// The caller must already have authenticated and bound `token` to this page and owner.
+    fn lookup_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        let _ = (token, page_id, owner, operation_id);
+        Err(SsrDraftSessionError::OperationReceiptsUnsupported)
+    }
+
+    /// Atomically advances a live session and records the response projection under the same
+    /// operation identity. A duplicate key replays its original acknowledgement before the
+    /// generation check; a different request under the same key is rejected.
+    fn commit_with_operation_receipt(
+        &self,
+        token: &str,
+        expected_generation: u64,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+        request_hash: &str,
+        response: Value,
+    ) -> Result<SsrDraftOperationCommit, SsrDraftSessionError> {
+        let _ = (
+            token, expected_generation, controller, runtime_context, owner,
+            operation_id, request_hash, response,
+        );
+        Err(SsrDraftSessionError::OperationReceiptsUnsupported)
+    }
+
     /// Loads the session for `token` if it belongs to `page_id` and `owner`.
     ///
     /// Returns `OwnerMismatch` when the session is bound to a different
@@ -160,6 +222,59 @@ pub trait SsrDraftSessionStore: Send + Sync {
     fn prune(&self) -> Result<usize, SsrDraftSessionError>;
 }
 
+fn validate_operation_receipt_input(
+    operation_id: &str,
+    request_hash: &str,
+    response: &Value,
+) -> Result<(), SsrDraftSessionError> {
+    let valid_id = (1..=128).contains(&operation_id.len())
+        && operation_id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+        });
+    if !valid_id {
+        return Err(SsrDraftSessionError::InvalidOperationId);
+    }
+    if request_hash.len() != 64
+        || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(SsrDraftSessionError::InvalidOperationHash);
+    }
+    let bytes = serde_json::to_vec(response)
+        .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?
+        .len();
+    if bytes > MAX_DRAFT_OPERATION_RECEIPT_BYTES {
+        return Err(SsrDraftSessionError::OperationReceiptTooLarge {
+            bytes,
+            maximum: MAX_DRAFT_OPERATION_RECEIPT_BYTES,
+        });
+    }
+    Ok(())
+}
+
+fn lookup_operation_receipt(
+    receipts: &[SsrDraftOperationReceipt],
+    operation_id: &str,
+) -> Option<Value> {
+    receipts
+        .iter()
+        .find(|receipt| receipt.operation_id == operation_id)
+        .map(|receipt| receipt.response.clone())
+}
+
+fn check_operation_receipt_hash(
+    receipts: &[SsrDraftOperationReceipt],
+    operation_id: &str,
+    request_hash: &str,
+) -> Result<Option<Value>, SsrDraftSessionError> {
+    let Some(receipt) = receipts.iter().find(|receipt| receipt.operation_id == operation_id) else {
+        return Ok(None);
+    };
+    if receipt.request_hash != request_hash {
+        return Err(SsrDraftSessionError::OperationReceiptConflict);
+    }
+    Ok(Some(receipt.response.clone()))
+}
+
 #[derive(Clone)]
 pub struct InMemorySsrDraftSessionStore {
     entries: Arc<RwLock<HashMap<String, DraftEntry>>>,
@@ -199,6 +314,7 @@ struct DraftEntry {
     runtime_context: Value,
     generation: u64,
     owner: Option<DraftSessionOwner>,
+    operation_receipts: Vec<SsrDraftOperationReceipt>,
     expires_at: EntryDeadline,
 }
 
@@ -281,6 +397,7 @@ impl InMemorySsrDraftSessionStore {
                 runtime_context: snapshot.runtime_context,
                 generation: snapshot.generation,
                 owner: snapshot.owner,
+                operation_receipts: Vec::new(),
                 expires_at: EntryDeadline::new(self.deadline_from(now)),
             },
         );
@@ -442,6 +559,7 @@ impl InMemorySsrDraftSessionStore {
                 runtime_context: runtime_context.clone(),
                 generation,
                 owner: owner.cloned(),
+                operation_receipts: Vec::new(),
                 expires_at: EntryDeadline::new(self.deadline_from(now)),
             },
         );
@@ -462,6 +580,96 @@ impl Default for InMemorySsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
+    fn lookup_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let now = self.now();
+        let Some(entry) = entries.get(token.trim()).filter(|entry| entry.expires_at.get() > now) else {
+            return Ok(None);
+        };
+        if entry.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: entry.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(entry.owner.as_ref(), owner)?;
+        Ok(lookup_operation_receipt(&entry.operation_receipts, operation_id))
+    }
+
+    fn commit_with_operation_receipt(
+        &self,
+        token: &str,
+        expected_generation: u64,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+        request_hash: &str,
+        response: Value,
+    ) -> Result<SsrDraftOperationCommit, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, request_hash, &response)?;
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(SsrDraftSessionError::OperationReceiptRequiresSession);
+        }
+        let mut entries = self.entries.write().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let now = self.now();
+        Self::prune_locked(&mut entries, now);
+        let entry = entries.get_mut(token).ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        if entry.controller.page_id() != controller.page_id() {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: entry.controller.page_id().to_string(),
+                actual: controller.page_id().to_string(),
+            });
+        }
+        ensure_session_owner(entry.owner.as_ref(), owner)?;
+        if let Some(response) = check_operation_receipt_hash(
+            &entry.operation_receipts, operation_id, request_hash,
+        )? {
+            return Ok(SsrDraftOperationCommit::Replayed(response));
+        }
+        if entry.generation != expected_generation {
+            return Err(SsrDraftSessionError::GenerationConflict {
+                expected: entry.generation,
+                actual: expected_generation,
+            });
+        }
+        if entry.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            return Err(SsrDraftSessionError::OperationReceiptCapacity {
+                maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
+            });
+        }
+        let generation = entry.generation.checked_add(1)
+            .ok_or(SsrDraftSessionError::GenerationExhausted)?;
+        entry.controller = controller;
+        entry.runtime_context = runtime_context;
+        if owner.is_some() {
+            entry.owner = owner.cloned();
+        }
+        entry.generation = generation;
+        entry.operation_receipts.push(SsrDraftOperationReceipt {
+            operation_id: operation_id.to_string(),
+            request_hash: request_hash.to_string(),
+            generation,
+            response,
+        });
+        entry.expires_at = EntryDeadline::new(self.deadline_from(now));
+        Ok(SsrDraftOperationCommit::Committed(SsrDraftSessionSnapshot {
+            token: token.to_string(),
+            generation,
+            controller: entry.controller.clone(),
+            runtime_context: entry.runtime_context.clone(),
+            owner: entry.owner.clone(),
+        }))
+    }
+
     fn load(
         &self,
         token: &str,
@@ -1067,6 +1275,7 @@ impl FileSsrDraftSessionStore {
             runtime_context: snapshot.runtime_context.clone(),
             owner: snapshot.owner.clone(),
             expires_at_unix_secs: current_unix_secs().saturating_add(self.ttl.as_secs()),
+            operation_receipts: Vec::new(),
         };
         self.save_record(&record)
     }
@@ -1332,6 +1541,97 @@ impl PersistentDraftSessionBackend for FileSsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for FileSsrDraftSessionStore {
+    fn lookup_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        let Some(record) = self.load_record(token, owner)? else {
+            return Ok(None);
+        };
+        if record.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: record.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        Ok(lookup_operation_receipt(&record.operation_receipts, operation_id))
+    }
+
+    fn commit_with_operation_receipt(
+        &self,
+        token: &str,
+        expected_generation: u64,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+        request_hash: &str,
+        response: Value,
+    ) -> Result<SsrDraftOperationCommit, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, request_hash, &response)?;
+        let token = token.trim();
+        if !Self::is_safe_token(token) {
+            return Err(SsrDraftSessionError::OperationReceiptRequiresSession);
+        }
+        self.with_lock(token, || {
+            let Some((_, mut record)) = self.read_located(token, owner, TokenLock::Held)? else {
+                return Err(SsrDraftSessionError::DraftUnavailable);
+            };
+            if record.controller.page_id() != controller.page_id() {
+                return Err(SsrDraftSessionError::PageMismatch {
+                    expected: record.controller.page_id().to_string(),
+                    actual: controller.page_id().to_string(),
+                });
+            }
+            ensure_session_owner(record.owner.as_ref(), owner)?;
+            if let Some(replayed) = check_operation_receipt_hash(
+                &record.operation_receipts, operation_id, request_hash,
+            )? {
+                return Ok(SsrDraftOperationCommit::Replayed(replayed));
+            }
+            if record.generation != expected_generation {
+                return Err(SsrDraftSessionError::GenerationConflict {
+                    expected: record.generation,
+                    actual: expected_generation,
+                });
+            }
+            if record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+                return Err(SsrDraftSessionError::OperationReceiptCapacity {
+                    maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
+                });
+            }
+            let generation = record.generation.checked_add(1)
+                .ok_or(SsrDraftSessionError::GenerationExhausted)?;
+            record.generation = generation;
+            record.controller = controller;
+            record.runtime_context = runtime_context;
+            if owner.is_some() {
+                record.owner = owner.cloned();
+            }
+            record.operation_receipts.push(SsrDraftOperationReceipt {
+                operation_id: operation_id.to_string(),
+                request_hash: request_hash.to_string(),
+                generation,
+                response,
+            });
+            record.expires_at_unix_secs = current_unix_secs().saturating_add(self.ttl.as_secs());
+            let snapshot = SsrDraftSessionSnapshot {
+                token: record.token.clone(),
+                generation,
+                controller: record.controller.clone(),
+                runtime_context: record.runtime_context.clone(),
+                owner: record.owner.clone(),
+            };
+            self.save_record(&record)?;
+            Ok(SsrDraftOperationCommit::Committed(snapshot))
+        })
+    }
+
     fn load(
         &self,
         token: &str,
@@ -2012,6 +2312,9 @@ impl DurableSsrDraftSessionStore {
             runtime_context: committed.runtime_context.clone(),
             owner: committed.owner.clone(),
             expires_at_unix_secs: current_unix_secs().saturating_add(self.memory.ttl().as_secs()),
+            operation_receipts: persistent_record.as_ref()
+                .map(|record| record.operation_receipts.clone())
+                .unwrap_or_default(),
         };
         // Compare-and-set closes the TOCTOU window: another pod may have
         // committed the same generation between our load and this write
@@ -2085,6 +2388,132 @@ impl Default for DurableSsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
+    fn lookup_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        let Some(record) = self.backend.load_record(token, owner)? else {
+            return Ok(None);
+        };
+        if record.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: record.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        Ok(lookup_operation_receipt(&record.operation_receipts, operation_id))
+    }
+
+    fn commit_with_operation_receipt(
+        &self,
+        token: &str,
+        expected_generation: u64,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+        owner: Option<&DraftSessionOwner>,
+        operation_id: &str,
+        request_hash: &str,
+        response: Value,
+    ) -> Result<SsrDraftOperationCommit, SsrDraftSessionError> {
+        validate_operation_receipt_input(operation_id, request_hash, &response)?;
+        let token = token.trim();
+        if !FileSsrDraftSessionStore::is_safe_token(token) {
+            return Err(SsrDraftSessionError::OperationReceiptRequiresSession);
+        }
+        let Some(mut expected_record) = self.backend.load_record(token, owner)? else {
+            return Err(SsrDraftSessionError::DraftUnavailable);
+        };
+        if expected_record.controller.page_id() != controller.page_id() {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: expected_record.controller.page_id().to_string(),
+                actual: controller.page_id().to_string(),
+            });
+        }
+        ensure_session_owner(expected_record.owner.as_ref(), owner)?;
+        if let Some(replayed) = check_operation_receipt_hash(
+            &expected_record.operation_receipts, operation_id, request_hash,
+        )? {
+            return Ok(SsrDraftOperationCommit::Replayed(replayed));
+        }
+        if expected_record.generation != expected_generation {
+            return Err(SsrDraftSessionError::GenerationConflict {
+                expected: expected_record.generation,
+                actual: expected_generation,
+            });
+        }
+        if expected_record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            return Err(SsrDraftSessionError::OperationReceiptCapacity {
+                maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
+            });
+        }
+        let generation = expected_record.generation.checked_add(1)
+            .ok_or(SsrDraftSessionError::GenerationExhausted)?;
+        let mut new_record = expected_record.clone();
+        new_record.generation = generation;
+        new_record.controller = controller;
+        new_record.runtime_context = runtime_context;
+        if owner.is_some() {
+            new_record.owner = owner.cloned();
+        }
+        new_record.operation_receipts.push(SsrDraftOperationReceipt {
+            operation_id: operation_id.to_string(),
+            request_hash: request_hash.to_string(),
+            generation,
+            response,
+        });
+        new_record.expires_at_unix_secs =
+            current_unix_secs().saturating_add(self.memory.ttl().as_secs());
+        let snapshot = SsrDraftSessionSnapshot {
+            token: new_record.token.clone(),
+            generation,
+            controller: new_record.controller.clone(),
+            runtime_context: new_record.runtime_context.clone(),
+            owner: new_record.owner.clone(),
+        };
+        match self.backend.compare_and_save_record(Some(&expected_record), &new_record)? {
+            true => {
+                self.memory.insert_snapshot(snapshot.clone())?;
+                Ok(SsrDraftOperationCommit::Committed(snapshot))
+            }
+            false => {
+                let Some(current) = self.backend.load_record(token, owner)? else {
+                    self.memory.evict(token)?;
+                    return Err(SsrDraftSessionError::DraftUnavailable);
+                };
+                if current.controller.page_id() != controller.page_id() {
+                    return Err(SsrDraftSessionError::PageMismatch {
+                        expected: current.controller.page_id().to_string(),
+                        actual: controller.page_id().to_string(),
+                    });
+                }
+                ensure_session_owner(current.owner.as_ref(), owner)?;
+                let current_snapshot = SsrDraftSessionSnapshot {
+                    token: current.token.clone(),
+                    generation: current.generation,
+                    controller: current.controller.clone(),
+                    runtime_context: current.runtime_context.clone(),
+                    owner: current.owner.clone(),
+                };
+                self.memory.insert_snapshot(current_snapshot)?;
+                if let Some(replayed) = check_operation_receipt_hash(
+                    &current.operation_receipts, operation_id, request_hash,
+                )? {
+                    Ok(SsrDraftOperationCommit::Replayed(replayed))
+                } else {
+                    Err(SsrDraftSessionError::GenerationConflict {
+                        expected: current.generation,
+                        actual: expected_generation,
+                    })
+                }
+            }
+        }
+    }
+
     fn load(
         &self,
         token: &str,
@@ -2627,6 +3056,24 @@ pub enum SsrDraftSessionError {
     Io(String),
     #[error("SSR draft session serialization error: {0}")]
     Serialization(String),
+    #[error("SSR draft operation id is invalid")]
+    InvalidOperationId,
+    #[error("SSR draft operation request hash is invalid")]
+    InvalidOperationHash,
+    #[error("SSR draft operation id was reused with a different request")]
+    OperationReceiptConflict,
+    #[error("SSR draft operation receipt capacity of {maximum} has been reached")]
+    OperationReceiptCapacity { maximum: usize },
+    #[error("SSR draft operation receipt is {bytes} bytes, above the {maximum} byte limit")]
+    OperationReceiptTooLarge { bytes: usize, maximum: usize },
+    #[error("SSR draft store does not support durable operation receipts")]
+    OperationReceiptsUnsupported,
+    #[error("SSR draft operation receipts require an existing session")]
+    OperationReceiptRequiresSession,
+    #[error("SSR draft session generation is exhausted")]
+    GenerationExhausted,
+    #[error("SSR draft session is unavailable or expired")]
+    DraftUnavailable,
     /// The stored record was written by a build with a newer record format. The record parses, so
     /// this is not damage: it is a deployment that has to be completed (or rolled back) before
     /// the session can be served.
@@ -3708,6 +4155,7 @@ mod tests {
             runtime_context: json!({}),
             owner: None,
             expires_at_unix_secs: 4_000_000_000,
+            operation_receipts: Vec::new(),
         };
         let decoded =
             PersistentDraftSessionRecord::decode(&serde_json::to_vec(&current).expect("json"))
@@ -3788,6 +4236,7 @@ mod tests {
             runtime_context: json!({ "generation": generation }),
             owner: None,
             expires_at_unix_secs: current_unix_secs() + 3600,
+            operation_receipts: Vec::new(),
         };
 
         // Create: expected None against an absent key wins.
@@ -3837,6 +4286,7 @@ mod tests {
                 runtime_context: json!({ "generation": generation }),
                 owner,
                 expires_at_unix_secs: current_unix_secs() + 3600,
+                operation_receipts: Vec::new(),
             };
 
         // Create: expected None against an absent record wins.
