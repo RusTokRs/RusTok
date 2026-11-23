@@ -54,6 +54,12 @@ test('overlapping local filter navigations and browser history cannot replay sta
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.push\(expectedRouteSignature\)/);
   assert.match(hookSource, /pendingRouteWrites\.length > 0/);
   assert.match(hookSource, /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !== expectedRouteSignature/);
+  assert.match(hookSource, /pendingLocalColumnFilterSignature = React\.useRef<string \| null>\(null\)/);
+  assert.match(hookSource, /pendingLocalColumnFilterSignature\.current = columnFiltersSignature\(next\)/);
+  assert.match(hookSource, /pendingLocalColumnFilterSignature\.current !== null/);
+  assert.match(hookSource, /pendingLocalColumnFilterSignature\.current ===\s*columnFiltersSignature\(initialColumnFilters\)/);
+  assert.match(hookSource, /no-op URL write has no route response to acknowledge it/);
+
 
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.splice\(matchedLocalNavigation, 1\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current = \[\]/);
