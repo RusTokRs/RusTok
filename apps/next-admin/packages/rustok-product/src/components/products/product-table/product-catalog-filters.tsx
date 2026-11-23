@@ -39,7 +39,10 @@ function hasFacetCode(entry: string, code: string): boolean {
 }
 
 function hasFacetValue(entry: string, code: string, value: string): boolean {
-  return hasFacetCode(entry, code) && entry.slice(entry.indexOf('=') + 1).trim() === value;
+  return (
+    hasFacetCode(entry, code) &&
+    entry.slice(entry.indexOf('=') + 1).trim() === value
+  );
 }
 
 export function ProductCatalogFilters({
@@ -78,7 +81,9 @@ export function ProductCatalogFilters({
 
   function toggleFacetValue(code: string, value: string) {
     const entry = `${code}=${value}`;
-    const nextFilters = attributeFilters.some((item) => hasFacetValue(item, code, value))
+    const nextFilters = attributeFilters.some((item) =>
+      hasFacetValue(item, code, value)
+    )
       ? attributeFilters.filter((item) => !hasFacetValue(item, code, value))
       : [...attributeFilters, entry];
     return buildHref(nextFilters);
