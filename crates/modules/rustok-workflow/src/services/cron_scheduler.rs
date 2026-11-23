@@ -69,21 +69,26 @@ impl WorkflowCronScheduler {
             }
 
             if let Some(stop) = stop_rx.as_mut() {
-                tokio::select! {
+                // Resolve the wait before borrowing the same stop receiver for
+                // tick admission. The stop branch is biased ahead of the tick.
+                let tick_due = tokio::select! {
                     biased;
                     changed = stop.changed() => {
                         if changed.is_err() || *stop.borrow() {
                             break;
                         }
+                        false
                     }
-                    _ = interval.tick() => {
-                        if *stop.borrow() {
-                            break;
-                        }
-                        if let Err(error) = self.tick(&mut executions, Some(stop)).await {
-                            error!(%error, "CronScheduler tick error");
-                        }
-                    }
+                    _ = interval.tick() => true,
+                };
+                if !tick_due {
+                    continue;
+                }
+                if *stop.borrow() {
+                    break;
+                }
+                if let Err(error) = self.tick(&mut executions, Some(stop)).await {
+                    error!(%error, "CronScheduler tick error");
                 }
             } else {
                 interval.tick().await;
