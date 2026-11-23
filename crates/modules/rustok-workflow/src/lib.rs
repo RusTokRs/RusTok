@@ -26,6 +26,7 @@ pub mod templates;
 
 pub use dto::{
     CreateWorkflowInput, CreateWorkflowStepInput, TriggerConfig, UpdateWorkflowInput,
+    WorkflowCronReconciliationItem,
     UpdateWorkflowStepInput, WorkflowExecutionResponse, WorkflowResponse,
     WorkflowStepExecutionResponse, WorkflowStepResponse, WorkflowSummary, WorkflowVersionDetail,
     WorkflowVersionSummary,
