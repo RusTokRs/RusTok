@@ -303,6 +303,29 @@ impl From<WorkflowExecutionResponse> for GqlWorkflowExecution {
     }
 }
 
+#[derive(SimpleObject)]
+pub struct GqlWorkflowUnconfirmedExecutionItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub trigger_event_id: Option<Uuid>,
+    pub status: String,
+    pub started_at: String,
+}
+
+impl From<crate::WorkflowUnconfirmedExecutionItem> for GqlWorkflowUnconfirmedExecutionItem {
+    fn from(item: crate::WorkflowUnconfirmedExecutionItem) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            trigger_event_id: item.trigger_event_id,
+            status: item.status,
+            started_at: item.started_at.to_rfc3339(),
+        }
+    }
+}
+
 #[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
 pub enum GqlCronReconciliationDecision {
     ConfirmTerminal,
