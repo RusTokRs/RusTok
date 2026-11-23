@@ -358,7 +358,9 @@ export function useDataTable<TData extends RowData = any>(
       ) {
         // A matching local response must not overwrite a newer filter edit
         // whose debounce has not yet reached the router.
-        pendingLocalRouteSignatures.current.splice(matchedLocalNavigation, 1);
+        // This navigation supersedes every older local write. Keep only
+        // newer signatures that are still expected to reach the router.
+        pendingLocalRouteSignatures.current.splice(0, matchedLocalNavigation + 1);
         if (
           pendingLocalColumnFilterSignature.current ===
           columnFiltersSignature(initialColumnFilters)
