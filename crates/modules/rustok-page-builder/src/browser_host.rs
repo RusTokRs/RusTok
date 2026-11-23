@@ -401,6 +401,16 @@ mod tests {
     }
 
     #[test]
+    fn initial_ssr_draft_token_is_bound_to_route_before_pending_operation_recovery() {
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        assert!(source.contains("if (routeDraft === null)"));
+        assert!(source.contains("__flyWriteDraftRoute(rendered)"));
+        assert!(source.contains("boundDraft = rendered"));
+        assert!(source.contains("if (adapter.pendingOperation)"));
+        assert!(source.contains("adapter.resolvePendingOperation()"));
+    }
+
+    #[test]
     fn blank_script_nonce_is_omitted() {
         let module = page_builder_browser_module(
             "{}",
