@@ -63,14 +63,8 @@ impl WorkflowEngine {
         initial_context: Value,
     ) -> WorkflowResult<Uuid> {
         if let Some(event_id) = trigger_event_id {
-            let existing = self.event_execution_id(workflow_id, event_id).await?;
-            if let Some(existing_id) = existing {
-                info!(
-                    execution_id = %existing_id,
-                    trigger_event_id = %event_id,
-                    "Skipping duplicate workflow event delivery"
-                );
-                return Ok(existing_id);
+            if let Some(existing) = self.event_execution(workflow_id, event_id).await? {
+                return Self::replay_terminal_execution(existing, event_id);
             }
         }
 
@@ -91,14 +85,8 @@ impl WorkflowEngine {
         };
         if let Err(error) = execution.insert(&self.db).await {
             if let Some(event_id) = trigger_event_id {
-                let existing = self.event_execution_id(workflow_id, event_id).await?;
-                if let Some(existing_id) = existing {
-                    info!(
-                        execution_id = %existing_id,
-                        trigger_event_id = %event_id,
-                        "Skipping concurrent duplicate workflow event delivery"
-                    );
-                    return Ok(existing_id);
+                if let Some(existing) = self.event_execution(workflow_id, event_id).await? {
+                    return Self::replay_terminal_execution(existing, event_id);
                 }
             }
             return Err(error.into());
@@ -302,17 +290,36 @@ impl WorkflowEngine {
         Ok(execution_id)
     }
 
-    async fn event_execution_id(
+    /// A duplicate trigger is safe to replay only when the first execution
+    /// has a *terminal* durable result. A running execution may have sent an
+    /// external effect and then lost its acknowledgement; returning success
+    /// here would incorrectly acknowledge the source event as delivered.
+    fn replay_terminal_execution(
+        existing: workflow_execution::Model,
+        trigger_event_id: Uuid,
+    ) -> WorkflowResult<Uuid> {
+        if existing.status == ExecutionStatus::Running {
+            return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(existing.id));
+        }
+        info!(
+            execution_id = %existing.id,
+            trigger_event_id = %trigger_event_id,
+            status = %existing.status,
+            "Replaying terminal workflow event execution without re-running steps"
+        );
+        Ok(existing.id)
+    }
+
+    async fn event_execution(
         &self,
         workflow_id: Uuid,
         trigger_event_id: Uuid,
-    ) -> WorkflowResult<Option<Uuid>> {
+    ) -> WorkflowResult<Option<workflow_execution::Model>> {
         Ok(workflow_execution::Entity::find()
             .filter(workflow_execution::Column::WorkflowId.eq(workflow_id))
             .filter(workflow_execution::Column::TriggerEventId.eq(trigger_event_id))
             .one(&self.db)
-            .await?
-            .map(|execution| execution.id))
+            .await?)
     }
 
     async fn finish_step_execution(
