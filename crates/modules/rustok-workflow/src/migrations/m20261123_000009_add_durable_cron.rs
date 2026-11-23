@@ -78,10 +78,42 @@ impl MigrationTrait for Migration {
                 .col(Firings::ClaimedAt)
                 .to_owned()
         ).await?;
+        // Immutable operator decisions are recorded in the same transaction
+        // as a review-state transition, never in a best-effort log alone.
+        manager.create_table(
+            Table::create()
+                .table(Reviews::Table)
+                .if_not_exists()
+                .col(ColumnDef::new(Reviews::Id).uuid().not_null().primary_key())
+                .col(ColumnDef::new(Reviews::FiringId).uuid().not_null())
+                .col(ColumnDef::new(Reviews::TenantId).uuid().not_null())
+                .col(ColumnDef::new(Reviews::ActorId).uuid().not_null())
+                .col(ColumnDef::new(Reviews::Decision).string_len(32).not_null())
+                .col(ColumnDef::new(Reviews::Evidence).text().not_null())
+                .col(ColumnDef::new(Reviews::PreviousAttemptToken).uuid())
+                .col(ColumnDef::new(Reviews::CreatedAt).timestamp_with_time_zone().not_null())
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_workflow_cron_review_firing")
+                        .from(Reviews::Table, Reviews::FiringId)
+                        .to(Firings::Table, Firings::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                )
+                .to_owned()
+        ).await?;
+        manager.create_index(
+            Index::create()
+                .name("idx_workflow_cron_reviews_tenant_firing")
+                .table(Reviews::Table)
+                .col(Reviews::TenantId)
+                .col(Reviews::FiringId)
+                .to_owned()
+        ).await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.drop_table(Table::drop().table(Reviews::Table).to_owned()).await?;
         manager.drop_table(Table::drop().table(Firings::Table).to_owned()).await?;
         manager.drop_table(Table::drop().table(Cursors::Table).to_owned()).await
     }
@@ -99,4 +131,10 @@ enum Cursors {
 enum Firings {
     Table, Id, WorkflowId, TenantId, ScheduleRevision, ScheduledAt, Status,
     AttemptToken, ClaimedAt, ExecutionId, Reason, CreatedAt, CompletedAt
+}
+
+#[derive(DeriveIden)]
+enum Reviews {
+    Table, Id, FiringId, TenantId, ActorId, Decision, Evidence,
+    PreviousAttemptToken, CreatedAt,
 }
