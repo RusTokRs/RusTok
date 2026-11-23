@@ -49,3 +49,14 @@ catalog rather than only the visible page. Facet links reset the page to 1 and p
 the selected page size and unrelated filters. The facet request is bounded to the first
 eight filterable attribute codes. Option/facet transport failures degrade to empty filter
 metadata without hiding an otherwise successful product list.
+
+## Catalog URL reconciliation and selection identity (2026-11-23)
+
+The table's URL-backed filter state is reconciled on browser Back/Forward, without
+overwriting local edits on unrelated renders while a debounce is pending.
+Product rows are keyed by owner Product IDs, so a checkbox selection from one
+server page cannot be reassigned to a different Product on another page.
+The Product table explicitly receives the server-normalized page size; category,
+attribute and sort inputs remount with new URL-driven default values after
+facet navigation. These source changes and their regressions have not been
+runtime-verified.
