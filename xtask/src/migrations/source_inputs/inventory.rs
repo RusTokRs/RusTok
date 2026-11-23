@@ -15,20 +15,28 @@ use std::{
 };
 
 #[derive(Clone, Copy)]
-enum Side {
+pub(super) enum Side {
     Reference,
     Candidate,
 }
 
 impl Side {
-    fn name(self) -> &'static str {
+    pub(super) fn parse(value: &str) -> Result<Self> {
+        match value {
+            "reference" => Ok(Self::Reference),
+            "candidate" => Ok(Self::Candidate),
+            _ => bail!("--side must be reference or candidate"),
+        }
+    }
+
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Reference => "reference",
             Self::Candidate => "candidate",
         }
     }
 
-    fn source(self, plan: &Plan) -> (&str, &SourceSnapshot) {
+    pub(super) fn source(self, plan: &Plan) -> (&str, &SourceSnapshot) {
         match self {
             Self::Reference => (&plan.reference_commit, &plan.reference),
             Self::Candidate => (&plan.candidate_head, &plan.candidate),
@@ -48,9 +56,18 @@ struct FreshEvidence {
 }
 
 #[derive(Deserialize)]
-struct BuildIdentity {
-    sha256: String,
-    evidence: Value,
+pub(super) struct BuildIdentity {
+    pub(super) sha256: String,
+    pub(super) evidence: Value,
+}
+
+pub(super) struct CompletedBuild {
+    pub(super) plan: Plan,
+    pub(super) build: BuildIdentity,
+    pub(super) fresh_report_sha256: String,
+    source_plan_sha256: String,
+    inventory_sha256: String,
+    inventory: Export,
 }
 
 #[derive(Deserialize)]
@@ -99,39 +116,16 @@ pub(in crate::migrations) fn bind_inventory(
     side: &str,
     compiler_input: Option<(&Path, &str)>,
 ) -> Result<()> {
-    let side = match side {
-        "reference" => Side::Reference,
-        "candidate" => Side::Candidate,
-        _ => bail!("--side must be reference or candidate"),
-    };
-    let plan_path = root.join(plan_path).canonicalize()?;
-    let fresh = plan_path
-        .parent()
-        .context("source plan directory missing")?
-        .join("fresh");
-    let plan_bytes = read_source(&plan_path)?;
-    let plan: Plan = serde_json::from_slice(&plan_bytes).context("invalid source plan")?;
-    let (commit, source) = side.source(&plan);
-    let fresh_bytes = read_source(&fresh.join("report.json"))
-        .context("completed verify-fresh report required")?;
-    let report: FreshEvidence =
-        serde_json::from_slice(&fresh_bytes).context("invalid verify-fresh report")?;
-    let inventory_bytes = read_source(&fresh.join(format!("{}-plan.json", side.name())))
-        .context("executable migration inventory export unavailable")?;
-    let inventory_sha256 = digest(&inventory_bytes);
-    let database_bytes = read_source(&fresh.join("database-report.json"))
-        .context("completed database report required")?;
-    let build = validate_build(
-        &plan,
-        &plan_bytes,
-        &report,
-        side,
-        &inventory_sha256,
-        &database_bytes,
-    )?;
-    let inventory = read_inventory(&inventory_bytes)?;
+    let side = Side::parse(side)?;
+    let completed = read_completed_build(root, plan_path, side)?;
+    let (commit, source) = side.source(&completed.plan);
     let (declarations, declaration_bytes) = read_declarations(&root.join(inputs))?;
-    let inventory_names: BTreeSet<_> = inventory.migrations.iter().map(String::as_str).collect();
+    let inventory_names: BTreeSet<_> = completed
+        .inventory
+        .migrations
+        .iter()
+        .map(String::as_str)
+        .collect();
     for migration in declarations.keys() {
         ensure!(
             inventory_names.contains(migration.as_str()),
@@ -141,7 +135,7 @@ pub(in crate::migrations) fn bind_inventory(
     let compiler_sources = compiler_input
         .map(|(dep_info, build_root)| {
             validate_compiler_sources(
-                build,
+                &completed.build,
                 &read_source(&root.join(dep_info))?,
                 build_root,
                 &declarations,
@@ -156,21 +150,64 @@ pub(in crate::migrations) fn bind_inventory(
     );
 
     let sources = fingerprint(root, commit, &declarations)?;
-    let (entries, coverage) = bind_entries(inventory, sources.entries)?;
+    let (entries, coverage) = bind_entries(completed.inventory, sources.entries)?;
     write_report(&Report {
         schema_version: 1,
         scope: "local-executable-inventory-source-inputs",
         side: side.name(),
         commit,
         source_snapshot_sha256: &source.sha256,
-        source_plan_sha256: &report.source_plan_sha256,
-        fresh_report_sha256: digest(&fresh_bytes),
-        build_identity_sha256: &build.sha256,
-        inventory_sha256,
+        source_plan_sha256: &completed.source_plan_sha256,
+        fresh_report_sha256: completed.fresh_report_sha256,
+        build_identity_sha256: &completed.build.sha256,
+        inventory_sha256: completed.inventory_sha256,
         source_declarations_sha256: digest(&declaration_bytes),
         compiler_sources,
         coverage,
         entries,
+    })
+}
+
+pub(super) fn read_completed_build(
+    root: &Path,
+    plan_path: &Path,
+    side: Side,
+) -> Result<CompletedBuild> {
+    let plan_path = root.join(plan_path).canonicalize()?;
+    let fresh = plan_path
+        .parent()
+        .context("source plan directory missing")?
+        .join("fresh");
+    let plan_bytes = read_source(&plan_path)?;
+    let plan: Plan = serde_json::from_slice(&plan_bytes).context("invalid source plan")?;
+    let fresh_bytes = read_source(&fresh.join("report.json"))
+        .context("completed verify-fresh report required")?;
+    let mut report: FreshEvidence =
+        serde_json::from_slice(&fresh_bytes).context("invalid verify-fresh report")?;
+    let inventory_bytes = read_source(&fresh.join(format!("{}-plan.json", side.name())))
+        .context("executable migration inventory export unavailable")?;
+    let inventory_sha256 = digest(&inventory_bytes);
+    let database_bytes = read_source(&fresh.join("database-report.json"))
+        .context("completed database report required")?;
+    validate_build(
+        &plan,
+        &plan_bytes,
+        &report,
+        side,
+        &inventory_sha256,
+        &database_bytes,
+    )?;
+    let build = report
+        .build_identity
+        .remove(side.name())
+        .context("selected build identity missing")?;
+    Ok(CompletedBuild {
+        plan,
+        build,
+        fresh_report_sha256: digest(&fresh_bytes),
+        source_plan_sha256: report.source_plan_sha256,
+        inventory_sha256,
+        inventory: read_inventory(&inventory_bytes)?,
     })
 }
 

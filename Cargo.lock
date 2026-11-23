@@ -23549,6 +23549,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "diff",
+ "flate2",
  "glob",
  "hex",
  "postgres",
@@ -23563,6 +23564,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "syn 2.0.119",
+ "tar",
  "toml 1.1.6+spec-1.1.0",
  "toml_edit",
  "url",

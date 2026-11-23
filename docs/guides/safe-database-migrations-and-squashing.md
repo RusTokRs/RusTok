@@ -250,6 +250,11 @@ workspace path list to the same build identity as the exporter and inventory.
 `bind-inventory` can verify that retained list and reject declarations for
 files absent from the selected compiler observation. This recheck uses files
 from the completed run and needs no PostgreSQL replay.
+The `registry-inputs` command also reuses that build evidence to check the
+selected crates.io cache archives against the committed `Cargo.lock` and
+the extracted files against those archives. It records the cache bytes
+observed during verification. Exact external inputs used during a build and
+non-crates.io sources still require separate provenance.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
@@ -484,6 +489,14 @@ reuse the recorded results. A changed source, build, fixture, database
 environment or release boundary requires evidence for the changed inputs.
 Durable storage for the full source and report set remains part of release
 admission.
+
+`registry-inputs` reused the same reference build's dependency resolution
+and committed lockfile. All 1011 selected crates.io archives matched their
+locked checksums. All 47,106 packaged file paths and byte digests matched
+the supplied extracted cache. The result is retained under the pilot root
+as `registry-cache-reference.json` with SHA-256
+`2207bc20f110901007d2027f77f565e241f30bd42499881dc57fa8702bd3e0b8`.
+It establishes the observed cache contents for this package selection.
 
 A separate PostgreSQL 16.13 test on the current composition rolled back the
 Blog index migration, then confirmed that over-width translation data blocks

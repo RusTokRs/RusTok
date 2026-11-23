@@ -77,6 +77,23 @@ without evidence of a failure is recorded separately below.
 
 Find likely edges with `rg -n '\bmod\s+\w+\s*;|#\[path\s*=|\binclude(_str|_bytes)?!' crates/modules -g '*.rs'`.
 
+### P-CARGO-EXTRACTION-DRIFT — packaged source integrity
+
+- **Category** — Dependency provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
+- **Failure mode** — A locked `.crate` can keep the correct SHA-256 while
+  a file under Cargo's extracted `registry/src` tree changes or a new file
+  appears. In the registry verification regression, changing `src/lib.rs`
+  leaves the archive digest intact.
+- **Implementation** — Compare the committed lockfile checksum with the
+  archive bytes, then verify the packaged relative paths and file bytes in
+  the corresponding extracted tree. Reject unlisted files other than
+  Cargo's own cache marker. Record whether this is an inspection of the
+  current cache or evidence collected during the build.
+
+```sh
+cargo test --locked -p xtask --bin xtask verifies_extracted_cache_against_the_locked_archive
+```
+
 ### P-GIT-OBJECT-REPLACEMENT — immutable Git evidence
 
 - **Category** — Source provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.

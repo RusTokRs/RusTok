@@ -61,6 +61,7 @@ pub fn run(args: &[String]) -> Result<()> {
         "source-inputs" => &["--commit", "--inputs", "--compare"],
         "bind-inventory" => &["--plan", "--inputs", "--side", "--dep-info", "--build-root"],
         "discover-source-inputs" => &["--commit", "--inventory", "--dep-info", "--build-root"],
+        "registry-inputs" => &["--plan", "--registry-cache", "--side"],
         _ => bail!("unknown migration command {command}"),
     };
     let options = parse_options(&args[1..], allowed)?;
@@ -114,6 +115,12 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--dep-info")?),
             required("--build-root")?,
         ),
+        "registry-inputs" => source_inputs::registry_inputs(
+            &root,
+            Path::new(required("--plan")?),
+            Path::new(required("--registry-cache")?),
+            options.get("--side").map_or("reference", String::as_str),
+        ),
         // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
     }
@@ -127,6 +134,7 @@ fn help() -> Result<()> {
     println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
     println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate] [--dep-info FILE --build-root DIR]");
     println!("cargo xtask migrations discover-source-inputs --commit SHA --inventory FILE --dep-info FILE --build-root DIR");
+    println!("cargo xtask migrations registry-inputs --plan FILE --registry-cache DIR [--side reference|candidate]");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
     );
@@ -1060,11 +1068,14 @@ fn build_command(binary: &str, source: &Path) -> Result<Command> {
 }
 
 fn file_digest(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)?;
+    read_digest(fs::File::open(path)?)
+}
+
+fn read_digest(mut reader: impl Read) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 65536];
     loop {
-        let count = file.read(&mut buffer)?;
+        let count = reader.read(&mut buffer)?;
         if count == 0 {
             break;
         }

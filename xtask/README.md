@@ -421,6 +421,25 @@ report can still be used for inventory and Git source binding. Requesting
 compiler-source comparison with an older report fails if its build identity
 lacks the recorded observation.
 
+`registry-inputs` reuses the selected build's recorded Cargo resolution and
+verifies package bytes in a supplied Cargo registry cache. It checks the
+committed `Cargo.lock` against the build identity and each selected crates.io
+archive against its locked SHA-256. It also compares the regular files in the
+archive with the paired `registry/src` directory and rejects changed, missing
+or extra source files. Cargo's own `.cargo-ok` marker is outside the packaged
+file set. Results carry an archive digest and a path-and-bytes digest per
+package. External packages from other sources are reported as unverified.
+
+```sh
+cargo xtask migrations registry-inputs --plan target/migrations/review/plan.json --registry-cache path/to/cargo/registry/cache/INDEX
+```
+
+The command reads the current cache without building packages or starting
+PostgreSQL. Its report is tied to the completed build's dependency selection.
+A retrospective check establishes the bytes present in the supplied cache at
+verification time. Historical compiler reads, generated outputs and native
+or filesystem metadata require separate evidence.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
