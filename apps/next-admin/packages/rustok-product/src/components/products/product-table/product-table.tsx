@@ -55,6 +55,7 @@ export function ProductTable({
         totalItems={totalItems}
         defaultPageSize={perPage}
         getRowId={(product) => product.id}
+        routeQuery={routeQuery}
       />
     </div>
   );
