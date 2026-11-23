@@ -41,7 +41,15 @@ function parseAttributeFilters(value: string | string[] | undefined): string[] {
   return entries
     .flatMap((entry) => entry.split(';'))
     .map((entry) => entry.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((entry) => {
+      const equalsAt = entry.indexOf('=');
+      // The Product owner trims code and value independently. Keep the
+      // facet toggles aligned with that canonical selection grammar.
+      return equalsAt < 0
+        ? entry
+        : `${entry.slice(0, equalsAt).trim()}=${entry.slice(equalsAt + 1).trim()}`;
+    });
 }
 
 export default async function ProductPage({ searchParams }: PageProps) {
@@ -164,11 +172,26 @@ export default async function ProductPage({ searchParams }: PageProps) {
   const attributeOptions = result
     ? await listCatalogAttributeSearchOptions(opts, locale).catch(() => [])
     : [];
+  // Only eight facets can be counted per owner request. Prefer already selected
+  // attributes so their clear/toggle controls do not disappear in a large schema.
+  const selectedFacetCodes = new Set(
+    attributeFilters
+      .filter((entry) => entry.includes('='))
+      .map((entry) => entry.slice(0, entry.indexOf('=')).toLowerCase())
+  );
+  const orderedFacetCodes = [
+    ...attributeOptions
+      .filter((option) => selectedFacetCodes.has(option.value.toLowerCase()))
+      .map((option) => option.value),
+    ...attributeOptions
+      .filter((option) => !selectedFacetCodes.has(option.value.toLowerCase()))
+      .map((option) => option.value)
+  ];
   const facets = result
     ? await listAdminCatalogFacets(
         opts,
         filter,
-        attributeOptions.map((option) => option.value),
+        orderedFacetCodes,
         locale
       ).catch(() => [])
     : [];
