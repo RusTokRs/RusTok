@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const CANONICAL_SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
@@ -29,7 +30,7 @@ function parseArguments(argv) {
   return options;
 }
 
-function parseReleaseTag(tag) {
+export function parseReleaseTag(tag) {
   if (typeof tag !== "string" || !tag.startsWith("v")) {
     throw new Error("release tag must start with v");
   }
@@ -226,9 +227,11 @@ function main() {
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`release contract verification failed: ${error.message}`);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`release contract verification failed: ${error.message}`);
+    process.exit(1);
+  }
 }

@@ -186,6 +186,22 @@ Irreversible steps require a restore/forward-recovery rehearsal.
 
 ### Admit and seal
 
+The [release history resolver](../../scripts/release/resolve-release-history.mjs)
+reads every page of the official `RusTokRs/RusTok` GitHub Releases history. It
+reports the release ID, tag object and exact commit for each published stable
+release after checking immutability and GitHub's annotated-tag signature
+verification. It uses the same tag syntax as release validation. It fails on
+an empty history, inconsistent metadata or any unavailable release identity.
+
+```sh
+node scripts/release/resolve-release-history.mjs
+```
+
+The history identifies published platform releases. The migration boundary
+still requires their attested migration manifests, the independent module
+seals and any stable reservations made before a container was exposed. An
+empty GitHub history cannot substitute for an explicit bootstrap record.
+
 A local declaration check takes the ordered inventory projection of one
 composition's protected prefix and a full candidate export.
 
