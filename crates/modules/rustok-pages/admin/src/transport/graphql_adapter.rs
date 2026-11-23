@@ -313,6 +313,8 @@ struct SavePageDocumentInput {
     #[serde(rename = "expectedRevision")]
     expected_revision: String,
     body: PageBodyWriteInput,
+    #[serde(rename = "idempotencyKey", skip_serializing_if = "Option::is_none")]
+    idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -671,6 +673,21 @@ pub async fn save_page_document(
     locale: String,
     project_data: Value,
 ) -> Result<PageDetail, ApiError> {
+    save_page_document_with_key(
+        token, tenant_slug, id, expected_revision, locale, project_data, None,
+    ).await
+}
+
+/// Submit a stable request key for a replayable Pages-owned save receipt.
+pub async fn save_page_document_with_key(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    locale: String,
+    project_data: Value,
+    idempotency_key: Option<String>,
+) -> Result<PageDetail, ApiError> {
     let response: SavePageDocumentResponse = request(
         SAVE_PAGE_DOCUMENT_MUTATION,
         PageWriteVariables {
@@ -681,6 +698,7 @@ pub async fn save_page_document(
                     locale,
                     document: project_data,
                 },
+                idempotency_key,
             },
         },
         token,

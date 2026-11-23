@@ -12,6 +12,8 @@ use rustok_page_builder_admin::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
+#[cfg(feature = "ssr")]
+use sha2::{Digest, Sha256};
 
 #[cfg(feature = "ssr")]
 use async_trait::async_trait;
@@ -600,23 +602,30 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         // lost authority (for example a permission revoked during the session) as a
         // revision conflict, which invites a reload-and-retry that cannot succeed.
         ensure_document_readable(&current_page)?;
-        let current_revision = page_revision(&current_page);
-        if revision_id != current_revision {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "{REVISION_CONFLICT}: expected `{revision_id}`, current `{current_revision}`"
-            )));
-        }
-
+        // Never pre-empt the Pages receipt lookup with a stale-revision
+        // rejection. After a committed save loses its response, the persisted
+        // page revision has advanced but the original stable request ID must
+        // still recover its *original* acknowledgement. Pages enforces CAS for
+        // every genuinely new request inside its own write transaction.
         let project_data = canonicalize_builder_project(project_data)
             .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
         let locale = page_locale(&current_page, self.default_locale.clone());
-        let saved_page = transport::save_page_document(
+        let request_id = document_save_attempt_key(
+            &self.tenant_slug,
+            &self.actor_id,
+            page_id,
+            revision_id,
+            &locale,
+            &project_data,
+        );
+        let saved_page = transport::save_page_document_with_key(
             Some(self.token.clone()),
             Some(self.tenant_slug.clone()),
             page_id.to_string(),
-            current_revision,
+            revision_id.to_string(),
             locale,
             project_data.clone(),
+            Some(request_id),
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
@@ -678,6 +687,28 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
             )
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
     }
+}
+
+
+/// Stable across retries of the same canonical save, but changes when the
+/// actor, page, observed revision or document changes. PageService still
+/// verifies the full normalized payload hash before accepting a replay.
+#[cfg(feature = "ssr")]
+fn document_save_attempt_key(
+    tenant_slug: &str,
+    actor_id: &str,
+    page_id: &str,
+    observed_revision: &str,
+    locale: &str,
+    project: &Value,
+) -> String {
+    let mut digest = Sha256::new();
+    for field in [tenant_slug, actor_id, page_id, observed_revision, locale] {
+        digest.update(field.as_bytes());
+        digest.update([0]);
+    }
+    digest.update(project.to_string().as_bytes());
+    format!("fly-save-v1:{:x}", digest.finalize())
 }
 
 #[cfg(feature = "ssr")]
