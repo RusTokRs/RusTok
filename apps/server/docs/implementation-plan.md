@@ -3189,3 +3189,17 @@ if full. Ports sharing the same cache backend still serialize duplicate events.
 A regression for two independent services and two ports sharing one service
 was authored but not executed. No compilation, tests, formatting, or live
 cache checks were performed, per maintainer instruction.
+
+
+## Server audit continuation — Shutdown-aware host readiness (2026-11-23)
+
+The readiness handler relied on required worker snapshots to report the
+shutdown state. A registry-only host has no required workers, and some
+surface configurations may disable all worker checks; `/health/ready` could
+continue returning 200 while the host was already draining. Readiness now
+includes an unconditional critical `runtime_shutdown` check, sampled after
+the asynchronous dependency probes so a stop requested during a slow probe
+is also observed. Liveness (`/health/live`) is intentionally unchanged.
+A focused registry-only shutdown regression was authored, not run.
+No compilation, formatting, integration tests, or runtime verification
+were performed.

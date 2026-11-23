@@ -467,6 +467,11 @@ async fn collect_readiness(
             checks.push(check);
         }
     }
+    // This check is intentionally sampled after the awaited dependencies:
+    // a shutdown requested during a slow probe must also clear readiness.
+    // Registry-only hosts have no required background workers to reveal stop.
+    checks.push(runtime_shutdown_check(&ctx));
+
     // Stable output is useful to operators and avoids completion-order churn.
     checks.sort_by(|left, right| left.name.cmp(&right.name));
     module_checks.sort_by(|left, right| left.name.cmp(&right.name));
@@ -887,6 +892,24 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
     message.contains("no such table")
         || message.contains("undefinedtable")
         || message.contains("relation") && message.contains("does not exist")
+}
+
+fn runtime_shutdown_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
+    let stopping = ctx
+        .shared_map::<StopHandle, _>(StopHandle::is_stopping)
+        .unwrap_or(false);
+    ReadinessCheck {
+        name: "runtime_shutdown".to_string(),
+        kind: "runtime",
+        criticality: DependencyCriticality::Critical,
+        status: if stopping {
+            ReadinessStatus::Unhealthy
+        } else {
+            ReadinessStatus::Ok
+        },
+        latency_ms: 0,
+        reason: stopping.then(|| "host shutdown has been requested".to_string()),
+    }
 }
 
 fn worker_host_mode_check() -> ReadinessCheck {
@@ -1331,6 +1354,31 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
+
+    #[tokio::test]
+    async fn registry_only_readiness_rejects_shutdown_without_background_workers() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+
+        let before = runtime_shutdown_check(&ctx);
+        assert_eq!(before.criticality, DependencyCriticality::Critical);
+        assert_eq!(before.status, ReadinessStatus::Ok);
+
+        StopHandle::ensure(&ctx).stop().await;
+        let response = collect_readiness(ctx, ModuleRegistry::new()).await;
+        let shutdown = response
+            .checks
+            .iter()
+            .find(|check| check.name == "runtime_shutdown")
+            .expect("all host modes must have a shutdown readiness check");
+        assert_eq!(shutdown.status, ReadinessStatus::Unhealthy);
+        assert_eq!(response.status, ReadinessStatus::Unhealthy);
+        assert_eq!(readiness_http_status(response.status), StatusCode::SERVICE_UNAVAILABLE);
+    }
 
     #[test]
     fn runtime_worker_readiness_uses_one_canonical_check_per_worker() {

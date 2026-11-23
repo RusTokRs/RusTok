@@ -28,6 +28,18 @@ no-blind-retry and schedule revision on step edits. None were run by request.
 
 Local documentation for the main RusToK backend host application. This file captures only the live composition/runtime contract; detailed runbooks, framework notes, and rollout plans live in specialized documents inside this folder and in the central docs.
 
+### Additional 2026-11-23 host cache and readiness hardening
+
+- Pages cache event deduplication is scoped to the concrete shared backend,
+  not one process-global event-ID set. Independent host/runtime caches each
+  rotate their own generations for a repeated event; multiple ports on the
+  same backend still suppress duplicate rotations. The weak registry is
+  bounded and does not retain retired cache hosts.
+- The `/health/ready` aggregate now samples the shared shutdown signal
+  after asynchronous dependency checks in **every** host mode, including
+  registry-only and surface hosts. A stopping process responds 503 even if
+  its dependencies remain healthy and it has no required workers.
+
 ## Purpose
 
 ## Server audit continuation — Workflow-owned durable cron recovery (2026-11-23)
@@ -1456,10 +1468,3 @@ broker/restart/operator-client evidence remain open. No tests/build/SQL/runtime 
 - [Index drift source page GraphQL transport](./index-drift-source-page-graphql-transport.md)
 - [Index replay GraphQL transport](./index-replay-graphql-transport.md)
 - [Index replay GraphQL shutdown evidence](./index-replay-graphql-shutdown-evidence.md)
-
-- Pages cache event deduplication is scoped to the backend used by a
-  `CacheService`, rather than one process-global event-ID set. Two independent
-  runtime caches receiving the same event each rotate their own generations;
-  separately constructed ports over the same cache still suppress duplicate
-  rotations. The bounded weak backend registry does not keep retired hosts
-  or their dedupe state alive.
