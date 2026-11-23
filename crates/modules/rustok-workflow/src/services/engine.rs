@@ -639,6 +639,149 @@ mod durable_external_step_tests {
         }
     }
 
+    struct RetryThenStopAction {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl WorkflowStep for RetryThenStopAction {
+        fn step_type(&self) -> &'static str {
+            "action"
+        }
+
+        async fn execute(
+            &self,
+            _config: &Value,
+            context: StepContext,
+        ) -> WorkflowResult<StepOutput> {
+            let attempt = self.calls.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                Err(WorkflowError::StepFailed("transient pure step error".into()))
+            } else {
+                Ok(StepOutput::stop_with(
+                    context,
+                    serde_json::json!({"stopped_after_retry": true}),
+                ))
+            }
+        }
+    }
+
+    struct SlowAction;
+
+    #[async_trait::async_trait]
+    impl WorkflowStep for SlowAction {
+        fn step_type(&self) -> &'static str {
+            "action"
+        }
+
+        async fn execute(
+            &self,
+            _config: &Value,
+            context: StepContext,
+        ) -> WorkflowResult<StepOutput> {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            Ok(StepOutput::continue_with(context, Value::Null))
+        }
+    }
+
+    #[tokio::test]
+    async fn configured_step_timeout_is_enforced_and_invalid_bounds_are_rejected() {
+        let step_id = Uuid::new_v4();
+        let mut step = workflow_step::Model {
+            id: step_id,
+            workflow_id: Uuid::new_v4(),
+            position: 0,
+            step_type: StepType::Action,
+            config: Value::Null,
+            on_error: OnError::Stop,
+            timeout_ms: Some(1),
+        };
+        let result = execute_with_step_timeout(
+            &SlowAction, &step, StepContext::default(),
+        ).await;
+        assert!(matches!(
+            result,
+            Err(WorkflowError::StepTimedOut { step_id: id, timeout_ms: 1 })
+                if id == step_id
+        ));
+
+        for invalid in [0, -1, MAX_STEP_TIMEOUT_MS + 1] {
+            step.timeout_ms = Some(invalid);
+            assert!(matches!(
+                execute_with_step_timeout(
+                    &SlowAction, &step, StepContext::default(),
+                ).await,
+                Err(WorkflowError::InvalidStepConfig(_)),
+            ));
+        }
+        step.timeout_ms = None;
+        assert!(execute_with_step_timeout(
+            &SlowAction, &step, StepContext::default(),
+        ).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn successful_retry_honors_stop_without_executing_following_step() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now().fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Retry stop semantics".to_owned()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({"type":"manual"})),
+            created_by: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let first = workflow_step::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            workflow_id: Set(workflow_id),
+            position: Set(1),
+            step_type: Set(StepType::Action),
+            config: Set(serde_json::json!({"max_retries":1,"retry_base_ms":0})),
+            on_error: Set(OnError::Retry),
+            timeout_ms: Set(None),
+        }.insert(&db).await.unwrap();
+        let second = workflow_step::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            workflow_id: Set(workflow_id),
+            position: Set(2),
+            step_type: Set(StepType::Action),
+            config: Set(Value::Null),
+            on_error: Set(OnError::Stop),
+            timeout_ms: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut engine = WorkflowEngine::new(db.clone());
+        engine.register_step(RetryThenStopAction { calls: Arc::clone(&calls) });
+        let execution_id = engine.execute(
+            workflow_id, tenant_id, None, vec![first.clone(), second],
+            serde_json::json!({}),
+        ).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let rows = crate::entities::workflow_step_execution::Entity::find()
+            .filter(
+                crate::entities::workflow_step_execution::Column::ExecutionId.eq(execution_id),
+            )
+            .all(&db).await.unwrap();
+        assert_eq!(rows.len(), 1, "a stop after retry must not admit another step");
+        assert_eq!(rows[0].step_id, first.id);
+        assert_eq!(rows[0].status, StepExecutionStatus::Completed);
+    }
+
     #[tokio::test]
     async fn ambiguous_external_failure_never_retries_or_replays_trigger() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
