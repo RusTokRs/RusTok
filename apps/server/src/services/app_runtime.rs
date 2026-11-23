@@ -28,7 +28,7 @@ use crate::services::module_event_dispatcher::{
 };
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 use crate::services::platform_composition::PlatformCompositionService;
-use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::server_runtime_context::{ServerRuntimeContext, published_worker_running};
 use rustok_cache::CacheService;
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -167,7 +167,7 @@ pub async fn bootstrap_app_runtime(
 
         #[cfg(feature = "mod-workflow")]
         if workflow_cron_enabled(&settings) {
-            init_workflow_runtime(&runtime_ctx).await;
+            init_workflow_runtime(&runtime_ctx).await?;
         } else {
             tracing::info!(
                 host_mode = ?settings.runtime.host_mode,
@@ -230,7 +230,11 @@ async fn initialize_module_work_runtime(
     // to leave an untracked scheduler running. Cancellation releases this guard.
     let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
     let _guard = initialization.0.lock().await;
-    if ctx.shared_contains::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>() {
+    if published_worker_running::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>(
+        ctx,
+        "Module work scheduler",
+        crate::services::app_lifecycle::ModuleWorkSchedulerHandle::is_finished,
+    )? {
         return Ok(());
     }
 
@@ -405,7 +409,7 @@ fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
 }
 
 #[cfg(feature = "mod-workflow")]
-async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
+async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     use crate::services::app_lifecycle::{
         StopHandle, WorkflowCronSchedulerHandle, WorkflowCronSchedulerInitializationLock,
     };
@@ -414,8 +418,12 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
     // Serialize startup with concurrent bootstraps and shutdown's handle drain.
     let initialization = WorkflowCronSchedulerInitializationLock::ensure(ctx);
     let _guard = initialization.0.lock().await;
-    if ctx.shared_contains::<WorkflowCronSchedulerHandle>() {
-        return;
+    if published_worker_running::<WorkflowCronSchedulerHandle>(
+        ctx,
+        "Workflow cron scheduler",
+        WorkflowCronSchedulerHandle::is_finished,
+    )? {
+        return Ok(());
     }
 
     // A receiver subscribed after send_replace(true) will not observe the old
@@ -423,7 +431,7 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
     let mut stop_rx = StopHandle::ensure(ctx).subscribe();
     if *stop_rx.borrow() {
         tracing::info!("Shutdown requested; skipping workflow cron scheduler startup");
-        return;
+        return Ok(());
     }
 
     let scheduler = WorkflowCronScheduler::new(ctx.db_clone());
@@ -459,6 +467,7 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
 
     ctx.shared_insert(WorkflowCronSchedulerHandle::new(join_handle));
     tracing::info!("Workflow runtime initialized (cron scheduler)");
+    Ok(())
 }
 
 struct RateLimitLayers {
@@ -733,6 +742,39 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(2), handle.join())
             .await
             .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn finished_module_work_scheduler_cannot_satisfy_repeat_bootstrap() {
+        use crate::services::app_lifecycle::ModuleWorkSchedulerHandle;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let finished = tokio::spawn(async {});
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !finished.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("test scheduler task must finish");
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(finished));
+
+        let error = super::initialize_module_work_runtime(
+            &ctx,
+            &ModuleRegistry::new(),
+            &ModuleRuntimeExtensions::default(),
+        )
+        .await
+        .expect_err("a terminated scheduler cannot be treated as initialized");
+        assert!(error.to_string().contains("has terminated"));
+        // Preserve the failed worker handle for shutdown accounting.
+        assert!(ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        ctx.shared_take::<ModuleWorkSchedulerHandle>()
+            .unwrap()
+            .join()
+            .await
             .unwrap();
     }
 
@@ -1058,10 +1100,12 @@ mod tests {
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
 
         // Concurrent initializers must share one scheduler handle.
-        let ((), ()) = tokio::join!(
+        let (first, second) = tokio::join!(
             super::init_workflow_runtime(&ctx),
             super::init_workflow_runtime(&ctx),
         );
+        first.expect("first workflow cron initialization");
+        second.expect("idempotent workflow cron initialization");
         let instance_id = ctx
             .shared_map::<WorkflowCronSchedulerHandle, _>(WorkflowCronSchedulerHandle::instance_id)
             .expect("workflow cron scheduler should be registered");
@@ -1076,8 +1120,37 @@ mod tests {
         assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
 
         // Shutdown is terminal for this runtime context, including late startup.
-        super::init_workflow_runtime(&ctx).await;
+        super::init_workflow_runtime(&ctx).await.unwrap();
         assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
+    }
+
+    #[cfg(feature = "mod-workflow")]
+    #[tokio::test]
+    async fn finished_workflow_cron_scheduler_fails_repeat_initialization() {
+        use crate::services::app_lifecycle::WorkflowCronSchedulerHandle;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let finished = tokio::spawn(async {});
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !finished.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("test cron task must finish");
+        ctx.shared_insert(WorkflowCronSchedulerHandle::new(finished));
+
+        let error = super::init_workflow_runtime(&ctx)
+            .await
+            .expect_err("a terminated cron scheduler cannot be treated as initialized");
+        assert!(error.to_string().contains("has terminated"));
+        assert!(ctx.shared_contains::<WorkflowCronSchedulerHandle>());
+        ctx.shared_take::<WorkflowCronSchedulerHandle>()
+            .unwrap()
+            .join()
+            .await
+            .unwrap();
     }
 
     #[test]
