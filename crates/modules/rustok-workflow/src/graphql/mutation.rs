@@ -35,7 +35,7 @@ impl WorkflowMutation {
         let actor_id = auth.human_user_id()
             .ok_or_else(|| async_graphql::Error::new("An authenticated human operator is required"))?;
         let outcome = crate::services::reconcile_firing(
-            db,
+            &db,
             tenant.id,
             firing_id,
             actor_id,
