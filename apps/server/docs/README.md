@@ -4,6 +4,20 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+## Server audit continuation — Workflow cron execution supervision (2026-11-23)
+
+The previous Workflow cron scheduler detached each execution task with
+`tokio::spawn`; stopping its scheduler task did not account for accepted
+executions. Workflow now owns the spawned tasks in a `JoinSet` and provides
+`start_with_stop`. The server passes its existing host stop receiver directly
+to the Workflow owner. That owner refuses new firings after stop, also checks
+between database/step-load awaits, and drains already admitted executions
+before its scheduler JoinHandle completes. The host's five-second forced
+abort remains the outer bound; this does **not** provide distributed cron
+claims, missed-firing recovery or crash-safe execution replay. Two owner
+regressions were authored for accepted-task drain and pre-signaled stop.
+All checks remain unrun at the maintainer's request.
+
 ## Server audit continuation — producer/dispatcher shutdown ordering (2026-11-23)
 
 The host previously joined Outbox relay shutdown concurrently with module event
