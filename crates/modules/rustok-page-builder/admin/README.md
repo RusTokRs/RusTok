@@ -286,3 +286,9 @@ Dioxus now clears a pending preview's prepared lifecycle state when its consumer
 missing. Without this transition the request was never dispatched and could not receive a
 response, leaving the editor stuck reporting a preview in progress. A missing Publish facade
 still fails visibly without claiming a successful save.
+
+The Leptos AdapterWorkspacePanel now passes derived controller signals for the canonical
+project document, selected component, active page and undo/redo availability. The Fly workspace
+uses these signals in intent mode to refresh its internal view model after an edit or selection
+without remounting the entire widget (and without resetting its UI mode/viewport). The source
+of truth is still AdminCanvasController, never a parallel editor instance.

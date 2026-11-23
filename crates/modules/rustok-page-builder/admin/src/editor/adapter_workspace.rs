@@ -47,6 +47,48 @@ pub fn AdapterWorkspacePanel(
     let capabilities = runtime
         .controller
         .with(|controller| controller.ui().state.capabilities);
+
+    // The props above seed the server render. Client-side typed intents can
+    // change the authoritative controller without replacing this component.
+    // Supply reactive sources so Fly's projection receives each new draft and
+    // selection instead of rendering the first-mount state forever.
+    let controlled_document = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.editor().document().clone())
+        })
+    };
+    let controlled_selection = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.selection.component_id.clone()
+            })
+        })
+    };
+    let controlled_page = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.active_page_index())
+        })
+    };
+    let controlled_can_undo = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.capabilities.history && controller.can_undo()
+            })
+        })
+    };
+    let controlled_can_redo = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.capabilities.history && controller.can_redo()
+            })
+        })
+    };
+
     let intent_runtime = runtime.clone();
     let error_runtime = runtime.clone();
     let on_error = Callback::new(move |error: String| {
@@ -82,6 +124,11 @@ pub fn AdapterWorkspacePanel(
             messages=messages
             initial_page=initial_page
             capabilities=capabilities
+            controlled_document=Some(controlled_document)
+            controlled_selection=Some(controlled_selection)
+            controlled_page=Some(controlled_page)
+            controlled_can_undo=Some(controlled_can_undo)
+            controlled_can_redo=Some(controlled_can_redo)
             csp_nonce=csp_nonce
         />
     }
