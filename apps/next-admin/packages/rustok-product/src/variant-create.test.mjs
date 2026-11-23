@@ -19,15 +19,24 @@ import {
 import { MAX_COMBINATION_MEMBERS } from './combinations.ts';
 
 const productVariantLimits = readFileSync(
-  new URL('../../../../../crates/modules/rustok-product/ports/src/dto/mod.rs', import.meta.url),
+  new URL(
+    '../../../../../crates/modules/rustok-product/ports/src/dto/mod.rs',
+    import.meta.url
+  ),
   'utf8'
 );
 const productVariantAxisLimits = readFileSync(
-  new URL('../../../../../crates/modules/rustok-product/ports/src/dto/variant_axis.rs', import.meta.url),
+  new URL(
+    '../../../../../crates/modules/rustok-product/ports/src/dto/variant_axis.rs',
+    import.meta.url
+  ),
   'utf8'
 );
 const productCommandSource = readFileSync(
-  new URL('../../../../../crates/modules/rustok-product/src/services/catalog/commands.rs', import.meta.url),
+  new URL(
+    '../../../../../crates/modules/rustok-product/src/services/catalog/commands.rs',
+    import.meta.url
+  ),
   'utf8'
 );
 
