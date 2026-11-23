@@ -115,9 +115,10 @@ complete current tuple. Neither path bypasses the owner's live validation.
 
 Selection rechecks current source configuration, filters and full membership. Busy/blocked and
 capacity gates are checked again on click, not only when rendering a button. At 256 saved SKUs
-this bounded picker no longer prefills new rows; manual saved-SKU creation remains available.
-Above the membership bound it refuses instead of trusting a partial source. These are UI bounds,
-not a new global restriction on imports or other Product owner commands.
+this bounded picker no longer offers another row. The Product owner enforces the same 256-SKU
+ceiling for initial Product creation and standalone SKU creation, matching complete projections,
+axis reconfiguration and deletion. The separate 128-row initial-draft limit remains a client
+workflow bound; it does not lower the owner's 256-SKU capacity.
 
 ## Money, inventory and identity
 

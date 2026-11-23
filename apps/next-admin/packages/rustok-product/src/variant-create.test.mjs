@@ -13,8 +13,48 @@ import { memoryJournal, testScope } from './write-test-support.mjs';
 import {
   isVariantCreateInput,
   prepareVariantCreateInput,
-  isVariantCreateRefusalCode
+  isVariantCreateRefusalCode,
+  MAX_INVENTORY_QUANTITY,
+  MAX_PRODUCT_VARIANTS
 } from './variant-create.ts';
+import { MAX_COMBINATION_MEMBERS } from './combinations.ts';
+
+const productVariantLimits = readFileSync(
+  new URL(
+    '../../../../../crates/modules/rustok-product/ports/src/dto/mod.rs',
+    import.meta.url
+  ),
+  'utf8'
+);
+const productVariantAxisLimits = readFileSync(
+  new URL(
+    '../../../../../crates/modules/rustok-product/ports/src/dto/variant_axis.rs',
+    import.meta.url
+  ),
+  'utf8'
+);
+const productCommandSource = readFileSync(
+  new URL(
+    '../../../../../crates/modules/rustok-product/src/services/catalog/commands.rs',
+    import.meta.url
+  ),
+  'utf8'
+);
+const productInventoryPortSource = readFileSync(
+  new URL(
+    '../../../../../crates/modules/rustok-product/src/ports/inventory.rs',
+    import.meta.url
+  ),
+  'utf8'
+);
+const productVariantsCardSource = readFileSync(
+  new URL('./components/products/product-variants-card.tsx', import.meta.url),
+  'utf8'
+);
+const initialVariantDraftSource = readFileSync(
+  new URL('./variant-draft.ts', import.meta.url),
+  'utf8'
+);
 
 const id = (value) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -40,6 +80,42 @@ const confirmed = {
   value: { id: id(1), revision: null, variantId: id(4) }
 };
 const unknown = { status: 'unknown', message: 'Response lost' };
+
+test('Next SKU controls and Product owner share one bounded variant capacity', () => {
+  assert.equal(MAX_PRODUCT_VARIANTS, 256);
+  assert.equal(MAX_INVENTORY_QUANTITY, 2_147_483_647);
+  assert.equal(MAX_COMBINATION_MEMBERS, MAX_PRODUCT_VARIANTS);
+  assert.match(productVariantLimits, /pub const MAX_PRODUCT_VARIANTS: usize = 256/);
+  assert.match(
+    productVariantAxisLimits,
+    /MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS/
+  );
+  assert.match(
+    productVariantAxisLimits,
+    /MAX_STOREFRONT_PRODUCT_VARIANTS: u64 = MAX_PRODUCT_VARIANTS as u64/
+  );
+  assert.match(
+    productInventoryPortSource,
+    /MAX_CATALOG_DELETE_VARIANTS: usize = crate::dto::MAX_PRODUCT_VARIANTS/
+  );
+  assert.match(
+    productCommandSource,
+    /validate_product_variant_count\(existing_variants\.len\(\), 1\)/
+  );
+  assert.match(
+    productCommandSource,
+    /validate_product_variant_count\(0, variants\.len\(\)\)/
+  );
+  assert.match(
+    productVariantsCardSource,
+    /disabled=\{disabled \|\| v\.inventoryQuantity >= MAX_INVENTORY_QUANTITY\}/
+  );
+  assert.match(productVariantsCardSource, /qty > MAX_INVENTORY_QUANTITY/);
+  assert.match(
+    initialVariantDraftSource,
+    /variant\.inventoryQuantity > MAX_INVENTORY_QUANTITY/
+  );
+});
 
 test('preparation retains create text semantics, all fields, exact zero/decimal prices and explicit defaults', () => {
   const value = request().input;

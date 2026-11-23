@@ -71,6 +71,7 @@ import {
   Coins
 } from 'lucide-react';
 import type { ProductVariant, ProductVariantPrice } from '../../api/types';
+import { MAX_INVENTORY_QUANTITY } from '../../limits';
 
 interface PriceRowDraft {
   currencyCode: string;
@@ -259,7 +260,7 @@ export function ProductVariantsCard({
     if (
       !/^\d+$/.test(formStock) ||
       !Number.isInteger(qty) ||
-      qty > 2147483647
+      qty > MAX_INVENTORY_QUANTITY
     ) {
       setError('Inventory must be a non-negative 32-bit integer.');
       return;
@@ -503,7 +504,7 @@ export function ProductVariantsCard({
                                     inventoryQuantity: v.inventoryQuantity + 1
                                   })
                                 }
-                                disabled={disabled}
+                                disabled={disabled || v.inventoryQuantity >= MAX_INVENTORY_QUANTITY}
                                 className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
                                 title='Increase stock by 1'
                               >

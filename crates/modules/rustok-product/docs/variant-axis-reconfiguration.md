@@ -102,9 +102,12 @@ Fresh admission prepares one complete input: nullable SKU/barcode/shipping profi
 axis assignments, every supplied price/compare-at, and explicit inventory quantity/policy.
 Prices use exact nonnegative decimal strings; blank price means absent, not a zero-priced row.
 The client bounds are 100 characters per optional text field, 32 distinct axis assignments,
-64 prices, canonical decimal strings up to 64 characters, nonnegative `i32` stock, and
-`deny`/`continue` policy. Fresh creation also refuses capacity above 256 saved SKUs or another
-no-axis default. The owner remains responsible for current schema/tuple/uniqueness admission.
+64 prices and canonical decimal strings up to 64 characters. The Product owner independently
+rejects negative `i32` stock and accepts only the normalized `deny`/`continue` inventory
+policies. It enforces one shared maximum of 256 SKUs for initial and standalone creation,
+consistent with complete reads, axis reconfiguration and deletion. A no-axis Product still has
+exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
+admission.
 
 Both clients persist and read back the full request, original locale, caller key and authenticated
 tenant/actor/Product identity **before** owner IO. Unknown outcomes freeze all these fields;

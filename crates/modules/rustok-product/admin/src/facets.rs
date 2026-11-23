@@ -44,8 +44,9 @@ pub fn admin_catalog_facets_to_grid(facets: &[AdminCatalogFacet]) -> Vec<GridFac
                     multi: facet.value_type.eq_ignore_ascii_case("multiselect"),
                 }
             };
+            let canonical_code = facet.code.to_ascii_lowercase();
             let mut mapped = GridFacet::from_buckets(
-                facet.code.as_str(),
+                canonical_code.as_str(),
                 facet.label.as_str(),
                 domain,
                 facet.total_products,
@@ -158,16 +159,39 @@ pub struct ProductAdminFacetPanelView {
 pub fn build_product_admin_facet_codes(
     options: &crate::model::ProductCatalogSearchOptions,
 ) -> Vec<String> {
+    build_product_admin_facet_codes_for_filters(options, &[])
+}
+
+/// Prioritize filters that are already selected, so the eight-facet limit
+/// never hides an active facet's clear/toggle control behind unrelated options.
+pub fn build_product_admin_facet_codes_for_filters(
+    options: &crate::model::ProductCatalogSearchOptions,
+    selected_filters: &[String],
+) -> Vec<String> {
     let mut codes: Vec<String> = Vec::new();
-    for option in &options.attribute_options {
-        let code = option.value.trim();
-        if code.is_empty() || codes.iter().any(|existing| existing == code) {
-            continue;
+    for prefer_selected in [true, false] {
+        for option in &options.attribute_options {
+            let code = option.value.trim();
+            if code.is_empty()
+                || codes
+                    .iter()
+                    .any(|existing| existing.eq_ignore_ascii_case(code))
+            {
+                continue;
+            }
+            let selected = selected_filters.iter().any(|filter| {
+                filter
+                    .split_once('=')
+                    .is_some_and(|(selected_code, _)| selected_code.trim().eq_ignore_ascii_case(code))
+            });
+            if selected != prefer_selected {
+                continue;
+            }
+            if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
+                return codes;
+            }
+            codes.push(code.to_string());
         }
-        if codes.len() == MAX_PRODUCT_CATALOG_FACET_CODES {
-            break;
-        }
-        codes.push(code.to_string());
     }
     codes
 }
@@ -432,6 +456,29 @@ mod tests {
         let codes = build_product_admin_facet_codes(&options);
         assert_eq!(codes.len(), MAX_PRODUCT_CATALOG_FACET_CODES);
         assert_eq!(codes.last().map(String::as_str), Some("attribute_7"));
+    }
+
+    #[test]
+    fn selected_admin_facets_survive_the_owner_eight_code_limit() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: (0..12)
+                .map(|index| crate::model::ProductCatalogSearchOption {
+                    value: format!("attribute_{index}"),
+                    label: format!("Attribute {index}"),
+                })
+                .collect(),
+        };
+        let selected = vec![
+            " ATTRIBUTE_11 = blue ".to_string(),
+            "attribute_9=red".to_string(),
+        ];
+        let codes = build_product_admin_facet_codes_for_filters(&options, &selected);
+        assert_eq!(codes.len(), MAX_PRODUCT_CATALOG_FACET_CODES);
+        assert_eq!(codes[0], "attribute_9");
+        assert_eq!(codes[1], "attribute_11");
+        assert_eq!(codes[2], "attribute_0");
+        assert!(!codes.contains(&"attribute_7".to_string()));
     }
 
     #[test]

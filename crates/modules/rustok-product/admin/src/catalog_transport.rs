@@ -20,11 +20,9 @@ pub(crate) use crate::transport::graphql_fallback_mutations::{
     create_product_attribute_schema_group, set_category_schema_mode,
 };
 
-use leptos::prelude::*;
 use rustok_graphql::GraphqlHttpError;
-use rustok_ui_core::UiRouteContext;
 
-use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
+use crate::catalog_controls::ProductAdminListInput;
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
     ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
@@ -90,66 +88,6 @@ impl CatalogSearchOptionsErrorContext {
 
         PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE.to_string()
     }
-}
-
-/// Route-query controls snapshot for the admin catalog list.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProductAdminRouteControls {
-    pub vendor: Option<String>,
-    pub category_id: Option<String>,
-    pub sort_by: Option<String>,
-    pub sort_direction: Option<String>,
-    pub attribute_filters: Option<String>,
-    pub page: Option<String>,
-    pub per_page: Option<String>,
-}
-
-impl ProductAdminRouteControls {
-    pub(crate) fn from_route_context(route_context: &UiRouteContext) -> Self {
-        Self {
-            vendor: route_context
-                .query_value("vendor")
-                .map(ToString::to_string),
-            category_id: route_context
-                .query_value("category_id")
-                .map(ToString::to_string),
-            sort_by: route_context
-                .query_value("sort_by")
-                .map(ToString::to_string),
-            sort_direction: route_context
-                .query_value("sort_direction")
-                .map(ToString::to_string),
-            attribute_filters: route_context
-                .query_value("attribute_filters")
-                .map(ToString::to_string),
-            page: route_context.query_value("page").map(ToString::to_string),
-            per_page: route_context.query_value("per_page").map(ToString::to_string),
-        }
-    }
-}
-
-/// Resolves the catalog list input for the mounted list page.
-///
-/// The page provides its normalized controls through context; when the page
-/// relies on the URL instead, the route query is normalized into the same
-/// [`ProductAdminListInput`] contract.
-pub(crate) fn product_admin_list_input_from_route() -> ProductAdminListInput {
-    if let Some(provided) = use_context::<ProductAdminListInput>() {
-        return provided;
-    }
-    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let route_controls = ProductAdminRouteControls::from_route_context(&route_context);
-    build_product_admin_list_input(
-        None,
-        None,
-        route_controls.category_id,
-        route_controls.sort_by,
-        route_controls.sort_direction,
-        route_controls.attribute_filters,
-        route_controls.page,
-        route_controls.per_page,
-    )
-    .with_vendor(route_controls.vendor)
 }
 
 pub(crate) async fn fetch_bootstrap(

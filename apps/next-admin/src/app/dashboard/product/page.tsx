@@ -38,10 +38,19 @@ function pickParam(value: string | string[] | undefined): string | undefined {
 
 function parseAttributeFilters(value: string | string[] | undefined): string[] {
   const entries = Array.isArray(value) ? value : value ? [value] : [];
-  return entries
+  const normalized = entries
     .flatMap((entry) => entry.split(';'))
     .map((entry) => entry.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((entry) => {
+      const equalsAt = entry.indexOf('=');
+      // The Product owner trims code and value independently. Keep the
+      // facet toggles aligned with that canonical selection grammar.
+      return equalsAt < 0
+        ? entry
+        : `${entry.slice(0, equalsAt).trim().toLowerCase()}=${entry.slice(equalsAt + 1).trim()}`;
+    });
+  return [...new Set(normalized)];
 }
 
 export default async function ProductPage({ searchParams }: PageProps) {
@@ -54,10 +63,70 @@ export default async function ProductPage({ searchParams }: PageProps) {
     perPage: rawPerPage
   });
   const rawStatus = pickParam(params.status);
-  const canonicalStatus = normalizeProductStatus(rawStatus)?.toLowerCase();
-  // The shared DataTableShell reads page and perPage from the URL. Canonicalize
-  // invalid external links before rendering so its pagination matches the
-  // Product owner's bounded GraphQL request.
+  const trimmedStatus = rawStatus?.trim() ?? '';
+  const canonicalStatus = normalizeProductStatus(trimmedStatus)?.toLowerCase();
+  const hasNonCanonicalStatus =
+    params.status !== undefined &&
+    (Array.isArray(params.status) && params.status.length !== 1
+      ? true
+      : !trimmedStatus ||
+        rawStatus !== trimmedStatus ||
+        trimmedStatus !== (canonicalStatus ?? ''));
+  const rawTitle = pickParam(params.title);
+  const rawSearch = pickParam(params.search);
+  const trimmedTitle = rawTitle?.trim() ?? '';
+  const search = trimmedTitle || rawSearch?.trim() || undefined;
+  const hasNonCanonicalTitle =
+    params.title !== undefined &&
+    (Array.isArray(params.title) && params.title.length !== 1
+      ? true
+      : !trimmedTitle ||
+        rawTitle !== trimmedTitle ||
+        trimmedTitle !== (search ?? ''));
+  const hasLegacySearch = params.search !== undefined;
+  const rawVendor = pickParam(params.vendor);
+  const vendor = rawVendor?.trim() || undefined;
+  const hasNonCanonicalVendor =
+    params.vendor !== undefined &&
+    (Array.isArray(params.vendor) && params.vendor.length !== 1
+      ? true
+      : !vendor || rawVendor !== vendor);
+  const rawCategoryId = pickParam(params.category_id);
+  const categoryId = rawCategoryId?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalCategoryId =
+    params.category_id !== undefined &&
+    (Array.isArray(params.category_id) && params.category_id.length !== 1
+      ? true
+      : !categoryId || rawCategoryId !== categoryId);
+  const rawSortBy = pickParam(params.sort_by);
+  const sortBy = rawSortBy?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalSortBy =
+    params.sort_by !== undefined &&
+    (Array.isArray(params.sort_by) && params.sort_by.length !== 1
+      ? true
+      : !sortBy || rawSortBy !== sortBy);
+  const rawSortDirection = pickParam(params.sort_direction);
+  const sortDirection = rawSortDirection?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalSortDirection =
+    params.sort_direction !== undefined &&
+    (Array.isArray(params.sort_direction) && params.sort_direction.length !== 1
+      ? true
+      : !sortDirection || rawSortDirection !== sortDirection);
+  const rawAttributeFilters = Array.isArray(params.attribute_filters)
+    ? params.attribute_filters.join(';')
+    : params.attribute_filters ?? '';
+  const attributeFilters = parseAttributeFilters(params.attribute_filters);
+  const canonicalAttributeFilters = attributeFilters.join(';');
+  const hasNonCanonicalAttributeFilters =
+    params.attribute_filters !== undefined &&
+    ((Array.isArray(params.attribute_filters) &&
+      params.attribute_filters.length !== 1) ||
+      !canonicalAttributeFilters ||
+      rawAttributeFilters !== canonicalAttributeFilters);
+
+  // Canonicalize route-owned filters before hydration. The table owns `title`,
+  // while older links may still use `search`; facets, sorting and column
+  // filters must all describe the same owner query after this boundary.
   if (
     (rawPage !== undefined &&
       (rawPage.trim() !== String(page) ||
@@ -65,9 +134,14 @@ export default async function ProductPage({ searchParams }: PageProps) {
     (rawPerPage !== undefined &&
       (rawPerPage.trim() !== String(perPage) ||
         (Array.isArray(params.perPage) && params.perPage.length !== 1))) ||
-    (rawStatus !== undefined &&
-      (rawStatus.trim() !== (canonicalStatus ?? '') ||
-        (Array.isArray(params.status) && params.status.length !== 1)))
+    hasNonCanonicalStatus ||
+    hasNonCanonicalTitle ||
+    hasLegacySearch ||
+    hasNonCanonicalVendor ||
+    hasNonCanonicalCategoryId ||
+    hasNonCanonicalSortBy ||
+    hasNonCanonicalSortDirection ||
+    hasNonCanonicalAttributeFilters
   ) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -84,18 +158,40 @@ export default async function ProductPage({ searchParams }: PageProps) {
     } else {
       query.delete('status');
     }
+    if (search) {
+      query.set('title', search);
+    } else {
+      query.delete('title');
+    }
+    query.delete('search');
+    if (vendor) {
+      query.set('vendor', vendor);
+    } else {
+      query.delete('vendor');
+    }
+    if (categoryId) {
+      query.set('category_id', categoryId);
+    } else {
+      query.delete('category_id');
+    }
+    if (sortBy) {
+      query.set('sort_by', sortBy);
+    } else {
+      query.delete('sort_by');
+    }
+    if (sortDirection) {
+      query.set('sort_direction', sortDirection);
+    } else {
+      query.delete('sort_direction');
+    }
+    if (canonicalAttributeFilters) {
+      query.set('attribute_filters', canonicalAttributeFilters);
+    } else {
+      query.delete('attribute_filters');
+    }
     redirect(`/dashboard/product?${query.toString()}`);
   }
-  const search =
-    pickParam(params.title)?.trim() ||
-    pickParam(params.search)?.trim() ||
-    undefined;
   const status = canonicalStatus;
-  const vendor = pickParam(params.vendor)?.trim() || undefined;
-  const categoryId = pickParam(params.category_id)?.trim() || undefined;
-  const sortBy = pickParam(params.sort_by)?.trim() || undefined;
-  const sortDirection = pickParam(params.sort_direction)?.trim() || undefined;
-  const attributeFilters = parseAttributeFilters(params.attribute_filters);
 
   const opts = {
     graphql: graphqlRequest,
@@ -164,11 +260,26 @@ export default async function ProductPage({ searchParams }: PageProps) {
   const attributeOptions = result
     ? await listCatalogAttributeSearchOptions(opts, locale).catch(() => [])
     : [];
+  // Only eight facets can be counted per owner request. Prefer already selected
+  // attributes so their clear/toggle controls do not disappear in a large schema.
+  const selectedFacetCodes = new Set(
+    attributeFilters
+      .filter((entry) => entry.includes('='))
+      .map((entry) => entry.slice(0, entry.indexOf('=')).toLowerCase())
+  );
+  const orderedFacetCodes = [
+    ...attributeOptions
+      .filter((option) => selectedFacetCodes.has(option.value.toLowerCase()))
+      .map((option) => option.value),
+    ...attributeOptions
+      .filter((option) => !selectedFacetCodes.has(option.value.toLowerCase()))
+      .map((option) => option.value)
+  ];
   const facets = result
     ? await listAdminCatalogFacets(
         opts,
         filter,
-        attributeOptions.map((option) => option.value),
+        orderedFacetCodes,
         locale
       ).catch(() => [])
     : [];
