@@ -60,3 +60,12 @@ The Product table explicitly receives the server-normalized page size; category,
 attribute and sort inputs remount with new URL-driven default values after
 facet navigation. These source changes and their regressions have not been
 runtime-verified.
+
+## Facet selection consistency (2026-11-23; source only)
+
+The Next catalog normalizes `code=value` whitespace at the URL read boundary,
+matching the Product owner's parser, so a manually typed selection can be
+recognized and removed with the counted facet toggle. The maximum eight
+enumerated facets favor attributes with current selections before otherwise
+eligible options, keeping their clear controls visible in large schemas.
+Source regression guards are authored; runtime tests were not executed.
