@@ -28,6 +28,23 @@ no-blind-retry and schedule revision on step edits. None were run by request.
 
 Local documentation for the main RusToK backend host application. This file captures only the live composition/runtime contract; detailed runbooks, framework notes, and rollout plans live in specialized documents inside this folder and in the central docs.
 
+### Additional 2026-11-23 host cache and readiness hardening
+
+- Pages event deduplication follows the generation-store owner identity,
+  rather than a process-global event-ID set or value-backend instance.
+  Independent `CacheService` owners within one process each rotate their own
+  generations; ports sharing the same owner suppress duplicate rotations.
+  Invalidation does not initialize the cache value backend. The weak registry
+  is bounded and does not retain retired cache hosts.
+- The `/health/ready` aggregate now samples the shared shutdown signal
+  after asynchronous dependency checks in **every** host mode, including
+  registry-only and surface hosts. A stopping process responds 503 even if
+  its dependencies remain healthy and it has no required workers.
+- Readiness circuit breakers are held in the `ServerRuntimeContext` rather
+  than keyed globally across all hosts in the process. A dependency failure
+  in one runtime no longer prevents another runtime from testing its own
+  healthy dependency. Clones of the same runtime still share the breaker.
+
 ## Purpose
 
 ## Server audit continuation — Workflow-owned durable cron recovery (2026-11-23)
@@ -644,7 +661,9 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   the shared stop signal before publishing a worker. This is an
   in-process guarantee, not distributed leader election; durable queue
   ownership/receipt correctness remains with the Outbox, Search, Index,
-  and Notifications domain workers.
+  and Notifications domain workers. A previously published live handle no
+  longer makes repeated startup appear successful after the shared shutdown
+  signal is set; the handle stays registered for draining.
 - Tenant cache-generation recovery also invalidates the entire
   `ModuleEffectivePolicyCache` when its durable generation advances or an
   unverified generation is first observed. The local/Redis/periodic listener
@@ -710,6 +729,12 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   and worker-specific failure transitions now require an unexpired matching
   claim token and attempt, so an expired worker cannot reschedule a row
   merely because no replacement has claimed it yet.
+  The direct Comments audit handoff claim/publish helpers now require the
+  caller's bounded `max_attempts` and use the same retry-ready SQL as the
+  worker; a deferred or source-dead-letter record cannot be claimed via the
+  former unrestricted shortcut. Publication additionally checks the dead-letter
+  fence in its row lock and final CAS, so manual recovery must requeue the
+  source row through its audited recovery API before a new publication attempt.
 - Notification candidate and fanout workers recheck shutdown **after**
   asynchronous tenant capability/policy evaluation (including deferrals),
   immediately before starting their next candidate processing, source
@@ -731,6 +756,17 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   page and receipt and aborts startup if shutdown begins; already acknowledged
   receipts are safe for replay during a later startup. In-flight DB operations
   still run to completion before the next stop check.
+- Auth retention cleanup stays transactional across all artifact tables.
+  A successful run keeps its daily cadence; a failed purge retries after
+  15 minutes instead of deferring every affected cleanup for another full day.
+  The failure log is a fixed machine code, not a raw database error.
+- Product Index refresh consumer startup returns a typed server error if
+  module runtime extensions were not published; a partial bootstrap no longer
+  panics before its durable consumer group is opened.
+- Outbox retention keeps its configured successful sweep cadence and the
+  50-ms bounded follow-up for a full batch. A database failure now retries
+  after at most 60 seconds, rather than inheriting a potentially daily
+  successful-poll delay. The existing failure counter remains observable.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity

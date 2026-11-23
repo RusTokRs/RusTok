@@ -3119,3 +3119,116 @@ private artifact.
 Not run at the user's request. Verify with `cargo fmt --all -- --check`,
 `cargo check -p rustok-server --lib`, and
 `cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.
+
+
+## Server audit continuation — Comments retry shortcuts and stop-time bootstrap (2026-11-23)
+
+The public Comments audit handoff `claim_next`/`publish_next` convenience path
+used a separate source-selection SQL statement. It could acquire deferred or
+terminal source-dead-letter rows without applying the worker's configured
+attempt budget, bypassing the recovery contract. Both entrypoints now require
+an explicit bounded attempt budget and delegate to the same retry-ready claim;
+invalid budgets above the canonical maximum fail closed. The publication
+read and compare-and-set also fence dead-letter state so a stale claimant
+cannot turn an operator-held source record into a published row. Audited
+`requeue_dead_letter` remains the only path to clear that state.
+
+The common published-worker liveness check also previously returned success
+for a live handle after shutdown had been signaled. Repeated startup now
+rejects that state without removing the join handle needed by shutdown.
+
+Source-level regression assertions were added for the PostgreSQL publication
+fences and the repeated-bootstrap shutdown state. No Cargo checks, tests,
+formatters, SQL execution, or multi-replica race tests were run, as requested.
+
+
+## Server audit continuation — required Index startup and Auth retention retries (2026-11-23)
+
+Product Index refresh's public worker starter called the panic-on-missing
+`module_runtime_extensions_from_ctx` accessor even though an optional enable
+flag and independently built event runtime can expose it during partial
+bootstrap. The starter now returns an explicit configuration error if the
+runtime extensions were not published, without opening a consumer group.
+A focused isolated-context regression proves this missing-dependency branch.
+
+Auth retention's successful daily poll interval was also used after a failed
+transactional purge. A temporary PostgreSQL outage therefore delayed the next
+cleanup attempt for 24 hours. Failed sweeps now retry after 15 minutes, while
+successful sweeps keep the daily cadence. The error log uses a fixed machine
+code rather than interpolating raw DB error details. The port's atomic
+multi-table transaction and cooperative shutdown behavior are unchanged.
+A regression exercises success and failure delay choices.
+
+No Cargo compilation, tests, formatting, lints, live PostgreSQL or concurrency
+checks were run, per the maintainer's instruction.
+
+
+## Server audit continuation — Outbox retention recovery cadence (2026-11-23)
+
+The Outbox retention supervisor treated failed PostgreSQL prune attempts as
+an empty successful sweep. When its configured successful poll interval was
+large (up to 24 hours), transient storage outages postponed the next attempt
+by that full interval. The worker now distinguishes failed, complete and
+batch-exhausted cycles. Failure retries after `min(interval, 60s)`, while
+successful and full-batch timing remains unchanged. The existing atomic failure
+counter and stop-aware sleep are retained. A focused delay-selection regression
+was authored but not executed; no Cargo or SQL verification was run.
+
+
+## Server audit continuation — Pages cache duplicate scope (2026-11-23)
+
+The server's Pages invalidation adapter previously reused a single static
+`BoundedCacheEventDedupe` for every `CacheService` in the process. Separate
+host/runtime cache instances have independent namespace-generation stores,
+so the same event ID could mark the first context's invalidation completed
+while the second context in the same process was never bumped. That second
+port could fail receipt validation because its generations remained zero.
+The dedupe registry now follows the clone-shared generation-store owner
+identity, with weak references, a bounded number of live owners, and
+a fail-open-to-extra-rotation fallback when full. Ports sharing one owner
+serialize duplicate events, without constructing a value backend.
+A regression for two independent services and two ports sharing one service
+was authored but not executed. No compilation, tests, formatting, or live
+cache checks were performed, per maintainer instruction.
+
+
+## Server audit continuation — Shutdown-aware host readiness (2026-11-23)
+
+The readiness handler relied on required worker snapshots to report the
+shutdown state. A registry-only host has no required workers, and some
+surface configurations may disable all worker checks; `/health/ready` could
+continue returning 200 while the host was already draining. Readiness now
+includes an unconditional critical `runtime_shutdown` check, sampled after
+the asynchronous dependency probes so a stop requested during a slow probe
+is also observed. Liveness (`/health/live`) is intentionally unchanged.
+A focused registry-only shutdown regression was authored, not run.
+No compilation, formatting, integration tests, or runtime verification
+were performed.
+
+
+## Server audit continuation — Readiness circuit ownership (2026-11-23)
+
+The health controller previously stored all dependency-check circuit breakers
+in one process-global static map keyed only by check name (e.g. `database`).
+Distinct `ServerRuntimeContext` instances could therefore share a failure
+counter and a 30-second open circuit even when their dependencies were
+independent. A healthy host could report false 503 after another host reached
+the failure threshold. Breaker state now belongs to the shared runtime
+context; cloned contexts keep the same state, independent contexts do not.
+The per-check failure counter is also saturating. A focused two-context
+regression was authored but not run. No compilation, tests, formatting, or
+live dependency checks were run at the maintainer's request.
+
+
+## Follow-up code review — Pages cache identity correction (2026-11-23)
+
+Review detected that the first Pages dedupe patch accidentally initialized
+the value backend from `invalidate()` just to acquire its identity. This
+unnecessary cache construction coupled generation rotation to a separate
+read/write-backend initialization. The corrected adapter instead uses the
+opaque `CacheService::generation_store_identity()` that is already the
+generation-store owner. It leaves cache values lazy; clone-shared contexts
+continue to share dedupe, and independent services do not. A regression for
+zero value-backend constructions and a concurrent two-port regression were
+authored, but not executed. The owner API is documented in
+`crates/modules/rustok-cache/CRATE_API.md`.

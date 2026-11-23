@@ -602,7 +602,10 @@ impl CacheService {
     ///
     /// The opaque token keeps the coordinator allocation alive while it is registered, preventing
     /// address reuse from attaching a new `CacheService` to stale generation snapshots.
-    pub(crate) fn generation_store_identity(&self) -> Arc<dyn std::any::Any + Send + Sync> {
+    /// The token is opaque: compare owners using Arc::ptr_eq, and never persist
+    /// pointer addresses. Acquiring it does not construct a value backend or
+    /// perform I/O. Generation-backed dedupe adapters must use this identity.
+    pub fn generation_store_identity(&self) -> Arc<dyn std::any::Any + Send + Sync> {
         self.loaders.clone()
     }
 

@@ -8,7 +8,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Utc;
 use futures_util::{FutureExt, StreamExt, future::BoxFuture, stream};
-use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use rustok_web::json_response;
@@ -18,7 +17,7 @@ use sea_orm::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use utoipa::ToSchema;
@@ -49,8 +48,10 @@ const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 3;
 const CIRCUIT_BREAKER_COOLDOWN: Duration = Duration::from_secs(30);
 const CRITICAL_MODULES: &[&str] = &["content", "commerce"];
 
-static CIRCUITS: Lazy<Mutex<HashMap<String, CircuitState>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+/// Failure history belongs to one host runtime. A process-global name-keyed
+/// circuit could make a healthy host inherit another runtime's outage.
+#[derive(Clone, Default)]
+struct ReadinessCircuitRegistry(Arc<Mutex<HashMap<String, CircuitState>>>);
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -216,14 +217,17 @@ async fn collect_readiness(
 ) -> ReadinessResponse {
     let settings = ctx.settings();
     let profile = ReadinessProfile::from_settings(settings);
+    let circuits = ctx.shared_get_or_insert_with(ReadinessCircuitRegistry::default);
     // A bounded stream limits simultaneous work per probe; each task is dropped
     // when the overall deadline expires. The bool identifies module checks.
     let mut pending: Vec<BoxFuture<'static, (bool, ReadinessCheck)>> = Vec::new();
     {
         let db = ctx.db_clone();
+        let circuits = circuits.clone();
         pending.push(
             async move {
                 let check = run_guarded_check(
+                    &circuits,
                     "database",
                     DependencyCriticality::Critical,
                     "dependency",
@@ -237,10 +241,12 @@ async fn collect_readiness(
     }
     {
         let ctx = ctx.clone();
+        let circuits = circuits.clone();
         pending.push(
             async move {
                 let check =
                     run_guarded_check(
+                        &circuits,
                         "database_schema",
                         DependencyCriticality::Critical,
                         "dependency",
@@ -256,9 +262,11 @@ async fn collect_readiness(
     }
     {
         let ctx = ctx.clone();
+        let circuits = circuits.clone();
         pending.push(
             async move {
                 let check = run_guarded_check(
+                    &circuits,
                     "cache_backend",
                     DependencyCriticality::NonCritical,
                     "dependency",
@@ -276,9 +284,11 @@ async fn collect_readiness(
     if profile.includes_runtime_dependencies() {
         {
             let ctx = ctx.clone();
+            let circuits = circuits.clone();
             pending.push(
                 async move {
                     let check = run_guarded_check(
+                        &circuits,
                         "tenant_cache_invalidation",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -292,9 +302,11 @@ async fn collect_readiness(
         }
         {
             let ctx = ctx.clone();
+            let circuits = circuits.clone();
             pending.push(
                 async move {
                     let check = run_guarded_check(
+                        &circuits,
                         "event_transport",
                         DependencyCriticality::Critical,
                         "dependency",
@@ -309,10 +321,12 @@ async fn collect_readiness(
         if settings.rate_limit.enabled {
             for &namespace in &["api", "auth", "oauth"] {
                 let ctx = ctx.clone();
+                let circuits = circuits.clone();
                 pending.push(
                     async move {
                         let name = format!("rate_limit:{namespace}");
                         let check = run_guarded_check(
+                            &circuits,
                             &name,
                             DependencyCriticality::Critical,
                             "dependency",
@@ -327,9 +341,11 @@ async fn collect_readiness(
         }
         {
             let search = settings.search.clone();
+            let circuits = circuits.clone();
             pending.push(
                 async move {
                     let check = run_guarded_check(
+                        &circuits,
                         "search_backend",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -394,9 +410,11 @@ async fn collect_readiness(
         #[cfg(feature = "mod-media")]
         {
             let ctx = ctx.clone();
+            let circuits = circuits.clone();
             pending.push(
                 async move {
                     let check = run_guarded_check(
+                        &circuits,
                         "storage",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -422,6 +440,7 @@ async fn collect_readiness(
     if profile.includes_module_health() {
         for module in registry.modules() {
             let module = module.clone();
+            let circuits = circuits.clone();
             pending.push(
                 async move {
                     let criticality = if CRITICAL_MODULES.contains(&module.slug()) {
@@ -430,18 +449,23 @@ async fn collect_readiness(
                         DependencyCriticality::NonCritical
                     };
                     let name = format!("module:{}", module.slug());
-                    let check =
-                        run_guarded_check(&name, criticality, "module", move || async move {
-                            match module.health().await {
-                                HealthStatus::Healthy => Ok(()),
-                                HealthStatus::Degraded => {
-                                    Err("module reported degraded".to_string())
+                    let check = run_guarded_check(
+                            &circuits,
+                            &name,
+                            criticality,
+                            "module",
+                            move || async move {
+                                match module.health().await {
+                                    HealthStatus::Healthy => Ok(()),
+                                    HealthStatus::Degraded => {
+                                        Err("module reported degraded".to_string())
+                                    }
+                                    HealthStatus::Unhealthy => {
+                                        Err("module reported unhealthy".to_string())
+                                    }
                                 }
-                                HealthStatus::Unhealthy => {
-                                    Err("module reported unhealthy".to_string())
-                                }
-                            }
-                        })
+                            },
+                        )
                         .await;
                     (true, check)
                 }
@@ -467,6 +491,11 @@ async fn collect_readiness(
             checks.push(check);
         }
     }
+    // This check is intentionally sampled after the awaited dependencies:
+    // a shutdown requested during a slow probe must also clear readiness.
+    // Registry-only hosts have no required background workers to reveal stop.
+    checks.push(runtime_shutdown_check(&ctx));
+
     // Stable output is useful to operators and avoids completion-order churn.
     checks.sort_by(|left, right| left.name.cmp(&right.name));
     module_checks.sort_by(|left, right| left.name.cmp(&right.name));
@@ -889,6 +918,24 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
         || message.contains("relation") && message.contains("does not exist")
 }
 
+fn runtime_shutdown_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
+    let stopping = ctx
+        .shared_map::<StopHandle, _>(StopHandle::is_stopping)
+        .unwrap_or(false);
+    ReadinessCheck {
+        name: "runtime_shutdown".to_string(),
+        kind: "runtime",
+        criticality: DependencyCriticality::Critical,
+        status: if stopping {
+            ReadinessStatus::Unhealthy
+        } else {
+            ReadinessStatus::Ok
+        },
+        latency_ms: 0,
+        reason: stopping.then(|| "host shutdown has been requested".to_string()),
+    }
+}
+
 fn worker_host_mode_check() -> ReadinessCheck {
     ReadinessCheck {
         name: "worker_host_mode".to_string(),
@@ -1136,6 +1183,7 @@ async fn check_runtime_guardrails(ctx: &ServerRuntimeContext) -> ReadinessCheck 
 }
 
 async fn run_guarded_check<F, Fut>(
+    circuits: &ReadinessCircuitRegistry,
     name: &str,
     criticality: DependencyCriticality,
     kind: &'static str,
@@ -1146,7 +1194,7 @@ where
     Fut: std::future::Future<Output = std::result::Result<(), String>>,
 {
     let started_at = Instant::now();
-    if let Some(open_for_ms) = circuit_open_for(name) {
+    if let Some(open_for_ms) = circuit_open_for(circuits, name) {
         return ReadinessCheck {
             name: name.to_string(),
             kind,
@@ -1161,7 +1209,7 @@ where
 
     match result {
         Ok(Ok(())) => {
-            on_check_success(name);
+            on_check_success(circuits, name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -1172,7 +1220,7 @@ where
             }
         }
         Ok(Err(reason)) => {
-            on_check_failure(name);
+            on_check_failure(circuits, name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -1183,7 +1231,7 @@ where
             }
         }
         Err(_) => {
-            on_check_failure(name);
+            on_check_failure(circuits, name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -1203,8 +1251,8 @@ fn status_for_failure(criticality: DependencyCriticality) -> ReadinessStatus {
     }
 }
 
-fn circuit_open_for(name: &str) -> Option<u128> {
-    let mut state = CIRCUITS
+fn circuit_open_for(circuits: &ReadinessCircuitRegistry, name: &str) -> Option<u128> {
+    let mut state = circuits.0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = Instant::now();
@@ -1223,19 +1271,19 @@ fn circuit_open_for(name: &str) -> Option<u128> {
     None
 }
 
-fn on_check_success(name: &str) {
-    let mut state = CIRCUITS
+fn on_check_success(circuits: &ReadinessCircuitRegistry, name: &str) {
+    let mut state = circuits.0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     state.remove(name);
 }
 
-fn on_check_failure(name: &str) {
-    let mut state = CIRCUITS
+fn on_check_failure(circuits: &ReadinessCircuitRegistry, name: &str) {
+    let mut state = circuits.0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let circuit = state.entry(name.to_string()).or_default();
-    circuit.consecutive_failures += 1;
+    circuit.consecutive_failures = circuit.consecutive_failures.saturating_add(1);
 
     if circuit.consecutive_failures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD {
         circuit.open_until = Some(Instant::now() + CIRCUIT_BREAKER_COOLDOWN);
@@ -1331,6 +1379,31 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
+
+    #[tokio::test]
+    async fn registry_only_readiness_rejects_shutdown_without_background_workers() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+
+        let before = runtime_shutdown_check(&ctx);
+        assert_eq!(before.criticality, DependencyCriticality::Critical);
+        assert_eq!(before.status, ReadinessStatus::Ok);
+
+        StopHandle::ensure(&ctx).stop().await;
+        let response = collect_readiness(ctx, ModuleRegistry::new()).await;
+        let shutdown = response
+            .checks
+            .iter()
+            .find(|check| check.name == "runtime_shutdown")
+            .expect("all host modes must have a shutdown readiness check");
+        assert_eq!(shutdown.status, ReadinessStatus::Unhealthy);
+        assert_eq!(response.status, ReadinessStatus::Unhealthy);
+        assert_eq!(readiness_http_status(response.status), StatusCode::SERVICE_UNAVAILABLE);
+    }
 
     #[test]
     fn runtime_worker_readiness_uses_one_canonical_check_per_worker() {
@@ -1744,8 +1817,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dependency_circuit_failures_do_not_cross_runtime_contexts() {
+        let first = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let second = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let first_circuits = first.shared_get_or_insert_with(ReadinessCircuitRegistry::default);
+        let second_circuits = second.shared_get_or_insert_with(ReadinessCircuitRegistry::default);
+        let cloned_circuits = first
+            .clone()
+            .shared_get_or_insert_with(ReadinessCircuitRegistry::default);
+        let name = "same_dependency_name_in_separate_hosts";
+
+        for _ in 0..CIRCUIT_BREAKER_FAILURE_THRESHOLD {
+            let failed = run_guarded_check(
+                &first_circuits,
+                name,
+                DependencyCriticality::Critical,
+                "dependency",
+                || async { Err("first runtime's dependency failed".to_string()) },
+            ).await;
+            assert_eq!(failed.status, ReadinessStatus::Unhealthy);
+        }
+
+        let first_probe = run_guarded_check(
+            &cloned_circuits,
+            name,
+            DependencyCriticality::Critical,
+            "dependency",
+            || async { Ok(()) },
+        ).await;
+        assert_eq!(first_probe.status, ReadinessStatus::Unhealthy);
+        assert!(
+            first_probe
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("circuit open"))
+        );
+
+        let second_probe = run_guarded_check(
+            &second_circuits,
+            name,
+            DependencyCriticality::Critical,
+            "dependency",
+            || async { Ok(()) },
+        ).await;
+        assert_eq!(second_probe.status, ReadinessStatus::Ok);
+    }
+
+    #[tokio::test]
     async fn guarded_check_times_out_and_degrades_non_critical_dependency() {
+        let circuits = ReadinessCircuitRegistry::default();
         let result = run_guarded_check(
+            &circuits,
             "slow_non_critical",
             DependencyCriticality::NonCritical,
             "dependency",
