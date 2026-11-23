@@ -29,6 +29,7 @@ const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
 const READ_ONLY_INTENTS = new Set([
   "select", "focus_requested", "hover", "hover_requested",
   "activate_page", "cancel_drag", "cancel_drag_requested",
+  "begin_palette_drag", "begin_selected_move", "drag_moved", "copy",
   "render_server_preview", "resolve_operation",
 ]);
 const INTENT_ABORT_KIND = Object.freeze({
