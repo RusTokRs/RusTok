@@ -28,32 +28,32 @@ test('mounted Leptos catalog uses current router filters for owner and facet req
     'route_attributes', 'route_sort_by', 'route_sort_direction', 'route_page']) {
     assert.match(grid, new RegExp(name + '\\.get\\(\\)'));
   }
-  assert.match(grid, /res_controls\\.get\\(\\)/);
-  assert.match(grid, /facets_controls\\.get\\(\\)/);
-  assert.match(grid, /facet_panel_controls\\.get\\(\\)/);
+  assert.match(grid, /res_controls\.get\(\)/);
+  assert.match(grid, /facets_controls\.get\(\)/);
+  assert.match(grid, /facet_panel_controls\.get\(\)/);
   assert.match(grid, /loaded_controls == controls/);
-  assert.match(grid, /catalog_controls\\.get_untracked\\(\\) == requested_controls/);
+  assert.match(grid, /catalog_controls\.get_untracked\(\) == requested_controls/);
 });
 
 test('URL owner-query changes invalidate accumulated rows and request generation', () => {
-  assert.match(grid, /identity != previous_filter_identity\\.get_untracked\\(\\)/);
-  assert.match(grid, /set_page_request_nonce\\.update/);
-  assert.match(grid, /set_infinite_items\\.set\\(Vec::new\\(\\)\\)/);
-  assert.match(grid, /selection\\.update\\(\\|selected\\| selected\\.clear\\(\\)\\)/);
+  assert.match(grid, /identity != previous_filter_identity\.get_untracked\(\)/);
+  assert.match(grid, /set_page_request_nonce\.update/);
+  assert.match(grid, /set_infinite_items\.set\(Vec::new\(\)\)/);
+  assert.match(grid, /selection\.update\(\|selected\| selected\.clear\(\)\)/);
   assert.match(grid, /name="status"/);
   assert.match(grid, /name="search"/);
 });
 
 test('only eligible owner attribute options can appear in filters and facets', () => {
-  assert.match(filters, /pavo\\.tenant_id = pav\\.tenant_id/);
-  assert.match(filters, /pao\\.attribute_id = pav\\.attribute_id/);
-  assert.match(filters, /pao\\.archived_at IS NULL/);
-  assert.match(facets, /Alias::new\\("product_attribute_options"\\)/);
-  assert.match(facets, /Alias::new\\("archived_at"\\)\\)\\.is_null\\(\\)/);
+  assert.match(filters, /pavo\.tenant_id = pav\.tenant_id/);
+  assert.match(filters, /pao\.attribute_id = pav\.attribute_id/);
+  assert.match(filters, /pao\.archived_at IS NULL/);
+  assert.match(facets, /Alias::new\("product_attribute_options"\)/);
+  assert.match(facets, /Alias::new\("archived_at"\)\)\.is_null\(\)/);
 });
 
 test('Next catalog normalizes typed selection grammar and prioritizes active facets', () => {
-  assert.match(nextPage, /entry\\.indexOf\\('='\\)/);
+  assert.match(nextPage, /entry\.indexOf\('='\)/);
   assert.match(nextPage, /selectedFacetCodes/);
   assert.match(nextPage, /orderedFacetCodes/);
 });
