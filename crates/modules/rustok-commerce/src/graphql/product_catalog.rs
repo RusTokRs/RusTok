@@ -20,6 +20,13 @@ use super::{
     require_commerce_permission, require_storefront_channel_enabled,
 };
 
+fn product_catalog_correlation_id(request_context: Option<&RequestContext>) -> String {
+    request_context
+        .map(|context| context.correlation_id.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
 pub(crate) fn product_catalog_port_error(
     context: &PortContext,
     error: PortError,
@@ -69,10 +76,12 @@ pub(crate) fn product_catalog_port_error(
     };
 
     tracing::error!(
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        correlation_id_present = !context.correlation_id.is_empty(),
+        correlation_id_length = context.correlation_id.chars().count(),
+        tenant_id_length = context.tenant_id.chars().count(),
         operation,
-        owner_code = %error.code,
+        owner_code_length = error.code.chars().count(),
+        owner_message_length = error.message.chars().count(),
         owner_kind = error_kind,
         owner_retryable = error.retryable,
         public_code = code,
