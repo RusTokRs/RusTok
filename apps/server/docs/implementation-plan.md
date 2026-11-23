@@ -1,5 +1,24 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — scheduler startup liveness (2026-11-23)
+
+The module-work and Workflow cron scheduler initializers previously treated a stored
+`JoinHandle` as healthy on repeat bootstrap even if its task had already
+terminated. The module-work initializer now uses the shared worker-liveness
+guard to fail closed without deleting the handle needed for shutdown accounting.
+The Workflow cron initializer applies the same guard and propagates this startup
+failure through application bootstrap instead of returning a false success.
+Concurrent healthy initializers still reuse the running handle, and host stop
+continues to prevent late task publication under each initialization lock.
+
+Focused source regressions create already-finished tasks for both paths and assert
+that repeat initialization returns an error while preserving shutdown ownership.
+They have not been executed; Cargo, Rust tests, compilation and formatting are
+reserved for maintainer verification. This change does not solve cron execution
+deduplication across replicas, missed schedules after process crashes, or detached
+execution-task supervision; those require the Workflow owner's durable contract.
+
+
 ## Code-review corrections — shutdown admission and cooperative listeners (2026-11-22)
 
 A second adversarial review found that Notification Candidate and Notification
