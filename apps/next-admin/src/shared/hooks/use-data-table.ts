@@ -51,6 +51,43 @@ function routeQuerySignature(query: Record<string, string>): string {
   );
 }
 
+function mergeTableStateIntoRouteQuery(
+  routeQuery: Record<string, string>,
+  filterValues: Record<string, string | string[] | null>,
+  page: number,
+  perPage: number,
+  defaultPageSize: number
+): Record<string, string> {
+  const query = { ...routeQuery };
+
+  for (const [key, value] of Object.entries(filterValues)) {
+    if (value === null) {
+      delete query[key];
+    } else {
+      query[key] = Array.isArray(value)
+        ? value.join(ARRAY_SEPARATOR)
+        : value;
+    }
+  }
+
+  if (page !== 1 || Object.prototype.hasOwnProperty.call(query, PAGE_KEY)) {
+    query[PAGE_KEY] = String(page);
+  } else {
+    delete query[PAGE_KEY];
+  }
+
+  if (
+    perPage !== defaultPageSize ||
+    Object.prototype.hasOwnProperty.call(query, PER_PAGE_KEY)
+  ) {
+    query[PER_PAGE_KEY] = String(perPage);
+  } else {
+    delete query[PER_PAGE_KEY];
+  }
+
+  return query;
+}
+
 function tableStateSignature(
   page: number,
   perPage: number,
@@ -275,8 +312,17 @@ export function useDataTable<TData extends RowData = any>(
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
   const currentFilterSignature = columnFiltersSignature(initialColumnFilters);
-  const currentRouteSignature = routeQuery
-    ? routeQuerySignature(routeQuery)
+  const currentRouteQuery = routeQuery
+    ? mergeTableStateIntoRouteQuery(
+        routeQuery,
+        filterValues,
+        page,
+        perPage,
+        initialState?.pagination?.pageSize ?? 10
+      )
+    : null;
+  const currentRouteSignature = currentRouteQuery
+    ? routeQuerySignature(currentRouteQuery)
     : tableStateSignature(page, perPage, sorting, currentFilterSignature);
   const debouncedSetFilterValues = useDebouncedCallback(
     (values: typeof filterValues, version: number) => {
@@ -289,8 +335,8 @@ export function useDataTable<TData extends RowData = any>(
       const expectedFilterSignature = columnFiltersSignature(expectedFilters);
 
       let expectedRouteSignature: string;
-      if (routeQuery) {
-        const expectedQuery = { ...routeQuery };
+      if (currentRouteQuery) {
+        const expectedQuery = { ...currentRouteQuery };
         // nuqs does not rewrite the default page when it is already selected.
         if (
           page !== 1 ||
