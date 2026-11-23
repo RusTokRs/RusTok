@@ -483,6 +483,29 @@ pub async fn reconciliation_required_for_tenant(
         .all(db).await?)
 }
 
+/// Read-only visibility for legacy or event-driven executions without a
+/// cron firing row. Never infer that running means safe to replay: old builds
+/// may have emitted remote side effects before a process crash.
+pub async fn unconfirmed_executions_for_tenant(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    limit: u64,
+) -> WorkflowResult<Vec<workflow_execution::Model>> {
+    if tenant_id.is_nil() {
+        return Ok(Vec::new());
+    }
+    Ok(WorkflowExecutionEntity::find()
+        .filter(workflow_execution::Column::TenantId.eq(tenant_id))
+        .filter(workflow_execution::Column::Status.is_in([
+            ExecutionStatus::Running.to_string(),
+            ExecutionStatus::ReconciliationRequired.to_string(),
+        ]))
+        .order_by_asc(workflow_execution::Column::StartedAt)
+        .order_by_asc(workflow_execution::Column::Id)
+        .limit(limit.min(100))
+        .all(db).await?)
+}
+
 /// All decisions require a privileged transport to supply the authenticated
 /// actor. A stale claim has no automatic retry authority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
