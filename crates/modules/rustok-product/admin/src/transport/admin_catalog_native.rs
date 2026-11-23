@@ -57,7 +57,8 @@ async fn require_request_context(
                 boundary = "product_admin_catalog_native",
                 code = "product.admin_catalog_request_context_unavailable",
                 public_code = public.code,
-                correlation_id = %public.correlation_id,
+                correlation_id_present = !public.correlation_id.is_empty(),
+                correlation_id_length = public.correlation_id.chars().count(),
                 request_context_rejected = true,
                 "product admin trusted request context extraction failed"
             );
@@ -81,15 +82,20 @@ fn product_admin_read_port_context(
     tenant_id: uuid::Uuid,
     user_id: uuid::Uuid,
     locale: &str,
-    operation: &str,
+    request_context: &rustok_api::RequestContext,
 ) -> PortContext {
-    PortContext::new(
+    let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(user_id.to_string()),
         locale.to_string(),
-        format!("product-admin:{operation}:{tenant_id}"),
+        request_context.correlation_id.clone(),
     )
-    .with_deadline(Duration::from_secs(2))
+    .with_deadline(Duration::from_secs(2));
+
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -98,31 +104,50 @@ fn map_product_port_error(
     error: PortError,
     operation: &'static str,
 ) -> ServerFnError {
-    let (message, public_kind, retryable) = match &error.kind {
+    let (message, public_code, public_kind, retryable) = match &error.kind {
         PortErrorKind::Validation => (
             if error.message.trim().is_empty() {
-                "Invalid product catalog request"
+                "Product request is invalid"
             } else {
                 error.message.as_str()
             },
+            "PRODUCT_VALIDATION",
             "validation",
             false,
         ),
-        PortErrorKind::NotFound => ("Product was not found", "not_found", false),
+        PortErrorKind::NotFound => (
+            "Product was not found",
+            "PRODUCT_NOT_FOUND",
+            "not_found",
+            false,
+        ),
         PortErrorKind::Conflict => (
-            "Product operation conflicts with current state",
+            "Product operation could not be completed safely",
+            "PRODUCT_OPERATION_FAILED",
             "conflict",
             false,
         ),
-        PortErrorKind::Forbidden => ("Product operation is not permitted", "forbidden", false),
+        PortErrorKind::Forbidden => (
+            "Product operation is not permitted",
+            "PRODUCT_ACCESS_DENIED",
+            "forbidden",
+            false,
+        ),
         PortErrorKind::Unavailable => (
             "Product data is temporarily unavailable",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
             "unavailable",
             true,
         ),
-        PortErrorKind::Timeout => ("Product data is temporarily unavailable", "timeout", true),
+        PortErrorKind::Timeout => (
+            "Product data is temporarily unavailable",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
+            "timeout",
+            true,
+        ),
         PortErrorKind::InvariantViolation => (
             "Product operation could not be completed safely",
+            "PRODUCT_OPERATION_FAILED",
             "invariant_violation",
             false,
         ),
@@ -132,15 +157,21 @@ fn map_product_port_error(
         owner = "rustok_product.admin",
         owner_operation = operation,
         boundary = "product_admin_catalog_native",
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        owner_code = %error.code,
+        correlation_id_present = !context.correlation_id.is_empty(),
+        correlation_id_length = context.correlation_id.chars().count(),
+        tenant_id_length = context.tenant_id.chars().count(),
+        owner_code_length = error.code.chars().count(),
+        owner_message_length = error.message.chars().count(),
         owner_kind = public_kind,
         owner_retryable = error.retryable,
+        public_code,
         retryable,
         "product admin read-port request failed"
     );
-    ServerFnError::new(message.to_string())
+    ServerFnError::new(format!(
+        "{message} (code: {public_code}; reference: {})",
+        context.correlation_id
+    ))
 }
 
 #[cfg(feature = "ssr")]
@@ -200,6 +231,22 @@ async fn product_admin_catalog_list_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|_| map_product_internal_error())?;
+        let requested_tenant_id = uuid::Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| ServerFnError::new("Invalid tenant_id"))?;
+        if requested_tenant_id != tenant.id || auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new(
+                "tenant_id does not match current tenant",
+            ));
+        }
+        let request_context = require_request_context("admin_catalog_list").await?;
+        if request_context.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Product admin request could not be completed"));
+        }
+        crate::transport::native_server_adapter::ensure_product_module_enabled(
+            runtime_ctx.db(),
+            tenant.id,
+        )
+        .await?;
         if !rustok_api::has_any_effective_permission(
             &auth.permissions,
             &[
@@ -211,14 +258,6 @@ async fn product_admin_catalog_list_native(
                 "Permission denied: products:list or products:read required",
             ));
         }
-        let requested_tenant_id = uuid::Uuid::parse_str(tenant_id.trim())
-            .map_err(|_| ServerFnError::new("Invalid tenant_id"))?;
-        if requested_tenant_id != tenant.id || auth.tenant_id != tenant.id {
-            return Err(ServerFnError::new(
-                "tenant_id does not match current tenant",
-            ));
-        }
-        let request_context = require_request_context("admin_catalog_list").await?;
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -237,7 +276,7 @@ async fn product_admin_catalog_list_native(
             tenant.id,
             auth.user_id,
             requested_locale.as_str(),
-            "admin_catalog_list",
+            &request_context,
         );
         let products = service
             .list_admin_products(
@@ -359,6 +398,22 @@ async fn product_admin_catalog_facets_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|_| map_product_internal_error())?;
+        let requested_tenant_id = uuid::Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| ServerFnError::new("Invalid tenant_id"))?;
+        if requested_tenant_id != tenant.id || auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new(
+                "tenant_id does not match current tenant",
+            ));
+        }
+        let request_context = require_request_context("admin_catalog_facets").await?;
+        if request_context.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Product admin request could not be completed"));
+        }
+        crate::transport::native_server_adapter::ensure_product_module_enabled(
+            runtime_ctx.db(),
+            tenant.id,
+        )
+        .await?;
         if !rustok_api::has_any_effective_permission(
             &auth.permissions,
             &[
@@ -370,14 +425,6 @@ async fn product_admin_catalog_facets_native(
                 "Permission denied: products:list or products:read required",
             ));
         }
-        let requested_tenant_id = uuid::Uuid::parse_str(tenant_id.trim())
-            .map_err(|_| ServerFnError::new("Invalid tenant_id"))?;
-        if requested_tenant_id != tenant.id || auth.tenant_id != tenant.id {
-            return Err(ServerFnError::new(
-                "tenant_id does not match current tenant",
-            ));
-        }
-        let request_context = require_request_context("admin_catalog_facets").await?;
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -396,7 +443,7 @@ async fn product_admin_catalog_facets_native(
             tenant.id,
             auth.user_id,
             requested_locale.as_str(),
-            "admin_catalog_facets",
+            &request_context,
         );
         let facets = service
             .load_admin_catalog_facets(
