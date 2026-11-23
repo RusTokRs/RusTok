@@ -57,7 +57,7 @@ pub fn ProductGridPage() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (is_busy, set_is_busy) = signal(false);
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
-     let (dropdown_open, set_dropdown_open) = signal(false);
+    let (dropdown_open, set_dropdown_open) = signal(false);
     let (confirm_delete_id, set_confirm_delete_id) = signal(Option::<String>::None);
     let (confirm_bulk, set_confirm_bulk) = signal(false);
 
@@ -450,8 +450,8 @@ pub fn ProductGridPage() -> impl IntoView {
     let facet_panel_controls = catalog_controls.clone();
     let facet_panel_labels = build_product_admin_facet_labels(locale.as_deref());
 
-    // Reactive filtering stays layered over the currently loaded page(s);
-    // the server-owned total and page boundaries are never recomputed locally.
+    // The owner has already applied every active column filter before pagination;
+    // the grid only renders the server page (or the pages explicitly loaded in infinite mode).
     let filtered_data = Memo::new(move |_| {
         if pagination.get().mode == PaginationMode::Infinite {
             infinite_items.get()
@@ -1281,5 +1281,35 @@ pub fn ProductGridPage() -> impl IntoView {
                 on_row_click=on_row_click
             />
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mounted_grid_restores_only_owner_supported_filter_values_from_the_route() {
+        let controls = ProductAdminListInput {
+            search: Some("camera".to_string()),
+            status: Some("active".to_string()),
+            vendor: Some("Acme".to_string()),
+            ..ProductAdminListInput::default()
+        };
+        let filters = product_admin_grid_filters(&controls);
+
+        assert_eq!(
+            filters.get("title"),
+            Some(&FilterValue::Text("camera".to_string()))
+        );
+        assert_eq!(
+            filters.get("status"),
+            Some(&FilterValue::Select("ACTIVE".to_string()))
+        );
+        assert_eq!(
+            filters.get("vendor"),
+            Some(&FilterValue::Text("Acme".to_string()))
+        );
+        assert_eq!(filters.count(), 3);
     }
 }
