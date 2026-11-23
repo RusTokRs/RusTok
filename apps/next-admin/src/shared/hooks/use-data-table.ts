@@ -270,7 +270,7 @@ export function useDataTable<TData extends RowData = any>(
       if (routeQuery) {
         const expectedQuery = { ...routeQuery };
         // nuqs does not rewrite the default page when it is already selected.
-        if (page !== 1 || Object.hasOwn(expectedQuery, PAGE_KEY)) {
+        if (page !== 1 || Object.prototype.hasOwnProperty.call(expectedQuery, PAGE_KEY)) {
           expectedQuery[PAGE_KEY] = '1';
         }
         for (const [key, value] of Object.entries(values)) {
@@ -297,7 +297,7 @@ export function useDataTable<TData extends RowData = any>(
           ? null
           : expectedRouteSignature;
 
-      void setPage(1);
+      if (page !== 1) void setPage(1);
       void setFilterValues(values);
     },
     debounceMs
