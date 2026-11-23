@@ -214,6 +214,21 @@ async fn settle_claim(
     Ok(affected == 1)
 }
 
+/// Verify the current attempt immediately before executing a workflow.
+/// Operator reconciliation invalidates old tokens; this additional fence
+/// narrows the admission race, while external worker termination must still
+/// be certified before an uncertain firing can be explicitly requeued.
+async fn owns_current_claim(
+    db: &DatabaseConnection,
+    item: &firing::Model,
+    token: Uuid,
+) -> WorkflowResult<bool> {
+    Ok(firing::Entity::find_by_id(item.id)
+        .filter(firing::Column::Status.eq(firing::RUNNING))
+        .filter(firing::Column::AttemptToken.eq(token))
+        .one(db).await?.is_some())
+}
+
 /// A firing can only advance when its schedule is still active. Claims
 /// from old revisions become skipped rather than being executed under
 /// changed workflow definition or a paused/archived workflow.
@@ -257,6 +272,10 @@ pub(super) async fn execute_claim(
                 .is_none_or(|expression| schedule_revision(wf, expression) != item.schedule_revision)
     }) {
         settle_claim(db, &item, token, firing::SKIPPED, None, Some("workflow_changed_during_preparation")).await?;
+        return Ok(());
+    }
+
+    if !owns_current_claim(db, &item, token).await? {
         return Ok(());
     }
 
