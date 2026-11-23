@@ -11,6 +11,7 @@ const adapterPath = resolve(
 type PeerScope = typeof globalThis & {
   __FLY_BROWSER_CONFIG__?: Record<string, unknown>;
   __flyPeerRequests?: string[];
+  __flyPeerEmitted?: string[];
   __flyPeerAdapter?: {
     emitIntent: (intent: string, payload: Record<string, unknown>) => Promise<unknown>;
     stop: () => void;
@@ -36,6 +37,10 @@ async function mountEditor(page: Page, documentId: string, source: string) {
     const scope = globalThis as PeerScope;
     scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
     scope.__flyPeerRequests = [];
+    scope.__flyPeerEmitted = [];
+    document.querySelector('#fly-root')?.addEventListener('fly:browser-intent', (event) => {
+      scope.__flyPeerEmitted?.push((event as CustomEvent<{ intent: string }>).detail.intent);
+    });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : String(input);
@@ -89,6 +94,7 @@ test('confirmed peer write fences stale tab without losing its local view or sen
       rejected,
       readIsPresent: read !== null,
       posted: scope.__flyPeerRequests,
+      emitted: scope.__flyPeerEmitted,
       conflict: document.querySelector('#fly-root')?.getAttribute('data-fly-peer-write-conflict'),
       problem: document.querySelector('#fly-root')?.getAttribute('data-fly-browser-problem'),
     };
@@ -97,6 +103,7 @@ test('confirmed peer write fences stale tab without losing its local view or sen
     rejected: null,
     readIsPresent: true,
     posted: ['select'],
+    emitted: ['select'],
     conflict: 'true',
     problem: 'FLY_PEER_WRITE_CONFLICT'
   });
@@ -119,8 +126,9 @@ test('peer write on another page does not fence unrelated editors', async ({ con
     await scope.__flyPeerAdapter?.emitIntent('save', {});
     return {
       posted: scope.__flyPeerRequests,
+      emitted: scope.__flyPeerEmitted,
       conflict: document.querySelector('#fly-root')?.getAttribute('data-fly-peer-write-conflict'),
     };
   });
-  expect(state).toEqual({ posted: ['save'], conflict: null });
+  expect(state).toEqual({ posted: ['save'], emitted: ['save'], conflict: null });
 });

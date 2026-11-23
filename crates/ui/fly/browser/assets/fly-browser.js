@@ -1298,6 +1298,12 @@ export class FlyBrowserAdapter {
       return Promise.resolve(null);
     }
     const request = normalizedIntent(this, { intent, payload });
+    // Fence before DOM listeners can consume an edit intent; POST-only gating
+    // would let another host apply a gesture from a stale document locally.
+    if (request.intent && !READ_ONLY_INTENTS.has(request.intent) && this.peerWriteConflict) {
+      this.rejectPeerWriteIntent(request);
+      return Promise.resolve(null);
+    }
     this.root.dispatchEvent(
       new CustomEvent("fly:browser-intent", {
         bubbles: true,
@@ -1316,6 +1322,20 @@ export class FlyBrowserAdapter {
   // An event received for the same page invalidates this adapter's observed
   // write base. Reject subsequent mutations rather than replaying local edits
   // onto a different editor's revision without user review.
+  rejectPeerWriteIntent(request) {
+    this.root.dispatchEvent(new CustomEvent("fly:browser-intent-rejected", {
+      bubbles: true,
+      detail: {
+        code: PEER_WRITE_CONFLICT_CODE,
+        intent: request.intent,
+        instanceId: this.instanceId,
+        pageId: this.pageId,
+      },
+    }));
+    this.reportPeerWriteConflict();
+    return null;
+  }
+
   onPeerWrite(message) {
     if (
       this.lifecycleState !== ADAPTER_LIFECYCLE.STARTED ||
@@ -1327,7 +1347,8 @@ export class FlyBrowserAdapter {
 
     const revision = nonEmptyString(message.revision);
     const hash = nonEmptyString(message.hash);
-    if (!revision || !hash || this.peerWriteConflict) return;
+    if (!revision || !hash || revision.length > 256 || hash.length > 256 ||
+        this.peerWriteConflict) return;
     if (
       revision === this.root.dataset.flyRevision &&
       hash === this.root.dataset.flyProjectHash
@@ -1479,18 +1500,7 @@ export class FlyBrowserAdapter {
 
     const authoritative = !READ_ONLY_INTENTS.has(request.intent);
     if (authoritative && this.peerWriteConflict) {
-      // This is an admission fence, not a destructive merge/reload.
-      this.root.dispatchEvent(new CustomEvent("fly:browser-intent-rejected", {
-        bubbles: true,
-        detail: {
-          code: PEER_WRITE_CONFLICT_CODE,
-          intent: request.intent,
-          instanceId: this.instanceId,
-          pageId: this.pageId,
-        },
-      }));
-      this.reportPeerWriteConflict();
-      return null;
+      return this.rejectPeerWriteIntent(request);
     }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
@@ -1640,7 +1650,9 @@ export class FlyBrowserAdapter {
       if (current && acknowledgedAuthoritativeResult && !this.peerWriteConflict) {
         delete this.root.dataset.flyQueuedIntentsDiscarded;
       }
-      if (current && response.ok && isObject(result)) {
+      // A response to an earlier read/intent cannot rebase this stale canvas.
+      // Only a fresh server-bound mount can clear the peer-write fence.
+      if (current && response.ok && isObject(result) && !this.peerWriteConflict) {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") {
           this.root.dataset.flyRevision = state.revision_id;

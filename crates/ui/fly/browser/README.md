@@ -60,7 +60,7 @@ Stopping the adapter resolves queued promises without sending them and suppresse
 reports. This serializes one adapter instance only. With `BroadcastChannel` available,
 another confirmed same-origin write for the same page marks the mounted editor stale,
 emits `fly:browser-peer-write` and a visible `FLY_PEER_WRITE_CONFLICT` problem, rejects
-subsequent mutations and discards unsent queued writes with the existing
+subsequent mutations before DOM intent emission or POST and discards unsent queued writes with the existing
 `fly:browser-intents-discarded` notice. The warning survives read-only responses
 until remount/reload; the adapter never reloads automatically or silently merges
 unsaved changes. The channel carries only page ID, confirmed revision and hash.
