@@ -47,6 +47,10 @@ impl WorkflowCronScheduler {
     /// with a lifecycle signal should prefer `start_with_stop`.
     pub fn start(self) -> JoinHandle<()> {
         tokio::spawn(async move {
+            if let Err(error) = self.validate_persistence().await {
+                error!(%error, "Workflow cron scheduler cannot run without durable owner storage");
+                return;
+            }
             info!("WorkflowCronScheduler started");
             self.run(None).await;
         })
@@ -57,6 +61,13 @@ impl WorkflowCronScheduler {
     /// The host may still enforce a bounded forced-abort deadline.
     pub fn start_with_stop(self, stop_rx: watch::Receiver<bool>) -> JoinHandle<()> {
         tokio::spawn(async move {
+            if let Err(error) = self.validate_persistence().await {
+                error!(%error, "Workflow cron scheduler cannot run without durable owner storage");
+                return;
+            }
+            if *stop_rx.borrow() {
+                return;
+            }
             info!("WorkflowCronScheduler started with host shutdown supervision");
             self.run(Some(stop_rx)).await;
         })
