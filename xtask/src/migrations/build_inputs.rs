@@ -65,6 +65,8 @@ pub(super) struct BuildInputs {
     host_target: String,
     root_package: String,
     packages: BTreeMap<String, ResolvedPackage>,
+    #[serde(skip)]
+    package_ids: BTreeMap<String, String>,
     coverage: Coverage,
 }
 
@@ -110,6 +112,15 @@ struct ResolvedDependency {
 }
 
 impl BuildInputs {
+    pub(super) fn package_identity(&self, cargo_id: &str) -> Result<&str> {
+        self.package_ids
+            .get(cargo_id)
+            .map(String::as_str)
+            .with_context(|| {
+                format!("Cargo build output belongs to an unresolved package: {cargo_id}")
+            })
+    }
+
     pub(super) fn verify_registry(
         &self,
         source: &Path,
@@ -427,12 +438,13 @@ fn project(
         host_target: host.to_owned(),
         root_package: identities[root_id].clone(),
         packages: resolved,
+        package_ids: identities.into_iter().map(|(id, identity)| (id.to_owned(), identity)).collect(),
         coverage: Coverage {
             resolution: "native normal/build dependency closure from filtered workspace metadata",
             feature_precision: "workspace resolution may include features from unbuilt workspace/dev consumers; not an exact compilation unit graph",
             unverified: [
                 "external package bytes",
-                "generated inputs",
+                "generated inputs outside recorded Cargo OUT_DIR files and exact compiler consumption",
                 "build-script and proc-macro effects",
                 "ambient native/toolchain inputs",
                 "per-migration source attribution",
@@ -748,6 +760,98 @@ mod tests {
         )?;
         assert_eq!(inputs.packages.len(), 1);
         assert_eq!(inputs.source_sha256, fixture.snapshot.sha256);
+        Ok(())
+    }
+
+    #[test]
+    fn verifies_generated_outputs_from_a_cargo_build_script() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let package = fixture
+            .root
+            .join(ROOT_MANIFEST)
+            .parent()
+            .context("fixture manifest directory")?
+            .to_owned();
+        fs::write(
+            package.join("build.rs"),
+            r#"
+            fn main() {
+                let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+                std::fs::create_dir(out.join("schema")).unwrap();
+                std::fs::write(out.join("schema/generated.rs"), "pub const SCHEMA: u64 = 42;\n").unwrap();
+            }
+        "#,
+        )?;
+        fs::write(
+            package.join("src/lib.rs"),
+            r#"include!(concat!(env!("OUT_DIR"), "/schema/generated.rs"));"#,
+        )?;
+        let mut files = Vec::new();
+        collect_snapshot_files(&fixture.root, &fixture.root, &mut files)?;
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let expected = snapshot(files)?;
+        let mut rustc = build_command("rustc", &fixture.root)?;
+        rustc.arg("-Vv");
+        let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
+        let target = fixture.directory.join("target");
+        let resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let mut build = build_command("cargo", &fixture.root)?;
+        build
+            .args([
+                "build",
+                "--locked",
+                "--offline",
+                "-p",
+                "rustok-migrations",
+                "--target",
+                &host,
+                "--message-format=json",
+            ])
+            .env("CARGO_TARGET_DIR", &target);
+        let messages = run_process(&mut build, 120, 64 * 1024)?;
+        let mut generated = build_outputs::GeneratedOutputs::new(&target)?;
+        let mut out_dir = None;
+        for line in std::str::from_utf8(&messages)?.lines() {
+            let message: Value = serde_json::from_str(line)?;
+            if message["reason"] == "build-script-executed" {
+                generated.record(&message, &resolution)?;
+                out_dir = message["out_dir"].as_str().map(PathBuf::from);
+
+                let mut outside = message;
+                outside["out_dir"] = json!(fixture.root);
+                let error = generated.record(&outside, &resolution).unwrap_err();
+                assert!(error.to_string().contains("OUT_DIR escaped build output"));
+            }
+        }
+        let out_dir =
+            out_dir.context("fixture build script did not report its output directory")?;
+        generated.capture()?;
+        generated.verify_unchanged()?;
+        let record = serde_json::to_value(&generated)?;
+        let directories = record["directories"]
+            .as_object()
+            .context("missing output directories")?;
+        assert_eq!(directories.len(), 1);
+        let directory = directories
+            .values()
+            .next()
+            .context("missing fixture output")?;
+        assert_eq!(directory["package"], resolution.root_package);
+        assert_eq!(directory["files"][0]["path"], "schema/generated.rs");
+        assert_eq!(
+            directory["files"][0]["sha256"],
+            digest(b"pub const SCHEMA: u64 = 42;\n")
+        );
+
+        let file = out_dir.join("schema/generated.rs");
+        fs::write(&file, "pub const SCHEMA: u64 = 99;\n")?;
+        assert!(generated.verify_unchanged().is_err());
+        fs::write(&file, "pub const SCHEMA: u64 = 42;\n")?;
+        fs::write(out_dir.join("extra"), "added after build")?;
+        assert!(generated.verify_unchanged().is_err());
+        fs::remove_file(out_dir.join("extra"))?;
+        fs::remove_file(file)?;
+        assert!(generated.verify_unchanged().is_err());
         Ok(())
     }
 

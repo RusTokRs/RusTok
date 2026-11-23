@@ -259,7 +259,10 @@ For a new `verify-fresh` run, `--registry-cache` checks the cache at both
 ends of each build and verifies that Cargo resolved the package manifests
 from that extraction. The selected build identity then includes the
 matching crate and file digests. This establishes endpoint observations
-for crates.io packages, with generated and transient inputs still open.
+for crates.io packages. New builds also capture the regular files in every
+Cargo-reported `OUT_DIR` and recheck those paths, modes and bytes before the
+run's report is published. Exact compiler reads, generated files outside
+these directories and transient inputs still require separate evidence.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
@@ -324,7 +327,8 @@ the existing path/mode/blob snapshot, lockfile, Cargo/toolchain configuration,
 normalized native normal/build dependency graph, tool versions, arguments and
 actual binary digests. It compares resolution before and after the build.
 Workspace feature unification can overstate actual compilation features;
-external package bytes, generated inputs, build-script/proc-macro effects,
+external package bytes outside the recorded registry checks, exact generated
+input consumption, build-script/proc-macro effects,
 ambient native/toolchain inputs and per-migration attribution remain explicitly
 unverified. This is partial build evidence, not a complete input read trace or
 per-migration freeze set. The module archive `source_digest` cannot replace
@@ -506,6 +510,11 @@ The build-time check was exercised on an offline Cargo fixture using
 the resolved `hex` 0.4.3 package. Cargo's manifest path matched the inspected
 cache, and both endpoint observations were equal. The regression also
 rejects a different manifest path or modified extracted source bytes.
+For generated outputs, a separate offline Cargo fixture compiled a Rust
+module loaded through `include!` from `OUT_DIR`. The recorded SHA-256
+matched the file. The verifier rejected an output directory outside the
+build target and edits, additions and deletions after capture. The earlier
+PostgreSQL pilot predates the generated output record.
 
 A separate PostgreSQL 16.13 test on the current composition rolled back the
 Blog index migration, then confirmed that over-width translation data blocks

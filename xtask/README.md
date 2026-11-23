@@ -465,6 +465,15 @@ the local Cargo cache. Source inputs are verified again after execution, includi
 copies used as migration working directories. Failed runs retain a failure
 record; temporary build sources, fixture databases and roles are cleaned up.
 
+New `verify-fresh` reports also record `generated_build_outputs` in each
+build identity. The verifier takes each `OUT_DIR` reported by Cargo, matches
+its package to the resolved graph and hashes the regular files under it,
+including their relative paths and modes. It checks the directory contents
+again before publishing the report. Changes, added files and missing files
+fail verification. The output observations apply to the reported directories
+after compilation. Exact compiler reads, proc-macro expansion and writes
+outside those directories still require separate evidence.
+
 Each side's build evidence binds the existing source snapshot, lockfile,
 repository Cargo/toolchain configuration, normalized Cargo dependency resolution,
 tool versions and build arguments to the actual runner, exporter and exported
@@ -479,7 +488,8 @@ required. Resolution is checked before and after each build.
 
 Build resolution evidence remains partial. Cargo workspace metadata can unify
 features from unbuilt workspace and development consumers; this is not an exact
-compilation-unit graph. External package bytes, generated inputs, build-script
+compilation-unit graph. External bytes outside the recorded registry checks,
+generated inputs outside the recorded output directories, build-script
 and proc-macro effects, ambient native/toolchain inputs and complete per-migration
 source attribution are explicitly unverified. A module archive's `source_digest` is not
 the composed migrator's workspace/build identity. Source/input declarations do

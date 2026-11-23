@@ -16,6 +16,7 @@ use std::{
 const BUILD_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
 
 mod build_inputs;
+mod build_outputs;
 mod source_inputs;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -718,6 +719,7 @@ fn verify_fresh(
         let mut binaries = BTreeMap::new();
         let mut input_digests = BTreeMap::new();
         let mut build_identity = BTreeMap::new();
+        let mut generated_outputs = BTreeMap::new();
         for (side, source) in [
             ("reference", &original_build),
             ("candidate", &candidate_build),
@@ -763,6 +765,7 @@ fn verify_fresh(
                 .env("CARGO_BUILD_JOBS", "2");
             let output = run_process(&mut build, BUILD_TIMEOUT_SECONDS, 64 * 1024 * 1024)
                 .with_context(|| format!("{side} migration build failed"))?;
+            let mut generated = build_outputs::GeneratedOutputs::new(&target)?;
             let mut artifacts = BTreeMap::new();
             for line in output
                 .split(|byte| *byte == b'\n')
@@ -770,7 +773,9 @@ fn verify_fresh(
             {
                 let value: serde_json::Value =
                     serde_json::from_slice(line).context("invalid Cargo artifact message")?;
-                if value["reason"] == "compiler-artifact" {
+                if value["reason"] == "build-script-executed" {
+                    generated.record(&value, &resolution)?;
+                } else if value["reason"] == "compiler-artifact" {
                     if let (Some(name), Some(executable)) = (
                         value["target"]["name"].as_str(),
                         value["executable"].as_str(),
@@ -786,6 +791,9 @@ fn verify_fresh(
                     }
                 }
             }
+            generated
+                .capture()
+                .with_context(|| format!("{side} build script outputs"))?;
             let runner = artifacts
                 .remove("rustok-migrate")
                 .context("Cargo did not produce rustok-migrate")?;
@@ -840,6 +848,7 @@ fn verify_fresh(
                 "exporter_sha256": input_digests[&exporter],
                 "inventory_sha256": input_digests[&plan_output],
                 "compiler_sources": compiler_sources,
+                "generated_build_outputs": generated,
             });
             if let Some(verification) = registry_before {
                 identity["registry_sources"] = serde_json::json!({
@@ -854,6 +863,7 @@ fn verify_fresh(
                     "evidence": identity,
                 }),
             );
+            generated_outputs.insert(side, generated);
             validate_snapshot(
                 source,
                 if side == "reference" {
@@ -917,6 +927,11 @@ fn verify_fresh(
                 file_digest(path)? == *digest,
                 "build input changed during verification"
             );
+        }
+        for (side, generated) in &generated_outputs {
+            generated
+                .verify_unchanged()
+                .with_context(|| format!("{side} build script outputs"))?;
         }
         ensure!(
             file_digest(&verifier)? == verifier_digest && file_digest(&pg_dump)? == pg_dump_digest,
