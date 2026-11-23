@@ -13,6 +13,10 @@ const productAdminCore = readFileSync(
   new URL('../../crates/modules/rustok-product/admin/src/core.rs', import.meta.url),
   'utf8'
 );
+const catalogTransport = readFileSync(
+  new URL('../../crates/modules/rustok-product/admin/src/catalog_transport.rs', import.meta.url),
+  'utf8'
+);
 const filters = readFileSync(
   new URL('../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs', import.meta.url),
   'utf8'
@@ -35,6 +39,9 @@ const nativeCatalogControls = readFileSync(
 );
 
 test('mounted Leptos catalog uses current router filters for owner and facet requests', () => {
+  assert.doesNotMatch(grid, /provide_context\(initial_catalog_controls\.clone\(\)\)/);
+  assert.doesNotMatch(catalogTransport, /product_admin_list_input_from_route|ProductAdminRouteControls/);
+
   assert.match(grid, /let catalog_controls = Memo::new/);
   for (const name of ['route_search', 'route_status', 'route_vendor', 'route_category',
     'route_attributes', 'route_sort_by', 'route_sort_direction', 'route_page']) {
