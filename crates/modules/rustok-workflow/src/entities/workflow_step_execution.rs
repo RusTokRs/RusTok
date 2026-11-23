@@ -13,6 +13,8 @@ pub enum StepExecutionStatus {
     Completed,
     #[sea_orm(string_value = "failed")]
     Failed,
+    #[sea_orm(string_value = "reconciliation_required")]
+    ReconciliationRequired,
     #[sea_orm(string_value = "skipped")]
     Skipped,
 }
@@ -24,6 +26,7 @@ impl std::fmt::Display for StepExecutionStatus {
             Self::Running => write!(f, "running"),
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
+            Self::ReconciliationRequired => write!(f, "reconciliation_required"),
             Self::Skipped => write!(f, "skipped"),
         }
     }

@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionStatus {
@@ -13,6 +13,8 @@ pub enum ExecutionStatus {
     Failed,
     #[sea_orm(string_value = "timed_out")]
     TimedOut,
+    #[sea_orm(string_value = "reconciliation_required")]
+    ReconciliationRequired,
 }
 
 impl std::fmt::Display for ExecutionStatus {
@@ -22,6 +24,7 @@ impl std::fmt::Display for ExecutionStatus {
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
             Self::TimedOut => write!(f, "timed_out"),
+            Self::ReconciliationRequired => write!(f, "reconciliation_required"),
         }
     }
 }

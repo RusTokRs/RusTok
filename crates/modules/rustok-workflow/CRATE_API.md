@@ -1,5 +1,66 @@
 # rustok-workflow / CRATE_API
 
+## Schedule revision consistency
+
+- All definition edits (including workflow step graph changes and restore)
+  advance `updated_at` monotonically by at least 1 microsecond. Concurrent
+  writers use the existing parent-row transaction lock.
+- A failure counter increment without a state change does not alter the
+  schedule revision. Actual auto-pause does advance the revision.
+- A newly seeded cursor clamps a future-skewed updated timestamp to current
+  UTC, preserving the bounded catch-up horizon.
+
+## Lifecycle and admission guards
+
+- Cron syntax is validated with the runtime parser when a Workflow enters
+  `active`, when an active cron is modified, and when an active workflow
+  version is restored. Draft configurations may be incomplete.
+- A destructive `WorkflowService::delete` rejects running/uncertain
+  executions or running/unresolved cron firings with
+  `WorkflowDeletionBlocked` (`409` via REST). This protects active recovery
+  evidence against parent cascade. Completed history remains subject to the
+  existing explicit workflow deletion/retention contract.
+
+## Step execution contract
+
+- An explicit `timeout_ms` bounds **each** step execution attempt to 1–3,600,000 ms (one hour). `None` means no engine-level deadline. Owner service validates new/updated/restored step configurations, and the engine applies the bound to first and retry attempts.
+- Pure steps have retry/skip/stop semantics; `stop_with` must stop the chain even when returned after a successful retry. Typed `StepTimedOut` produces an overall `timed_out` terminal state when a pure step fails without recovery.
+- Potentially external HTTP/notify/script/event steps fail closed on any executor error, including timeout or a misleading validation error. The individual step and parent execution use `reconciliation_required`; a generic retry/skip policy cannot establish whether a remote effect was already accepted.
+- Unknown executor types with `on_error=skip` record the step as `skipped`, not `failed`.
+
+## Durable cron owner contract (proposed, 2026-11-23)
+
+- Three Workflow-owned tables: `workflow_cron_cursors` (revision + CAS
+  watermark), `workflow_cron_firings` (unique scheduled slot, one current
+  attempt), `workflow_cron_reconciliation_decisions` (immutable human
+  decision/evidence).
+- `WorkflowCronScheduler::validate_persistence` rejects missing migration.
+  `start_with_stop` claims and supervises bounded due work without replaying
+  expired attempts merely because their lease aged.
+- WorkflowEngine uses firing UUID as the canonical trigger identity. Replays
+  of terminal event/cron executions reuse journal identity; incomplete or
+  uncertain executions return `ExecutionOutcomeUncertain`.
+- For possible external effects, a failure without a proven pre-effect
+  rejection records `reconciliation_required`. Generic retry and skip do
+  not authorize external re-dispatch.
+- Tenant-scoped REST and GraphQL review/decision surfaces share permission
+  checks and one owner reconciliation transaction. Requeuing requires
+  `prior_worker_fenced` attestation, evidence and absence of an execution
+  record; confirmed terminal decisions require terminal journal evidence.
+- The decision remains **Proposed**, and no compilation, tests or migration
+  deployment evidence has been obtained.
+
+## Cron lifecycle ownership (2026-11-23)
+
+`WorkflowCronScheduler::start_with_stop` binds the Workflow owner's cron
+scheduler to a host-provided watch stop receiver. The scheduler tracks its
+spawned execution tasks, refuses new triggers on stop (including after async
+step loading), and joins accepted executions on cooperative shutdown. A forced
+host abort or process crash still interrupts those tasks and is **not**
+reconciled as a durable execution completion. The legacy `start` method also
+retains child-task ownership. No cross-replica or missed-firing guarantees are
+added by this local lifecycle fix.
+
 ## Public surface
 
 ### Public modules

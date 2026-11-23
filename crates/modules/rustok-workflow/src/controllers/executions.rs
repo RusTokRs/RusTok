@@ -8,7 +8,7 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{WorkflowError, WorkflowExecutionResponse, WorkflowService};
+use crate::{WorkflowCronReconciliationItem, WorkflowUnconfirmedExecutionItem, WorkflowError, WorkflowExecutionResponse, WorkflowService};
 
 fn map_workflow_execution_error(
     error: WorkflowError,
@@ -42,6 +42,30 @@ fn map_workflow_execution_error(
             "Workflow execution was not found",
             "execution_not_found",
         ),
+        WorkflowError::CronReconciliationConflict(_) => (
+            StatusCode::CONFLICT,
+            "workflow_cron_reconciliation_conflict",
+            "Workflow cron firing cannot be reconciled in its current state",
+            "cron_reconciliation_conflict",
+        ),
+        WorkflowError::InvalidCronReconciliationEvidence => (
+            StatusCode::BAD_REQUEST,
+            "workflow_cron_reconciliation_evidence_invalid",
+            "Workflow cron reconciliation requires valid evidence",
+            "invalid_reconciliation_evidence",
+        ),
+        WorkflowError::WorkflowDeletionBlocked(_) => (
+            StatusCode::CONFLICT,
+            "workflow_deletion_blocked",
+            "Workflow has running or unresolved execution history",
+            "unresolved_execution_blocks_deletion",
+        ),
+        WorkflowError::ExecutionOutcomeUncertain(_) => (
+            StatusCode::CONFLICT,
+            "workflow_execution_reconciliation_required",
+            "Workflow execution outcome requires operator reconciliation",
+            "execution_outcome_ambiguous",
+        ),
         WorkflowError::NotActive(_) => (
             StatusCode::CONFLICT,
             "workflow_state_conflict",
@@ -63,6 +87,12 @@ fn map_workflow_execution_error(
             "workflow_webhook_unauthorized",
             "Webhook signature verification failed",
             "webhook_unauthorized",
+        ),
+        WorkflowError::StepTimedOut { .. } => (
+            StatusCode::GATEWAY_TIMEOUT,
+            "workflow_step_timed_out",
+            "Workflow step exceeded its configured execution deadline",
+            "step_timeout",
         ),
         WorkflowError::StepFailed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -153,6 +183,90 @@ pub async fn get_execution(
             )
         })?;
     Ok(Json(execution))
+}
+
+/// Review legacy or event-driven execution receipts whose results remain
+/// uncertain. These receipts have no generic safe replay operation.
+pub async fn list_unconfirmed_executions(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+) -> HttpResult<Json<Vec<WorkflowUnconfirmedExecutionItem>>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOW_EXECUTIONS_LIST],
+        "Permission denied: workflow_executions:list required",
+    )?;
+    let items = crate::services::unconfirmed_executions_for_tenant(
+        &runtime.db_clone(), tenant.id, 100,
+    ).await.map_err(|error| map_workflow_execution_error(
+        error, "list_unconfirmed_executions", tenant.id, None, None,
+    ))?;
+    Ok(Json(items.into_iter().map(Into::into).collect()))
+}
+
+/// Review-only projection. A stale claim cannot be retried from this endpoint.
+pub async fn list_cron_reconciliation(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+) -> HttpResult<Json<Vec<WorkflowCronReconciliationItem>>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOW_EXECUTIONS_LIST],
+        "Permission denied: workflow_executions:list required",
+    )?;
+
+    let items = crate::services::reconciliation_required_for_tenant(
+        &runtime.db_clone(), tenant.id, 100,
+    )
+    .await
+    .map_err(|error| map_workflow_execution_error(
+        error, "list_cron_reconciliation", tenant.id, None, None,
+    ))?;
+    Ok(Json(items.into_iter().map(Into::into).collect()))
+}
+
+#[derive(serde::Deserialize)]
+pub struct CronReconciliationRequest {
+    pub decision: crate::services::CronReconciliationDecision,
+    pub evidence: String,
+    /// Operator attests that the previous worker process is fully fenced
+    /// before requesting a retry that cannot be proven by elapsed time alone.
+    #[serde(default)]
+    pub prior_worker_fenced: bool,
+}
+
+/// High-privilege recovery: records actor, evidence and attempt fence in one
+/// owner transaction. The endpoint cannot blindly replay a running execution.
+pub async fn reconcile_cron_firing(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(firing_id): Path<Uuid>,
+    Json(request): Json<CronReconciliationRequest>,
+) -> HttpResult<Json<WorkflowCronReconciliationItem>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOWS_MANAGE],
+        "Permission denied: workflows:manage required",
+    )?;
+    let actor_id = auth.human_user_id().ok_or_else(|| HttpError::forbidden(
+        "workflow_reconciliation_actor_required",
+        "An authenticated human operator is required".to_string(),
+    ))?;
+    let outcome = crate::services::reconcile_firing(
+        &runtime.db_clone(),
+        tenant.id,
+        firing_id,
+        actor_id,
+        request.decision,
+        &request.evidence,
+        request.prior_worker_fenced,
+    ).await.map_err(|error| map_workflow_execution_error(
+        error, "reconcile_cron_firing", tenant.id, None, Some(firing_id),
+    ))?;
+    Ok(Json(outcome.into()))
 }
 
 fn ensure_execution_permission(

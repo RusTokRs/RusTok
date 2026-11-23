@@ -1,5 +1,61 @@
 # Implementation plan for `rustok-workflow`
 
+## Monotonic cron revision follow-up (source only)
+
+Definition timestamps advance strictly across quick edits or backward
+wall clocks; failure-count-only bookkeeping is not a definition change.
+A real auto-pause still invalidates previously queued old-version firings.
+A future-skewed update timestamp cannot seed a cursor beyond the current
+clock and freeze the schedule. Unit source regressions were added; the
+canonical SQLite/PostgreSQL checks were not executed.
+
+## Active cron admission / deletion guards (source-only)
+
+Activating or editing an active cron definition now parses a bounded
+expression at the Workflow owner write boundary. Invalid active cron edits
+and version restores fail within the owning transaction. Hard deletion is
+blocked while any execution remains `running` or
+`reconciliation_required`, or a cron firing is `running` or
+`reconciliation_required`; this preserves evidence needed for recovery.
+Unstarted pending firings are cancelled as part of an explicit deletion.
+Source regressions cover invalid activation/edit and non-destructive
+rejection of admitted/uncertain journals. All verification remains maintainer-owned.
+
+## Step-runner correctness follow-up (source-only, unverified)
+
+The execution journal distinguishes confirmed step failure from
+`reconciliation_required` effects. A user-configured step timeout is now
+bounded (1..=3,600,000 ms) and enforced per attempt; timeout failures of pure
+steps produce terminal `timed_out`, while external step timeouts are
+reconciliation-required. Retry success honors `stop_with` and unknown
+skipped step types are recorded as `skipped`. A stale heartbeat scan cannot
+quarantine a claim that has since refreshed; the terminal firing status is
+derived from the durable execution journal even after an in-memory error.
+Focused source tests were added but have not been run.
+
+## 2026-11-23 — durable cron admission and uncertainty handling (unverified)
+
+Implemented in source: additive cursor/firing/reconciliation schema, bounded
+catch-up and compare-and-set cursor advancement, per-firing claim token,
+stable UUID trigger identity and engine's terminal-record idempotency guard.
+Aged claims are quarantined rather than replayed. An operator may confirm a
+terminal execution, or requeue an unstarted firing only with explicit fenced
+worker attestation and transactionally stored human evidence. REST/GraphQL
+share permissioned owner commands. Workflow step edits now advance schedule
+revisions within their transaction; provider-effect errors never run generic
+blind retry/skip. Event listener acknowledgement follows the synchronous
+engine result rather than fire-and-forget `spawn`.
+
+Before production integration: approve the proposed ADR, apply and review
+migrations for SQLite/PostgreSQL/MySQL, run scoped crate/server checks, exercise
+two independent database connections in parallel, process-crash windows,
+migration rollback and REST/GraphQL authorization. The first 24 hours of
+catch-up are an explicit cutover horizon for workflows lacking a cursor.
+Older, already-persisted cursors continue catching up across subsequent ticks.
+Long-lived preexisting event executions and external provider uncertainty
+remain review-only: never erase their current receipts or auto-replay a
+possible side effect. No commands or checks have been run by the agent.
+
 ## Current state
 
 `rustok-workflow` owns workflow definitions, execution journal, triggers, step

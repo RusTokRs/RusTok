@@ -114,6 +114,7 @@ pub enum GqlExecutionStatus {
     Completed,
     Failed,
     TimedOut,
+    ReconciliationRequired,
 }
 
 impl From<ExecutionStatus> for GqlExecutionStatus {
@@ -123,6 +124,7 @@ impl From<ExecutionStatus> for GqlExecutionStatus {
             ExecutionStatus::Completed => Self::Completed,
             ExecutionStatus::Failed => Self::Failed,
             ExecutionStatus::TimedOut => Self::TimedOut,
+            ExecutionStatus::ReconciliationRequired => Self::ReconciliationRequired,
         }
     }
 }
@@ -133,6 +135,7 @@ pub enum GqlStepExecutionStatus {
     Running,
     Completed,
     Failed,
+    ReconciliationRequired,
     Skipped,
 }
 
@@ -143,6 +146,7 @@ impl From<StepExecutionStatus> for GqlStepExecutionStatus {
             StepExecutionStatus::Running => Self::Running,
             StepExecutionStatus::Completed => Self::Completed,
             StepExecutionStatus::Failed => Self::Failed,
+            StepExecutionStatus::ReconciliationRequired => Self::ReconciliationRequired,
             StepExecutionStatus::Skipped => Self::Skipped,
         }
     }
@@ -297,6 +301,75 @@ impl From<WorkflowExecutionResponse> for GqlWorkflowExecution {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlWorkflowUnconfirmedExecutionItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub trigger_event_id: Option<Uuid>,
+    pub status: String,
+    pub started_at: String,
+}
+
+impl From<crate::WorkflowUnconfirmedExecutionItem> for GqlWorkflowUnconfirmedExecutionItem {
+    fn from(item: crate::WorkflowUnconfirmedExecutionItem) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            trigger_event_id: item.trigger_event_id,
+            status: item.status,
+            started_at: item.started_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum GqlCronReconciliationDecision {
+    ConfirmTerminal,
+    RequeueConfirmedUnstarted,
+    ConfirmExternalCompleted,
+    ConfirmExternalFailed,
+}
+
+impl From<GqlCronReconciliationDecision> for crate::services::CronReconciliationDecision {
+    fn from(decision: GqlCronReconciliationDecision) -> Self {
+        match decision {
+            GqlCronReconciliationDecision::ConfirmTerminal => Self::ConfirmTerminal,
+            GqlCronReconciliationDecision::RequeueConfirmedUnstarted => Self::RequeueConfirmedUnstarted,
+            GqlCronReconciliationDecision::ConfirmExternalCompleted => Self::ConfirmExternalCompleted,
+            GqlCronReconciliationDecision::ConfirmExternalFailed => Self::ConfirmExternalFailed,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlWorkflowCronReconciliationItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub scheduled_at: String,
+    pub status: String,
+    pub claimed_at: Option<String>,
+    pub execution_id: Option<Uuid>,
+    pub reason: Option<String>,
+}
+
+impl From<crate::WorkflowCronReconciliationItem> for GqlWorkflowCronReconciliationItem {
+    fn from(item: crate::WorkflowCronReconciliationItem) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            scheduled_at: item.scheduled_at.to_rfc3339(),
+            status: item.status,
+            claimed_at: item.claimed_at.map(|time| time.to_rfc3339()),
+            execution_id: item.execution_id,
+            reason: item.reason,
         }
     }
 }
