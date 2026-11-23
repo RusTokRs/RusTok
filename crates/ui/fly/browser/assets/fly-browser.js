@@ -796,7 +796,7 @@ export class FlyBrowserAdapter {
     // `credentials: "same-origin"` on the intent request, so a token copy in script-readable
     // storage would only widen the XSS surface without authenticating anything new.
     this.draftSession = readDraftSession(this.pageId);
-    this.requiresOperationReceipts = root.dataset.flyDraftContract === "rendered";
+    this.requiresOperationReceipts = root.dataset.flyDraftContract === "rendered" && Boolean(root.dataset.flyRenderedDraftToken);
     this.pendingOperation = this.requiresOperationReceipts
       ? readPendingOperation(this.pageId)
       : null;
