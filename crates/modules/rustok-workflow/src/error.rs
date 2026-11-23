@@ -21,6 +21,12 @@ pub enum WorkflowError {
     #[error("Workflow execution {0} is running with an unconfirmed outcome; operator reconciliation required")]
     ExecutionOutcomeUncertain(Uuid),
 
+    #[error("Workflow cron firing {0} requires an explicit reconciliation decision")]
+    CronReconciliationConflict(Uuid),
+
+    #[error("Workflow cron reconciliation evidence is missing or invalid")]
+    InvalidCronReconciliationEvidence,
+
     #[error("Workflow is not active (status: {0})")]
     NotActive(String),
 
