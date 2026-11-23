@@ -300,7 +300,7 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         let capability = request.capability();
-        if capability == BuilderCapabilityKind::Publish {
+        let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
             if expected_hash.is_none() {
                 self.fail("Publish request has no submitted project hash");
                 return;
@@ -308,9 +308,9 @@ impl AdminEditorRuntime {
             if self.facade.is_some() || self.on_request.is_some() {
                 let start = self
                     .controller
-                    .try_update(|controller| controller.mark_save_started());
+                    .try_update(|controller| controller.mark_save_started_with_id());
                 match start {
-                    Some(Ok(())) => {}
+                    Some(Ok(attempt_id)) => Some(attempt_id),
                     Some(Err(error)) => {
                         self.fail(error.to_string());
                         return;
@@ -320,8 +320,12 @@ impl AdminEditorRuntime {
                         return;
                     }
                 }
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
         if let Some(facade) = self.facade.as_ref() {
             let facade = Arc::clone(facade);
             let runtime = self.clone();
@@ -399,9 +403,13 @@ impl AdminEditorRuntime {
                             let Some(expected_hash) = expected_hash else {
                                 return Err("Publish request has no submitted project hash".to_string());
                             };
+                            let Some(attempt_id) = save_attempt_id else {
+                                return Err("Publish request has no tracked attempt".to_string());
+                            };
                             controller
-                                .acknowledge_save_for_hash(
+                                .acknowledge_save_for_attempt(
                                     expected_hash,
+                                    attempt_id,
                                     response.revision_id.clone(),
                                 )
                                 .map_err(|error| error.to_string())
@@ -412,8 +420,9 @@ impl AdminEditorRuntime {
                                 runtime.announce(runtime.save_succeeded.clone());
                             }
                             Some(Err(error)) => {
-                                runtime.mark_save_failed();
-                                runtime.fail(error);
+                                if runtime.finish_failed_request(capability, save_attempt_id) {
+                                    runtime.fail(error);
+                                }
                             }
                             None => runtime.fail(
                                 "Page Builder controller was disposed before save acknowledgement",
@@ -421,15 +430,17 @@ impl AdminEditorRuntime {
                         }
                     }
                     Ok(response) => {
-                        runtime.finish_failed_request(capability);
-                        runtime.fail(format!(
-                            "Page Builder facade returned `{}` for a `{capability}` request",
-                            response.capability()
-                        ));
+                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                            runtime.fail(format!(
+                                "Page Builder facade returned `{}` for a `{capability}` request",
+                                response.capability()
+                            ));
+                        }
                     }
                     Err(error) => {
-                        runtime.finish_failed_request(capability);
-                        runtime.fail(error.to_string());
+                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                            runtime.fail(error.to_string());
+                        }
                     }
                 }
             });
@@ -444,24 +455,28 @@ impl AdminEditorRuntime {
         }
     }
 
-    fn finish_failed_request(&self, capability: BuilderCapabilityKind) {
+    /// False means the completion belongs to an obsolete attempt. In that
+    /// case it must neither fail the newer save nor replace its UI message.
+    fn finish_failed_request(
+        &self,
+        capability: BuilderCapabilityKind,
+        attempt_id: Option<u64>,
+    ) -> bool {
         match capability {
-            BuilderCapabilityKind::Publish => self.mark_save_failed(),
+            BuilderCapabilityKind::Publish => {
+                let Some(attempt_id) = attempt_id else {
+                    return false;
+                };
+                self.controller
+                    .try_update(|controller| controller.mark_save_failed_for_attempt(attempt_id))
+                    .is_some_and(|result| result.unwrap_or(false))
+            }
             BuilderCapabilityKind::Preview => {
                 self.preview_in_progress.set(false);
                 self.preview_request.set(None);
+                true
             }
-            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => {}
-        }
-    }
-
-    fn mark_save_failed(&self) {
-        if self
-            .controller
-            .try_update(|controller| controller.mark_save_failed())
-            .is_none()
-        {
-            tracing::trace!("Controller signal disposed before mark_save_failed");
+            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => true,
         }
     }
 

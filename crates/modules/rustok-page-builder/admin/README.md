@@ -195,3 +195,8 @@ The controller now offers `mark_save_started_with_id`, `acknowledge_save_for_att
 `mark_save_failed_for_attempt`, which guard identical-hash retries against stale asynchronous
 completions. Existing hash-only entrypoints remain for legacy clients but are not sufficient to
 correlate retries. Local IDs are transient and are **not** a server idempotency key.
+
+The Leptos facade runtime captures the unique local save attempt when it dispatches a publish
+request. Publish response handlers now acknowledge or fail only that captured attempt, so a
+late old request cannot corrupt the state of a newer identical retry. This is not a guarantee
+for external callback transports, which need an explicit request/response correlation contract.

@@ -1184,3 +1184,7 @@ after a confirmed prior response with a nonempty revision and hash; ambiguous/fa
 pending commands without replay, including on timeout and stop. Cross-tab request coordination
 and true server-side idempotency are still outstanding; browser transport cannot infer whether a
 failed network request committed remotely.
+
+The Leptos admin facade's publish completion now uses the attempt-aware controller entrypoints
+for success and failure. Delayed completions of an older identical-hash retry are ignored rather
+than failing the active new save. Host callback/session transport IDs are still an open migration.
