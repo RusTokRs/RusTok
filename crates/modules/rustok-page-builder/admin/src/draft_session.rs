@@ -137,6 +137,12 @@ impl PersistentDraftSessionRecord {
 }
 
 pub trait SsrDraftSessionStore: Send + Sync {
+    /// Whether this store atomically persists operation receipts with session generations.
+    /// Custom stores must opt in only when both lookup and commit are durable and race-safe.
+    fn supports_operation_receipts(&self) -> bool {
+        false
+    }
+
     /// Looks up an operation acknowledgement without changing the session generation.
     /// The caller must already have authenticated and bound `token` to this page and owner.
     fn lookup_operation_receipt(
@@ -587,6 +593,10 @@ impl Default for InMemorySsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
+    fn supports_operation_receipts(&self) -> bool {
+        true
+    }
+
     fn lookup_operation_receipt(
         &self,
         token: &str,
@@ -1552,6 +1562,10 @@ impl PersistentDraftSessionBackend for FileSsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for FileSsrDraftSessionStore {
+    fn supports_operation_receipts(&self) -> bool {
+        true
+    }
+
     fn lookup_operation_receipt(
         &self,
         token: &str,
@@ -2402,6 +2416,10 @@ impl Default for DurableSsrDraftSessionStore {
 }
 
 impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
+    fn supports_operation_receipts(&self) -> bool {
+        true
+    }
+
     fn lookup_operation_receipt(
         &self,
         token: &str,
