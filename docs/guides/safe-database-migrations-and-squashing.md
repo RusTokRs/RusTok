@@ -245,6 +245,11 @@ The same workflow can generate reviewable declarations from the executable
 inventory, Cargo's saved dep-info paths, and the committed Rust name and
 module declarations. Ambiguous names and unsupported local links require
 review before the generated declarations are used.
+New `verify-fresh` reports bind the raw exporter dep-info and its normalized
+workspace path list to the same build identity as the exporter and inventory.
+`bind-inventory` can verify that retained list and reject declarations for
+files absent from the selected compiler observation. This recheck uses files
+from the completed run and needs no PostgreSQL replay.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
@@ -455,6 +460,10 @@ including three with explicit `MigrationName` implementations. The generated
 declarations passed `bind-inventory` with all 598 source fingerprints attached
 in executable order. This used the existing PostgreSQL report and the saved
 Cargo dependency list. It establishes local source coverage for that build.
+The saved report predates the compiler-source observation field. The
+binding regression used a separate copy with the recorded observation and
+rejected changed dep-info bytes, a changed path root and a declaration for
+an unobserved file. The original pilot files were preserved.
 
 The original pilot files are retained locally under
 `target/migration-pilot-20261122`. This record identifies the verified files

@@ -1,4 +1,8 @@
-use super::{check_commit, fingerprint, read_declarations, write_report, MigrationInputs};
+use super::{
+    check_commit,
+    discovery::{compiler_sources, CompilerSources},
+    fingerprint, read_declarations, write_report, MigrationFiles, MigrationInputs,
+};
 use crate::migrations::{
     digest, git_snapshot, read_source, validate_owner_report, Plan, SourceSnapshot,
 };
@@ -82,6 +86,8 @@ struct Report<'a> {
     build_identity_sha256: &'a str,
     inventory_sha256: String,
     source_declarations_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compiler_sources: Option<CompilerSources>,
     coverage: Coverage,
     entries: Vec<BoundEntry>,
 }
@@ -91,6 +97,7 @@ pub(in crate::migrations) fn bind_inventory(
     plan_path: &Path,
     inputs: &Path,
     side: &str,
+    compiler_input: Option<(&Path, &str)>,
 ) -> Result<()> {
     let side = match side {
         "reference" => Side::Reference,
@@ -131,6 +138,16 @@ pub(in crate::migrations) fn bind_inventory(
             "source declaration for {migration} is absent from the executable inventory"
         );
     }
+    let compiler_sources = compiler_input
+        .map(|(dep_info, build_root)| {
+            validate_compiler_sources(
+                build,
+                &read_source(&root.join(dep_info))?,
+                build_root,
+                &declarations,
+            )
+        })
+        .transpose()?;
     check_commit(root, commit)?;
     ensure!(
         git_snapshot(root, commit, None)? == *source,
@@ -151,9 +168,42 @@ pub(in crate::migrations) fn bind_inventory(
         build_identity_sha256: &build.sha256,
         inventory_sha256,
         source_declarations_sha256: digest(&declaration_bytes),
+        compiler_sources,
         coverage,
         entries,
     })
+}
+
+fn validate_compiler_sources(
+    build: &BuildIdentity,
+    dep_info: &[u8],
+    build_root: &str,
+    declarations: &MigrationFiles,
+) -> Result<CompilerSources> {
+    let evidence = build
+        .evidence
+        .get("compiler_sources")
+        .context("selected verify-fresh build has no recorded compiler source observation")?;
+    let expected: CompilerSources = serde_json::from_value(evidence.clone())
+        .context("invalid compiler source observation in verify-fresh report")?;
+    let (observed, paths) = compiler_sources(dep_info, build_root)?;
+    ensure!(
+        observed.dep_info_sha256 == expected.dep_info_sha256,
+        "exporter Cargo dep-info digest differs from selected build"
+    );
+    ensure!(
+        observed == expected,
+        "observed workspace paths differ from selected build"
+    );
+    for (migration, declaration) in declarations {
+        for path in &declaration.files {
+            ensure!(
+                paths.contains(path),
+                "migration {migration} source {path} was absent from the recorded exporter build"
+            );
+        }
+    }
+    Ok(observed)
 }
 
 fn validate_build<'a>(
@@ -334,6 +384,52 @@ mod tests {
             export["schema_version"] = 1.into();
             assert!(read_inventory(&serde_json::to_vec(&export)?).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn compiler_observation_rejects_swapped_file_root_and_unobserved_declaration() -> Result<()> {
+        use super::super::parse_declarations;
+        let dep_info =
+            b"/target/export-migration-plan: /work/repo/src/a.rs /work/repo/src/schema.sql";
+        let build_root = "/work/repo";
+        let (expected, _) = compiler_sources(dep_info, build_root)?;
+        let mut build = BuildIdentity {
+            sha256: String::new(),
+            evidence: json!({"compiler_sources": expected}),
+        };
+        let declarations = parse_declarations(&serde_json::to_vec(&json!({
+            "schema_version": 1, "entries": [{"migration": "a", "files": ["src/a.rs", "src/schema.sql"]}]
+        }))?)?;
+        assert_eq!(
+            validate_compiler_sources(&build, dep_info, build_root, &declarations)?,
+            expected
+        );
+        let error = validate_compiler_sources(
+            &build,
+            b"/target/export-migration-plan: /work/repo/src/a.rs",
+            build_root,
+            &declarations,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("dep-info digest differs"));
+        let error =
+            validate_compiler_sources(&build, dep_info, "/work", &declarations).unwrap_err();
+        assert!(error.to_string().contains("workspace paths differ"));
+
+        let unobserved = parse_declarations(&serde_json::to_vec(&json!({
+            "schema_version": 1, "entries": [{"migration": "a", "files": ["src/unbuilt.rs"]}]
+        }))?)?;
+        let error =
+            validate_compiler_sources(&build, dep_info, build_root, &unobserved).unwrap_err();
+        assert!(error.to_string().contains("src/unbuilt.rs was absent"));
+
+        build.evidence = json!({});
+        let error =
+            validate_compiler_sources(&build, dep_info, build_root, &declarations).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("no recorded compiler source observation"));
         Ok(())
     }
 

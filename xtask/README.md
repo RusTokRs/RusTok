@@ -405,6 +405,22 @@ exact attribution of shared dependency code still require separate evidence.
 New `verify-fresh` reports also record the Cargo dep-info file digests for
 the runner and exporter alongside their build artifacts.
 
+To check that the declarations use paths from the verified exporter build,
+pass the retained exporter `.d` file and its original build root to
+`bind-inventory`.
+
+```sh
+cargo xtask migrations bind-inventory --plan target/migrations/review/plan.json --inputs source-inputs.json --dep-info path/to/export-migration-plan.d --build-root path/to/original/source
+```
+
+`verify-fresh` records the exporter `.d` digest and the normalized workspace
+path-list digest in the selected build's identity. `bind-inventory` verifies
+both and requires every declared file in that path list. The result includes
+`compiler_sources` only when this comparison ran successfully. An older
+report can still be used for inventory and Git source binding. Requesting
+compiler-source comparison with an older report fails if its build identity
+lacks the recorded observation.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.

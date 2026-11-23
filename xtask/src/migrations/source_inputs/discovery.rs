@@ -1,7 +1,7 @@
 use super::{check_commit, inventory::read_inventory, local_links, write_report};
-use crate::migrations::{git, read_source, safe_relative, snapshot_git_files};
+use crate::migrations::{digest, git, read_source, safe_relative, snapshot_git_files};
 use anyhow::{ensure, Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -23,6 +23,29 @@ struct Declaration {
 struct Declarations {
     schema_version: u32,
     entries: Vec<Declaration>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(in crate::migrations) struct CompilerSources {
+    pub(in crate::migrations) dep_info_sha256: String,
+    workspace_paths_sha256: String,
+    workspace_paths: usize,
+    outside_workspace_paths: usize,
+}
+
+pub(in crate::migrations) fn compiler_sources(
+    bytes: &[u8],
+    build_root: &str,
+) -> Result<(CompilerSources, BTreeSet<String>)> {
+    let (paths, outside) = read_dep_info(bytes, build_root)?;
+    let evidence = CompilerSources {
+        dep_info_sha256: digest(bytes),
+        workspace_paths_sha256: digest(&serde_json::to_vec(&paths)?),
+        workspace_paths: paths.len(),
+        outside_workspace_paths: outside,
+    };
+    Ok((evidence, paths))
 }
 
 pub(in crate::migrations) fn discover(

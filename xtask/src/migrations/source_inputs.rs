@@ -13,7 +13,7 @@ mod discovery;
 mod inventory;
 mod local_links;
 
-pub(super) use discovery::discover;
+pub(super) use discovery::{compiler_sources, discover};
 pub(super) use inventory::bind_inventory;
 
 #[derive(Deserialize)]

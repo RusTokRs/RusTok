@@ -59,7 +59,7 @@ pub fn run(args: &[String]) -> Result<()> {
         "plan" => &["--reference", "--output"],
         "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
         "source-inputs" => &["--commit", "--inputs", "--compare"],
-        "bind-inventory" => &["--plan", "--inputs", "--side"],
+        "bind-inventory" => &["--plan", "--inputs", "--side", "--dep-info", "--build-root"],
         "discover-source-inputs" => &["--commit", "--inventory", "--dep-info", "--build-root"],
         _ => bail!("unknown migration command {command}"),
     };
@@ -93,12 +93,20 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--inputs")?),
             options.get("--compare").map(String::as_str),
         ),
-        "bind-inventory" => source_inputs::bind_inventory(
-            &root,
-            Path::new(required("--plan")?),
-            Path::new(required("--inputs")?),
-            options.get("--side").map_or("reference", String::as_str),
-        ),
+        "bind-inventory" => {
+            let compiler_input = match (options.get("--dep-info"), options.get("--build-root")) {
+                (Some(file), Some(directory)) => Some((Path::new(file), directory.as_str())),
+                (None, None) => None,
+                _ => bail!("--dep-info and --build-root must be used together"),
+            };
+            source_inputs::bind_inventory(
+                &root,
+                Path::new(required("--plan")?),
+                Path::new(required("--inputs")?),
+                options.get("--side").map_or("reference", String::as_str),
+                compiler_input,
+            )
+        }
         "discover-source-inputs" => source_inputs::discover(
             &root,
             required("--commit")?,
@@ -117,7 +125,7 @@ fn help() -> Result<()> {
         "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
     );
     println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
-    println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate]");
+    println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate] [--dep-info FILE --build-root DIR]");
     println!("cargo xtask migrations discover-source-inputs --commit SHA --inventory FILE --dep-info FILE --build-root DIR");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
@@ -764,13 +772,19 @@ fn verify_fresh(
                 .context("Cargo did not produce export-migration-plan")?;
             input_digests.insert(runner.clone(), file_digest(&runner)?);
             input_digests.insert(exporter.clone(), file_digest(&exporter)?);
-            for binary in [&runner, &exporter] {
-                let dep_info = binary.with_extension("d");
-                let dep_info_sha256 = file_digest(&dep_info).with_context(|| {
-                    format!("Cargo dep-info unavailable for {}", binary.display())
-                })?;
-                input_digests.insert(dep_info, dep_info_sha256);
-            }
+            let runner_dep_info = runner.with_extension("d");
+            let runner_dep_info_sha256 =
+                file_digest(&runner_dep_info).context("Cargo dep-info unavailable for runner")?;
+            input_digests.insert(runner_dep_info, runner_dep_info_sha256);
+            let exporter_dep_info = exporter.with_extension("d");
+            let dep_info = read_source(&exporter_dep_info)
+                .context("Cargo dep-info unavailable for exporter")?;
+            let source_root = source
+                .to_str()
+                .context("build source directory is not UTF-8")?;
+            let (compiler_sources, _) = source_inputs::compiler_sources(&dep_info, source_root)
+                .with_context(|| format!("invalid {side} exporter compiler inputs"))?;
+            input_digests.insert(exporter_dep_info, compiler_sources.dep_info_sha256.clone());
             let plan_output = evidence.join(format!("{side}-plan.json"));
             let mut export = runtime_command(&exporter);
             export.current_dir(source).arg("--output").arg(&plan_output);
@@ -799,6 +813,7 @@ fn verify_fresh(
                 "runner_sha256": input_digests[&runner],
                 "exporter_sha256": input_digests[&exporter],
                 "inventory_sha256": input_digests[&plan_output],
+                "compiler_sources": compiler_sources,
             });
             build_identity.insert(
                 side,
