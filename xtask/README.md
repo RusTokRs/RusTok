@@ -319,6 +319,38 @@ source, `main`, and `HEAD` are rechecked. If preparation fails, it removes its
 incomplete output so the same path can be retried. A path that already exists
 belongs to its original run and is rejected.
 
+`source-inputs` fingerprints declared migration files from an exact Git
+commit. Each entry reports a SHA-256 covering the paths, Git file modes and
+raw blob hashes. Shared files are read once per commit and contribute to every
+migration that declares them. Worktree bytes and Git replacement refs are
+ignored. A missing path, symlink or submodule fails the check.
+
+Use a reviewed input file with schema version 1.
+
+```json
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "migration": "m20261029_000001_create_blog_schema",
+      "files": [
+        "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
+        "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/postgres.rs"
+      ]
+    }
+  ]
+}
+```
+
+The example selects two files for a bounded check. Include every relevant
+file when collecting broader evidence. Use `--compare` to fingerprint the
+same paths in a second exact commit. The JSON report identifies changed files
+by migration, and a difference gives the command a nonzero exit status.
+
+```sh
+cargo xtask migrations source-inputs --commit <reference-sha> --inputs source-inputs.json --compare <candidate-sha>
+```
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
@@ -351,8 +383,8 @@ required. Resolution is checked before and after each build.
 Build resolution evidence remains partial. Cargo workspace metadata can unify
 features from unbuilt workspace and development consumers; this is not an exact
 compilation-unit graph. External package bytes, generated inputs, build-script
-and proc-macro effects, ambient native/toolchain inputs and per-migration source
-attribution are explicitly unverified. A module archive's `source_digest` is not
+and proc-macro effects, ambient native/toolchain inputs and complete per-migration
+source attribution are explicitly unverified. A module archive's `source_digest` is not
 the composed migrator's workspace/build identity. Source/input declarations do
 not grant release authority or replace the existing source-store/publication
 owners. All 15 tests in the migration command group passed with

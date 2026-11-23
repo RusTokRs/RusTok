@@ -229,9 +229,14 @@ after that boundary while retaining protected names, execution order, owners,
 dependency edges, safety and phase metadata, and transaction declarations.
 `null` is preserved as a declaration value. The current PR check still uses
 `--base` and requires the entire base name list to remain an exact prefix.
-The local check compares supplied plans. Trusted release tooling still needs
-to authenticate and select the boundary, cover independent module seals,
-verify source inputs, and authorize any draft replacement.
+The local check compares supplied plans. The separate [`xtask source-inputs`
+command](../../xtask/README.md#migration-consolidation-commands) reuses the Git
+snapshot reader and compares the exact paths, file modes and bytes of a
+reviewed list of migration inputs across two commits. It detects changes to
+selected nested Rust helpers and SQL assets. The covered paths come from the
+reviewed input list. Trusted release tooling still needs to prove that the
+list covers all transitive inputs, authenticate and select the boundary,
+cover independent module seals, and authorize any draft replacement.
 
 A trusted base-owned verifier checks the declared range, protected history and
 complete report. Infrastructure approval alone cannot authorize rewriting

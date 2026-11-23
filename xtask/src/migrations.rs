@@ -16,6 +16,7 @@ use std::{
 const BUILD_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
 
 mod build_inputs;
+mod source_inputs;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SourceFile {
@@ -57,6 +58,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let allowed: &[&str] = match command.as_str() {
         "plan" => &["--reference", "--output"],
         "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
+        "source-inputs" => &["--commit", "--inputs", "--compare"],
         _ => bail!("unknown migration command {command}"),
     };
     let options = parse_options(&args[1..], allowed)?;
@@ -83,6 +85,12 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--pg-dump")?),
             required("--admin-url-env")?,
         ),
+        "source-inputs" => source_inputs::run(
+            &root,
+            required("--commit")?,
+            Path::new(required("--inputs")?),
+            options.get("--compare").map(String::as_str),
+        ),
         // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
     }
@@ -93,6 +101,7 @@ fn help() -> Result<()> {
     println!(
         "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
     );
+    println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
     );
@@ -116,9 +125,14 @@ fn parse_options(args: &[String], allowed: &[&str]) -> Result<BTreeMap<String, S
     Ok(options)
 }
 
+fn git_command(root: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root).arg("--no-replace-objects");
+    command
+}
+
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    let output = Command::new("git")
-        .current_dir(root)
+    let output = git_command(root)
         .args(args)
         .output()
         .context("cannot run Git")?;
@@ -417,29 +431,52 @@ fn git_snapshot(
     reference_commit: &str,
     destination: Option<&Path>,
 ) -> Result<SourceSnapshot> {
+    snapshot_git_files(root, reference_commit, destination, None)
+}
+
+fn snapshot_git_files(
+    root: &Path,
+    reference_commit: &str,
+    destination: Option<&Path>,
+    paths: Option<&BTreeSet<&str>>,
+) -> Result<SourceSnapshot> {
     let tree = git(root, &["ls-tree", "-rz", "--full-tree", reference_commit])?;
     let mut entries = Vec::new();
+    let mut found = BTreeSet::new();
     for entry in tree.split(|b| *b == 0).filter(|e| !e.is_empty()) {
         let (metadata, path) = std::str::from_utf8(entry)?
             .split_once('\t')
             .context("invalid Git tree entry")?;
+        if let Some(paths) = paths {
+            if !paths.contains(path) {
+                continue;
+            }
+            found.insert(path);
+        }
         let fields: Vec<_> = metadata.split(' ').collect();
         ensure!(fields.len() == 3, "invalid Git tree metadata");
         let mode = fields[0];
         ensure!(
-            matches!(mode, "100644" | "100755"),
-            "reference symlinks and submodules are unsupported: {path}"
+            matches!(mode, "100644" | "100755") && fields[1] == "blob",
+            "Git source is not a regular blob: {path}"
         );
         safe_relative(path)?;
         entries.push((path.to_string(), mode.to_string(), fields[2].to_string()));
+    }
+    if let Some(paths) = paths {
+        let missing: Vec<_> = paths.difference(&found).copied().collect();
+        ensure!(
+            missing.is_empty(),
+            "declared inputs absent from Git commit {reference_commit}: {}",
+            missing.join(", ")
+        );
     }
     ensure!(!entries.is_empty(), "Git source tree is empty");
     let input = entries
         .iter()
         .map(|(_, _, oid)| format!("{oid}\n"))
         .collect::<String>();
-    let mut child = Command::new("git")
-        .current_dir(root)
+    let mut child = git_command(root)
         .args(["cat-file", "--batch"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

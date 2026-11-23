@@ -53,6 +53,24 @@ without evidence of a failure is recorded separately below.
 | `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 | `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 
+### P-GIT-OBJECT-REPLACEMENT — immutable Git evidence
+
+- **Category** — Source provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
+- **Failure mode** — Default `git ls-tree` and `git cat-file` reads in the
+  migration snapshot tooling let a local `refs/replace` redirect a pinned
+  object ID. A regression replaces an SQL blob and observes different source
+  bytes from a normal Git read of the original object ID.
+- **Implementation** — Route all source object reads through the same Git
+  command constructor and disable replace refs before resolving, listing or
+  reading the objects.
+
+```rust
+let mut command = Command::new("git");
+command.current_dir(root).arg("--no-replace-objects");
+```
+
+Check call sites with `rg -n 'Command::new\("git"\)|ls-tree|cat-file' xtask/src/migrations.rs`.
+
 ### P-MIGRATION-DIALECT-DRIFT — portable migration selection
 
 Database compatibility covers preconditions and branch completeness. A migration

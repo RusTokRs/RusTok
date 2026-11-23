@@ -1,0 +1,362 @@
+use super::{commit, read_source, safe_relative, snapshot, snapshot_git_files, SourceSnapshot};
+use anyhow::{ensure, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::{self, Write},
+    path::Path,
+};
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InputDeclarations {
+    schema_version: u32,
+    entries: Vec<MigrationDeclaration>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MigrationDeclaration {
+    migration: String,
+    files: Vec<String>,
+}
+
+type MigrationFiles = BTreeMap<String, BTreeSet<String>>;
+
+#[derive(Serialize)]
+struct CommitInputs {
+    commit: String,
+    entries: Vec<MigrationInputs>,
+}
+
+#[derive(Serialize)]
+struct MigrationInputs {
+    migration: String,
+    #[serde(flatten)]
+    source: SourceSnapshot,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct ChangedInput<'a> {
+    migration: &'a str,
+    path: &'a str,
+}
+
+#[derive(Serialize)]
+struct Report<'a> {
+    schema_version: u32,
+    scope: &'static str,
+    reference: &'a CommitInputs,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidate: Option<&'a CommitInputs>,
+    changed_inputs: Vec<ChangedInput<'a>>,
+}
+
+pub(super) fn run(
+    root: &Path,
+    reference: &str,
+    inputs: &Path,
+    compare: Option<&str>,
+) -> Result<()> {
+    let declarations = parse_declarations(&read_source(inputs)?)
+        .with_context(|| format!("invalid source declarations in {}", inputs.display()))?;
+    let reference = fingerprint(root, reference, &declarations)?;
+    let candidate = compare
+        .map(|commit| fingerprint(root, commit, &declarations))
+        .transpose()?;
+    let changed_inputs = candidate
+        .as_ref()
+        .map(|candidate| compare_inputs(&reference, candidate))
+        .unwrap_or_default();
+    let report = Report {
+        schema_version: 1,
+        scope: "declared-migration-source-inputs",
+        reference: &reference,
+        candidate: candidate.as_ref(),
+        changed_inputs,
+    };
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    serde_json::to_writer_pretty(&mut stdout, &report)?;
+    writeln!(stdout)?;
+    ensure!(
+        report.changed_inputs.is_empty(),
+        "{} declared migration source input(s) changed",
+        report.changed_inputs.len()
+    );
+    Ok(())
+}
+
+fn parse_declarations(bytes: &[u8]) -> Result<MigrationFiles> {
+    let declarations: InputDeclarations = serde_json::from_slice(bytes)?;
+    ensure!(
+        declarations.schema_version == 1 && !declarations.entries.is_empty(),
+        "source declarations require schema version 1 and at least one migration"
+    );
+    let mut migrations = BTreeMap::new();
+    for MigrationDeclaration { migration, files } in declarations.entries {
+        ensure!(
+            !migration.is_empty() && migration.trim() == migration,
+            "invalid migration identity {migration:?}"
+        );
+        ensure!(
+            !files.is_empty(),
+            "migration {migration} must declare at least one file"
+        );
+        let mut paths = BTreeSet::new();
+        for path in files {
+            safe_relative(&path)?;
+            ensure!(
+                paths.insert(path.clone()),
+                "migration {migration} lists {path} twice"
+            );
+        }
+        ensure!(
+            migrations.insert(migration.clone(), paths).is_none(),
+            "duplicate source declaration for migration {migration}"
+        );
+    }
+    Ok(migrations)
+}
+
+fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Result<CommitInputs> {
+    ensure!(
+        matches!(identity.len(), 40 | 64)
+            && identity
+                .bytes()
+                .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+            && commit(root, identity)? == identity,
+        "source input fingerprint requires a full Git commit SHA"
+    );
+    let paths = declarations
+        .values()
+        .flatten()
+        .map(String::as_str)
+        .collect();
+    let source = snapshot_git_files(root, identity, None, Some(&paths))?;
+    let files: BTreeMap<_, _> = source.files.iter().map(|file| (&file.path, file)).collect();
+    let entries = declarations
+        .iter()
+        .map(|(migration, paths)| {
+            let sources = paths
+                .iter()
+                .map(|path| {
+                    files
+                        .get(path)
+                        .map(|file| (*file).clone())
+                        .with_context(|| format!("source snapshot is missing {path}"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(MigrationInputs {
+                migration: migration.clone(),
+                source: snapshot(sources)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(CommitInputs {
+        commit: identity.to_owned(),
+        entries,
+    })
+}
+
+fn compare_inputs<'a>(
+    reference: &'a CommitInputs,
+    candidate: &CommitInputs,
+) -> Vec<ChangedInput<'a>> {
+    // Both projections use the same sorted declaration set and require each path.
+    let mut changed = Vec::new();
+    for (before, after) in reference.entries.iter().zip(&candidate.entries) {
+        for (original, proposed) in before.source.files.iter().zip(&after.source.files) {
+            if original != proposed {
+                changed.push(ChangedInput {
+                    migration: &before.migration,
+                    path: &original.path,
+                });
+            }
+        }
+    }
+    changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::migrations::git;
+    use serde_json::json;
+    use std::{
+        env, fs,
+        process::{self, Command},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn staged_commit(root: &Path, message: &str) -> Result<String> {
+        git(
+            root,
+            &[
+                "-c",
+                "user.name=Migration Test",
+                "-c",
+                "user.email=migrations@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--quiet",
+                "-m",
+                message,
+            ],
+        )?;
+        commit(root, "HEAD")
+    }
+
+    #[test]
+    fn declarations_are_ordered_and_allow_shared_inputs() -> Result<()> {
+        let inputs = json!({"schema_version": 1, "entries": [
+            {"migration": "b", "files": ["shared.rs", "b.rs"]},
+            {"migration": "a", "files": ["shared.rs", "a.rs"]}
+        ]});
+        let checked = parse_declarations(&serde_json::to_vec(&inputs)?)?;
+        assert_eq!(
+            checked.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(
+            checked["a"].iter().map(String::as_str).collect::<Vec<_>>(),
+            ["a.rs", "shared.rs"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_declarations_are_rejected_before_git_reads() -> Result<()> {
+        for entries in [
+            json!([]),
+            json!([{"migration": "a", "files": []}]),
+            json!([{"migration": " a", "files": ["a.rs"]}]),
+            json!([{"migration": "a", "files": ["a.rs", "a.rs"]}]),
+            json!([{"migration": "a", "files": ["../a.rs"]}]),
+            json!([{"migration": "a", "files": ["a.rs"]}, {"migration": "a", "files": ["b.rs"]}]),
+        ] {
+            let input = serde_json::to_vec(&json!({"schema_version": 1, "entries": entries}))?;
+            assert!(parse_declarations(&input).is_err(), "{entries}");
+        }
+        assert!(fingerprint(Path::new("."), "HEAD", &BTreeMap::new()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn fingerprints_distinguish_selected_helpers_from_other_changes() -> Result<()> {
+        let temp = env::temp_dir().canonicalize()?;
+        let fixture = temp.join(format!(
+            "rustok-migration-inputs-{}-{}",
+            process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        ));
+        fs::create_dir(&fixture)?;
+        let result = (|| {
+            git(&fixture, &["init", "--quiet", "--initial-branch=main"])?;
+            fs::create_dir(fixture.join("schema"))?;
+            fs::write(fixture.join("a.rs"), "mod schema;")?;
+            fs::write(fixture.join("schema/helper.rs"), "original helper")?;
+            fs::write(fixture.join("schema/tables.sql"), "original SQL")?;
+            fs::write(fixture.join("unrelated.rs"), "before")?;
+            git(&fixture, &["add", "."])?;
+            let original = staged_commit(&fixture, "reference")?;
+            let inputs = parse_declarations(&serde_json::to_vec(
+                &json!({"schema_version": 1, "entries": [
+                    {"migration": "a", "files": ["schema/tables.sql", "a.rs", "schema/helper.rs"]},
+                    {"migration": "b", "files": ["schema/tables.sql"]}
+                ]}),
+            )?)?;
+            let baseline = fingerprint(&fixture, &original, &inputs)?;
+
+            fs::write(fixture.join("unrelated.rs"), "after")?;
+            git(&fixture, &["add", "unrelated.rs"])?;
+            let unrelated = staged_commit(&fixture, "unrelated change")?;
+            let unaffected = fingerprint(&fixture, &unrelated, &inputs)?;
+            assert!(compare_inputs(&baseline, &unaffected).is_empty());
+            assert_eq!(
+                baseline.entries[0].source.sha256,
+                unaffected.entries[0].source.sha256
+            );
+
+            fs::write(fixture.join("schema/tables.sql"), "changed SQL")?;
+            git(&fixture, &["add", "schema/tables.sql"])?;
+            git(
+                &fixture,
+                &["update-index", "--chmod=+x", "schema/helper.rs"],
+            )?;
+            let changed = staged_commit(&fixture, "SQL and file mode change")?;
+            let evidence = fingerprint(&fixture, &changed, &inputs)?;
+            assert_eq!(
+                compare_inputs(&baseline, &evidence),
+                [
+                    ChangedInput {
+                        migration: "a",
+                        path: "schema/helper.rs"
+                    },
+                    ChangedInput {
+                        migration: "a",
+                        path: "schema/tables.sql"
+                    },
+                    ChangedInput {
+                        migration: "b",
+                        path: "schema/tables.sql"
+                    },
+                ]
+            );
+
+            let blob = |commit: &str| -> Result<String> {
+                Ok(String::from_utf8(git(
+                    &fixture,
+                    &["rev-parse", &format!("{commit}:schema/tables.sql")],
+                )?)?
+                .trim()
+                .to_owned())
+            };
+            let original_blob = blob(&original)?;
+            let changed_blob = blob(&changed)?;
+            let status = Command::new("git")
+                .current_dir(&fixture)
+                .args(["replace", &original_blob, &changed_blob])
+                .status()?;
+            assert!(status.success());
+            let normal_read = Command::new("git")
+                .current_dir(&fixture)
+                .args(["cat-file", "blob", &original_blob])
+                .output()?;
+            assert!(normal_read.status.success());
+            assert_eq!(normal_read.stdout, b"changed SQL");
+            fs::write(fixture.join("schema/tables.sql"), "uncommitted SQL")?;
+            let reread = fingerprint(&fixture, &original, &inputs)?;
+            assert!(compare_inputs(&baseline, &reread).is_empty());
+
+            git(
+                &fixture,
+                &[
+                    "update-index",
+                    "--cacheinfo",
+                    &format!("120000,{changed_blob},schema/tables.sql"),
+                ],
+            )?;
+            let symlink = staged_commit(&fixture, "unsupported input mode")?;
+            let error = fingerprint(&fixture, &symlink, &inputs)
+                .err()
+                .context("symlink input accepted")?;
+            assert!(error.to_string().contains("not a regular blob"), "{error}");
+
+            git(&fixture, &["rm", "--cached", "schema/tables.sql"])?;
+            let missing = staged_commit(&fixture, "removed input")?;
+            let error = fingerprint(&fixture, &missing, &inputs)
+                .err()
+                .context("missing input accepted")?;
+            assert!(error.to_string().contains("schema/tables.sql"), "{error}");
+            Ok(())
+        })();
+        ensure!(
+            fixture.canonicalize()?.parent() == Some(temp.as_path()),
+            "fixture moved outside its scratch parent"
+        );
+        fs::remove_dir_all(fixture)?;
+        result
+    }
+}
