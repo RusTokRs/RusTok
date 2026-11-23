@@ -156,6 +156,7 @@ pub(super) async fn enqueue_due_slots(
 pub(super) async fn verify_cron_schema(db: &DatabaseConnection) -> WorkflowResult<()> {
     cursor::Entity::find().limit(1).all(db).await?;
     firing::Entity::find().limit(1).all(db).await?;
+    review::Entity::find().limit(1).all(db).await?;
     Ok(())
 }
 
