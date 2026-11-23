@@ -82,6 +82,12 @@ fn map_workflow_step_error(
             "Webhook signature verification failed",
             "webhook_unauthorized",
         ),
+        WorkflowError::StepTimedOut { .. } => (
+            StatusCode::GATEWAY_TIMEOUT,
+            "workflow_step_timed_out",
+            "Workflow step exceeded its configured execution deadline",
+            "step_timeout",
+        ),
         WorkflowError::StepFailed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "workflow_step_failed",
