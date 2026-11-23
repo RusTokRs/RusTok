@@ -183,6 +183,48 @@ pub async fn list_cron_reconciliation(
     Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
+#[derive(serde::Deserialize)]
+pub struct CronReconciliationRequest {
+    pub decision: crate::services::CronReconciliationDecision,
+    pub evidence: String,
+    /// Operator attests that the previous worker process is fully fenced
+    /// before requesting a retry that cannot be proven by elapsed time alone.
+    #[serde(default)]
+    pub prior_worker_fenced: bool,
+}
+
+/// High-privilege recovery: records actor, evidence and attempt fence in one
+/// owner transaction. The endpoint cannot blindly replay a running execution.
+pub async fn reconcile_cron_firing(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(firing_id): Path<Uuid>,
+    Json(request): Json<CronReconciliationRequest>,
+) -> HttpResult<Json<WorkflowCronReconciliationItem>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOWS_MANAGE],
+        "Permission denied: workflows:manage required",
+    )?;
+    let actor_id = auth.human_user_id().ok_or_else(|| HttpError::forbidden(
+        "workflow_reconciliation_actor_required",
+        "An authenticated human operator is required".to_string(),
+    ))?;
+    let outcome = crate::services::reconcile_firing(
+        &runtime.db_clone(),
+        tenant.id,
+        firing_id,
+        actor_id,
+        request.decision,
+        &request.evidence,
+        request.prior_worker_fenced,
+    ).await.map_err(|error| map_workflow_execution_error(
+        error, "reconcile_cron_firing", tenant.id, None, Some(firing_id),
+    ))?;
+    Ok(Json(outcome.into()))
+}
+
 fn ensure_execution_permission(
     auth: &AuthContext,
     permissions: &[Permission],
