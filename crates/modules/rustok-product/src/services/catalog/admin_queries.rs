@@ -86,7 +86,7 @@ impl CatalogService {
             };
         }
         if let Some(search) = list_query.search.as_deref() {
-            query = query.filter(admin_product_title_search_condition(
+            query = query.filter(queries::product_title_search_condition(
                 self.db.get_database_backend(),
                 tenant_id,
                 search,
@@ -209,42 +209,6 @@ impl CatalogService {
     }
 }
 
-fn admin_product_title_search_condition(
-    backend: sea_orm::DbBackend,
-    tenant_id: Uuid,
-    search: &str,
-) -> sea_orm::Condition {
-    let pattern = product_title_substring_like_pattern(search);
-    let exists_sql = match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "EXISTS (
-                SELECT 1
-                FROM product_translations pt
-                WHERE pt.product_id = products.id
-                  AND pt.tenant_id = ?
-                  AND LOWER(pt.title) LIKE LOWER(?) ESCAPE '!'
-            )"
-        }
-        _ => {
-            "EXISTS (
-                SELECT 1
-                FROM product_translations pt
-                WHERE pt.product_id = products.id
-                  AND pt.tenant_id = $1
-                  AND LOWER(pt.title) LIKE LOWER($2) ESCAPE '!'
-            )"
-        }
-    };
-
-    sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
-        exists_sql,
-        vec![
-            sea_orm::Value::from(tenant_id),
-            sea_orm::Value::from(pattern),
-        ],
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,7 +219,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
             let statement = entities::product::Entity::find()
-                .filter(admin_product_title_search_condition(backend, tenant_id, "MiXeD"))
+                .filter(queries::product_title_search_condition(backend, tenant_id, "MiXeD"))
                 .build(backend);
             assert!(statement.sql.contains("pt.product_id = products.id"));
             assert!(statement.sql.contains("pt.tenant_id ="));
