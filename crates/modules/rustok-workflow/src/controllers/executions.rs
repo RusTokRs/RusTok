@@ -57,7 +57,7 @@ fn map_workflow_execution_error(
         WorkflowError::WorkflowDeletionBlocked(_) => (
             StatusCode::CONFLICT,
             "workflow_deletion_blocked",
-            "Workflow has pending or unresolved execution history",
+            "Workflow has running or unresolved execution history",
             "unresolved_execution_blocks_deletion",
         ),
         WorkflowError::ExecutionOutcomeUncertain(_) => (
