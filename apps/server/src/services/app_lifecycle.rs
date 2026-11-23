@@ -1779,20 +1779,30 @@ fn auth_retention_removed_artifacts(
         || purge.oauth_authorization_codes > 0
 }
 
+const AUTH_RETENTION_SUCCESS_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const AUTH_RETENTION_FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(15 * 60);
+
+fn auth_retention_next_delay(failed: bool) -> Duration {
+    if failed {
+        AUTH_RETENTION_FAILURE_RETRY_INTERVAL
+    } else {
+        AUTH_RETENTION_SUCCESS_INTERVAL
+    }
+}
+
 async fn auth_retention_loop(
     db: sea_orm::DatabaseConnection,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    // Daily cadence is enough for a 30-day retention window.
-    let poll_interval = Duration::from_secs(24 * 60 * 60);
-
+    // Successful cleanup runs daily, but an unavailable database is retried
+    // sooner so a short outage cannot suspend auth artifact retention for a day.
     loop {
         if *stop_rx.borrow() {
             tracing::info!("Auth retention worker received shutdown signal, exiting");
             return;
         }
 
-        match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
+        let failed = match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
             Ok(purge) if auth_retention_removed_artifacts(&purge) => {
                 tracing::info!(
                     sessions = purge.sessions,
@@ -1802,16 +1812,21 @@ async fn auth_retention_loop(
                     oauth_authorization_codes = purge.oauth_authorization_codes,
                     "Purged expired auth artifacts past retention"
                 );
+                false
             }
-            Ok(_) => {}
-            Err(error) => tracing::error!(
-                error = %error,
-                "Auth retention worker failed to purge expired artifacts"
-            ),
-        }
+            Ok(_) => false,
+            Err(_error) => {
+                tracing::error!(
+                    error_code = "auth_retention_purge_failed",
+                    retry_delay_seconds = AUTH_RETENTION_FAILURE_RETRY_INTERVAL.as_secs(),
+                    "Auth retention worker failed to purge expired artifacts; retrying before the next daily cycle"
+                );
+                true
+            }
+        };
 
         tokio::select! {
-            _ = tokio::time::sleep(poll_interval) => {}
+            _ = tokio::time::sleep(auth_retention_next_delay(failed)) => {}
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!("Auth retention worker received shutdown signal, exiting");
@@ -2037,6 +2052,16 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[test]
+    fn auth_retention_failure_retries_without_waiting_a_full_day() {
+        assert_eq!(super::auth_retention_next_delay(false), Duration::from_secs(86_400));
+        assert_eq!(super::auth_retention_next_delay(true), Duration::from_secs(900));
+        assert!(
+            super::auth_retention_next_delay(true) < super::auth_retention_next_delay(false),
+            "a transient storage failure must not use the daily success interval"
+        );
+    }
 
     #[tokio::test]
     async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {

@@ -3009,3 +3009,24 @@ rejects that state without removing the join handle needed by shutdown.
 Source-level regression assertions were added for the PostgreSQL publication
 fences and the repeated-bootstrap shutdown state. No Cargo checks, tests,
 formatters, SQL execution, or multi-replica race tests were run, as requested.
+
+
+## Server audit continuation — required Index startup and Auth retention retries (2026-11-23)
+
+Product Index refresh's public worker starter called the panic-on-missing
+`module_runtime_extensions_from_ctx` accessor even though an optional enable
+flag and independently built event runtime can expose it during partial
+bootstrap. The starter now returns an explicit configuration error if the
+runtime extensions were not published, without opening a consumer group.
+A focused isolated-context regression proves this missing-dependency branch.
+
+Auth retention's successful daily poll interval was also used after a failed
+transactional purge. A temporary PostgreSQL outage therefore delayed the next
+cleanup attempt for 24 hours. Failed sweeps now retry after 15 minutes, while
+successful sweeps keep the daily cadence. The error log uses a fixed machine
+code rather than interpolating raw DB error details. The port's atomic
+multi-table transaction and cooperative shutdown behavior are unchanged.
+A regression exercises success and failure delay choices.
+
+No Cargo compilation, tests, formatting, lints, live PostgreSQL or concurrency
+checks were run, per the maintainer's instruction.
