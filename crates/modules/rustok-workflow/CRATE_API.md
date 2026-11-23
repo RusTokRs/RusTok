@@ -1,6 +1,6 @@
 # rustok-workflow / CRATE_API
 
-### Cron lifecycle ownership (2026-11-23)
+## Cron lifecycle ownership (2026-11-23)
 
 `WorkflowCronScheduler::start_with_stop` binds the Workflow owner's cron
 scheduler to a host-provided watch stop receiver. The scheduler tracks its
