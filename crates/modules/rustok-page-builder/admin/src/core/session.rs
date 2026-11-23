@@ -267,7 +267,11 @@ impl EditorSessionState {
             self.fail(&msg);
             return Err(msg);
         }
-        let hash = expected_hash.unwrap_or(self.controller.editor().revision().project_hash);
+        let hash = expected_hash.ok_or_else(|| {
+            let msg = "Publish acknowledgement has no submitted project hash".to_string();
+            self.fail(&msg);
+            msg
+        })?;
         match self
             .controller
             .acknowledge_save_for_hash(hash, revision_id.to_string())

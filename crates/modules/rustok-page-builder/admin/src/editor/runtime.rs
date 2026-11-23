@@ -300,30 +300,34 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         let capability = request.capability();
-        if let Some(facade) = self.facade.as_ref() {
-            let facade = Arc::clone(facade);
-            let runtime = self.clone();
-            let expected_hash = expected_hash.or_else(|| {
-                runtime
-                    .controller
-                    .with(|controller| controller.ui().state.dirty.project_hash)
-            });
-            if capability == BuilderCapabilityKind::Publish {
-                let start = runtime
+        if capability == BuilderCapabilityKind::Publish {
+            if expected_hash.is_none() {
+                self.fail("Publish request has no submitted project hash");
+                return;
+            }
+            if self.facade.is_some() || self.on_request.is_some() {
+                let start = self
                     .controller
                     .try_update(|controller| controller.mark_save_started());
                 match start {
                     Some(Ok(())) => {}
                     Some(Err(error)) => {
-                        runtime.fail(error.to_string());
+                        self.fail(error.to_string());
                         return;
                     }
                     None => {
-                        runtime.fail("Page Builder controller is no longer available");
+                        self.fail("Page Builder controller is no longer available");
                         return;
                     }
                 }
-            } else if capability == BuilderCapabilityKind::Preview {
+            }
+        }
+        if let Some(facade) = self.facade.as_ref() {
+            let facade = Arc::clone(facade);
+            let runtime = self.clone();
+            // A response must refer to the submitted request, never a hash read
+            // from the mutable working tree after other edits were made.
+            if capability == BuilderCapabilityKind::Preview {
                 runtime.preview_in_progress.set(true);
             }
 
@@ -392,8 +396,9 @@ impl AdminEditorRuntime {
                                     controller.page_id()
                                 ));
                             }
-                            let expected_hash = expected_hash
-                                .unwrap_or(controller.editor().revision().project_hash);
+                            let Some(expected_hash) = expected_hash else {
+                                return Err("Publish request has no submitted project hash".to_string());
+                            };
                             controller
                                 .acknowledge_save_for_hash(
                                     expected_hash,

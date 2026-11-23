@@ -335,6 +335,17 @@ fn drop_rechecks_edit_permission_even_with_a_restored_drag() {
 }
 
 #[test]
+fn deserializing_ui_does_not_restore_orphaned_save_in_progress() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted).expect("begin");
+    let restored: FlyUiStateMachine =
+        serde_json::from_value(serde_json::to_value(machine).expect("serialize"))
+            .expect("restore");
+    assert!(!restored.state.dirty.save_in_progress);
+    assert!(restored.state.dirty.save_started_sequence.is_none());
+}
+
+#[test]
 fn save_acknowledgement_cannot_clean_edits_made_during_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");

@@ -169,3 +169,8 @@ the next save. A local edit during an in-flight request is **not** a remote revi
 Duplicate save starts, acknowledgements without an active request, and acknowledgements for a
 nonmatching submitted snapshot are rejected. Browser/host transports must still correlate the
 actual request and response; the controller cannot recover that identity from an HTTP status.
+
+In-flight save flags are transient and reset when an editor session is deserialized, because
+network requests cannot be resumed from serialized state. The reactive admin runtime now starts
+save tracking for both the facade and callback transport paths and requires a submitted hash for
+publish requests; an implicit read of the later working-tree hash is not an acknowledgement.

@@ -786,6 +786,19 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
 }
 
 #[test]
+fn restoring_editor_does_not_resurrect_orphaned_save_requests() {
+    let mut editor = editor();
+    editor.revision_mut().begin_save().expect("begin");
+    let restored: FlyEditor = serde_json::from_value(
+        serde_json::to_value(&editor).expect("serialize")
+    ).expect("restore editor");
+    assert!(!restored.revision().save_in_progress);
+    assert!(!restored.revision().dirty);
+    let mut restored = restored;
+    restored.revision_mut().begin_save().expect("new process can save");
+}
+
+#[test]
 fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
     let mut editor = editor();
     editor.apply(EditorCommand::Patch {

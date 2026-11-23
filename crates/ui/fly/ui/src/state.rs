@@ -199,6 +199,8 @@ pub struct DirtyState {
     pub command_sequence: u64,
     pub last_acknowledged_revision: Option<String>,
     pub project_hash: Option<ProjectHash>,
+    /// Network requests are not resumed after deserialization.
+    #[serde(skip)]
     pub save_in_progress: bool,
     pub save_failed: bool,
     /// The command sequence captured at SaveStarted. This is request-local state, not

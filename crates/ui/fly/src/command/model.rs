@@ -420,6 +420,9 @@ pub struct RevisionState {
     pub command_sequence: u64,
     pub last_acknowledged_revision: Option<String>,
     pub project_hash: ProjectHash,
+    /// A process-local in-flight operation cannot survive serialization: restoring it
+    /// would strand the editor in "saving" with no corresponding network request.
+    #[serde(skip)]
     pub save_in_progress: bool,
     pub save_failed: bool,
     /// The exact snapshot currently being written. Transient: a restored editor
