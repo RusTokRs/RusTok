@@ -241,9 +241,15 @@ export function useDataTable<TData extends RowData = any>(
       pendingLocalRouteSignatures.current = [];
       pendingLocalColumnFilterSignature.current = null;
     };
-    window.addEventListener('popstate', invalidatePendingFilterNavigation);
+    window.addEventListener(
+      'popstate',
+      invalidatePendingFilterNavigation
+    );
     return () =>
-      window.removeEventListener('popstate', invalidatePendingFilterNavigation);
+      window.removeEventListener(
+        'popstate',
+        invalidatePendingFilterNavigation
+      );
   }, []);
 
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
@@ -286,7 +292,10 @@ export function useDataTable<TData extends RowData = any>(
       if (routeQuery) {
         const expectedQuery = { ...routeQuery };
         // nuqs does not rewrite the default page when it is already selected.
-        if (page !== 1 || Object.prototype.hasOwnProperty.call(expectedQuery, PAGE_KEY)) {
+        if (
+          page !== 1 ||
+          Object.prototype.hasOwnProperty.call(expectedQuery, PAGE_KEY)
+        ) {
           expectedQuery[PAGE_KEY] = '1';
         }
         for (const [key, value] of Object.entries(values)) {
@@ -315,7 +324,8 @@ export function useDataTable<TData extends RowData = any>(
       if (
         (expectedRouteSignature !== currentRouteSignature ||
           pendingRouteWrites.length > 0) &&
-        pendingRouteWrites[pendingRouteWrites.length - 1] !== expectedRouteSignature
+        pendingRouteWrites[pendingRouteWrites.length - 1] !==
+          expectedRouteSignature
       ) {
         pendingRouteWrites.push(expectedRouteSignature);
       } else if (
