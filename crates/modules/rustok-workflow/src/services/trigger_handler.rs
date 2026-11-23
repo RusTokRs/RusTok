@@ -84,29 +84,38 @@ impl EventHandler for WorkflowTriggerHandler {
             }
         });
 
+        // An unresolved workflow must not permanently starve other matching
+        // workflows for the same source event. Attempt all owner journal writes
+        // and return an error only after every match has been considered.
+        let mut first_error = None;
         for workflow in matching {
             let workflow_id = workflow.id;
-            let steps = self.service.load_steps(workflow_id).await.map_err(|error| {
-                rustok_core::Error::External(format!(
-                    "Workflow steps for {workflow_id} could not be loaded: {error}"
-                ))
-            })?;
-            // The source Outbox event must not be acknowledged while an
-            // execution is only detached in memory. Await the owner journal's
-            // terminal outcome, returning an error for an ambiguous running
-            // receipt so the transport retains its redelivery identity.
-            self.engine
+            let steps = match self.service.load_steps(workflow_id).await {
+                Ok(steps) => steps,
+                Err(error) => {
+                    error!(workflow_id = %workflow_id, %error, "Workflow steps unavailable");
+                    first_error.get_or_insert_with(|| rustok_core::Error::External(format!(
+                        "Workflow steps for {workflow_id} could not be loaded: {error}"
+                    )));
+                    continue;
+                }
+            };
+            // A source Outbox event is acknowledged only after its matching
+            // workflow executions reach durable terminal states. Unresolved
+            // receipts fail closed, while other independent workflows still
+            // make progress in this same delivery attempt.
+            if let Err(error) = self.engine
                 .execute(workflow_id, tenant_id, Some(envelope.id), steps, initial_context.clone())
                 .await
-                .map_err(|error| {
-                    error!(workflow_id = %workflow_id, %error, "Workflow execution not acknowledged");
-                    rustok_core::Error::External(format!(
-                        "Workflow execution for {workflow_id} was not durably confirmed: {error}"
-                    ))
-                })?;
+            {
+                error!(workflow_id = %workflow_id, %error, "Workflow execution not acknowledged");
+                first_error.get_or_insert_with(|| rustok_core::Error::External(format!(
+                    "Workflow execution for {workflow_id} was not durably confirmed: {error}"
+                )));
+            }
         }
 
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     }
 }
 
