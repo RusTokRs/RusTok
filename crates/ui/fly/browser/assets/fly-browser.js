@@ -13,6 +13,8 @@ const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
 const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
 const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
 const UNSENT_INTENTS_CODE = "INTENT_QUEUE_DISCARDED";
+const PEER_WRITE_CONFLICT_CODE = "FLY_PEER_WRITE_CONFLICT";
+const PEER_WRITE_CHANNEL_NAME = "fly:page-authoring-writes:v1";
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -465,6 +467,8 @@ function reportSaveFailure(adapter, failure, request) {
 // the first key press after the reload. The parked failure therefore stands until a response
 // reports a working copy that is no longer dirty.
 function settleSaveFailure(adapter, result, request) {
+  // A clean reply from an older request cannot clear a newer peer-write fence.
+  if (adapter.peerWriteConflict) return;
   if (!isObject(result)) {
     // A successful plain-text/empty response does not establish that the draft
     // was saved. Keep a previously parked failure until an explicit clean state.
@@ -695,6 +699,8 @@ export class FlyBrowserAdapter {
     // preceding request, not onto the stale revision captured when it was clicked.
     this.authoritativeInFlight = false;
     this.queuedAuthoritativeIntents = [];
+    this.peerWriteConflict = null;
+    this.peerWriteChannel = null;
     this.lastSequence = null;
     this.geometry = new Map();
     this.selectedId = null;
@@ -732,6 +738,17 @@ export class FlyBrowserAdapter {
       );
     }
     this.lifecycleState = ADAPTER_LIFECYCLE.STARTED;
+    // Same-origin tab coordination is advisory. Only the Pages CAS is authoritative.
+    // No document, CSRF/session token or draft contents travel across tabs.
+    if (this.pageId && this.intentEndpoint && typeof globalThis.BroadcastChannel === "function") {
+      try {
+        this.peerWriteChannel = new globalThis.BroadcastChannel(PEER_WRITE_CHANNEL_NAME);
+        this.peerWriteChannel.onmessage = (event) => this.onPeerWrite(event.data);
+      } catch (_) {
+        // Browser isolation settings may deny BroadcastChannel. Server CAS still applies.
+        this.peerWriteChannel = null;
+      }
+    }
     // A save that failed right before the reload that produced this page: say so, because the
     // canvas now shows the server's state of the draft and nothing else explains why.
     const pendingSaveFailure = readSaveFailure(this.pageId);
@@ -871,6 +888,10 @@ export class FlyBrowserAdapter {
       queued.resolve(null);
     }
     this.abortController.abort();
+    this.peerWriteChannel?.close();
+    this.peerWriteChannel = null;
+    this.peerWriteConflict = null;
+    delete this.root.dataset.flyPeerWriteConflict;
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
     delete this.root.dataset.flyResourceLimited;
@@ -1291,6 +1312,81 @@ export class FlyBrowserAdapter {
     return ["key_stroke"].includes(type);
   }
 
+  // BroadcastChannel delivers messages only to other channel instances.
+  // An event received for the same page invalidates this adapter's observed
+  // write base. Reject subsequent mutations rather than replaying local edits
+  // onto a different editor's revision without user review.
+  onPeerWrite(message) {
+    if (
+      this.lifecycleState !== ADAPTER_LIFECYCLE.STARTED ||
+      !isObject(message) ||
+      message.kind !== "confirmed-write" ||
+      !this.pageId ||
+      message.pageId !== this.pageId
+    ) return;
+
+    const revision = nonEmptyString(message.revision);
+    const hash = nonEmptyString(message.hash);
+    if (!revision || !hash || this.peerWriteConflict) return;
+    if (
+      revision === this.root.dataset.flyRevision &&
+      hash === this.root.dataset.flyProjectHash
+    ) return;
+
+    this.peerWriteConflict = { revision, hash };
+    this.root.dataset.flyPeerWriteConflict = "true";
+    this.root.dispatchEvent(new CustomEvent("fly:browser-peer-write", {
+      bubbles: true,
+      detail: {
+        code: PEER_WRITE_CONFLICT_CODE,
+        pageId: this.pageId,
+        instanceId: this.instanceId,
+        revision,
+        projectHash: hash,
+      },
+    }));
+    this.reportPeerWriteConflict();
+    this.discardQueuedAuthoritativeIntents("because another editor saved this page");
+  }
+
+  reportPeerWriteConflict() {
+    reportBrowserProblem(this, {
+      result: {
+        code: PEER_WRITE_CONFLICT_CODE,
+        error: "Another editor saved this page. Preserve any unsaved changes, then reload the latest document before making further edits.",
+      },
+    }, PEER_WRITE_CONFLICT_CODE);
+  }
+
+  discardQueuedAuthoritativeIntents(reason) {
+    const discarded = this.queuedAuthoritativeIntents.splice(0);
+    for (const queued of discarded) queued.resolve(null);
+    if (discarded.length === 0 || this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
+    this.root.dataset.flyQueuedIntentsDiscarded = String(discarded.length);
+    const message = discarded.length === 1
+      ? `One queued editor change was not sent ${reason}.`
+      : `${discarded.length} queued editor changes were not sent ${reason}.`;
+    this.root.dispatchEvent(new CustomEvent("fly:browser-intents-discarded", {
+      bubbles: true,
+      detail: {
+        code: UNSENT_INTENTS_CODE,
+        count: discarded.length,
+        intents: discarded.map(({ input }) => input.intent),
+        error: message,
+        instanceId: this.instanceId,
+        pageId: this.pageId,
+      },
+    }));
+    const status = ensureProblemStatus(this);
+    queueMicrotask(() => {
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
+      if (!this.root.dataset.flyBrowserProblem) {
+        this.root.dataset.flyBrowserProblem = UNSENT_INTENTS_CODE;
+      }
+      status.textContent = [status.textContent, message].filter(Boolean).join(" ");
+    });
+  }
+
   rejectPendingIntent(request, limit, observed) {
     const message =
       nonEmptyString(this.options?.pendingIntentLimitMessage) ||
@@ -1382,6 +1478,20 @@ export class FlyBrowserAdapter {
     }
 
     const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    if (authoritative && this.peerWriteConflict) {
+      // This is an admission fence, not a destructive merge/reload.
+      this.root.dispatchEvent(new CustomEvent("fly:browser-intent-rejected", {
+        bubbles: true,
+        detail: {
+          code: PEER_WRITE_CONFLICT_CODE,
+          intent: request.intent,
+          instanceId: this.instanceId,
+          pageId: this.pageId,
+        },
+      }));
+      this.reportPeerWriteConflict();
+      return null;
+    }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
     if (authoritative && this.authoritativeInFlight) {
@@ -1515,7 +1625,9 @@ export class FlyBrowserAdapter {
         }),
       );
       if (current) {
-        if (response.ok && (!authoritative || acknowledgedAuthoritativeResult)) {
+        if (this.peerWriteConflict) {
+          updateNetworkIndicator(this.root, "error", PEER_WRITE_CONFLICT_CODE);
+        } else if (response.ok && (!authoritative || acknowledgedAuthoritativeResult)) {
           updateNetworkIndicator(this.root, "saved");
         } else if (!response.ok) {
           updateNetworkIndicator(this.root, "error", response.status);
@@ -1525,7 +1637,7 @@ export class FlyBrowserAdapter {
           updateNetworkIndicator(this.root, "error", "WRITE_UNCONFIRMED");
         }
       }
-      if (current && acknowledgedAuthoritativeResult) {
+      if (current && acknowledgedAuthoritativeResult && !this.peerWriteConflict) {
         delete this.root.dataset.flyQueuedIntentsDiscarded;
       }
       if (current && response.ok && isObject(result)) {
@@ -1535,6 +1647,20 @@ export class FlyBrowserAdapter {
         }
         if (typeof state.project_hash === "string") {
           this.root.dataset.flyProjectHash = state.project_hash;
+        }
+        // A confirmed write makes other same-origin editors of this page stale.
+        // The server remains the source of truth; this is a UX safety fence.
+        if (authoritative && acknowledgedAuthoritativeResult && this.pageId) {
+          try {
+            this.peerWriteChannel?.postMessage({
+              kind: "confirmed-write",
+              pageId: this.pageId,
+              revision: state.revision_id,
+              hash: state.project_hash,
+            });
+          } catch (_) {
+            // Optional peer notification failure never changes save outcome.
+          }
         }
         if (typeof result.draft_token === "string") {
           this.draftSession = {
@@ -1626,40 +1752,16 @@ export class FlyBrowserAdapter {
         this.authoritativeInFlight = false;
         if (
           !acknowledgedAuthoritativeResult ||
+          this.peerWriteConflict ||
           this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED
         ) {
           // Retry requires a fresh user decision and a known server snapshot:
           // never replay writes that were clicked against an uncertain base.
-          const discarded = this.queuedAuthoritativeIntents.splice(0);
-          for (const queued of discarded) queued.resolve(null);
-          if (discarded.length > 0 && this.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
-            // Rejecting a queue silently would lose user gestures. Preserve
-            // the original failure (often a revision conflict) and announce
-            // the discarded commands as additional, unsent work.
-            this.root.dataset.flyQueuedIntentsDiscarded = String(discarded.length);
-            const message = discarded.length === 1
-              ? "One queued editor change was not sent because the preceding request was not confirmed."
-              : `${discarded.length} queued editor changes were not sent because the preceding request was not confirmed.`;
-            this.root.dispatchEvent(new CustomEvent("fly:browser-intents-discarded", {
-              bubbles: true,
-              detail: {
-                code: UNSENT_INTENTS_CODE,
-                count: discarded.length,
-                intents: discarded.map(({ input }) => input.intent),
-                error: message,
-                instanceId: this.instanceId,
-                pageId: this.pageId,
-              },
-            }));
-            const status = ensureProblemStatus(this);
-            queueMicrotask(() => {
-              if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
-              if (!this.root.dataset.flyBrowserProblem) {
-                this.root.dataset.flyBrowserProblem = UNSENT_INTENTS_CODE;
-              }
-              status.textContent = [status.textContent, message].filter(Boolean).join(" ");
-            });
-          }
+          this.discardQueuedAuthoritativeIntents(
+            this.peerWriteConflict
+              ? "because another editor saved this page"
+              : "because the preceding request was not confirmed",
+          );
         } else {
           while (this.queuedAuthoritativeIntents.length > 0) {
             const next = this.queuedAuthoritativeIntents.shift();
