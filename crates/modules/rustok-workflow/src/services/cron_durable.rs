@@ -214,6 +214,24 @@ async fn settle_claim(
     Ok(affected == 1)
 }
 
+/// Heartbeat only the currently fenced attempt. This reduces false stale
+/// classifications of legitimate long-running workflow chains while never
+/// granting ownership of an already reviewed or superseded attempt.
+async fn heartbeat_claim(
+    db: &DatabaseConnection,
+    item: &firing::Model,
+    token: Uuid,
+) -> WorkflowResult<bool> {
+    let affected = firing::Entity::update_many()
+        .col_expr(firing::Column::ClaimedAt, Expr::value(at(Utc::now())))
+        .filter(firing::Column::Id.eq(item.id))
+        .filter(firing::Column::TenantId.eq(item.tenant_id))
+        .filter(firing::Column::Status.eq(firing::RUNNING))
+        .filter(firing::Column::AttemptToken.eq(token))
+        .exec(db).await?.rows_affected;
+    Ok(affected == 1)
+}
+
 /// Verify the current attempt immediately before executing a workflow.
 /// Operator reconciliation invalidates old tokens; this additional fence
 /// narrows the admission race, while external worker termination must still
@@ -370,7 +388,40 @@ pub(super) async fn execute_claim(
         Some(execution_id) => execution_id,
         None => return Ok(()),
     };
-    let result = engine.execute_preclaimed_cron(execution_id, steps, context).await;
+    // Keep an accepted operation alive while the engine is processing an
+    // external provider call. Polling a pinned future in the select preserves
+    // it across heartbeats; shutdown does not cancel the owner operation.
+    let execution = engine.execute_preclaimed_cron(
+        execution_id, item.id, token, steps, context,
+    );
+    tokio::pin!(execution);
+    let mut heartbeat = tokio::time::interval_at(
+        tokio::time::Instant::now() + tokio::time::Duration::from_secs(30),
+        tokio::time::Duration::from_secs(30),
+    );
+    let result = loop {
+        tokio::select! {
+            result = &mut execution => break result,
+            _ = heartbeat.tick() => {
+                match heartbeat_claim(db, &item, token).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            firing_id = %item.id,
+                            "Workflow cron attempt lost its claim; subsequent steps will fail closed"
+                        );
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            firing_id = %item.id,
+                            %error,
+                            "Workflow cron heartbeat failed; external operation remains under review"
+                        );
+                    }
+                }
+            }
+        }
+    };
 
     let recorded = WorkflowExecutionEntity::find()
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
