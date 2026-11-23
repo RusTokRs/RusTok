@@ -214,7 +214,9 @@ pub async fn dispatch_pages_browser_intent_with_store(
     let operation_hash = envelope.operation_id.as_deref()
         .map(|_| browser_operation_request_hash(&envelope))
         .transpose()?;
-    if envelope.operation_id.is_some() && envelope.draft_token.is_none() {
+    if envelope.operation_id.is_some()
+        && (envelope.draft_token.is_none() || envelope.draft_generation.is_none())
+    {
         return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
     }
 
@@ -714,9 +716,17 @@ fn operation_response_from_receipt(
     receipt: Option<&Value>,
     replayed: bool,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
-    let mut result = controller_snapshot(&session.controller)?;
-    result.project_data = None;
-    result.effects.clear();
+    let revision = session.controller.editor().revision();
+    let mut result = BrowserIntentDispatchResult {
+        page_id: session.controller.page_id().to_string(),
+        revision_id: session.controller.revision_id().to_string(),
+        project_hash: revision.project_hash.hex(),
+        command_sequence: revision.command_sequence,
+        dirty: revision.dirty,
+        selected_component_id: session.controller.ui().state.selection.component_id.clone(),
+        project_data: None,
+        effects: Vec::new(),
+    };
     let mut save_failure = match receipt.and_then(|value| value.get("save_failure")) {
         Some(value) if !value.is_null() => Some(
             serde_json::from_value(value.clone())
@@ -1239,6 +1249,9 @@ mod tests {
                 draft_token: "token".to_string(),
                 draft_generation: 2,
                 runtime_context: json!({}),
+                operation_id: None,
+                operation_status: None,
+                operation_replayed: false,
             })
             .expect("serialize")
         };

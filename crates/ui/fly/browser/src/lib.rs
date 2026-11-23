@@ -1091,6 +1091,7 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
         .normalized()
         .expect_err("protocol mismatch");
@@ -1388,6 +1389,7 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
         .normalized()
         .expect("known intent");
