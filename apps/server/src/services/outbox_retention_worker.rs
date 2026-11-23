@@ -5,12 +5,29 @@ use rustok_outbox::OutboxRetention;
 use tokio::task::JoinHandle;
 
 static OUTBOX_RETENTION_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
+const OUTBOX_RETENTION_FAILURE_RETRY_DELAY: Duration = Duration::from_secs(60);
+
+#[derive(Clone, Copy)]
+enum PruneCycle {
+    Complete,
+    BatchExhausted,
+    Failed,
+}
+
+fn next_prune_delay(interval: Duration, cycle: PruneCycle) -> Duration {
+    match cycle {
+        PruneCycle::Complete => interval,
+        PruneCycle::BatchExhausted => Duration::from_millis(50).min(interval),
+        PruneCycle::Failed => OUTBOX_RETENTION_FAILURE_RETRY_DELAY.min(interval),
+    }
+}
 
 /// Failure counter of the retention supervisor.
 ///
-/// A prune failure is not fatal: the next interval retries, and a delivered row
-/// that survives one run is pruned by a later one. Operators alert on the
-/// counter instead of on a silent no-op pruner.
+/// A prune failure is not fatal: an unsuccessful sweep retries after at most
+/// one minute, while successful sweeps follow the configured interval and
+/// unfinished batches continue promptly. Operators alert on the counter
+/// instead of on a silent no-op pruner.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OutboxRetentionSupervisorMetricsSnapshot {
     pub failure_total: u64,
@@ -51,10 +68,8 @@ async fn supervise_outbox_retention(
             return;
         }
 
-        let mut batch_exhausted = false;
-        match config.retention.prune_once().await {
+        let cycle = match config.retention.prune_once().await {
             Ok(report) => {
-                batch_exhausted = report.batch_exhausted;
                 if report.pruned > 0 || report.batch_exhausted {
                     tracing::info!(
                         pruned_events = report.pruned,
@@ -64,6 +79,11 @@ async fn supervise_outbox_retention(
                 } else {
                     tracing::debug!("Outbox retention prune run found nothing to prune");
                 }
+                if report.batch_exhausted {
+                    PruneCycle::BatchExhausted
+                } else {
+                    PruneCycle::Complete
+                }
             }
             Err(_error) => {
                 OUTBOX_RETENTION_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
@@ -71,14 +91,11 @@ async fn supervise_outbox_retention(
                     error_code = "outbox_retention_prune_failed",
                     "Outbox retention prune failed"
                 );
+                PruneCycle::Failed
             }
-        }
-
-        let delay = if batch_exhausted {
-            Duration::from_millis(50).min(config.interval)
-        } else {
-            config.interval
         };
+
+        let delay = next_prune_delay(config.interval, cycle);
 
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
@@ -167,6 +184,25 @@ mod tests {
             "a failed prune run must be observable"
         );
         handle.abort();
+    }
+
+    #[test]
+    fn failure_uses_bounded_retry_without_changing_success_or_batch_cadence() {
+        let daily = Duration::from_secs(86_400);
+        assert_eq!(super::next_prune_delay(daily, super::PruneCycle::Complete), daily);
+        assert_eq!(
+            super::next_prune_delay(daily, super::PruneCycle::Failed),
+            Duration::from_secs(60),
+        );
+        assert_eq!(
+            super::next_prune_delay(daily, super::PruneCycle::BatchExhausted),
+            Duration::from_millis(50),
+        );
+        let short_interval = Duration::from_secs(10);
+        assert_eq!(
+            super::next_prune_delay(short_interval, super::PruneCycle::Failed),
+            short_interval,
+        );
     }
 
     #[test]

@@ -3030,3 +3030,15 @@ A regression exercises success and failure delay choices.
 
 No Cargo compilation, tests, formatting, lints, live PostgreSQL or concurrency
 checks were run, per the maintainer's instruction.
+
+
+## Server audit continuation — Outbox retention recovery cadence (2026-11-23)
+
+The Outbox retention supervisor treated failed PostgreSQL prune attempts as
+an empty successful sweep. When its configured successful poll interval was
+large (up to 24 hours), transient storage outages postponed the next attempt
+by that full interval. The worker now distinguishes failed, complete and
+batch-exhausted cycles. Failure retries after `min(interval, 60s)`, while
+successful and full-batch timing remains unchanged. The existing atomic failure
+counter and stop-aware sleep are retained. A focused delay-selection regression
+was authored but not executed; no Cargo or SQL verification was run.

@@ -613,6 +613,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Product Index refresh consumer startup returns a typed server error if
   module runtime extensions were not published; a partial bootstrap no longer
   panics before its durable consumer group is opened.
+- Outbox retention keeps its configured successful sweep cadence and the
+  50-ms bounded follow-up for a full batch. A database failure now retries
+  after at most 60 seconds, rather than inheriting a potentially daily
+  successful-poll delay. The existing failure counter remains observable.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
