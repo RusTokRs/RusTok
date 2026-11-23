@@ -838,12 +838,14 @@ pub fn ProductGridPage() -> impl IntoView {
     let filter_query_writer = route_query_writer.clone();
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         set_filters.set(new_filters);
-        if last_requested_pagination.get_untracked().0 != 1 {
+        let should_reset_page = pagination.get_untracked().page != 1
+            || last_requested_pagination.get_untracked().0 != 1;
+        if should_reset_page {
             set_infinite_items.set(Vec::new());
             set_last_loaded_page.set(0);
+            filter_query_writer.replace_value("page", "1");
+            request_current_page();
         }
-        filter_query_writer.replace_value("page", "1");
-        request_current_page();
     });
 
     let page_query_writer = route_query_writer.clone();
@@ -919,13 +921,15 @@ pub fn ProductGridPage() -> impl IntoView {
                             prop:value=move || search_query.get()
                             on:input=move |ev| {
                                 set_search_query.set(event_target_value(&ev));
-                                if last_requested_pagination.get_untracked().0 != 1 {
+                                let should_reset_page = pagination.get_untracked().page != 1
+                                    || last_requested_pagination.get_untracked().0 != 1;
+                                if should_reset_page {
                                     set_infinite_items.set(Vec::new());
                                     set_last_loaded_page.set(0);
+                                    pagination.update(|p| p.set_page(1));
+                                    route_query_writer.replace_value("page", "1");
+                                    request_current_page();
                                 }
-                                pagination.update(|p| p.set_page(1));
-                                route_query_writer.replace_value("page", "1");
-                                request_current_page();
                             }
                             class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition"
                         />
