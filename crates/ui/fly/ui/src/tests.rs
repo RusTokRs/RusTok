@@ -491,13 +491,15 @@ fn save_conflict_is_a_distinct_lost_update_state() {
         effect,
         UiEffect::Announce(message) if message.contains("another session")
     )));
-    // A later successful save is the only thing that clears the conflict.
+    // A response without an active submitted save cannot make the conflict vanish.
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
-    machine
+    assert!(machine
         .dispatch(UiIntent::SaveSucceeded {
             revision: "rev-3".to_string(),
             project_hash: fly::ProjectHash::from_document(&document),
         })
-        .expect("saved");
-    assert!(!machine.state.dirty.save_conflict);
+        .is_err());
+    assert!(machine.state.dirty.save_conflict);
+    machine.dispatch(UiIntent::SaveFailed).expect("failed response");
+    assert!(machine.state.dirty.save_conflict);
 }

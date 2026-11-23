@@ -757,7 +757,7 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
         patch: ComponentPatch::default().merge_style(json!({ "margin": margin })),
     };
     editor.apply(patch("8px")).expect("first edit");
-    editor.revision_mut().begin_save();
+    editor.revision_mut().begin_save().expect("start save");
     editor.revision_mut().fail_save();
     assert!(editor.revision().save_failed);
 
@@ -772,15 +772,52 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
     assert!(editor.revision().save_failed);
 
     // Only a new save attempt or a successful acknowledge clears it.
-    editor.revision_mut().begin_save();
+    editor.revision_mut().begin_save().expect("retry save");
     assert!(!editor.revision().save_failed);
     editor.revision_mut().fail_save();
     let hash = editor.revision().project_hash;
+    editor.revision_mut().begin_save().expect("last retry");
     editor
         .revision_mut()
         .acknowledge(hash, "rev-2")
         .expect("acknowledge");
     assert!(!editor.revision().save_failed);
+    assert!(!editor.revision().dirty);
+}
+
+#[test]
+fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("first edit");
+    let submitted_hash = editor.revision().project_hash;
+    editor.revision_mut().begin_save().expect("begin save");
+    assert!(editor.revision_mut().begin_save().is_err());
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"padding": "7px"})),
+    }).expect("new edit");
+    let working_hash = editor.revision().project_hash;
+    assert_ne!(submitted_hash, working_hash);
+    editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-2")
+        .expect("old snapshot persisted successfully");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-2"));
+    assert!(editor.revision().dirty);
+    assert_eq!(editor.revision().project_hash, working_hash);
+    assert!(!editor.revision().save_in_progress);
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-3"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    editor.revision_mut().begin_save().expect("save latest");
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted(submitted_hash, "rev-3"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    editor.revision_mut().acknowledge_submitted(working_hash, "rev-3")
+        .expect("save latest");
     assert!(!editor.revision().dirty);
 }
 

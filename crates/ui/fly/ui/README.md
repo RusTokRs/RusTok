@@ -60,3 +60,6 @@ not implement automatic merge. Hosts remain responsible for correlating transpor
 with the saves they initiate.
 Drop rechecks the current presentation and drag capability at commit time, including when
 restored state contains a drag started under a different policy.
+
+A save success is accepted only during an active `SaveStarted` transition. A stale success,
+failed request or unrelated operation never implicitly clears a standing revision conflict.

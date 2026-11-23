@@ -160,3 +160,12 @@ SSR draft session storage (`src/draft_session.rs`):
   concatenate to the same string share one cap.
 
 For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
+
+## Snapshot-bound save acknowledgements
+
+A successful Page Builder publish response acknowledges exactly the hash captured when the
+request began. Newer local edits remain dirty, while the persisted revision becomes the base for
+the next save. A local edit during an in-flight request is **not** a remote revision conflict.
+Duplicate save starts, acknowledgements without an active request, and acknowledgements for a
+nonmatching submitted snapshot are rejected. Browser/host transports must still correlate the
+actual request and response; the controller cannot recover that identity from an HTTP status.

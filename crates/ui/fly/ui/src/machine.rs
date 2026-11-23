@@ -324,6 +324,13 @@ impl FlyUiStateMachine {
                 revision,
                 project_hash,
             } => {
+                if !self.state.dirty.save_in_progress
+                    || self.state.dirty.save_started_sequence.is_none()
+                {
+                    return Err(UiError::CapabilityUnavailable(
+                        "no active save to acknowledge".to_string(),
+                    ));
+                }
                 // The server acknowledged the snapshot that existed at SaveStarted, not
                 // edits made while the request was in flight. Never advertise those edits
                 // as saved or replace their local hash with the older snapshot's hash.
@@ -351,7 +358,7 @@ impl FlyUiStateMachine {
                 self.state.dirty.save_started_sequence = None;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
-                self.state.dirty.save_conflict = false;
+                // Do not silently clear an unresolved revision conflict.
                 vec![UiEffect::Announce("Project save failed".to_string())]
             }
             UiIntent::SaveConflict { expected, actual } => {
