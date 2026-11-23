@@ -6,7 +6,7 @@ use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
 use rustok_migrations::{
     Migrator, apply_installer_owner_schema, apply_installer_remaining_schema,
-    execution::{ExecutionPhase, StepRunner},
+    execution::{ExecutionError, ExecutionPhase, StepRunner},
     verification::{DatabaseSnapshot, compare, observe_database, validate_journal},
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -256,7 +256,7 @@ async fn postgres_seeded_module_phase_matches_after_recovery()
         "m20261027_000082_gc_candidate_claims",
         "m20261027_000083_artifact_permission_registration_status",
         "m20261027_000084_module_operation_result_snapshot",
-        "m20261027_000085_artifact_ui_resources",
+        ARTIFACT_UI_BACKFILL,
     ];
     let fixtures = load_contract_fixtures(&[steps[0], steps[2], steps[4]])?;
     let plan = Migrator::inventory()?;
@@ -309,10 +309,26 @@ async fn postgres_seeded_module_phase_matches_after_recovery()
         let reference_url = database_url_from_admin_url(&admin_url, &reference);
         let resumed_url = database_url_from_admin_url(&admin_url, &resumed);
         apply_verified_phase_steps(&reference_url, &phase, &phase.steps, &fixtures).await?;
-        for step in &phase.steps {
+        let (final_step, preceding_steps) = phase.steps.split_last().ok_or("empty phase")?;
+        for step in preceding_steps {
             apply_verified_phase_steps(&resumed_url, &phase, std::slice::from_ref(step), &fixtures)
                 .await?;
         }
+
+        assert_failed_ui_backfill_rolls_back(
+            &resumed_url,
+            pg_dump,
+            &phase,
+            &completed[..completed.len() - 1],
+        )
+        .await?;
+        apply_verified_phase_steps(
+            &resumed_url,
+            &phase,
+            std::slice::from_ref(final_step),
+            &fixtures,
+        )
+        .await?;
 
         let original = observe_backfill_fixture(&reference_url, pg_dump).await?;
         let recovered = observe_backfill_fixture(&resumed_url, pg_dump).await?;
@@ -333,6 +349,63 @@ async fn postgres_seeded_module_phase_matches_after_recovery()
         result = finish_fixture(&admin, name, result).await;
     }
     result
+}
+
+const ARTIFACT_UI_BACKFILL: &str = "m20261027_000085_artifact_ui_resources";
+
+async fn assert_failed_ui_backfill_rolls_back(
+    url: &str,
+    pg_dump: &Path,
+    phase: &ExecutionPhase,
+    applied_prefix: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Fail the journal INSERT after the real migration creates and populates the
+    // projection, without changing the migration or its input data.
+    let db = connect_postgres(url).await?;
+    db.execute_unprepared(&format!(
+        "ALTER TABLE seaql_migrations ADD CONSTRAINT fixture_reject_ui_backfill \
+         CHECK (version <> '{ARTIFACT_UI_BACKFILL}')"
+    ))
+    .await?;
+    let before = observe_database(&db, url, pg_dump).await?;
+    validate_journal(&before.migration_versions, applied_prefix)?;
+
+    let mut runner =
+        StepRunner::connect_phase(url, Migrator::inventory()?.into_migrations(), phase.clone())
+            .await?;
+    let result = runner.apply_next().await;
+    let retry = runner.apply_next().await;
+    runner.close().await?;
+    match result {
+        Err(ExecutionError::Migration { name, source })
+            if name == ARTIFACT_UI_BACKFILL
+                && source.to_string().contains("fixture_reject_ui_backfill") => {}
+        result => {
+            return Err(format!(
+                "expected journal rejection for {ARTIFACT_UI_BACKFILL}, got {result:?}"
+            )
+            .into());
+        }
+    }
+    if !matches!(retry, Err(ExecutionError::Interrupted)) {
+        return Err(format!("failed runner allowed another step: {retry:?}").into());
+    }
+
+    assert_table_missing(&db, "module_artifact_ui_resources").await?;
+    let after = observe_database(&db, url, pg_dump).await?;
+    let rollback = compare(&before, &after, applied_prefix, applied_prefix)?;
+    if !rollback.equivalent || rollback.reference_digest != rollback.candidate_digest {
+        return Err(format!(
+            "failed UI backfill changed the predecessor: {:?}",
+            rollback.differences
+        )
+        .into());
+    }
+    db.execute_unprepared(
+        "ALTER TABLE seaql_migrations DROP CONSTRAINT fixture_reject_ui_backfill",
+    )
+    .await?;
+    Ok(db.close().await?)
 }
 
 async fn apply_verified_phase_steps(

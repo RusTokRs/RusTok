@@ -411,6 +411,14 @@ their own boundaries, and both final observations had identical digests and
 matching journal identities. The predecessor and both copies were removed.
 [Seeded Modules phase test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
 
+The same PostgreSQL 16.13 test at `main@2a6647ebfa` rejected the journal
+insert for `m20261027_000085_artifact_ui_resources` after the migration
+created and populated the projection. The failed runner refused a retry.
+The transaction rolled back the projection and its index, and the journal
+retained the exact pre-step identities. The full pre-step and post-failure
+observations had identical digests. After the injected constraint was removed,
+a new session completed the phase and matched the uninterrupted database.
+
 Gate 3 still needs replay from an authenticated stable release baseline.
 Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition

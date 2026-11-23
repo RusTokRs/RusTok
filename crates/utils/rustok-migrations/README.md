@@ -269,6 +269,10 @@ by each migration. The installer's sparse bootstrap entrypoints remain separate.
 The seeded Modules phase test compares one uninterrupted run with a fresh
 migration session at each committed boundary. Both databases start as copies
 of the same PostgreSQL predecessor containing the declared backfill fixtures.
+The resumed run also rejects the final migration's journal insert after the
+UI projection is populated. It checks the exact pre-step snapshot after
+rollback and completes the same phase in a new session after removing the
+injected constraint.
 Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL 16 instance
 and `RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP` to its `pg_dump` executable.
 
