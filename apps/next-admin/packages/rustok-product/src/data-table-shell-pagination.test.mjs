@@ -24,3 +24,32 @@ test('text filter values restored from the URL remain scalar strings', () => {
   assert.match(hookSource, /filters\.push\(\{\s*id: key,\s*value\s*\}\)/s);
   assert.doesNotMatch(hookSource, /value\.split\(/);
 });
+
+const productTableSource = await readFile(
+  new URL('./components/products/product-table/product-table.tsx', import.meta.url),
+  'utf8'
+);
+const catalogFilterSource = await readFile(
+  new URL('./components/products/product-table/product-catalog-filters.tsx', import.meta.url),
+  'utf8'
+);
+
+test('product catalog page selection is keyed by canonical product identity', () => {
+  assert.match(productTableSource, /getRowId=\{\(product\) => product\.id\}/);
+  assert.match(productTableSource, /defaultPageSize=\{perPage\}/);
+  assert.match(shellSource, /getRowId\?: \(row: TData, index: number\) => string/);
+  assert.match(shellSource, /getRowId,\s*pageCount,/);
+});
+
+test('the URL remains authoritative when table filters change via browser history', () => {
+  assert.match(hookSource, /lastUrlColumnFilters = React\.useRef/);
+  assert.match(hookSource, /lastUrlColumnFilters\.current !== routeFilters/);
+  assert.match(hookSource, /setColumnFilters\(initialColumnFilters\)/);
+});
+
+test('catalog controls refresh their uncontrolled defaults after facet navigation', () => {
+  assert.match(catalogFilterSource, /key=\{categoryId \?\? ''\}/);
+  assert.match(catalogFilterSource, /key=\{attributeFilters\.join\(';'\)\}/);
+  assert.match(catalogFilterSource, /key=\{sortBy \?\? 'published_at'\}/);
+  assert.match(catalogFilterSource, /key=\{sortDirection \?\? 'desc'\}/);
+});
