@@ -167,6 +167,14 @@ impl WorkflowService {
         };
         let (next_webhook_slug, next_webhook_secret) =
             normalize_webhook_configuration(next_webhook_slug, next_webhook_secret)?;
+        // Drafts may be incomplete, but activating or modifying an active
+        // cron must fail at the owner write boundary instead of leaving an
+        // apparently active workflow that the scheduler silently skips.
+        if input.status.as_ref().unwrap_or(&existing.status) == &WorkflowStatus::Active {
+            validate_active_cron_trigger(
+                input.trigger_config.as_ref().unwrap_or(&existing.trigger_config),
+            )?;
+        }
 
         // Save version snapshot before applying the update while the workflow row is locked.
         self.save_version_internal_on(&transaction, id, actor_id, &existing)
@@ -714,6 +722,11 @@ impl WorkflowService {
             .ok_or_else(|| WorkflowError::VersionNotFound(workflow_id, version))?;
 
         let snapshot = ver.snapshot.clone();
+        if existing.status == WorkflowStatus::Active {
+            validate_active_cron_trigger(
+                snapshot.get("trigger_config").unwrap_or(&existing.trigger_config),
+            )?;
+        }
 
         // Save current state as a new version before restoring.
         self.save_version_internal_on(&transaction, workflow_id, actor_id, &existing)
@@ -954,6 +967,30 @@ fn hex_nibble(byte: u8) -> Option<u8> {
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
     }
+}
+
+/// Only active schedules must be immediately runnable. Invalid drafts
+/// remain editable, but entering the active state requires a bounded cron
+/// expression accepted by the exact scheduler parser.
+fn validate_active_cron_trigger(config: &serde_json::Value) -> WorkflowResult<()> {
+    if config.get("type").and_then(|value| value.as_str()) == Some("cron") {
+        let expression = config.get("expression")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "an active cron requires a string expression".to_owned(),
+            ))?;
+        if expression.is_empty() || expression.len() > 512 {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "cron expression must contain 1 to 512 bytes".to_owned(),
+            ));
+        }
+        expression.parse::<cron::Schedule>().map_err(|_| {
+            WorkflowError::InvalidTriggerConfig(
+                "cron expression is not accepted by the scheduler".to_owned(),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 /// Step edits must advance the parent revision in the SAME transaction;
