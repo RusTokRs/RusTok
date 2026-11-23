@@ -296,7 +296,7 @@ impl WorkflowService {
             return Err(WorkflowError::StepNotFound(step_id));
         }
         let transaction = self.db.begin().await?;
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
