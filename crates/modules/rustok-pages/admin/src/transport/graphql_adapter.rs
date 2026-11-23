@@ -18,6 +18,10 @@ pub type ApiError = GraphqlHttpError;
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
 const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } documentReadable } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
+// Exactly the save response projection, so the recovered result cannot
+// silently omit fields the Page Builder needs to acknowledge a save.
+const PAGE_DOCUMENT_SAVE_RECEIPT_QUERY: &str =
+    "query PageDocumentSaveReceipt($id: UUID!, $idempotencyKey: String!) { pageDocumentSaveReceipt(id: $id, idempotencyKey: $idempotencyKey) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
 const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
 const UPDATE_STARTER_METADATA_MUTATION: &str = "mutation UpdatePageStarterMetadata($input: UpdateGqlPageStarterMetadataInput!) { updatePageStarterMetadata(input: $input) }";
@@ -124,6 +128,12 @@ struct PatchPageMetadataResponse {
 struct SavePageDocumentResponse {
     #[serde(rename = "savePageDocument")]
     save_page_document: PageDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageDocumentSaveReceiptResponse {
+    #[serde(rename = "pageDocumentSaveReceipt")]
+    page_document_save_receipt: Option<PageDetail>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -706,6 +716,24 @@ pub async fn save_page_document_with_key(
     )
     .await?;
     Ok(response.save_page_document)
+}
+
+/// Read a committed document save receipt. None is an unknown outcome, not
+/// proof that an in-flight mutation will never commit.
+pub async fn fetch_page_document_save_receipt(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    idempotency_key: String,
+) -> Result<Option<PageDetail>, ApiError> {
+    let response: PageDocumentSaveReceiptResponse = request(
+        PAGE_DOCUMENT_SAVE_RECEIPT_QUERY,
+        serde_json::json!({"id": id, "idempotencyKey": idempotency_key}),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_document_save_receipt)
 }
 
 pub async fn fetch_page_body_revision_history(

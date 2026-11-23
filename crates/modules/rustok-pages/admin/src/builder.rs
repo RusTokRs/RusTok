@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 #[cfg(feature = "ssr")]
 use sha2::{Digest, Sha256};
+#[cfg(feature = "ssr")]
+use rustok_graphql::GraphqlHttpError;
 
 #[cfg(feature = "ssr")]
 use async_trait::async_trait;
@@ -43,6 +45,8 @@ use rustok_page_builder::static_landing::static_publish_render_policy;
 use std::time::Duration;
 
 const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
+#[cfg(feature = "ssr")]
+const DOCUMENT_SAVE_OUTCOME_UNKNOWN: &str = "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
 
@@ -495,6 +499,12 @@ fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacad
     if message.contains(REVISION_CONFLICT) {
         return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
     }
+    if message.contains(DOCUMENT_SAVE_OUTCOME_UNKNOWN) {
+        return PageBuilderAdminFacadeError::with_stable_code(
+            message,
+            DOCUMENT_SAVE_OUTCOME_UNKNOWN,
+        );
+    }
     PageBuilderAdminFacadeError::new(message)
 }
 
@@ -626,17 +636,46 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
             &locale,
             &project_data,
         );
-        let saved_page = transport::save_page_document_with_key(
+        // An HTTP timeout can happen *after* Pages committed the body and its
+        // receipt. Query that exact operation before reporting failure or
+        // allowing another edit. Do not probe deterministic GraphQL rejections,
+        // auth failures, or HTTP 4xx validation errors: those remain failures.
+        let saved_page = match transport::save_page_document_with_key(
             Some(self.token.clone()),
             Some(self.tenant_slug.clone()),
             page_id.to_string(),
             revision_id.to_string(),
             locale,
             project_data.clone(),
-            Some(request_id),
+            Some(request_id.clone()),
         )
         .await
-        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        {
+            Ok(page) => page,
+            Err(error) if document_save_might_have_committed(&error) => {
+                match transport::fetch_page_document_save_receipt(
+                    Some(self.token.clone()),
+                    Some(self.tenant_slug.clone()),
+                    page_id.to_string(),
+                    request_id,
+                ).await {
+                    Ok(Some(receipt)) => receipt,
+                    Ok(None) => {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "{DOCUMENT_SAVE_OUTCOME_UNKNOWN}: {error}; the save receipt is not yet visible; preserve the draft and reconcile before a new save"
+                        )));
+                    }
+                    Err(probe_error) => {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "{DOCUMENT_SAVE_OUTCOME_UNKNOWN}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
+                        )));
+                    }
+                }
+            }
+            Err(error) => {
+                return Err(PageBuilderServiceError::Runtime(error.to_string()));
+            }
+        };
         let revision_id = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         let result = PageBuilderProjectSaveResult {
@@ -697,6 +736,22 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
     }
 }
 
+
+/// Whether the transport error might have happened after the server commit.
+/// GraphQL business rejections and authorization errors are final, not receipt
+/// recovery candidates; HTTP 408/429/5xx and network failures may be ambiguous.
+#[cfg(feature = "ssr")]
+fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
+    match error {
+        GraphqlHttpError::Network => true,
+        GraphqlHttpError::Http(status) => {
+            let code = status.split_whitespace().next().unwrap_or("");
+            matches!(code, "408" | "429")
+                || code.parse::<u16>().is_ok_and(|code| (500..=599).contains(&code))
+        }
+        GraphqlHttpError::Graphql(_) | GraphqlHttpError::Unauthorized => false,
+    }
+}
 
 /// Stable across retries of the same canonical save, but changes when the
 /// actor, page, observed revision or document changes. PageService still
@@ -881,7 +936,8 @@ mod document_gate_tests {
 
 #[cfg(all(test, feature = "ssr"))]
 mod document_save_attempt_key_tests {
-    use super::document_save_attempt_key;
+    use super::{document_save_attempt_key, document_save_might_have_committed};
+    use rustok_graphql::GraphqlHttpError;
     use serde_json::json;
 
     #[test]
@@ -911,5 +967,26 @@ mod document_save_attempt_key_tests {
             document_save_attempt_key("tenant", "actor", "page", "r1", "fr", &document),
         );
         assert!(key.len() <= 128, "ID must fit the Pages receipt key limit");
+    }
+
+    #[test]
+    fn ambiguous_transport_errors_are_probed_but_deterministic_rejections_are_not() {
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Network));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "503 Service Unavailable".to_string(),
+        )));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "408 Request Timeout".to_string(),
+        )));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "429 Too Many Requests".to_string(),
+        )));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Http(
+            "400 Bad Request".to_string(),
+        )));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Unauthorized));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Graphql(
+            "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),
+        )));
     }
 }

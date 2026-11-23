@@ -196,6 +196,19 @@ pub async fn save_page_document_with_key(
     .await
 }
 
+/// A read-only reconciliation probe for uncertain document saves.
+pub async fn fetch_page_document_save_receipt(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    idempotency_key: String,
+) -> Result<Option<PageDetail>, TransportError> {
+    graphql_adapter::fetch_page_document_save_receipt(
+        token, tenant_slug, id, idempotency_key,
+    )
+    .await
+}
+
 pub async fn fetch_page_body_revision_history(
     token: Option<String>,
     tenant_slug: Option<String>,
