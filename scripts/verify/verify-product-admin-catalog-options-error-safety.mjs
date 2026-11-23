@@ -93,7 +93,7 @@ const errorContext = between(
 const nativeContext = between(
   native,
   "pub(super) async fn ensure_product_module_enabled(",
-  "pub(super) async fn fetch_product_attributes(",
+  "async fn native_context()",
   paths.native,
 );
 
