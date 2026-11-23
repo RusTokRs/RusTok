@@ -163,14 +163,26 @@ export default async function ProductPage({ searchParams }: PageProps) {
       query.delete('title');
     }
     query.delete('search');
-    if (vendor) query.set('vendor', vendor);
-    else query.delete('vendor');
-    if (categoryId) query.set('category_id', categoryId);
-    else query.delete('category_id');
-    if (sortBy) query.set('sort_by', sortBy);
-    else query.delete('sort_by');
-    if (sortDirection) query.set('sort_direction', sortDirection);
-    else query.delete('sort_direction');
+    if (vendor) {
+      query.set('vendor', vendor);
+    } else {
+      query.delete('vendor');
+    }
+    if (categoryId) {
+      query.set('category_id', categoryId);
+    } else {
+      query.delete('category_id');
+    }
+    if (sortBy) {
+      query.set('sort_by', sortBy);
+    } else {
+      query.delete('sort_by');
+    }
+    if (sortDirection) {
+      query.set('sort_direction', sortDirection);
+    } else {
+      query.delete('sort_direction');
+    }
     if (canonicalAttributeFilters) {
       query.set('attribute_filters', canonicalAttributeFilters);
     } else {
