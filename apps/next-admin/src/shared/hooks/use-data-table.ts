@@ -272,7 +272,7 @@ export function useDataTable<TData extends RowData = any>(
 
   // Back/Forward is observable before the App Router finishes its render.
   // Invalidate the debounce at popstate time, not only after the new props commit.
-  React.useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const invalidatePendingFilterNavigation = () => {
       filterNavigationVersion.current += 1;
       pendingLocalRouteSignatures.current = [];
