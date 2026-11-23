@@ -107,6 +107,16 @@ fn dispatch_facade_effects(
                     continue;
                 };
                 let capability = request.capability();
+                if capability == BuilderCapabilityKind::Preview
+                    && facade.provider_status()
+                        .is_some_and(|status| !status.preview_enabled())
+                {
+                    let mut state = session.write();
+                    state.preview_in_progress = false;
+                    state.preview_request = None;
+                    state.fail("Server preview is disabled by the consumer provider or health policy");
+                    continue;
+                }
                 let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
                     // Drop the read guard before taking a write guard to
                     // record the evaluation; temporaries in if-let may live

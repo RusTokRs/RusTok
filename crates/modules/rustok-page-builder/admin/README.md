@@ -256,3 +256,8 @@ profile changes on an already mounted session. The live Fly controller is narrow
 resetting draft content, using an untracked state read to avoid rerunning on every edit. If the
 host withdraws its profile, the base controller policy (not an old restricted snapshot) is used
 as the fallback. This is not an authorization substitute for the backend.
+
+Direct Fly workspace preview requests now use the same consumer facade provider-health and
+rollout `preview_enabled()` gate as the normal Leptos preview panel. Both the Leptos and
+Dioxus dispatch paths reject disabled previews before calling the facade and clear pending
+preview state rather than leaving an in-progress indicator stranded.

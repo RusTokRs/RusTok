@@ -382,6 +382,17 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         let capability = request.capability();
+        if capability == BuilderCapabilityKind::Preview
+            && self.facade
+                .as_ref()
+                .and_then(|facade| facade.provider_status())
+                .is_some_and(|status| !status.preview_enabled())
+        {
+            self.preview_in_progress.set(false);
+            self.preview_request.set(None);
+            self.fail("Server preview is disabled by the consumer provider or health policy");
+            return;
+        }
         let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
             if expected_hash.is_none() {
                 self.fail("Publish request has no submitted project hash");
