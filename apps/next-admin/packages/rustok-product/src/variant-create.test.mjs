@@ -14,6 +14,7 @@ import {
   isVariantCreateInput,
   prepareVariantCreateInput,
   isVariantCreateRefusalCode,
+  MAX_INVENTORY_QUANTITY,
   MAX_PRODUCT_VARIANTS
 } from './variant-create.ts';
 import { MAX_COMBINATION_MEMBERS } from './combinations.ts';
@@ -46,6 +47,14 @@ const productInventoryPortSource = readFileSync(
   ),
   'utf8'
 );
+const productVariantsCardSource = readFileSync(
+  new URL('./components/products/product-variants-card.tsx', import.meta.url),
+  'utf8'
+);
+const initialVariantDraftSource = readFileSync(
+  new URL('./variant-draft.ts', import.meta.url),
+  'utf8'
+);
 
 const id = (value) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -74,6 +83,7 @@ const unknown = { status: 'unknown', message: 'Response lost' };
 
 test('Next SKU controls and Product owner share one bounded variant capacity', () => {
   assert.equal(MAX_PRODUCT_VARIANTS, 256);
+  assert.equal(MAX_INVENTORY_QUANTITY, 2_147_483_647);
   assert.equal(MAX_COMBINATION_MEMBERS, MAX_PRODUCT_VARIANTS);
   assert.match(productVariantLimits, /pub const MAX_PRODUCT_VARIANTS: usize = 256/);
   assert.match(
@@ -95,6 +105,15 @@ test('Next SKU controls and Product owner share one bounded variant capacity', (
   assert.match(
     productCommandSource,
     /validate_product_variant_count\(0, variants\.len\(\)\)/
+  );
+  assert.match(
+    productVariantsCardSource,
+    /disabled=\{disabled \|\| v\.inventoryQuantity >= MAX_INVENTORY_QUANTITY\}/
+  );
+  assert.match(productVariantsCardSource, /qty > MAX_INVENTORY_QUANTITY/);
+  assert.match(
+    initialVariantDraftSource,
+    /variant\.inventoryQuantity > MAX_INVENTORY_QUANTITY/
   );
 });
 
