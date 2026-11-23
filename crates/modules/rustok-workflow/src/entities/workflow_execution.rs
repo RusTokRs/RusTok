@@ -13,6 +13,8 @@ pub enum ExecutionStatus {
     Failed,
     #[sea_orm(string_value = "timed_out")]
     TimedOut,
+    #[sea_orm(string_value = "reconciliation_required")]
+    ReconciliationRequired,
 }
 
 impl std::fmt::Display for ExecutionStatus {
@@ -22,6 +24,7 @@ impl std::fmt::Display for ExecutionStatus {
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
             Self::TimedOut => write!(f, "timed_out"),
+            Self::ReconciliationRequired => write!(f, "reconciliation_required"),
         }
     }
 }
