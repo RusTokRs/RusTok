@@ -144,9 +144,23 @@ fn normalize_page_size(value: Option<String>) -> u64 {
 }
 
 fn normalize_attribute_filters(value: Option<String>) -> Vec<String> {
-    normalize_optional_ui_text(value)
-        .map(|value| parse_selection(value.as_str()))
-        .unwrap_or_default()
+    let mut normalized = Vec::new();
+    if let Some(value) = normalize_optional_ui_text(value) {
+        for entry in parse_selection(value.as_str()) {
+            let selected = match entry.split_once('=') {
+                Some((code, raw_value)) => {
+                    format!("{}={}", code.trim().to_ascii_lowercase(), raw_value.trim())
+                }
+                None => entry,
+            };
+            // Product's owner groups attribute codes without case and deduplicates values.
+            // Mirror that identity before the shared UI facet toggle compares entries.
+            if !normalized.contains(&selected) {
+                normalized.push(selected);
+            }
+        }
+    }
+    normalized
 }
 
 #[cfg(test)]
@@ -174,12 +188,20 @@ mod tests {
         assert_eq!(controls.per_page, 50);
         assert_eq!(
             controls.attribute_filters,
-            vec!["color=red".to_string(), "weight = 12.5".to_string()]
+            vec!["color=red".to_string(), "weight=12.5".to_string()]
         );
         assert_eq!(
             serialize_attribute_filters(controls.attribute_filters.as_slice()),
-            "color=red;weight = 12.5"
+            "color=red;weight=12.5"
         );
+    }
+
+    #[test]
+    fn attribute_filters_use_owner_code_identity_and_trim_values() {
+        let filters = normalize_attribute_filters(Some(
+            " COLOR = red ;color=red; SIZE = M ;size=M ".to_string(),
+        ));
+        assert_eq!(filters, vec!["color=red".to_string(), "size=M".to_string()]);
     }
 
     #[test]
