@@ -18,6 +18,9 @@ pub enum WorkflowError {
     #[error("Workflow execution not found: {0}")]
     ExecutionNotFound(Uuid),
 
+    #[error("Workflow execution {0} is running with an unconfirmed outcome; operator reconciliation required")]
+    ExecutionOutcomeUncertain(Uuid),
+
     #[error("Workflow is not active (status: {0})")]
     NotActive(String),
 
