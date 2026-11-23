@@ -1056,6 +1056,95 @@ mod cron_revision_tests {
     use crate::entities::{OnError, StepType};
 
     #[tokio::test]
+    async fn execution_history_batches_steps_without_cross_tenant_leakage() {
+        use crate::entities::{
+            workflow_execution, workflow_step, workflow_step_execution,
+            ExecutionStatus, StepExecutionStatus,
+        };
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let now = Utc::now().fixed_offset();
+        let tenant_id = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let own_workflow = Uuid::new_v4();
+        let other_workflow = Uuid::new_v4();
+        let service = WorkflowService::new(db.clone());
+        for (tenant, workflow_id) in [
+            (tenant_id, own_workflow),
+            (other_tenant, other_workflow),
+        ] {
+            workflow::ActiveModel {
+                id: Set(workflow_id),
+                tenant_id: Set(tenant),
+                name: Set(format!("workflow-{workflow_id}")),
+                description: Set(None),
+                status: Set(WorkflowStatus::Active),
+                trigger_config: Set(serde_json::json!({"type":"manual"})),
+                created_by: Set(None),
+                created_at: Set(now),
+                updated_at: Set(now),
+                failure_count: Set(0),
+                auto_disabled_at: Set(None),
+                webhook_slug: Set(None),
+                webhook_secret: Set(None),
+            }.insert(&db).await.unwrap();
+
+            let step_id = Uuid::new_v4();
+            workflow_step::ActiveModel {
+                id: Set(step_id),
+                workflow_id: Set(workflow_id),
+                position: Set(0),
+                step_type: Set(StepType::Action),
+                config: Set(serde_json::json!({})),
+                on_error: Set(OnError::Stop),
+                timeout_ms: Set(None),
+            }.insert(&db).await.unwrap();
+
+            for n in 0..2 {
+                let execution_id = Uuid::new_v4();
+                workflow_execution::ActiveModel {
+                    id: Set(execution_id),
+                    workflow_id: Set(workflow_id),
+                    tenant_id: Set(tenant),
+                    trigger_event_id: Set(None),
+                    status: Set(ExecutionStatus::Completed),
+                    context: Set(serde_json::Value::Null),
+                    error: Set(None),
+                    started_at: Set(now),
+                    completed_at: Set(Some(now)),
+                }.insert(&db).await.unwrap();
+
+                workflow_step_execution::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    execution_id: Set(execution_id),
+                    step_id: Set(step_id),
+                    status: Set(StepExecutionStatus::Completed),
+                    input: Set(serde_json::json!({"order": n})),
+                    output: Set(serde_json::json!({"tenant":tenant.to_string()})),
+                    error: Set(None),
+                    started_at: Set(now),
+                    completed_at: Set(Some(now)),
+                }.insert(&db).await.unwrap();
+            }
+        }
+
+        let rows = service.list_executions(tenant_id, own_workflow).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            assert_eq!(row.tenant_id, tenant_id);
+            assert_eq!(row.step_executions.len(), 1);
+            assert_eq!(
+                row.step_executions[0].output["tenant"],
+                tenant_id.to_string(),
+            );
+        }
+        assert!(service.list_executions(other_tenant, own_workflow)
+            .await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn failure_tracking_is_tenant_scoped_atomic_and_does_not_repause() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
