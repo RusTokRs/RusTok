@@ -1645,6 +1645,7 @@ mod lifecycle_tests {
     #[cfg(feature = "mod-product")]
     #[tokio::test]
     async fn live_dispatcher_retry_still_starts_missing_product_media_worker() {
+        use super::{ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement};
         use crate::common::settings::{EventDeliveryProfile, RuntimeHostMode};
         use crate::services::event_transport_factory::EventRuntime;
         use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
