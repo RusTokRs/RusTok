@@ -73,7 +73,7 @@ pub fn GridFilterCell(
             let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
                 // Invalidate the inner input debounce before the router restores its query state.
                 pending_change.set_value(false);
-                history_revision.update(|revision| *revision = revision.wrapping_add(1));
+                history_revision.update(|revision| *revision = (*revision).wrapping_add(1));
             });
             on_cleanup(move || history_listener.remove());
 
@@ -177,7 +177,7 @@ pub fn GridFilterCell(
             let last_history_revision = StoredValue::new(0_u64);
             let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
                 pending_change.set_value(false);
-                history_revision.update(|revision| *revision = revision.wrapping_add(1));
+                history_revision.update(|revision| *revision = (*revision).wrapping_add(1));
             });
             on_cleanup(move || history_listener.remove());
 
