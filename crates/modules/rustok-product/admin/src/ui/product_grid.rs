@@ -1180,7 +1180,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     name="per_page"
                     prop:value=move || pagination.get().page_size.to_string()
                 />
-                <div class="space-y-1 xl:col-span-6">
+                <div class="space-y-1 xl:col-span-5">
                     <h2 class="text-sm font-semibold text-foreground">{catalog_labels.title.clone()}</h2>
                     <p class="text-xs text-muted-foreground">{catalog_labels.subtitle.clone()}</p>
                 </div>
