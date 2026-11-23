@@ -17,6 +17,10 @@ const catalogTransport = readFileSync(
   new URL('../../crates/modules/rustok-product/admin/src/catalog_transport.rs', import.meta.url),
   'utf8'
 );
+const gridFilterInputs = readFileSync(
+  new URL('../../crates/ui/rustok-grid/leptos/src/filter_inputs.rs', import.meta.url),
+  'utf8'
+);
 const filters = readFileSync(
   new URL('../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs', import.meta.url),
   'utf8'
@@ -52,6 +56,13 @@ test('mounted Leptos catalog uses current router filters for owner and facet req
   assert.match(grid, /facet_panel_controls\.get\(\)/);
   assert.match(grid, /loaded_controls == controls/);
   assert.match(grid, /catalog_controls\.get_untracked\(\) == requested_controls/);
+});
+
+test('Leptos text and number filter debounces are invalidated by browser history', () => {
+  assert.match(gridFilterInputs, /window_event_listener\(leptos::ev::popstate/);
+  assert.match(gridFilterInputs, /pending_change\.set_value\(false\)/);
+  assert.match(gridFilterInputs, /revision != last_history_revision\.get_value\(\)/);
+  assert.match(gridFilterInputs, /if !pending_change\.get_value\(\)/);
 });
 
 test('URL owner-query changes invalidate accumulated rows and request generation', () => {
