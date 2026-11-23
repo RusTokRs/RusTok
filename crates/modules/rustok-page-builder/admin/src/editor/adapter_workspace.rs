@@ -31,9 +31,12 @@ pub fn AdapterWorkspacePanel(
     // renders unstyled.
     let csp_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let messages = adapter_editor_messages(locale.as_deref());
-    let document = runtime
-        .controller
-        .with(|controller| controller.editor().document().clone());
+    let (document, registries) = runtime.controller.with(|controller| {
+        (
+            controller.editor().document().clone(),
+            controller.editor().registries().clone(),
+        )
+    });
     let instance_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
@@ -71,6 +74,7 @@ pub fn AdapterWorkspacePanel(
     view! {
         <FlyEditorWorkspace
             document=document
+            registries=registries
             contribution_assembly=assembly
             instance_id=instance_id
             on_intent=on_intent

@@ -275,3 +275,9 @@ that does not change the server revision now remounts the child instead of conti
 stale state from the first `use_signal` initialization. The editor's own internal changes do not
 alter the incoming host key. Direct use of the inner component still requires a stable owning
 component key or a caller-controlled remount when changing documents.
+
+Both Leptos and Dioxus FlyEditorWorkspace adapters now receive the RegistrySet cloned from
+the active AdminCanvasController. Previously they constructed fresh built-in-only registries,
+hiding blocks installed by the consumer and contribution host, even though the authoritative
+controller could already insert those blocks. The controller remains the registry owner; these
+are read-only workspace projections, not independent registration paths.

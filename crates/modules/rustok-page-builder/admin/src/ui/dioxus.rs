@@ -419,6 +419,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let current = session.read();
     let page_id = current.controller.page_id().to_string();
     let workspace_document = current.controller.editor().document().clone();
+    let workspace_registries = current.controller.editor().registries().clone();
     let workspace_page_id = page_id.clone();
     let workspace_selected = current.controller.ui().state.selection.component_id.clone();
     let workspace_initial_page = current.controller.active_page_index();
@@ -564,6 +565,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     true => rsx! {
                         FlyEditorWorkspace {
                             document: workspace_document.clone(),
+                            registries: Some(workspace_registries.clone()),
                             contribution_assembly: workspace_assembly.clone(),
                             instance_id: Some(workspace_page_id.clone()),
                             on_intent: Some(on_workspace_intent),
