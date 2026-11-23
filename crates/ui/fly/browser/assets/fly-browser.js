@@ -5,6 +5,7 @@ const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
 const DRAFT_PREFIX = "fly:ssr-draft:";
 const SAVE_FAILURE_PREFIX = "fly:ssr-save-failure:";
+const PENDING_OPERATION_PREFIX = "fly:ssr-pending-operation:";
 const SAVE_FAILURE_MAX_AGE_MS = 10 * 60 * 1000;
 const SAVE_FAILURE_MAX_ERROR_LENGTH = 1024;
 const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
@@ -28,7 +29,7 @@ const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
 const READ_ONLY_INTENTS = new Set([
   "select", "focus_requested", "hover", "hover_requested",
   "activate_page", "cancel_drag", "cancel_drag_requested",
-  "render_server_preview",
+  "render_server_preview", "resolve_operation",
 ]);
 const INTENT_ABORT_KIND = Object.freeze({
   EXTERNAL: "external",
@@ -387,8 +388,111 @@ function writeDraftSession(pageId, token, generation) {
   }
 }
 
+function pendingOperationStorageKey(pageId) {
+  return PENDING_OPERATION_PREFIX + (pageId || "unbound");
+}
+
+function readPendingOperation(pageId) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(pendingOperationStorageKey(pageId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      !isObject(parsed) ||
+      !isObject(parsed.request) ||
+      typeof parsed.request.operation_id !== "string" ||
+      !parsed.request.operation_id ||
+      typeof parsed.request.intent !== "string" ||
+      !parsed.request.intent
+    ) return { invalid: true };
+    return {
+      at: Number.isSafeInteger(parsed.at) ? parsed.at : 0,
+      request: parsed.request,
+    };
+  } catch (_) {
+    return { invalid: true };
+  }
+}
+
+function writePendingOperation(pageId, request) {
+  try {
+    const storage = globalThis.sessionStorage;
+    if (!storage || typeof storage.setItem !== "function") return false;
+    storage.setItem(
+      pendingOperationStorageKey(pageId),
+      JSON.stringify({ at: Date.now(), request }),
+    );
+    return true;
+  } catch (_) {
+    // An editable strict-draft host fails closed if the operation identity cannot survive reload.
+    return false;
+  }
+}
+
+function clearPendingOperationStorage(pageId) {
+  try {
+    globalThis.sessionStorage?.removeItem(pendingOperationStorageKey(pageId));
+  } catch (_) {
+    // A later mount will surface the still-pending operation rather than inventing a new identity.
+  }
+}
+
+function createOperationId() {
+  const crypto = globalThis.crypto;
+  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return null;
+}
+
+function clearPendingOperationNotice(adapter) {
+  adapter.root.querySelector("[data-fly-pending-operation-notice]")?.remove();
+}
+
+function showPendingOperationNotice(adapter, state = "unknown") {
+  const root = adapter.root;
+  let notice = root.querySelector("[data-fly-pending-operation-notice]");
+  if (!notice) {
+    notice = document.createElement("section");
+    notice.dataset.flyPendingOperationNotice = "true";
+    notice.className = "fly-browser-pending-operation";
+    notice.setAttribute("role", "alert");
+    const message = document.createElement("p");
+    message.dataset.flyPendingOperationMessage = "true";
+    const check = document.createElement("button");
+    check.type = "button";
+    check.dataset.flyPendingOperationCheck = "true";
+    check.textContent = "Check status";
+    check.addEventListener("click", () => void adapter.resolvePendingOperation());
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.dataset.flyPendingOperationRetry = "true";
+    retry.textContent = "Retry the same operation";
+    retry.addEventListener("click", () => void adapter.retryPendingOperation());
+    notice.append(message, check, retry);
+    root.prepend(notice);
+  }
+  const message = notice.querySelector("[data-fly-pending-operation-message]");
+  const check = notice.querySelector("[data-fly-pending-operation-check]");
+  const retry = notice.querySelector("[data-fly-pending-operation-retry]");
+  if (message) {
+    message.textContent = state === "checking"
+      ? "Checking whether the server committed the pending editor operation…"
+      : state === "invalid"
+        ? "The saved pending operation could not be read. Editing is paused; do not create a replacement operation."
+        : state === "unavailable"
+          ? "The draft session could not confirm this operation. Preserve this tab and recover the draft before continuing."
+          : "The server has not confirmed this operation yet. Editing is paused. Check again or retry the exact same request with its original identity.";
+  }
+  if (check) check.disabled = state === "checking" || state === "invalid";
+  if (retry) retry.disabled = state === "checking" || state === "invalid" || state === "unavailable";
+}
+
 function saveFailureStorageKey(pageId) {
-  return `${SAVE_FAILURE_PREFIX}${pageId || "unbound"}`;
+  return SAVE_FAILURE_PREFIX + (pageId || "unbound");
 }
 
 // A response with `save_failure` is a *successful* intent whose edit reached the draft session
@@ -467,6 +571,8 @@ function reportSaveFailure(adapter, failure, request) {
 // the first key press after the reload. The parked failure therefore stands until a response
 // reports a working copy that is no longer dirty.
 function settleSaveFailure(adapter, result, request) {
+  // A missing receipt is not proof that the operation failed or succeeded.
+  if (request?.intent === "resolve_operation" && result?.operation_status === "unknown") return;
   // A clean reply from an older request cannot clear a newer peer-write fence.
   if (adapter.peerWriteConflict) return;
   if (!isObject(result)) {
@@ -562,6 +668,7 @@ function applyRect(overlay, rect, zoom) {
 }
 
 function normalizedIntent(adapter, input) {
+  input = isObject(input) ? input : {};
   const message = isObject(input.message) ? input.message : null;
   const intent = String(input.intent || input.type || message?.type || "")
     .trim()
@@ -588,6 +695,7 @@ function normalizedIntent(adapter, input) {
     draft_generation: Number.isSafeInteger(adapter.draftSession?.generation)
       ? adapter.draftSession.generation
       : null,
+    operation_id: nonEmptyString(input.operation_id),
   };
 }
 
