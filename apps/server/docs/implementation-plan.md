@@ -3203,3 +3203,17 @@ is also observed. Liveness (`/health/live`) is intentionally unchanged.
 A focused registry-only shutdown regression was authored, not run.
 No compilation, formatting, integration tests, or runtime verification
 were performed.
+
+
+## Server audit continuation — Readiness circuit ownership (2026-11-23)
+
+The health controller previously stored all dependency-check circuit breakers
+in one process-global static map keyed only by check name (e.g. `database`).
+Distinct `ServerRuntimeContext` instances could therefore share a failure
+counter and a 30-second open circuit even when their dependencies were
+independent. A healthy host could report false 503 after another host reached
+the failure threshold. Breaker state now belongs to the shared runtime
+context; cloned contexts keep the same state, independent contexts do not.
+The per-check failure counter is also saturating. A focused two-context
+regression was authored but not run. No compilation, tests, formatting, or
+live dependency checks were run at the maintainer's request.

@@ -39,6 +39,10 @@ Local documentation for the main RusToK backend host application. This file capt
   after asynchronous dependency checks in **every** host mode, including
   registry-only and surface hosts. A stopping process responds 503 even if
   its dependencies remain healthy and it has no required workers.
+- Readiness circuit breakers are held in the `ServerRuntimeContext` rather
+  than keyed globally across all hosts in the process. A dependency failure
+  in one runtime no longer prevents another runtime from testing its own
+  healthy dependency. Clones of the same runtime still share the breaker.
 
 ## Purpose
 
