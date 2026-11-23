@@ -68,3 +68,7 @@ intent without posting. This is intentionally a safety gate, not automatic retry
 
 Timeout notifications use the same authoritative/read-only request ordering rule as response
 and error notifications. A newer selection request cannot hide the timeout of a pending write.
+
+Same-origin navigation/intent-endpoint admission rejects raw backslashes and ASCII control
+or whitespace characters before URL resolution, including the `about:blank`/srcdoc fallback
+that previously treated ambiguous root-relative paths as safe.

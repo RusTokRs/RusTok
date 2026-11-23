@@ -574,3 +574,51 @@ test('a write timeout stays visible when a read intent was issued later', async 
     network: 'error'
   });
 });
+
+
+
+test('ambiguous backslash intent endpoints are rejected without an HTTP base', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Unsafe endpoint canvas"></iframe>
+    </div>
+  `);
+  const evidence = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      return new Response('{}', { status: 200 });
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, {
+      intentEndpoint: '/\\external.invalid/intent'
+    });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const outcome = await adapter.emitIntent('save', {});
+    const result = {
+      requests,
+      outcome,
+      problem: root.dataset.flyBrowserProblem
+    };
+    adapter.stop();
+    return result;
+  }, adapterSource);
+  expect(evidence).toEqual({
+    requests: 0,
+    outcome: null,
+    problem: 'UNSAFE_INTENT_ENDPOINT'
+  });
+});

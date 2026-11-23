@@ -94,7 +94,11 @@ function sameOriginUrl(value) {
   const candidate = nonEmptyString(value);
   if (!candidate) return null;
   const trimmed = candidate.trim();
-  if (trimmed.startsWith("//")) return null;
+  // Browsers normalize backslashes into path separators for special
+  // URL schemes. Without an HTTP base (srcdoc/about:blank), accepting
+  // "/\\host" as root-relative would silently enable an authority switch.
+  if (trimmed.startsWith("//") || trimmed.includes("\\") ||
+      /[\x00-\x20\x7f]/.test(trimmed)) return null;
 
   let base = null;
   try {
