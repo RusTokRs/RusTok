@@ -317,7 +317,9 @@ fn option_condition(
             EXISTS (
                 SELECT 1
                 FROM product_attribute_values pav
-                JOIN product_attribute_value_options pavo ON pavo.value_id = pav.id
+                JOIN product_attribute_value_options pavo
+                  ON pavo.value_id = pav.id
+                 AND pavo.tenant_id = pav.tenant_id
                 JOIN product_attribute_options pao
                   ON pao.id = pavo.option_id
                  AND pao.tenant_id = pav.tenant_id
@@ -339,7 +341,9 @@ fn option_condition(
         EXISTS (
             SELECT 1
             FROM product_attribute_values pav
-            JOIN product_attribute_value_options pavo ON pavo.value_id = pav.id
+            JOIN product_attribute_value_options pavo
+              ON pavo.value_id = pav.id
+             AND pavo.tenant_id = pav.tenant_id
             JOIN product_attribute_options pao
               ON pao.id = pavo.option_id
              AND pao.tenant_id = pav.tenant_id
@@ -394,6 +398,7 @@ mod tests {
                 ))
                 .to_string(SqliteQueryBuilder);
             assert!(sql.contains("pao.tenant_id = pav.tenant_id"), "{sql}");
+            assert!(sql.contains("pavo.tenant_id = pav.tenant_id"), "{sql}");
             assert!(sql.contains("pao.attribute_id = pav.attribute_id"), "{sql}");
             assert!(sql.contains("pao.archived_at IS NULL"), "{sql}");
             assert!(sql.contains("pav.detached_at IS NULL"), "{sql}");
