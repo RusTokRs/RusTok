@@ -216,6 +216,15 @@ and their source-input hashes, independent module seals and any stable
 reservations made before a container was exposed. An empty GitHub history
 cannot substitute for an explicit bootstrap record.
 
+The first stable distribution starts from the [bootstrap record](../../scripts/release/migration-bootstrap.json)
+at generation zero. `node scripts/release/resolve-release-history.mjs --check-bootstrap`
+reads that exact path from a pinned commit on the official `main`, verifies
+its Git blob identity and checks all pages of GitHub Releases and repository
+tags. A stable release or a stable tag without a release stops the check.
+The result links the observed state to the commit and blob, with migration
+replacement still blocked. Container history, independent module seals and
+the publication reservation require separate evidence before admission.
+
 A local declaration check takes the ordered inventory projection of one
 composition's protected prefix and a full candidate export.
 

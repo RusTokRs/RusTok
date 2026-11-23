@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -8,6 +10,7 @@ import { parseReleaseTag } from "./verify-release-contract.mjs";
 
 const repository = "RusTokRs/RusTok";
 const pageSize = 100;
+const bootstrapPath = "scripts/release/migration-bootstrap.json";
 
 async function readGitHub(endpoint) {
   const token = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
@@ -26,19 +29,24 @@ async function readGitHub(endpoint) {
   return await response.json();
 }
 
+async function* pages(read, endpoint) {
+  // Read through an empty page so a short page cannot silently truncate history.
+  for (let page = 1; ; page += 1) {
+    const records = await read(`${endpoint}?per_page=${pageSize}&page=${page}`);
+    if (!Array.isArray(records) || records.length > pageSize) {
+      throw new Error(`invalid GitHub ${endpoint} page ${page}`);
+    }
+    if (records.length === 0) return;
+    yield { records, page };
+  }
+}
+
 async function stableReleases(read) {
   const ids = new Set();
   const publishedTags = new Set();
   const stable = [];
-  // Read through an empty page so a short page cannot silently truncate history.
-  for (let page = 1; ; page += 1) {
-    const releases = await read(`releases?per_page=${pageSize}&page=${page}`);
-    if (!Array.isArray(releases) || releases.length > pageSize) {
-      throw new Error(`invalid GitHub releases page ${page}`);
-    }
-    if (releases.length === 0) return stable;
-
-    for (const release of releases) {
+  for await (const { records, page } of pages(read, "releases")) {
+    for (const release of records) {
       if (!Number.isSafeInteger(release?.id) || release.id < 1 || ids.has(release.id)
         || typeof release.draft !== "boolean" || typeof release.prerelease !== "boolean") {
         throw new Error(`invalid or repeated release record on page ${page}`);
@@ -59,10 +67,84 @@ async function stableReleases(read) {
       stable.push({ id: release.id, tag });
     }
   }
+  return stable;
 }
 
 function isGitObjectId(value) {
   return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+}
+
+function bootstrapRecord(bytes) {
+  const expected = {
+    schema_version: 1,
+    repository,
+    scope: "stable_distribution",
+    state: "before_first_stable_release",
+    seal_generation: 0,
+  };
+  const record = JSON.parse(bytes.toString("utf8"));
+  if (record === null || typeof record !== "object" || Array.isArray(record)
+    || Object.keys(record).length !== Object.keys(expected).length
+    || Object.entries(expected).some(([name, value]) => record[name] !== value)) {
+    throw new Error("invalid first stable distribution bootstrap record");
+  }
+  return record;
+}
+
+function contentBlobId(bytes) {
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+
+async function mainCommit(read) {
+  const ref = await read("git/ref/heads/main");
+  if (ref?.ref !== "refs/heads/main" || ref.object?.type !== "commit" || !isGitObjectId(ref.object.sha)) {
+    throw new Error("invalid official main branch identity");
+  }
+  return ref.object.sha;
+}
+
+async function checkBootstrap(read = readGitHub) {
+  const commit = await mainCommit(read);
+  const file = await read(`contents/${bootstrapPath}?ref=${commit}`);
+  if (file?.type !== "file" || file.path !== bootstrapPath || file.encoding !== "base64"
+    || typeof file.content !== "string" || !isGitObjectId(file.sha)
+    || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > 4096) {
+    throw new Error("bootstrap record is missing or invalid in official main");
+  }
+  const encoded = file.content.replace(/\r?\n/g, "");
+  const bytes = Buffer.from(encoded, "base64");
+  if (bytes.length !== file.size || bytes.toString("base64") !== encoded || contentBlobId(bytes) !== file.sha) {
+    throw new Error("bootstrap record bytes do not match its Git blob identity");
+  }
+  const record = bootstrapRecord(bytes);
+  if ((await stableReleases(read)).length > 0) {
+    throw new Error("stable distribution has already been published");
+  }
+
+  const seen = new Set();
+  for await (const { records, page } of pages(read, "tags")) {
+    for (const entry of records) {
+      const tag = entry?.name;
+      if (typeof tag !== "string" || !tag || seen.has(tag)) {
+        throw new Error(`invalid or repeated GitHub tag on page ${page}`);
+      }
+      seen.add(tag);
+      // Match the release workflow's tag trigger. A stable tag can have started
+      // container publication before GitHub Releases exposes a record.
+      if (!/^v[^/]*\.[^/]*\.[^/]*$/.test(tag)) continue;
+      if (!parseReleaseTag(tag).prerelease) throw new Error(`stable distribution tag ${tag} already exists`);
+    }
+  }
+  if (await mainCommit(read) !== commit) {
+    throw new Error("official main changed during the bootstrap check");
+  }
+  return {
+    ...record,
+    main_commit: commit,
+    record_blob: file.sha,
+    observation: "github_release_history_and_tag_refs",
+    replacement_admission: "blocked",
+  };
 }
 
 async function peelTag(read, tag, tagObject, target) {
@@ -189,6 +271,54 @@ async function runSelfTest() {
   for (const [endpoint, payload, error] of cases) {
     await assert.rejects(resolveReleaseHistory(withResults({ [endpoint]: payload })), error);
   }
+
+  const recordBytes = fs.readFileSync(new URL("./migration-bootstrap.json", import.meta.url));
+  const recordEndpoint = `contents/${bootstrapPath}?ref=${commit}`;
+  const mainEndpoint = "git/ref/heads/main";
+  const tagsFirstPage = "tags?per_page=100&page=1";
+  const tagsSecondPage = "tags?per_page=100&page=2";
+  const recordFile = {
+    type: "file", path: bootstrapPath, encoding: "base64",
+    content: recordBytes.toString("base64"), size: recordBytes.length, sha: contentBlobId(recordBytes),
+  };
+  const prerelease = "v1.4.0-rc.1";
+  const bootstrapResults = {
+    [mainEndpoint]: { ref: "refs/heads/main", object: { type: "commit", sha: commit } },
+    [recordEndpoint]: recordFile,
+    [tagsFirstPage]: [{ name: prerelease }, { name: "v" }],
+    [tagsSecondPage]: [],
+    "releases?per_page=100&page=1": [release(3, prerelease, { prerelease: true })],
+    "releases?per_page=100&page=2": [],
+  };
+  assert.deepEqual(await checkBootstrap(withResults(bootstrapResults)), {
+    ...bootstrapRecord(recordBytes), main_commit: commit, record_blob: recordFile.sha,
+    observation: "github_release_history_and_tag_refs", replacement_admission: "blocked",
+  });
+  for (const [endpoint, payload, error] of [
+    [recordEndpoint, new Error("GitHub contents returned HTTP 404"), /HTTP 404/],
+    [recordEndpoint, { ...recordFile, sha: oldObject }, /bytes do not match/],
+    [recordEndpoint, { ...recordFile, type: "symlink" }, /record is missing or invalid/],
+    ["releases?per_page=100&page=2", [release(1, oldTag)], /already been published/],
+    [tagsSecondPage, [{ name: newTag }], /stable distribution tag v1\.3\.0 already exists/],
+    [tagsFirstPage, { refs: [] }, /invalid GitHub tags page/],
+    [tagsSecondPage, [{ name: prerelease }], /repeated GitHub tag/],
+    [tagsSecondPage, new Error("GitHub tag request returned HTTP 403"), /HTTP 403/],
+  ]) {
+    await assert.rejects(checkBootstrap(withResults({ ...bootstrapResults, [endpoint]: payload })), error);
+  }
+  const current = withResults(bootstrapResults);
+  let mainReads = 0;
+  await assert.rejects(checkBootstrap(async (endpoint) => {
+    if (endpoint === mainEndpoint && ++mainReads === 2) {
+      return { ref: "refs/heads/main", object: { type: "commit", sha: nestedCommit } };
+    }
+    return current(endpoint);
+  }), /official main changed/);
+  for (const field of ["schema_version", "repository", "scope", "state", "seal_generation"]) {
+    assert.throws(() => bootstrapRecord(Buffer.from(JSON.stringify({
+      ...bootstrapRecord(recordBytes), [field]: "unexpected",
+    }))), /invalid first stable distribution/);
+  }
   console.log("✔ published release history resolver self-test passed");
 }
 
@@ -196,11 +326,13 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--self-test") {
     await runSelfTest();
+  } else if (args.length === 1 && args[0] === "--check-bootstrap") {
+    console.log(JSON.stringify(await checkBootstrap(), null, 2));
   } else if (args.length === 0) {
     const history = await resolveReleaseHistory();
     console.log(JSON.stringify(history, null, 2));
   } else {
-    throw new Error("usage: resolve-release-history.mjs [--self-test]");
+    throw new Error("usage: resolve-release-history.mjs [--self-test | --check-bootstrap]");
   }
 }
 

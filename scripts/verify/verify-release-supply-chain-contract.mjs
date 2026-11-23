@@ -410,6 +410,7 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   ".github/workflows/release-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
   "scripts/release/resolve-release-history.mjs",
+  "scripts/release/migration-bootstrap.json",
   "scripts/release/verify-release-manifests.mjs",
   "apps/admin/Trunk.toml",
   "apps/admin/package-lock.json",
