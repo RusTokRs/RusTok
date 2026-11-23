@@ -301,6 +301,31 @@ impl From<WorkflowExecutionResponse> for GqlWorkflowExecution {
     }
 }
 
+#[derive(SimpleObject)]
+pub struct GqlWorkflowCronReconciliationItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub scheduled_at: String,
+    pub claimed_at: Option<String>,
+    pub execution_id: Option<Uuid>,
+    pub reason: Option<String>,
+}
+
+impl From<crate::WorkflowCronReconciliationItem> for GqlWorkflowCronReconciliationItem {
+    fn from(item: crate::WorkflowCronReconciliationItem) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            scheduled_at: item.scheduled_at.to_rfc3339(),
+            claimed_at: item.claimed_at.map(|time| time.to_rfc3339()),
+            execution_id: item.execution_id,
+            reason: item.reason,
+        }
+    }
+}
+
 #[derive(InputObject)]
 pub struct GqlCreateWorkflowInput {
     pub name: String,
