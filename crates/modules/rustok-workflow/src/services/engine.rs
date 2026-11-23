@@ -182,7 +182,13 @@ impl WorkflowEngine {
                             failure_msg = format!("Unknown step type: {step_type_str}");
                             break 'steps;
                         }
-                        OnError::Skip => continue 'steps,
+                        OnError::Skip => {
+                            self.update_step_status(
+                                step_execution_id,
+                                StepExecutionStatus::Skipped,
+                            ).await?;
+                            continue 'steps;
+                        }
                         OnError::Retry => {
                             // Retry once (simple implementation)
                             failed = true;
@@ -296,6 +302,7 @@ impl WorkflowEngine {
 
                             let mut last_err = err_msg.clone();
                             let mut succeeded = false;
+                            let mut stop_after_success = false;
 
                             for attempt in 1..=max_retries {
                                 let multiplier = 2u64
@@ -313,6 +320,7 @@ impl WorkflowEngine {
 
                                 match executor.execute(&step.config, context.clone()).await {
                                     Ok(out) => {
+                                        stop_after_success = !out.should_continue;
                                         self.finish_step_execution(
                                             step_execution_id,
                                             StepExecutionStatus::Completed,
@@ -331,6 +339,11 @@ impl WorkflowEngine {
                                 }
                             }
 
+                            if succeeded && stop_after_success {
+                                // The same stop signal must be honored on
+                                // first attempt and after a successful retry.
+                                break 'steps;
+                            }
                             if !succeeded {
                                 failed = true;
                                 failure_msg = last_err.clone();
