@@ -312,6 +312,8 @@ export function useDataTable<TData extends RowData = any>(
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
   const currentFilterSignature = columnFiltersSignature(initialColumnFilters);
+  // Nuqs updates client state before the server component receives new props.
+  // Overlay those live table keys so pending writes are reconciled immediately.
   const currentRouteQuery = routeQuery
     ? mergeTableStateIntoRouteQuery(
         routeQuery,
