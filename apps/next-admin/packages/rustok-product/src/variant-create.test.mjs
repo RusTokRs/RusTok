@@ -13,8 +13,19 @@ import { memoryJournal, testScope } from './write-test-support.mjs';
 import {
   isVariantCreateInput,
   prepareVariantCreateInput,
-  isVariantCreateRefusalCode
+  isVariantCreateRefusalCode,
+  MAX_PRODUCT_VARIANTS
 } from './variant-create.ts';
+import { MAX_COMBINATION_MEMBERS } from './combinations.ts';
+
+const productVariantLimits = readFileSync(
+  new URL('../../../../../crates/modules/rustok-product/ports/src/dto/variant_axis.rs', import.meta.url),
+  'utf8'
+);
+const productCommandSource = readFileSync(
+  new URL('../../../../../crates/modules/rustok-product/src/services/catalog/commands.rs', import.meta.url),
+  'utf8'
+);
 
 const id = (value) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -40,6 +51,24 @@ const confirmed = {
   value: { id: id(1), revision: null, variantId: id(4) }
 };
 const unknown = { status: 'unknown', message: 'Response lost' };
+
+test('Next SKU controls and Product owner share one bounded variant capacity', () => {
+  assert.equal(MAX_PRODUCT_VARIANTS, 256);
+  assert.equal(MAX_COMBINATION_MEMBERS, MAX_PRODUCT_VARIANTS);
+  assert.match(productVariantLimits, /pub const MAX_PRODUCT_VARIANTS: usize = 256/);
+  assert.match(
+    productVariantLimits,
+    /MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS/
+  );
+  assert.match(
+    productCommandSource,
+    /validate_product_variant_count\(existing_variants\.len\(\), 1\)/
+  );
+  assert.match(
+    productCommandSource,
+    /validate_product_variant_count\(0, variants\.len\(\)\)/
+  );
+});
 
 test('preparation retains create text semantics, all fields, exact zero/decimal prices and explicit defaults', () => {
   const value = request().input;
