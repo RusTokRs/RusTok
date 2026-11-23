@@ -84,7 +84,7 @@ test('only eligible owner attribute options can appear in filters and facets', (
 
 test('blank and duplicate status query values are canonicalized before hydration', () => {
   assert.match(nextPage, /const hasNonCanonicalStatus/);
-  assert.match(nextPage, /!rawStatus\?\.trim\(\)/);
+  assert.match(nextPage, /!trimmedStatus/);
   assert.match(nextPage, /hasNonCanonicalStatus \|\|/);
 });
 
