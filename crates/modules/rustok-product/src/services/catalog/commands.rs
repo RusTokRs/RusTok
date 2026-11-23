@@ -41,6 +41,19 @@ async fn find_variant_for_update_in_tx(
     variant.ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
+fn validate_product_variant_count(current_count: usize, incoming_count: usize) -> CommerceResult<()> {
+    let total = current_count.checked_add(incoming_count).ok_or_else(|| {
+        CommerceError::Validation("Product variant count exceeds the supported limit".to_owned())
+    })?;
+    if total > crate::dto::MAX_PRODUCT_VARIANTS {
+        return Err(CommerceError::Validation(format!(
+            "A Product can contain at most {} variants",
+            crate::dto::MAX_PRODUCT_VARIANTS
+        )));
+    }
+    Ok(())
+}
+
 fn validate_variant_inventory_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -1433,8 +1446,10 @@ impl CatalogService {
         let existing_variants = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .limit((crate::dto::MAX_PRODUCT_VARIANTS + 1) as u64)
             .all(&txn)
             .await?;
+        validate_product_variant_count(existing_variants.len(), 1)?;
         if configured_axes.is_empty() && !existing_variants.is_empty() {
             return Err(CommerceError::Validation(
                 "a product without variant axes can have exactly one default variant".to_owned(),
@@ -3007,6 +3022,7 @@ pub(super) fn validate_variant_axis_tuples(
     variant_axes: &[VariantAxisInput],
     variants: &[Vec<VariantAxisValueInput>],
 ) -> CommerceResult<()> {
+    validate_product_variant_count(0, variants.len())?;
     if variant_axes.is_empty() {
         if variants.len() != 1 {
             return Err(CommerceError::Validation(
@@ -3122,6 +3138,16 @@ mod tests {
             validate_variant_weight(Some(&Decimal::new(-1, 2))),
             Err(CommerceError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn product_variant_capacity_is_enforced_without_overflow() {
+        assert!(validate_product_variant_count(0, 1).is_ok());
+        assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS).is_ok());
+        assert!(validate_product_variant_count(crate::dto::MAX_PRODUCT_VARIANTS - 1, 1).is_ok());
+        assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS + 1).is_err());
+        assert!(validate_product_variant_count(crate::dto::MAX_PRODUCT_VARIANTS, 1).is_err());
+        assert!(validate_product_variant_count(usize::MAX, 1).is_err());
     }
 
     #[test]
