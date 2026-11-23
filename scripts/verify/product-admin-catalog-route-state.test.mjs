@@ -67,6 +67,9 @@ test('only eligible owner attribute options can appear in filters and facets', (
 test('legacy search URLs are migrated into the visible title column filter', () => {
   assert.match(nextPage, /const rawTitle = pickParam\(params\.title\)/);
   assert.match(nextPage, /const rawSearch = pickParam\(params\.search\)/);
+  assert.match(nextPage, /const trimmedTitle = rawTitle\?\.trim\(\) \?\? ''/);
+  assert.match(nextPage, /rawTitle !== trimmedTitle/);
+
   assert.match(nextPage, /hasLegacySearch/);
   assert.match(nextPage, /query\.set\('title', search\)/);
   assert.match(nextPage, /query\.delete\('search'\)/);
