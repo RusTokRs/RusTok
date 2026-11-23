@@ -37,6 +37,12 @@ const ARRAY_SEPARATOR = ',';
 const DEBOUNCE_MS = 300;
 const THROTTLE_MS = 50;
 
+function columnFiltersSignature(filters: ColumnFiltersState): string {
+  return JSON.stringify(
+    [...filters].sort((left, right) => left.id.localeCompare(right.id))
+  );
+}
+
 interface UseDataTableProps<TData extends RowData = any>
   extends
     Omit<
@@ -201,13 +207,8 @@ export function useDataTable<TData extends RowData = any>(
 
   const [filterValues, setFilterValues] = useQueryStates(filterParsers);
 
-  const debouncedSetFilterValues = useDebouncedCallback(
-    (values: typeof filterValues) => {
-      void setPage(1);
-      void setFilterValues(values);
-    },
-    debounceMs
-  );
+  const filterNavigationVersion = React.useRef(0);
+  const pendingLocalFilterSignature = React.useRef<string | null>(null);
 
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
@@ -231,14 +232,39 @@ export function useDataTable<TData extends RowData = any>(
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
+  const currentFilterSignature = columnFiltersSignature(initialColumnFilters);
+  const debouncedSetFilterValues = useDebouncedCallback(
+    (values: typeof filterValues, version: number) => {
+      // A route change invalidates callbacks scheduled against the old URL.
+      if (version !== filterNavigationVersion.current) return;
+
+      const expectedFilters = Object.entries(values)
+        .filter(([, value]) => value !== null)
+        .map(([id, value]) => ({ id, value }));
+      const expectedSignature = columnFiltersSignature(expectedFilters);
+      pendingLocalFilterSignature.current =
+        expectedSignature === currentFilterSignature ? null : expectedSignature;
+
+      void setPage(1);
+      void setFilterValues(values);
+    },
+    debounceMs
+  );
+
   // URL changes caused by Back/Forward or a server navigation are authoritative.
-  // Keep the controlled toolbar in sync without discarding in-progress typing:
-  // local edits are debounced, so only an actual route-state change triggers this.
-  const lastUrlColumnFilters = React.useRef(JSON.stringify(initialColumnFilters));
-  React.useEffect(() => {
-    const routeFilters = JSON.stringify(initialColumnFilters);
+  // A locally scheduled write is recognized so it does not cancel a newer edit.
+  const lastUrlColumnFilters = React.useRef(currentFilterSignature);
+  React.useLayoutEffect(() => {
+    const routeFilters = columnFiltersSignature(initialColumnFilters);
     if (lastUrlColumnFilters.current !== routeFilters) {
       lastUrlColumnFilters.current = routeFilters;
+      if (pendingLocalFilterSignature.current === routeFilters) {
+        pendingLocalFilterSignature.current = null;
+        return;
+      }
+
+      pendingLocalFilterSignature.current = null;
+      filterNavigationVersion.current += 1;
       setColumnFilters(initialColumnFilters);
     }
   }, [initialColumnFilters]);
@@ -273,7 +299,7 @@ export function useDataTable<TData extends RowData = any>(
           }
         }
 
-        debouncedSetFilterValues(filterUpdates);
+        debouncedSetFilterValues(filterUpdates, filterNavigationVersion.current);
         return next;
       });
     },
