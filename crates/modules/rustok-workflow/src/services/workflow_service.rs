@@ -180,6 +180,7 @@ impl WorkflowService {
         self.save_version_internal_on(&transaction, id, actor_id, &existing)
             .await?;
 
+        let next_definition_at = next_workflow_definition_timestamp(&existing.updated_at)?;
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = input.name {
             model.name = Set(name);
@@ -195,7 +196,7 @@ impl WorkflowService {
         }
         model.webhook_slug = Set(next_webhook_slug);
         model.webhook_secret = Set(next_webhook_secret);
-        model.updated_at = Set(Utc::now().fixed_offset());
+        model.updated_at = Set(next_definition_at);
         model.update(&transaction).await?;
         transaction.commit().await?;
 
@@ -437,9 +438,18 @@ impl WorkflowService {
                 "workflow consecutive failure counter exhausted".into(),
             ))?;
         let should_disable = next_failure_count >= threshold;
+        let next_definition_at = if should_disable {
+            Some(next_workflow_definition_timestamp(&existing.updated_at)?)
+        } else {
+            None
+        };
         let mut model: WorkflowActiveModel = existing.into();
         model.failure_count = Set(next_failure_count);
-        model.updated_at = Set(Utc::now().fixed_offset());
+        // Failure-count bookkeeping is not a schedule edit. Only the
+        // actual active -> paused transition invalidates queued cron slots.
+        if let Some(updated_at) = next_definition_at {
+            model.updated_at = Set(updated_at);
+        }
         if should_disable {
             model.status = Set(WorkflowStatus::Paused);
             model.auto_disabled_at = Set(Some(Utc::now().fixed_offset()));
@@ -761,6 +771,7 @@ impl WorkflowService {
             .await?;
 
         // Apply snapshot
+        let next_definition_at = next_workflow_definition_timestamp(&existing.updated_at)?;
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = snapshot.get("name").and_then(|v| v.as_str()) {
             model.name = Set(name.to_string());
@@ -778,7 +789,7 @@ impl WorkflowService {
                 .filter(|value| !value.is_empty())
                 .map(str::to_string));
         }
-        model.updated_at = Set(Utc::now().fixed_offset());
+        model.updated_at = Set(next_definition_at);
         model.update(&transaction).await?;
 
         // Restore steps: delete all current steps and re-insert from snapshot
@@ -997,6 +1008,21 @@ fn hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
+/// A schedule revision must never reuse a database timestamp on two
+/// consecutive definition updates, even under clock skew or microsecond
+/// timestamp precision in PostgreSQL/SQLite.
+fn next_workflow_definition_timestamp(
+    previous: &chrono::DateTime<chrono::FixedOffset>,
+) -> WorkflowResult<chrono::DateTime<chrono::FixedOffset>> {
+    let incremented = previous
+        .clone()
+        .checked_add_signed(chrono::Duration::microseconds(1))
+        .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+            "workflow definition timestamp has exhausted its range".to_owned(),
+        ))?;
+    Ok(std::cmp::max(Utc::now().fixed_offset(), incremented))
+}
+
 /// Only active schedules must be immediately runnable. Invalid drafts
 /// remain editable, but entering the active state requires a bounded cron
 /// expression accepted by the exact scheduler parser.
@@ -1028,8 +1054,9 @@ async fn touch_workflow_after_step_mutation(
     transaction: &sea_orm::DatabaseTransaction,
     parent: crate::entities::Workflow,
 ) -> WorkflowResult<()> {
+    let next_definition_at = next_workflow_definition_timestamp(&parent.updated_at)?;
     let mut model: WorkflowActiveModel = parent.into();
-    model.updated_at = Set(Utc::now().fixed_offset());
+    model.updated_at = Set(next_definition_at);
     model.update(transaction).await?;
     Ok(())
 }
