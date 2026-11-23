@@ -233,9 +233,11 @@ The local check compares supplied plans. The separate [`xtask source-inputs`
 command](../../xtask/README.md#migration-consolidation-commands) reuses the Git
 snapshot reader and compares the exact paths, file modes and bytes of a
 reviewed list of migration inputs across two commits. It detects changes to
-selected nested Rust helpers and SQL assets. The covered paths come from the
-reviewed input list. Trusted release tooling still needs to prove that the
-list covers all transitive inputs, authenticate and select the boundary,
+selected nested Rust helpers and SQL assets. Given explicit Rust entrypoints,
+it checks that the declaration contains every file reached through supported
+Rust module declarations and literal includes. This checks local syntax.
+Trusted release tooling still needs to prove that the list covers all build
+and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
 
 A trusted base-owned verifier checks the declared range, protected history and

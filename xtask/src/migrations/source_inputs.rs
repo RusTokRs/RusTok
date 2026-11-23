@@ -1,4 +1,6 @@
-use super::{commit, read_source, safe_relative, snapshot, snapshot_git_files, SourceSnapshot};
+use super::{
+    commit, git, read_source, safe_relative, snapshot, snapshot_git_files, SourceSnapshot,
+};
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -6,6 +8,8 @@ use std::{
     io::{self, Write},
     path::Path,
 };
+
+mod local_links;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,9 +23,16 @@ struct InputDeclarations {
 struct MigrationDeclaration {
     migration: String,
     files: Vec<String>,
+    #[serde(default)]
+    entrypoints: Vec<String>,
 }
 
-type MigrationFiles = BTreeMap<String, BTreeSet<String>>;
+struct DeclaredFiles {
+    files: BTreeSet<String>,
+    entrypoints: BTreeSet<String>,
+}
+
+type MigrationFiles = BTreeMap<String, DeclaredFiles>;
 
 #[derive(Serialize)]
 struct CommitInputs {
@@ -34,6 +45,8 @@ struct MigrationInputs {
     migration: String,
     #[serde(flatten)]
     source: SourceSnapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    checked_local_sources: Option<BTreeSet<String>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -94,7 +107,12 @@ fn parse_declarations(bytes: &[u8]) -> Result<MigrationFiles> {
         "source declarations require schema version 1 and at least one migration"
     );
     let mut migrations = BTreeMap::new();
-    for MigrationDeclaration { migration, files } in declarations.entries {
+    for MigrationDeclaration {
+        migration,
+        files,
+        entrypoints,
+    } in declarations.entries
+    {
         ensure!(
             !migration.is_empty() && migration.trim() == migration,
             "invalid migration identity {migration:?}"
@@ -111,8 +129,27 @@ fn parse_declarations(bytes: &[u8]) -> Result<MigrationFiles> {
                 "migration {migration} lists {path} twice"
             );
         }
+        let mut roots = BTreeSet::new();
+        for path in entrypoints {
+            ensure!(
+                path.ends_with(".rs") && paths.contains(&path),
+                "migration {migration} must list Rust entrypoint {path:?} in files"
+            );
+            ensure!(
+                roots.insert(path.clone()),
+                "migration {migration} lists entrypoint {path} twice"
+            );
+        }
         ensure!(
-            migrations.insert(migration.clone(), paths).is_none(),
+            migrations
+                .insert(
+                    migration.clone(),
+                    DeclaredFiles {
+                        files: paths,
+                        entrypoints: roots
+                    }
+                )
+                .is_none(),
             "duplicate source declaration for migration {migration}"
         );
     }
@@ -130,15 +167,35 @@ fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Re
     );
     let paths = declarations
         .values()
-        .flatten()
+        .flat_map(|declaration| &declaration.files)
         .map(String::as_str)
         .collect();
-    let source = snapshot_git_files(root, identity, None, Some(&paths))?;
+    let syntax_paths: BTreeSet<_> = declarations
+        .values()
+        .filter(|declaration| !declaration.entrypoints.is_empty())
+        .flat_map(|declaration| declaration.files.iter().map(String::as_str))
+        .collect();
+    let mut blobs = BTreeMap::new();
+    let source = snapshot_git_files(root, identity, None, Some(&paths), |path, bytes| {
+        if syntax_paths.contains(path) {
+            blobs.insert(path.to_owned(), bytes);
+        }
+    })?;
+    let tree = if syntax_paths.is_empty() {
+        Vec::new()
+    } else {
+        git(
+            root,
+            &["ls-tree", "-rz", "--full-tree", "--name-only", identity],
+        )?
+    };
+    let tree_paths: BTreeSet<_> = std::str::from_utf8(&tree)?.split_terminator('\0').collect();
     let files: BTreeMap<_, _> = source.files.iter().map(|file| (&file.path, file)).collect();
     let entries = declarations
         .iter()
-        .map(|(migration, paths)| {
-            let sources = paths
+        .map(|(migration, declaration)| {
+            let sources = declaration
+                .files
                 .iter()
                 .map(|path| {
                     files
@@ -147,9 +204,19 @@ fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Re
                         .with_context(|| format!("source snapshot is missing {path}"))
                 })
                 .collect::<Result<Vec<_>>>()?;
+            let checked_local_sources = if declaration.entrypoints.is_empty() {
+                None
+            } else {
+                Some(
+                    local_links::check(declaration, &tree_paths, &blobs).with_context(|| {
+                        format!("local source inputs for migration {migration} at {identity}")
+                    })?,
+                )
+            };
             Ok(MigrationInputs {
                 migration: migration.clone(),
                 source: snapshot(sources)?,
+                checked_local_sources,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -220,7 +287,11 @@ mod tests {
             ["a", "b"]
         );
         assert_eq!(
-            checked["a"].iter().map(String::as_str).collect::<Vec<_>>(),
+            checked["a"]
+                .files
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             ["a.rs", "shared.rs"]
         );
         Ok(())
@@ -234,6 +305,7 @@ mod tests {
             json!([{"migration": " a", "files": ["a.rs"]}]),
             json!([{"migration": "a", "files": ["a.rs", "a.rs"]}]),
             json!([{"migration": "a", "files": ["../a.rs"]}]),
+            json!([{"migration": "a", "files": ["a.rs"], "entrypoints": ["b.rs"]}]),
             json!([{"migration": "a", "files": ["a.rs"]}, {"migration": "a", "files": ["b.rs"]}]),
         ] {
             let input = serde_json::to_vec(&json!({"schema_version": 1, "entries": entries}))?;

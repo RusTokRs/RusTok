@@ -431,7 +431,7 @@ fn git_snapshot(
     reference_commit: &str,
     destination: Option<&Path>,
 ) -> Result<SourceSnapshot> {
-    snapshot_git_files(root, reference_commit, destination, None)
+    snapshot_git_files(root, reference_commit, destination, None, |_, _| {})
 }
 
 fn snapshot_git_files(
@@ -439,6 +439,7 @@ fn snapshot_git_files(
     reference_commit: &str,
     destination: Option<&Path>,
     paths: Option<&BTreeSet<&str>>,
+    mut capture_blob: impl FnMut(&str, Vec<u8>),
 ) -> Result<SourceSnapshot> {
     let tree = git(root, &["ls-tree", "-rz", "--full-tree", reference_commit])?;
     let mut entries = Vec::new();
@@ -517,11 +518,9 @@ fn snapshot_git_files(
                     )?;
                 }
             }
-            files.push(SourceFile {
-                path,
-                mode,
-                sha256: digest(&bytes),
-            });
+            let sha256 = digest(&bytes);
+            capture_blob(&path, bytes);
+            files.push(SourceFile { path, mode, sha256 });
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
         snapshot(files)

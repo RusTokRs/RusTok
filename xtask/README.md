@@ -351,6 +351,22 @@ by migration, and a difference gives the command a nonzero exit status.
 cargo xtask migrations source-inputs --commit <reference-sha> --inputs source-inputs.json --compare <candidate-sha>
 ```
 
+Add an `entrypoints` array to a migration declaration to check its local
+Rust source links. List each conventionally mounted migration module file
+in both `entrypoints` and `files`. The check reads the same Git blobs that
+are fingerprinted and follows ordinary modules, literal `#[path]`, and
+literal `include!`, `include_str!` and `include_bytes!` links. The result
+lists reached files as `checked_local_sources`. The check runs on both
+commits when comparing.
+
+An undeclared linked file, ambiguous module path or computed include path
+fails the check. This scan inspects visible syntax across `cfg` branches.
+Conditional `#[path]`, includes inside macro definitions, and module
+declarations inside `include!` fragments are unsupported. Imported Rust
+helpers, macro expansion, and generated or
+external inputs still require separate build evidence. Declarations without
+entrypoints produce hashes without a local link report.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
