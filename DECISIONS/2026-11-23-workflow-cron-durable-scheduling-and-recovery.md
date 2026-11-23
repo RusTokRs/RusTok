@@ -97,6 +97,32 @@ decision, including its explicit reconciliation requirement.
   reconciliation. Existing `running` records must be preserved through
   migration and flagged for review, not reset.
 
+## Additional owner-side admission and deletion guards
+
+- A cron definition must be parseable by the runtime scheduler before a
+  workflow enters `active`, is modified while active, or is restored while
+  active. Incomplete draft definitions remain editable. Validate the
+  expression at the owning write transaction boundary (bounded to 512 bytes).
+- A scheduler stale-attempt scan must re-check both the attempt token and
+  `claimed_at` age in its conditional update. A heartbeat that refreshes
+  `claimed_at` after the scanner's initial read prevents quarantine.
+  Time-based expiry still never authorizes a new execution.
+- Each configured workflow step timeout bounds every attempt (1–3,600,000
+  milliseconds). Deadline expiry is a confirmed timeout only for purely local
+  steps; for non-transactional/external steps, cancellation does not prove
+  the external system did not accept the request. Even error labels such as
+  `InvalidStepConfig` from pluggable external executors are not proof of
+  pre-effect rejection.
+- A workflow hard-delete must be refused while its execution journal is
+  running or reconciliation-required, or any cron firing is running or
+  reconciliation-required. Pending firings that were **never admitted** may
+  be cancelled by explicit workflow deletion. Historical terminal receipts
+  remain subject to the existing separate data-retention contract; this
+  proposal does not establish indefinite storage.
+- The execution journal, not a transient engine return value, determines
+  whether a cron firing has a durable terminal result. An error after the
+  terminal journal write must not downgrade the firing to ambiguous.
+
 ## Failure and operational semantics
 
 A provider failure before a known durable receipt is ambiguous even when the
