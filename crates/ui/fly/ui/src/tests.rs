@@ -266,6 +266,91 @@ fn drag_state_emits_framework_neutral_command() {
 }
 
 #[test]
+fn a_rejected_drop_does_not_destroy_drag_or_insertion_overlay() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::IllegalDrop(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("new candidate");
+    let overlay = machine.state.overlays.insertion;
+    assert!(overlay.is_some());
+    machine.dispatch(UiIntent::Drop).expect("retry drop");
+    assert!(machine.state.drag.is_none());
+    assert!(machine.state.overlays.insertion.is_none());
+
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::ClipboardFragment))
+        .expect("begin clipboard drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::IllegalDrop(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert_eq!(machine.state.overlays.insertion.is_some(), true);
+    machine.dispatch(UiIntent::CancelDrag).expect("cancel");
+    assert!(machine.state.drag.is_none());
+}
+
+#[test]
+fn save_acknowledgement_cannot_clean_edits_made_during_save() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    let saved_hash = fly::ProjectHash::from_document(&document);
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: Default::default(),
+        }))
+        .expect("first edit");
+    machine.dispatch(UiIntent::SaveStarted).expect("save starts");
+    assert!(machine.dispatch(UiIntent::RequestSave).is_err());
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: Default::default(),
+        }))
+        .expect("second edit");
+    let effects = machine
+        .dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-2".to_string(),
+            project_hash: saved_hash,
+        })
+        .expect("earlier snapshot saved");
+    assert!(machine.state.dirty.dirty);
+    assert!(!machine.state.dirty.save_in_progress);
+    assert_eq!(machine.state.dirty.last_acknowledged_revision.as_deref(), Some("rev-2"));
+    assert!(machine.state.dirty.project_hash.is_none());
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        UiEffect::Announce(message) if message.contains("remain unsaved")
+    )));
+    machine.dispatch(UiIntent::SaveStarted).expect("next save starts");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-3".to_string(),
+            project_hash: saved_hash,
+        })
+        .expect("latest save");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.project_hash, Some(saved_hash));
+}
+
+#[test]
 fn blocking_diagnostics_prevent_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine
@@ -367,7 +452,12 @@ fn save_conflict_is_a_distinct_lost_update_state() {
         .expect("conflict");
     let state = &machine.state;
     assert!(state.dirty.save_conflict);
+    assert!(state.dirty.dirty);
     assert!(state.dirty.save_failed);
+    assert!(matches!(
+        machine.dispatch(UiIntent::RequestSave),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
     assert!(!state.dirty.save_in_progress);
     assert!(effects.iter().any(|effect| matches!(
         effect,

@@ -201,6 +201,10 @@ pub struct DirtyState {
     pub project_hash: Option<ProjectHash>,
     pub save_in_progress: bool,
     pub save_failed: bool,
+    /// The command sequence captured at SaveStarted. This is request-local state, not
+    /// a durable promise that can be resumed after reloading a serialized editor.
+    #[serde(skip)]
+    pub save_started_sequence: Option<u64>,
     /// The last save was rejected as a lost update (another session saved first).
     /// Distinct from a generic failure: the user must reload before saving again.
     #[serde(default)]

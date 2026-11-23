@@ -202,10 +202,11 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::Drop => {
-                let drag = self.state.drag.take().ok_or(UiError::NoActiveDrag)?;
+                // Build and validate the command before consuming the drag. A rejected
+                // candidate or unsupported source must remain retryable/cancellable.
+                let drag = self.state.drag.as_ref().ok_or(UiError::NoActiveDrag)?;
                 let candidate = drag
                     .active_candidate()
-                    .cloned()
                     .ok_or_else(|| UiError::IllegalDrop("no active drop candidate".to_string()))?;
                 if !candidate.legal {
                     return Err(UiError::IllegalDrop(
@@ -215,8 +216,9 @@ impl FlyUiStateMachine {
                             .unwrap_or_else(|| "candidate rejected by policy".to_string()),
                     ));
                 }
+                let command = command_for_drop(drag.source.clone(), candidate)?;
+                self.state.drag = None;
                 self.state.overlays.insertion = None;
-                let command = command_for_drop(drag.source, &candidate)?;
                 self.mark_dirty();
                 vec![
                     UiEffect::Command(Box::new(command)),
@@ -288,12 +290,29 @@ impl FlyUiStateMachine {
                         "save blocked by validation diagnostics".to_string(),
                     ));
                 }
+                if self.state.dirty.save_conflict {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save blocked by unresolved revision conflict".to_string(),
+                    ));
+                }
+                if self.state.dirty.save_in_progress {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save already in progress".to_string(),
+                    ));
+                }
                 vec![UiEffect::Persist {
                     expected_hash: self.state.dirty.project_hash,
                     command_sequence: self.state.dirty.command_sequence,
                 }]
             }
             UiIntent::SaveStarted => {
+                if self.state.dirty.save_in_progress {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save already in progress".to_string(),
+                    ));
+                }
+                self.state.dirty.save_started_sequence =
+                    Some(self.state.dirty.command_sequence);
                 self.state.dirty.save_in_progress = true;
                 self.state.dirty.save_failed = false;
                 vec![UiEffect::None]
@@ -302,15 +321,31 @@ impl FlyUiStateMachine {
                 revision,
                 project_hash,
             } => {
-                self.state.dirty.dirty = false;
+                // The server acknowledged the snapshot that existed at SaveStarted, not
+                // edits made while the request was in flight. Never advertise those edits
+                // as saved or replace their local hash with the older snapshot's hash.
+                let newer_edits = self
+                    .state
+                    .dirty
+                    .save_started_sequence
+                    .take()
+                    .is_some_and(|sequence| sequence != self.state.dirty.command_sequence);
+                self.state.dirty.dirty = newer_edits;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = false;
                 self.state.dirty.save_conflict = false;
                 self.state.dirty.last_acknowledged_revision = Some(revision);
-                self.state.dirty.project_hash = Some(project_hash);
-                vec![UiEffect::Announce("Project saved".to_string())]
+                if !newer_edits {
+                    self.state.dirty.project_hash = Some(project_hash);
+                }
+                vec![UiEffect::Announce(if newer_edits {
+                    "Earlier edits saved; newer changes remain unsaved".to_string()
+                } else {
+                    "Project saved".to_string()
+                })]
             }
             UiIntent::SaveFailed => {
+                self.state.dirty.save_started_sequence = None;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
                 self.state.dirty.save_conflict = false;
@@ -320,6 +355,8 @@ impl FlyUiStateMachine {
                 // A lost update is not a generic failure: the local changes are still
                 // unsaved (`dirty` stays set) and retrying against the same revision
                 // will conflict again, so the announcement tells the user to preserve their work.
+                self.state.dirty.save_started_sequence = None;
+                self.state.dirty.dirty = true;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
                 self.state.dirty.save_conflict = true;

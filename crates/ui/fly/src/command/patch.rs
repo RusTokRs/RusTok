@@ -86,9 +86,23 @@ impl ComponentPatch {
     }
 
     pub fn merge_style(mut self, style: Value) -> Self {
-        self.style = Some(style);
-        self.replace_style = false;
+        // Consecutive merges compose rather than discarding earlier pending properties.
+        // A merge following clear/replace still replaces the original component style.
+        let touched = style
+            .as_object()
+            .map(|properties| properties.keys().cloned().collect::<Vec<_>>());
+        match (&mut self.style, style) {
+            (Some(Value::Object(current)), Value::Object(patch)) => current.extend(patch),
+            (slot, patch) => *slot = Some(patch),
+        }
+        self.replace_style |= self.clear_style;
         self.clear_style = false;
+        if let Some(touched) = touched {
+            self.remove_style_properties
+                .retain(|property| !touched.contains(property));
+        } else {
+            self.remove_style_properties.clear();
+        }
         self
     }
 
@@ -96,6 +110,7 @@ impl ComponentPatch {
         self.style = Some(style);
         self.replace_style = true;
         self.clear_style = false;
+        self.remove_style_properties.clear();
         self
     }
 
@@ -108,8 +123,11 @@ impl ComponentPatch {
     }
 
     pub fn remove_style_property(mut self, name: impl Into<String>) -> Self {
-        self.clear_style = false;
-        push_unique(&mut self.remove_style_properties, name.into());
+        // Clearing the entire style already removes every property. Do not undo a
+        // preceding clear_style() just because a later removal is redundant.
+        if !self.clear_style {
+            push_unique(&mut self.remove_style_properties, name.into());
+        }
         self
     }
 
@@ -124,18 +142,20 @@ impl ComponentPatch {
         if self.clear_style {
             component.style = None;
         } else {
-            if !self.remove_style_properties.is_empty()
-                && let Some(Value::Object(style)) = component.style.as_mut()
-            {
-                for property in self.remove_style_properties {
-                    style.remove(&property);
-                }
-            }
             if let Some(style) = self.style {
                 if self.replace_style {
                     component.style = Some(style);
                 } else {
                     merge_style(&mut component.style, style);
+                }
+            }
+            // A serialized patch can contain conflicting sets/removals. Removal is
+            // authoritative, as with attributes, regardless of JSON field order.
+            if !self.remove_style_properties.is_empty()
+                && let Some(Value::Object(style)) = component.style.as_mut()
+            {
+                for property in self.remove_style_properties {
+                    style.remove(&property);
                 }
             }
         }
@@ -170,6 +190,13 @@ impl ComponentPatch {
             if is_unpatchable_reserved_field(field) {
                 return Err(FlyError::InvalidComponentPatch(format!(
                     "field `{field}` is owned by the component model and must use the dedicated command surface"
+                )));
+            }
+        }
+        for field in [COMPONENT_TYPE_FIELD, TAG_NAME_FIELD, PROVIDER_FIELD] {
+            if self.fields.get(field).is_some_and(|value| !value.is_string()) {
+                return Err(FlyError::InvalidComponentPatch(format!(
+                    "field `{field}` must be a string; use remove_field to clear it"
                 )));
             }
         }
@@ -266,6 +293,62 @@ mod tests {
             .apply(&mut component)
             .expect_err("reserved field");
         assert!(matches!(error, FlyError::InvalidComponentPatch(_)));
+    }
+
+    #[test]
+    fn style_patch_builder_preserves_ordered_merge_replace_remove_and_clear() {
+        let mut component = component();
+        component.style = Some(json!({"color": "red", "padding": "1px"}));
+        ComponentPatch::default()
+            .merge_style(json!({"width": "100px", "color": "blue"}))
+            .merge_style(json!({"height": "20px"}))
+            .remove_style_property("color")
+            .apply(&mut component)
+            .expect("merge and remove");
+        assert_eq!(component.style, Some(json!({
+            "padding": "1px", "width": "100px", "height": "20px"
+        })));
+
+        ComponentPatch::default()
+            .remove_style_property("color")
+            .replace_style(json!({"color": "green"}))
+            .merge_style(json!({"width": "200px"}))
+            .apply(&mut component)
+            .expect("replace then merge");
+        assert_eq!(component.style, Some(json!({"color": "green", "width": "200px"})));
+
+        ComponentPatch::default()
+            .clear_style()
+            .remove_style_property("color")
+            .apply(&mut component)
+            .expect("clear must survive redundant removal");
+        assert_eq!(component.style, None);
+    }
+
+    #[test]
+    fn serialized_style_removal_wins_over_conflicting_set() {
+        let mut component = component();
+        let patch: ComponentPatch = serde_json::from_value(json!({
+            "style": {"color": "blue", "padding": "8px"},
+            "remove_style_properties": ["color"]
+        }))
+        .expect("patch");
+        patch.apply(&mut component).expect("apply");
+        assert_eq!(component.style, Some(json!({"padding": "8px"})));
+    }
+
+    #[test]
+    fn malformed_reserved_field_does_not_silently_erase_existing_value() {
+        let mut component = component();
+        component.provider = Some("provider.original".to_string());
+        for malformed in [json!(null), json!(42), json!({})] {
+            let error = ComponentPatch::default()
+                .set_field("provider", malformed)
+                .apply(&mut component)
+                .expect_err("invalid provider type");
+            assert!(matches!(error, FlyError::InvalidComponentPatch(_)));
+            assert_eq!(component.provider.as_deref(), Some("provider.original"));
+        }
     }
 
     #[test]

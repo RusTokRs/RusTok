@@ -47,3 +47,14 @@ renderer or property editor.
 Registry discovery, dependency ordering, tenant/policy filtering, duplicate detection, and contract
 resolution stay in `fly-ui`. Framework adapters only execute an already resolved descriptor. Project
 mutation always returns to `fly::EditorCommand` and `FlyEditor` history/revision handling.
+
+## Save and drag transition guarantees
+
+The state machine validates a drop before consuming the active drag, so an invalid candidate or
+unsupported clipboard source can be retried or cancelled without losing its overlay. Save starts
+capture the command sequence; acknowledgement of an earlier snapshot leaves subsequent edits
+dirty and does not overwrite their project hash. Concurrent save requests and retries after an
+unresolved revision conflict are rejected by `RequestSave`. Resolving a conflict requires the
+host to reload/rebase the draft or explicitly acknowledge an actual successful save; Fly does
+not implement automatic merge. Hosts remain responsible for correlating transport responses
+with the saves they initiate.
