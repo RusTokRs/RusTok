@@ -50,13 +50,24 @@ test('the URL remains authoritative when table filters change via browser histor
 test('browser history invalidates pending debounced filter writes without cancelling newer local edits', () => {
   assert.match(hookSource, /filterNavigationVersion = React\.useRef\(0\)/);
   assert.match(hookSource, /version !== filterNavigationVersion\.current/);
-  assert.match(hookSource, /pendingLocalFilterSignature\.current === routeFilters/);
+  assert.match(hookSource, /pendingLocalRouteSignature\.current === currentRouteSignature/);
   assert.match(hookSource, /useIsomorphicLayoutEffect\(/);
   assert.match(hookSource, /filterNavigationVersion\.current \+= 1/);
   assert.match(
     hookSource,
     /debouncedSetFilterValues\(filterUpdates, filterNavigationVersion\.current\)/
   );
+  assert.match(hookSource, /routeQuerySignature\(routeQuery\)/);
+  assert.match(hookSource, /routeQuery\?: Record<string, string>/);
+  assert.match(hookSource, /pendingLocalRouteSignature\.current === currentRouteSignature/);
+  assert.match(hookSource, /Object\.prototype\.hasOwnProperty\.call\(expectedQuery, PAGE_KEY\)/);
+
+});
+
+test('Product table passes non-table facet state into navigation reconciliation', () => {
+  assert.match(productTableSource, /routeQuery=\{routeQuery\}/);
+  assert.match(shellSource, /routeQuery\?: Record<string, string>/);
+  assert.match(shellSource, /routeQuery,/);
 });
 
 test('catalog controls refresh their uncontrolled defaults after facet navigation', () => {
