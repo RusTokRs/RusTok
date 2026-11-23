@@ -30,11 +30,12 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ### Additional 2026-11-23 host cache and readiness hardening
 
-- Pages cache event deduplication is scoped to the concrete shared backend,
-  not one process-global event-ID set. Independent host/runtime caches each
-  rotate their own generations for a repeated event; multiple ports on the
-  same backend still suppress duplicate rotations. The weak registry is
-  bounded and does not retain retired cache hosts.
+- Pages event deduplication follows the generation-store owner identity,
+  rather than a process-global event-ID set or value-backend instance.
+  Independent `CacheService` owners within one process each rotate their own
+  generations; ports sharing the same owner suppress duplicate rotations.
+  Invalidation does not initialize the cache value backend. The weak registry
+  is bounded and does not retain retired cache hosts.
 - The `/health/ready` aggregate now samples the shared shutdown signal
   after asynchronous dependency checks in **every** host mode, including
   registry-only and surface hosts. A stopping process responds 503 even if

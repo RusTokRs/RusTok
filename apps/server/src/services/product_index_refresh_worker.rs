@@ -148,11 +148,16 @@ pub fn product_index_refresh_consumer_enabled() -> Result<bool> {
     }
 }
 
-fn require_index_runtime_extensions(ctx: &ServerRuntimeContext) -> Result<Arc<ModuleRuntimeExtensions>> {
+fn require_index_runtime_extensions(
+    ctx: &ServerRuntimeContext,
+) -> Result<Arc<ModuleRuntimeExtensions>> {
     ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
-        .ok_or_else(|| Error::Message(
-            "ModuleRuntimeExtensions are unavailable for Product Index refresh consumer".to_string(),
-        ))
+        .ok_or_else(|| {
+            Error::Message(
+                "ModuleRuntimeExtensions are unavailable for Product Index refresh consumer"
+                    .to_string(),
+            )
+        })
 }
 
 pub async fn start_product_index_refresh_worker_if_enabled(

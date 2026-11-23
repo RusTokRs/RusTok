@@ -3180,12 +3180,13 @@ was authored but not executed; no Cargo or SQL verification was run.
 The server's Pages invalidation adapter previously reused a single static
 `BoundedCacheEventDedupe` for every `CacheService` in the process. Separate
 host/runtime cache instances have independent namespace-generation stores,
-so the same event ID could mark the first backend's invalidation as completed
-while the second backend was never bumped. The second host could even fail
-receipt validation because its generations remained zero. The dedupe registry
-now follows the concrete shared cache backend identity, with weak references,
-a bounded number of live entries, and a fail-open-to-extra-rotation fallback
-if full. Ports sharing the same cache backend still serialize duplicate events.
+so the same event ID could mark the first context's invalidation completed
+while the second context in the same process was never bumped. That second
+port could fail receipt validation because its generations remained zero.
+The dedupe registry now follows the clone-shared generation-store owner
+identity, with weak references, a bounded number of live owners, and
+a fail-open-to-extra-rotation fallback when full. Ports sharing one owner
+serialize duplicate events, without constructing a value backend.
 A regression for two independent services and two ports sharing one service
 was authored but not executed. No compilation, tests, formatting, or live
 cache checks were performed, per maintainer instruction.
@@ -3217,3 +3218,17 @@ context; cloned contexts keep the same state, independent contexts do not.
 The per-check failure counter is also saturating. A focused two-context
 regression was authored but not run. No compilation, tests, formatting, or
 live dependency checks were run at the maintainer's request.
+
+
+## Follow-up code review — Pages cache identity correction (2026-11-23)
+
+Review detected that the first Pages dedupe patch accidentally initialized
+the value backend from `invalidate()` just to acquire its identity. This
+unnecessary cache construction coupled generation rotation to a separate
+read/write-backend initialization. The corrected adapter instead uses the
+opaque `CacheService::generation_store_identity()` that is already the
+generation-store owner. It leaves cache values lazy; clone-shared contexts
+continue to share dedupe, and independent services do not. A regression for
+zero value-backend constructions and a concurrent two-port regression were
+authored, but not executed. The owner API is documented in
+`crates/modules/rustok-cache/CRATE_API.md`.

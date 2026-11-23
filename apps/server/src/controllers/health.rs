@@ -226,7 +226,8 @@ async fn collect_readiness(
         let circuits = circuits.clone();
         pending.push(
             async move {
-                let check = run_guarded_check(&circuits, 
+                let check = run_guarded_check(
+                    &circuits,
                     "database",
                     DependencyCriticality::Critical,
                     "dependency",
@@ -244,7 +245,8 @@ async fn collect_readiness(
         pending.push(
             async move {
                 let check =
-                    run_guarded_check(&circuits, 
+                    run_guarded_check(
+                        &circuits,
                         "database_schema",
                         DependencyCriticality::Critical,
                         "dependency",
@@ -263,7 +265,8 @@ async fn collect_readiness(
         let circuits = circuits.clone();
         pending.push(
             async move {
-                let check = run_guarded_check(&circuits, 
+                let check = run_guarded_check(
+                    &circuits,
                     "cache_backend",
                     DependencyCriticality::NonCritical,
                     "dependency",
@@ -284,7 +287,8 @@ async fn collect_readiness(
             let circuits = circuits.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check(&circuits, 
+                    let check = run_guarded_check(
+                        &circuits,
                         "tenant_cache_invalidation",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -301,7 +305,8 @@ async fn collect_readiness(
             let circuits = circuits.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check(&circuits, 
+                    let check = run_guarded_check(
+                        &circuits,
                         "event_transport",
                         DependencyCriticality::Critical,
                         "dependency",
@@ -320,7 +325,8 @@ async fn collect_readiness(
                 pending.push(
                     async move {
                         let name = format!("rate_limit:{namespace}");
-                        let check = run_guarded_check(&circuits, 
+                        let check = run_guarded_check(
+                            &circuits,
                             &name,
                             DependencyCriticality::Critical,
                             "dependency",
@@ -338,7 +344,8 @@ async fn collect_readiness(
             let circuits = circuits.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check(&circuits, 
+                    let check = run_guarded_check(
+                        &circuits,
                         "search_backend",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -406,7 +413,8 @@ async fn collect_readiness(
             let circuits = circuits.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check(&circuits, 
+                    let check = run_guarded_check(
+                        &circuits,
                         "storage",
                         DependencyCriticality::NonCritical,
                         "dependency",
@@ -442,7 +450,12 @@ async fn collect_readiness(
                     };
                     let name = format!("module:{}", module.slug());
                     let check =
-                        run_guarded_check(&circuits, &name, criticality, "module", move || async move {
+                        run_guarded_check(
+                            &circuits,
+                            &name,
+                            criticality,
+                            "module",
+                            move || async move {
                             match module.health().await {
                                 HealthStatus::Healthy => Ok(()),
                                 HealthStatus::Degraded => {
@@ -1815,7 +1828,9 @@ mod tests {
         );
         let first_circuits = first.shared_get_or_insert_with(ReadinessCircuitRegistry::default);
         let second_circuits = second.shared_get_or_insert_with(ReadinessCircuitRegistry::default);
-        let cloned_circuits = first.clone().shared_get_or_insert_with(ReadinessCircuitRegistry::default);
+        let cloned_circuits = first
+            .clone()
+            .shared_get_or_insert_with(ReadinessCircuitRegistry::default);
         let name = "same_dependency_name_in_separate_hosts";
 
         for _ in 0..CIRCUIT_BREAKER_FAILURE_THRESHOLD {
@@ -1837,7 +1852,12 @@ mod tests {
             || async { Ok(()) },
         ).await;
         assert_eq!(first_probe.status, ReadinessStatus::Unhealthy);
-        assert!(first_probe.reason.as_deref().is_some_and(|reason| reason.contains("circuit open")));
+        assert!(
+            first_probe
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("circuit open"))
+        );
 
         let second_probe = run_guarded_check(
             &second_circuits,
@@ -1852,7 +1872,8 @@ mod tests {
     #[tokio::test]
     async fn guarded_check_times_out_and_degrades_non_critical_dependency() {
         let circuits = ReadinessCircuitRegistry::default();
-        let result = run_guarded_check(&circuits, 
+        let result = run_guarded_check(
+            &circuits,
             "slow_non_critical",
             DependencyCriticality::NonCritical,
             "dependency",
