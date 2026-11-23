@@ -303,6 +303,21 @@ impl From<WorkflowExecutionResponse> for GqlWorkflowExecution {
     }
 }
 
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum GqlCronReconciliationDecision {
+    ConfirmTerminal,
+    RequeueConfirmedUnstarted,
+}
+
+impl From<GqlCronReconciliationDecision> for crate::services::CronReconciliationDecision {
+    fn from(decision: GqlCronReconciliationDecision) -> Self {
+        match decision {
+            GqlCronReconciliationDecision::ConfirmTerminal => Self::ConfirmTerminal,
+            GqlCronReconciliationDecision::RequeueConfirmedUnstarted => Self::RequeueConfirmedUnstarted,
+        }
+    }
+}
+
 #[derive(SimpleObject)]
 pub struct GqlWorkflowCronReconciliationItem {
     pub id: Uuid,
