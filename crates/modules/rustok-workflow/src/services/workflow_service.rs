@@ -1301,6 +1301,60 @@ mod cron_revision_tests {
         assert_eq!(after.auto_disabled_at, paused.auto_disabled_at);
     }
 
+    #[test]
+    fn definition_timestamps_advance_even_when_clock_is_behind() {
+        let future = (Utc::now() + ChronoDuration::hours(2)).fixed_offset();
+        let next = next_workflow_definition_timestamp(&future).unwrap();
+        assert!(next > future);
+    }
+
+    #[tokio::test]
+    async fn failure_bookkeeping_does_not_reset_cron_revision_until_auto_pause() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let earlier = (Utc::now() - ChronoDuration::hours(1)).fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id), tenant_id: Set(tenant_id),
+            name: Set("Failure counter".into()), description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type": "cron", "expression": "0 * * * * *"
+            })),
+            created_by: Set(None), created_at: Set(earlier), updated_at: Set(earlier),
+            failure_count: Set(0), auto_disabled_at: Set(None),
+            webhook_slug: Set(None), webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let before = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        let prior_revision = crate::services::cron_durable::schedule_revision(
+            &before, "0 * * * * *",
+        );
+        let service = WorkflowService::new(db.clone());
+        service.record_failure(tenant_id, workflow_id, 2).await.unwrap();
+        let counted = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(counted.failure_count, 1);
+        assert_eq!(counted.updated_at, before.updated_at);
+        assert_eq!(
+            prior_revision,
+            crate::services::cron_durable::schedule_revision(&counted, "0 * * * * *"),
+        );
+
+        service.record_failure(tenant_id, workflow_id, 2).await.unwrap();
+        let paused = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(paused.status, WorkflowStatus::Paused);
+        assert!(paused.updated_at > before.updated_at);
+        assert_ne!(
+            prior_revision,
+            crate::services::cron_durable::schedule_revision(&paused, "0 * * * * *"),
+        );
+    }
+
     #[tokio::test]
     async fn active_cron_requires_valid_expression_and_failed_edits_are_atomic() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
