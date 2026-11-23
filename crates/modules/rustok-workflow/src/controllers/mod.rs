@@ -61,6 +61,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> WorkflowResult<axum::Router>
             get(executions::get_execution),
         )
         .route(
+            "/api/workflows/executions/unconfirmed",
+            get(executions::list_unconfirmed_executions),
+        )
+        .route(
             "/api/workflows/cron/reconciliation",
             get(executions::list_cron_reconciliation),
         )
