@@ -425,3 +425,83 @@ impl WorkflowEngine {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod durable_external_step_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sea_orm::{Database, EntityTrait};
+    use sea_orm_migration::SchemaManager;
+    use crate::entities::{workflow, workflow_step, WorkflowStatus};
+    use crate::error::WorkflowError;
+    use crate::steps::{StepOutput, WorkflowStep};
+
+    struct AmbiguousHttp {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl WorkflowStep for AmbiguousHttp {
+        fn step_type(&self) -> &'static str { "http" }
+
+        async fn execute(
+            &self,
+            _config: &Value,
+            _context: StepContext,
+        ) -> WorkflowResult<StepOutput> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(WorkflowError::StepFailed(
+                "remote request may have completed before response was lost".to_owned()
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn ambiguous_external_failure_never_retries_or_replays_trigger() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let now = Utc::now().fixed_offset();
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let trigger_id = Uuid::new_v4();
+
+        workflow::ActiveModel {
+            id: Set(workflow_id), tenant_id: Set(tenant_id),
+            name: Set("Ambiguous external effect".into()), description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({"type":"event","event_type":"test"})),
+            created_by: Set(None), created_at: Set(now), updated_at: Set(now),
+            failure_count: Set(0), auto_disabled_at: Set(None),
+            webhook_slug: Set(None), webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let step = workflow_step::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            workflow_id: Set(workflow_id),
+            position: Set(1),
+            step_type: Set(StepType::Http),
+            config: Set(serde_json::json!({"max_retries":10})),
+            on_error: Set(OnError::Retry),
+            timeout_ms: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut engine = WorkflowEngine::new(db.clone());
+        engine.register_step(AmbiguousHttp { calls: Arc::clone(&calls) });
+        for _ in 0..2 {
+            assert!(matches!(
+                engine.execute(
+                    workflow_id, tenant_id, Some(trigger_id),
+                    vec![step.clone()], Value::Null,
+                ).await,
+                Err(WorkflowError::ExecutionOutcomeUncertain(_))
+            ));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let execution = workflow_execution::Entity::find()
+            .filter(workflow_execution::Column::TriggerEventId.eq(trigger_id))
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(execution.status, ExecutionStatus::ReconciliationRequired);
+    }
+}
