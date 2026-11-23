@@ -10,8 +10,8 @@ use rustok_ui_core::UiRouteContext;
 
 use super::catalog_facets::AdminCatalogFacetPanel;
 use crate::catalog_controls::{
-    build_product_admin_catalog_controls_labels, build_product_admin_list_input,
-    serialize_attribute_filters,
+    ProductAdminListInput, build_product_admin_catalog_controls_labels,
+    build_product_admin_list_input, serialize_attribute_filters,
 };
 use crate::catalog_transport;
 use crate::core::{
@@ -214,7 +214,9 @@ pub fn ProductGridPage() -> impl IntoView {
             // Some owner implementations return an empty out-of-range page
             // rather than clamping it. Normalize and retry once so SSR and
             // hydration both receive rows for the last real page.
-            if page_request_nonce.get_untracked() != request_id {
+            if page_request_nonce.get_untracked() != request_id
+                || catalog_controls.get_untracked() != requested_controls
+            {
                 return Ok::<(u64, ProductAdminListInput, ProductList), String>((
                     request_id,
                     requested_controls,
