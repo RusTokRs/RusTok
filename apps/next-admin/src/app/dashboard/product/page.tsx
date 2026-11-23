@@ -69,6 +69,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
     (Array.isArray(params.status) && params.status.length !== 1
       ? true
       : !rawStatus?.trim() ||
+        rawStatus !== rawStatus.trim() ||
         rawStatus.trim() !== (canonicalStatus ?? ''));
   const rawTitle = pickParam(params.title);
   const rawSearch = pickParam(params.search);
