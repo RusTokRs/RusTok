@@ -135,8 +135,9 @@ See the [owner workflow/recovery contract](../docs/variant-axis-reconfiguration.
 `core/combinations.rs` and `ui/combinations.rs` now implement bounded candidate browsing and
 explicit picking on both mounted create/standalone-SKU forms, matching the Next package's
 local projection. Filters do not alter canonical axes; saved membership must be complete and
-at most 256 SKUs, candidate spaces at most 4096, pages 12 rows. Invalid source/stale filters
-refuse visibly. Initial picks add only one unpriced draft, or fill the existing manual tuple
+at most 256 SKUs, matching the Product owner's shared creation, reconfiguration, read and deletion
+ceiling; candidate spaces are at most 4096, pages 12 rows. Invalid source/stale filters refuse
+visibly. Initial picks add only one unpriced draft, or fill the existing manual tuple
 without adding a row; saved picks replace only tuple fields. The ordinary owner commands remain
 the writers. SKU grids show actual named assignments, missing assignments and a localized default
 tuple rather than using an opaque combination encoding as display text. See the
