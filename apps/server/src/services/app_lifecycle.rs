@@ -358,6 +358,10 @@ impl ModuleWorkSchedulerHandle {
 }
 
 #[cfg(feature = "mod-workflow")]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WorkflowCronSchedulerRequirement(pub(crate) bool);
+
+#[cfg(feature = "mod-workflow")]
 pub struct WorkflowCronSchedulerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -630,10 +634,14 @@ pub(crate) fn additional_runtime_worker_snapshots(
             name: "workflow_cron",
             required: local
                 && ctx
-                    .settings()
-                    .runtime
-                    .background_workers
-                    .workflow_cron_enabled,
+                    .shared_get::<WorkflowCronSchedulerRequirement>()
+                    .map(|requirement| requirement.0)
+                    .unwrap_or_else(|| {
+                        ctx.settings()
+                            .runtime
+                            .background_workers
+                            .workflow_cron_enabled
+                    }),
             finished: ctx.shared_map::<WorkflowCronSchedulerHandle, _>(
                 WorkflowCronSchedulerHandle::is_finished,
             ),
@@ -2308,6 +2316,28 @@ mod tests {
             error
                 .to_string()
                 .contains("durable storage is not initialized")
+        );
+    }
+
+    #[cfg(feature = "mod-workflow")]
+    #[tokio::test]
+    async fn workflow_cron_readiness_uses_the_bootstrap_requirement_marker() {
+        use crate::common::settings::RuntimeHostMode;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        settings.runtime.background_workers.workflow_cron_enabled = true;
+        let ctx = ServerRuntimeContext::new(db, settings);
+        ctx.shared_insert(super::WorkflowCronSchedulerRequirement(false));
+
+        let workflow = super::runtime_worker_snapshots(&ctx)
+            .into_iter()
+            .find(|worker| worker.name == "workflow_cron")
+            .expect("workflow cron readiness snapshot must be registered");
+        assert!(
+            !workflow.required,
+            "an intentionally disabled scheduler must not keep the worker host unready"
         );
     }
 
