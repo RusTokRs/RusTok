@@ -1336,7 +1336,11 @@ export class FlyBrowserAdapter {
       intent: record.intent,
       timeoutMs: record.timeoutMs,
       requestGeneration: record.requestGeneration,
-      current: record.requestGeneration === this.latestIntentRequestGeneration,
+      current: record.authoritative
+        ? record.requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !record.readStartedDuringWrite &&
+          record.requestGeneration === this.latestIntentRequestGeneration &&
+          record.requestGeneration > this.latestAuthoritativeRequestGeneration,
       instanceId: this.instanceId,
       pageId: this.pageId,
     };

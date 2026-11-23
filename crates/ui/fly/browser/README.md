@@ -65,3 +65,6 @@ responses, application-level save failures, navigation responses, or HTTP succes
 confirmed nonempty revision and project hash. Pending mutations are resolved as unsent instead
 of being replayed with an unverified base. An abort signal that expired while queued skips that
 intent without posting. This is intentionally a safety gate, not automatic retry or reconciliation.
+
+Timeout notifications use the same authoritative/read-only request ordering rule as response
+and error notifications. A newer selection request cannot hide the timeout of a pending write.
