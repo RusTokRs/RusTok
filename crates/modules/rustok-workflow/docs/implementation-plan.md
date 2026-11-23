@@ -1,5 +1,16 @@
 # Implementation plan for `rustok-workflow`
 
+## Active cron admission / deletion guards (source-only)
+
+Activating or editing an active cron definition now parses a bounded
+expression at the Workflow owner write boundary. Invalid active cron edits
+and version restores fail within the owning transaction. Hard deletion is
+blocked while any execution remains `running` or
+`reconciliation_required`, or a cron firing is `pending`, `running`,
+or `reconciliation_required`; this preserves evidence needed for recovery.
+Source regressions cover invalid activation/edit and non-destructive
+rejection of active/pending journals. All verification remains maintainer-owned.
+
 ## Step-runner correctness follow-up (source-only, unverified)
 
 The execution journal distinguishes confirmed step failure from
