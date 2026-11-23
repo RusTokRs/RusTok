@@ -318,6 +318,13 @@ export function useDataTable<TData extends RowData = any>(
         pendingRouteWrites[pendingRouteWrites.length - 1] !== expectedRouteSignature
       ) {
         pendingRouteWrites.push(expectedRouteSignature);
+      } else if (
+        expectedRouteSignature === currentRouteSignature &&
+        pendingRouteWrites.length === 0 &&
+        pendingLocalColumnFilterSignature.current === expectedFilterSignature
+      ) {
+        // A no-op URL write has no route response to acknowledge it.
+        pendingLocalColumnFilterSignature.current = null;
       }
 
       if (page !== 1) void setPage(1);
