@@ -44,6 +44,11 @@ use crate::schema_retry_identity::{
 };
 use graphql_adapter::ApiError;
 
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+fn map_native_server_error(error: native_server_adapter::ApiError) -> ApiError {
+    ApiError::Graphql(error.to_string())
+}
+
 pub(crate) async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -98,11 +103,17 @@ pub(crate) async fn fetch_product_attributes(
     tenant_id: String,
     locale: String,
 ) -> Result<ProductAttributeList, ApiError> {
-    match native_server_adapter::fetch_product_attributes(tenant_id.clone(), locale.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale).await
-        }
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_product_attributes(tenant_id, locale)
+            .await
+            .map_err(map_native_server_error)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale).await
     }
 }
 
@@ -112,11 +123,17 @@ pub(crate) async fn fetch_catalog_categories(
     tenant_id: String,
     locale: String,
 ) -> Result<CatalogCategoryList, ApiError> {
-    match native_server_adapter::fetch_catalog_categories(tenant_id.clone(), locale.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::fetch_catalog_categories(token, tenant_slug, tenant_id, locale).await
-        }
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_catalog_categories(tenant_id, locale)
+            .await
+            .map_err(map_native_server_error)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        graphql_adapter::fetch_catalog_categories(token, tenant_slug, tenant_id, locale).await
     }
 }
 
@@ -208,11 +225,17 @@ pub(crate) async fn fetch_attribute_schemas(
     tenant_id: String,
     locale: String,
 ) -> Result<ProductAttributeSchemaList, ApiError> {
-    match native_server_adapter::fetch_attribute_schemas(tenant_id.clone(), locale.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::fetch_attribute_schemas(token, tenant_slug, tenant_id, locale).await
-        }
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_attribute_schemas(tenant_id, locale)
+            .await
+            .map_err(map_native_server_error)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        graphql_adapter::fetch_attribute_schemas(token, tenant_slug, tenant_id, locale).await
     }
 }
 
@@ -224,26 +247,30 @@ pub(crate) async fn fetch_effective_product_form(
     category_id: Option<String>,
     locale: String,
 ) -> Result<Option<ProductEffectiveForm>, ApiError> {
-    match native_server_adapter::fetch_effective_product_form(
-        tenant_id.clone(),
-        product_id.clone(),
-        category_id.clone(),
-        locale.clone(),
-    )
-    .await
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::fetch_effective_product_form(
-                token,
-                tenant_slug,
-                tenant_id,
-                product_id,
-                category_id,
-                locale,
-            )
-            .await
-        }
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_effective_product_form(
+            tenant_id,
+            product_id,
+            category_id,
+            locale,
+        )
+        .await
+        .map_err(map_native_server_error)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        graphql_adapter::fetch_effective_product_form(
+            token,
+            tenant_slug,
+            tenant_id,
+            product_id,
+            category_id,
+            locale,
+        )
+        .await
     }
 }
 
@@ -254,24 +281,24 @@ pub(crate) async fn fetch_product_attribute_values(
     product_id: String,
     locale: String,
 ) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    match native_server_adapter::fetch_product_attribute_values(
-        tenant_id.clone(),
-        product_id.clone(),
-        locale.clone(),
-    )
-    .await
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::fetch_product_attribute_values(
-                token,
-                tenant_slug,
-                tenant_id,
-                product_id,
-                locale,
-            )
+        let _ = (token, tenant_slug);
+        native_server_adapter::fetch_product_attribute_values(tenant_id, product_id, locale)
             .await
-        }
+            .map_err(map_native_server_error)
+    }
+
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        graphql_adapter::fetch_product_attribute_values(
+            token,
+            tenant_slug,
+            tenant_id,
+            product_id,
+            locale,
+        )
+        .await
     }
 }
 
