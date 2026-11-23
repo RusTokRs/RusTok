@@ -1,5 +1,24 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — cooperative Outbox relay drain (2026-11-23)
+
+The Outbox relay supervisor previously aborted its inner `JoinSet` on every
+graceful stop. A pass can have dispatched an event to an external transport
+and still be awaiting its durable status acknowledgement, so aborting the
+future at that point manufactures an ambiguous result and unnecessary replay.
+The inner poller now watches shutdown before each pass and while sleeping,
+then finishes any admitted `OutboxRelayPort::process_pending_once` pass before
+returning. The supervisor joins the inner poller on stop rather than aborting
+it immediately; unexpected child exits still use the existing bounded restart
+supervision. A regression constructs a real SQLite Outbox row and a blocking
+transport, requests stop during publication, and verifies that the row is
+acknowledged `dispatched` after the transport completes.
+
+This is graceful process-local shutdown, not exactly-once external delivery:
+the host's five-second forced-abort deadline, broker ambiguity, crash/restart,
+and lease expiry still require owner-side fencing and idempotent consumers.
+Test code was authored but not run; no compilation or formatting was run.
+
 ## Server audit continuation — durable worker shutdown and dispatcher recovery retry (2026-11-23)
 
 The Product Media release loop previously raced its owner batch against a stop
@@ -1980,7 +1999,7 @@ lifecycle work are outside this batch.
 - The Forum Search typed-contract consumer handle is included alongside the
   inbox worker; it was previously absent from the host drain.
 - The Outbox relay supervisor uses a `JoinSet` for its inner processing task:
-  shutdown aborts and joins it, and dropping the supervisor aborts children
+  graceful shutdown now awaits its current pass and joins it, and dropping the supervisor still aborts children
   instead of detaching them.
 - Each drain is bounded to five seconds. If a task does not cooperate, shutdown
   aborts it and awaits the join result rather than dropping the JoinHandle and
