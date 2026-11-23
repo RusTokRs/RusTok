@@ -344,7 +344,9 @@ test('mutating intents are serialized and rebase on the previous response', asyn
     const state = {
       simultaneousRequests,
       firstSettledRequests,
-      requests,
+      requests: requests.map(({ revision, project_hash, intent }) => ({
+        revision, project_hash, intent
+      })),
       finalRevision: root.dataset.flyRevision,
     };
     adapter.stop();
@@ -403,4 +405,108 @@ test('stop resolves queued mutations without sending them', async ({ page }) => 
     return { sends, first: await first, second: await second };
   }, adapterSource);
   expect(result).toEqual({ sends: 1, first: null, second: null });
+});
+
+
+
+test('a failed or unconfirmed mutation never releases queued writes onto a stale base', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-revision="rev-1" data-fly-project-hash="hash-1"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Failed queue canvas"></iframe>
+    </div>
+  `);
+
+  const evidence = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    const deferred: Array<(value: Response) => void> = [];
+    const requests: string[] = [];
+    globalThis.fetch = async (_url, options = {}) => {
+      requests.push(JSON.parse(String(options.body)).intent);
+      return new Promise<Response>((resolve) => deferred.push(resolve));
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const first = adapter.emitIntent('patch_selected', { value: 'first' });
+    const second = adapter.emitIntent('patch_selected', { value: 'second' });
+    deferred[0](new Response(JSON.stringify({
+      code: 'REVISION_CONFLICT', error: 'Remote draft changed'
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+    await first;
+    const secondResult = await second;
+    const outcome = {
+      requests,
+      secondResult,
+      revision: root.dataset.flyRevision,
+      status: root.dataset.flyNetworkStatus
+    };
+    adapter.stop();
+    return outcome;
+  }, adapterSource);
+
+  expect(evidence).toEqual({
+    requests: ['patch_selected'],
+    secondResult: null,
+    revision: 'rev-1',
+    status: 'error'
+  });
+});
+
+test('a successful HTTP response without a revision cannot replay the next queued mutation', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-revision="rev-1" data-fly-project-hash="hash-1"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Unconfirmed queue canvas"></iframe>
+    </div>
+  `);
+  const evidence = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    const deferred: Array<(value: Response) => void> = [];
+    let sends = 0;
+    globalThis.fetch = async () => {
+      sends += 1;
+      return new Promise<Response>((resolve) => deferred.push(resolve));
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const first = adapter.emitIntent('save', {});
+    const queued = adapter.emitIntent('patch_selected', {});
+    deferred[0](new Response(JSON.stringify({ result: { dirty: true } }), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    }));
+    await first;
+    const queuedResult = await queued;
+    const result = { sends, queuedResult, status: root.dataset.flyNetworkStatus };
+    adapter.stop();
+    return result;
+  }, adapterSource);
+  expect(evidence).toEqual({
+    sends: 1, queuedResult: null, status: 'error'
+  });
 });

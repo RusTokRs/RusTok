@@ -1372,6 +1372,8 @@ export class FlyBrowserAdapter {
     }
 
     const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    const queuedSignal = normalizedTransportOptions(requestOptions).signal;
+    if (queuedSignal?.aborted) return null;
     if (authoritative && this.authoritativeInFlight) {
       // A second write must not race the first with the same observed draft
       // generation/revision. Preserve the clicked target and payload while
@@ -1389,6 +1391,9 @@ export class FlyBrowserAdapter {
       });
     }
     if (authoritative) this.authoritativeInFlight = true;
+    // A failed, redirected, unconfirmed or navigation-producing write does not
+    // establish the revision the next queued mutation must use.
+    let acknowledgedAuthoritativeResult = false;
 
     const transport = normalizedTransportOptions(requestOptions);
     const abort = newAbortMetadata();
@@ -1460,9 +1465,27 @@ export class FlyBrowserAdapter {
         ?.includes("application/json")
         ? await response.json()
         : await response.text();
-      // A custom fetch implementation may resolve even after AbortController
-      // aborts during stop(). Its response must not resurrect a disposed root.
+      // Uncooperative/custom fetches can resolve successfully after a timeout,
+      // external cancellation or stop(). No such late response is an
+      // acknowledgement, even if its HTTP status was 200.
       if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
+      if (controller.signal.aborted) {
+        throw lifecycleError(
+          INTENT_REQUEST_ABORTED_CODE,
+          "Editor request completed after cancellation.",
+        );
+      }
+      const responseState = isObject(result)
+        ? (isObject(result.result) ? result.result : result)
+        : null;
+      acknowledgedAuthoritativeResult = authoritative &&
+        response.ok &&
+        responseState !== null &&
+        nonEmptyString(responseState.revision_id) !== null &&
+        nonEmptyString(responseState.project_hash) !== null &&
+        !isObject(result.save_failure) &&
+        result.reload !== true &&
+        typeof result.location !== "string";
       const current = authoritative
         ? requestGeneration === this.latestAuthoritativeRequestGeneration
         : !readStartedDuringWrite &&
@@ -1482,10 +1505,14 @@ export class FlyBrowserAdapter {
         }),
       );
       if (current) {
-        if (response.ok) {
+        if (response.ok && (!authoritative || acknowledgedAuthoritativeResult)) {
           updateNetworkIndicator(this.root, "saved");
-        } else {
+        } else if (!response.ok) {
           updateNetworkIndicator(this.root, "error", response.status);
+        } else if (isObject(result?.save_failure)) {
+          updateNetworkIndicator(this.root, "error", result.save_failure.code || "SAVE_FAILED");
+        } else {
+          updateNetworkIndicator(this.root, "error", "WRITE_UNCONFIRMED");
         }
       }
       if (current && response.ok && isObject(result)) {
@@ -1584,11 +1611,22 @@ export class FlyBrowserAdapter {
       this.pendingIntentRequests.delete(requestKey);
       if (authoritative) {
         this.authoritativeInFlight = false;
-        const next = this.queuedAuthoritativeIntents.shift();
-        if (next) {
-          if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) {
-            next.resolve(null);
-          } else {
+        if (
+          !acknowledgedAuthoritativeResult ||
+          this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED
+        ) {
+          // Retry requires a fresh user decision and a known server snapshot:
+          // never replay writes that were clicked against an uncertain base.
+          for (const queued of this.queuedAuthoritativeIntents.splice(0)) {
+            queued.resolve(null);
+          }
+        } else {
+          while (this.queuedAuthoritativeIntents.length > 0) {
+            const next = this.queuedAuthoritativeIntents.shift();
+            if (normalizedTransportOptions(next.requestOptions).signal?.aborted) {
+              next.resolve(null);
+              continue;
+            }
             // postIntent refreshes revision, hash and draft generation from
             // the preceding response. Its synchronous setup restores the
             // in-flight guard before another DOM callback can enqueue a write.
@@ -1596,6 +1634,7 @@ export class FlyBrowserAdapter {
               next.resolve,
               () => next.resolve(null),
             );
+            break;
           }
         }
       }

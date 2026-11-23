@@ -1178,3 +1178,9 @@ commands now keep revision, undo/redo history and cached validation coherent; cu
 IDs reflect clamped dimensions, viewport state and hit-test/overlay rectangles reject or normalize
 invalid sizes, and resize gestures reject non-finite/out-of-range pointer deltas. This does not
 replace mounted browser geometry, accessibility, or host integration evidence.
+
+Browser write queue hardening (source only): a per-instance queued write is dispatched only
+after a confirmed prior response with a nonempty revision and hash; ambiguous/failed saves drain
+pending commands without replay, including on timeout and stop. Cross-tab request coordination
+and true server-side idempotency are still outstanding; browser transport cannot infer whether a
+failed network request committed remotely.

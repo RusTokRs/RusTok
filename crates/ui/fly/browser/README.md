@@ -59,3 +59,9 @@ draft generation from the preceding response while retaining the original clicke
 Stopping the adapter resolves queued promises without sending them and suppresses late error
 reports. This serializes one adapter instance only; cross-tab conflicts and unconfirmed transport
 outcomes remain under the server's revision/failure handling and require host-level evidence.
+
+The serialized writer queue fails closed on HTTP errors, timeouts/aborts, redirected
+responses, application-level save failures, navigation responses, or HTTP successes without a
+confirmed nonempty revision and project hash. Pending mutations are resolved as unsent instead
+of being replayed with an unverified base. An abort signal that expired while queued skips that
+intent without posting. This is intentionally a safety gate, not automatic retry or reconciliation.
