@@ -219,22 +219,40 @@ cannot substitute for an explicit bootstrap record.
 The first stable distribution starts from the [bootstrap record](../../scripts/release/migration-bootstrap.json)
 at generation zero. `node scripts/release/resolve-release-history.mjs --check-bootstrap`
 reads that exact path from a pinned commit on the official `main`, verifies
-its Git blob identity and checks all pages of GitHub Releases, repository
-tags and the GHCR tag list for the official distribution. A stable version
-tag or a stable image alias such as `latest` stops the check even when there
-is no GitHub Release. The result binds the observations to the commit and
-blob, with migration replacement still blocked.
+its Git blob identity and checks GitHub Release pages, repository tag pages,
+the GHCR tag list and migration reservation refs for the official distribution.
+A stable version tag, stable image alias such as `latest`, or migration
+reservation stops the check even when there is no GitHub Release. The result
+binds the observations to the commit and blob, with migration replacement
+still blocked.
 
 `node scripts/release/resolve-release-history.mjs --check-container-history`
 lists the stable tags seen in GHCR independently of the bootstrap record.
 Both commands authenticate to GHCR using `GITHUB_ACTOR` and `GHCR_TOKEN`
 or the workflow token `GITHUB_TOKEN` with package read access. A failed tag
 list request, including HTTP 404, leaves container history unverified. The
-list covers current tags. Earlier exposures with deleted tags, independent
-module seals and the atomic publication reservation require separate evidence.
+list covers current tags. Earlier exposures with deleted tags require historical
+evidence. Independent module seals require separate evidence.
 Release tooling tests exercise the GHCR authentication exchange, short pages
 with continuation links, full pages without links, stable aliases and failed
 reads. The live check still needs a credential with access to the package.
+
+`node scripts/release/resolve-release-history.mjs --check-migration-reservations`
+reads the reservation history directly from the official repository's
+`refs/tags/rustok-migration-seal-<generation>` namespace. The reader works with
+reservations whose ordinary release tag, release page and image are absent.
+Each positive generation names an annotated tag targeting the exact release
+commit. Its compact UTF-8 JSON message starts with `schema_version` (1),
+`repository` (`RusTokRs/RusTok`), `seal_generation`, and `previous_tag_object`
+(null for generation one). The remaining fields are `scope`
+(`stable_distribution`), `release_tag` (stable SemVer), `source_commit`, and
+`migration_manifest_sha256`, in that order. The reader verifies the Git tag target,
+consecutive generations, predecessor links and unique platform release tags.
+It currently accepts the stable distribution scope. Independent native module
+reservations must participate in the same generation sequence before promotion
+to an admission boundary. Fixtures cover a reservation without publication,
+corrupt links, duplicate and missing generations, invalid digests and failed
+reads. An empty observation leaves replacement admission blocked.
 
 A local declaration check takes the ordered inventory projection of one
 composition's protected prefix and a full candidate export.
@@ -313,6 +331,13 @@ infrastructure rules must be updated together when that asset is introduced.
 Reserve the stable identity before exposing any stable artifact, including a
 container image. A failed publication after exposure retains the protected
 reservation and never returns its migrations to draft status.
+For the Git reservation namespace, trusted publication must atomically create
+the next generation ref and allow replay only for the same reservation. GitHub
+protection must restrict creation to the trusted writer and independently
+prevent updates and deletions, including by that writer. The reader currently
+checks the stored structure. The trusted writer, active ref protection, exact
+manifest evidence, and shared integration/publication fence remain required
+before the records can authorize an admission decision.
 
 ## Implementation gates
 
