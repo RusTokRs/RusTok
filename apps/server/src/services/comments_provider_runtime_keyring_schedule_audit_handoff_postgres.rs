@@ -586,6 +586,57 @@ mod tests {
     }
 
     #[test]
+    fn dead_letter_cannot_be_claimed_or_replayed_as_terminal_publication() {
+        let request_id = Uuid::new_v4();
+        let claim_token = Uuid::new_v4();
+        let claim = CommentsTcpDelegationScheduleAuditHandoffClaim {
+            request_id,
+            claim_token,
+            attempt_count: 1,
+        };
+        let stored = StoredAuditHandoffRecord {
+            audit_schema_version: 1,
+            request_id,
+            state_key: String::new(),
+            event_type: String::new(),
+            occurred_at_unix_ms: 1,
+            actor_id: Uuid::new_v4(),
+            principal_kind: String::new(),
+            operation: String::new(),
+            source: String::new(),
+            previous_generation: 1,
+            candidate_generation: 2,
+            outcome: String::new(),
+            canonical_envelope_id: None,
+            published: false,
+            claim_token: Some(claim_token),
+            claim_attempt_count: 1,
+            claim_active: true,
+            dead_lettered: false,
+        };
+        assert!(stored.matches_claim(claim));
+        let dead = StoredAuditHandoffRecord {
+            dead_lettered: true,
+            ..stored.clone()
+        };
+        assert!(!dead.matches_claim(claim));
+
+        let terminal = StoredAuditHandoffRecord {
+            published: true,
+            canonical_envelope_id: Some(request_id),
+            claim_token: None,
+            ..stored
+        };
+        assert!(terminal.is_exact_terminal());
+        let impossible = StoredAuditHandoffRecord {
+            dead_lettered: true,
+            ..terminal
+        };
+        assert!(!impossible.is_exact_terminal());
+        assert!(impossible.has_invalid_terminal_pair());
+    }
+
+    #[test]
     fn publication_guards_against_dead_letter_takeover() {
         let statement = read_for_publish_statement(Uuid::new_v4());
         assert!(statement.sql.contains("handoff_dead_lettered_at IS NOT NULL AS dead_lettered"));
