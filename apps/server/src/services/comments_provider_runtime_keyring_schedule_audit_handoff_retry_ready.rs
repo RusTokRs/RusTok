@@ -15,13 +15,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         Option<CommentsTcpDelegationScheduleAuditHandoffClaim>,
         CommentsTcpDelegationScheduleAuditHandoffError,
     > {
-        if max_attempts == 0
-            || max_attempts
-                > super::super::keyring_schedule_audit_source_retry_postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS
-        {
-            return Err(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable);
-        }
-        let max_attempts = i64::from(max_attempts);
+        let max_attempts = validated_max_attempts(max_attempts)?;
         let claim_token = Uuid::new_v4();
         let transaction = self.database.begin().await.map_err(unavailable)?;
         let row = transaction
@@ -49,6 +43,18 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
             }
         }
     }
+}
+
+fn validated_max_attempts(
+    max_attempts: u32,
+) -> std::result::Result<i64, CommentsTcpDelegationScheduleAuditHandoffError> {
+    if max_attempts == 0
+        || max_attempts
+            > super::super::keyring_schedule_audit_source_retry_postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS
+    {
+        return Err(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable);
+    }
+    Ok(i64::from(max_attempts))
 }
 
 fn claim_next_retry_ready_statement(
@@ -93,6 +99,15 @@ fn claim_next_retry_ready_statement(
 #[cfg(test)]
 mod retry_ready_tests {
     use super::*;
+
+    #[test]
+    fn attempt_budget_must_match_the_canonical_source_retry_policy() {
+        assert!(validated_max_attempts(0).is_err());
+        assert_eq!(validated_max_attempts(1), Ok(1));
+        assert_eq!(validated_max_attempts(100), Ok(100));
+        assert!(validated_max_attempts(101).is_err());
+        assert!(validated_max_attempts(u32::MAX).is_err());
+    }
 
     #[test]
     fn retry_ready_claim_excludes_deferred_exhausted_and_dead_letter_rows() {
