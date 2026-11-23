@@ -191,6 +191,9 @@ pub(crate) async fn fetch_products(
         locale.as_deref(),
         controls.search.as_deref(),
         controls.status.as_deref(),
+        controls.vendor.as_deref(),
+        controls.category_id.as_deref(),
+        controls.attribute_filters.len(),
     );
 
     #[cfg(any(feature = "ssr", feature = "hydrate"))]

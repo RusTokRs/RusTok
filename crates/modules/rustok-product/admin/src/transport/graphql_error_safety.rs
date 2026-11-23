@@ -58,12 +58,18 @@ impl GraphqlReadContext {
         locale: Option<&str>,
         search: Option<&str>,
         status: Option<&str>,
+        vendor: Option<&str>,
+        category_id: Option<&str>,
+        attribute_filter_count: usize,
     ) -> Self {
         let mut context = Self::new("fetch_products", token, tenant_slug);
         context.tenant_id_length = Some(tenant_id.chars().count());
         context.locale_length = text_length(locale);
         context.search_length = text_length(search);
         context.status_length = text_length(status);
+        context.vendor_length = text_length(vendor);
+        context.category_id_length = text_length(category_id);
+        context.attribute_filter_count = Some(attribute_filter_count);
         context.boundary = SELECTED_PRODUCT_ADMIN_READ_BOUNDARY;
         context.selected_transport = SELECTED_PRODUCT_ADMIN_TRANSPORT;
         context
