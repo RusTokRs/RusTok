@@ -31,6 +31,36 @@ fn editor() -> FlyEditor {
 }
 
 #[test]
+fn idempotent_and_empty_commands_do_not_consume_history_or_revision() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let report = editor.apply(EditorCommand::Batch { commands: vec![] })
+        .expect("empty batch is a verified no-op");
+    assert!(report.is_valid());
+    assert_eq!(editor, before);
+
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "red"})),
+    }).expect("same value");
+    assert_eq!(editor, before);
+
+    // Once a meaningful edit exists, an idempotent follow-up must not clear redo
+    // or create a second history entry.
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    editor.undo().expect("undo");
+    let revision_before = editor.revision().clone();
+    let redo_before = editor.history().redo_len();
+    editor.apply(EditorCommand::Batch { commands: vec![] }).expect("no-op");
+    assert_eq!(editor.revision(), &revision_before);
+    assert_eq!(editor.history().redo_len(), redo_before);
+    editor.redo().expect("redo remains available");
+}
+
+#[test]
 fn style_patch_merges_and_can_remove_individual_properties() {
     let mut editor = editor();
     editor

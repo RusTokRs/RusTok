@@ -295,3 +295,8 @@ gives up on locale fallback.
 Rename `standalone-Cargo.toml` to `Cargo.toml` and build the root crate with
 `default-features = false`.
 All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`), ensuring zero coupling to the host project.
+
+Validated no-op commands (empty batches and idempotent document changes) no longer create
+history entries or advance the document revision. A no-op still validates the resulting project,
+and an empty batch still requires edit permission at the UI capability gate; it cannot mutate a
+read-only session or silently clear redo history.

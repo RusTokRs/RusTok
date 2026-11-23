@@ -513,6 +513,8 @@ fn an_empty_batch_is_still_accepted_when_editing_is_allowed() {
     machine
         .dispatch(UiIntent::execute(EditorCommand::Batch { commands: vec![] }))
         .expect("an editing session may dispatch an empty batch");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
 }
 
 #[test]
