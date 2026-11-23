@@ -37,6 +37,8 @@ export interface DataTableShellProps<TData extends RowData = any> {
   defaultPageSize?: number;
   /** Stable owner identity; prevents a selection on page N selecting a different row on page N+1. */
   getRowId?: (row: TData, index: number) => string;
+  /** Complete server route state; lets pending filters detect facet/category navigation. */
+  routeQuery?: Record<string, string>;
   /** Filter-input debounce before the route is rewritten. */
   debounceMs?: number;
   /** Renders the loading skeleton instead of the table. */
@@ -58,6 +60,7 @@ export function DataTableShell<TData extends RowData = any>({
   clientPagination = false,
   defaultPageSize = 20,
   getRowId,
+  routeQuery,
   debounceMs = 500,
   isLoading,
   skeletonColumns,
@@ -78,6 +81,7 @@ export function DataTableShell<TData extends RowData = any>({
     data,
     columns,
     getRowId,
+    routeQuery,
     pageCount,
     clientPagination,
     // Keep the table's own URL parser on the same default as the shell's
