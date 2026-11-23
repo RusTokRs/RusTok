@@ -40,9 +40,13 @@ pub(super) fn schedule_revision(workflow: &Workflow, expression: &str) -> String
 }
 
 fn seed_cursor(workflow: &Workflow, now: DateTime<Utc>) -> DateTime<Utc> {
-    workflow.updated_at.with_timezone(&Utc).max(
-        workflow.created_at.with_timezone(&Utc),
-    ).max(now - ChronoDuration::hours(CATCH_UP_HORIZON_HOURS))
+    // A wall-clock-skewed node may persist updated_at in the future.
+    // Keep the definition revision monotonic, but never seed a due-slot
+    // cursor beyond now: doing so would silently freeze the schedule.
+    workflow.updated_at.with_timezone(&Utc)
+        .max(workflow.created_at.with_timezone(&Utc))
+        .min(now)
+        .max(now - ChronoDuration::hours(CATCH_UP_HORIZON_HOURS))
 }
 
 /// Pure schedule expansion. Unlike the legacy one-second comparison, this
