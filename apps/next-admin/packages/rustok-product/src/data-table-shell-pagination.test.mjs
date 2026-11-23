@@ -47,6 +47,18 @@ test('the URL remains authoritative when table filters change via browser histor
   assert.match(hookSource, /setColumnFilters\(initialColumnFilters\)/);
 });
 
+test('browser history invalidates pending debounced filter writes without cancelling newer local edits', () => {
+  assert.match(hookSource, /filterNavigationVersion = React\.useRef\(0\)/);
+  assert.match(hookSource, /version !== filterNavigationVersion\.current/);
+  assert.match(hookSource, /pendingLocalFilterSignature\.current === routeFilters/);
+  assert.match(hookSource, /React\.useLayoutEffect\(/);
+  assert.match(hookSource, /filterNavigationVersion\.current \+= 1/);
+  assert.match(
+    hookSource,
+    /debouncedSetFilterValues\(filterUpdates, filterNavigationVersion\.current\)/
+  );
+});
+
 test('catalog controls refresh their uncontrolled defaults after facet navigation', () => {
   assert.match(catalogFilterSource, /key=\{categoryId \?\? ''\}/);
   assert.match(catalogFilterSource, /key=\{attributeFilters\.join\(';'\)\}/);
