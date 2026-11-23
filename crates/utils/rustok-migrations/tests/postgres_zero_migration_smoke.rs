@@ -1,12 +1,13 @@
 mod support;
 
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
 use rustok_migrations::{
     Migrator, apply_installer_owner_schema, apply_installer_remaining_schema,
-    execution::StepRunner, verification::validate_journal,
+    execution::{ExecutionPhase, StepRunner},
+    verification::{DatabaseSnapshot, compare, observe_database, validate_journal},
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
@@ -29,8 +30,8 @@ use sea_orm_migration::{
 };
 use support::backfill_fixtures::{
     BackfillFixture, apply_setup as apply_backfill_setup,
-    assert_results as assert_backfill_results, load_from_environment as load_backfill_fixtures,
-    validate_pending as validate_backfill_targets,
+    assert_results as assert_backfill_results, load_contract_fixtures,
+    load_from_environment as load_backfill_fixtures, validate_pending as validate_backfill_targets,
 };
 
 #[tokio::test]
@@ -177,30 +178,10 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
     let admin = connect_postgres(&admin_url).await?;
     create_database(&admin, &name).await?;
     let result = async {
-        // Exercise one real owner fixture against its explicitly retained draft
-        // boundary. This is not evidence for a released-predecessor upgrade.
-        let contracts: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../docs/migrations/backfill-contracts.json"
-        ))?;
         let target = "m20260726_000001_enforce_tenant_locale_policy";
-        let contract = contracts["contracts"]
-            .as_array()
-            .ok_or("missing contracts")?
-            .iter()
-            .find(|contract| contract["migration"].as_str() == Some(target))
-            .ok_or("missing tenant locale backfill contract")?;
-        let field = |name: &str| {
-            contract[name]
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("missing fixture field {name}"))
-        };
-        let fixture = BackfillFixture {
-            id: field("id")?,
-            migration: target.into(),
-            setup_sql: field("setup_sql")?,
-            assertion_sql: field("assertion_sql")?,
-        };
+        let fixture = load_contract_fixtures(&[target])?
+            .pop()
+            .ok_or("missing tenant locale backfill fixture")?;
         let plan = Migrator::migrations();
         let index = plan
             .iter()
@@ -261,6 +242,140 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
     }
     .await;
     finish_fixture(&admin, &name, result).await
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL, RUSTOK_MIGRATION_SMOKE_ADMIN_URL and RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP"]
+async fn postgres_seeded_module_phase_matches_after_recovery()
+-> Result<(), Box<dyn std::error::Error>> {
+    let admin_url = smoke_admin_url()?;
+    let pg_dump = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP")?;
+    let pg_dump = Path::new(&pg_dump);
+    let steps = [
+        "m20261027_000081_transition_intervention_required_state",
+        "m20261027_000082_gc_candidate_claims",
+        "m20261027_000083_artifact_permission_registration_status",
+        "m20261027_000084_module_operation_result_snapshot",
+        "m20261027_000085_artifact_ui_resources",
+    ];
+    let fixtures = load_contract_fixtures(&[steps[0], steps[2], steps[4]])?;
+    let plan = Migrator::inventory()?;
+    let start = plan
+        .migrations()
+        .iter()
+        .position(|name| name == steps[0])
+        .ok_or("missing first module phase migration")?;
+    let phase = ExecutionPhase {
+        expected_prefix: plan.migrations()[..start].to_vec(),
+        steps: steps.map(str::to_owned).to_vec(),
+    };
+    let completed: Vec<_> = phase
+        .expected_prefix
+        .iter()
+        .chain(&phase.steps)
+        .cloned()
+        .collect();
+    let admin = connect_postgres(&admin_url).await?;
+    let predecessor = unique_postgres_database_name("rustok_module_phase_predecessor");
+    let reference = unique_postgres_database_name("rustok_module_phase_reference");
+    let resumed = unique_postgres_database_name("rustok_module_phase_resumed");
+    let mut created = Vec::new();
+
+    let result = async {
+        create_database(&admin, &predecessor).await?;
+        created.push(predecessor.as_str());
+        let predecessor_url = database_url_from_admin_url(&admin_url, &predecessor);
+        let prefix = ExecutionPhase {
+            expected_prefix: Vec::new(),
+            steps: phase.expected_prefix.clone(),
+        };
+        apply_verified_phase_steps(&predecessor_url, &prefix, &prefix.steps, &[]).await?;
+        let db = connect_postgres(&predecessor_url).await?;
+        let seeded = apply_backfill_setup(&db, &fixtures).await;
+        db.close().await?;
+        seeded?;
+
+        // Copy the same committed rows, clocks, sequences and journal into both
+        // fixtures after closing every connection to the predecessor.
+        for name in [&reference, &resumed] {
+            assert_valid_database_name(name);
+            admin
+                .execute_unprepared(&format!(
+                    "CREATE DATABASE \"{name}\" TEMPLATE \"{predecessor}\""
+                ))
+                .await?;
+            created.push(name.as_str());
+        }
+        let reference_url = database_url_from_admin_url(&admin_url, &reference);
+        let resumed_url = database_url_from_admin_url(&admin_url, &resumed);
+        apply_verified_phase_steps(&reference_url, &phase, &phase.steps, &fixtures).await?;
+        for step in &phase.steps {
+            apply_verified_phase_steps(&resumed_url, &phase, std::slice::from_ref(step), &fixtures)
+                .await?;
+        }
+
+        let original = observe_backfill_fixture(&reference_url, pg_dump).await?;
+        let recovered = observe_backfill_fixture(&resumed_url, pg_dump).await?;
+        let comparison = compare(&original, &recovered, &completed, &completed)?;
+        if !comparison.equivalent || comparison.reference_digest != comparison.candidate_digest {
+            return Err(format!(
+                "module phase recovery diverged: {:?}",
+                comparison.differences
+            )
+            .into());
+        }
+        Ok(())
+    }
+    .await;
+
+    let mut result = result;
+    for name in created.into_iter().rev() {
+        result = finish_fixture(&admin, name, result).await;
+    }
+    result
+}
+
+async fn apply_verified_phase_steps(
+    url: &str,
+    phase: &ExecutionPhase,
+    steps: &[String],
+    fixtures: &[BackfillFixture],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut runner =
+        StepRunner::connect_phase(url, Migrator::inventory()?.into_migrations(), phase.clone())
+            .await?;
+    let result = async {
+        for expected in steps {
+            let applied = runner.apply_next().await?;
+            if applied.as_deref() != Some(expected) {
+                return Err(format!("expected phase step {expected}, applied {applied:?}").into());
+            }
+            for fixture in fixtures
+                .iter()
+                .filter(|fixture| &fixture.migration == expected)
+            {
+                assert_backfill_results(runner.database(), std::slice::from_ref(fixture)).await?;
+            }
+        }
+        if steps.last() == phase.steps.last() && runner.apply_next().await?.is_some() {
+            return Err("execution advanced past the requested phase".into());
+        }
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }
+    .await;
+    let close = runner.close().await;
+    result?;
+    Ok(close?)
+}
+
+async fn observe_backfill_fixture(
+    url: &str,
+    pg_dump: &Path,
+) -> Result<DatabaseSnapshot, Box<dyn std::error::Error>> {
+    let db = connect_postgres(url).await?;
+    let snapshot = observe_database(&db, url, pg_dump).await;
+    db.close().await?;
+    Ok(snapshot?)
 }
 
 struct ProductMigrator;

@@ -400,6 +400,17 @@ separate fixtures. The database observer also detected changes to schema,
 data, privileges, and index enforcement. The fixture databases and roles
 were removed.
 
+The seeded Modules phase test used the composition from `main@59b2c3f1cf`
+on PostgreSQL 16.13. It cloned a single quiescent predecessor seeded with
+three declared fixtures. One copy
+applied the five migrations from
+`m20261027_000081_transition_intervention_required_state` through
+`m20261027_000085_artifact_ui_resources` in one session. The other reopened
+the same phase after each committed step. The owner assertions passed at
+their own boundaries, and both final observations had identical digests and
+matching journal identities. The predecessor and both copies were removed.
+[Seeded Modules phase test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
 Gate 3 still needs replay from an authenticated stable release baseline.
 Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition

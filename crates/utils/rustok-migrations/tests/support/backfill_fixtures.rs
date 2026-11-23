@@ -45,6 +45,32 @@ pub fn load_from_environment() -> Result<Vec<BackfillFixture>, Box<dyn Error>> {
         .map_err(|error| format!("invalid backfill fixture file {path}: {error}").into())
 }
 
+pub fn load_contract_fixtures(migrations: &[&str]) -> Result<Vec<BackfillFixture>, Box<dyn Error>> {
+    let document: Value = serde_json::from_str(include_str!(
+        "../../../../../docs/migrations/backfill-contracts.json"
+    ))?;
+    if document.get("schema_version").and_then(Value::as_u64) != Some(1) {
+        return Err("backfill contract schema_version must be 1".into());
+    }
+    let contracts = document["contracts"]
+        .as_array()
+        .ok_or("backfill contracts must be an array")?;
+    let mut selected = Vec::with_capacity(migrations.len());
+    for &migration in migrations {
+        let mut matches = contracts
+            .iter()
+            .filter(|contract| contract["migration"].as_str() == Some(migration));
+        let contract = matches
+            .next()
+            .ok_or_else(|| format!("missing backfill contract for {migration}"))?;
+        if matches.next().is_some() || contract["mode"].as_str() != Some("fixture") {
+            return Err(format!("expected one fixture contract for {migration}").into());
+        }
+        selected.push(contract);
+    }
+    Ok(parse_fixtures(selected)?)
+}
+
 pub async fn apply_setup(
     db: &DatabaseConnection,
     fixtures: &[BackfillFixture],
@@ -134,10 +160,16 @@ fn parse_fixture_document(content: &str) -> Result<Vec<BackfillFixture>, String>
         .and_then(Value::as_array)
         .ok_or_else(|| "fixtures must be an array".to_string())?;
 
+    parse_fixtures(fixtures)
+}
+
+fn parse_fixtures<'a>(
+    fixtures: impl IntoIterator<Item = &'a Value>,
+) -> Result<Vec<BackfillFixture>, String> {
     let mut ids = HashSet::new();
     let mut migrations = HashSet::new();
-    let mut parsed = Vec::with_capacity(fixtures.len());
-    for (index, fixture) in fixtures.iter().enumerate() {
+    let mut parsed = Vec::new();
+    for (index, fixture) in fixtures.into_iter().enumerate() {
         let parsed_fixture = BackfillFixture {
             id: required_string(fixture, index, "id")?,
             migration: required_string(fixture, index, "migration")?,

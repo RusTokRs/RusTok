@@ -266,6 +266,16 @@ by each migration. The installer's sparse bootstrap entrypoints remain separate.
 
 ### Verification evidence
 
+The seeded Modules phase test compares one uninterrupted run with a fresh
+migration session at each committed boundary. Both databases start as copies
+of the same PostgreSQL predecessor containing the declared backfill fixtures.
+Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL 16 instance
+and `RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP` to its `pg_dump` executable.
+
+```sh
+cargo test --locked -p rustok-migrations --test postgres_zero_migration_smoke postgres_seeded_module_phase_matches_after_recovery -- --ignored --exact
+```
+
 The bounded-phase implementation has scoped execution evidence on PostgreSQL
 16.13: `stepwise_recovery` passed all four tests with `--include-ignored`.
 The fixture exercises exact terminal stops, committed-prefix restart, completed
