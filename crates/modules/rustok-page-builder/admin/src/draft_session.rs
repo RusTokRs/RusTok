@@ -147,7 +147,7 @@ pub trait SsrDraftSessionStore: Send + Sync {
         operation_id: &str,
         request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        let _ = (token, page_id, owner, operation_id);
+        let _ = (token, page_id, owner, operation_id, request_hash);
         Err(SsrDraftSessionError::OperationReceiptsUnsupported)
     }
 
@@ -593,6 +593,7 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         page_id: &str,
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
+        request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         validate_operation_id(operation_id)?;
         let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
