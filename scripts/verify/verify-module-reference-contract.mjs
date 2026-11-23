@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hasBlogProjectionRegistration } from "./blog-comment-projection-wiring.mjs";
+import { maskRustNonCode } from "./native-module-layout.mjs";
 
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -56,8 +57,7 @@ function forbidSource(path, source, markers) {
     if (source.includes(marker)) fail(`${path}: forbidden reference-module pattern ${marker}`);
   }
 }
-function requireOrdered(path, before, after) {
-  const source = read(path);
+function requireOrdered(path, before, after, source = read(path)) {
   const beforeIndex = source.indexOf(before);
   const afterIndex = source.indexOf(after, beforeIndex === -1 ? 0 : beforeIndex);
   if (beforeIndex === -1) fail(`${path}: missing ordered invariant marker ${before}`);
@@ -88,6 +88,12 @@ const tagServiceSource =
   read("crates/modules/rustok-blog/src/services/tag.rs") +
   "\n" +
   readTree("crates/modules/rustok-blog/src/services/tag");
+const categoryServicePath = "crates/modules/rustok-blog/src/services/category.rs";
+const categoryMovePath = "crates/modules/rustok-blog/src/services/category_command.rs";
+const categoryDeletePath = "crates/modules/rustok-blog/src/services/category_delete.rs";
+const categoryHierarchyLock = ".lock_category_hierarchy_writer_in_tx(&txn, tenant_id)";
+const categoryUpdateSource = (read(categoryServicePath).split("pub async fn update(")[1] ?? "")
+  .split("pub(crate) async fn ensure_exists_in_tx(")[0];
 
 const legacyCategoryTranslationEntity =
   join(repoRoot, "crates/modules/rustok-blog/src/entities/blog_category_translation.rs");
@@ -215,7 +221,9 @@ forbid("crates/modules/rustok-blog/src/services/rbac.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
-  "load_scoped_categories_strict",
+  ".load_scoped_categories(",
+  "enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;",
+  ".delete_module_category_with_cleanup(",
   'BlogError::invariant(\n                "Blog Category delete requires host-composed Taxonomy capability cleanup"',
   '"Blog Category Taxonomy projection coverage is incomplete"',
   '"Blog Category Taxonomy projection contains duplicate identities"',
@@ -236,40 +244,43 @@ requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
-  "load_scoped_categories_strict",
+  /port\s*\.load_scoped_categories\([\s\S]*?\)\s*\.await\?/,
   "BlogError::invariant(",
-  ".map_err(BlogError::from)?",
   // The read projection degrades a damaged Category reference instead of failing the
   // page; only the owner-invariant case (a duplicate identity) still fails closed.
   "Blog post Category Taxonomy projection contains duplicate identities",
   "reference Categories without a canonical Taxonomy projection",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
-  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+requireAll(categoryServicePath, [
+  /self\.taxonomy_port\s*\.lock_category_hierarchy_writer_in_tx\(&txn, tenant_id\)\s*\.await\?/,
+  "ensure_hierarchy_coverage_in_tx(&*self.taxonomy_port, &txn, tenant_id).await?",
+  ".load_scoped_categories((&txn).into(), tenant_id, Some(&category_ids), &locale, None)",
+  "port.reorder_category_siblings_in_tx(txn, tenant_id, parent_id, &ordered_sibling_ids)",
   "placement.parent_id",
-  "// Serialize before reading hierarchy so a concurrent structural move cannot be",
   "self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
+  "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+  "Blog category {category_id} has no canonical localized copy",
+  "Blog category Taxonomy hierarchy coverage is incomplete before create",
+  "Blog category Taxonomy projection contains Category without localized copy before create",
 ]);
-forbid("crates/modules/rustok-blog/src/services/category.rs", [
-  "taxonomy_category_hierarchy::",
-  "entities::taxonomy_category_hierarchy",
-]);
+requireOrdered(categoryServicePath, categoryHierarchyLock, "ensure_hierarchy_coverage_in_tx(&*self.taxonomy_port");
+requireOrdered(categoryServicePath, categoryHierarchyLock, ".load_scoped_categories(", categoryUpdateSource);
+requireOrdered(categoryServicePath, ".load_scoped_categories(", "if canonical.len() != 1", categoryUpdateSource);
 
-requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
-  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
-  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
-  "Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE)",
+requireAll(categoryMovePath, [
+  /self\.taxonomy_port\s*\.lock_category_hierarchy_writer_in_tx\(&txn, tenant_id\)\s*\.await\?/,
+  /\.load_scoped_categories\(\s*\(&txn\)\.into\(\),\s*tenant_id,\s*Some\(&category_ids\),/,
+  ".move_category_in_tx(",
   '"Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"',
   '"Blog category Taxonomy ownership coverage is incomplete during move"',
-  "TaxonomyScopeType::Module",
   "usize::try_from(input.position)",
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
   "Persisted Blog category depth is missing",
 ]);
-forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
+requireOrdered(categoryMovePath, categoryHierarchyLock, "load_categories_in_tx(&txn, tenant_id)");
+forbid(categoryMovePath, [
   "or_insert((None, 0))",
   "taxonomy_category_hierarchy::",
   "taxonomy_term::Entity::find(",
@@ -277,11 +288,10 @@ forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "entities::{taxonomy_category_hierarchy, taxonomy_term}",
   "TaxonomyTermKind::Category",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
-  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
-  "rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(",
-  "TaxonomyError::internal(format!(",
-  "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
+requireAll(categoryDeletePath, [
+  /self\.taxonomy_port\s*\.lock_category_hierarchy_writer_in_tx\(txn, tenant_id\)\s*\.await\?/,
+  ".delete_category_placement_and_compact_in_tx(txn, tenant_id, self.blog_category_id)",
+  "BlogError::category_not_found(self.blog_category_id)",
   "detach_category_from_posts_in_tx",
   "blog_post::Column::CategoryId.eq(category_id)",
   "blog_post::Column::Version.gt(0)",
@@ -289,12 +299,31 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "sea_orm::sea_query::Expr::col(blog_post::Column::Version).add(1)",
   '"Blog category {category_id} cannot be detached from {remaining} post(s) because their persisted version is invalid or exhausted"',
 ]);
-forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
+requireOrdered(categoryDeletePath, ".lock_category_hierarchy_writer_in_tx(", ".delete_category_placement_and_compact_in_tx(");
+requireOrdered(categoryDeletePath, ".delete_category_placement_and_compact_in_tx(", "detach_category_from_posts_in_tx(txn");
+forbid(categoryDeletePath, [
   "taxonomy_category_hierarchy::",
   "taxonomy_term::",
   "TaxonomyScopeType::Module",
   "TaxonomyTermKind::Category",
 ]);
+
+for (const path of [
+  categoryServicePath,
+  categoryMovePath,
+  categoryDeletePath,
+  "crates/modules/rustok-blog/src/services/category_owner.rs",
+  "crates/modules/rustok-blog/src/services/category_name_projection.rs",
+  "crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs",
+  "crates/modules/rustok-blog/src/error/mod.rs",
+]) {
+  if (/\brustok_taxonomy\b|\btaxonomy_(?:term|category_hierarchy)\s*::/.test(maskRustNonCode(read(path)))) {
+    fail(`${path}: Blog must use its Taxonomy port instead of Taxonomy implementation or entities`);
+  }
+}
+if (/\brustok_taxonomy\b|\btaxonomy_term\s*::/.test(maskRustNonCode(tagServiceSource))) {
+  fail("Blog tag services must use the Blog Taxonomy port instead of Taxonomy implementation or entities");
+}
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   `load_channel_slugs(
@@ -319,10 +348,11 @@ forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
 ]);
 
 requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
-  "load_term_names_strict",
-  "TaxonomyTermKind::Tag",
-  "resolve_name_for_locale_chain",
-  "lock_module_term_in_tx(",
+  ".load_tags_by_ids(",
+  ".lock_tag_in_tx(&txn, tenant_id, tag_id)",
+  ".update_tag_in_tx(",
+  ".delete_tag_in_tx(&txn, tenant_id, tag_id, &security)",
+  "BLOG_SCOPE_VALUE",
   "bump_posts_for_tag_relation_removal_in_tx",
   "blog_post::Column::Version.gt(0)",
   "blog_post::Column::Version.ne(i32::MAX)",
@@ -332,18 +362,8 @@ requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSou
   "blog_post_tag::Column::PostId.eq(post_id)",
   "blog_post_tag::Column::TagId.eq(tag_id)",
   "tenant_id: Set(tenant_id)",
-  "ensure_module_terms_for_owner_in_tx(",
-]);
-
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
-  "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
-  "rustok_taxonomy::reorder_module_category_siblings_in_tx(",
-  '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
-]);
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
-  "// Serialize before reading hierarchy so a concurrent structural move cannot be",
+  /\.ensure_module_tags_in_tx\(\s*txn,\s*tenant_id,\s*&normalized_locale,\s*&normalized_names,\s*allow_create,\s*\)\s*\.await\?/,
+  "validate_post_tag_terms_in_tx(port, txn, tenant_id, &term_ids, &normalized_locale).await?",
 ]);
 requireAll("crates/modules/rustok-blog/src/domain/richtext.rs", [
   'BlogError::invariant("Stored article content is not a document")',
@@ -424,8 +444,9 @@ forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
-  ".map_err(BlogError::from)",
-  "BLOG_TAXONOMY_SCOPE",
+  "port: &dyn BlogTaxonomyPort",
+  "port.load_category_locale_copy_in_tx(txn, tenant_id, category_id, locale)",
+  /port\.sync_category_copy_in_tx\(\s*txn,\s*tenant_id,\s*BlogTaxonomySyncCategoryInput/,
 ]);
 forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   "map_taxonomy_error",
@@ -579,7 +600,8 @@ requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
-  "Err(error) => Err(anyhow::Error::new(error))",
+  "Err(BlogError::PostNotFound(_)) => Ok(None)",
+  "Err(error) => Err(SeoTargetError::provider(error))",
 ]);
 forbid("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   'anyhow::anyhow!("Blog SEO owner read failed: {error}")',
@@ -597,9 +619,9 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
   "TaxonomyTermNotFound(Uuid)",
-  /TaxonomyError::Internal\(message\)\s*=>\s*\{?\s*Self::Invariant/,
-  "TaxonomyError::Conflict(message) => Self::Conflict(message)",
-  "TaxonomyError::TermNotFound(term_id)",
+  /BlogError::TaxonomyTermNotFound\(id\)\s*=>\s*RichError::new\(\s*ErrorKind::NotFound,/,
+  '.with_error_code("TAXONOMY_TERM_NOT_FOUND")',
+  "BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)",
 ]);
 requireAll("crates/modules/rustok-taxonomy/src/error.rs", [
   '#[error("Taxonomy internal operation failed")]',
@@ -914,10 +936,6 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation
   "Category must be a leaf before deletion; move or delete its children first",
   "Module Category hierarchy coverage is incomplete during deletion",
 ]);
-forbid("crates/modules/rustok-blog/src/services/category.rs", [
-  "taxonomy_category_hierarchy::",
-  "entities::taxonomy_category_hierarchy",
-]);
 requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
   "crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
 ]);
@@ -951,12 +969,8 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_read.rs", [
 ]);
 
 requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
-  "load_term_names_strict_for_module(",
-  "BLOG_SCOPE_VALUE",
-]);
-requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "enforce_scope(&security, Resource::Tags, Action::Create)?;",
-  ".create_module_term_in_tx(",
+  ".create_tag_in_tx(",
   "publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
 ]);
 forbidSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
@@ -964,20 +978,6 @@ forbidSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource,
   ".create_term(",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
-  "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
-  "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
-  "Blog category {category_id} has no canonical localized copy",
-  "update must never recreate a Taxonomy Category",
-]);
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
-  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
-  "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
-  "Blog category Taxonomy hierarchy coverage is incomplete before create",
-  "Blog category Taxonomy projection contains Category without localized copy before create",
-]);
 requireAll("crates/modules/rustok-blog/src/services/post/commands/create.rs", [
   "pub async fn create_post(",
   "if input.publish {",
@@ -1030,11 +1030,6 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "sync_post_tags_in_tx(",
 ]);
 
-requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
-  "ensure_module_terms_for_owner_in_tx(",
-  "allow_create",
-]);
-
 requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "pub async fn ensure_module_terms_for_owner_in_tx(",
   "allow_create",
@@ -1052,7 +1047,6 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
 requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
-  "lock_module_term_in_tx(",
   "bump_posts_for_tag_relation_removal_in_tx",
   "Expr::col(blog_post::Column::Version).add(1)",
 ]);

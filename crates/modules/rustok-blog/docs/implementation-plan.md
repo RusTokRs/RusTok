@@ -395,12 +395,17 @@ the regression also proves that an identical ID under another tenant is untouche
 
 ### Reference guard rejection evidence
 
-`npm run verify:module-reference-contract` now executes the live source guard and
-13 fixture tests. The fixtures snapshot current owner sources, accept the unchanged
+`npm run verify:module-reference-contract` executes the source guard and
+its fixture tests. The fixtures snapshot current owner sources, accept the unchanged
 snapshot, and reject deliberate loss of Patch semantics, mandatory revisions,
 predecessor CAS, explicit write locales, tenant admission, projection/business
 revision separation, error redaction, persistence privacy, owner port privacy,
 projection listener composition and valid service exports.
+
+The Taxonomy checks follow the current Blog-owned port. Negative fixtures reject
+direct Taxonomy implementation imports, a missing update lock and an unconditional
+Tag creation grant. The real Taxonomy adapter and its host registration remain
+open in the [Blog Taxonomy decision](../../../../DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md).
 
 The tenant negative case exposed a false pass: removing admission from one
 mutation still passed while another method retained the marker. The guard now

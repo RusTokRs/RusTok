@@ -141,7 +141,9 @@ The current boundary is:
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 
-Open: `BlogTaxonomyPort` has no Taxonomy-backed implementation yet. ADR
+The Blog crate declares Taxonomy as a dev dependency for integration fixtures.
+The reference source check verifies Blog's port calls. A Taxonomy-backed
+implementation of `BlogTaxonomyPort` remains open. ADR
 `DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
 plans `TaxonomyBlogTaxonomyPortAdapter` in `rustok-taxonomy`; until a host
 publishes it, HTTP controllers and GraphQL resolvers run on
