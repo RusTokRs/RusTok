@@ -240,6 +240,35 @@ async fn reserve_execution_for_claim(
     context: &serde_json::Value,
 ) -> WorkflowResult<Option<Uuid>> {
     let transaction = db.begin().await?;
+    // Serialize with workflow edit/step edit/restore, all of which lock the
+    // same workflow row before writing the definition. The revision check
+    // must be inside the claim+journal transaction: the earlier read-only
+    // preparation check cannot fence a concurrent step graph mutation.
+    let live_workflow =
+        super::workflow_service::lock_workflow_for_update(
+            &transaction, item.tenant_id, item.workflow_id,
+        ).await?;
+    let still_eligible =
+        live_workflow.status == WorkflowStatus::Active
+            && live_workflow.trigger_config.get("type").and_then(|v| v.as_str()) == Some("cron")
+            && live_workflow.trigger_config.get("expression").and_then(|v| v.as_str())
+                .is_some_and(|expression|
+                    schedule_revision(&live_workflow, expression) == item.schedule_revision
+                );
+    if !still_eligible {
+        firing::Entity::update_many()
+            .col_expr(firing::Column::Status, Expr::value(firing::SKIPPED))
+            .col_expr(firing::Column::Reason, Expr::value("workflow_changed_before_execution"))
+            .col_expr(firing::Column::CompletedAt, Expr::value(at(Utc::now())))
+            .filter(firing::Column::Id.eq(item.id))
+            .filter(firing::Column::TenantId.eq(item.tenant_id))
+            .filter(firing::Column::Status.eq(firing::RUNNING))
+            .filter(firing::Column::AttemptToken.eq(token))
+            .exec(&transaction).await?;
+        transaction.commit().await?;
+        return Ok(None);
+    }
+
     let affected = firing::Entity::update_many()
         .col_expr(firing::Column::ClaimedAt, Expr::value(at(Utc::now())))
         .filter(firing::Column::Id.eq(item.id))
