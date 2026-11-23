@@ -148,14 +148,16 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             SsrDraftSessionError::GenerationConflict { .. }
             | SsrDraftSessionError::PageMismatch { .. }
             | SsrDraftSessionError::OperationReceiptConflict
-            | SsrDraftSessionError::OperationReceiptRequiresSession,
+            | SsrDraftSessionError::OperationReceiptRequiresSession
+            | SsrDraftSessionError::DraftUnavailable,
         )) => HTTP_CONFLICT,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::InvalidOperationId
             | SsrDraftSessionError::InvalidOperationHash,
         )) => HTTP_BAD_REQUEST,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
-            SsrDraftSessionError::OperationReceiptTooLarge { .. },
+            SsrDraftSessionError::OperationReceiptTooLarge { .. }
+            | SsrDraftSessionError::RecordTooLarge { .. },
         )) => HTTP_PAYLOAD_TOO_LARGE,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::OperationReceiptCapacity { .. }
