@@ -190,3 +190,8 @@ back instead of leaving a changed selection/clipboard or half-finished page oper
 is taken for mutating intents and intents with selection hints; pure read-only hover/select without
 hints retain the lightweight path. This adds a state snapshot to mutating browser dispatches;
 profile the cost with large projects before certifying performance.
+
+The controller now offers `mark_save_started_with_id`, `acknowledge_save_for_attempt` and
+`mark_save_failed_for_attempt`, which guard identical-hash retries against stale asynchronous
+completions. Existing hash-only entrypoints remain for legacy clients but are not sufficient to
+correlate retries. Local IDs are transient and are **not** a server idempotency key.

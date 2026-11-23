@@ -833,6 +833,26 @@ fn restoring_editor_does_not_resurrect_orphaned_save_requests() {
 }
 
 #[test]
+fn an_identical_retry_has_a_new_attempt_identity() {
+    let mut editor = editor();
+    let same_hash = editor.revision().project_hash;
+    let first = editor.revision_mut().begin_save_with_id().expect("first save");
+    editor.revision_mut().fail_save();
+    let second = editor.revision_mut().begin_save_with_id().expect("retry");
+    assert_ne!(first, second);
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted_attempt(same_hash, first, "stale"),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    assert_eq!(editor.revision().active_save_attempt_id(), Some(second));
+    assert_eq!(editor.revision().last_acknowledged_revision, None);
+    editor.revision_mut()
+        .acknowledge_submitted_attempt(same_hash, second, "rev-new")
+        .expect("current attempt");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-new"));
+}
+
+#[test]
 fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
     let mut editor = editor();
     editor.apply(EditorCommand::Patch {

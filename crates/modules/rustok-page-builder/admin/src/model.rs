@@ -149,16 +149,37 @@ impl AdminCanvasController {
     }
 
     pub fn mark_save_started(&mut self) -> Result<(), AdminCanvasError> {
-        // Validate the UI transition first; if the core rejects a conflicting
-        // in-flight snapshot, roll back the UI transition atomically.
+        self.mark_save_started_with_id().map(|_| ())
+    }
+
+    pub fn mark_save_started_with_id(&mut self) -> Result<u64, AdminCanvasError> {
         let previous_ui = self.ui.clone();
         self.ui.dispatch(UiIntent::SaveStarted)?;
-        if let Err(error) = self.editor.revision_mut().begin_save() {
-            self.ui = previous_ui;
-            return Err(error.into());
-        }
+        let attempt_id = match self.editor.revision_mut().begin_save_with_id() {
+            Ok(id) => id,
+            Err(error) => {
+                self.ui = previous_ui;
+                return Err(error.into());
+            }
+        };
         self.synchronize_revision();
-        Ok(())
+        Ok(attempt_id)
+    }
+
+    pub fn active_save_attempt_id(&self) -> Option<u64> {
+        self.editor.revision().active_save_attempt_id()
+    }
+
+    /// A late error from an old attempt must not fail a newer save.
+    pub fn mark_save_failed_for_attempt(
+        &mut self,
+        attempt_id: u64,
+    ) -> Result<bool, AdminCanvasError> {
+        if self.active_save_attempt_id() != Some(attempt_id) {
+            return Ok(false);
+        }
+        self.mark_save_failed()?;
+        Ok(true)
     }
 
     pub fn mark_save_failed(&mut self) -> Result<(), AdminCanvasError> {
@@ -195,15 +216,35 @@ impl AdminCanvasController {
         expected_hash: ProjectHash,
         revision_id: impl Into<String>,
     ) -> Result<(), AdminCanvasError> {
-        let revision_id = revision_id.into();
-        // The submitted hash refers to the request snapshot, not the current editor
-        // (which may have changed while the save was in flight). A local mismatch
-        // is not evidence of a server revision conflict.
+        self.acknowledge_save_impl(expected_hash, None, revision_id.into())
+    }
+
+    /// Asynchronous consumers should use this attempt-bound acknowledgement.
+    pub fn acknowledge_save_for_attempt(
+        &mut self,
+        expected_hash: ProjectHash,
+        attempt_id: u64,
+        revision_id: impl Into<String>,
+    ) -> Result<(), AdminCanvasError> {
+        self.acknowledge_save_impl(expected_hash, Some(attempt_id), revision_id.into())
+    }
+
+    fn acknowledge_save_impl(
+        &mut self,
+        expected_hash: ProjectHash,
+        attempt_id: Option<u64>,
+        revision_id: String,
+    ) -> Result<(), AdminCanvasError> {
         let before = self.clone();
-        self.editor.revision_mut().acknowledge_submitted(
-            expected_hash,
-            revision_id.clone(),
-        )?;
+        if let Some(attempt_id) = attempt_id {
+            self.editor.revision_mut().acknowledge_submitted_attempt(
+                expected_hash, attempt_id, revision_id.clone(),
+            )?;
+        } else {
+            self.editor.revision_mut().acknowledge_submitted(
+                expected_hash, revision_id.clone(),
+            )?;
+        }
         if let Err(error) = self.ui.dispatch(UiIntent::SaveSucceeded {
             revision: revision_id.clone(),
             project_hash: expected_hash,
@@ -583,6 +624,23 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn controller_rejects_stale_completions_of_identical_retries() {
+        let mut controller = controller();
+        let hash = controller.editor().revision().project_hash;
+        let first = controller.mark_save_started_with_id().expect("first save");
+        assert!(controller.mark_save_failed_for_attempt(first).expect("failed"));
+        let retry = controller.mark_save_started_with_id().expect("retry");
+        assert_ne!(first, retry);
+        assert!(!controller.mark_save_failed_for_attempt(first).expect("stale failure"));
+        assert!(controller.acknowledge_save_for_attempt(hash, first, "stale").is_err());
+        assert_eq!(controller.active_save_attempt_id(), Some(retry));
+        assert_eq!(controller.revision_id(), "rev-1");
+        controller.acknowledge_save_for_attempt(hash, retry, "rev-2")
+            .expect("current response");
+        assert_eq!(controller.revision_id(), "rev-2");
     }
 
     #[test]
