@@ -113,6 +113,7 @@ pub fn ProductGridPage() -> impl IntoView {
         if identity != previous_filter_identity.get_untracked() {
             set_previous_filter_identity.set(identity);
             set_last_applied_request.set(None);
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
             set_infinite_items.set(Vec::new());
             set_last_loaded_page.set(0);
             selection.update(|selected| selected.clear());
@@ -159,7 +160,7 @@ pub fn ProductGridPage() -> impl IntoView {
         }
     });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
-     // The grid is served from an `Async` admin route, so its data has to be resolved during the
+    // The grid is served from an `Async` admin route, so its data has to be resolved during the
     // render: a `LocalResource` is `pending()` on the server and the reader gets the fallback.
     // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
     let options_locale = locale.clone();
@@ -1183,6 +1184,12 @@ pub fn ProductGridPage() -> impl IntoView {
                 class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
             >
                 <input type="hidden" name="page" value="1" />
+                {move || catalog_controls.get().search.map(|value| view! {
+                    <input type="hidden" name="search" value=value />
+                })}
+                {move || catalog_controls.get().status.map(|value| view! {
+                    <input type="hidden" name="status" value=value />
+                })}
                 <input
                     type="hidden"
                     name="per_page"
