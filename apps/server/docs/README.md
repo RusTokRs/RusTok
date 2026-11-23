@@ -510,11 +510,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   and retained after successful handle publication. All seven starters check
   the shared stop signal before publishing a worker. This is an
   in-process guarantee, not distributed leader election; durable queue
-  A previously published live handle no longer makes repeated startup appear
-  successful after the shared shutdown signal is set; the handle stays
-  registered for draining.
   ownership/receipt correctness remains with the Outbox, Search, Index,
-  and Notifications domain workers.
+  and Notifications domain workers. A previously published live handle no
+  longer makes repeated startup appear successful after the shared shutdown
+  signal is set; the handle stays registered for draining.
 - Tenant cache-generation recovery also invalidates the entire
   `ModuleEffectivePolicyCache` when its durable generation advances or an
   unverified generation is first observed. The local/Redis/periodic listener

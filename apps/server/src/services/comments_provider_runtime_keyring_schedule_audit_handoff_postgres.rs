@@ -218,8 +218,8 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         }
     }
 
-    #[tracing::instrument(skip(self), err)]
     /// Convenience entrypoint that preserves the caller's bounded retry policy.
+    #[tracing::instrument(skip(self), err)]
     pub async fn publish_next(
         &self,
         max_attempts: u32,
