@@ -510,3 +510,67 @@ test('a successful HTTP response without a revision cannot replay the next queue
     sends: 1, queuedResult: null, status: 'error'
   });
 });
+
+
+
+test('a write timeout stays visible when a read intent was issued later', async ({ page }) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-revision="rev-1" data-fly-project-hash="hash-1"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Write timeout canvas"></iframe>
+    </div>
+  `);
+  const result = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    globalThis.fetch = async (_url, options = {}) => {
+      const request = JSON.parse(String(options.body));
+      if (request.intent === 'select') {
+        return new Response(JSON.stringify({
+          result: { revision_id: 'rev-1', project_hash: 'hash-1', dirty: true }
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = options.signal;
+        const fail = () => reject(new DOMException('Aborted', 'AbortError'));
+        if (signal?.aborted) fail();
+        else signal?.addEventListener('abort', fail, { once: true });
+      });
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, {
+      intentEndpoint: '/intent',
+      intentRequestTimeoutMs: 20
+    });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const timeouts: Array<{ current: boolean; intent: string }> = [];
+    root.addEventListener('fly:browser-intent-timeout', (event) => {
+      const detail = (event as CustomEvent<{ current: boolean; intent: string }>).detail;
+      timeouts.push({ current: detail.current, intent: detail.intent });
+    });
+    const write = adapter.emitIntent('save', {});
+    await adapter.emitIntent('select', {});
+    await write;
+    const evidence = {
+      timeouts,
+      problem: root.dataset.flyBrowserProblem,
+      network: root.dataset.flyNetworkStatus
+    };
+    adapter.stop();
+    return evidence;
+  }, adapterSource);
+  expect(result).toEqual({
+    timeouts: [{ current: true, intent: 'save' }],
+    problem: 'INTENT_REQUEST_TIMEOUT',
+    network: 'error'
+  });
+});
