@@ -60,6 +60,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> WorkflowResult<axum::Router>
             "/api/workflows/executions/{execution_id}",
             get(executions::get_execution),
         )
+        .route(
+            "/api/workflows/cron/reconciliation",
+            get(executions::list_cron_reconciliation),
+        )
         .with_state(state))
 }
 
