@@ -1303,12 +1303,12 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
     Ok(())
 }
 
-async fn reserve_release_idempotency_key(
+pub(crate) async fn try_reserve_release_idempotency_key(
     transaction: &DatabaseTransaction,
     operation_kind: &str,
     context: &ModuleCommandContext,
     request_digest: &str,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
+) -> Result<bool, ModuleStaticDistributionReleaseError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
@@ -1336,9 +1336,21 @@ async fn reserve_release_idempotency_key(
         ))
         .await
         .map_err(store_error)?;
-    if inserted.rows_affected() == 1 {
+    Ok(inserted.rows_affected() == 1)
+}
+
+async fn reserve_release_idempotency_key(
+    transaction: &DatabaseTransaction,
+    operation_kind: &str,
+    context: &ModuleCommandContext,
+    request_digest: &str,
+) -> Result<(), ModuleStaticDistributionReleaseError> {
+    if try_reserve_release_idempotency_key(transaction, operation_kind, context, request_digest)
+        .await?
+    {
         return Ok(());
     }
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

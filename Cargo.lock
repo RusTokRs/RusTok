@@ -15972,7 +15972,11 @@ name = "rustok-installer-persistence"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "chrono",
+ "ed25519-dalek",
+ "hex",
+ "rustok-api",
  "rustok-auth",
  "rustok-core",
  "rustok-installer",

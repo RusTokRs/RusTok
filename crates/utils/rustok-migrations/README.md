@@ -117,6 +117,27 @@ Implementation must reuse the real `Migrator`, installer bootstrap entrypoints,
 The current composed exporter covers the crate's compiled module set. Separate
 distribution/profile selection needs executable wiring and its own evidence.
 
+### Installer schema boundary
+
+`apply_installer_owner_schema` selects the tenant, installer session and attempt
+generation, registry publication, and static-distribution migrations from the
+composed plan. It checks that the selection contains its declared prerequisites
+and supports transactional execution. It validates the shared journal against the
+complete composition and applies pending steps from the selection in one
+transaction. On PostgreSQL it takes the stepwise runner's writer lock for that
+transaction. Previously applied platform and module steps can coexist with an
+older installer schema. Unknown journal identities reject the bootstrap.
+
+`apply_installer_remaining_schema` applies the rest of the composition after the
+installer's base-distribution import or revalidation has succeeded.
+
+With `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` set to an isolated PostgreSQL instance,
+exercise the two schema stages and installer retry with:
+
+```shell
+cargo test --locked -p rustok-migrations --test postgres_zero_migration_smoke postgres_installer_schema_preserves_the_owner_boundary -- --ignored --exact
+```
+
 ### Verification tool
 
 `export-migration-plan --output FILE` exports the same validated composition

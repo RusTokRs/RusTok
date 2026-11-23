@@ -4,7 +4,10 @@ use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
-use rustok_migrations::{Migrator, execution::StepRunner};
+use rustok_migrations::{
+    Migrator, apply_installer_owner_schema, apply_installer_remaining_schema,
+    execution::StepRunner, verification::validate_journal,
+};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
     ProductCatalogReadPort, ProductCatalogReadRuntime, ProductProjectionRequest,
@@ -36,6 +39,132 @@ async fn postgres_zero_migration_smoke_applies_from_empty_database() {
     if let Err(error) = run_postgres_zero_migration_smoke().await {
         panic!("PostgreSQL migration smoke failed: {error}");
     }
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+async fn postgres_installer_schema_preserves_the_owner_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
+    const FENCING: &str = "m20261118_000002_add_installer_attempt_fencing";
+    let admin_url = smoke_admin_url()?;
+    let name = unique_postgres_database_name("rustok_installer_schema");
+    let url = database_url_from_admin_url(&admin_url, &name);
+    let admin = connect_postgres(&admin_url).await?;
+    create_database(&admin, &name).await?;
+    let result = async {
+        let db = connect_postgres(&url).await?;
+        let owner_plan = [
+            "m20250101_000001_create_tenants",
+            "m20260403_000061_create_registry_publish_tables",
+            "m20260426_000001_create_install_sessions",
+            "m20260722_000034_static_promotions",
+            FENCING,
+        ]
+        .map(str::to_owned);
+        for _ in 0..2 {
+            apply_installer_owner_schema(&db).await?;
+            validate_installer_journal(&db, &owner_plan).await?;
+        }
+        let manager = SchemaManager::new(&db);
+        if !manager
+            .has_table("module_static_distribution_release_state")
+            .await?
+            || !manager
+                .has_column("install_sessions", "attempt_generation")
+                .await?
+            || !manager
+                .has_column("install_step_receipts", "attempt_generation")
+                .await?
+        {
+            return Err("installer import prerequisites are missing".into());
+        }
+        assert_table_missing(&db, "users").await?;
+        assert_table_missing(&db, "blog_posts").await?;
+
+        apply_installer_remaining_schema(&db).await?;
+        let complete_plan = Migrator::inventory()?;
+        validate_installer_journal(&db, complete_plan.migrations()).await?;
+        if !manager.has_table("blog_posts").await? {
+            return Err("remaining installer schema did not include Blog".into());
+        }
+
+        let runner = StepRunner::connect(&url, Migrator::migrations()).await?;
+        let blocked = apply_installer_owner_schema(&db).await;
+        runner.close().await?;
+        if !blocked.is_err_and(|error| error.to_string().contains("migration writer")) {
+            return Err("installer bootstrap must respect the shared migration lock".into());
+        }
+
+        // Exercise the production rollback for fencing while retaining the other
+        // compiled journal entries that an existing database already applied.
+        let transaction = db.begin().await?;
+        let fencing = Migrator::migrations()
+            .into_iter()
+            .find(|migration| migration.name() == FENCING)
+            .ok_or("fencing migration missing")?;
+        fencing.down(&SchemaManager::new(&transaction)).await?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM seaql_migrations WHERE version = $1",
+                [FENCING.into()],
+            ))
+            .await?;
+        transaction.commit().await?;
+
+        db.execute_unprepared(
+            "ALTER TABLE install_step_receipts ADD COLUMN attempt_generation bigint",
+        )
+        .await?;
+        if apply_installer_owner_schema(&db).await.is_ok()
+            || manager
+                .has_column("install_sessions", "attempt_generation")
+                .await?
+        {
+            return Err(
+                "failed attempt fencing must roll back both installer schema changes".into(),
+            );
+        }
+        db.execute_unprepared("ALTER TABLE install_step_receipts DROP COLUMN attempt_generation")
+            .await?;
+        apply_installer_owner_schema(&db).await?;
+        validate_installer_journal(&db, complete_plan.migrations()).await?;
+        if !manager
+            .has_column("install_sessions", "attempt_generation")
+            .await?
+            || !manager
+                .has_column("install_step_receipts", "attempt_generation")
+                .await?
+        {
+            return Err("installer retry did not restore fencing columns".into());
+        }
+        db.execute_unprepared(
+            "INSERT INTO seaql_migrations VALUES ('unknown_installer_fixture', 0)",
+        )
+        .await?;
+        if !apply_installer_owner_schema(&db)
+            .await
+            .is_err_and(|error| error.to_string().contains("unknown_installer_fixture"))
+        {
+            return Err("a complete bootstrap must still reject unknown journal identities".into());
+        }
+        db.close().await?;
+        Ok(())
+    }
+    .await;
+    finish_fixture(&admin, &name, result).await
+}
+
+async fn validate_installer_journal(
+    db: &DatabaseConnection,
+    plan: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let versions = Migrator::get_migration_models(db)
+        .await?
+        .into_iter()
+        .map(|row| row.version)
+        .collect::<Vec<_>>();
+    Ok(validate_journal(&versions, plan)?)
 }
 
 #[tokio::test]

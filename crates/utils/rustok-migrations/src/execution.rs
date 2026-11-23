@@ -21,6 +21,8 @@ use std::{
 };
 use thiserror::Error;
 
+pub(crate) const MIGRATION_LOCK_KEY: &str = "hashtext('rustok-migrate'), 1";
+
 #[derive(Debug, Error)]
 pub enum ExecutionError {
     #[error("migration plan must be nonempty with distinct, nonempty identities")]
@@ -215,7 +217,7 @@ impl StepRunner {
             let row = database
                 .query_one_raw(Statement::from_string(
                     DbBackend::Postgres,
-                    "SELECT pg_try_advisory_lock(hashtext('rustok-migrate'), 1) AS acquired",
+                    format!("SELECT pg_try_advisory_lock({MIGRATION_LOCK_KEY}) AS acquired"),
                 ))
                 .await?
                 .ok_or_else(|| DbErr::Custom("migration lock result is missing".into()))?;

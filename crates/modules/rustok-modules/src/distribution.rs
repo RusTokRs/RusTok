@@ -1109,7 +1109,6 @@ async fn lock_next_build_candidate(
         .await
         .map_err(store_error)?;
     row.map(|row| {
-        let attempt_count: i64 = row.try_get("", "attempt_count").map_err(store_error)?;
         Ok(BuildCandidate {
             distribution_build_id: uuid_from_row(&row, "distribution_build_id", backend)
                 .map_err(store_error)?,
@@ -1117,8 +1116,7 @@ async fn lock_next_build_candidate(
                 &row.try_get::<String>("", "status").map_err(store_error)?,
             )?,
             active_claim_id: optional_uuid_from_row(&row, "active_claim_id", backend)?,
-            attempt_count: u32::try_from(attempt_count)
-                .map_err(|_| ModuleStaticDistributionError::AttemptOverflow)?,
+            attempt_count: build_attempt_count(&row, backend)?,
         })
     })
     .transpose()
@@ -1965,7 +1963,6 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
             ));
         }
     };
-    let attempt_count: i64 = row.try_get("", "attempt_count").map_err(store_error)?;
     Ok(ModuleStaticDistributionBuild {
         distribution_build_id: uuid_from_row(&row, "distribution_build_id", backend)
             .map_err(store_error)?,
@@ -1991,8 +1988,7 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
             &row.try_get::<String>("", "status").map_err(store_error)?,
         )?,
         requested_by: uuid_from_row(&row, "requested_by", backend).map_err(store_error)?,
-        attempt_count: u32::try_from(attempt_count)
-            .map_err(|_| ModuleStaticDistributionError::AttemptOverflow)?,
+        attempt_count: build_attempt_count(&row, backend)?,
         active_claim_id: optional_uuid_from_row(&row, "active_claim_id", backend)?,
         claimed_by: row.try_get("", "claimed_by").map_err(store_error)?,
         result,
@@ -2156,6 +2152,18 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionError::RevisionOverflow)
+}
+
+fn build_attempt_count(
+    row: &QueryResult,
+    backend: SupportedBackend,
+) -> Result<u32, ModuleStaticDistributionError> {
+    let count = match backend {
+        SupportedBackend::Postgres => row.try_get::<i32>("", "attempt_count").map(i64::from),
+        SupportedBackend::Sqlite => row.try_get::<i64>("", "attempt_count"),
+    }
+    .map_err(store_error)?;
+    u32::try_from(count).map_err(|_| ModuleStaticDistributionError::AttemptOverflow)
 }
 
 fn positive_revision(

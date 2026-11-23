@@ -228,7 +228,7 @@ impl InstallerPersistenceService {
         session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<install_step_receipt::Model, sea_orm::DbErr> {
-        let owner = require_attempt_fence(session)?;
+        require_attempt_fence(session)?;
         let receipt_session_id = parse_session_uuid(&receipt.session_id)?;
         if receipt_session_id != session.id {
             return Err(sea_orm::DbErr::Custom(

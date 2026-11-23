@@ -180,6 +180,7 @@ pub(crate) async fn has_journal_claim(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::TransactionTrait;
     use std::time::Duration;
 
     #[tokio::test]

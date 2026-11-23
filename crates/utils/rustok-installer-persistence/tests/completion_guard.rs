@@ -19,6 +19,7 @@ async fn insert_session(
         database_engine: Set("postgres".to_string()),
         seed_profile: Set("minimal".to_string()),
         plan_snapshot: Set(serde_json::json!({})),
+        attempt_generation: Set(1),
         lock_owner: Set(None),
         lock_expires_at: Set(None),
         error_message: Set(None),

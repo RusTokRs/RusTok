@@ -31,6 +31,10 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+rustok-api.workspace = true
 rustok-test-utils.workspace = true
 tokio.workspace = true
 

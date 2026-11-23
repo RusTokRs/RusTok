@@ -191,12 +191,12 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert!(stale_owner_error.to_string().contains("attempt fence"));
 
     let mut wrong_generation = session_record(&locked);
-    wrong_generation.attempt_generation = 0;
-    let stale_generation_error = service
+    wrong_generation.attempt_generation += 1;
+    let generation_error = service
         .set_state(&wrong_generation, InstallState::PreflightPassed)
         .await
-        .expect_err("a stale generation must not mutate the session");
-    assert!(stale_generation_error.to_string().contains("attempt fence"));
+        .expect_err("a mismatched generation must not mutate the session");
+    assert!(generation_error.to_string().contains("attempt fence"));
 
     let preflight = service
         .set_state(&session_record(&locked), InstallState::PreflightPassed)
@@ -423,13 +423,13 @@ async fn receipt_persistence_and_conversion_is_bound_to_the_current_attempt() {
             .contains("attempt fence")
     );
 
-    let mut stale_generation = session_record(&locked);
-    stale_generation.attempt_generation -= 1;
+    let mut wrong_generation = session_record(&locked);
+    wrong_generation.attempt_generation += 1;
     assert!(
         service
-            .record_receipt(&stale_generation, &receipt)
+            .record_receipt(&wrong_generation, &receipt)
             .await
-            .expect_err("stale generation cannot append a receipt")
+            .expect_err("mismatched generation cannot append a receipt")
             .to_string()
             .contains("attempt fence")
     );

@@ -129,10 +129,11 @@ disposition of schema objects, initial data, transformations, integrity guards,
 outbox/receipt/work effects and phase/recovery constraints. Resolve cross-owner
 dependencies and all consumers of exact migration names.
 
-Installer bootstrap is a separate required path. `InstallerOwnerMigrator` and
-`apply_installer_owner_schema` select exact `rustok-modules` identities before
-base-distribution import. A globally valid migration list alone does not verify
-this prefix. Test bootstrap/import/remaining-schema ordering explicitly.
+Installer bootstrap is a separate required path. `apply_installer_owner_schema`
+selects required platform and `rustok-modules` steps from the composed plan before
+base-distribution import. It validates the full journal and limits application
+to this selection. Verification covers the bootstrap, import, and remaining
+schema boundaries explicitly.
 
 ### Build the candidate
 
@@ -252,10 +253,9 @@ per-migration freeze set. The module archive `source_digest` cannot replace
 workspace/build identity. The existing snapshot, publication and source-store
 owners remain canonical. All 15 migration-command tests passed with
 `--include-ignored`, including ten build-input regressions, real Cargo metadata
-collection on an isolated workspace and a read-only resolution of the current
-repository (1084 packages, 75 captured path packages). The complete updated
-`verify-fresh` workflow has not been rerun; no fresh PostgreSQL replay evidence
-is claimed for this step.
+collection on an isolated workspace and a read-only resolution of the repository
+at that time (1084 packages, 75 captured path packages). The Blog pilot below
+exercises the complete source and database comparison workflow.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.
@@ -362,9 +362,29 @@ listed eight validated clock differences and found no blocking difference. All
 out-of-window bootstrap value and database and role name collisions. Both
 fixture databases and roles were removed.
 
-Gate 3 still needs a source-snapshot comparison of an original and a proposed
-consolidated chain through `xtask`, released-prefix replay and installer
-coverage. Gates 2, 4 and 5 remain pending.
+On 2026-11-23, `xtask migrations verify-fresh` compared two source snapshots
+on PostgreSQL 16.13. The reference was local `main` at `266e7e6d56`, with 598
+migrations. The disposable candidate folded Blog's list and retention indexes
+into its initial schema, skipped creation of the redundant preview-token index,
+and retained the separate translation-width migration and rollback. Its 597-step
+plan differed only by the removal of `m20261030_000002_add_blog_list_indexes`.
+Both journals matched their executable plans. The report found no blocking schema
+or data differences and recorded eight validated bootstrap clock differences.
+
+The installer schema smoke on PostgreSQL 16.13 applied the five bootstrap
+migrations on an empty database and retried them before completing the full
+composition. It verified contention with the stepwise runner, transactional
+rollback and retry of attempt fencing with an existing journal, and rejection
+of an unknown journal identity. The fixture database was removed.
+
+On 2026-11-23, the installer adapter loaded an Ed25519-signed fixture receipt
+on PostgreSQL 16.13. It rejected a tampered receipt, imported the original after
+bootstrap, and resolved the same release before and after applying the complete
+schema. A repeat import reused the original record. The fixture database was
+removed. [Signed base-distribution test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs)
+
+Gate 3 still needs replay from an authenticated stable release baseline.
+Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition
 also requires enforcement at the installer/update admission boundary. Release
 workflow prerelease labels by themselves do not enforce it.

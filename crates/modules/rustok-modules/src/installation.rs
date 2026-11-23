@@ -8338,8 +8338,6 @@ mod tests {
 
     #[tokio::test]
     async fn serving_lock_rejects_overlapping_journal_claims() {
-        use sea_orm::TransactionTrait;
-
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared(
             "CREATE TABLE module_artifact_activation_locks (scope_kind TEXT NOT NULL, scope_tenant_key TEXT NOT NULL, slug TEXT NOT NULL, PRIMARY KEY(scope_kind, scope_tenant_key, slug)); \

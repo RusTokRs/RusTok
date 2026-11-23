@@ -2056,7 +2056,7 @@ mod contract_projection_tests {
             vec![fixture.platform.to_string().into()])).await.unwrap();
         assert!(matches!(event_queue.enqueue(event.clone()).await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
         assert!(matches!(schedule_queue.enqueue(schedule.clone()).await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
-        assert!(matches!(event_queue.claim_next(fxture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
+        assert!(matches!(event_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactEventDeliveryError::InvalidInstallationIdentity)));
         assert!(matches!(schedule_queue.claim_next(fixture.tenant, "worker").await, Err(ArtifactScheduleDeliveryError::InvalidInstallationIdentity)));
         for table in ["module_artifact_event_deliveries", "module_artifact_schedule_deliveries"] {
             let row = fixture.db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
@@ -2287,6 +2287,7 @@ mod contract_projection_tests {
         let event_id = root.id;
         entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
+            tenant_id: Set(Some(fixture.tenant)),
             event_type: Set(root.event_type.clone()),
             schema_version: Set(root.schema_version as i16),
             payload: Set(serde_json::to_value(root).unwrap()),
