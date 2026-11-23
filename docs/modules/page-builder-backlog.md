@@ -20,7 +20,7 @@ now preserves ordered merge/replace/remove semantics and rejects invalid reserve
 types; `fly-ui` preserves a failed drop and keeps edits after an in-flight save dirty;
 `fly-browser` blocks intents after stop, refuses fetch redirects and preserves lost-save
 warnings unless the host confirms `dirty: false`. **Still OPEN:** the current
-`UiIntent::SaveSucceeded` envelope has no request identity and hosts can acknowledge
+`UiIntent::SaveSucceeded` envelope has no unique request identity and hosts can acknowledge
 outside an active `SaveStarted` transition. Correlating out-of-order responses with a
 request token across core/UI/transports, proving hosted runtime behavior under CSP,
 and parity for the foundation-only Dioxus workspace require a separately coordinated
@@ -1172,3 +1172,9 @@ non-empty revision for all mutating intents. The trusted in-process Leptos adapt
 its current revision and project hash before dispatch; HTTP-originated requests must submit the
 observed revision. Missing revisions previously bypassed the optimistic concurrency check. Host
 behavior and all client callers still require end-to-end integration verification.
+
+Fly runtime no-op/geometry follow-up (source/regressions only): empty and idempotent project
+commands now keep revision, undo/redo history and cached validation coherent; custom viewport
+IDs reflect clamped dimensions, viewport state and hit-test/overlay rectangles reject or normalize
+invalid sizes, and resize gestures reject non-finite/out-of-range pointer deltas. This does not
+replace mounted browser geometry, accessibility, or host integration evidence.
