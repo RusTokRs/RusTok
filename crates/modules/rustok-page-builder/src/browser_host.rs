@@ -127,6 +127,24 @@ const __flyBindSsrAdapter = (adapter) => {
     const rawGeneration = adapter.root.dataset.flyRenderedDraftGeneration;
     const generation = typeof rawGeneration === "string" && /^[1-9][0-9]*$/.test(rawGeneration)
       ? Number(rawGeneration) : NaN;
+    const pendingToken = adapter.pendingOperation?.request?.draft_token;
+    if (
+      rendered &&
+      routeDraft === null &&
+      typeof pendingToken === "string" &&
+      pendingToken &&
+      pendingToken !== rendered
+    ) {
+      // The route token may have been removed after an uncertain write. Restore
+      // the exact owner-bound session from the persisted request before probing;
+      // querying the newly-created empty session would falsely report "unknown".
+      if (!__flyWriteDraftRoute(pendingToken)) {
+        __flyStopForDraftRecovery(adapter, pendingToken);
+        return adapter;
+      }
+      globalThis.location.reload();
+      return adapter;
+    }
     if (rendered) {
       if (!Number.isSafeInteger(generation)) {
         __flyStopForDraftRecovery(adapter, rendered);
