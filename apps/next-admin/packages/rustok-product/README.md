@@ -69,3 +69,11 @@ recognized and removed with the counted facet toggle. The maximum eight
 enumerated facets favor attributes with current selections before otherwise
 eligible options, keeping their clear controls visible in large schemas.
 Source regression guards are authored; runtime tests were not executed.
+
+## Debounced filter navigation safety (2026-11-23; source only)
+
+A URL filter change from browser history invalidates any debounced column-filter
+write that was scheduled against the previous URL. A local filter write is
+recognized separately, so it does not discard a newer edit typed while the
+earlier debounce is completing. Source regression coverage is authored; no
+runtime test or build has been run.
