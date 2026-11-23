@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::entities::{
     ExecutionStatus, OnError, StepExecutionStatus, StepType, WorkflowExecutionActiveModel,
-    WorkflowStepExecutionActiveModel, workflow_execution, workflow_step_execution,
+    WorkflowStepExecutionActiveModel, workflow_cron_firing, workflow_execution, workflow_step_execution,
 };
 use crate::error::WorkflowResult;
 use crate::steps::{
@@ -101,7 +101,7 @@ impl WorkflowEngine {
             return Err(error.into());
         }
 
-        self.run_recorded_execution(execution_id, steps, initial_context).await
+        self.run_recorded_execution(execution_id, steps, initial_context, None).await
     }
 
     /// The Workflow cron owner inserts a trigger journal and checks its firing
@@ -110,10 +110,14 @@ impl WorkflowEngine {
     pub(crate) async fn execute_preclaimed_cron(
         &self,
         execution_id: Uuid,
+        firing_id: Uuid,
+        attempt_token: Uuid,
         steps: Vec<crate::entities::WorkflowStep>,
         initial_context: Value,
     ) -> WorkflowResult<Uuid> {
-        self.run_recorded_execution(execution_id, steps, initial_context).await
+        self.run_recorded_execution(
+            execution_id, steps, initial_context, Some((firing_id, attempt_token)),
+        ).await
     }
 
     async fn run_recorded_execution(
@@ -121,6 +125,7 @@ impl WorkflowEngine {
         execution_id: Uuid,
         steps: Vec<crate::entities::WorkflowStep>,
         initial_context: Value,
+        cron_fence: Option<(Uuid, Uuid)>,
     ) -> WorkflowResult<Uuid> {
         info!(
             execution_id = %execution_id,
@@ -133,6 +138,13 @@ impl WorkflowEngine {
         let mut failure_msg = String::new();
 
         'steps: for step in &steps {
+            // Another process can classify an expired attempt for review,
+            // but cannot authorize this stale owner to issue another effect.
+            // Check the DB fence before every next step, not only when the
+            // execution is first journaled.
+            if let Some((firing_id, token)) = cron_fence {
+                self.assert_cron_attempt(firing_id, token).await?;
+            }
             let step_execution_id = Uuid::new_v4();
             let step_input = context.data.clone();
 
@@ -320,6 +332,13 @@ impl WorkflowEngine {
             }
         }
 
+        // A superseded attempt must not publish a terminal execution state.
+        // Its earlier external effects need reconciliation; a stale worker
+        // cannot certify completion after the operator has changed the fence.
+        if let Some((firing_id, token)) = cron_fence {
+            self.assert_cron_attempt(firing_id, token).await?;
+        }
+
         // Finalize execution
         let final_status = if failed {
             ExecutionStatus::Failed
@@ -338,6 +357,17 @@ impl WorkflowEngine {
         info!(execution_id = %execution_id, success = !failed, "Workflow execution finished");
 
         Ok(execution_id)
+    }
+
+    async fn assert_cron_attempt(&self, firing_id: Uuid, token: Uuid) -> WorkflowResult<()> {
+        let owned = workflow_cron_firing::Entity::find_by_id(firing_id)
+            .filter(workflow_cron_firing::Column::Status.eq(workflow_cron_firing::RUNNING))
+            .filter(workflow_cron_firing::Column::AttemptToken.eq(token))
+            .one(&self.db).await?.is_some();
+        if !owned {
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+        }
+        Ok(())
     }
 
     /// A duplicate trigger is safe to replay only when the first execution
