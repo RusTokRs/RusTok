@@ -1,5 +1,21 @@
 # `rustok-workflow` Documentation
 
+## Active cron admission and deletion safety
+
+Draft Workflow definitions may contain incomplete cron expressions. Activating
+a cron, changing an already active cron expression, or restoring an active
+definition now validates the expression with the same parser the scheduler
+uses (maximum 512 bytes). Invalid active definitions return
+`InvalidTriggerConfig` without a partial workflow update.
+
+Workflow deletion now returns `409 workflow_deletion_blocked` while any
+running or reconciliation-required execution exists, or when a cron firing is
+pending, running or awaiting reconciliation. This prevents a parent-row
+cascade from erasing unresolved owner receipts before the side effects are
+accounted for. Once those states become terminal, the existing hard-delete
+behavior and its historical-data retention implications still apply; no
+new automatic history purge is introduced here.
+
 ## Workflow step deadlines and retry semantics
 
 The engine now enforces optional `timeout_ms` for every attempt of a step.
