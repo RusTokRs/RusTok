@@ -371,6 +371,26 @@ plan differed only by the removal of `m20261030_000002_add_blog_list_indexes`.
 Both journals matched their executable plans. The report found no blocking schema
 or data differences and recorded eight validated bootstrap clock differences.
 
+The seeded Blog replay used the same two pinned executables and compared copies
+of one PostgreSQL 16.13 predecessor after 547 migrations, immediately before the
+shared Blog creation identity. Both runs seeded posts, a translation, a preview
+token and a comment-delivery record after Blog creation. Each subsequent
+migration ran in its own process, and its confirmation and exact journal
+prefix were checked. Five injected journal failures covered Blog creation and
+translation widening on both paths and index creation on the reference path.
+Retries kept the expected widths, indexes and fixture rows. Both schemas enforced
+preview-token uniqueness after removing the redundant index. Strict comparisons
+found no differences at the end of the Blog range or after all 598 reference and
+597 candidate migrations. Each final journal matched its own executable plan.
+The predecessor and both databases were removed.
+
+A separate PostgreSQL 16.13 test on the current composition rolled back the
+Blog index migration, then confirmed that over-width translation data blocks
+column narrowing without altering the row or journal. With compatible title
+and description lengths, rollback reduced their limits while preserving the
+32-character locale contract. Reapplying both steps restored the indexes and
+full column widths. [Blog rollback test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
 The installer schema smoke on PostgreSQL 16.13 applied the five bootstrap
 migrations on an empty database and retried them before completing the full
 composition. It verified contention with the stepwise runner, transactional

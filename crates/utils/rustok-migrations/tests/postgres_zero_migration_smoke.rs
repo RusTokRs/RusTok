@@ -64,7 +64,7 @@ async fn postgres_installer_schema_preserves_the_owner_boundary()
         .map(str::to_owned);
         for _ in 0..2 {
             apply_installer_owner_schema(&db).await?;
-            validate_installer_journal(&db, &owner_plan).await?;
+            assert_migration_journal(&db, &owner_plan).await?;
         }
         let manager = SchemaManager::new(&db);
         if !manager
@@ -84,7 +84,7 @@ async fn postgres_installer_schema_preserves_the_owner_boundary()
 
         apply_installer_remaining_schema(&db).await?;
         let complete_plan = Migrator::inventory()?;
-        validate_installer_journal(&db, complete_plan.migrations()).await?;
+        assert_migration_journal(&db, complete_plan.migrations()).await?;
         if !manager.has_table("blog_posts").await? {
             return Err("remaining installer schema did not include Blog".into());
         }
@@ -129,7 +129,7 @@ async fn postgres_installer_schema_preserves_the_owner_boundary()
         db.execute_unprepared("ALTER TABLE install_step_receipts DROP COLUMN attempt_generation")
             .await?;
         apply_installer_owner_schema(&db).await?;
-        validate_installer_journal(&db, complete_plan.migrations()).await?;
+        assert_migration_journal(&db, complete_plan.migrations()).await?;
         if !manager
             .has_column("install_sessions", "attempt_generation")
             .await?
@@ -156,7 +156,7 @@ async fn postgres_installer_schema_preserves_the_owner_boundary()
     finish_fixture(&admin, &name, result).await
 }
 
-async fn validate_installer_journal(
+async fn assert_migration_journal(
     db: &DatabaseConnection,
     plan: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -166,6 +166,100 @@ async fn validate_installer_journal(
         .map(|row| row.version)
         .collect::<Vec<_>>();
     Ok(validate_journal(&versions, plan)?)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+async fn postgres_blog_rollback_preserves_translation_data()
+-> Result<(), Box<dyn std::error::Error>> {
+    const WIDTH: &str = "m20261030_000001_widen_blog_translation_columns";
+    const INDEXES: &str = "m20261030_000002_add_blog_list_indexes";
+    let inventory = Migrator::inventory()?;
+    let migrations = inventory.migrations();
+    let width = migrations
+        .iter()
+        .position(|name| name == WIDTH)
+        .ok_or("Blog width step missing")?;
+    if migrations.get(width + 1).map(String::as_str) != Some(INDEXES) {
+        return Err("expected the Blog index step after the width step".into());
+    }
+
+    let admin_url = smoke_admin_url()?;
+    let name = unique_postgres_database_name("rustok_blog_rollback");
+    let url = database_url_from_admin_url(&admin_url, &name);
+    let admin = connect_postgres(&admin_url).await?;
+    create_database(&admin, &name).await?;
+    let result = async {
+        let prefix = ExecutionPhase {
+            expected_prefix: Vec::new(),
+            steps: migrations[..width + 2].to_vec(),
+        };
+        apply_verified_phase_steps(&url, &prefix, &prefix.steps, &[]).await?;
+        let db = connect_postgres(&url).await?;
+        db.execute_unprepared(
+            "INSERT INTO tenants (id, name, slug) VALUES \
+                ('ce020000-0000-0000-0000-000000000001', 'Blog rollback fixture', 'blog-rollback-fixture'); \
+             INSERT INTO blog_posts (id, tenant_id, author_id, slug) VALUES \
+                ('ce020000-0000-0000-0000-000000000002', 'ce020000-0000-0000-0000-000000000001', \
+                 'ce020000-0000-0000-0000-000000000003', 'rollback-fixture'); \
+             INSERT INTO blog_post_translations (id, post_id, locale, title, seo_description, body) VALUES \
+                ('ce020000-0000-0000-0000-000000000004', 'ce020000-0000-0000-0000-000000000002', \
+                 'zh-Hant-TW-variant1', repeat('T', 512), repeat('D', 1000), 'fixture body')",
+        ).await?;
+
+        Migrator::down(&db, Some(1)).await?;
+        assert_migration_journal(&db, &migrations[..width + 1]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|512|1000|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        if Migrator::down(&db, Some(1)).await.is_ok() {
+            return Err("Blog rollback accepted a title wider than the old column".into());
+        }
+        assert_migration_journal(&db, &migrations[..width + 1]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|512|1000|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        db.execute_unprepared(
+            "UPDATE blog_post_translations SET title = repeat('T', 255), seo_description = repeat('D', 500) \
+             WHERE id = 'ce020000-0000-0000-0000-000000000004'",
+        ).await?;
+        Migrator::down(&db, Some(1)).await?;
+        assert_migration_journal(&db, &migrations[..width]).await?;
+        assert_blog_rollback_state(&db, "32,500,255|255|500|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        let phase = ExecutionPhase {
+            expected_prefix: migrations[..width].to_vec(),
+            steps: migrations[width..width + 2].to_vec(),
+        };
+        apply_verified_phase_steps(&url, &phase, &phase.steps, &[]).await?;
+        assert_migration_journal(&db, &migrations[..width + 2]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|255|500|zh-Hant-TW-variant1|fixture body|true|false").await?;
+        Ok(db.close().await?)
+    }
+    .await;
+    finish_fixture(&admin, &name, result).await
+}
+
+async fn assert_blog_rollback_state(
+    db: &DatabaseConnection,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = db.query_one_raw(Statement::from_string(
+        DbBackend::Postgres,
+        "SELECT concat_ws('|', \
+            (SELECT string_agg(character_maximum_length::text, ',' ORDER BY column_name) \
+             FROM information_schema.columns WHERE table_schema = 'public' \
+               AND table_name = 'blog_post_translations' AND column_name IN ('locale', 'seo_description', 'title')), \
+            char_length(title), char_length(seo_description), locale, body, \
+            (to_regclass('public.idx_blog_posts_public_keyset') IS NOT NULL)::text, \
+            (to_regclass('public.idx_blog_preview_tokens_token') IS NOT NULL)::text) AS state \
+         FROM blog_post_translations WHERE id = 'ce020000-0000-0000-0000-000000000004'",
+    )).await?.ok_or("missing Blog rollback translation")?;
+    let actual: String = row.try_get("", "state")?;
+    if actual != expected {
+        return Err(
+            format!("Blog rollback state differs: expected {expected}, got {actual}").into(),
+        );
+    }
+    Ok(())
 }
 
 #[tokio::test]
