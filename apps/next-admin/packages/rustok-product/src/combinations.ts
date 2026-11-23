@@ -8,7 +8,9 @@ import type { VariantAxisConfig, VariantAxisValueInput } from './api/types';
 /** Candidate browsing only. Neither these keys nor the missing rows are durable SKU identities. */
 export const MAX_COMBINATION_CANDIDATES = 4096;
 export const COMBINATION_PAGE_SIZE = 12;
-export const MAX_COMBINATION_MEMBERS = 256;
+import { MAX_PRODUCT_VARIANTS } from './variant-create';
+
+export const MAX_COMBINATION_MEMBERS = MAX_PRODUCT_VARIANTS;
 export interface CombinationAxis {
   attributeId: string;
   label: string;
