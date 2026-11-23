@@ -113,6 +113,7 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
     }
 
