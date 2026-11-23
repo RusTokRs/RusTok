@@ -557,9 +557,8 @@ async fn load_facet_option_labels(
         }
     }
 
-    // Options without a translation row (or archived options still referenced by a product) fall
-    // back to the dictionary code so a bucket is never rendered as a raw identifier when the
-    // dictionary still knows the option.
+    // Active options without a translation row fall back to the dictionary code so a bucket is
+    // never rendered as a raw identifier when the dictionary still knows the option.
     let missing = option_ids
         .iter()
         .filter(|option_id| !labels.contains_key(option_id))
