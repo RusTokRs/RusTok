@@ -152,6 +152,12 @@ only the narrow `MigrationSource` port. The operational inventory does not store
 full module lifecycle/runtime-extension vtables. This does not remove the
 composition's Cargo dependency tree; binary-size effects remain unmeasured.
 
+The [plan comparator](../../../scripts/verify/verify-migration-plan-compatibility.mjs)
+uses both projections in its `--protected-prefix` mode to verify declared
+owner, dependency, safety and transaction immutability against a supplied
+nonempty prefix. The guide describes the remaining release authentication and
+source verification requirements.
+
 Composition rejects duplicate identities/owners, foreign or absent declaration
 subjects, duplicate safety/dependency declarations and edges, missing dependency
 targets, and cycles. Cross-owner dependency targets remain supported. Missing

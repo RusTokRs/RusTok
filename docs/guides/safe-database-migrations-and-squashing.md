@@ -52,7 +52,7 @@ the current implementation after the first Rust tooling changes.
 |---|---|---|
 | [Source scanner](../../scripts/dev/safe-migration-squash.mjs) | Recursively inspects recognized entity/DDL shapes, file/directory entrypoints and dated references; rejects empty coverage | Regex parsing still has incomplete syntax/type coverage and warning-only cases; explicitly diagnostic |
 | [Plan exporter](../../crates/utils/rustok-migrations/src/bin/export_migration_plan.rs) | Exports ordered runtime migration names and owner/dependency/safety/transaction declarations from the executable inventory | No migration source hashes, stable seal or independent profile selection |
-| [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Requires the PR base name list to remain an exact prefix | Unchanged names can conceal changed bodies/helpers |
+| [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Checks the PR base name list and can compare executable declarations against a supplied protected prefix | The protected prefix must come from trusted release tooling. Unchanged declarations can conceal changed bodies/helpers. |
 | [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
 | [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
 | [PostgreSQL observer](../../crates/utils/rustok-migrations/src/verification.rs) | Compares real schema, privileges, enforcement, sequences, row multisets and each plan's journal | PostgreSQL 16, supported fixture limits and extensions; requires quiescent writers and complete read privileges |
@@ -185,6 +185,24 @@ path behaves correctly. Rollback tests cover only explicitly reversible steps.
 Irreversible steps require a restore/forward-recovery rehearsal.
 
 ### Admit and seal
+
+A local declaration check takes the ordered inventory projection of one
+composition's protected prefix and a full candidate export.
+
+```sh
+node scripts/verify/verify-migration-plan-compatibility.mjs \
+  --protected-prefix protected-inventory.json --head candidate-inventory.json
+```
+
+Both inputs require version 1 `entries` aligned with `migrations`. The
+protected inventory must be nonempty. A candidate can replace draft entries
+after that boundary while retaining protected names, execution order, owners,
+dependency edges, safety and phase metadata, and transaction declarations.
+`null` is preserved as a declaration value. The current PR check still uses
+`--base` and requires the entire base name list to remain an exact prefix.
+The local check compares supplied plans. Trusted release tooling still needs
+to authenticate and select the boundary, cover independent module seals,
+verify source inputs, and authorize any draft replacement.
 
 A trusted base-owned verifier checks the declared range, protected history and
 complete report. Infrastructure approval alone cannot authorize rewriting
