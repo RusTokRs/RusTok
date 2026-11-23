@@ -1041,6 +1041,68 @@ mod cron_revision_tests {
     use crate::entities::{OnError, StepType};
 
     #[tokio::test]
+    async fn failure_tracking_is_tenant_scoped_atomic_and_does_not_repause() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let owner = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now().fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(owner),
+            name: Set("failure threshold".into()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({"type":"manual"})),
+            created_by: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let service = WorkflowService::new(db.clone());
+        assert!(matches!(
+            service.record_failure(other_tenant, workflow_id, 2).await,
+            Err(WorkflowError::NotFound(_))
+        ));
+        assert!(matches!(
+            service.record_failure(owner, workflow_id, 0).await,
+            Err(WorkflowError::InvalidTriggerConfig(_))
+        ));
+        assert!(matches!(
+            service.record_failure(owner, workflow_id, u32::MAX).await,
+            Err(WorkflowError::InvalidTriggerConfig(_))
+        ));
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let once = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(once.failure_count, 1);
+        assert_eq!(once.status, WorkflowStatus::Active);
+        assert!(once.auto_disabled_at.is_none());
+
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let paused = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(paused.failure_count, 2);
+        assert_eq!(paused.status, WorkflowStatus::Paused);
+        assert!(paused.auto_disabled_at.is_some());
+
+        // An overdue event cannot increment or override an operator-paused
+        // workflow after the terminal transition has occurred.
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let after = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(after.failure_count, 2);
+        assert_eq!(after.auto_disabled_at, paused.auto_disabled_at);
+    }
+
+    #[tokio::test]
     async fn mutating_step_graph_advances_owning_workflow_revision() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
