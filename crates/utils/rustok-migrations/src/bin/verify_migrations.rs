@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
             "verify-migrations fresh --admin-url-env ENV --reference-runner FILE --candidate-runner FILE --reference-root DIR --candidate-root DIR --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE"
         );
         println!(
-            "verify-migrations compare --reference-url-env ENV --candidate-url-env ENV --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE --quiescent"
+            "verify-migrations compare --reference-url-env ENV --candidate-url-env ENV --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE --quiescent [--reference-through MIGRATION --candidate-through MIGRATION]"
         );
         return Ok(());
     }
@@ -63,6 +63,8 @@ async fn main() -> Result<()> {
                     "--candidate-url-env",
                     "--reference-plan",
                     "--candidate-plan",
+                    "--reference-through",
+                    "--candidate-through",
                     "--pg-dump",
                     "--output",
                 ]
@@ -89,10 +91,26 @@ async fn main() -> Result<()> {
     if output.exists() {
         return Err("output already exists; choose a new report path".into());
     }
+    let checkpoints = match (
+        options.get("--reference-through"),
+        options.get("--candidate-through"),
+    ) {
+        (Some(reference), Some(candidate)) => Some((reference.as_str(), candidate.as_str())),
+        (None, None) => None,
+        _ => {
+            return Err("--reference-through and --candidate-through must be used together".into());
+        }
+    };
     let reference_bytes = fs::read(get("--reference-plan")?)?;
     let candidate_bytes = fs::read(get("--candidate-plan")?)?;
-    let reference_plan = read_plan(&reference_bytes)?;
-    let candidate_plan = read_plan(&candidate_bytes)?;
+    let reference_plan = read_plan(
+        &reference_bytes,
+        checkpoints.map(|(reference, _)| reference),
+    )?;
+    let candidate_plan = read_plan(
+        &candidate_bytes,
+        checkpoints.map(|(_, candidate)| candidate),
+    )?;
     let pg_dump = Path::new(get("--pg-dump")?);
     let mut provenance = BTreeMap::new();
     for name in ["--reference-runner", "--candidate-runner", "--pg-dump"] {
@@ -159,8 +177,14 @@ async fn main() -> Result<()> {
             }
         }
     }
-    let artifact =
+    let mut artifact =
         serde_json::json!({ "schema_version": 1, "report": report, "input_sha256": provenance });
+    if let Some((reference, candidate)) = checkpoints {
+        artifact["checkpoints"] = serde_json::json!({
+            "reference": { "through": reference, "migration_count": reference_plan.len() },
+            "candidate": { "through": candidate, "migration_count": candidate_plan.len() },
+        });
+    }
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -186,18 +210,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_plan(bytes: &[u8]) -> Result<Vec<String>> {
+fn read_plan(bytes: &[u8], through: Option<&str>) -> Result<Vec<String>> {
     let value: serde_json::Value = serde_json::from_slice(bytes)?;
     if value.get("schema_version").and_then(|v| v.as_u64()) != Some(1) {
         return Err("unsupported migration plan version".into());
     }
-    let migrations: Vec<String> = serde_json::from_value(
+    let mut migrations: Vec<String> = serde_json::from_value(
         value
             .get("migrations")
             .ok_or("plan migrations missing")?
             .clone(),
     )?;
     rustok_migrations::verification::validate_journal(&migrations, &migrations)?;
+    if let Some(through) = through {
+        let index = migrations
+            .iter()
+            .position(|migration| migration == through)
+            .ok_or_else(|| format!("checkpoint migration {through:?} is missing from its plan"))?;
+        migrations.truncate(index + 1);
+    }
     Ok(migrations)
 }
 
@@ -485,6 +516,20 @@ async fn run_migrator(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checkpoint_uses_inclusive_prefix_of_validated_plan() -> Result<()> {
+        let plan = br#"{"schema_version":1,"migrations":["first","second","third"]}"#;
+        assert_eq!(read_plan(plan, Some("second"))?, ["first", "second"]);
+        assert_eq!(read_plan(plan, None)?, ["first", "second", "third"]);
+        assert_eq!(read_plan(plan, Some("first"))?, ["first"]);
+        assert!(read_plan(plan, Some("unknown")).is_err());
+        assert!(read_plan(plan, Some("")).is_err());
+
+        let invalid = br#"{"schema_version":1,"migrations":["first","repeat","repeat"]}"#;
+        assert!(read_plan(invalid, Some("first")).is_err());
+        Ok(())
+    }
 
     #[test]
     fn rejects_missing_duplicate_and_reordered_confirmations() {

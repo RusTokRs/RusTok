@@ -331,7 +331,14 @@ Recreating the login with a new password also discards original role settings
 before the candidate runs. Migration children
 receive their fixture URL and a bounded OS environment. `compare --quiescent`
 compares two already prepared fixture endpoints without creating or deleting
-databases. The `fresh` cleanup drops only successfully created fixture resources.
+databases. Use `--reference-through MIGRATION` and `--candidate-through MIGRATION`
+together to compare intermediate checkpoints using the original plan exports.
+Each named migration is included in its side's expected journal. The observation
+must match that journal exactly, so any missing or later step fails verification.
+The report records both checkpoint names, prefix lengths and full plan file
+digests. Omitting the flags compares the complete plans.
+
+The `fresh` cleanup drops only successfully created fixture resources.
 Run `verify-migrations --help` for explicit arguments. Reports contain
 digests and difference categories rather than fixture row values. A successful
 comparison is scoped evidence; `replacement_admission` always remains blocked.

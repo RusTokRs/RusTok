@@ -105,6 +105,16 @@ fingerprinting, source discovery and executable inventory binding. See the
 for arguments and the [owner tool contract](../../crates/utils/rustok-migrations/README.md#verification-tool)
 for limits and explicit PostgreSQL regression invocation.
 
+For intermediate comparisons on two prepared databases, reuse the complete
+plan exports with `verify-migrations compare --quiescent`,
+`--reference-through` and `--candidate-through`. Each flag names the last
+applied migration in its own chain. The verifier checks each journal through
+that exact step before accepting the schema and data comparison.
+On PostgreSQL 16.13, the CLI accepted a three-step reference prefix and a
+two-step candidate prefix from complete exports. It rejected a later applied
+step beyond the selected checkpoint and accepted complete plans once both
+fixtures reached their ends.
+
 The owner process boundary keeps the complete domain migration dependency tree
 out of ordinary `xtask` compilation. Candidate source edits use the current
 working branch. Reference execution uses immutable source snapshots in
