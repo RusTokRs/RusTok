@@ -1,45 +1,11 @@
 # rustok-workflow / CRATE_API
 
-### Legacy and event-driven uncertain execution visibility
+## Step execution contract
 
-Previously persisted `running` execution journals without a new durable
-cron firing are not deleted, re-created or automatically retried. A bounded
-tenant-scoped REST GET `/api/workflows/executions/unconfirmed` and GraphQL
-`workflowUnconfirmedExecutions` now expose `running` and
-`reconciliation_required` execution receipts for human inspection under
-`workflow_executions:list`. These read-only projections intentionally have
-no universal "retry" button: no generic provider contract can prove whether
-a previously interrupted external side effect was accepted. The Workflow
-owner's new cron-firing reconciliation command applies only to firings with
-a tracked attempt token; legacy/event executions still require their own
-owner-specific evidence and recovery path before any re-dispatch.
-
-
-### Workflow durable cron admission / outcome review refinement (2026-11-23)
-
-Cron now atomically checks the current firing attempt and locked workflow
-definition, then inserts its execution journal in the same transaction before
-any external step begins. This closes the operator-requeue race where an older
-worker could still insert a journal after a review found none. Long-running
-attempts heartbeat only while the same token is current; the engine rechecks
-the token before further steps and finalizes its status under a firing-row
-write fence so a late worker cannot overwrite operator recovery.
-
-Operator `confirm_external_completed` / `confirm_external_failed` can
-resolve the full overall workflow execution outcome only with human
-`workflows:manage` authority, bounded evidence and explicit confirmation
-that the former worker is stopped. The operator must account for **all**
-remaining steps and possible remote side effects, not just one HTTP response.
-`confirm_terminal` remains a reconciliation of a previously terminal
-journal, while `requeue_confirmed_unstarted` refuses any firing with an
-execution journal. All updates and immutable review rows commit together.
-This is not provider-level exactly-once. Migrator composition already includes
-Workflow-owned migrations through the canonical ModuleMigrationSource.
-
-Source regressions now cover competing claimers, immutable audit, stale token,
-unstarted requeue, terminal review, external failure resolution, HTTP
-no-blind-retry and schedule revision on step edits. None were run by request.
-
+- An explicit `timeout_ms` bounds **each** step execution attempt to 1–3,600,000 ms (one hour). `None` means no engine-level deadline. Owner service validates new/updated/restored step configurations, and the engine applies the bound to first and retry attempts.
+- Pure steps have retry/skip/stop semantics; `stop_with` must stop the chain even when returned after a successful retry. Typed `StepTimedOut` produces an overall `timed_out` terminal state when a pure step fails without recovery.
+- Potentially external HTTP/notify/script/event steps fail closed on any executor error, including timeout or a misleading validation error. The individual step and parent execution use `reconciliation_required`; a generic retry/skip policy cannot establish whether a remote effect was already accepted.
+- Unknown executor types with `on_error=skip` record the step as `skipped`, not `failed`.
 
 ## Durable cron owner contract (proposed, 2026-11-23)
 
