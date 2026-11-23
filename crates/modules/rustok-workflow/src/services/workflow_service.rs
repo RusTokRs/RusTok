@@ -220,6 +220,7 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() {
             return Err(WorkflowError::NotFound(workflow_id));
         }
+        super::engine::validate_step_timeout_ms(input.timeout_ms)?;
         let transaction = self.db.begin().await?;
         // Lock the parent workflow so concurrent workflow updates/restores cannot
         // interleave with step creation.
@@ -253,6 +254,7 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() || step_id.is_nil() {
             return Err(WorkflowError::StepNotFound(step_id));
         }
+        super::engine::validate_step_timeout_ms(input.timeout_ms)?;
         let transaction = self.db.begin().await?;
         let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
@@ -766,6 +768,7 @@ impl WorkflowService {
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or(crate::entities::OnError::Stop);
                 let timeout_ms = step.get("timeout_ms").and_then(|v| v.as_i64());
+                super::engine::validate_step_timeout_ms(timeout_ms)?;
 
                 let am = WorkflowStepActiveModel {
                     id: Set(step_id),
