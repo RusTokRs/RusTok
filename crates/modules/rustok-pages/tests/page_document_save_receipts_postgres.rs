@@ -11,8 +11,8 @@ use rustok_pages::entities::{page, page_body, page_body_revision, page_translati
 use rustok_pages::{PageBodyInput, PageService, PagesModule, SavePageDocumentInput};
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, Database, DatabaseConnection,
-    EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
