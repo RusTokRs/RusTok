@@ -700,6 +700,19 @@ fn compact_operation_receipt(
         result.remove("project_data");
         result.insert("effects".to_string(), json!([]));
     }
+    // Save failures can contain transport/provider text. Keep the durable receipt
+    // compact and bounded; the full diagnostic was already sent in the first response.
+    let bounded_error = value
+        .get("save_failure")
+        .and_then(Value::as_object)
+        .and_then(|failure| failure.get("error"))
+        .and_then(Value::as_str)
+        .map(|error| error.chars().take(512).collect::<String>());
+    if let Some(error) = bounded_error
+        && let Some(failure) = value.get_mut("save_failure").and_then(Value::as_object_mut)
+    {
+        failure.insert("error".to_string(), Value::String(error));
+    }
     if let Some(object) = value.as_object_mut() {
         object.remove("persistence");
         object.insert("runtime_context".to_string(), json!({}));
