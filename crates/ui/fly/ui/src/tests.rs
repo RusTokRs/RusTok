@@ -343,6 +343,33 @@ fn deserializing_ui_does_not_restore_orphaned_save_in_progress() {
             .expect("restore");
     assert!(!restored.state.dirty.save_in_progress);
     assert!(restored.state.dirty.save_started_sequence.is_none());
+    assert!(restored.state.dirty.save_started_hash.is_none());
+}
+
+#[test]
+fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    let snapshot_hash = fly::ProjectHash::from_document(&document);
+    machine.state.dirty.project_hash = Some(snapshot_hash);
+    machine.dispatch(UiIntent::SaveStarted).expect("save started");
+    let wrong_hash = fly::ProjectHash::from_bytes(b"other snapshot");
+    assert!(matches!(
+        machine.dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-2".to_string(),
+            project_hash: wrong_hash,
+        }),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
+    assert!(machine.state.dirty.save_in_progress);
+    assert_eq!(machine.state.dirty.save_started_hash, Some(snapshot_hash));
+    machine.dispatch(UiIntent::SaveConflict {
+        expected: "rev-1".to_string(),
+        actual: "rev-2".to_string(),
+    }).expect("remote conflict");
+    assert!(machine.dispatch(UiIntent::SaveStarted).is_err());
+    assert!(machine.state.dirty.save_conflict);
+    assert!(!machine.state.dirty.save_in_progress);
 }
 
 #[test]

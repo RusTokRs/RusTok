@@ -320,6 +320,12 @@ impl FlyUiStateMachine {
                 }]
             }
             UiIntent::SaveStarted => {
+                self.require_edit_capability("edit", self.state.capabilities.edit)?;
+                if self.state.dirty.save_conflict {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save blocked by unresolved revision conflict".to_string(),
+                    ));
+                }
                 if self.state.dirty.save_in_progress {
                     return Err(UiError::CapabilityUnavailable(
                         "save already in progress".to_string(),
@@ -327,6 +333,7 @@ impl FlyUiStateMachine {
                 }
                 self.state.dirty.save_started_sequence =
                     Some(self.state.dirty.command_sequence);
+                self.state.dirty.save_started_hash = self.state.dirty.project_hash;
                 self.state.dirty.save_in_progress = true;
                 self.state.dirty.save_failed = false;
                 vec![UiEffect::None]
@@ -342,6 +349,12 @@ impl FlyUiStateMachine {
                         "no active save to acknowledge".to_string(),
                     ));
                 }
+                if self.state.dirty.save_started_hash.is_some_and(|hash| hash != project_hash) {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save response does not match the submitted project hash".to_string(),
+                    ));
+                }
+                self.state.dirty.save_started_hash = None;
                 // The server acknowledged the snapshot that existed at SaveStarted, not
                 // edits made while the request was in flight. Never advertise those edits
                 // as saved or replace their local hash with the older snapshot's hash.
@@ -366,6 +379,7 @@ impl FlyUiStateMachine {
                 })]
             }
             UiIntent::SaveFailed => {
+                self.state.dirty.save_started_hash = None;
                 self.state.dirty.save_started_sequence = None;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
@@ -376,6 +390,7 @@ impl FlyUiStateMachine {
                 // A lost update is not a generic failure: the local changes are still
                 // unsaved (`dirty` stays set) and retrying against the same revision
                 // will conflict again, so the announcement tells the user to preserve their work.
+                self.state.dirty.save_started_hash = None;
                 self.state.dirty.save_started_sequence = None;
                 self.state.dirty.dirty = true;
                 self.state.dirty.save_in_progress = false;

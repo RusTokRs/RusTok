@@ -68,3 +68,7 @@ Viewport dimensions and zoom are normalized at the intent boundary using the sam
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
 rejected without changing editor state, and a resize event with malformed or overflowing pointer
 coordinates never emits non-finite CSS dimensions.
+
+SaveStarted also checks current edit permission and unresolved conflicts. If the host has
+synchronized a hash, SaveSucceeded must match the submitted hash rather than merely the latest
+server revision; a mismatched acknowledgement leaves the active save untouched.
