@@ -41,9 +41,14 @@ async fn find_variant_for_update_in_tx(
     variant.ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
-fn validate_product_variant_count(current_count: usize, incoming_count: usize) -> CommerceResult<()> {
+fn validate_product_variant_count(
+    current_count: usize,
+    incoming_count: usize,
+) -> CommerceResult<()> {
     let total = current_count.checked_add(incoming_count).ok_or_else(|| {
-        CommerceError::Validation("Product variant count exceeds the supported limit".to_owned())
+        CommerceError::Validation(
+            "Product variant count exceeds the supported limit".to_owned(),
+        )
     })?;
     if total > crate::dto::MAX_PRODUCT_VARIANTS {
         return Err(CommerceError::Validation(format!(
