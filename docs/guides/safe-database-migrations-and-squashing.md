@@ -94,7 +94,8 @@ The repository command group is `cargo xtask migrations`. `xtask` orchestrates i
 snapshots, candidate previews, scoped owner processes and reports.
 `rustok-migrations` implements actual PostgreSQL observation, migration execution
 and typed schema/data comparisons. PostgreSQL dump/restore tools run as pinned
-subprocesses. The implemented commands are `plan` and `verify-fresh`; see the
+subprocesses. The Rust workflow provides planning, fresh comparison, source
+fingerprinting, source discovery and executable inventory binding. See the
 [xtask command contract](../../xtask/README.md#migration-consolidation-commands)
 for arguments and the [owner tool contract](../../crates/utils/rustok-migrations/README.md#verification-tool)
 for limits and explicit PostgreSQL regression invocation.
@@ -445,6 +446,35 @@ preview-token uniqueness after removing the redundant index. Strict comparisons
 found no differences at the end of the Blog range or after all 598 reference and
 597 candidate migrations. Each final journal matched its own executable plan.
 The predecessor and both databases were removed.
+
+The source-coverage check added in `53405e9228` reused the retained reference
+build at `266e7e6d563a2b5d1367211bd4c7245f5872562f`. Discovery matched all
+3009 paths from Cargo's dependency list to that Git tree. It found a source
+entrypoint and verified local links for all 598 executable migrations,
+including three with explicit `MigrationName` implementations. The generated
+declarations passed `bind-inventory` with all 598 source fingerprints attached
+in executable order. This used the existing PostgreSQL report and the saved
+Cargo dependency list. It establishes local source coverage for that build.
+
+The original pilot files are retained locally under
+`target/migration-pilot-20261122`. This record identifies the verified files
+without tracking the scratch trees, build outputs or raw database snapshots.
+
+| Retained file | SHA-256 |
+|---|---|
+| Fresh `plan.json` | `aa5fd76d4491f9257493713fbd716d42737641fcdc807bfc8fd167956fc40cd1` |
+| Fresh `report.json` | `dc2a166cc5bacd37220db006c6e06a6f37bcaec2d1a89a0506777c7604efe3a2` |
+| Fresh `database-report.json` | `77c6a7c881f34c6aca47de2f8ca8008f7d94f7944a3a3de1324b5173e32ebe5d` |
+| `reference-plan.json` | `0528743c2915f0a71ba7ba72b1319ba61a507649baf68ccf31daf6a902ea76b8` |
+| Reference `export-migration-plan.d` | `949322d58ce3ba8a9fade0c52f5c4778d5e6d55e3081b5aea1f099055ff4030d` |
+| Seeded `checkpoints.json` | `8d54604deba94ecdf77d93064bf26fe1eac8bb8f5c9df5467445e51fa9988d85` |
+| Seeded `full-composition-comparison.json` | `aee8a79ff355d344400d3c900c0a1262e22021b4b3c31b2ae55f7bdd5777d958` |
+
+For another review of the same inputs, check the retained file digests and
+reuse the recorded results. A changed source, build, fixture, database
+environment or release boundary requires evidence for the changed inputs.
+Durable storage for the full source and report set remains part of release
+admission.
 
 A separate PostgreSQL 16.13 test on the current composition rolled back the
 Blog index migration, then confirmed that over-width translation data blocks
