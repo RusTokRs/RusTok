@@ -269,8 +269,10 @@ async fn reserve_execution_for_claim(
         return Ok(None);
     }
 
+    let execution_id = Uuid::new_v4();
     let affected = firing::Entity::update_many()
         .col_expr(firing::Column::ClaimedAt, Expr::value(at(Utc::now())))
+        .col_expr(firing::Column::ExecutionId, Expr::value(Some(execution_id)))
         .filter(firing::Column::Id.eq(item.id))
         .filter(firing::Column::TenantId.eq(item.tenant_id))
         .filter(firing::Column::Status.eq(firing::RUNNING))
@@ -289,7 +291,6 @@ async fn reserve_execution_for_claim(
         return Err(WorkflowError::CronReconciliationConflict(item.id));
     }
 
-    let execution_id = Uuid::new_v4();
     WorkflowExecutionActiveModel {
         id: Set(execution_id),
         workflow_id: Set(item.workflow_id),
