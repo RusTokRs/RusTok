@@ -1,5 +1,17 @@
 # Server App — Implementation Plan
 
+## Server audit — durable Workflow cron integration (2026-11-23)
+
+`init_workflow_runtime` now verifies Workflow-owned cursor/firing/audit
+schema before publishing the scheduler handle and refuses to spawn after a
+stop during that async check. The scheduler keeps bounded durable slot
+backfill and execution claims inside `rustok-workflow`, not duplicated in
+the host. Aged ambiguous firings require explicit review rather than auto
+replay; event-triggered workflows also fail closed on uncertain running
+execution receipts. Proposed ADR and owner HTTP/GraphQL contracts are
+documented in Workflow. All new tests/migrations require maintainer
+verification; none have been run.
+
 ## Server audit continuation — Workflow cron execution supervision (2026-11-23)
 
 The Workflow cron owner has been changed from detached execution spawns to
