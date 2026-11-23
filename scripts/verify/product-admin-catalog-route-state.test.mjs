@@ -79,12 +79,12 @@ test('Next and native admin facets agree with owner case-insensitive attribute c
 
 test('Leptos catalog filters are pushed down before server pagination', () => {
   assert.match(grid, /filters=filters/);
-  assert.match(grid, /new_filters\.get\("title"\)/);
-  assert.match(grid, /new_filters\.get\("status"\)/);
-  assert.match(grid, /new_filters\.get\("vendor"\)/);
+  assert.match(grid, /new_filters\s*\.get\("title"\)/);
+  assert.match(grid, /new_filters\s*\.get\("status"\)/);
+  assert.match(grid, /new_filters\s*\.get\("vendor"\)/);
   assert.match(grid, /filter_query_writer\.update\(/);
   assert.doesNotMatch(grid, /filter_products\(/);
-  assert.match(productAdminCore, /assert_eq!\(filterable, vec!\["title", "vendor", "status"\]\)/);
+  assert.match(productAdminCore, /assert_eq!\(\s*filterable,\s*vec!\["title", "vendor", "status"\]\)/);
   assert.match(productAdminCore, /GridColumnDef::new\("product_type".*?\.not_filterable\(\)/s);
   assert.match(productAdminCore, /GridColumnDef::new\("created_at".*?\.not_filterable\(\)/s);
 });
