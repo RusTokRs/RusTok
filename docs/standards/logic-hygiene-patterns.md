@@ -1554,6 +1554,26 @@ Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the si
 for each, follow the value back and read every branch of its reader for one that
 returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).
 
+## P-OWNER-COPY-PRESERVATION — Preserve owner state during a partial write
+
+**Category:** Module boundaries. **Logic dimension:** Side-effect completeness.
+
+Product sent empty icon and color values to Taxonomy's exact category snapshot
+writer during a translation sync. The writer interpreted the empty values as
+clears and advanced the presentation revision.
+
+Use the owner operation that matches the fields the caller can set. A copy
+write preserves presentation and lets Taxonomy extend its own route history.
+It retains historical slugs as aliases and rejects a request to reuse one
+as the canonical route.
+
+```rust
+sync_module_category_copy_in_tx(txn, tenant_id, localized_snapshot).await?;
+```
+
+Inspect exact snapshot writers used by copy or translation mutations with
+`rg -n 'sync_module_category_in_tx\(' crates/modules`.
+
 ## P-CHECK-FOLLOWS-SOURCE — A source-pinning check changes with the source it pins
 
 - **Category:** Verification integrity.

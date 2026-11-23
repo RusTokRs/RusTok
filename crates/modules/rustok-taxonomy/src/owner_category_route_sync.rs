@@ -117,8 +117,17 @@ pub async fn sync_module_category_structure_with_owned_copy_in_tx(
 pub async fn sync_module_category_with_owned_aliases_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    mut input: SyncModuleCategoryInput,
+    input: SyncModuleCategoryInput,
 ) -> TaxonomyResult<SyncModuleCategoryResult> {
+    let input = include_owned_category_aliases_in_tx(txn, tenant_id, input).await?;
+    sync_module_category_in_tx(txn, tenant_id, input).await
+}
+
+pub(crate) async fn include_owned_category_aliases_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    mut input: SyncModuleCategoryInput,
+) -> TaxonomyResult<SyncModuleCategoryInput> {
     crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
     let locale = normalize_term_locale(&input.locale)
         .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty or invalid"))?;
@@ -134,6 +143,9 @@ pub async fn sync_module_category_with_owned_aliases_in_tx(
         .into_iter()
         .map(|alias| alias.slug)
         .collect::<BTreeSet<_>>();
+    if aliases.contains(&next_slug) {
+        return Err(TaxonomyError::DuplicateAlias(next_slug));
+    }
     aliases.extend(std::mem::take(&mut input.aliases));
     aliases.remove(&next_slug);
 
@@ -156,7 +168,7 @@ pub async fn sync_module_category_with_owned_aliases_in_tx(
     }
 
     input.aliases = aliases.into_iter().collect();
-    sync_module_category_in_tx(txn, tenant_id, input).await
+    Ok(input)
 }
 
 fn normalize_module_scope(value: &str) -> TaxonomyResult<String> {

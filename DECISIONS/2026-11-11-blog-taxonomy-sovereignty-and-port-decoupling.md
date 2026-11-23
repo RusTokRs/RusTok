@@ -79,7 +79,7 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 - `rustok-taxonomy` is the single source of truth for the `taxonomy_*` tables, term names, term routes and the category tree.
 - `rustok-blog` owns `blog_posts`, `blog_post_tags`, `blog_tag_usage`, `blog_categories` and the command rules that refuse a Blog write.
-- `rustok-blog` owns `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`; the provider owns the adapter.
+- `rustok-blog` owns `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`. Taxonomy owns the storage operations. The existing `rustok-content-orchestration` bridge adapts these two owner contracts for embedded execution.
 - Taxonomy owns translation registration for its terms. Blog owns its typed port and command rules.
 - The composition root (`apps/server`, the module registry) owns which port is attached.
 
@@ -87,7 +87,7 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 - `rustok-blog` contains zero direct SQL queries against `taxonomy_*` tables.
 - `rustok-blog/Cargo.toml` contains no dependency on `rustok-taxonomy`.
-- The Cargo dependency graph is strictly acyclic: `taxonomy -> blog`.
+- The orchestration bridge depends on both owner crates. The Taxonomy runtime remains independent of the Blog runtime.
 - Standalone blog tests run against an isolated database without taxonomy tables.
 - Transactional atomicity is fully preserved when `BlogTaxonomyPort` is wired with a database transaction.
 
@@ -128,7 +128,7 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 1. Define `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`.
 2. Move every Taxonomy call in `rustok-blog` behind the ports (`category.rs`, `category_command.rs`, `category_delete.rs`, `category_name_projection.rs`, `tag.rs`, search projection, HTTP and GraphQL runtime).
-3. Implement `TaxonomyBlogTaxonomyPortAdapter` and the cleanup adapter in `rustok-taxonomy`.
+3. Implement the embedded Blog Taxonomy port and cleanup adapter in `rustok-content-orchestration` using Taxonomy's public owner operations.
 4. Attach both adapters in the composition root.
 5. Remove `rustok-taxonomy` from `crates/modules/rustok-blog/Cargo.toml` by moving the translation-owner registration point.
 
@@ -148,7 +148,7 @@ records the resulting limits on Category and Tag behavior and lifecycle tests.
 
 ## Consequences
 
-- `rustok-taxonomy` gains an adapter crate dependency on `rustok-blog`; the dependency is strictly acyclic (`taxonomy -> blog`).
+- The embedded composition uses the existing orchestration crate where both owner contracts are available.
 - A deployment that attaches no adapter keeps working and stores nothing in Taxonomy for Blog categories and tags; the README states this as open work rather than as a supported mode.
 - Category copies, term routes and the category tree now follow the port, so Taxonomy can change its storage without a Blog change.
 - Blog's direct Taxonomy Cargo dependency is limited to integration fixtures.

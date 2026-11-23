@@ -37,6 +37,8 @@
 ## Minimum Contract Set
 - `TaxonomyService`: Canonical dictionary service for managing shared and module-local terms.
 - `TaxonomyOwnerReader` & `TaxonomyOwnerCategoryReader`: Read ports for owner categories and term hierarchies.
+- `TaxonomyOwnerReader::load_scoped_terms_in` and `TaxonomyService::resolve_term_id_for_module_in` read scoped vocabulary in the consuming owner's transaction.
+- `sync_module_category_copy_in_tx` synchronizes localized copy and hierarchy while retaining presentation state and extending owner-managed route history.
 - `TaxonomyCategoryDeleteCleanupPort`: Cleans category tree references and compacts siblings upon category deletion.
 - `TaxonomyTranslationTargetProvider`: Handles exact-locale translation synchronization and change tracking.
 

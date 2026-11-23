@@ -100,5 +100,17 @@ consumer-owned aggregate transactions can project names for terms they just crea
 committing first. Term and translation queries both retain tenant predicates and use that same
 connection. Ordinary `resolve_term_names` delegates to this implementation on the service connection;
 consumer modules do not read Taxonomy entities to assemble their responses. The owner-read
-regression covers transaction visibility, foreign-tenant absence and rollback; its new execution
-is outstanding in the Product hardening sandbox without Cargo.
+regression covers transaction visibility, foreign-tenant absence and rollback.
+`TaxonomyOwnerReader::load_scoped_terms_in` and
+`TaxonomyService::resolve_term_id_for_module_in` preserve the same connection for
+scoped terms and localized route keys. Their existing pool-backed entry points
+use those implementations.
+
+## Category copy and presentation
+
+`sync_module_category_copy_in_tx` writes localized copy and hierarchy on the
+caller's transaction. Taxonomy retains existing aliases, appends the prior slug
+on rename and keeps the canonical presentation row and revision intact.
+Historical slugs stay reserved as aliases.
+Product category translation uses this operation. Callers that own an exact
+icon and color snapshot use `sync_module_category_in_tx`.

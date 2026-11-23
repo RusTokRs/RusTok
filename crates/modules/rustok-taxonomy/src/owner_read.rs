@@ -91,6 +91,30 @@ impl TaxonomyOwnerReader {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
+        Self::load_scoped_terms_in(
+            &self.db,
+            tenant_id,
+            kind,
+            scope_type,
+            scope_value,
+            term_ids,
+            locale,
+            fallback_locale,
+        )
+        .await
+    }
+
+    /// Load scoped terms and their translations on the caller's connection.
+    pub async fn load_scoped_terms_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        scope_type: TaxonomyScopeType,
+        scope_value: Option<&str>,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
         if term_ids.is_some_and(|term_ids| term_ids.is_empty()) {
             return Ok(Vec::new());
         }
@@ -110,16 +134,9 @@ impl TaxonomyOwnerReader {
 
         let terms = query
             .order_by_asc(taxonomy_term::Column::CanonicalKey)
-            .all(&self.db)
+            .all(conn)
             .await?;
-        materialize_terms(
-            &self.db,
-            tenant_id,
-            terms,
-            &locale,
-            fallback_locale.as_deref(),
-        )
-        .await
+        materialize_terms(conn, tenant_id, terms, &locale, fallback_locale.as_deref()).await
     }
 
     /// Loads attached Taxonomy terms without leaving the caller's transaction.

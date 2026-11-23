@@ -145,7 +145,7 @@ The Blog crate declares Taxonomy as a dev dependency for integration fixtures.
 The reference source check verifies Blog's port calls. A Taxonomy-backed
 implementation of `BlogTaxonomyPort` remains open. ADR
 `DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
-plans `TaxonomyBlogTaxonomyPortAdapter` in `rustok-taxonomy`; until a host
+places the embedded adapter in `rustok-content-orchestration`. Until a host
 publishes it, HTTP controllers and GraphQL resolvers run on
 `NoopBlogTaxonomyPort`, which stores nothing in Taxonomy and returns generated
 identifiers. Both transports read the port from the host runtime
