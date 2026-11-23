@@ -78,3 +78,25 @@ rebuild still checks retained hashes and fails closed if a corrected materializa
   are mirrored from `rustok-forms` and drift-checked by
   `scripts/verify/verify-fly-interaction-capabilities.mjs` instead of a Cargo
   edge, so this module stays buildable standalone.
+
+## SSR browser operation recovery
+
+Editable Pages SSR hosts create an owner-bound draft session before rendering
+the editor and bind its token into the route. Mutating browser intents carry a
+validated `operation_id`; the server fingerprints the envelope and atomically
+stores a compact acknowledgement with the draft generation. Replaying the same
+operation returns its receipt before the generation check; reusing its ID for
+a different payload is a conflict.
+
+The browser persists the exact pending request in tab-scoped `sessionStorage`.
+After a lost response or reload it queries the read-only `resolve_operation`
+intent. A missing receipt is **unknown**, not a failure: new mutations remain
+blocked until the user checks again or explicitly retries the original request.
+The browser never automatically resends an ambiguous mutation. Custom
+`SsrDraftSessionStore` implementations must opt in to atomic operation receipts
+or editable Pages SSR rendering fails closed. Receipts are bounded to 2,048
+entries per session and 1 KiB each.
+
+This is the Pages strict SSR path only; direct Next writes, restore/lifecycle
+operations and Dioxus host parity remain separate work. See
+[the save receipt decision](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).

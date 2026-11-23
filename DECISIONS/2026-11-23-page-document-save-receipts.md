@@ -92,3 +92,35 @@ Restore, publish/lifecycle save correlation, Next direct-write clients,
 provider-host edge cases, and Dioxus gesture parity are separate follow-ups.
 No Rust compilation, tests, formatting, linting, Playwright or runtime
 verification were executed for this change; PR must remain Draft.
+
+11. The strict Pages SSR browser-intent path now gives each mutating envelope a
+    random, validated `operation_id`. The server fingerprints the normalized
+    envelope without that ID, then atomically commits the controller snapshot,
+    generation and compact acknowledgement in the owner-bound draft session.
+    A duplicate ID with the same fingerprint returns the prior receipt before
+    generation validation; reusing the ID with another fingerprint is a
+    conflict. The receipt stores only the compact save-failure projection;
+    current revision/UI state is rebuilt from the current session.
+12. Editable SSR Pages renders create the owner-bound draft session before
+    exposing the editor and bind its token into the route before the first
+    mutation. This closes the first-write window in which a successful draft
+    commit could be followed by a lost response before the browser learned its
+    session token. Custom draft stores must explicitly advertise atomic receipt
+    support; otherwise the editable UI fails closed.
+13. The browser persists the exact original mutating envelope in
+    `sessionStorage` before sending it. After reload or an ambiguous network/
+    HTTP result it performs only a read-only `resolve_operation` lookup. A
+    missing receipt remains unknown: the editor blocks new mutations and
+    offers an explicit status check or an explicit retry of the same original
+    request/ID. There is no automatic mutation retry. The original draft route
+    is restored from the pending request if its query token was removed.
+14. Browser operation receipts are bounded to 2,048 per session and 1 KiB per
+    compact response; capacity/size exhaustion fails closed without evicting
+    earlier acknowledgements. Session TTL still bounds retention. The browser
+    pending request is tab-scoped; cross-tab notifications remain advisory and
+    do not transfer or merge operation identities.
+15. This receipt layer covers strict Pages SSR browser intents. It does not yet
+    provide durable identities for every direct writer, Next editor path,
+    restore/lifecycle workflow or Dioxus host. PageService's content/revision
+    save receipt remains a separate, lower-level safeguard for the actual
+    document write.

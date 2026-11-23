@@ -1239,6 +1239,10 @@ deterministic GraphQL/business and auth errors never use this recovery.
 Added two-pool SQLite race regressions (duplicate identity and competing
 distinct CAS), an opt-in two-session PostgreSQL race/receipt lookup
 harness, and scoped source tests for transport classification and
-unknown-outcome status. **All remain unexecuted.** Browser-side persistent
-operation handling across reloads, user-facing reconciliation controls,
-MySQL schema, deployment verification and full Dioxus gestures remain open.
+unknown-outcome status. **All remain unexecuted.** The strict Pages SSR browser-intent path now persists operation IDs and exact
+requests across reloads, probes receipts without resending, blocks new edits
+while the result is unknown, and offers explicit same-request retry. Initial
+owner-bound draft sessions are created before the first edit. Still open:
+direct Next/other writer parity, restore/lifecycle operation IDs, MySQL schema,
+receipt expiry/observability, deployment verification and full Dioxus iframe,
+drag/drop and resize integration.

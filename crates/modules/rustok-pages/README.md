@@ -280,3 +280,18 @@ These are gaps in what the runtime actually does, not accepted design:
 - [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)
 
+## SSR Fly browser intent receipts
+
+The Pages SSR Fly host creates an authenticated draft session before exposing
+an editable canvas. Mutating browser intents carry a stable operation ID and
+are acknowledged atomically with the draft-session generation. A retry with
+the same ID and same request fingerprint returns the stored acknowledgement;
+a different request under that ID conflicts. The browser persists the exact
+request per tab and uses a read-only receipt lookup after an uncertain response
+or reload. A missing receipt is not treated as failure and is never followed by
+an automatic mutation resend; the editor pauses and offers explicit recovery.
+
+This contract applies to the strict Pages SSR host, not every direct writer or
+Dioxus/Next integration. Custom draft stores must implement atomic operation
+receipt support to enable editing. See the
+[Pages save receipt decision](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).

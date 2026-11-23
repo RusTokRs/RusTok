@@ -87,3 +87,15 @@ When an unconfirmed write causes the adapter to abandon queued mutations, it emi
 `data-fly-queued-intents-discarded`, and adds an accessible status message without hiding the
 original revision/transport error. The queue is never quietly treated as saved. The marker is
 cleared by a confirmed later write or adapter stop.
+
+## Strict SSR operation recovery
+
+When the host advertises the rendered draft contract, the adapter persists each
+mutating envelope and its operation ID in tab-scoped `sessionStorage` before
+sending it. A reload or ambiguous response triggers a read-only receipt lookup.
+The adapter blocks new mutations while the outcome is unknown and exposes
+explicit status-check and same-request retry controls; it never automatically
+retries the mutation. The host must render an owner-bound draft token before
+enabling edits and bind that token into the route. This protocol is currently
+implemented by the Pages SSR host; other hosts must not opt into the strict
+contract without matching server-side atomic receipts.

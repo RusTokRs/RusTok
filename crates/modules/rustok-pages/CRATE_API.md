@@ -224,3 +224,22 @@ feature-disabled, integrity and not-found outcomes must retain their semantics.
 
 - `PagesError` variants: `Validation`, `NotFound`, `Forbidden`, `Conflict`, `Database`, `Internal`.
 - Typed error codes (e.g. `CANNOT_DELETE_PUBLISHED_ERROR_CODE`) are mapped to consistent client status codes.
+
+## SSR browser operation receipt contract
+
+The Pages SSR Fly browser-intent envelope accepts optional `operation_id`.
+Strict editable SSR hosts create an owner-bound draft session before rendering
+and require a session token/generation for each mutating operation. The server
+fingerprints the envelope without its operation ID and atomically stores a
+bounded acknowledgement with the session generation. The same ID and
+fingerprint replay the stored acknowledgement before optimistic generation
+validation; a different fingerprint returns an operation-ID conflict.
+
+The read-only `resolve_operation` intent returns either `committed` or
+`unknown`. Unknown is not failure and does not trigger a mutation retry.
+Clients must preserve the original request and only retry it explicitly with
+the same ID. Browser storage is tab-scoped. Custom
+`SsrDraftSessionStore` implementations must advertise atomic receipt support;
+unsupported stores fail closed for editable SSR rendering. This contract does
+not cover all direct-write clients, restore/lifecycle operations, or Dioxus
+host parity.
