@@ -24,6 +24,9 @@ pub const BROWSER_DRAFT_UNAVAILABLE_CODE: &str = "DRAFT_UNAVAILABLE";
 pub const BROWSER_DOCUMENT_UNAVAILABLE_CODE: &str = "DOCUMENT_UNAVAILABLE";
 /// Code of a rejected save that carries no more specific stable code.
 pub const BROWSER_SAVE_FAILED_CODE: &str = "SAVE_FAILED";
+/// The write may have committed but neither its response nor its receipt could
+/// be observed. It is a temporary, *unknown* outcome, never validation failure.
+pub const BROWSER_SAVE_OUTCOME_UNKNOWN_CODE: &str = "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PagesBrowserIntentProblem {
@@ -75,16 +78,12 @@ impl PagesBrowserIntentProblem {
     /// failure without a stable code is reported as
     /// [`BROWSER_SAVE_FAILED_CODE`].
     pub fn from_save_failure(error: &PageBuilderAdminFacadeError) -> Self {
-        let conflict = error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE);
-        Self::save_problem(
-            if conflict {
-                HTTP_CONFLICT
-            } else {
-                HTTP_UNPROCESSABLE_ENTITY
-            },
-            error.stable_code.as_deref(),
-            error.to_string(),
-        )
+        let status = match error.stable_code.as_deref() {
+            Some(BROWSER_REVISION_CONFLICT_CODE) => HTTP_CONFLICT,
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) => HTTP_SERVICE_UNAVAILABLE,
+            _ => HTTP_UNPROCESSABLE_ENTITY,
+        };
+        Self::save_problem(status, error.stable_code.as_deref(), error.to_string())
     }
 
     /// Problem describing an autosave that could not be requested at all —
@@ -164,6 +163,11 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         {
             HTTP_CONFLICT
         }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
+            if error.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) =>
+        {
+            HTTP_SERVICE_UNAVAILABLE
+        }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Transport(_)) => {
             HTTP_BAD_GATEWAY
         }
@@ -215,6 +219,27 @@ mod tests {
     use fly_browser::BrowserIntentKind;
     use rustok_page_builder_admin::{BrowserCapabilityDenial, PageBuilderAdminFacadeError};
     use serde_json::json;
+
+    #[test]
+    fn save_outcome_unknown_is_retryable_server_status_not_validation_failure() {
+        let error = PageBuilderAdminFacadeError::with_stable_code(
+            "Network failure: original commit status is not known",
+            BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+        );
+        let as_save_failure = PagesBrowserIntentProblem::from_save_failure(&error);
+        assert_eq!(as_save_failure.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(
+            as_save_failure.code.as_deref(),
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)
+        );
+        assert_eq!(as_save_failure.intent.as_deref(), Some("save"));
+        let as_http_error = PagesBrowserIntentProblem::from_error(
+            &PagesBrowserIntentAccessError::Pages(
+                PagesBrowserIntentError::Facade(error),
+            )
+        );
+        assert_eq!(as_http_error.status, HTTP_SERVICE_UNAVAILABLE);
+    }
 
     #[test]
     fn capability_denial_has_stable_problem_contract() {

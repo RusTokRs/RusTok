@@ -1,3 +1,4 @@
+use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use leptos::prelude::*;
@@ -45,8 +46,6 @@ use rustok_page_builder::static_landing::static_publish_render_policy;
 use std::time::Duration;
 
 const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
-#[cfg(feature = "ssr")]
-const DOCUMENT_SAVE_OUTCOME_UNKNOWN: &str = "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
 
@@ -499,10 +498,10 @@ fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacad
     if message.contains(REVISION_CONFLICT) {
         return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
     }
-    if message.contains(DOCUMENT_SAVE_OUTCOME_UNKNOWN) {
+    if message.contains(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) {
         return PageBuilderAdminFacadeError::with_stable_code(
             message,
-            DOCUMENT_SAVE_OUTCOME_UNKNOWN,
+            BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
         );
     }
     PageBuilderAdminFacadeError::new(message)
@@ -662,12 +661,12 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                     Ok(Some(receipt)) => receipt,
                     Ok(None) => {
                         return Err(PageBuilderServiceError::Runtime(format!(
-                            "{DOCUMENT_SAVE_OUTCOME_UNKNOWN}: {error}; the save receipt is not yet visible; preserve the draft and reconcile before a new save"
+                            "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; the save receipt is not yet visible; preserve the draft and reconcile before a new save"
                         )));
                     }
                     Err(probe_error) => {
                         return Err(PageBuilderServiceError::Runtime(format!(
-                            "{DOCUMENT_SAVE_OUTCOME_UNKNOWN}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
+                            "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
                         )));
                     }
                 }
