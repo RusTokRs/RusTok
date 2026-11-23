@@ -1,5 +1,17 @@
 # Server App — Implementation Plan
 
+## Server audit continuation — Workflow cron execution supervision (2026-11-23)
+
+The Workflow cron owner has been changed from detached execution spawns to
+scheduler-owned `JoinSet` supervision. On normal host stop it stops admitting
+new firings and joins accepted executions. The server composes this via
+`start_with_stop` instead of aborting a child scheduler task immediately.
+Owned tasks are aborted if the scheduler is forcibly aborted after the host's
+existing bounded shutdown deadline. Source regressions cover pre-signaled
+stop and waiting for an admitted execution. This does not implement durable
+cross-replica cron claims, missed runs or crash recovery; those remain an
+owner-level architecture task. No Rust tests/compilation/formatting were run.
+
 ## Server audit continuation — producer/dispatcher shutdown ordering (2026-11-23)
 
 The host previously joined Outbox relay shutdown concurrently with module event
