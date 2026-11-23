@@ -1,5 +1,31 @@
 # Documentation: `apps/server`
 
+### Workflow durable cron admission / outcome review refinement (2026-11-23)
+
+Cron now atomically checks the current firing attempt and locked workflow
+definition, then inserts its execution journal in the same transaction before
+any external step begins. This closes the operator-requeue race where an older
+worker could still insert a journal after a review found none. Long-running
+attempts heartbeat only while the same token is current; the engine rechecks
+the token before further steps and finalizes its status under a firing-row
+write fence so a late worker cannot overwrite operator recovery.
+
+Operator `confirm_external_completed` / `confirm_external_failed` can
+resolve the full overall workflow execution outcome only with human
+`workflows:manage` authority, bounded evidence and explicit confirmation
+that the former worker is stopped. The operator must account for **all**
+remaining steps and possible remote side effects, not just one HTTP response.
+`confirm_terminal` remains a reconciliation of a previously terminal
+journal, while `requeue_confirmed_unstarted` refuses any firing with an
+execution journal. All updates and immutable review rows commit together.
+This is not provider-level exactly-once. Migrator composition already includes
+Workflow-owned migrations through the canonical ModuleMigrationSource.
+
+Source regressions now cover competing claimers, immutable audit, stale token,
+unstarted requeue, terminal review, external failure resolution, HTTP
+no-blind-retry and schedule revision on step edits. None were run by request.
+
+
 Local documentation for the main RusToK backend host application. This file captures only the live composition/runtime contract; detailed runbooks, framework notes, and rollout plans live in specialized documents inside this folder and in the central docs.
 
 ## Purpose
