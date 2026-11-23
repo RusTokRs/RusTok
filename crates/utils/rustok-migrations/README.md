@@ -345,6 +345,13 @@ transaction immediately after that migration and again at the end of the range.
 Missing, NULL, nonboolean or multiple assertion results fail verification.
 This is not yet complete owner-assertion or crash-recovery coverage of the chain.
 
+For a local run, set `RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES` to a version 1
+fixture JSON file and use `RUSTOK_MIGRATION_SMOKE_REUSE_DB=1` with a disposable
+predecessor. The file's `fixtures` array can target one migration multiple
+times with distinct fixture IDs. Use compatible setup statements for the shared
+predecessor. The smoke test removes the database unless
+`RUSTOK_MIGRATION_SMOKE_KEEP_DB=1`.
+
 The smoke script and direct tests require `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to
 point to an isolated PostgreSQL instance. Fresh runs create a new database and fail
 if its name already exists. `RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST=1` checks

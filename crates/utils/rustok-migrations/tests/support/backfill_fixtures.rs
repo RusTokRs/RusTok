@@ -175,7 +175,6 @@ fn parse_fixtures<'a>(
     fixtures: impl IntoIterator<Item = &'a Value>,
 ) -> Result<Vec<BackfillFixture>, String> {
     let mut ids = HashSet::new();
-    let mut migrations = HashSet::new();
     let mut parsed = Vec::new();
     for (index, fixture) in fixtures.into_iter().enumerate() {
         let parsed_fixture = BackfillFixture {
@@ -188,12 +187,6 @@ fn parse_fixtures<'a>(
             return Err(format!(
                 "fixtures[{index}].id duplicates {}",
                 parsed_fixture.id
-            ));
-        }
-        if !migrations.insert(parsed_fixture.migration.clone()) {
-            return Err(format!(
-                "fixtures[{index}].migration duplicates {}",
-                parsed_fixture.migration
             ));
         }
         parsed.push(parsed_fixture);
@@ -274,19 +267,19 @@ mod tests {
                 let mut setup = [
                     BackfillFixture {
                         id: "first-seed".into(),
-                        migration: "first-target".into(),
+                        migration: "target".into(),
                         setup_sql: "INSERT INTO assertion_probe VALUES (2)".into(),
                         assertion_sql: "SELECT COUNT(*) = 3 AS passed FROM assertion_probe".into(),
                     },
                     BackfillFixture {
                         id: "second-seed".into(),
-                        migration: "second-target".into(),
+                        migration: "target".into(),
                         setup_sql: "INSERT INTO assertion_probe VALUES (1)".into(),
                         assertion_sql: "SELECT EXISTS (SELECT 1 FROM assertion_probe WHERE value = 3) AS passed".into(),
                     },
                 ];
                 match super::apply_setup(&db, &setup).await {
-                    Err(error) if error.to_string().contains("second-seed setup for migration second-target") => {}
+                    Err(error) if error.to_string().contains("second-seed setup for migration target") => {}
                     Err(error) => return Err(format!("unexpected setup error: {error}").into()),
                     Ok(()) => return Err("a duplicate primary key must fail setup".into()),
                 }
@@ -300,6 +293,12 @@ mod tests {
                 setup[1].setup_sql = "INSERT INTO assertion_probe VALUES (3)".into();
                 super::apply_setup(&db, &setup).await?;
                 super::assert_results(&db, &setup).await?;
+                setup[1].assertion_sql = "SELECT false AS passed".into();
+                match super::assert_results(&db, &setup).await {
+                    Err(error) if error.to_string().contains("second-seed failed after migration target") => {}
+                    Err(error) => return Err(format!("unexpected assertion error: {error}").into()),
+                    Ok(()) => return Err("a failing second case must fail verification".into()),
+                }
                 Ok::<_, Box<dyn std::error::Error>>(())
             }.await;
             db.close().await?;
@@ -345,9 +344,8 @@ mod tests {
     }
 
     #[test]
-    fn fixture_document_rejects_duplicate_migrations() {
-        let error = parse_fixture_document(
-            r#"{
+    fn fixture_document_accepts_multiple_cases_with_unique_ids() {
+        let document = r#"{
                 "schema_version": 1,
                 "fixtures": [
                     {
@@ -363,9 +361,15 @@ mod tests {
                         "assertion_sql": "SELECT true AS passed"
                     }
                 ]
-            }"#,
-        )
-        .expect_err("duplicate migrations must fail");
-        assert!(error.contains("migration duplicates m1"));
+            }"#;
+        let fixtures = parse_fixture_document(document).expect("multiple cases for one migration");
+        assert_eq!(fixtures.len(), 2);
+        assert_eq!(fixtures[0].id, "first");
+        assert_eq!(fixtures[1].id, "second");
+        assert!(validate_pending(&fixtures, &["m1".to_string()].into()).is_ok());
+
+        let duplicate = document.replace(r#""id": "second""#, r#""id": "first""#);
+        let error = parse_fixture_document(&duplicate).expect_err("duplicate IDs must fail");
+        assert!(error.contains("fixtures[1].id duplicates first"));
     }
 }

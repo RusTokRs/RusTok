@@ -61,7 +61,7 @@ the current implementation after the first Rust tooling changes.
 | [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
 | [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
 | [PostgreSQL observer](../../crates/utils/rustok-migrations/src/verification.rs) | Compares real schema, privileges, enforcement, sequences, row multisets and each plan's journal | PostgreSQL 16, supported fixture limits and extensions; requires quiescent writers and complete read privileges |
-| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Validates pending targets, seeds the predecessor and runs read-only strict boolean assertions at each selected target and at range completion | One case per migration; full range/multiple-case and owner coverage remain pending |
+| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Accepts multiple local cases for a pending migration, seeds the predecessor and runs read-only assertions at each target and at range completion | CI selects one contract per migration. Full range mapping and owner coverage remain pending. |
 | [Schema summaries](../../crates/utils/rustok-migrations/src/schema_diff.rs) | Classifies supplied operations and computes summary/plan digests | No actual PostgreSQL catalog observation |
 | [Release workflow](../../.github/workflows/release.yml) | Validates signed tags, immutable releases and artifact provenance | No sealed migration manifest or exact-release migration evidence gate |
 
@@ -421,7 +421,8 @@ every committed step in incremental mode. Selected backfill assertions now run
 immediately after their own step as well as at the end. Assertions are read-only;
 targets outside the pending range fail before fixture setup. All fixture setup
 runs in one transaction so a failed setup rolls back earlier fixture writes
-before any migration runs.
+before any migration runs. Each local case has a unique ID and cases targeting
+the same migration share the predecessor. Every case must pass at that step.
 
 The [bounded execution contract](../../DECISIONS/2026-11-05-bounded-migration-execution.md)
 adds exact contiguous phases to this same runner and the operations CLI. It
