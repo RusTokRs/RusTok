@@ -63,9 +63,20 @@ export default async function ProductPage({ searchParams }: PageProps) {
   });
   const rawStatus = pickParam(params.status);
   const canonicalStatus = normalizeProductStatus(rawStatus)?.toLowerCase();
-  // The shared DataTableShell reads page and perPage from the URL. Canonicalize
-  // invalid external links before rendering so its pagination matches the
-  // Product owner's bounded GraphQL request.
+  const rawTitle = pickParam(params.title);
+  const rawSearch = pickParam(params.search);
+  const search = rawTitle?.trim() || rawSearch?.trim() || undefined;
+  const hasNonCanonicalTitle =
+    params.title !== undefined &&
+    (Array.isArray(params.title) && params.title.length !== 1
+      ? true
+      : !rawTitle?.trim() || rawTitle.trim() !== (search ?? ''));
+  const hasLegacySearch =
+    params.search !== undefined ||
+    (Array.isArray(params.search) && params.search.length !== 1);
+  // The table owns the `title` key. Migrate legacy `search` links into that
+  // key before hydration so the visible filter and the server query cannot diverge.
+  // Page and page size are canonicalized at the same boundary.
   if (
     (rawPage !== undefined &&
       (rawPage.trim() !== String(page) ||
@@ -75,7 +86,9 @@ export default async function ProductPage({ searchParams }: PageProps) {
         (Array.isArray(params.perPage) && params.perPage.length !== 1))) ||
     (rawStatus !== undefined &&
       (rawStatus.trim() !== (canonicalStatus ?? '') ||
-        (Array.isArray(params.status) && params.status.length !== 1)))
+        (Array.isArray(params.status) && params.status.length !== 1))) ||
+    hasNonCanonicalTitle ||
+    hasLegacySearch
   ) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -92,12 +105,14 @@ export default async function ProductPage({ searchParams }: PageProps) {
     } else {
       query.delete('status');
     }
+    if (search) {
+      query.set('title', search);
+    } else {
+      query.delete('title');
+    }
+    query.delete('search');
     redirect(`/dashboard/product?${query.toString()}`);
   }
-  const search =
-    pickParam(params.title)?.trim() ||
-    pickParam(params.search)?.trim() ||
-    undefined;
   const status = canonicalStatus;
   const vendor = pickParam(params.vendor)?.trim() || undefined;
   const categoryId = pickParam(params.category_id)?.trim() || undefined;
