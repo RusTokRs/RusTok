@@ -1487,7 +1487,6 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         module_work_drain,
         workflow_drain,
         watchdog_drain,
-        module_event_dispatcher_drain,
         module_artifact_maintenance_drain,
         comments_tcp_drain,
         comments_schedule_audit_handoff_drain,
@@ -1518,9 +1517,15 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         forum_search_contract_consumer_drain,
     );
 
-    // The event forwarder is deliberately last: producers receive the global
-    // stop first and are joined above; only then may the forwarder observe an
-    // empty queue and exit without racing a final in-flight publication.
+    // Keep the dispatcher subscribed until all upstream producers, including
+    // the Outbox relay's current durable pass, have finished. Stopping the
+    // dispatcher in the parallel join could make an otherwise acknowledged
+    // relay delivery fail after shutdown requested a graceful drain.
+    module_event_dispatcher_drain.await;
+
+    // The event forwarder is the last producer-side drain: dispatcher
+    // handlers may enqueue final events while they finish, so only after
+    // their join may the forwarder observe an empty queue and exit.
     event_forwarder_drain.await;
 }
 
@@ -2896,6 +2901,51 @@ mod tests {
         super::shutdown_runtime_workers(&ctx).await;
         assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
         assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
+    }
+
+    #[tokio::test]
+    async fn shutdown_drains_outbox_relay_before_stopping_module_dispatcher() {
+        use crate::services::module_event_dispatcher::ModuleEventDispatcherHandle;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+
+        let mut stop_rx = super::StopHandle::ensure(&ctx).subscribe();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        let in_flight_relay = tokio::spawn(async move {
+            stop_rx.changed().await.expect("shutdown signalled");
+            started_tx.send(()).expect("relay started draining");
+            finish_rx.await.expect("complete acknowledged delivery");
+        });
+        ctx.shared_insert(OutboxRelayWorkerHandle {
+            instance_id: 1,
+            _handle: in_flight_relay,
+        });
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        tokio::time::timeout(Duration::from_secs(2), started_rx)
+            .await
+            .expect("relay receives shutdown")
+            .expect("relay begins its in-flight drain");
+        assert!(
+            ctx.shared_contains::<ModuleEventDispatcherHandle>(),
+            "the dispatcher must remain registered until the relay completes"
+        );
+        finish_tx.send(()).expect("release relay");
+        tokio::time::timeout(Duration::from_secs(3), shutdown)
+            .await
+            .expect("shutdown finishes after relay")
+            .expect("shutdown task joins");
+
+        assert!(!ctx.shared_contains::<OutboxRelayWorkerHandle>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
     }
 
     #[tokio::test]

@@ -140,6 +140,61 @@ pub struct WorkflowStepExecutionResponse {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// Legacy cron and event-triggered executions with an ambiguous journal
+/// outcome. This is read-only: its existence never authorizes automatic
+/// replay of non-idempotent steps.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowUnconfirmedExecutionItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub trigger_event_id: Option<Uuid>,
+    pub status: String,
+    pub started_at: DateTime<Utc>,
+}
+
+impl From<crate::entities::workflow_execution::Model> for WorkflowUnconfirmedExecutionItem {
+    fn from(item: crate::entities::workflow_execution::Model) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            trigger_event_id: item.trigger_event_id,
+            status: item.status.to_string(),
+            started_at: item.started_at.with_timezone(&Utc),
+        }
+    }
+}
+
+/// Tenant-scoped owner projection for cron firings requiring manual review.
+/// Does not authorize automatic replay of ambiguous remote effects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowCronReconciliationItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub tenant_id: Uuid,
+    pub scheduled_at: DateTime<Utc>,
+    pub status: String,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub execution_id: Option<Uuid>,
+    pub reason: Option<String>,
+}
+
+impl From<crate::entities::workflow_cron_firing::Model> for WorkflowCronReconciliationItem {
+    fn from(item: crate::entities::workflow_cron_firing::Model) -> Self {
+        Self {
+            id: item.id,
+            workflow_id: item.workflow_id,
+            tenant_id: item.tenant_id,
+            scheduled_at: item.scheduled_at.with_timezone(&Utc),
+            status: item.status,
+            claimed_at: item.claimed_at.map(|date| date.with_timezone(&Utc)),
+            execution_id: item.execution_id,
+            reason: item.reason,
+        }
+    }
+}
+
 // ── Trigger config helpers ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

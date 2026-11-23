@@ -5,6 +5,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::run_admitted_worker_operation;
 
 static PAID_ORDER_LABEL_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 const PAID_ORDER_LABEL_SWEEP_INTERVAL: Duration = Duration::from_secs(5);
@@ -93,8 +94,14 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                match service.process_pending_once(PAID_ORDER_LABEL_SWEEP_BATCH).await {
-                    Ok(report) => {
+                // A stop may arrive while waiting for the tick. Never start
+                // another external label operation after observing shutdown;
+                // once admitted, preserve the full durable sweep until it returns.
+                match run_admitted_worker_operation(&stop_rx, || {
+                    service.process_pending_once(PAID_ORDER_LABEL_SWEEP_BATCH)
+                }).await {
+                    None => return,
+                    Some(Ok(report)) => {
                         if report.examined > 0 {
                             tracing::info!(
                                 worker = "paid_order_create_label",
@@ -107,7 +114,7 @@ async fn worker_loop(
                             );
                         }
                     }
-                    Err(_error) => {
+                    Some(Err(_error)) => {
                         tracing::error!(
                             worker = "paid_order_create_label",
                             instance_id,

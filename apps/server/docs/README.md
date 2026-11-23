@@ -1,8 +1,141 @@
 # Documentation: `apps/server`
 
+### Workflow durable cron admission / outcome review refinement (2026-11-23)
+
+Cron now atomically checks the current firing attempt and locked workflow
+definition, then inserts its execution journal in the same transaction before
+any external step begins. This closes the operator-requeue race where an older
+worker could still insert a journal after a review found none. Long-running
+attempts heartbeat only while the same token is current; the engine rechecks
+the token before further steps and finalizes its status under a firing-row
+write fence so a late worker cannot overwrite operator recovery.
+
+Operator `confirm_external_completed` / `confirm_external_failed` can
+resolve the full overall workflow execution outcome only with human
+`workflows:manage` authority, bounded evidence and explicit confirmation
+that the former worker is stopped. The operator must account for **all**
+remaining steps and possible remote side effects, not just one HTTP response.
+`confirm_terminal` remains a reconciliation of a previously terminal
+journal, while `requeue_confirmed_unstarted` refuses any firing with an
+execution journal. All updates and immutable review rows commit together.
+This is not provider-level exactly-once. Migrator composition already includes
+Workflow-owned migrations through the canonical ModuleMigrationSource.
+
+Source regressions now cover competing claimers, immutable audit, stale token,
+unstarted requeue, terminal review, external failure resolution, HTTP
+no-blind-retry and schedule revision on step edits. None were run by request.
+
+
 Local documentation for the main RusToK backend host application. This file captures only the live composition/runtime contract; detailed runbooks, framework notes, and rollout plans live in specialized documents inside this folder and in the central docs.
 
 ## Purpose
+
+## Server audit continuation — Workflow-owned durable cron recovery (2026-11-23)
+
+The server only composes the Workflow owner's `start_with_stop` scheduler
+after `validate_persistence` confirms the additive owner cron tables exist.
+Workflow owns bounded schedule backfill, cursor/queue CAS, per-firing execution
+idempotency, stale attempt quarantine and permissioned operator reconciliation.
+A missing migration fails host initialization instead of leaving an apparently
+running cron scheduler. Host stop still joins accepted executions with its
+existing force-abort fallback. The proposed Workflow ADR, migration and
+source regressions require maintainer review and execution; no runtime proof
+or exactly-once external effect guarantee is claimed.
+
+## Server audit continuation — Workflow cron execution supervision (2026-11-23)
+
+The previous Workflow cron scheduler detached each execution task with
+`tokio::spawn`; stopping its scheduler task did not account for accepted
+executions. Workflow now owns the spawned tasks in a `JoinSet` and provides
+`start_with_stop`. The server passes its existing host stop receiver directly
+to the Workflow owner. That owner refuses new firings after stop, also checks
+between database/step-load awaits, and drains already admitted executions
+before its scheduler JoinHandle completes. The host's five-second forced
+abort remains the outer bound; this does **not** provide distributed cron
+claims, missed-firing recovery or crash-safe execution replay. Two owner
+regressions were authored for accepted-task drain and pre-signaled stop.
+All checks remain unrun at the maintainer's request.
+
+## Server audit continuation — producer/dispatcher shutdown ordering (2026-11-23)
+
+The host previously joined Outbox relay shutdown concurrently with module event
+dispatcher shutdown. The dispatcher could unsubscribe while the relay was
+finishing a committed Outbox delivery and waiting for the local listener
+acknowledgement. Shutdown now joins all upstream producers (including the
+cooperatively draining relay) first, then requests the dispatcher stop, and
+finally drains the event forwarder. This keeps the required listener registry
+available for accepted relay work and the forwarder available for event writes
+from a finishing dispatcher handler. A focused test holds an in-flight relay
+drain and asserts that the dispatcher remains registered until it completes.
+
+Each stage still has the existing bounded shutdown/abort fallback. Process
+loss, a deadline exceeded by an external provider, and a rejected local
+consumer remain recoverable owner-side delivery outcomes, not exactly-once
+guarantees. Regression code is authored, not compiled or executed.
+
+## Server audit continuation — cooperative Outbox relay drain (2026-11-23)
+
+The Outbox relay supervisor previously aborted its inner `JoinSet` on every
+graceful stop. A pass can have dispatched an event to an external transport
+and still be awaiting its durable status acknowledgement, so aborting the
+future at that point manufactures an ambiguous result and unnecessary replay.
+The inner poller now watches shutdown before each pass and while sleeping,
+then finishes any admitted `OutboxRelayPort::process_pending_once` pass before
+returning. The supervisor joins the inner poller on stop rather than aborting
+it immediately; unexpected child exits still use the existing bounded restart
+supervision. A regression constructs a real SQLite Outbox row and a blocking
+transport, requests stop during publication, and verifies that the row is
+acknowledged `dispatched` after the transport completes.
+
+This is graceful process-local shutdown, not exactly-once external delivery:
+the host's five-second forced-abort deadline, broker ambiguity, crash/restart,
+and lease expiry still require owner-side fencing and idempotent consumers.
+Test code was authored but not run; no compilation or formatting was run.
+
+## Server audit continuation — durable worker shutdown and dispatcher recovery retry (2026-11-23)
+
+The Product Media release loop previously raced its owner batch against a stop
+notification using `tokio::select!`. A graceful stop could cancel the batch
+after an external Media release but before the owner confirmed absence and
+acknowledged its committed queue row. It now checks stop before admitting a
+batch and awaits the already admitted batch to completion. Paid-order label
+recovery also rechecks stop after waking on its ticker, before starting an
+external provider sweep. Both use one server-local admission helper that never
+cancels an operation after it starts. Source regressions cover stop-before-start
+and stop-during-operation behavior.
+
+Repeated module dispatcher bootstrap used to return immediately when the
+required dispatcher was already healthy, so independently reserved optional
+Product Media, paid-order label, financial or payment recovery workers could
+never be retried after an initially absent dependency. The already-live path
+now revisits those idempotent child starters. A focused `mod-product` regression
+verifies a pre-published healthy dispatcher can register its missing Product
+Media release worker and remains shutdown-drainable.
+
+The graceful-stop behavior does not guarantee process-crash completion or
+override the host's bounded forced-abort deadline. Replay, ownership,
+cross-replica fencing and external side-effect reconciliation remain the
+durable operation owner's responsibility. All added tests are source-only
+and unrun by request; no compilation, formatting or runtime checks were done.
+
+## Server audit continuation — scheduler startup liveness (2026-11-23)
+
+The module-work and Workflow cron scheduler initializers previously treated a stored
+`JoinHandle` as healthy on repeat bootstrap even if its task had already
+terminated. The module-work initializer now uses the shared worker-liveness
+guard to fail closed without deleting the handle needed for shutdown accounting.
+The Workflow cron initializer applies the same guard and propagates this startup
+failure through application bootstrap instead of returning a false success.
+Concurrent healthy initializers still reuse the running handle, and host stop
+continues to prevent late task publication under each initialization lock.
+
+Focused source regressions create already-finished tasks for both paths and assert
+that repeat initialization returns an error while preserving shutdown ownership.
+They have not been executed; Cargo, Rust tests, compilation and formatting are
+reserved for maintainer verification. This change does not solve cron execution
+deduplication across replicas, missed schedules after process crashes, or detached
+execution-task supervision; those require the Workflow owner's durable contract.
+
 
 RBAC durable-generation bootstrap now treats only the absence of its
 own `rbac_invalidation_state` table as a pre-migration condition and
@@ -640,7 +773,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   shutdown **only**: email delivery remains best-effort, without a durable
   queue, retry lease, or crash recovery.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. The optional Comments TCP listener and schedule-audit handoff worker use cancellation-safe startup reservations, reject a concurrent in-flight start rather than reporting false success, recheck shutdown before task admission, and do not treat an already-exited task as live. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. HTTP installer jobs are also held in a runtime-owned `JoinSet` and drained
-before the event forwarder. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
+before the event forwarder. The Outbox relay supervisor owns and gracefully drains its inner processing task before the host's bounded forced-abort fallback. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
 - Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.

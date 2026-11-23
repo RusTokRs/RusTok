@@ -196,6 +196,10 @@ pub fn spawn_module_event_dispatcher(
             Some(reservation) => Some(reservation),
             None => {
                 tracing::debug!("Module event dispatcher is already registered");
+                // A previous pass may have found some optional recovery
+                // dependencies unavailable. Retry their independent startup
+                // claims even when the required dispatcher is already live.
+                start_optional_module_recovery_workers(ctx);
                 return Ok(());
             }
         }
@@ -236,6 +240,14 @@ pub fn spawn_module_event_dispatcher(
 
     // Required dispatcher startup has succeeded. Optional recovery workers may
     // now begin their own loops; a failed dispatcher start leaves none behind.
+    start_optional_module_recovery_workers(ctx);
+    Ok(())
+}
+
+/// Optional recovery dependencies can become available after the dispatcher
+/// itself was registered. Each child starter has an independent reservation
+/// and shutdown publication fence, so retrying these starts is idempotent.
+fn start_optional_module_recovery_workers(ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
     #[cfg(feature = "mod-commerce")]
@@ -244,7 +256,13 @@ pub fn spawn_module_event_dispatcher(
     spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
-    Ok(())
+    #[cfg(not(any(
+        feature = "mod-product",
+        feature = "mod-commerce",
+        feature = "commerce-marketplace-financial",
+        feature = "mod-payment",
+    )))]
+    let _ = ctx;
 }
 
 fn start_module_event_dispatcher(
@@ -1622,6 +1640,69 @@ mod lifecycle_tests {
             settings.runtime.host_mode = mode;
             assert!(!module_event_dispatcher_enabled(&settings));
         }
+    }
+
+    #[cfg(feature = "mod-product")]
+    #[tokio::test]
+    async fn live_dispatcher_retry_still_starts_missing_product_media_worker() {
+        use super::{ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement};
+        use crate::common::settings::{EventDeliveryProfile, RuntimeHostMode};
+        use crate::services::event_transport_factory::EventRuntime;
+        use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use crate::services::stop_handle::StopHandle;
+        use rustok_core::events::{EventTransport, MemoryTransport};
+        use std::sync::Arc;
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let db = Database::connect("sqlite::memory:").await.expect("test database");
+        let ctx = ServerRuntimeContext::new(db.clone(), settings.clone());
+        let registry = ModuleRegistry::new();
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("empty registry has valid extensions");
+        let transport: Arc<dyn EventTransport> =
+            Arc::new(rustok_outbox::OutboxTransport::new(db));
+        ctx.shared_insert(Arc::new(EventRuntime {
+            delivery_profile: EventDeliveryProfile::Outbox,
+            iggy_mode: None,
+            transport,
+            listener_bus: MemoryTransport::with_capacity(8).event_bus(),
+            relay_config: None,
+            outbox_retention: None,
+            channel_capacity: 8,
+            relay_fallback_active: false,
+        }));
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+        assert!(!ctx.shared_contains::<ProductMediaReleaseWorkerHandle>());
+
+        // The first dispatcher pass already published the required listener,
+        // but the independent Product Media worker handle was not published.
+        super::spawn_module_event_dispatcher(&ctx, &registry, extensions.clone())
+            .expect("repeat dispatcher bootstrap must retry optional recovery");
+        assert!(ctx.shared_contains::<ProductMediaReleaseWorkerHandle>());
+        super::spawn_module_event_dispatcher(&ctx, &registry, extensions)
+            .expect("repeat recovery startup stays idempotent");
+
+        StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            ctx.shared_take::<ProductMediaReleaseWorkerHandle>()
+                .expect("worker must remain registered for shutdown")
+                .join(),
+        )
+        .await
+        .expect("Product Media worker exits after stop")
+        .expect("Product Media task joins");
+        let dispatcher = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("dispatcher remains registered");
+        dispatcher.request_stop();
+        tokio::time::timeout(std::time::Duration::from_secs(2), dispatcher.join())
+            .await
+            .expect("dispatcher exits")
+            .expect("dispatcher task joins");
     }
 
     #[test]

@@ -17,6 +17,37 @@ pub struct WorkflowMutation;
 
 #[Object]
 impl WorkflowMutation {
+    async fn reconcile_workflow_cron_firing(
+        &self,
+        ctx: &Context<'_>,
+        firing_id: Uuid,
+        decision: GqlCronReconciliationDecision,
+        evidence: String,
+        prior_worker_fenced: bool,
+    ) -> Result<GqlWorkflowCronReconciliationItem> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
+        let auth = require_workflow_permission(
+            ctx,
+            &[Permission::WORKFLOWS_MANAGE],
+            "Permission denied: workflows:manage required",
+        )?;
+        let actor_id = auth.human_user_id()
+            .ok_or_else(|| async_graphql::Error::new("An authenticated human operator is required"))?;
+        let outcome = crate::services::reconcile_firing(
+            &db,
+            tenant.id,
+            firing_id,
+            actor_id,
+            decision.into(),
+            &evidence,
+            prior_worker_fenced,
+        ).await.map_err(|_| async_graphql::Error::new(
+            "Workflow cron reconciliation failed its evidence or state precondition"
+        ))?;
+        Ok(crate::WorkflowCronReconciliationItem::from(outcome).into())
+    }
+
     async fn create_workflow(
         &self,
         ctx: &Context<'_>,
