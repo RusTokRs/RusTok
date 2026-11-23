@@ -652,7 +652,39 @@ mod tests {
         let pending = pending_firings(&db, 32).await.unwrap();
         assert_eq!(pending.len(), 5);
         let first = &pending[0];
-        assert!(claim_firing(&db, first, now).await.unwrap().is_some());
+        // Two contenders attempt to claim the same durable slot. Only one
+        // process gets an attempt token even when both selected the same row.
+        let (first_claim, second_claim) = tokio::join!(
+            claim_firing(&db, first, now),
+            claim_firing(&db, first, now),
+        );
+        let owners = [first_claim.unwrap(), second_claim.unwrap()];
+        assert_eq!(owners.iter().filter(|value| value.is_some()).count(), 1);
+        let token = owners.into_iter().flatten().next().unwrap();
         assert!(claim_firing(&db, first, now).await.unwrap().is_none());
+
+        let context = serde_json::json!({
+            "trigger": {"type":"cron","firing_id":first.id.to_string()}
+        });
+        let execution_id = reserve_execution_for_claim(&db, first, token, &context)
+            .await.unwrap().expect("journal reserved under owning attempt");
+        let journal = WorkflowExecutionEntity::find_by_id(execution_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(journal.trigger_event_id, Some(first.id));
+        assert_eq!(journal.status, ExecutionStatus::Running);
+        assert!(reserve_execution_for_claim(&db, first, token, &context).await.is_err(),
+            "a journal cannot be allocated twice for one trigger");
+
+        // Even after a stale-attempt quarantine, the operator cannot requeue
+        // a firing for which a step execution could have begun.
+        assert_eq!(quarantine_stale_attempts(
+            &db, Utc::now() + ChronoDuration::minutes(15),
+        ).await.unwrap(), 1);
+        assert!(reconcile_firing(
+            &db, tenant_id, first.id, Uuid::new_v4(),
+            CronReconciliationDecision::RequeueConfirmedUnstarted,
+            "Operator attested worker termination but journal exists",
+            true,
+        ).await.is_err());
     }
 }
