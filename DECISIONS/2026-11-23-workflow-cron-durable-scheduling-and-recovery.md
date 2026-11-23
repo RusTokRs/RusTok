@@ -51,10 +51,17 @@ decision, including its explicit reconciliation requirement.
    must not override an operator/recovery decision.
 5. The first cutover only automatically dispatches firings still `pending`.
    It does not silently replay persisted `running` workflow step executions.
-   An operator-facing recovery decision requires authorized actor identity,
-   durable evidence of external effect reconciliation and a new attempt
-   fence before re-dispatch. In the absence of such evidence, report review
-   required and preserve the record.
+   An operator-facing recovery decision requires authorized human identity,
+   durable evidence, and previous-worker termination attestation for ambiguous
+   external effects. `requeue_confirmed_unstarted` is valid only when no
+   execution journal was ever committed. `confirm_terminal` is valid for an
+   existing terminal execution. An operator may also record a reconciled
+   overall execution outcome (`confirm_external_completed` or
+   `confirm_external_failed`) only after confirming that the prior worker
+   is fenced and taking responsibility for all remaining step effects.
+   This is an explicit human resolution, not inferred exactly-once delivery.
+   The reconciled execution state, firing transition and immutable audit
+   decision share one transaction.
 6. The host passes a stop receiver to the Workflow scheduler. Host shutdown
    closes new admission and drains already accepted local executions. The
    existing outer forced-abort deadline still applies, and an aborted
@@ -76,6 +83,13 @@ decision, including its explicit reconciliation requirement.
 - No lease expiry alone permits an expired `running` attempt to be replayed.
 - A per-firing attempt token fences stale completion writes, including races
   with recovery/record changes. A stolen lease must never authorize effects.
+  Claim ownership, current schedule version and insertion of the first
+  execution journal are verified in a transaction that locks the same workflow
+  row as step-graph edits; external effects begin only after commit.
+  A heartbeat refreshes active claims without canceling in-flight effects.
+  The engine checks the attempt token before subsequent steps and commits its
+  final execution status under the same firing-row CAS. A stale worker cannot
+  overwrite an operator decision with a late status write.
 - Workflow edits invalidate stale revision admission. The exact schedule
   revision is checked against the active workflow before dispatching a
   pending firing; queued old-revision firings are terminally skipped.
