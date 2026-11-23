@@ -196,6 +196,12 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let show_adapter_workspace = props.adapter_workspace;
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let mut state = session.write();
+        // The trusted Dioxus callback owns the current host snapshot; typed
+        // Fly constructors cannot know its revision. Stamp it before the
+        // exact mutation guard used by the remote browser transport.
+        let mut envelope = envelope;
+        envelope.revision = Some(state.controller.revision_id().to_string());
+        envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
         match crate::dispatch_browser_intent(&mut state.controller, envelope) {
             Ok(_) => state.last_error = None,
             Err(error) => state.last_error = Some(error.to_string()),

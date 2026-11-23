@@ -179,3 +179,7 @@ All mutating browser intents must now carry the current persisted revision. Unve
 read-only selections remain allowed. The trusted Leptos adapter callback stamps the revision
 and project hash from its controller before invoking the same checked dispatch path; remote
 browser clients must send their observed revision and cannot obtain a fresh one implicitly.
+
+Both Leptos and Dioxus trusted in-process editor workspaces attach their current revision and
+project hash to typed Fly intents before checked dispatch. The SSR page-form contract tests
+simulate that same host binding; no HTTP input is silently upgraded to a current revision.

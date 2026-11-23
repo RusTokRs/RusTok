@@ -8,7 +8,10 @@
 //! nothing when an arm of the dispatcher takes the intent first. The envelope shape is covered
 //! next to them so that neither shape is fixed at the cost of the other.
 
-use crate::{AdminCanvasController, dispatch_browser_intent};
+use crate::{
+    AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
+    dispatch_browser_intent as dispatch_versioned_intent,
+};
 use fly::{PageLocator, PageMetadata};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind, FLY_BROWSER_PROTOCOL};
 use serde_json::{Value, json};
@@ -50,6 +53,20 @@ fn intent(
         draft_token: None,
         draft_generation: None,
     }
+}
+
+/// Simulate the trusted adapter host, which attaches its controller revision to
+/// typed Fly constructors. The HTTP entrypoint never fills missing mutation
+/// revisions: that would defeat optimistic concurrency validation.
+fn dispatch_browser_intent(
+    controller: &mut AdminCanvasController,
+    mut envelope: BrowserIntentEnvelope,
+) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
+    if envelope.instance_id == "page-envelopes" {
+        envelope.revision = Some(controller.revision_id().to_string());
+        envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
+    }
+    dispatch_versioned_intent(controller, envelope)
 }
 
 fn page_ids(controller: &AdminCanvasController) -> Vec<String> {
