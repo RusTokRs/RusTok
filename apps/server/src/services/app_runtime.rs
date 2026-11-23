@@ -428,43 +428,17 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
 
     // A receiver subscribed after send_replace(true) will not observe the old
     // change through changed(); inspect the current value before starting work.
-    let mut stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
     if *stop_rx.borrow() {
         tracing::info!("Shutdown requested; skipping workflow cron scheduler startup");
         return Ok(());
     }
 
+    // The Workflow owner supervises each cron execution in a JoinSet and
+    // drains accepted tasks before its scheduler JoinHandle completes. The
+    // host's existing bounded shutdown may still force-abort a stalled task.
     let scheduler = WorkflowCronScheduler::new(ctx.db_clone());
-    let mut cron_task = scheduler.start();
-    let join_handle = tokio::spawn(async move {
-        tokio::select! {
-            result = &mut cron_task => {
-                if let Err(error) = result {
-                    if !error.is_cancelled() {
-                        tracing::error!(
-                            failure_code = "workflow_cron_task_panicked",
-                            "Workflow cron scheduler task failed"
-                        );
-                    }
-                }
-            }
-            changed = stop_rx.changed() => {
-                if changed.is_err() || *stop_rx.borrow() {
-                    tracing::info!("Workflow cron scheduler received shutdown signal, aborting task");
-                    cron_task.abort();
-                    if let Err(error) = cron_task.await {
-                        if !error.is_cancelled() {
-                            tracing::error!(
-                                failure_code = "workflow_cron_shutdown_join_failed",
-                                "Workflow cron scheduler failed to stop cleanly"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    });
-
+    let join_handle = scheduler.start_with_stop(stop_rx);
     ctx.shared_insert(WorkflowCronSchedulerHandle::new(join_handle));
     tracing::info!("Workflow runtime initialized (cron scheduler)");
     Ok(())
