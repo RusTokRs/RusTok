@@ -949,7 +949,7 @@ async fn touch_workflow_after_step_mutation(
     Ok(())
 }
 
-async fn lock_workflow_for_update(
+pub(crate) async fn lock_workflow_for_update(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     workflow_id: Uuid,
