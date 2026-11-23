@@ -313,6 +313,17 @@ impl AdminEditorRuntime {
                         }
                         None => None,
                     };
+                    if request.capability() == BuilderCapabilityKind::Publish {
+                        if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
+                            let allowed = evaluation.allowed;
+                            let message = gate_error_message(&evaluation);
+                            self.runtime_publish_gate_evaluation.set(Some(evaluation));
+                            if !allowed {
+                                self.fail(message);
+                                continue;
+                            }
+                        }
+                    }
                     if let PageBuilderCapabilityRequest::Preview(preview) = &request {
                         if self.preview_in_progress.get_untracked() {
                             self.fail("Preview already in progress");

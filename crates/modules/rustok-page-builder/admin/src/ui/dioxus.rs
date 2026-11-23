@@ -108,6 +108,16 @@ fn dispatch_facade_effects(
                 };
                 let capability = request.capability();
                 let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
+                    if let Some(evaluation) = session.read().evaluate_runtime_publish_gate() {
+                        let allowed = evaluation.allowed;
+                        let message = crate::core::gate_error_message(&evaluation);
+                        let mut state = session.write();
+                        state.runtime_publish_gate_evaluation = Some(evaluation);
+                        if !allowed {
+                            state.fail(message);
+                            continue;
+                        }
+                    }
                     if expected_hash.is_none() {
                         session.write().fail("Publish request has no submitted project hash");
                         continue;

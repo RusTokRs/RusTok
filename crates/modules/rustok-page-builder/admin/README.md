@@ -227,3 +227,8 @@ Browser intent admission also rejects a supplied document page ID that disagrees
 controller's own page ID, including read-only intents. Leptos validates the completed workspace
 result's page, revision, hash and command sequence before dispatching any facade effects. This
 prevents a late/switching-document callback from executing effects against a different draft.
+
+All framework workspace Publish effects now honor the same runtime publish gate as the
+standard toolbar flow. Leptos re-evaluates the gate in `apply_browser_result`, while Dioxus
+checks it before starting a facade save; neither workspace can bypass host runtime readiness
+policy merely by producing a direct browser intent request.

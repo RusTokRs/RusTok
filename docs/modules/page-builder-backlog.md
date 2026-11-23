@@ -1198,3 +1198,8 @@ Leptos adapter functional gap addressed in source: typed `FlyEditorWorkspace` ca
 consumes the returned browser intent effects, dispatching Publish/Preview to the consumer facade
 and preserving the request's hash/sequence and preview context. Previously those effects were
 ignored. Live Leptos SSR/CSR rendering and persistence remain for the maintainer's end checks.
+
+Runtime publish-gate convergence (source only): Leptos and Dioxus adapter-generated Publish
+requests now check the host runtime publish policy before reaching the facade, matching the
+standard toolbar. Framework-mounted gate parity and denied-save UX remain for final integration
+checks.
