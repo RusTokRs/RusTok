@@ -74,7 +74,7 @@ pub fn AdapterWorkspacePanel(
     view! {
         <FlyEditorWorkspace
             document=document
-            registries=registries
+            registries=Some(registries)
             contribution_assembly=assembly
             instance_id=instance_id
             on_intent=on_intent
