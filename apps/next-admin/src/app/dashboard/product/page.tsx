@@ -70,7 +70,9 @@ export default async function ProductPage({ searchParams }: PageProps) {
     params.title !== undefined &&
     (Array.isArray(params.title) && params.title.length !== 1
       ? true
-      : !rawTitle?.trim() || rawTitle.trim() !== (search ?? ''));
+      : !rawTitle?.trim() ||
+        rawTitle !== rawTitle.trim() ||
+        rawTitle.trim() !== (search ?? ''));
   const hasLegacySearch = params.search !== undefined;
   // The table owns the `title` key. Migrate legacy `search` links into that
   // key before hydration so the visible filter and the server query cannot diverge.
