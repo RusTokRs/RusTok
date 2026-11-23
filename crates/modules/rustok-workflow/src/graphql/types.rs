@@ -135,6 +135,7 @@ pub enum GqlStepExecutionStatus {
     Running,
     Completed,
     Failed,
+    ReconciliationRequired,
     Skipped,
 }
 
@@ -145,6 +146,7 @@ impl From<StepExecutionStatus> for GqlStepExecutionStatus {
             StepExecutionStatus::Running => Self::Running,
             StepExecutionStatus::Completed => Self::Completed,
             StepExecutionStatus::Failed => Self::Failed,
+            StepExecutionStatus::ReconciliationRequired => Self::ReconciliationRequired,
             StepExecutionStatus::Skipped => Self::Skipped,
         }
     }
