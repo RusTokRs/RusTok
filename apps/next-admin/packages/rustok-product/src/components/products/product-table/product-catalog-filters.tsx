@@ -107,6 +107,7 @@ export function ProductCatalogFilters({
         <label className='grid gap-1.5 text-sm'>
           <span className='font-medium'>{t('category')}</span>
           <select
+            key={categoryId ?? ''}
             name='category_id'
             defaultValue={categoryId ?? ''}
             className='border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
@@ -123,6 +124,7 @@ export function ProductCatalogFilters({
         <label className='grid gap-1.5 text-sm'>
           <span className='font-medium'>{t('attributeFilters')}</span>
           <Input
+            key={attributeFilters.join(';')}
             name='attribute_filters'
             defaultValue={attributeFilters.join(';')}
             placeholder={t('attributeFiltersPlaceholder')}
@@ -132,6 +134,7 @@ export function ProductCatalogFilters({
         <label className='grid gap-1.5 text-sm'>
           <span className='font-medium'>{t('sortBy')}</span>
           <select
+            key={sortBy ?? 'published_at'}
             name='sort_by'
             defaultValue={sortBy ?? 'published_at'}
             className='border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
@@ -144,6 +147,7 @@ export function ProductCatalogFilters({
         <label className='grid gap-1.5 text-sm'>
           <span className='font-medium'>{t('sortDirection')}</span>
           <select
+            key={sortDirection ?? 'desc'}
             name='sort_direction'
             defaultValue={sortDirection ?? 'desc'}
             className='border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
