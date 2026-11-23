@@ -100,10 +100,16 @@ const mutationBlock = safety.slice(safety.indexOf("struct GraphqlMutationContext
 
 for (const marker of [
   'const PRODUCT_ADMIN_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_reads";',
-  '"product_admin_category_graphql_reads"',
+  '"product_admin_native_reads"',
+  '"product_admin_graphql_reads"',
+  "const SELECTED_PRODUCT_ADMIN_READ_BOUNDARY",
+  "SELECTED_PRODUCT_ADMIN_TRANSPORT",
   "struct GraphqlReadContext",
   "boundary: &'static str",
+  "selected_transport: &'static str",
   "category_id_length: Option<usize>",
+  "vendor_length: Option<usize>",
+  "attribute_filter_count: Option<usize>",
   "Uuid::new_v4()",
   '"product-admin-graphql:{operation}:{}"',
   "fn map_error(&self, error: GraphqlHttpError)",
@@ -120,7 +126,8 @@ for (const marker of [
   "error_payload_length = ?error_payload_length",
   "tracing::error!(",
   "tracing::warn!(",
-  "correlation_id = %self.correlation_id",
+  "correlation_id_present = !self.correlation_id.is_empty()",
+  "correlation_id_length = self.correlation_id.chars().count()",
   "token_present = self.token_present",
   "tenant_slug_length = ?self.tenant_slug_length",
   "tenant_id_length = ?self.tenant_id_length",
@@ -130,16 +137,16 @@ for (const marker of [
   "search_length = ?self.search_length",
   "status_length = ?self.status_length",
   "currency_code_length = ?self.currency_code_length",
-  "native_fallback_attempted = self.native_fallback_attempted",
+  "selected_transport = self.selected_transport",
   "error_kind,",
   "code,",
   "boundary = self.boundary",
   '"Product admin service is temporarily unavailable"',
   '"Product admin request could not be completed"',
-  '"product.admin_graphql_network_unavailable"',
-  '"product.admin_graphql_http_unavailable"',
-  '"product.admin_graphql_authentication_required"',
-  '"product.admin_graphql_request_rejected"',
+  '"product.admin_transport_network_unavailable"',
+  '"product.admin_transport_http_unavailable"',
+  '"product.admin_transport_authentication_required"',
+  '"product.admin_transport_request_rejected"',
   "public_error",
 ]) {
   requireText(readBlock, marker, `${paths.safety}: bounded read diagnostic contract`);
@@ -250,18 +257,20 @@ const productsBlock = between(
   paths.facade,
 );
 for (const marker of [
-  "admin_catalog_native::fetch_products(",
-  "Err(_) => {",
   "GraphqlReadContext::for_products(",
+  "#[cfg(any(feature = \"ssr\", feature = \"hydrate\"))]",
+  "admin_catalog_native::fetch_products(",
+  "#[cfg(not(any(feature = \"ssr\", feature = \"hydrate\")))]",
   "admin_catalog_graphql::fetch_products(",
+  "context.map_error(GraphqlHttpError::Graphql(error.to_string()))",
 ]) {
-  requireText(productsBlock, marker, `${paths.facade}: product-list native-first contract`);
+  requireText(productsBlock, marker, `${paths.facade}: product-list selected-transport contract`);
 }
 const productsNativeIndex = productsBlock.indexOf("admin_catalog_native::fetch_products(");
 const productsContextIndex = productsBlock.indexOf("GraphqlReadContext::for_products(");
 const productsGraphqlIndex = productsBlock.indexOf("admin_catalog_graphql::fetch_products(");
-if (!(productsNativeIndex >= 0 && productsNativeIndex < productsContextIndex && productsContextIndex < productsGraphqlIndex)) {
-  failures.push(`${paths.facade}: product-list native/context/GraphQL order drift`);
+if (!(productsContextIndex >= 0 && productsContextIndex < productsNativeIndex && productsNativeIndex < productsGraphqlIndex)) {
+  failures.push(`${paths.facade}: product-list context/native/GraphQL selected order drift`);
 }
 
 const categoryOperations = [
@@ -328,17 +337,24 @@ for (const operation of categoryOperations) {
   const contextIndex = facadeBlock.indexOf(operation.context);
   const callIndex = facadeBlock.indexOf(operation.facadeCall);
   if (!(contextIndex >= 0 && callIndex >= 0 && contextIndex < callIndex)) {
-    failures.push(`${paths.facade}: ${operation.name} context must precede native-first executor`);
+    failures.push(`${paths.facade}: ${operation.name} context must precede selected transport executor`);
   }
 
   const legacyBlock = between(legacy, operation.start, operation.legacyEnd, paths.legacy);
-  for (const marker of [operation.nativeCall, "Err(_) => {", operation.graphqlCall]) {
-    requireText(legacyBlock, marker, `${paths.legacy}: ${operation.name} native-first fallback`);
+  for (const marker of [
+    '#[cfg(any(feature = "ssr", feature = "hydrate"))]',
+    operation.nativeCall,
+    '#[cfg(not(any(feature = "ssr", feature = "hydrate")))]',
+    operation.graphqlCall,
+  ]) {
+    requireText(legacyBlock, marker, `${paths.legacy}: ${operation.name} selected transport`);
   }
+  forbidText(legacyBlock, "Err(_) =>", `${paths.legacy}: ${operation.name} must not retry through another transport`);
+  forbidText(legacyBlock, "match native_server_adapter::", `${paths.legacy}: ${operation.name} must not use native-first fallback`);
   const nativeIndex = legacyBlock.indexOf(operation.nativeCall);
   const graphqlIndex = legacyBlock.indexOf(operation.graphqlCall);
   if (!(nativeIndex >= 0 && graphqlIndex >= 0 && nativeIndex < graphqlIndex)) {
-    failures.push(`${paths.legacy}: ${operation.name} native/GraphQL order drift`);
+    failures.push(`${paths.legacy}: ${operation.name} selected transport branch order drift`);
   }
 }
 if (countText(facade, ".map_err(|failure| context.map_error(failure))") !== 5) {
@@ -438,9 +454,9 @@ for (const [evidence, label, extra] of [
     primaryEvidence,
     paths.primaryEvidence,
     {
-      context_before_graphql_call: true,
-      product_list_native_first_preserved: true,
-      product_list_graphql_fallback_preserved: true,
+      context_before_selected_transport_call: true,
+      product_list_transport_selected_by_build_profile: true,
+      cross_transport_retry: false,
     },
   ],
   [
@@ -448,9 +464,10 @@ for (const [evidence, label, extra] of [
     paths.categoryEvidence,
     {
       final_public_wrapper: true,
-      context_before_native_first_executor: true,
-      native_first_preserved: true,
-      graphql_fallback_preserved: true,
+      context_before_selected_transport_executor: true,
+      native_selected_in_ssr_hydrate: true,
+      graphql_selected_in_csr: true,
+      cross_transport_retry: false,
       retry_added: false,
     },
   ],
@@ -485,6 +502,10 @@ for (const [evidence, label, extra] of [
   for (const marker of [
     "error_payload_present",
     "error_payload_length",
+    "correlation_id_length",
+    "selected_transport",
+    "vendor_length",
+    "attribute_filter_count",
     "error_kind",
     "code",
     "boundary",
@@ -550,5 +571,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Product Admin primary and category GraphQL reads retain complete transport and UI contracts with bounded payload-shape diagnostics; execution evidence remains open",
+  "Product Admin primary and category reads retain build-profile-selected transport and UI contracts with bounded diagnostics; execution evidence remains open",
 );
