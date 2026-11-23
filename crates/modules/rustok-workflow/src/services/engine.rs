@@ -101,6 +101,27 @@ impl WorkflowEngine {
             return Err(error.into());
         }
 
+        self.run_recorded_execution(execution_id, steps, initial_context).await
+    }
+
+    /// The Workflow cron owner inserts a trigger journal and checks its firing
+    /// attempt inside one DB transaction before calling this method. Never
+    /// insert another execution row or bypass that reservation here.
+    pub(crate) async fn execute_preclaimed_cron(
+        &self,
+        execution_id: Uuid,
+        steps: Vec<crate::entities::WorkflowStep>,
+        initial_context: Value,
+    ) -> WorkflowResult<Uuid> {
+        self.run_recorded_execution(execution_id, steps, initial_context).await
+    }
+
+    async fn run_recorded_execution(
+        &self,
+        execution_id: Uuid,
+        steps: Vec<crate::entities::WorkflowStep>,
+        initial_context: Value,
+    ) -> WorkflowResult<Uuid> {
         info!(
             execution_id = %execution_id,
             steps = steps.len(),
