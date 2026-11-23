@@ -94,6 +94,27 @@ impl WorkflowQuery {
         }
     }
 
+    async fn workflow_cron_reconciliation(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<GqlWorkflowCronReconciliationItem>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
+        require_workflow_permission(
+            ctx,
+            &[Permission::WORKFLOW_EXECUTIONS_LIST],
+            "Permission denied: workflow_executions:list required",
+        )?;
+        let items = crate::services::reconciliation_required_for_tenant(db, tenant.id, 100)
+            .await
+            .map_err(|_| async_graphql::Error::new("Workflow cron reconciliation is unavailable"))?;
+        Ok(items
+            .into_iter()
+            .map(crate::WorkflowCronReconciliationItem::from)
+            .map(Into::into)
+            .collect())
+    }
+
     async fn workflow_templates(&self, ctx: &Context<'_>) -> Result<Vec<GqlWorkflowTemplate>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
 
