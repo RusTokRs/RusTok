@@ -131,6 +131,7 @@ const __flyBindSsrAdapter = (adapter) => {
     if (
       rendered &&
       routeDraft === null &&
+      adapter.pendingOperation?.request?.page_id === pageId &&
       typeof pendingToken === "string" &&
       pendingToken &&
       pendingToken !== rendered
@@ -424,6 +425,8 @@ mod tests {
         assert!(source.contains("if (routeDraft === null)"));
         assert!(source.contains("__flyWriteDraftRoute(rendered)"));
         assert!(source.contains("boundDraft = rendered"));
+        assert!(source.contains("adapter.pendingOperation?.request?.page_id === pageId"));
+        assert!(source.contains("__flyWriteDraftRoute(pendingToken)"));
         assert!(source.contains("if (adapter.pendingOperation)"));
         assert!(source.contains("adapter.resolvePendingOperation()"));
     }
