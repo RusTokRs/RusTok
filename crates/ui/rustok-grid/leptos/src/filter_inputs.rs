@@ -1,4 +1,5 @@
 use leptos::ev::Event;
+use leptos::leptos_dom::helpers::window_event_listener;
 use leptos::prelude::*;
 use leptos_use::use_debounce_fn;
 
@@ -66,10 +67,25 @@ pub fn GridFilterCell(
             // Last value we published; used to tell "the parent changed this"
             // from "our own change came back to us".
             let last_published = StoredValue::new(initial.trim().to_string());
+            let pending_change = StoredValue::new(false);
+            let history_revision = RwSignal::new(0_u64);
+            let last_history_revision = StoredValue::new(0_u64);
+            let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
+                // Invalidate the inner input debounce before the router restores its query state.
+                pending_change.set_value(false);
+                history_revision.update(|revision| *revision = revision.wrapping_add(1));
+            });
+            on_cleanup(move || history_listener.remove());
 
             Effect::new(move |_| {
+                let revision = history_revision.get();
                 let external = text_of(&current_value.get());
-                if external != last_published.get_value() {
+                if external != last_published.get_value()
+                    || pending_change.get_value()
+                    || revision != last_history_revision.get_value()
+                {
+                    last_history_revision.set_value(revision);
+                    pending_change.set_value(false);
                     last_published.set_value(external.clone());
                     set_text_input.set(external);
                 }
@@ -77,6 +93,10 @@ pub fn GridFilterCell(
 
             let debounced_change = use_debounce_fn(
                 move || {
+                    if !pending_change.get_value() {
+                        return;
+                    }
+                    pending_change.set_value(false);
                     let value = text_input.get_untracked();
                     last_published.set_value(value.trim().to_string());
                     emit(FilterValue::Text(value));
@@ -96,6 +116,7 @@ pub fn GridFilterCell(
                         aria-label=aria_label
                         prop:value=move || text_input.get()
                         on:input=move |ev| {
+                            pending_change.set_value(true);
                             set_text_input.set(event_target_value(&ev));
                             debounced_change();
                         }
@@ -151,10 +172,24 @@ pub fn GridFilterCell(
             let (min_input, set_min_input) = signal(initial_min.clone());
             let (max_input, set_max_input) = signal(initial_max.clone());
             let last_published = StoredValue::new((initial_min, initial_max));
+            let pending_change = StoredValue::new(false);
+            let history_revision = RwSignal::new(0_u64);
+            let last_history_revision = StoredValue::new(0_u64);
+            let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
+                pending_change.set_value(false);
+                history_revision.update(|revision| *revision = revision.wrapping_add(1));
+            });
+            on_cleanup(move || history_listener.remove());
 
             Effect::new(move |_| {
+                let revision = history_revision.get();
                 let external = number_bounds(&current_value.get());
-                if external != last_published.get_value() {
+                if external != last_published.get_value()
+                    || pending_change.get_value()
+                    || revision != last_history_revision.get_value()
+                {
+                    last_history_revision.set_value(revision);
+                    pending_change.set_value(false);
                     last_published.set_value(external.clone());
                     set_min_input.set(external.0);
                     set_max_input.set(external.1);
@@ -162,6 +197,10 @@ pub fn GridFilterCell(
             });
 
             let publish = move || {
+                if !pending_change.get_value() {
+                    return;
+                }
+                pending_change.set_value(false);
                 let min_raw = min_input.get_untracked();
                 let max_raw = max_input.get_untracked();
                 let min = min_raw.trim().parse::<f64>().ok().filter(|n| n.is_finite());
@@ -195,6 +234,7 @@ pub fn GridFilterCell(
                         aria-label=min_label
                         prop:value=move || min_input.get()
                         on:input=move |ev| {
+                            pending_change.set_value(true);
                             set_min_input.set(event_target_value(&ev));
                             debounced_min();
                         }
@@ -210,6 +250,7 @@ pub fn GridFilterCell(
                         aria-label=max_label
                         prop:value=move || max_input.get()
                         on:input=move |ev| {
+                            pending_change.set_value(true);
                             set_max_input.set(event_target_value(&ev));
                             debounced_max();
                         }
