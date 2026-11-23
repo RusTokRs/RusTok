@@ -551,6 +551,7 @@ mod durable_external_step_tests {
 
     struct AmbiguousHttp {
         calls: Arc<AtomicUsize>,
+        misclassified_validation_error: bool,
     }
 
     #[async_trait::async_trait]
@@ -563,9 +564,17 @@ mod durable_external_step_tests {
             _context: StepContext,
         ) -> WorkflowResult<StepOutput> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(WorkflowError::StepFailed(
-                "remote request may have completed before response was lost".to_owned()
-            ))
+            if self.misclassified_validation_error {
+                // A plugin can misclassify a post-send failure. The engine
+                // must not assume this label proves pre-effect validation.
+                Err(WorkflowError::InvalidStepConfig(
+                    "provider reported invalid request after accepting it".to_owned(),
+                ))
+            } else {
+                Err(WorkflowError::StepFailed(
+                    "remote request may have completed before response was lost".to_owned(),
+                ))
+            }
         }
     }
 
@@ -601,7 +610,10 @@ mod durable_external_step_tests {
 
         let calls = Arc::new(AtomicUsize::new(0));
         let mut engine = WorkflowEngine::new(db.clone());
-        engine.register_step(AmbiguousHttp { calls: Arc::clone(&calls) });
+        engine.register_step(AmbiguousHttp {
+            calls: Arc::clone(&calls),
+            misclassified_validation_error: false,
+        });
         for _ in 0..2 {
             assert!(matches!(
                 engine.execute(
@@ -614,6 +626,32 @@ mod durable_external_step_tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         let execution = workflow_execution::Entity::find()
             .filter(workflow_execution::Column::TriggerEventId.eq(trigger_id))
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(execution.status, ExecutionStatus::ReconciliationRequired);
+        let step_record = crate::entities::workflow_step_execution::Entity::find()
+            .filter(crate::entities::workflow_step_execution::Column::ExecutionId.eq(execution.id))
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(step_record.status, StepExecutionStatus::ReconciliationRequired);
+
+        let validation_trigger = Uuid::new_v4();
+        let mut engine = WorkflowEngine::new(db.clone());
+        engine.register_step(AmbiguousHttp {
+            calls: Arc::clone(&calls),
+            misclassified_validation_error: true,
+        });
+        for _ in 0..2 {
+            assert!(matches!(
+                engine.execute(
+                    workflow_id, tenant_id, Some(validation_trigger),
+                    vec![step.clone()], Value::Null,
+                ).await,
+                Err(WorkflowError::ExecutionOutcomeUncertain(_)),
+            ));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2,
+            "even a validation-labelled post-send error must not be retried");
+        let execution = workflow_execution::Entity::find()
+            .filter(workflow_execution::Column::TriggerEventId.eq(validation_trigger))
             .one(&db).await.unwrap().unwrap();
         assert_eq!(execution.status, ExecutionStatus::ReconciliationRequired);
     }
