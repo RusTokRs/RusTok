@@ -217,9 +217,14 @@ impl WorkflowEngine {
                     let err_msg = err.to_string();
                     error!(step_id = %step.id, error = %err_msg, "Step failed");
 
+                    let external_outcome_uncertain = potentially_external_step(&step.step_type);
                     self.finish_step_execution(
                         step_execution_id,
-                        StepExecutionStatus::Failed,
+                        if external_outcome_uncertain {
+                            StepExecutionStatus::ReconciliationRequired
+                        } else {
+                            StepExecutionStatus::Failed
+                        },
                         step_input.clone(),
                         Value::Null,
                         Some(err_msg.clone()),
@@ -234,7 +239,7 @@ impl WorkflowEngine {
                     // An error variant does not prove where the external
                     // effect stopped. Even a misclassified validation error
                     // from a pluggable executor may follow a remote send.
-                    if potentially_external_step(&step.step_type) {
+                    if external_outcome_uncertain {
                         let uncertain_reason =
                             Some(format!("step {} has an unconfirmed external outcome", step.id));
                         if let Some((firing_id, token)) = cron_fence {
