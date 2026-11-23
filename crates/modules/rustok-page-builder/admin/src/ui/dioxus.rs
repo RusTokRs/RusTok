@@ -103,7 +103,14 @@ fn dispatch_facade_effects(
                 expected_hash,
             } => {
                 let Some(facade) = facade.clone() else {
-                    session.write().fail("Page Builder facade is missing");
+                    // No request is sent and therefore no completion will ever
+                    // arrive to retire an already prepared preview operation.
+                    let mut state = session.write();
+                    if matches!(request, PageBuilderCapabilityRequest::Preview(_)) {
+                        state.preview_in_progress = false;
+                        state.preview_request = None;
+                    }
+                    state.fail("Page Builder facade is missing");
                     continue;
                 };
                 let capability = request.capability();

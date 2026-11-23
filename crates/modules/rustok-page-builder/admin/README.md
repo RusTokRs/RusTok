@@ -281,3 +281,8 @@ the active AdminCanvasController. Previously they constructed fresh built-in-onl
 hiding blocks installed by the consumer and contribution host, even though the authoritative
 controller could already insert those blocks. The controller remains the registry owner; these
 are read-only workspace projections, not independent registration paths.
+
+Dioxus now clears a pending preview's prepared lifecycle state when its consumer facade is
+missing. Without this transition the request was never dispatched and could not receive a
+response, leaving the editor stuck reporting a preview in progress. A missing Publish facade
+still fails visibly without claiming a successful save.
