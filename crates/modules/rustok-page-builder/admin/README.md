@@ -268,3 +268,10 @@ Dioxus Page Builder now passes host selection, active page and undo/redo availab
 controlled Fly workspace, whose intent-mode canvas/layers/tokens render the latest controller
 document prop rather than a locally cached first-mount FlyEditor. This fixes stale visual state
 after edits without resetting the standalone editor's local history.
+
+The outer Dioxus host's session key also incorporates the incoming controller's document
+hash, command sequence, page index and selection. A host-side draft or selection replacement
+that does not change the server revision now remounts the child instead of continuing to display
+stale state from the first `use_signal` initialization. The editor's own internal changes do not
+alter the incoming host key. Direct use of the inner component still requires a stable owning
+component key or a caller-controlled remount when changing documents.

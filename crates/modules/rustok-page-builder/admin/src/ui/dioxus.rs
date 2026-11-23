@@ -229,11 +229,21 @@ fn dispatch_facade_effects(
 /// owner/revision is a new editor session: reusing the old Dioxus hook storage
 /// would leave the previous page's draft and selection mounted.
 fn controller_session_key(controller: &AdminCanvasController) -> String {
+    // A host may replace its draft without advancing its persisted revision
+    // (for example after a remote edit or optimistic reconciler). Reusing
+    // use_signal in that case would silently retain the old controlled draft.
+    let revision = controller.editor().revision();
+    let selected = controller.ui().state.selection.component_id.as_deref().unwrap_or("");
     format!(
-        "page:{}:{}|revision:{}",
+        "page:{}:{}|revision:{}|hash:{}|seq:{}|active:{}|selection:{}:{}",
         controller.page_id().len(),
         controller.page_id(),
         controller.revision_id(),
+        revision.project_hash.hex(),
+        revision.command_sequence,
+        controller.active_page_index(),
+        selected.len(),
+        selected,
     )
 }
 
@@ -641,5 +651,20 @@ mod props_regression_tests {
             .expect("second page");
         assert_ne!(controller_session_key(&home_v1), controller_session_key(&home_v2));
         assert_ne!(controller_session_key(&home_v1), controller_session_key(&other));
+
+        let mut changed_draft = home_v1.clone();
+        changed_draft.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "root".to_string(),
+            patch: ComponentPatch::default().set_attribute(
+                "aria-label", json!("Updated draft without a new server revision"),
+            ),
+        })).expect("patch existing root");
+        assert_eq!(changed_draft.revision_id(), home_v1.revision_id());
+        assert_ne!(controller_session_key(&home_v1), controller_session_key(&changed_draft));
+
+        let mut selected = home_v1.clone();
+        selected.dispatch(UiIntent::Select(Some("root".to_string())))
+            .expect("select root");
+        assert_ne!(controller_session_key(&home_v1), controller_session_key(&selected));
     }
 }
