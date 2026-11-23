@@ -82,9 +82,49 @@ export default async function ProductPage({ searchParams }: PageProps) {
         rawTitle !== trimmedTitle ||
         trimmedTitle !== (search ?? ''));
   const hasLegacySearch = params.search !== undefined;
-  // The table owns the `title` key. Migrate legacy `search` links into that
-  // key before hydration so the visible filter and the server query cannot diverge.
-  // Page and page size are canonicalized at the same boundary.
+  const rawVendor = pickParam(params.vendor);
+  const vendor = rawVendor?.trim() || undefined;
+  const hasNonCanonicalVendor =
+    params.vendor !== undefined &&
+    (Array.isArray(params.vendor) && params.vendor.length !== 1
+      ? true
+      : !vendor || rawVendor !== vendor);
+  const rawCategoryId = pickParam(params.category_id);
+  const categoryId = rawCategoryId?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalCategoryId =
+    params.category_id !== undefined &&
+    (Array.isArray(params.category_id) && params.category_id.length !== 1
+      ? true
+      : !categoryId || rawCategoryId !== categoryId);
+  const rawSortBy = pickParam(params.sort_by);
+  const sortBy = rawSortBy?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalSortBy =
+    params.sort_by !== undefined &&
+    (Array.isArray(params.sort_by) && params.sort_by.length !== 1
+      ? true
+      : !sortBy || rawSortBy !== sortBy);
+  const rawSortDirection = pickParam(params.sort_direction);
+  const sortDirection = rawSortDirection?.trim().toLowerCase() || undefined;
+  const hasNonCanonicalSortDirection =
+    params.sort_direction !== undefined &&
+    (Array.isArray(params.sort_direction) && params.sort_direction.length !== 1
+      ? true
+      : !sortDirection || rawSortDirection !== sortDirection);
+  const rawAttributeFilters = Array.isArray(params.attribute_filters)
+    ? params.attribute_filters.join(';')
+    : params.attribute_filters ?? '';
+  const attributeFilters = parseAttributeFilters(params.attribute_filters);
+  const canonicalAttributeFilters = attributeFilters.join(';');
+  const hasNonCanonicalAttributeFilters =
+    params.attribute_filters !== undefined &&
+    ((Array.isArray(params.attribute_filters) &&
+      params.attribute_filters.length !== 1) ||
+      !canonicalAttributeFilters ||
+      rawAttributeFilters !== canonicalAttributeFilters);
+
+  // Canonicalize route-owned filters before hydration. The table owns `title`,
+  // while older links may still use `search`; facets, sorting and column
+  // filters must all describe the same owner query after this boundary.
   if (
     (rawPage !== undefined &&
       (rawPage.trim() !== String(page) ||
@@ -94,7 +134,12 @@ export default async function ProductPage({ searchParams }: PageProps) {
         (Array.isArray(params.perPage) && params.perPage.length !== 1))) ||
     hasNonCanonicalStatus ||
     hasNonCanonicalTitle ||
-    hasLegacySearch
+    hasLegacySearch ||
+    hasNonCanonicalVendor ||
+    hasNonCanonicalCategoryId ||
+    hasNonCanonicalSortBy ||
+    hasNonCanonicalSortDirection ||
+    hasNonCanonicalAttributeFilters
   ) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -117,14 +162,22 @@ export default async function ProductPage({ searchParams }: PageProps) {
       query.delete('title');
     }
     query.delete('search');
+    if (vendor) query.set('vendor', vendor);
+    else query.delete('vendor');
+    if (categoryId) query.set('category_id', categoryId);
+    else query.delete('category_id');
+    if (sortBy) query.set('sort_by', sortBy);
+    else query.delete('sort_by');
+    if (sortDirection) query.set('sort_direction', sortDirection);
+    else query.delete('sort_direction');
+    if (canonicalAttributeFilters) {
+      query.set('attribute_filters', canonicalAttributeFilters);
+    } else {
+      query.delete('attribute_filters');
+    }
     redirect(`/dashboard/product?${query.toString()}`);
   }
   const status = canonicalStatus;
-  const vendor = pickParam(params.vendor)?.trim() || undefined;
-  const categoryId = pickParam(params.category_id)?.trim() || undefined;
-  const sortBy = pickParam(params.sort_by)?.trim() || undefined;
-  const sortDirection = pickParam(params.sort_direction)?.trim() || undefined;
-  const attributeFilters = parseAttributeFilters(params.attribute_filters);
 
   const opts = {
     graphql: graphqlRequest,
