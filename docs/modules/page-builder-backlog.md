@@ -1188,3 +1188,8 @@ failed network request committed remotely.
 The Leptos admin facade's publish completion now uses the attempt-aware controller entrypoints
 for success and failure. Delayed completions of an older identical-hash retry are ignored rather
 than failing the active new save. Host callback/session transport IDs are still an open migration.
+
+Dioxus functional gap addressed in source: Page Builder Dioxus Save and workspace request effects
+previously stopped at the UI reducer without executing `PageBuilderAdminFacade`. Those effects
+now reach the facade and return attempt-safe publish completions or errors. Mounted Dioxus
+facade/preview behavior still needs maintainer runtime evidence after the implementation phase.

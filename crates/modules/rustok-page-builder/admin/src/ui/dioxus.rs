@@ -1,6 +1,7 @@
-use crate::core::session::{EditorSessionAction, EditorSessionState};
+use crate::core::session::{EditorSessionAction, EditorSessionEffect, EditorSessionState};
 use crate::i18n::t;
 use crate::model::AdminCanvasController;
+use crate::BrowserIntentEffect;
 use crate::transport::PageBuilderAdminFacade;
 use dioxus::prelude::*;
 use fly::TraitSchemaRegistry;
@@ -11,6 +12,9 @@ use fly_ui::{
     UiIntent,
 };
 use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
+use rustok_page_builder::dto::{
+    BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
+};
 use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
@@ -61,6 +65,120 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
             && self.controller.revision_id() == other.controller.revision_id()
             && self.runtime_context == other.runtime_context
             && self.editor_capabilities == other.editor_capabilities
+    }
+}
+
+/// Deliver the command effects the shared editor reducer emits. Previously the
+/// Dioxus toolbar and workspace discarded Publish/Preview effects, so Save
+/// visibly did nothing even when a consumer supplied a working facade.
+fn dispatch_facade_effects(
+    mut session: Signal<EditorSessionState>,
+    facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    effects: Vec<EditorSessionEffect>,
+) {
+    for effect in effects {
+        match effect {
+            EditorSessionEffect::Announce(message) => {
+                session.write().announce(message);
+            }
+            EditorSessionEffect::ExecuteRequest {
+                request,
+                expected_hash,
+            } => {
+                let Some(facade) = facade.clone() else {
+                    session.write().fail("Page Builder facade is missing");
+                    continue;
+                };
+                let capability = request.capability();
+                let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
+                    if expected_hash.is_none() {
+                        session.write().fail("Publish request has no submitted project hash");
+                        continue;
+                    }
+                    match session.write().mark_save_started_with_id() {
+                        Ok(id) => Some(id),
+                        Err(error) => {
+                            session.write().fail(error);
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+                if let PageBuilderCapabilityRequest::Preview(input) = &request {
+                    let mut state = session.write();
+                    if state.preview_in_progress && state.preview_request.is_none() {
+                        state.fail("Preview is already in progress");
+                        continue;
+                    }
+                    if !state.preview_in_progress {
+                        // Browser-origin previews supply runtime context in the
+                        // request instead of calling prepare_server_preview_request.
+                        let context = input.runtime.context.clone();
+                        let scenario = input.runtime.scenario_id.clone();
+                        state.runtime_context = context.clone();
+                        state.runtime_context_configured = true;
+                        state.active_runtime_scenario = scenario.clone();
+                        state.preview_request = Some((
+                            state.controller.editor().revision().project_hash,
+                            state.controller.active_page_index(),
+                            context,
+                            scenario,
+                        ));
+                        state.preview_in_progress = true;
+                    }
+                }
+                spawn(async move {
+                    let outcome = facade.execute(request).await;
+                    let mut state = session.write();
+                    match outcome {
+                        Ok(PageBuilderCapabilityResponse::Publish(response))
+                            if capability == BuilderCapabilityKind::Publish =>
+                        {
+                            let Some(attempt_id) = save_attempt_id else {
+                                return;
+                            };
+                            if state.controller.active_save_attempt_id() != Some(attempt_id) {
+                                return;
+                            }
+                            let _ = state.handle_publish_response_for_attempt(
+                                &response.page_id,
+                                &response.revision_id,
+                                expected_hash,
+                                attempt_id,
+                            );
+                        }
+                        Ok(PageBuilderCapabilityResponse::Preview(response))
+                            if capability == BuilderCapabilityKind::Preview =>
+                        {
+                            let _ = state.handle_preview_response(&response);
+                        }
+                        Ok(other) => {
+                            let error = format!(
+                                "Page Builder facade returned `{}` for a `{capability}` request",
+                                other.capability()
+                            );
+                            if let Some(id) = save_attempt_id {
+                                state.handle_publish_error_for_attempt(id, error);
+                            } else {
+                                state.preview_in_progress = false;
+                                state.preview_request = None;
+                                state.fail(error);
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(id) = save_attempt_id {
+                                state.handle_publish_error_for_attempt(id, error.to_string());
+                            } else {
+                                state.preview_in_progress = false;
+                                state.preview_request = None;
+                                state.fail(error.to_string());
+                            }
+                        }
+                    }
+                });
+            }
+        }
     }
 }
 
@@ -194,18 +312,40 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         .as_ref()
         .map(|assembly| assembly.as_ref().clone());
     let show_adapter_workspace = props.adapter_workspace;
+    let workspace_facade = props.facade.clone();
+    let toolbar_facade = props.facade.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
-        let mut state = session.write();
-        // The trusted Dioxus callback owns the current host snapshot; typed
-        // Fly constructors cannot know its revision. Stamp it before the
-        // exact mutation guard used by the remote browser transport.
-        let mut envelope = envelope;
-        envelope.revision = Some(state.controller.revision_id().to_string());
-        envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
-        match crate::dispatch_browser_intent(&mut state.controller, envelope) {
-            Ok(_) => state.last_error = None,
-            Err(error) => state.last_error = Some(error.to_string()),
-        }
+        let effects = {
+            let mut state = session.write();
+            // The trusted Dioxus callback owns the current host snapshot;
+            // typed Fly constructors do not know its revision.
+            let mut envelope = envelope;
+            envelope.revision = Some(state.controller.revision_id().to_string());
+            envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
+            match crate::dispatch_browser_intent(&mut state.controller, envelope) {
+                Ok(result) => {
+                    state.last_error = None;
+                    let current_hash = state.controller.editor().revision().project_hash;
+                    result.effects.into_iter().map(|effect| match effect {
+                        BrowserIntentEffect::Announce { message } =>
+                            EditorSessionEffect::Announce(message),
+                        BrowserIntentEffect::Request { request, expected_hash, .. } => {
+                            // The request was produced synchronously by this
+                            // controller; never substitute a mismatched hash.
+                            let expected_hash = expected_hash
+                                .filter(|hex| hex == &current_hash.hex())
+                                .map(|_| current_hash);
+                            EditorSessionEffect::ExecuteRequest { request, expected_hash }
+                        }
+                    }).collect::<Vec<_>>()
+                }
+                Err(error) => {
+                    state.fail(error.to_string());
+                    Vec::new()
+                }
+            }
+        };
+        dispatch_facade_effects(session, workspace_facade.clone(), effects);
     });
 
     rsx! {
@@ -240,7 +380,10 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     button {
                         class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90",
                         onclick: move |_| {
-                            session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::RequestSave));
+                            let effects = session.write().dispatch(
+                                EditorSessionAction::DispatchIntent(UiIntent::RequestSave)
+                            );
+                            dispatch_facade_effects(session, toolbar_facade.clone(), effects);
                         },
                         "Save"
                     }

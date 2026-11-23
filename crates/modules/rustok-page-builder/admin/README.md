@@ -205,3 +205,9 @@ The framework-neutral `EditorSessionState` now also supports attempt-bound save 
 publish acknowledgements and failures, so Dioxus and external host adapters can avoid accepting
 late responses to an identical retry. Legacy hash-only `SaveAcknowledged` remains available
 for compatibility, but is not a substitute for the attempt-bound response path.
+
+The Dioxus admin Save toolbar and FlyEditorWorkspace now consume the reducer's request effects
+and execute the supplied consumer facade instead of discarding them. Publish completion is
+attempt-aware, and a missing facade or an invalid response reports an error. Browser previews
+record their scenario/context before sending; active preview and save lifecycle flags are owned
+by the same session. Dioxus iframe/pointer/overlay feature parity still requires implementation.
