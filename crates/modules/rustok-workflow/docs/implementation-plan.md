@@ -1,5 +1,28 @@
 # Implementation plan for `rustok-workflow`
 
+## 2026-11-23 — durable cron admission and uncertainty handling (unverified)
+
+Implemented in source: additive cursor/firing/reconciliation schema, bounded
+catch-up and compare-and-set cursor advancement, per-firing claim token,
+stable UUID trigger identity and engine's terminal-record idempotency guard.
+Aged claims are quarantined rather than replayed. An operator may confirm a
+terminal execution, or requeue an unstarted firing only with explicit fenced
+worker attestation and transactionally stored human evidence. REST/GraphQL
+share permissioned owner commands. Workflow step edits now advance schedule
+revisions within their transaction; provider-effect errors never run generic
+blind retry/skip. Event listener acknowledgement follows the synchronous
+engine result rather than fire-and-forget `spawn`.
+
+Before production integration: approve the proposed ADR, apply and review
+migrations for SQLite/PostgreSQL/MySQL, run scoped crate/server checks, exercise
+two independent database connections in parallel, process-crash windows,
+migration rollback and REST/GraphQL authorization. The first 24 hours of
+catch-up are an explicit cutover horizon for workflows lacking a cursor.
+Older, already-persisted cursors continue catching up across subsequent ticks.
+Long-lived preexisting event executions and external provider uncertainty
+remain review-only: never erase their current receipts or auto-replay a
+possible side effect. No commands or checks have been run by the agent.
+
 ## Current state
 
 `rustok-workflow` owns workflow definitions, execution journal, triggers, step
