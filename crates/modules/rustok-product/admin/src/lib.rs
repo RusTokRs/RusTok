@@ -37,7 +37,7 @@ pub use model::{
     ProductCatalogSearchOptions, SetVariantAxesDraft, VariantAxisConfig, VariantAxisDraft,
     VariantAxisValue, VariantAxisValueDraft,
 };
-pub use transport::fetch_catalog_search_options;
+pub use catalog_transport::fetch_catalog_search_options;
 // One mounted admin per surface: the host codegen mounts `ui::root::ProductAdmin`.
 // The reference compositions (`ui::catalog_admin`, `ui::leptos`) stay reachable
 // through their module paths, but they are no longer advertised as entry points.

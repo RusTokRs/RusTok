@@ -170,7 +170,7 @@ fn filterable_attribute_options(
         .collect()
 }
 
-pub async fn fetch_catalog_search_options(
+pub(crate) async fn fetch_catalog_search_options(
     token: Option<String>,
     tenant_slug: Option<String>,
     locale: String,
