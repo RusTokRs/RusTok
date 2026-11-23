@@ -222,3 +222,77 @@ test('stopped adapter cannot emit or post and intent fetch refuses redirects', a
     direct: null
   });
 });
+
+
+
+test('read-only intent cannot eclipse the acknowledgement of an earlier write', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-revision="rev-1" data-fly-project-hash="old"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Ordering canvas"></iframe>
+    </div>
+  `);
+  const evidence = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    const pending = new Map<string, (response: Response) => void>();
+    globalThis.fetch = async (_url, options = {}) => {
+      const intent = JSON.parse(String(options.body)).intent as string;
+      return new Promise<Response>((resolve) => pending.set(intent, resolve));
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const events: Array<{ intent: string; current: boolean }> = [];
+    root.addEventListener('fly:browser-intent-response', (event) => {
+      const detail = (event as CustomEvent<{
+        request: { intent: string };
+        current: boolean;
+      }>).detail;
+      events.push({ intent: detail.request.intent, current: detail.current });
+    });
+    const reply = (intent: string, revision: string) => {
+      const resolve = pending.get(intent);
+      if (!resolve) throw new Error(`No pending ${intent} request`);
+      resolve(new Response(JSON.stringify({
+        result: {
+          revision_id: revision,
+          project_hash: revision,
+          dirty: revision === 'rev-1'
+        }
+      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    };
+    const write = adapter.emitIntent('save', {});
+    const read = adapter.emitIntent('select', {});
+    reply('select', 'rev-1');
+    await read;
+    reply('save', 'rev-2');
+    await write;
+    const state = {
+      revision: root.dataset.flyRevision,
+      hash: root.dataset.flyProjectHash,
+      events
+    };
+    adapter.stop();
+    return state;
+  }, adapterSource);
+  expect(evidence).toEqual({
+    revision: 'rev-2',
+    hash: 'rev-2',
+    events: [
+      { intent: 'select', current: false },
+      { intent: 'save', current: true }
+    ]
+  });
+});

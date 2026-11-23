@@ -19,6 +19,14 @@ const SAVE_FAILED_CODE = "SAVE_FAILED";
 const UNSAFE_NAVIGATION_CODE = "UNSAFE_NAVIGATION_TARGET";
 const UNSAFE_INTENT_ENDPOINT_CODE = "UNSAFE_INTENT_ENDPOINT";
 const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
+// These intents may change presentation or selection, but cannot publish a
+// document mutation. They must not eclipse the acknowledgement of an in-flight
+// document command merely because they were issued a moment later.
+const READ_ONLY_INTENTS = new Set([
+  "select", "focus_requested", "hover", "hover_requested",
+  "activate_page", "cancel_drag", "cancel_drag_requested",
+  "render_server_preview",
+]);
 const INTENT_ABORT_KIND = Object.freeze({
   EXTERNAL: "external",
   TIMEOUT: "timeout",
@@ -675,6 +683,7 @@ export class FlyBrowserAdapter {
     this.postIntents = options.postIntents !== false;
     this.intentRequestGeneration = 0;
     this.latestIntentRequestGeneration = 0;
+    this.latestAuthoritativeRequestGeneration = 0;
     this.pendingIntentRequests = new Map();
     this.lastSequence = null;
     this.geometry = new Map();
@@ -834,6 +843,7 @@ export class FlyBrowserAdapter {
     if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return this;
     this.lifecycleState = ADAPTER_LIFECYCLE.STOPPED;
     this.latestIntentRequestGeneration = ++this.intentRequestGeneration;
+    this.latestAuthoritativeRequestGeneration = this.latestIntentRequestGeneration;
     for (const record of this.pendingIntentRequests.values()) {
       if (record.timeoutId !== null) {
         globalThis.clearTimeout(record.timeoutId);
@@ -1362,10 +1372,19 @@ export class FlyBrowserAdapter {
     );
     const requestKey = Symbol("fly.browser.intent.request");
     const requestGeneration = ++this.intentRequestGeneration;
+    const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    // A read-only selection/preview must not make a preceding edit's successful
+    // acknowledgement stale. Conversely, an old read must not overwrite state
+    // after a newer edit was submitted.
+    const readStartedDuringWrite = !authoritative &&
+      [...this.pendingIntentRequests.values()].some(record => record.authoritative);
     this.latestIntentRequestGeneration = requestGeneration;
+    if (authoritative) this.latestAuthoritativeRequestGeneration = requestGeneration;
     const record = {
       abort,
       controller,
+      authoritative,
+      readStartedDuringWrite,
       intent: request.intent,
       requestGeneration,
       timeoutId: null,
@@ -1417,7 +1436,11 @@ export class FlyBrowserAdapter {
       // A custom fetch implementation may resolve even after AbortController
       // aborts during stop(). Its response must not resurrect a disposed root.
       if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
-      const current = requestGeneration === this.latestIntentRequestGeneration;
+      const current = authoritative
+        ? requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !readStartedDuringWrite &&
+          requestGeneration === this.latestIntentRequestGeneration &&
+          requestGeneration > this.latestAuthoritativeRequestGeneration;
       this.root.dispatchEvent(
         new CustomEvent("fly:browser-intent-response", {
           bubbles: true,
@@ -1486,7 +1509,11 @@ export class FlyBrowserAdapter {
       }
       return result;
     } catch (error) {
-      const current = requestGeneration === this.latestIntentRequestGeneration;
+      const current = authoritative
+        ? requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !readStartedDuringWrite &&
+          requestGeneration === this.latestIntentRequestGeneration &&
+          requestGeneration > this.latestAuthoritativeRequestGeneration;
       if (current) {
         updateNetworkIndicator(this.root, "error", error);
       }

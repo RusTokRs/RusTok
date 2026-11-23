@@ -46,3 +46,9 @@ same-origin endpoint with `redirect: "error"`, rather than following any login o
 redirect while carrying a CSRF header. Network failures (including rejected redirects) remain
 observable as browser errors. A successful non-JSON/empty response cannot clear an earlier
 parked save failure: only an explicit clean document state can do that.
+
+A read-only selection, hover, navigation or server preview no longer eclipses an earlier
+in-flight editing response: authoritative commands have their own response generation.
+Read requests started while a write is pending are not permitted to overwrite the later
+write's revision/hash or clear its save warning. Concurrent *writes* still need a serialized
+transport/request-identity contract; this is not an end-to-end ordering guarantee.
