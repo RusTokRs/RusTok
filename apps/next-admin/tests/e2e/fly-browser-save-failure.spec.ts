@@ -18,7 +18,7 @@ const saveFailure = {
   intent: 'save'
 };
 
-type FetchMode = 'rejected' | 'dirty' | 'saved' | 'denied';
+type FetchMode = 'rejected' | 'dirty' | 'saved' | 'denied' | 'text';
 
 type BrowserProblem = {
   status?: number;
@@ -120,6 +120,11 @@ async function mountAdapter(
           // An intent that leaves the document alone after a rejected save.
           case 'dirty':
             return json(200, { result: { ...state, dirty: true }, ...draft });
+          case 'text':
+            return new Response('Unchanged', {
+              status: 200,
+              headers: { 'content-type': 'text/plain' }
+            });
           case 'denied':
             return json(403, {
               status: 403,
@@ -294,4 +299,17 @@ test('a parked save failure older than ten minutes is dropped at mount', async (
   );
   expect(await reportedProblems(page)).toHaveLength(0);
   expect(await parkedFailure(page)).toBeNull();
+});
+
+
+test('successful text responses do not erase a parked lost-save warning', async ({ page }) => {
+  await openHost(page);
+  await mountAdapter(page, 'text', { at: Date.now(), ...saveFailure });
+  const root = page.locator('#fly-root');
+  await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
+  await emit(page, 'select');
+  await expect(root).toHaveAttribute('data-fly-browser-problem', 'REVISION_CONFLICT');
+  await expect(root).toHaveAttribute('data-fly-save-failed', 'true');
+  expect(await parkedFailure(page)).toMatchObject(saveFailure);
+  expect(await reportedProblems(page)).toHaveLength(1);
 });

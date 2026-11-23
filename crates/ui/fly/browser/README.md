@@ -37,3 +37,12 @@ Fly editor hosts embed the exported adapter and dispatch validated intents to th
 - `src/lib.rs` — protocol types, configuration, and embedded adapter assets.
 
 See the [Page Builder documentation](../../modules/rustok-page-builder/docs/README.md) and the [module UI guide](../../../docs/UI/module-package-implementation.md).
+
+## Request lifecycle and failure-state guarantees
+
+Once stopped, an adapter cannot emit or post another intent, and a fetch that resolves after
+unmount cannot publish a successful response into the disposed root. Intent POSTs use a verified
+same-origin endpoint with `redirect: "error"`, rather than following any login or cross-origin
+redirect while carrying a CSRF header. Network failures (including rejected redirects) remain
+observable as browser errors. A successful non-JSON/empty response cannot clear an earlier
+parked save failure: only an explicit clean document state can do that.

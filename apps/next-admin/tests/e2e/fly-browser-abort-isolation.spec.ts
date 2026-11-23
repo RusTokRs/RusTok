@@ -172,3 +172,53 @@ test('parallel adapters keep abort signals request-scoped without replacing fetc
     signalsDistinct: true
   });
 });
+
+
+test('stopped adapter cannot emit or post and intent fetch refuses redirects', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-expected-origin="null">
+      <iframe id="canvas-frame" data-fly-iframe-canvas title="Lifecycle canvas"></iframe>
+    </div>
+  `);
+  const state = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    const calls: Array<{ redirect: RequestRedirect | undefined; credentials: RequestCredentials | undefined }> = [];
+    let emitted = 0;
+    globalThis.fetch = async (_input, init = {}) => {
+      calls.push({ redirect: init.redirect, credentials: init.credentials });
+      return new Response(JSON.stringify({ result: { dirty: false } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    root.addEventListener('fly:browser-intent', () => { emitted += 1; });
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter unavailable');
+    await adapter.emitIntent('save', {});
+    adapter.stop();
+    const afterStop = await adapter.emitIntent('save', { stale: true });
+    const direct = await (adapter as FlyAdapter & {
+      postIntent: (input: Record<string, unknown>) => Promise<unknown>;
+    }).postIntent({ intent: 'save', payload: { stale: true } });
+    return { calls, emitted, afterStop, direct };
+  }, adapterSource);
+  expect(state).toEqual({
+    calls: [{ redirect: 'error', credentials: 'same-origin' }],
+    emitted: 1,
+    afterStop: null,
+    direct: null
+  });
+});

@@ -453,7 +453,16 @@ function reportSaveFailure(adapter, failure, request) {
 // reports a working copy that is no longer dirty.
 function settleSaveFailure(adapter, result, request) {
   if (!isObject(result)) {
-    clearBrowserProblem(adapter);
+    // A successful plain-text/empty response does not establish that the draft
+    // was saved. Keep a previously parked failure until an explicit clean state.
+    const standing = readSaveFailure(adapter.pageId);
+    if (standing) {
+      if (adapter.root.dataset.flySaveFailed !== "true") {
+        reportSaveFailure(adapter, standing, request);
+      }
+    } else {
+      clearBrowserProblem(adapter);
+    }
     return;
   }
   if (isObject(result.save_failure)) {
@@ -1236,6 +1245,11 @@ export class FlyBrowserAdapter {
   }
 
   emitIntent(intent, payload = {}) {
+    // DOM handlers can retain a reference after unmount. Never emit or send a
+    // mutating intent from an adapter whose lifecycle has ended.
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) {
+      return Promise.resolve(null);
+    }
     const request = normalizedIntent(this, { intent, payload });
     this.root.dispatchEvent(
       new CustomEvent("fly:browser-intent", {
@@ -1320,6 +1334,7 @@ export class FlyBrowserAdapter {
    * @param {IntentTransportOptions} requestOptions
    */
   async postIntent(input, requestOptions = {}) {
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
@@ -1385,6 +1400,9 @@ export class FlyBrowserAdapter {
       const response = await fetch(this.intentEndpoint, {
         method: "POST",
         credentials: "same-origin",
+        // The initially validated same-origin URL may respond with a redirect.
+        // Never follow a redirected mutation or forward its CSRF header.
+        redirect: "error",
         headers,
         body: JSON.stringify(request),
         signal: controller.signal,
@@ -1394,6 +1412,9 @@ export class FlyBrowserAdapter {
         ?.includes("application/json")
         ? await response.json()
         : await response.text();
+      // A custom fetch implementation may resolve even after AbortController
+      // aborts during stop(). Its response must not resurrect a disposed root.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
       const current = requestGeneration === this.latestIntentRequestGeneration;
       this.root.dispatchEvent(
         new CustomEvent("fly:browser-intent-response", {

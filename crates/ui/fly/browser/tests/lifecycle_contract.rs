@@ -22,3 +22,10 @@ fn transport_options_expose_only_abort_signal() {
     assert!(!contains("abort?: IntentAbortMetadata"));
     assert!(!contains("transport.abort"));
 }
+
+#[test]
+fn stopped_adapter_is_an_admission_fence_and_post_redirects_are_rejected() {
+    assert!(contains("if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;"));
+    assert!(contains("return Promise.resolve(null);"));
+    assert!(contains("redirect: \"error\""));
+}
