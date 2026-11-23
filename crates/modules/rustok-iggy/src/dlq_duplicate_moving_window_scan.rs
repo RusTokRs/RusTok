@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use iggy::prelude::{
-    Consumer, ConsumerKind, Identifier, IggyClient, MessageClient, PollingStrategy,
+    Consumer, ConsumerKind, Identifier, IggyClient, MessageClient, PollOptions, PollingStrategy,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -348,11 +348,13 @@ impl<'a> IggyDlqDuplicateMovingWindowScanner<'a> {
                 .poll_messages(
                     &self.stream_id,
                     &self.topic_id,
-                    Some(broker_partition),
+                    broker_partition,
                     &self.consumer,
                     &PollingStrategy::offset(next_offset),
-                    requested_count,
-                    false,
+                    PollOptions {
+                        count: requested_count,
+                        ..Default::default()
+                    },
                 )
                 .await
                 .map_err(|_| IggyDlqDuplicateMovingWindowError::PollFailed)?;
