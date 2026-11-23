@@ -250,3 +250,9 @@ by the facade's provider status exactly as in the Leptos AdminCanvas, instead of
 starting with Fly's default full editing permissions. Undo/Redo also require history capability;
 Save is disabled without edit permission, during an active/conflicted save, or with blocking
 validation diagnostics. Dispatch remains the authoritative guard against forged UI events.
+
+Dioxus editor capabilities are also updated reactively when a host prop or provider-limited
+profile changes on an already mounted session. The live Fly controller is narrowed without
+resetting draft content, using an untracked state read to avoid rerunning on every edit. If the
+host withdraws its profile, the base controller policy (not an old restricted snapshot) is used
+as the fallback. This is not an authorization substitute for the backend.

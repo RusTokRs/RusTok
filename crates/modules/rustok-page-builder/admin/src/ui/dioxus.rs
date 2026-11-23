@@ -331,6 +331,20 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let workspace_csp_nonce = use_context::<Option<UiCspNonce>>()
         .flatten()
         .map(|nonce| nonce.as_str().to_string());
+    let host_capabilities = props
+        .editor_capability_evaluation
+        .as_ref()
+        .map(|evaluation| evaluation.effective)
+        .or(props.editor_capabilities);
+    let provider_status = props.facade.as_ref().and_then(|facade| facade.provider_status());
+    let base_capabilities = host_capabilities
+        .unwrap_or_else(|| props.controller.ui().editable_capabilities());
+    let effective_capabilities = provider_status
+        .as_ref()
+        .map(|status| status.limit_capabilities(base_capabilities))
+        .unwrap_or(base_capabilities)
+        .normalized();
+
     let mut session = use_signal(|| {
         let mut s = EditorSessionState::new(
             props.controller.clone(),
@@ -340,26 +354,12 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         if let Some(schemas) = props.trait_schemas {
             s = s.with_trait_schemas(schemas);
         }
-        // Dioxus used to keep the constructor's default full capabilities
-        // even when a host supplied tenant/RBAC restrictions. Match the
-        // Leptos admission policy and narrow those permissions with provider
-        // health before the first editable intent can be dispatched.
-        let evaluated_capabilities = props
-            .editor_capability_evaluation
-            .as_ref()
-            .map(|evaluation| evaluation.effective);
-        let host_capabilities = props.editor_capabilities.or(evaluated_capabilities);
-        let provider_status = props.facade.as_ref().and_then(|facade| facade.provider_status());
-        if host_capabilities.is_some() || provider_status.is_some() {
-            let capabilities =
-                host_capabilities.unwrap_or(s.controller.ui().state.capabilities);
-            let capabilities = provider_status
-                .as_ref()
-                .map(|status| status.limit_capabilities(capabilities))
-                .unwrap_or(capabilities);
-            if let Err(error) = s.controller.dispatch(UiIntent::SetEditableCapabilities(capabilities)) {
-                s.fail(format!("Cannot apply editor capabilities: {error}"));
-            }
+        // The host's tenant/RBAC and provider-health policy narrows the
+        // core Fly state machine before any authoring action is accepted.
+        if let Err(error) = s.controller.dispatch(
+            UiIntent::SetEditableCapabilities(effective_capabilities),
+        ) {
+            s.fail(format!("Cannot apply editor capabilities: {error}"));
         }
         if let Some(evaluation) = props.editor_capability_evaluation {
             s = s.with_editor_capability_evaluation(evaluation);
@@ -375,6 +375,23 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         }
         s
     });
+
+    // A host may revoke or restore permissions without navigating or saving.
+    // Dioxus preserves use_signal state across prop rerenders, so mirror any
+    // *changed* effective profile into the live controller as well. Peek to
+    // avoid subscribing this effect to every local editor operation.
+    use_effect(use_reactive!(|effective_capabilities| {
+        let current = session.peek().controller.ui().editable_capabilities();
+        if current != effective_capabilities {
+            if let Err(error) = session
+                .write()
+                .controller
+                .dispatch(UiIntent::SetEditableCapabilities(effective_capabilities))
+            {
+                session.write().fail(format!("Cannot refresh editor capabilities: {error}"));
+            }
+        }
+    }));
 
     let current = session.read();
     let page_id = current.controller.page_id().to_string();
