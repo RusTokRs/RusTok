@@ -63,3 +63,8 @@ restored state contains a drag started under a different policy.
 
 A save success is accepted only during an active `SaveStarted` transition. A stale success,
 failed request or unrelated operation never implicitly clears a standing revision conflict.
+
+Viewport dimensions and zoom are normalized at the intent boundary using the same limits as
+custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
+rejected without changing editor state, and a resize event with malformed or overflowing pointer
+coordinates never emits non-finite CSS dimensions.

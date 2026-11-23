@@ -112,7 +112,7 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::SetViewport(viewport) => {
-                self.state.viewport = viewport;
+                self.state.viewport = viewport.normalized();
                 vec![UiEffect::None]
             }
             UiIntent::ActivatePage {
@@ -144,12 +144,18 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::SetSelectedOverlay(rect) => {
+                if rect.is_some_and(|rect| !rect.is_valid()) {
+                    return Err(UiError::InvalidGeometry("selected overlay".to_string()));
+                }
                 self.state.overlays.selected = rect;
                 self.state.overlays.resize_handles_visible =
                     rect.is_some() && self.state.effective_editable();
                 vec![UiEffect::None]
             }
             UiIntent::SetHoveredOverlay(rect) => {
+                if rect.is_some_and(|rect| !rect.is_valid()) {
+                    return Err(UiError::InvalidGeometry("hovered overlay".to_string()));
+                }
                 self.state.overlays.hovered = rect;
                 vec![UiEffect::None]
             }
@@ -163,6 +169,11 @@ impl FlyUiStateMachine {
                 vec![UiEffect::Announce("Drag started".to_string())]
             }
             UiIntent::UpdateHitTest(candidates) => {
+                if candidates.iter().any(|candidate| {
+                    !candidate.rect.is_valid() || !candidate.score.is_finite()
+                }) {
+                    return Err(UiError::InvalidGeometry("drop candidate".to_string()));
+                }
                 let insertion = {
                     let drag = self.state.drag.as_mut().ok_or(UiError::NoActiveDrag)?;
                     drag.candidates = candidates;

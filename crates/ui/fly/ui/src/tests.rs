@@ -390,6 +390,49 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
 }
 
 #[test]
+fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SetViewport(ViewportState {
+        width: 0,
+        height: u32::MAX,
+        zoom: f32::NAN,
+        scroll_x: f64::NEG_INFINITY,
+        scroll_y: -17.0,
+    })).expect("normalized viewport");
+    assert_eq!(machine.state.viewport.width, 240);
+    assert_eq!(machine.state.viewport.height, 4320);
+    assert_eq!(machine.state.viewport.zoom, 1.0);
+    assert_eq!(machine.state.viewport.scroll_x, 0.0);
+    assert_eq!(machine.state.viewport.scroll_y, 0.0);
+
+    let bad_rect = CanvasRect {
+        x: 0.0, y: 0.0, width: f64::INFINITY, height: 10.0,
+    };
+    assert!(!bad_rect.contains(1.0, 1.0));
+    assert!(matches!(
+        machine.dispatch(UiIntent::SetSelectedOverlay(Some(bad_rect))),
+        Err(UiError::InvalidGeometry(_))
+    ));
+    assert!(machine.state.overlays.selected.is_none());
+    assert!(matches!(
+        machine.dispatch(UiIntent::SetHoveredOverlay(Some(bad_rect))),
+        Err(UiError::InvalidGeometry(_))
+    ));
+
+    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+        block_id: "section".to_string(),
+        component: ComponentNode::object("section"),
+    })).expect("begin drag");
+    let mut candidate = legal_candidate();
+    candidate.score = f32::NAN;
+    assert!(matches!(
+        machine.dispatch(UiIntent::UpdateHitTest(vec![candidate])),
+        Err(UiError::InvalidGeometry(_))
+    ));
+    assert!(machine.state.drag.as_ref().is_some_and(|drag| drag.candidates.is_empty()));
+}
+
+#[test]
 fn blocking_diagnostics_prevent_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine
