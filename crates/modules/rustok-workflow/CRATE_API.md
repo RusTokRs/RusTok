@@ -1,5 +1,27 @@
 # rustok-workflow / CRATE_API
 
+## Durable cron owner contract (proposed, 2026-11-23)
+
+- Three Workflow-owned tables: `workflow_cron_cursors` (revision + CAS
+  watermark), `workflow_cron_firings` (unique scheduled slot, one current
+  attempt), `workflow_cron_reconciliation_decisions` (immutable human
+  decision/evidence).
+- `WorkflowCronScheduler::validate_persistence` rejects missing migration.
+  `start_with_stop` claims and supervises bounded due work without replaying
+  expired attempts merely because their lease aged.
+- WorkflowEngine uses firing UUID as the canonical trigger identity. Replays
+  of terminal event/cron executions reuse journal identity; incomplete or
+  uncertain executions return `ExecutionOutcomeUncertain`.
+- For possible external effects, a failure without a proven pre-effect
+  rejection records `reconciliation_required`. Generic retry and skip do
+  not authorize external re-dispatch.
+- Tenant-scoped REST and GraphQL review/decision surfaces share permission
+  checks and one owner reconciliation transaction. Requeuing requires
+  `prior_worker_fenced` attestation, evidence and absence of an execution
+  record; confirmed terminal decisions require terminal journal evidence.
+- The decision remains **Proposed**, and no compilation, tests or migration
+  deployment evidence has been obtained.
+
 ## Cron lifecycle ownership (2026-11-23)
 
 `WorkflowCronScheduler::start_with_stop` binds the Workflow owner's cron
