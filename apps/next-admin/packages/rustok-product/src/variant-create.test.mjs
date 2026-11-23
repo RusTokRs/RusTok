@@ -39,6 +39,13 @@ const productCommandSource = readFileSync(
   ),
   'utf8'
 );
+const productInventoryPortSource = readFileSync(
+  new URL(
+    '../../../../../crates/modules/rustok-product/src/ports/inventory.rs',
+    import.meta.url
+  ),
+  'utf8'
+);
 
 const id = (value) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -72,6 +79,14 @@ test('Next SKU controls and Product owner share one bounded variant capacity', (
   assert.match(
     productVariantAxisLimits,
     /MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS: usize = MAX_PRODUCT_VARIANTS/
+  );
+  assert.match(
+    productVariantAxisLimits,
+    /MAX_STOREFRONT_PRODUCT_VARIANTS: u64 = MAX_PRODUCT_VARIANTS as u64/
+  );
+  assert.match(
+    productInventoryPortSource,
+    /MAX_CATALOG_DELETE_VARIANTS: usize = crate::dto::MAX_PRODUCT_VARIANTS/
   );
   assert.match(
     productCommandSource,
