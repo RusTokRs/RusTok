@@ -222,7 +222,7 @@ fn admin_product_title_search_condition(
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
                   AND pt.tenant_id = ?
-                  AND pt.title LIKE ? ESCAPE '!'
+                  AND LOWER(pt.title) LIKE LOWER(?) ESCAPE '!'
             )"
         }
         _ => {
@@ -231,7 +231,7 @@ fn admin_product_title_search_condition(
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
                   AND pt.tenant_id = $1
-                  AND pt.title LIKE $2 ESCAPE '!'
+                  AND LOWER(pt.title) LIKE LOWER($2) ESCAPE '!'
             )"
         }
     };
@@ -243,4 +243,25 @@ fn admin_product_title_search_condition(
             sea_orm::Value::from(pattern),
         ],
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::DbBackend;
+
+    #[test]
+    fn admin_catalog_title_filter_uses_tenant_scoped_case_insensitive_search() {
+        let tenant_id = Uuid::new_v4();
+        for backend in [DbBackend::Sqlite, DbBackend::Postgres] {
+            let statement = entities::product::Entity::find()
+                .filter(admin_product_title_search_condition(backend, tenant_id, "MiXeD"))
+                .build(backend);
+            assert!(statement.sql.contains("pt.product_id = products.id"));
+            assert!(statement.sql.contains("pt.tenant_id ="));
+            assert!(statement.sql.contains("LOWER(pt.title) LIKE LOWER("));
+            assert!(statement.sql.contains("ESCAPE '!'"));
+            assert_eq!(statement.values.as_ref().map(|v| v.0.len()), Some(2));
+        }
+    }
 }
