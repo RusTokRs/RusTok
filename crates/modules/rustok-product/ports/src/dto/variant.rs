@@ -5,6 +5,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// Product-wide maximum number of SKUs accepted by the owner and complete projections.
+pub const MAX_PRODUCT_VARIANTS: usize = 256;
+
 use super::{PriceResponse, VariantAxisValueInput, VariantAxisValueResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
