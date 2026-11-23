@@ -4,6 +4,18 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+## Server audit continuation — Workflow-owned durable cron recovery (2026-11-23)
+
+The server only composes the Workflow owner's `start_with_stop` scheduler
+after `validate_persistence` confirms the additive owner cron tables exist.
+Workflow owns bounded schedule backfill, cursor/queue CAS, per-firing execution
+idempotency, stale attempt quarantine and permissioned operator reconciliation.
+A missing migration fails host initialization instead of leaving an apparently
+running cron scheduler. Host stop still joins accepted executions with its
+existing force-abort fallback. The proposed Workflow ADR, migration and
+source regressions require maintainer review and execution; no runtime proof
+or exactly-once external effect guarantee is claimed.
+
 ## Server audit continuation — Workflow cron execution supervision (2026-11-23)
 
 The previous Workflow cron scheduler detached each execution task with
