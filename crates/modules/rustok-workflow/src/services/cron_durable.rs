@@ -327,7 +327,7 @@ pub async fn reconciliation_required_for_tenant(
 mod tests {
     use super::*;
     use sea_orm::{Database, EntityTrait};
-    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use sea_orm_migration::SchemaManager;
 
     #[test]
     fn missed_cron_slots_are_bounded_and_reproducible() {
@@ -343,8 +343,9 @@ mod tests {
     #[tokio::test]
     async fn same_slot_is_queued_once_and_claimed_by_one_attempt() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        crate::WorkflowsMigration.up(&SchemaManager::new(&db)).await.unwrap();
-        crate::migrations::migrations().last().unwrap().up(&SchemaManager::new(&db)).await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
         let now = Utc::now();
         let wf_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
