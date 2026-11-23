@@ -1,3 +1,4 @@
+# rustok-workflow / CRATE_API
 
 ### Cron lifecycle ownership (2026-11-23)
 
@@ -9,7 +10,6 @@ host abort or process crash still interrupts those tasks and is **not**
 reconciled as a durable execution completion. The legacy `start` method also
 retains child-task ownership. No cross-replica or missed-firing guarantees are
 added by this local lifecycle fix.
-# rustok-workflow / CRATE_API
 
 ## Public surface
 
