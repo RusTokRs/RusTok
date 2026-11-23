@@ -1340,6 +1340,83 @@ mod cron_revision_tests {
     }
 
     #[tokio::test]
+    async fn deletion_preserves_running_and_pending_execution_evidence() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Do not delete unfinished work".into()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type":"cron","expression":"0 * * * * *"
+            })),
+            created_by: Set(None),
+            created_at: Set((now - ChronoDuration::minutes(2)).fixed_offset()),
+            updated_at: Set((now - ChronoDuration::minutes(2)).fixed_offset()),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let execution_id = Uuid::new_v4();
+        workflow_execution::ActiveModel {
+            id: Set(execution_id),
+            workflow_id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            trigger_event_id: Set(None),
+            status: Set(ExecutionStatus::Running),
+            context: Set(serde_json::json!({})),
+            error: Set(None),
+            started_at: Set(now.fixed_offset()),
+            completed_at: Set(None),
+        }.insert(&db).await.unwrap();
+        let wf = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        crate::services::cron_durable::enqueue_due_slots(
+            &db, &wf, "0 * * * * *",
+            &"0 * * * * *".parse().unwrap(), now,
+        ).await.unwrap();
+
+        let service = WorkflowService::new(db.clone());
+        assert!(matches!(
+            service.delete(tenant_id, workflow_id).await,
+            Err(WorkflowError::WorkflowDeletionBlocked(id)) if id == workflow_id
+        ));
+        assert!(WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().is_some());
+
+        workflow_execution::Entity::update_many()
+            .col_expr(
+                workflow_execution::Column::Status,
+                Expr::value(ExecutionStatus::Completed.to_string()),
+            )
+            .filter(workflow_execution::Column::Id.eq(execution_id))
+            .exec(&db).await.unwrap();
+        assert!(matches!(
+            service.delete(tenant_id, workflow_id).await,
+            Err(WorkflowError::WorkflowDeletionBlocked(_)),
+        ), "queued cron slots independently block destructive deletion");
+
+        workflow_cron_firing::Entity::update_many()
+            .col_expr(
+                workflow_cron_firing::Column::Status,
+                Expr::value(workflow_cron_firing::SKIPPED),
+            )
+            .filter(workflow_cron_firing::Column::WorkflowId.eq(workflow_id))
+            .exec(&db).await.unwrap();
+        service.delete(tenant_id, workflow_id).await.unwrap();
+        assert!(WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn mutating_step_graph_advances_owning_workflow_revision() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
