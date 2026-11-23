@@ -74,7 +74,8 @@ Source regression guards are authored; runtime tests were not executed.
 
 Browser Back/Forward invalidates pending column-filter debounces at the
 `popstate` event, before the App Router's new server props commit. Ordered
-signatures track overlapping local filter writes; an older route response is
-recognized without discarding a newer edit, while a newer committed route
-supersedes earlier writes. Source regression coverage is authored; no runtime
-test or build has been run.
+signatures track overlapping local filter writes, with live nuqs values
+overlaid on server route props so local state is recognized before the RSC
+refresh. An older route response does not discard a newer edit, while a newer
+committed route supersedes earlier writes. Source regression coverage is
+authored; no runtime test or build has been run.
