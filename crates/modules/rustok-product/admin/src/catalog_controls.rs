@@ -42,6 +42,17 @@ impl ProductAdminListInput {
     }
 }
 
+fn normalize_product_admin_status(value: Option<String>) -> Option<String> {
+    normalize_optional_ui_text(value).and_then(|status| {
+        match status.to_ascii_lowercase().as_str() {
+            "active" | "published" => Some("active".to_string()),
+            "draft" => Some("draft".to_string()),
+            "archived" => Some("archived".to_string()),
+            _ => None,
+        }
+    })
+}
+
 pub(crate) fn build_product_admin_list_input(
     search: Option<String>,
     status: Option<String>,
@@ -54,7 +65,7 @@ pub(crate) fn build_product_admin_list_input(
 ) -> ProductAdminListInput {
     ProductAdminListInput {
         search: normalize_optional_ui_text(search),
-        status: normalize_optional_ui_text(status),
+        status: normalize_product_admin_status(status),
         vendor: None,
         category_id: normalize_optional_ui_text(category_id),
         sort_by: normalize_optional_ui_text(sort_by).or_else(|| Some("published_at".to_string())),
@@ -180,7 +191,7 @@ mod tests {
             Some("50".to_string()),
         );
         assert_eq!(controls.search.as_deref(), Some("camera"));
-        assert_eq!(controls.status.as_deref(), Some("ACTIVE"));
+        assert_eq!(controls.status.as_deref(), Some("active"));
         assert_eq!(controls.category_id.as_deref(), Some("category"));
         assert_eq!(controls.sort_by.as_deref(), Some("published_at"));
         assert_eq!(controls.sort_direction.as_deref(), Some("desc"));
@@ -202,6 +213,33 @@ mod tests {
             " COLOR = red ;color=red; SIZE = M ;size=M ".to_string(),
         ));
         assert_eq!(filters, vec!["color=red".to_string(), "size=M".to_string()]);
+    }
+
+    #[test]
+    fn admin_status_matches_next_alias_and_invalid_value_normalization() {
+        let published = build_product_admin_list_input(
+            None,
+            Some(" PUBLISHED ".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(published.status.as_deref(), Some("active"));
+
+        let invalid = build_product_admin_list_input(
+            None,
+            Some(" deleted ".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(invalid.status, None);
     }
 
     #[test]
