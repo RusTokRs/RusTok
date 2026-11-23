@@ -307,6 +307,8 @@ impl From<WorkflowExecutionResponse> for GqlWorkflowExecution {
 pub enum GqlCronReconciliationDecision {
     ConfirmTerminal,
     RequeueConfirmedUnstarted,
+    ConfirmExternalCompleted,
+    ConfirmExternalFailed,
 }
 
 impl From<GqlCronReconciliationDecision> for crate::services::CronReconciliationDecision {
@@ -314,6 +316,8 @@ impl From<GqlCronReconciliationDecision> for crate::services::CronReconciliation
         match decision {
             GqlCronReconciliationDecision::ConfirmTerminal => Self::ConfirmTerminal,
             GqlCronReconciliationDecision::RequeueConfirmedUnstarted => Self::RequeueConfirmedUnstarted,
+            GqlCronReconciliationDecision::ConfirmExternalCompleted => Self::ConfirmExternalCompleted,
+            GqlCronReconciliationDecision::ConfirmExternalFailed => Self::ConfirmExternalFailed,
         }
     }
 }
