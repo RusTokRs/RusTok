@@ -37,3 +37,8 @@ FlyEditor projection, and the active page into its navigation signal. Standalone
 its own mutable FlyEditor/history; no external synchronization occurs without `on_intent`.
 Page tabs are derived reactively from the editor's live document instead of the initial prop.
 No entire-workspace remount is needed for a normal user edit.
+
+The optional `controlled_capabilities` signal updates command affordances in a controlled
+Leptos workspace without remounting. Page tabs, palette, theme tokens, component properties,
+scoped styles, assets, Undo and Redo now read the current effective policy instead of a stale
+first-mount capability snapshot. Dispatch-time authorization still applies.

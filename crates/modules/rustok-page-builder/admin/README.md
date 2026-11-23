@@ -292,3 +292,7 @@ project document, selected component, active page and undo/redo availability. Th
 uses these signals in intent mode to refresh its internal view model after an edit or selection
 without remounting the entire widget (and without resetting its UI mode/viewport). The source
 of truth is still AdminCanvasController, never a parallel editor instance.
+
+The Leptos adapter passes live effective capabilities to the shared Fly workspace. Host RBAC
+and provider-health changes now affect page controls, palette, tokens, property/style editors,
+assets and history buttons without a full remount. Back-end authorization remains mandatory.

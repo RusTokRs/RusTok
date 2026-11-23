@@ -88,6 +88,12 @@ pub fn AdapterWorkspacePanel(
             })
         })
     };
+    let controlled_capabilities = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.ui().state.capabilities)
+        })
+    };
 
     let intent_runtime = runtime.clone();
     let error_runtime = runtime.clone();
@@ -129,6 +135,7 @@ pub fn AdapterWorkspacePanel(
             controlled_page=Some(controlled_page)
             controlled_can_undo=Some(controlled_can_undo)
             controlled_can_redo=Some(controlled_can_redo)
+            controlled_capabilities=Some(controlled_capabilities)
             csp_nonce=csp_nonce
         />
     }
