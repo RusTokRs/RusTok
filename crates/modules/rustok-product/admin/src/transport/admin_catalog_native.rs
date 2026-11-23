@@ -261,7 +261,7 @@ async fn product_admin_catalog_list_native(
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .unwrap_or(request_context.locale);
+            .unwrap_or_else(|| request_context.locale.clone());
         let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             search,
             status,
@@ -428,7 +428,7 @@ async fn product_admin_catalog_facets_native(
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .unwrap_or(request_context.locale);
+            .unwrap_or_else(|| request_context.locale.clone());
         let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             search,
             status,
