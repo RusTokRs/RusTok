@@ -275,6 +275,8 @@ by each migration. The installer's sparse bootstrap entrypoints remain separate.
 The seeded Modules phase test compares one uninterrupted run with a fresh
 migration session at each committed boundary. Both databases start as copies
 of the same PostgreSQL predecessor containing the declared backfill fixtures.
+Fixture setup runs in one transaction. Setup SQL must leave transaction
+control to the runner so that a failed setup rolls back earlier fixture writes.
 The resumed run also rejects the final migration's journal insert after the
 UI projection is populated. It checks the exact pre-step snapshot after
 rollback and completes the same phase in a new session after removing the

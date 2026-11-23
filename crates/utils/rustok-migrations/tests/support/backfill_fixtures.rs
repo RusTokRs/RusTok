@@ -75,16 +75,24 @@ pub async fn apply_setup(
     db: &DatabaseConnection,
     fixtures: &[BackfillFixture],
 ) -> Result<(), Box<dyn Error>> {
-    for fixture in fixtures {
-        db.execute_unprepared(&fixture.setup_sql)
-            .await
-            .map_err(|error| {
-                format!(
-                    "backfill fixture {} setup for migration {} failed: {error}",
-                    fixture.id, fixture.migration
-                )
-            })?;
+    if fixtures.is_empty() {
+        return Ok(());
     }
+
+    let transaction = db.begin().await?;
+    for fixture in fixtures {
+        if let Err(error) = transaction.execute_unprepared(&fixture.setup_sql).await {
+            let failure = format!(
+                "backfill fixture {} setup for migration {} failed: {error}",
+                fixture.id, fixture.migration
+            );
+            return match transaction.rollback().await {
+                Ok(()) => Err(failure.into()),
+                Err(cleanup) => Err(format!("{failure}; setup rollback: {cleanup}").into()),
+            };
+        }
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -226,7 +234,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL"]
-    async fn assertions_are_read_only_and_strict() -> Result<(), Box<dyn std::error::Error>> {
+    async fn backfill_transactions() -> Result<(), Box<dyn std::error::Error>> {
         use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
         let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
         let mut url = url::Url::parse(&admin_url)?;
@@ -243,7 +251,7 @@ mod tests {
         let result = async {
             let db = Database::connect(url.as_str()).await?;
             let check = async {
-                db.execute_unprepared("CREATE TABLE assertion_probe (value integer); INSERT INTO assertion_probe VALUES (1)").await?;
+                db.execute_unprepared("CREATE TABLE assertion_probe (value integer PRIMARY KEY); INSERT INTO assertion_probe VALUES (1)").await?;
                 for (sql, expected) in [
                     ("SELECT true AS passed", true),
                     ("SELECT false AS passed", false),
@@ -262,6 +270,36 @@ mod tests {
                 }
                 let row = db.query_one_raw(Statement::from_string(DbBackend::Postgres, "SELECT value FROM assertion_probe")).await?.ok_or("probe disappeared")?;
                 if row.try_get::<i32>("", "value")? != 1 { return Err("assertion modified fixture data".into()); }
+
+                let mut setup = [
+                    BackfillFixture {
+                        id: "first-seed".into(),
+                        migration: "first-target".into(),
+                        setup_sql: "INSERT INTO assertion_probe VALUES (2)".into(),
+                        assertion_sql: "SELECT COUNT(*) = 3 AS passed FROM assertion_probe".into(),
+                    },
+                    BackfillFixture {
+                        id: "second-seed".into(),
+                        migration: "second-target".into(),
+                        setup_sql: "INSERT INTO assertion_probe VALUES (1)".into(),
+                        assertion_sql: "SELECT EXISTS (SELECT 1 FROM assertion_probe WHERE value = 3) AS passed".into(),
+                    },
+                ];
+                match super::apply_setup(&db, &setup).await {
+                    Err(error) if error.to_string().contains("second-seed setup for migration second-target") => {}
+                    Err(error) => return Err(format!("unexpected setup error: {error}").into()),
+                    Ok(()) => return Err("a duplicate primary key must fail setup".into()),
+                }
+                let rows = db.query_all_raw(Statement::from_string(
+                    DbBackend::Postgres, "SELECT value FROM assertion_probe ORDER BY value",
+                )).await?;
+                if rows.len() != 1 || rows[0].try_get::<i32>("", "value")? != 1 {
+                    return Err("a failing seed must roll back earlier seeds".into());
+                }
+
+                setup[1].setup_sql = "INSERT INTO assertion_probe VALUES (3)".into();
+                super::apply_setup(&db, &setup).await?;
+                super::assert_results(&db, &setup).await?;
                 Ok::<_, Box<dyn std::error::Error>>(())
             }.await;
             db.close().await?;

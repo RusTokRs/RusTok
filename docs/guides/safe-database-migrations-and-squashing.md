@@ -419,7 +419,9 @@ proven recovery contract is available; no transaction policy is silently changed
 The PostgreSQL smoke uses the same executor, with fresh-session resumption after
 every committed step in incremental mode. Selected backfill assertions now run
 immediately after their own step as well as at the end. Assertions are read-only;
-targets outside the pending range fail before fixture setup.
+targets outside the pending range fail before fixture setup. All fixture setup
+runs in one transaction so a failed setup rolls back earlier fixture writes
+before any migration runs.
 
 The [bounded execution contract](../../DECISIONS/2026-11-05-bounded-migration-execution.md)
 adds exact contiguous phases to this same runner and the operations CLI. It
