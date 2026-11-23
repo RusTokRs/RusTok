@@ -12,8 +12,6 @@ import { listContainerTags } from "./verify-release-collisions.mjs";
 const repository = "RusTokRs/RusTok";
 const pageSize = 100;
 const bootstrapPath = "scripts/release/migration-bootstrap.json";
-const reservationPrefix = "rustok-migration-seal-";
-const reservationEndpoint = `git/matching-refs/tags/${reservationPrefix}`;
 
 async function readGitHub(endpoint) {
   const token = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
@@ -98,77 +96,6 @@ function contentBlobId(bytes) {
   return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
-async function migrationReservationRefs(read) {
-  const refs = await read(reservationEndpoint);
-  if (!Array.isArray(refs)) throw new Error("invalid migration reservation ref listing");
-  return refs;
-}
-
-function migrationReservationRef(ref) {
-  const prefix = `refs/tags/${reservationPrefix}`;
-  const suffix = typeof ref?.ref === "string" && ref.ref.startsWith(prefix) ? ref.ref.slice(prefix.length) : "";
-  const generation = Number(suffix);
-  if (!/^[1-9]\d*$/.test(suffix) || !Number.isSafeInteger(generation)
-    || ref.object?.type !== "tag" || !isGitObjectId(ref.object.sha)) {
-    throw new Error("invalid migration reservation ref");
-  }
-  return { tag: `${reservationPrefix}${suffix}`, generation, oid: ref.object.sha };
-}
-
-function migrationReservation(annotation, { tag, generation, oid }, previous) {
-  if (annotation?.tag !== tag || annotation.sha !== oid || annotation.object?.type !== "commit"
-    || !isGitObjectId(annotation.object.sha) || typeof annotation.message !== "string"
-    || Buffer.byteLength(annotation.message, "utf8") > 4096) {
-    throw new Error(`invalid migration reservation tag object for ${tag}`);
-  }
-
-  const message = annotation.message.replace(/\n$/, "");
-  let payload;
-  try {
-    payload = JSON.parse(message);
-  } catch (cause) {
-    throw new Error(`invalid migration reservation JSON for ${tag}`, { cause });
-  }
-  const record = {
-    schema_version: 1,
-    repository,
-    seal_generation: generation,
-    previous_tag_object: previous,
-    scope: "stable_distribution",
-    release_tag: payload?.release_tag,
-    source_commit: annotation.object.sha,
-    migration_manifest_sha256: payload?.migration_manifest_sha256,
-  };
-  // Comparing the compact encoding also rejects duplicate or extra JSON keys.
-  if (typeof record.release_tag !== "string" || parseReleaseTag(record.release_tag).prerelease
-    || typeof record.migration_manifest_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(record.migration_manifest_sha256)
-    || message !== JSON.stringify(record)) {
-    throw new Error(`invalid migration reservation payload for ${tag}`);
-  }
-  return { ...record, reservation_tag: tag, reservation_tag_object: oid };
-}
-
-async function resolveMigrationReservations(read = readGitHub) {
-  const refs = (await migrationReservationRefs(read)).map(migrationReservationRef);
-  refs.sort((left, right) => left.generation - right.generation);
-  const reservations = [];
-  const releaseTags = new Set();
-  let previous = null;
-  for (const ref of refs) {
-    if (ref.generation !== reservations.length + 1) {
-      throw new Error(`missing or repeated migration reservation generation before ${ref.tag}`);
-    }
-    const record = migrationReservation(await read(`git/tags/${ref.oid}`), ref, previous);
-    if (releaseTags.has(record.release_tag)) {
-      throw new Error(`repeated migration reservation for ${record.release_tag}`);
-    }
-    releaseTags.add(record.release_tag);
-    reservations.push(record);
-    previous = ref.oid;
-  }
-  return { repository, reservations, replacement_admission: "blocked" };
-}
-
 async function mainCommit(read) {
   const ref = await read("git/ref/heads/main");
   if (ref?.ref !== "refs/heads/main" || ref.object?.type !== "commit" || !isGitObjectId(ref.object.sha)) {
@@ -221,9 +148,6 @@ async function checkBootstrap(read = readGitHub, readTags = listContainerTags) {
   if (container.stable_tags.length > 0) {
     throw new Error(`stable distribution image tags already exist in ${container.image}: ${container.stable_tags.join(", ")}`);
   }
-  if ((await migrationReservationRefs(read)).length > 0) {
-    throw new Error("a stable distribution migration reservation already exists");
-  }
   if (await mainCommit(read) !== commit) {
     throw new Error("official main changed during the bootstrap check");
   }
@@ -231,7 +155,7 @@ async function checkBootstrap(read = readGitHub, readTags = listContainerTags) {
     ...record,
     main_commit: commit,
     record_blob: file.sha,
-    observation: "github_release_history_tag_refs_ghcr_tags_and_migration_reservations",
+    observation: "github_release_history_tag_refs_and_ghcr_tags",
     container,
     replacement_admission: "blocked",
   };
@@ -309,8 +233,8 @@ async function runSelfTest() {
     [`git/tags/${newObject}`]: annotation(newTag, newObject),
     [`git/tags/${oldObject}`]: annotation(oldTag, oldObject),
   };
-  const withResults = (changes = {}, base = results) => {
-    const data = { ...base, ...changes };
+  const withResults = (changes = {}) => {
+    const data = { ...results, ...changes };
     return async (endpoint) => {
       assert(Object.hasOwn(data, endpoint), `unexpected request to ${endpoint}`);
       if (data[endpoint] instanceof Error) throw data[endpoint];
@@ -375,7 +299,6 @@ async function runSelfTest() {
   const bootstrapResults = {
     [mainEndpoint]: { ref: "refs/heads/main", object: { type: "commit", sha: commit } },
     [recordEndpoint]: recordFile,
-    [reservationEndpoint]: [],
     [tagsFirstPage]: [{ name: prerelease }, { name: "v" }],
     [tagsSecondPage]: [],
     "releases?per_page=100&page=1": [release(3, prerelease, { prerelease: true })],
@@ -387,8 +310,7 @@ async function runSelfTest() {
   };
   assert.deepEqual(await checkBootstrap(withResults(bootstrapResults), prereleaseImages), {
     ...bootstrapRecord(recordBytes), main_commit: commit, record_blob: recordFile.sha,
-    observation: "github_release_history_tag_refs_ghcr_tags_and_migration_reservations",
-    replacement_admission: "blocked",
+    observation: "github_release_history_tag_refs_and_ghcr_tags", replacement_admission: "blocked",
     container: { image: "ghcr.io/rustokrs/rustok", observed_tags: 2, stable_tags: [] },
   });
   for (const tag of ["1.4.0", "1.4", "1", "latest"]) {
@@ -406,8 +328,6 @@ async function runSelfTest() {
     [tagsFirstPage, { refs: [] }, /invalid GitHub tags page/],
     [tagsSecondPage, [{ name: prerelease }], /repeated GitHub tag/],
     [tagsSecondPage, new Error("GitHub tag request returned HTTP 403"), /HTTP 403/],
-    [reservationEndpoint, { refs: [] }, /invalid migration reservation ref listing/],
-    [reservationEndpoint, new Error("GitHub reservation ref request returned HTTP 403"), /HTTP 403/],
   ]) {
     await assert.rejects(checkBootstrap(withResults({ ...bootstrapResults, [endpoint]: payload }), prereleaseImages), error);
   }
@@ -424,77 +344,6 @@ async function runSelfTest() {
       ...bootstrapRecord(recordBytes), [field]: "unexpected",
     }))), /invalid first stable distribution/);
   }
-
-  const firstTag = `${reservationPrefix}1`;
-  const secondTag = `${reservationPrefix}2`;
-  const firstRef = ref(firstTag, oldObject);
-  const secondRef = ref(secondTag, newObject);
-  const firstTagEndpoint = `git/tags/${oldObject}`;
-  const secondTagEndpoint = `git/tags/${newObject}`;
-  const firstRecord = {
-    schema_version: 1, repository, seal_generation: 1, previous_tag_object: null,
-    scope: "stable_distribution", release_tag: oldTag, source_commit: commit, migration_manifest_sha256: "1".repeat(64),
-  };
-  const secondRecord = {
-    ...firstRecord, seal_generation: 2, previous_tag_object: oldObject,
-    release_tag: newTag, migration_manifest_sha256: "2".repeat(64),
-  };
-  const reservationTarget = { type: "commit", sha: commit };
-  const firstAnnotation = {
-    tag: firstTag, sha: oldObject, object: reservationTarget, message: `${JSON.stringify(firstRecord)}\n`,
-  };
-  const secondAnnotation = {
-    tag: secondTag, sha: newObject, object: reservationTarget, message: JSON.stringify(secondRecord),
-  };
-  const reservationResults = {
-    [reservationEndpoint]: [secondRef, firstRef],
-    [firstTagEndpoint]: firstAnnotation,
-    [secondTagEndpoint]: secondAnnotation,
-  };
-  // Read just the reservation refs and objects. Release tags and release metadata
-  // may disappear or never be created after a failed publication.
-  const readReservations = (changes) => withResults(changes, reservationResults);
-  assert.deepEqual(await resolveMigrationReservations(readReservations()), {
-    repository, replacement_admission: "blocked",
-    reservations: [
-      { ...firstRecord, reservation_tag: firstTag, reservation_tag_object: oldObject },
-      { ...secondRecord, reservation_tag: secondTag, reservation_tag_object: newObject },
-    ],
-  });
-  assert.deepEqual(await resolveMigrationReservations(readReservations({ [reservationEndpoint]: [] })), {
-    repository, reservations: [], replacement_admission: "blocked",
-  });
-  await assert.rejects(checkBootstrap(withResults({
-    ...bootstrapResults, [reservationEndpoint]: [firstRef],
-  }), prereleaseImages), /migration reservation already exists/);
-  for (const [endpoint, payload, error] of [
-    [reservationEndpoint, [secondRef], /missing or repeated migration reservation generation/],
-    [reservationEndpoint, [firstRef, firstRef], /missing or repeated migration reservation generation/],
-    [reservationEndpoint, [ref(`${reservationPrefix}01`, oldObject)], /invalid migration reservation ref/],
-    [reservationEndpoint, [ref(`${reservationPrefix}9007199254740992`, oldObject)], /invalid migration reservation ref/],
-    [reservationEndpoint, [ref(firstTag, commit, "commit")], /invalid migration reservation ref/],
-    [firstTagEndpoint, new Error("GitHub tag object request returned HTTP 404"), /HTTP 404/],
-    [firstTagEndpoint, { ...firstAnnotation, sha: newObject }, /invalid migration reservation tag object/],
-    [firstTagEndpoint, { ...firstAnnotation, object: { type: "commit", sha: nestedCommit } }, /invalid migration reservation payload/],
-    [firstTagEndpoint, { ...firstAnnotation, message: "broken" }, /invalid migration reservation JSON/],
-    [firstTagEndpoint, { ...firstAnnotation, message: firstAnnotation.message.replace("{", '{"schema_version":2,') }, /invalid migration reservation payload/],
-  ]) {
-    await assert.rejects(resolveMigrationReservations(readReservations({ [endpoint]: payload })), error);
-  }
-  for (const [fields, error] of [
-    [{ previous_tag_object: null }, /invalid migration reservation payload/],
-    [{ seal_generation: 3 }, /invalid migration reservation payload/],
-    [{ repository: "Fork/RusTok" }, /invalid migration reservation payload/],
-    [{ scope: "independent_native_module" }, /invalid migration reservation payload/],
-    [{ release_tag: prerelease }, /invalid migration reservation payload/],
-    [{ release_tag: oldTag }, /repeated migration reservation for/],
-    [{ migration_manifest_sha256: "placeholder" }, /invalid migration reservation payload/],
-  ]) {
-    const message = JSON.stringify({ ...secondRecord, ...fields });
-    await assert.rejects(resolveMigrationReservations(readReservations({
-      [secondTagEndpoint]: { ...secondAnnotation, message },
-    })), error);
-  }
   console.log("✔ published release history resolver self-test passed");
 }
 
@@ -506,13 +355,11 @@ async function main() {
     console.log(JSON.stringify(await checkBootstrap(), null, 2));
   } else if (args.length === 1 && args[0] === "--check-container-history") {
     console.log(JSON.stringify(await containerHistory(), null, 2));
-  } else if (args.length === 1 && args[0] === "--check-migration-reservations") {
-    console.log(JSON.stringify(await resolveMigrationReservations(), null, 2));
   } else if (args.length === 0) {
     const history = await resolveReleaseHistory();
     console.log(JSON.stringify(history, null, 2));
   } else {
-    throw new Error("usage: resolve-release-history.mjs [--self-test | --check-bootstrap | --check-container-history | --check-migration-reservations]");
+    throw new Error("usage: resolve-release-history.mjs [--self-test | --check-bootstrap | --check-container-history]");
   }
 }
 

@@ -126,15 +126,13 @@ The release workflow must produce and verify all of the following:
 ### Failure before the version image tag is pushed
 
 - [ ] Fix the source or infrastructure issue on `main`.
-- [ ] Before recreating a stable release tag, verify the absence of a GitHub Release, an immutable version image tag and a [migration reservation](../guides/safe-database-migrations-and-squashing.md). Record the evidence and reason.
-- [ ] If the version has a migration reservation, retain the reservation. Resume only with the same source commit and migration manifest, or release a new version.
+- [ ] Delete and recreate the release tag only if no GitHub Release or immutable version image tag was published, and record the reason.
 - [ ] Prefer a new patch/prerelease version when any external consumer could have observed the tag.
 
 ### Failure after the version image tag is pushed but before GitHub Release publication
 
 - [ ] Stop blind reruns: the collision guard is expected to reject the existing version tag.
 - [ ] Record the existing image digest and verify its repository/commit provenance.
-- [ ] Preserve any migration reservation and verify the recovered evidence against its source commit and manifest digest.
 - [ ] Determine whether attestations and finalized assets were produced by the failed run.
 - [ ] Do not overwrite the version tag with a different digest.
 - [ ] Recovery requires an incident-approved procedure: either complete publication from the already verified digest and exact assets, or abandon the version and release a new patch/prerelease version.
