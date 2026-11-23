@@ -26,10 +26,11 @@ use tokio::task::JoinHandle;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
-use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
+};
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_IDLE_POLL_MS";

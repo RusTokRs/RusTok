@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(
             second.generation_snapshot(event.tenant_id).await.unwrap(),
             PageCacheGenerationSnapshot::new(1, 1, 1),
-            "another cache backend must not be treated as already invalidated"
+            "another generation-store owner must not be treated as already invalidated"
         );
 
         // Cloned ports and separately constructed ports over the same service

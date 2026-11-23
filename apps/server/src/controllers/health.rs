@@ -449,23 +449,23 @@ async fn collect_readiness(
                         DependencyCriticality::NonCritical
                     };
                     let name = format!("module:{}", module.slug());
-                    let check =
-                        run_guarded_check(
+                    let check = run_guarded_check(
                             &circuits,
                             &name,
                             criticality,
                             "module",
                             move || async move {
-                            match module.health().await {
-                                HealthStatus::Healthy => Ok(()),
-                                HealthStatus::Degraded => {
-                                    Err("module reported degraded".to_string())
+                                match module.health().await {
+                                    HealthStatus::Healthy => Ok(()),
+                                    HealthStatus::Degraded => {
+                                        Err("module reported degraded".to_string())
+                                    }
+                                    HealthStatus::Unhealthy => {
+                                        Err("module reported unhealthy".to_string())
+                                    }
                                 }
-                                HealthStatus::Unhealthy => {
-                                    Err("module reported unhealthy".to_string())
-                                }
-                            }
-                        })
+                            },
+                        )
                         .await;
                     (true, check)
                 }
