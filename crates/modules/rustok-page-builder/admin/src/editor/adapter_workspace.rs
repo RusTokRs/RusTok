@@ -31,9 +31,12 @@ pub fn AdapterWorkspacePanel(
     // renders unstyled.
     let csp_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let messages = adapter_editor_messages(locale.as_deref());
-    let document = runtime
-        .controller
-        .with(|controller| controller.editor().document().clone());
+    let (document, registries) = runtime.controller.with(|controller| {
+        (
+            controller.editor().document().clone(),
+            controller.editor().registries().clone(),
+        )
+    });
     let instance_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
@@ -44,17 +47,71 @@ pub fn AdapterWorkspacePanel(
     let capabilities = runtime
         .controller
         .with(|controller| controller.ui().state.capabilities);
+
+    // The props above seed the server render. Client-side typed intents can
+    // change the authoritative controller without replacing this component.
+    // Supply reactive sources so Fly's projection receives each new draft and
+    // selection instead of rendering the first-mount state forever.
+    let controlled_document = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.editor().document().clone())
+        })
+    };
+    let controlled_selection = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.selection.component_id.clone()
+            })
+        })
+    };
+    let controlled_page = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.active_page_index())
+        })
+    };
+    let controlled_can_undo = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.capabilities.history && controller.can_undo()
+            })
+        })
+    };
+    let controlled_can_redo = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| {
+                controller.ui().state.capabilities.history && controller.can_redo()
+            })
+        })
+    };
+    let controlled_capabilities = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| controller.ui().state.capabilities)
+        })
+    };
+
     let intent_runtime = runtime.clone();
     let error_runtime = runtime.clone();
     let on_error = Callback::new(move |error: String| {
         error_runtime.fail(error);
     });
     let on_intent = Callback::new(move |envelope: BrowserIntentEnvelope| {
-        let result = intent_runtime
-            .controller
-            .try_update(|controller| crate::dispatch_browser_intent(controller, envelope));
+        // These are trusted in-process Leptos callbacks, not HTTP payloads. The
+        // shared Fly constructors deliberately have no host revision; attach it
+        // here before the same server-side mutation gate used by SSR requests.
+        let result = intent_runtime.controller.try_update(|controller| {
+            let mut envelope = envelope;
+            envelope.revision = Some(controller.revision_id().to_string());
+            envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
+            crate::dispatch_browser_intent(controller, envelope)
+        });
         match result {
-            Some(Ok(_)) => intent_runtime.last_error.set(None),
+            Some(Ok(result)) => intent_runtime.apply_browser_result(result),
             Some(Err(error)) => intent_runtime.fail(error.to_string()),
             None => {
                 intent_runtime.fail("Page Builder controller is no longer available".to_string())
@@ -65,6 +122,7 @@ pub fn AdapterWorkspacePanel(
     view! {
         <FlyEditorWorkspace
             document=document
+            registries=Some(registries)
             contribution_assembly=assembly
             instance_id=instance_id
             on_intent=on_intent
@@ -72,6 +130,12 @@ pub fn AdapterWorkspacePanel(
             messages=messages
             initial_page=initial_page
             capabilities=capabilities
+            controlled_document=Some(controlled_document)
+            controlled_selection=Some(controlled_selection)
+            controlled_page=Some(controlled_page)
+            controlled_can_undo=Some(controlled_can_undo)
+            controlled_can_redo=Some(controlled_can_redo)
+            controlled_capabilities=Some(controlled_capabilities)
             csp_nonce=csp_nonce
         />
     }

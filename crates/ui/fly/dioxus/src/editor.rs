@@ -10,7 +10,7 @@ use fly::{
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorMessages, PaletteBlockAccess,
-    PaletteBlockItem, ThemeTokenItem, editor_layer_items, palette_block_items_with_access,
+    PaletteBlockItem, ThemeTokenItem, editor_layer_items_for_page, palette_block_items_with_access,
     theme_token_items,
 };
 
@@ -357,6 +357,18 @@ pub fn FlyCanvasPreview(
     }
 }
 
+/// Choose the canonical rendering document for each workspace mode.
+///
+/// In intent mode the consumer controller owns the document. The local FlyEditor
+/// signal was constructed only once and must never shadow newer document props.
+/// In standalone mode that signal owns the mutable document and its undo history.
+fn workspace_render_document<'a>(
+    authoritative: Option<&'a ProjectDocument>,
+    local: &'a FlyEditor,
+) -> &'a ProjectDocument {
+    authoritative.unwrap_or_else(|| local.document())
+}
+
 /// Full editor workspace: palette, layer tree, canvas preview, design-token editor, and undo/redo, wired to a
 /// `FlyEditor` held in a signal.
 ///
@@ -374,6 +386,11 @@ pub fn FlyEditorWorkspace(
     messages: Option<EditorMessages>,
     initial_page: Option<usize>,
     capabilities: Option<CapabilityState>,
+    /// Selection is owned by the host controller in intent mode.
+    selected_component_id: Option<String>,
+    /// The host owns history in intent mode. Local mode uses FlyEditor history.
+    host_can_undo: Option<bool>,
+    host_can_redo: Option<bool>,
     /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
     csp_nonce: Option<String>,
 ) -> Element {
@@ -392,6 +409,10 @@ pub fn FlyEditorWorkspace(
     let palette_access = PaletteBlockAccess::from_optional_assembly(contribution_assembly.as_ref());
     let blocks = palette_block_items_with_access(&registries, &palette_access);
 
+    // Copy only when the consumer owns the state. The locally retained signal
+    // is still needed for standalone editing but must not render stale data
+    // while on_intent forwards all mutations to the host.
+    let authoritative_document = intent_mode.then(|| document.clone());
     let mut editor = use_signal(|| FlyEditor::new(document, registries));
 
     // Intent mode only: the drag is completed by a `drop` intent, which needs the host's
@@ -412,21 +433,37 @@ pub fn FlyEditorWorkspace(
     });
     let on_begin_drag = intent_mode.then_some(begin_palette_drag);
 
-    let page_selection = match initial_page {
-        Some(index) => PageSelection::Index(index),
-        None => PageSelection::First,
+    let active_page_index = initial_page.unwrap_or(0);
+    let page_selection = PageSelection::Index(active_page_index);
+    let current_document = {
+        let local = editor.read();
+        workspace_render_document(authoritative_document.as_ref(), &local).clone()
     };
     let rendered = render_page(
-        editor.read().document(),
+        &current_document,
         &page_selection,
         &RenderPolicy::default(),
     );
-    let layers = editor_layer_items(editor.read().document());
-    let tokens = theme_token_items(editor.read().document());
-    let selected = editor.read().selection().map(ToString::to_string);
-    let current_document = editor.read().document().clone();
-    let can_undo = intent_mode || editor.read().history().can_undo();
-    let can_redo = intent_mode || editor.read().history().can_redo();
+    // The canvas previews one active page: the layer panel must not expose
+    // components from other pages as if they belong to that canvas.
+    let layers = editor_layer_items_for_page(&current_document, active_page_index);
+    let tokens = theme_token_items(&current_document);
+    let selected = if intent_mode {
+        selected_component_id
+    } else {
+        editor.read().selection().map(ToString::to_string)
+    };
+    let history_allowed = capabilities.is_none_or(|profile| profile.history);
+    let can_undo = history_allowed && if intent_mode {
+        host_can_undo.unwrap_or(true)
+    } else {
+        editor.read().history().can_undo()
+    };
+    let can_redo = history_allowed && if intent_mode {
+        host_can_redo.unwrap_or(true)
+    } else {
+        editor.read().history().can_redo()
+    };
 
     rsx! {
         section {
@@ -657,5 +694,64 @@ pub fn FlyEditorWorkspace(
             }
             span { hidden: true, "data-fly-components": "{current_document.project.pages.len()}" }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod controlled_workspace_regression_tests {
+    use super::*;
+    use fly::GrapesJsCodec;
+    use serde_json::json;
+
+    fn document(content: &str) -> ProjectDocument {
+        GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root", "type": "wrapper",
+                    "components": [{
+                        "id": "hero", "type": "text", "content": content
+                    }]
+                }
+            }]
+        })).expect("Fly document")
+    }
+
+    #[test]
+    fn layer_rows_are_scoped_to_the_rendered_page() {
+        let project = GrapesJsCodec::decode_value(json!({
+            "pages": [
+                { "id": "home", "component": {
+                    "id": "home-root", "type": "wrapper",
+                    "components": [{ "id": "home-hero", "type": "text" }]
+                }},
+                { "id": "about", "component": {
+                    "id": "about-root", "type": "wrapper",
+                    "components": [{ "id": "about-hero", "type": "text" }]
+                }}
+            ]
+        })).expect("two-page project");
+        let home = editor_layer_items_for_page(&project, 0);
+        let about = editor_layer_items_for_page(&project, 1);
+        assert!(home.iter().any(|item| item.id == "home-hero"));
+        assert!(!home.iter().any(|item| item.id == "about-hero"));
+        assert!(about.iter().any(|item| item.id == "about-hero"));
+        assert!(!about.iter().any(|item| item.id == "home-hero"));
+        assert!(editor_layer_items_for_page(&project, 99).is_empty());
+    }
+
+    #[test]
+    fn intent_mode_renders_new_host_document_without_reinitializing_local_history() {
+        let first = document("before");
+        let updated = document("after");
+        let local = FlyEditor::new(first.clone(), RegistrySet::with_builtins());
+        assert_eq!(workspace_render_document(None, &local), &first);
+        assert_eq!(
+            workspace_render_document(Some(&updated), &local),
+            &updated,
+            "incoming controller snapshot is authoritative while intents are forwarded"
+        );
+        assert_eq!(local.document(), &first, "standalone editor is not reset");
     }
 }

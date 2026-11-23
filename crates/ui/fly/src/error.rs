@@ -99,6 +99,8 @@ pub enum FlyError {
     RedoHistoryEmpty,
     #[error("revision conflict: expected `{expected}`, current `{actual}`")]
     RevisionConflict { expected: String, actual: String },
+    #[error("invalid save lifecycle: {0}")]
+    InvalidSaveState(String),
 }
 
 /// Render validation diagnostics into a single human-readable line.

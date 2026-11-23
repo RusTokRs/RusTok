@@ -91,6 +91,27 @@ impl Default for ViewportState {
     }
 }
 
+impl ViewportState {
+    /// An editor viewport is a bounded preview, not an arbitrary CSS canvas.
+    /// Reuse the same dimensions and zoom limits as the custom viewport builder.
+    pub fn normalized(mut self) -> Self {
+        self.width = self.width.clamp(240, 7680);
+        self.height = self.height.clamp(240, 4320);
+        self.zoom = crate::normalize_zoom(self.zoom);
+        self.scroll_x = if self.scroll_x.is_finite() {
+            self.scroll_x.max(0.0)
+        } else {
+            0.0
+        };
+        self.scroll_y = if self.scroll_y.is_finite() {
+            self.scroll_y.max(0.0)
+        } else {
+            0.0
+        };
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct PageNavigationState {
     pub active_page_id: Option<String>,
@@ -113,8 +134,25 @@ pub struct CanvasRect {
 }
 
 impl CanvasRect {
+    pub fn is_valid(self) -> bool {
+        self.x.is_finite()
+            && self.y.is_finite()
+            && self.width.is_finite()
+            && self.height.is_finite()
+            && self.width >= 0.0
+            && self.height >= 0.0
+            && (self.x + self.width).is_finite()
+            && (self.y + self.height).is_finite()
+    }
+
     pub fn contains(self, x: f64, y: f64) -> bool {
-        x >= self.x && y >= self.y && x <= self.x + self.width && y <= self.y + self.height
+        self.is_valid()
+            && x.is_finite()
+            && y.is_finite()
+            && x >= self.x
+            && y >= self.y
+            && x <= self.x + self.width
+            && y <= self.y + self.height
     }
 }
 
@@ -199,8 +237,18 @@ pub struct DirtyState {
     pub command_sequence: u64,
     pub last_acknowledged_revision: Option<String>,
     pub project_hash: Option<ProjectHash>,
+    /// Network requests are not resumed after deserialization.
+    #[serde(skip)]
     pub save_in_progress: bool,
     pub save_failed: bool,
+    /// The command sequence captured at SaveStarted. This is request-local state, not
+    /// a durable promise that can be resumed after reloading a serialized editor.
+    #[serde(skip)]
+    pub save_started_sequence: Option<u64>,
+    /// The hash the host had synchronized when the save began; absent for
+    /// pure state-machine clients that do not track document hashes.
+    #[serde(skip)]
+    pub save_started_hash: Option<ProjectHash>,
     /// The last save was rejected as a lost update (another session saved first).
     /// Distinct from a generic failure: the user must reload before saving again.
     #[serde(default)]
