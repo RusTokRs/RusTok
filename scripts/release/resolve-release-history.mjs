@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseReleaseTag } from "./verify-release-contract.mjs";
+import { listContainerTags } from "./verify-release-collisions.mjs";
 
 const repository = "RusTokRs/RusTok";
 const pageSize = 100;
@@ -103,7 +104,15 @@ async function mainCommit(read) {
   return ref.object.sha;
 }
 
-async function checkBootstrap(read = readGitHub) {
+async function containerHistory(readTags = listContainerTags) {
+  const image = `ghcr.io/${repository.toLowerCase()}`;
+  const tags = await readTags(image, process.env.GITHUB_ACTOR);
+  // Stable publication writes a version, major/minor aliases, and latest.
+  const stable = tags.filter((tag) => tag === "latest" || /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){0,2}$/.test(tag));
+  return { image, observed_tags: tags.length, stable_tags: stable };
+}
+
+async function checkBootstrap(read = readGitHub, readTags = listContainerTags) {
   const commit = await mainCommit(read);
   const file = await read(`contents/${bootstrapPath}?ref=${commit}`);
   if (file?.type !== "file" || file.path !== bootstrapPath || file.encoding !== "base64"
@@ -135,6 +144,10 @@ async function checkBootstrap(read = readGitHub) {
       if (!parseReleaseTag(tag).prerelease) throw new Error(`stable distribution tag ${tag} already exists`);
     }
   }
+  const container = await containerHistory(readTags);
+  if (container.stable_tags.length > 0) {
+    throw new Error(`stable distribution image tags already exist in ${container.image}: ${container.stable_tags.join(", ")}`);
+  }
   if (await mainCommit(read) !== commit) {
     throw new Error("official main changed during the bootstrap check");
   }
@@ -142,7 +155,8 @@ async function checkBootstrap(read = readGitHub) {
     ...record,
     main_commit: commit,
     record_blob: file.sha,
-    observation: "github_release_history_and_tag_refs",
+    observation: "github_release_history_tag_refs_and_ghcr_tags",
+    container,
     replacement_admission: "blocked",
   };
 }
@@ -290,10 +304,21 @@ async function runSelfTest() {
     "releases?per_page=100&page=1": [release(3, prerelease, { prerelease: true })],
     "releases?per_page=100&page=2": [],
   };
-  assert.deepEqual(await checkBootstrap(withResults(bootstrapResults)), {
+  const prereleaseImages = async (image) => {
+    assert.equal(image, "ghcr.io/rustokrs/rustok");
+    return ["1.4.0-rc.1", `sha256-${"d".repeat(64)}.att`];
+  };
+  assert.deepEqual(await checkBootstrap(withResults(bootstrapResults), prereleaseImages), {
     ...bootstrapRecord(recordBytes), main_commit: commit, record_blob: recordFile.sha,
-    observation: "github_release_history_and_tag_refs", replacement_admission: "blocked",
+    observation: "github_release_history_tag_refs_and_ghcr_tags", replacement_admission: "blocked",
+    container: { image: "ghcr.io/rustokrs/rustok", observed_tags: 2, stable_tags: [] },
   });
+  for (const tag of ["1.4.0", "1.4", "1", "latest"]) {
+    await assert.rejects(checkBootstrap(withResults(bootstrapResults), async () => [tag]), /stable distribution image tags already exist/);
+  }
+  await assert.rejects(checkBootstrap(withResults(bootstrapResults), async () => {
+    throw new Error("GHCR tag list returned HTTP 404");
+  }), /HTTP 404/);
   for (const [endpoint, payload, error] of [
     [recordEndpoint, new Error("GitHub contents returned HTTP 404"), /HTTP 404/],
     [recordEndpoint, { ...recordFile, sha: oldObject }, /bytes do not match/],
@@ -304,7 +329,7 @@ async function runSelfTest() {
     [tagsSecondPage, [{ name: prerelease }], /repeated GitHub tag/],
     [tagsSecondPage, new Error("GitHub tag request returned HTTP 403"), /HTTP 403/],
   ]) {
-    await assert.rejects(checkBootstrap(withResults({ ...bootstrapResults, [endpoint]: payload })), error);
+    await assert.rejects(checkBootstrap(withResults({ ...bootstrapResults, [endpoint]: payload }), prereleaseImages), error);
   }
   const current = withResults(bootstrapResults);
   let mainReads = 0;
@@ -313,7 +338,7 @@ async function runSelfTest() {
       return { ref: "refs/heads/main", object: { type: "commit", sha: nestedCommit } };
     }
     return current(endpoint);
-  }), /official main changed/);
+  }, prereleaseImages), /official main changed/);
   for (const field of ["schema_version", "repository", "scope", "state", "seal_generation"]) {
     assert.throws(() => bootstrapRecord(Buffer.from(JSON.stringify({
       ...bootstrapRecord(recordBytes), [field]: "unexpected",
@@ -328,11 +353,13 @@ async function main() {
     await runSelfTest();
   } else if (args.length === 1 && args[0] === "--check-bootstrap") {
     console.log(JSON.stringify(await checkBootstrap(), null, 2));
+  } else if (args.length === 1 && args[0] === "--check-container-history") {
+    console.log(JSON.stringify(await containerHistory(), null, 2));
   } else if (args.length === 0) {
     const history = await resolveReleaseHistory();
     console.log(JSON.stringify(history, null, 2));
   } else {
-    throw new Error("usage: resolve-release-history.mjs [--self-test | --check-bootstrap]");
+    throw new Error("usage: resolve-release-history.mjs [--self-test | --check-bootstrap | --check-container-history]");
   }
 }
 

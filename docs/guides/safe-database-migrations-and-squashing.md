@@ -219,11 +219,22 @@ cannot substitute for an explicit bootstrap record.
 The first stable distribution starts from the [bootstrap record](../../scripts/release/migration-bootstrap.json)
 at generation zero. `node scripts/release/resolve-release-history.mjs --check-bootstrap`
 reads that exact path from a pinned commit on the official `main`, verifies
-its Git blob identity and checks all pages of GitHub Releases and repository
-tags. A stable release or a stable tag without a release stops the check.
-The result links the observed state to the commit and blob, with migration
-replacement still blocked. Container history, independent module seals and
-the publication reservation require separate evidence before admission.
+its Git blob identity and checks all pages of GitHub Releases, repository
+tags and the GHCR tag list for the official distribution. A stable version
+tag or a stable image alias such as `latest` stops the check even when there
+is no GitHub Release. The result binds the observations to the commit and
+blob, with migration replacement still blocked.
+
+`node scripts/release/resolve-release-history.mjs --check-container-history`
+lists the stable tags seen in GHCR independently of the bootstrap record.
+Both commands authenticate to GHCR using `GITHUB_ACTOR` and `GHCR_TOKEN`
+or the workflow token `GITHUB_TOKEN` with package read access. A failed tag
+list request, including HTTP 404, leaves container history unverified. The
+list covers current tags. Earlier exposures with deleted tags, independent
+module seals and the atomic publication reservation require separate evidence.
+Release tooling tests exercise the GHCR authentication exchange, short pages
+with continuation links, full pages without links, stable aliases and failed
+reads. The live check still needs a credential with access to the package.
 
 A local declaration check takes the ordered inventory projection of one
 composition's protected prefix and a full candidate export.

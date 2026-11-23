@@ -2,6 +2,8 @@
 
 import assert from "node:assert/strict";
 import process from "node:process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ACCEPT_MANIFEST = [
   "application/vnd.oci.image.index.v1+json",
@@ -124,22 +126,22 @@ function parseBearerChallenge(value) {
   } catch {
     throw new Error("GHCR authentication realm is not a valid URL");
   }
-  if (realm.protocol !== "https:" || realm.hostname !== "ghcr.io") {
+  if (realm.origin !== "https://ghcr.io" || realm.username || realm.password
+    || realm.pathname !== "/token" || realm.search || realm.hash) {
     throw new Error("GHCR authentication realm must be https://ghcr.io");
   }
   return { ...parameters, realm };
 }
 
-async function requestRegistryToken(challenge, actor, token) {
+async function requestRegistryToken(challenge, basic, request) {
   const url = new URL(challenge.realm);
   url.searchParams.set("service", challenge.service);
   url.searchParams.set("scope", challenge.scope);
-  const basic = Buffer.from(`${actor}:${token}`, "utf8").toString("base64");
-  const response = await checkedFetch(
+  const response = await request(
     url,
     requestOptions({
       Accept: "application/json",
-      Authorization: `Basic ${basic}`,
+      Authorization: basic,
       "User-Agent": "rustok-release-collision-probe/1",
     }),
     "GHCR token",
@@ -153,47 +155,108 @@ async function requestRegistryToken(challenge, actor, token) {
   } catch (error) {
     throw new Error(`GHCR token response is not valid JSON: ${error.message}`);
   }
-  const bearer = String(payload.token || payload.access_token || "").trim();
-  if (!bearer) throw new Error("GHCR token response did not include a registry token");
+  const bearer = payload?.token ?? payload?.access_token;
+  if (typeof bearer !== "string" || !/^\S+$/.test(bearer)) {
+    throw new Error("GHCR token response did not include a registry token");
+  }
   return bearer;
 }
 
-async function registryManifestResponse(repositoryPath, tag, authorization) {
-  return checkedFetch(
-    `https://ghcr.io/v2/${repositoryPath}/manifests/${encodeURIComponent(tag)}`,
-    {
+function registryRequester(repositoryPath, actor, token, request = checkedFetch) {
+  const basic = `Basic ${Buffer.from(`${actor}:${token}`, "utf8").toString("base64")}`;
+  let authorization = basic;
+  return async (url, method, accept, label) => {
+    const fetchResource = () => request(url, {
       ...requestOptions({
-        Accept: ACCEPT_MANIFEST,
+        Accept: accept,
         Authorization: authorization,
         "User-Agent": "rustok-release-collision-probe/1",
       }),
-      method: "HEAD",
-    },
-    "GHCR manifest",
-  );
+      method,
+    }, label);
+    const first = await fetchResource();
+    if (first.status !== 401) return first;
+
+    const challenge = parseBearerChallenge(first.headers.get("www-authenticate"));
+    if (challenge.scope !== `repository:${repositoryPath}:pull` || challenge.service !== "ghcr.io") {
+      throw new Error("GHCR authentication challenge does not match the requested repository");
+    }
+    const bearer = await requestRegistryToken(challenge, basic, request);
+    authorization = `Bearer ${bearer}`;
+    return fetchResource();
+  };
+}
+
+function authenticatedRegistry(repositoryPath, login) {
+  const actor = String(login || "").trim();
+  if (!/^[A-Za-z0-9-]+$/.test(actor)) throw new Error("GHCR requires a GitHub login in --actor or GITHUB_ACTOR");
+  const token = requiredSecret("GHCR_TOKEN", "GITHUB_TOKEN");
+  return registryRequester(repositoryPath, actor, token);
 }
 
 async function verifyContainerTagAbsent(options) {
   const { image, repositoryPath } = requireImage(options.image);
   const tag = requireTag(options.tag, "--tag");
-  const actor = String(options.actor || "").trim();
-  if (!/^[A-Za-z0-9-]+$/.test(actor)) throw new Error("--actor must be a GitHub login");
-  const token = requiredSecret("GHCR_TOKEN", "GITHUB_TOKEN");
-  const basic = Buffer.from(`${actor}:${token}`, "utf8").toString("base64");
-  let response = await registryManifestResponse(repositoryPath, tag, `Basic ${basic}`);
-  if (response.status === 401) {
-    const challenge = parseBearerChallenge(response.headers.get("www-authenticate"));
-    if (challenge.scope !== `repository:${repositoryPath}:pull`) {
-      throw new Error(`GHCR challenge requested unexpected scope ${challenge.scope}`);
-    }
-    const bearer = await requestRegistryToken(challenge, actor, token);
-    response = await registryManifestResponse(repositoryPath, tag, `Bearer ${bearer}`);
-  }
+  const request = authenticatedRegistry(repositoryPath, options.actor);
+  const response = await request(
+    `https://ghcr.io/v2/${repositoryPath}/manifests/${encodeURIComponent(tag)}`,
+    "HEAD", ACCEPT_MANIFEST, "GHCR manifest",
+  );
   assertAbsentStatus(response.status, `container tag ${image}:${tag}`);
   console.log(`✔ container tag ${image}:${tag} does not exist`);
 }
 
-function runSelfTest() {
+function nextTagsPage(link, url, lastTag) {
+  const match = /^\s*<([^>]+)>\s*;\s*rel\s*=\s*(?:"next"|next)\s*$/i.exec(link);
+  if (!match || !lastTag) throw new Error("invalid GHCR tags pagination link");
+  const next = new URL(match[1], url);
+  const pageSizes = next.searchParams.getAll("n");
+  const size = pageSizes[0] ?? url.searchParams.get("n");
+  if (next.origin !== url.origin || next.pathname !== url.pathname || next.username || next.password || next.hash
+    || next.searchParams.getAll("last").length !== 1 || next.searchParams.get("last") !== lastTag
+    || pageSizes.length > 1 || !/^(?:[1-9]\d?|100)$/.test(size)
+    || [...next.searchParams.keys()].some((key) => key !== "last" && key !== "n")) {
+    throw new Error("GHCR tags pagination link does not match the current repository and cursor");
+  }
+  next.searchParams.set("n", size);
+  return next;
+}
+
+async function readRegistryTags(repositoryPath, request) {
+  const pageSize = 100;
+  let url = new URL(`https://ghcr.io/v2/${repositoryPath}/tags/list?n=${pageSize}`);
+  const tags = new Set();
+  for (;;) {
+    const response = await request(url, "GET", "application/json", "GHCR tag list");
+    if (response.status !== 200) throw new Error(`GHCR tag list returned HTTP ${response.status}`);
+    const payload = await response.json();
+    const requested = Number(url.searchParams.get("n"));
+    if (payload?.name !== repositoryPath || !Array.isArray(payload.tags) || payload.tags.length > requested) {
+      throw new Error("invalid GHCR tag list for the requested repository");
+    }
+    for (const tag of payload.tags) {
+      if (typeof tag !== "string" || !/^\w[\w.-]{0,127}$/.test(tag) || tags.has(tag)) {
+        throw new Error("invalid or repeated GHCR tag");
+      }
+      tags.add(tag);
+    }
+    const link = response.headers.get("link");
+    if (link !== null) {
+      url = nextTagsPage(link, url, payload.tags.at(-1));
+    } else if (payload.tags.length === requested) {
+      url.searchParams.set("last", payload.tags.at(-1));
+    } else {
+      return [...tags].sort();
+    }
+  }
+}
+
+export async function listContainerTags(image, actor) {
+  const { repositoryPath } = requireImage(image);
+  return readRegistryTags(repositoryPath, authenticatedRegistry(repositoryPath, actor));
+}
+
+async function runSelfTest() {
   assert.doesNotThrow(() => assertAbsentStatus(404, "sample"));
   assert.throws(() => assertAbsentStatus(200, "sample"), /already exists/);
   assert.throws(() => assertAbsentStatus(401, "sample"), /unexpected HTTP 401/);
@@ -211,13 +274,70 @@ function runSelfTest() {
     image: "ghcr.io/rustokrs/rustok",
     repositoryPath: "rustokrs/rustok",
   });
+  const repositoryPath = "rustokrs/rustok";
+  const endpoint = `/v2/${repositoryPath}/tags/list`;
+  const page = (tags, link) => new Response(JSON.stringify({ name: repositoryPath, tags }), {
+    headers: link ? { Link: link } : {},
+  });
+  let calls = 0;
+  const authenticated = registryRequester(repositoryPath, "release-bot", "fixture-secret", async (url, options) => {
+    assert.equal(new URL(url).origin, "https://ghcr.io");
+    assert.equal(options.redirect, "error");
+    const request = new URL(url);
+    switch (calls++) {
+      case 0:
+        assert.equal(request.pathname, endpoint);
+        assert.match(options.headers.Authorization, /^Basic /);
+        return new Response(null, { status: 401, headers: {
+          "www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:rustokrs/rustok:pull"',
+        } });
+      case 1:
+        assert.equal(request.pathname, "/token");
+        assert.equal(request.searchParams.get("scope"), "repository:rustokrs/rustok:pull");
+        assert.match(options.headers.Authorization, /^Basic /);
+        return new Response('{"token":"fixture-bearer"}');
+      case 2:
+        assert.equal(options.headers.Authorization, "Bearer fixture-bearer");
+        return page(["1.0.0-rc.1"], `<${endpoint}?last=1.0.0-rc.1>; rel="next"`);
+      case 3:
+        assert.equal(options.headers.Authorization, "Bearer fixture-bearer");
+        assert.equal(request.searchParams.get("last"), "1.0.0-rc.1");
+        assert.equal(request.searchParams.get("n"), "100");
+        return page(["latest"]);
+      default:
+        assert.fail("unexpected GHCR request");
+    }
+  });
+  assert.deepEqual(await readRegistryTags(repositoryPath, authenticated), ["1.0.0-rc.1", "latest"]);
+  const fullPage = Array.from({ length: 100 }, (_, i) => `tag-${String(i).padStart(2, "0")}`);
+  assert.deepEqual(await readRegistryTags(repositoryPath, async (url) => {
+    return url.searchParams.has("last") ? page([]) : page(fullPage);
+  }), fullPage);
+  await assert.rejects(readRegistryTags(repositoryPath, async () => page(["same", "same"])), /repeated GHCR tag/);
+  for (const status of [401, 403, 404, 429]) {
+    await assert.rejects(readRegistryTags(repositoryPath, async () => new Response(null, { status })), new RegExp(`HTTP ${status}`));
+  }
+  for (const next of [
+    `https://example.invalid${endpoint}?last=sample&n=100`,
+    "https://ghcr.io/v2/other/package/tags/list?last=sample&n=100",
+    `${endpoint}?last=unvisited&n=100`,
+  ]) {
+    await assert.rejects(readRegistryTags(repositoryPath, async () => page(["sample"], `<${next}>; rel="next"`)), /pagination link does not match/);
+  }
+  const badChallenge = registryRequester(repositoryPath, "release-bot", "fixture-secret", async (url) => {
+    assert.equal(new URL(url).pathname, endpoint);
+    return new Response(null, { status: 401, headers: {
+      "www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:other/package:pull"',
+    } });
+  });
+  await assert.rejects(readRegistryTags(repositoryPath, badChallenge), /challenge does not match/);
   console.log("✔ release collision probe self-test passed");
 }
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (options.selfTest) {
-    runSelfTest();
+    await runSelfTest();
     return;
   }
   if (options.kind === "github-release") {
@@ -231,9 +351,11 @@ async function main() {
   throw new Error("choose --github-release or --container-tag");
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(`release collision verification failed: ${error.message}`);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`release collision verification failed: ${error.message}`);
+    process.exitCode = 1;
+  }
 }
