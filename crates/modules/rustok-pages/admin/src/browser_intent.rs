@@ -702,7 +702,7 @@ fn compact_operation_receipt(
         .and_then(Value::as_object)
         .and_then(|failure| failure.get("error"))
         .and_then(Value::as_str)
-        .map(|error| error.chars().take(128).collect::<String>());
+        .map(|error| error.chars().take(96).collect::<String>());
     let save_failure = match (save_failure, bounded_error) {
         (Some(mut value), Some(error)) => {
             if let Some(failure) = value.as_object_mut() {
