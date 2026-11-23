@@ -48,7 +48,7 @@ function parseAttributeFilters(value: string | string[] | undefined): string[] {
       // facet toggles aligned with that canonical selection grammar.
       return equalsAt < 0
         ? entry
-        : `${entry.slice(0, equalsAt).trim()}=${entry.slice(equalsAt + 1).trim()}`;
+        : `${entry.slice(0, equalsAt).trim().toLowerCase()}=${entry.slice(equalsAt + 1).trim()}`;
     });
 }
 
