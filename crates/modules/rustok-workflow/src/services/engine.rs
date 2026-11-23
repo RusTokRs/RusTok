@@ -9,7 +9,7 @@ use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::entities::{
-    ExecutionStatus, OnError, StepExecutionStatus, WorkflowExecutionActiveModel,
+    ExecutionStatus, OnError, StepExecutionStatus, StepType, WorkflowExecutionActiveModel,
     WorkflowStepExecutionActiveModel, workflow_execution, workflow_step_execution,
 };
 use crate::error::WorkflowResult;
@@ -17,6 +17,15 @@ use crate::steps::{
     ActionStep, AlloyScriptStep, ConditionStep, DelayStep, EmitEventStep, HttpStep, NotifyStep,
     StepContext, WorkflowStep,
 };
+
+/// External or script steps do not support blind retries. Their owners need
+/// an idempotency receipt or explicit reconciliation before re-dispatch.
+fn potentially_external_step(step_type: &StepType) -> bool {
+    matches!(
+        step_type,
+        StepType::Http | StepType::Notify | StepType::AlloyScript | StepType::EmitEvent
+    )
+}
 
 /// Registry of available step executors, keyed by step type string.
 type StepRegistry = HashMap<String, Arc<dyn WorkflowStep>>;
@@ -184,6 +193,26 @@ impl WorkflowEngine {
                     )
                     .await?;
 
+                    // These steps may have issued a non-transactional effect
+                    // before receiving a timeout or a lost response. Neither
+                    // on_error=retry nor on_error=skip can prove it is safe to
+                    // send again or ignore the result. Preserve uncertainty
+                    // for an operator instead of claiming a terminal failure.
+                    if potentially_external_step(&step.step_type)
+                        && !matches!(err, crate::error::WorkflowError::InvalidStepConfig(_))
+                    {
+                        self.finish_execution(
+                            execution_id,
+                            ExecutionStatus::ReconciliationRequired,
+                            context.data,
+                            Some(format!("step {} has an unconfirmed external outcome", step.id)),
+                        )
+                        .await?;
+                        return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(
+                            execution_id,
+                        ));
+                    }
+
                     match step.on_error {
                         OnError::Stop => {
                             failed = true;
@@ -298,7 +327,7 @@ impl WorkflowEngine {
         existing: workflow_execution::Model,
         trigger_event_id: Uuid,
     ) -> WorkflowResult<Uuid> {
-        if existing.status == ExecutionStatus::Running {
+        if matches!(existing.status, ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired) {
             return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(existing.id));
         }
         info!(
