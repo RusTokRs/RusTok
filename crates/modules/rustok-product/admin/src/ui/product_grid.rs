@@ -405,7 +405,10 @@ pub fn ProductGridPage() -> impl IntoView {
             )
             .await
             .ok()?;
-            let facet_codes = crate::facets::build_product_admin_facet_codes(&options);
+            let facet_codes = crate::facets::build_product_admin_facet_codes_for_filters(
+                &options,
+                controls.attribute_filters.as_slice(),
+            );
             if facet_codes.is_empty() {
                 return Some(Vec::new());
             }
