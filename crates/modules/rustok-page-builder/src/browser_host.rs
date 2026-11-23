@@ -128,7 +128,20 @@ const __flyBindSsrAdapter = (adapter) => {
     const generation = typeof rawGeneration === "string" && /^[1-9][0-9]*$/.test(rawGeneration)
       ? Number(rawGeneration) : NaN;
     if (rendered) {
-      if (routeDraft !== rendered || !Number.isSafeInteger(generation)) {
+      if (!Number.isSafeInteger(generation)) {
+        __flyStopForDraftRecovery(adapter, rendered);
+        return adapter;
+      }
+      // The first editable SSR render already owns a durable draft session.
+      // Bind it into the route before checking ownership so a lost first
+      // mutation response can still be reconciled after a reload.
+      if (routeDraft === null) {
+        if (!__flyWriteDraftRoute(rendered)) {
+          __flyStopForDraftRecovery(adapter, rendered);
+          return adapter;
+        }
+        boundDraft = rendered;
+      } else if (routeDraft !== rendered) {
         __flyStopForDraftRecovery(adapter, rendered);
         return adapter;
       }
@@ -278,6 +291,9 @@ const __flyBindSsrAdapter = (adapter) => {
     __flyLifecycleOptions,
   );
   __flySsrControlState.adapters.add(adapter);
+  if (adapter.pendingOperation) {
+    queueMicrotask(() => void adapter.resolvePendingOperation());
+  }
   return adapter;
 };
 __flySsrControlState.bind = __flyBindSsrAdapter;
