@@ -3,7 +3,7 @@
 //! Every Product admin surface reads the owner through this module. Transport
 //! selection is profile-driven: native server functions serve SSR/hydrate builds,
 //! while GraphQL serves CSR builds. A failed operation is never retried through a
-//! different transport. GraphQL errors are sanitized by the correlation-aware
+//! different transport. Selected-transport errors are normalized by the bounded
 //! `graphql_error_safety::GraphqlReadContext` before reaching the UI.
 //!
 //! Writes keep their retry and idempotency identity in `transport` and are
