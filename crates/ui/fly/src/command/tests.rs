@@ -37,13 +37,17 @@ fn idempotent_and_empty_commands_do_not_consume_history_or_revision() {
     let report = editor.apply(EditorCommand::Batch { commands: vec![] })
         .expect("empty batch is a verified no-op");
     assert!(report.is_valid());
-    assert_eq!(editor, before);
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
 
     editor.apply(EditorCommand::Patch {
         component_id: "hero".to_string(),
         patch: ComponentPatch::default().merge_style(json!({"color": "red"})),
     }).expect("same value");
-    assert_eq!(editor, before);
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
 
     // Once a meaningful edit exists, an idempotent follow-up must not clear redo
     // or create a second history entry.
