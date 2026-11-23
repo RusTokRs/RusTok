@@ -63,14 +63,15 @@ export default async function ProductPage({ searchParams }: PageProps) {
     perPage: rawPerPage
   });
   const rawStatus = pickParam(params.status);
-  const canonicalStatus = normalizeProductStatus(rawStatus)?.toLowerCase();
+  const trimmedStatus = rawStatus?.trim() ?? '';
+  const canonicalStatus = normalizeProductStatus(trimmedStatus)?.toLowerCase();
   const hasNonCanonicalStatus =
     params.status !== undefined &&
     (Array.isArray(params.status) && params.status.length !== 1
       ? true
-      : !rawStatus?.trim() ||
-        rawStatus !== rawStatus.trim() ||
-        rawStatus.trim() !== (canonicalStatus ?? ''));
+      : !trimmedStatus ||
+        rawStatus !== trimmedStatus ||
+        trimmedStatus !== (canonicalStatus ?? ''));
   const rawTitle = pickParam(params.title);
   const rawSearch = pickParam(params.search);
   const trimmedTitle = rawTitle?.trim() ?? '';
