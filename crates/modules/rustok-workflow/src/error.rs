@@ -33,6 +33,9 @@ pub enum WorkflowError {
     #[error("Step execution failed: {0}")]
     StepFailed(String),
 
+    #[error("Workflow step {step_id} timed out after {timeout_ms}ms")]
+    StepTimedOut { step_id: Uuid, timeout_ms: u64 },
+
     #[error("Unknown step type: {0}")]
     UnknownStepType(String),
 
