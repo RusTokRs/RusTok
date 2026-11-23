@@ -139,10 +139,28 @@ strictly newer than the current stored revision, append the body journal, and
 build their `PageResponse` inside the same transaction (including site symbols).
 The accepted write cannot be acknowledged with a subsequent writer's revision.
 
-This is not durable idempotency: an uncertain/aborted transport result still
-requires explicit reconciliation. PostgreSQL/MySQL serialize on the page row;
-SQLite may produce busy/locked write errors. Cross-backend concurrency checks
-and production release sign-off are pending.
+Callers may use `PageService::save_document_with_receipt` and supply an ASCII
+idempotency key (1..128 characters from `A-Za-z0-9-_.:`). Pages binds it to the
+actor and a hash of the normalized, layout-stripped command. An exact repeat
+returns the **original** response, even after later saves; different content
+or actor with the same key fails with
+`PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT`. The read-only
+`PageService::document_save_receipt` and GraphQL
+`pageDocumentSaveReceipt(id, idempotencyKey, tenantId)` return a stored
+acknowledgement with current write authorization checked, without re-executing.
+Missing receipts do not establish failure for an in-flight request.
+The latest 64 full responses per page are replayable; older hash/key
+tombstones produce `PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED` instead of replaying
+or re-executing an uncertain operation.
+
+The GraphQL `SaveGqlPageDocumentInput.idempotencyKey` is optional, preserving
+legacy CAS-only clients. The Leptos SSR Fly adapter derives a stable key from
+tenant, actor, page, expected revision, locale and canonical project.
+See the [save receipts ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+Restore/lifecycle commands do not yet have this save receipt contract.
+PostgreSQL/MySQL use the page lock; SQLite may return busy/locked errors.
+The new migration supports PostgreSQL/SQLite, not MySQL; backend concurrency
+checks and production release sign-off remain pending.
 
 ## Events
 

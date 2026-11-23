@@ -106,15 +106,22 @@ compatibility or drop migration is retained.
 Recorded by earlier page-subsystem audits.
 These are gaps in what the runtime actually does, not accepted design:
 
-- **Document CAS is monotonic for save/restore, but not yet durable idempotency.**
-  Under the Pages transaction, saves and restores now advance their microsecond
-  working-copy revision past its stored predecessor, including clock rollback,
-  and construct the `PageResponse` (with site symbols) before committing. A later
-  writer cannot supply the acknowledged revision. PostgreSQL/MySQL serialize the
-  changes on the page lock; SQLite may return a busy/locked database error under
-  contention. There is still no server-recognized request ID/receipt or recovery
-  query for ambiguous network outcomes. Cross-tab reconciliation and concurrent
-  database/lifecycle verification remain required before an end-to-end guarantee.
+- **Document CAS and receipt recovery (source only, awaiting runtime verification).**
+  Save/restore use monotonically advancing microsecond working-copy tokens and
+  construct the response inside their transaction. New optional save idempotency
+  keys bind the actor and normalized request to the original `PageResponse`,
+  committed with the body, revision journal and symbol catalog. GraphQL
+  `savePageDocument` accepts `idempotencyKey` and
+  `pageDocumentSaveReceipt` reads a committed acknowledgement without mutation.
+  The Fly Leptos SSR store derives stable per-request keys. Only the newest 64
+  responses per page are replayable; older keys remain permanent tombstones to
+  prevent duplicate execution. Legacy clients without keys retain CAS-only
+  behavior. Cross-tab merge, restore/lifecycle request IDs and mounted Dioxus
+  parity remain pending. PostgreSQL/MySQL use the page row lock; contended
+  SQLite writers may fail with busy/locked errors. The new receipt migration
+  currently supports PostgreSQL and SQLite, not MySQL. Cross-database writer,
+  GraphQL, SSR/CSR and browser E2E verification are still required. See
+  [Pages save receipt ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
 
 - **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors
   schedule/cancel a publication (`pagePublishSchedule`, `schedulePagePublish`,
