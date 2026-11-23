@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::sea_query::Expr;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
 use serde_json::Value;
 use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
@@ -234,13 +234,25 @@ impl WorkflowEngine {
                     if potentially_external_step(&step.step_type)
                         && !matches!(err, crate::error::WorkflowError::InvalidStepConfig(_))
                     {
-                        self.finish_execution(
-                            execution_id,
-                            ExecutionStatus::ReconciliationRequired,
-                            context.data,
-                            Some(format!("step {} has an unconfirmed external outcome", step.id)),
-                        )
-                        .await?;
+                        let uncertain_reason =
+                            Some(format!("step {} has an unconfirmed external outcome", step.id));
+                        if let Some((firing_id, token)) = cron_fence {
+                            self.finish_claimed_cron_execution(
+                                execution_id,
+                                firing_id,
+                                token,
+                                ExecutionStatus::ReconciliationRequired,
+                                context.data,
+                                uncertain_reason,
+                            ).await?;
+                        } else {
+                            self.finish_execution(
+                                execution_id,
+                                ExecutionStatus::ReconciliationRequired,
+                                context.data,
+                                uncertain_reason,
+                            ).await?;
+                        }
                         return Err(crate::error::WorkflowError::ExecutionOutcomeUncertain(
                             execution_id,
                         ));
@@ -346,13 +358,14 @@ impl WorkflowEngine {
             ExecutionStatus::Completed
         };
 
-        self.finish_execution(
-            execution_id,
-            final_status,
-            context.data,
-            if failed { Some(failure_msg) } else { None },
-        )
-        .await?;
+        let last_error = if failed { Some(failure_msg) } else { None };
+        if let Some((firing_id, token)) = cron_fence {
+            self.finish_claimed_cron_execution(
+                execution_id, firing_id, token, final_status, context.data, last_error,
+            ).await?;
+        } else {
+            self.finish_execution(execution_id, final_status, context.data, last_error).await?;
+        }
 
         info!(execution_id = %execution_id, success = !failed, "Workflow execution finished");
 
@@ -446,6 +459,49 @@ impl WorkflowEngine {
             .exec(&self.db)
             .await?;
 
+        Ok(())
+    }
+
+    /// The current cron attempt owns terminal writes only while its firing
+    /// token is still current. Lock that row and update the execution journal
+    /// in the same transaction so an operator decision cannot be overwritten
+    /// between a separate check and the final DB status write.
+    async fn finish_claimed_cron_execution(
+        &self,
+        execution_id: Uuid,
+        firing_id: Uuid,
+        token: Uuid,
+        status: ExecutionStatus,
+        context: Value,
+        error: Option<String>,
+    ) -> WorkflowResult<()> {
+        let transaction = self.db.begin().await?;
+        let owns = workflow_cron_firing::Entity::update_many()
+            .col_expr(
+                workflow_cron_firing::Column::ClaimedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
+            .filter(workflow_cron_firing::Column::Id.eq(firing_id))
+            .filter(workflow_cron_firing::Column::Status.eq(workflow_cron_firing::RUNNING))
+            .filter(workflow_cron_firing::Column::AttemptToken.eq(token))
+            .filter(workflow_cron_firing::Column::ExecutionId.eq(execution_id))
+            .exec(&transaction).await?.rows_affected;
+        if owns != 1 {
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+        }
+        let completed = workflow_execution::Entity::update_many()
+            .col_expr(workflow_execution::Column::Status, Expr::value(status.to_string()))
+            .col_expr(workflow_execution::Column::Context, Expr::value(context))
+            .col_expr(workflow_execution::Column::Error, Expr::value(error))
+            .col_expr(workflow_execution::Column::CompletedAt, Expr::value(Utc::now().fixed_offset()))
+            .filter(workflow_execution::Column::Id.eq(execution_id))
+            .filter(workflow_execution::Column::TriggerEventId.eq(firing_id))
+            .filter(workflow_execution::Column::Status.eq(ExecutionStatus::Running.to_string()))
+            .exec(&transaction).await?.rows_affected;
+        if completed != 1 {
+            return Err(crate::error::WorkflowError::CronReconciliationConflict(firing_id));
+        }
+        transaction.commit().await?;
         Ok(())
     }
 
