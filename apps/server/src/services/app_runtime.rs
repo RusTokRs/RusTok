@@ -438,6 +438,14 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     // drains accepted tasks before its scheduler JoinHandle completes. The
     // host's existing bounded shutdown may still force-abort a stalled task.
     let scheduler = WorkflowCronScheduler::new(ctx.db_clone());
+    scheduler.validate_persistence().await.map_err(|error| {
+        Error::Message(format!("Workflow cron durable storage is not initialized: {error}"))
+    })?;
+    // Schema validation may await migrations during a concurrent shutdown.
+    // Recheck the stop signal before publishing the scheduler task handle.
+    if *stop_rx.borrow() {
+        return Ok(());
+    }
     let join_handle = scheduler.start_with_stop(stop_rx);
     ctx.shared_insert(WorkflowCronSchedulerHandle::new(join_handle));
     tracing::info!("Workflow runtime initialized (cron scheduler)");
