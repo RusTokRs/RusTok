@@ -23,7 +23,7 @@ mod model;
 mod transport;
 mod ui;
 
-pub use ui::leptos::ProductAdmin;
+pub use ui::ProductAdmin;
 `;
 }
 

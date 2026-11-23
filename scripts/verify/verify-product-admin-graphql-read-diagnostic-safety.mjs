@@ -42,7 +42,7 @@ const paths = {
   // adapter are checked for canonical-facade resource composition.
   uiFiles: [
     "crates/modules/rustok-product/admin/src/ui/leptos.rs",
-    "crates/modules/rustok-product/admin/src/ui/root.rs",
+    "crates/modules/rustok-product/admin/src/ui/mod.rs",
     "crates/modules/rustok-product/admin/src/ui/product_grid.rs",
     "crates/modules/rustok-product/admin/src/ui/product_editor.rs",
     "crates/modules/rustok-product/admin/src/ui/attributes.rs",
@@ -249,20 +249,33 @@ const productsBlock = between(
   "pub(crate) async fn fetch_product(",
   paths.facade,
 );
+const nativeProfile = '#[cfg(any(feature = "ssr", feature = "hydrate"))]';
+const graphqlProfile = '#[cfg(not(any(feature = "ssr", feature = "hydrate")))]';
+const nativeProductsBlock = between(productsBlock, nativeProfile, graphqlProfile, paths.facade);
 for (const marker of [
   "admin_catalog_native::fetch_products(",
-  "Err(_) => {",
+  "Product admin catalog is temporarily unavailable",
+]) {
+  requireText(nativeProductsBlock, marker, `${paths.facade}: product-list native profile`);
+}
+forbidText(
+  nativeProductsBlock,
+  "admin_catalog_graphql::fetch_products(",
+  `${paths.facade}: native Product list must preserve its selected transport on error`,
+);
+const graphqlProductsBlock = between(productsBlock, graphqlProfile, null, paths.facade);
+for (const marker of [
   "GraphqlReadContext::for_products(",
   "admin_catalog_graphql::fetch_products(",
+  "context.map_error(error)",
 ]) {
-  requireText(productsBlock, marker, `${paths.facade}: product-list native-first contract`);
+  requireText(graphqlProductsBlock, marker, `${paths.facade}: product-list GraphQL profile`);
 }
-const productsNativeIndex = productsBlock.indexOf("admin_catalog_native::fetch_products(");
-const productsContextIndex = productsBlock.indexOf("GraphqlReadContext::for_products(");
-const productsGraphqlIndex = productsBlock.indexOf("admin_catalog_graphql::fetch_products(");
-if (!(productsNativeIndex >= 0 && productsNativeIndex < productsContextIndex && productsContextIndex < productsGraphqlIndex)) {
-  failures.push(`${paths.facade}: product-list native/context/GraphQL order drift`);
-}
+forbidText(
+  graphqlProductsBlock,
+  "admin_catalog_native::fetch_products(",
+  `${paths.facade}: Product list GraphQL profile must not call the native adapter`,
+);
 
 const categoryOperations = [
   {
@@ -353,7 +366,11 @@ for (const marker of [
 ]) {
   requireText(legacy, marker, `${paths.legacy}: preserved primary GraphQL delegation`);
 }
-for (const marker of ["ADMIN_PRODUCT_CATALOG_QUERY", "page: Some(1)", "per_page: Some(24)"]) {
+for (const marker of [
+  "ADMIN_PRODUCT_CATALOG_QUERY",
+  "build_admin_product_catalog_filter(controls, true)",
+  "(Some(controls.page), Some(controls.per_page))",
+]) {
   requireText(listGraphql, marker, `${paths.listGraphql}: product-list query contract`);
 }
 for (const marker of [

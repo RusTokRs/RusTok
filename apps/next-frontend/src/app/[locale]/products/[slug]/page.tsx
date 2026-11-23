@@ -27,7 +27,7 @@ import {
   type BuyerErrorCode,
   type BuyerRoute,
   type StorefrontProductPricingDetail,
-} from "../../../../../packages/rustok-product/src";
+} from "@rustok/product-frontend";
 
 interface ProductPageProps {
   params: Promise<{ locale: string; slug: string }>;

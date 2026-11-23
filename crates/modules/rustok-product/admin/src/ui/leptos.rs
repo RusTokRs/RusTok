@@ -202,7 +202,7 @@ fn TypedProductAttributeField(
 
 /// Non-mounted catalog-controls reference with routed saved-document delegation.
 ///
-/// The host mounts `ui::root::ProductAdmin` (routed pages), not this component.
+/// The host mounts `ui::ProductAdmin` for the routed pages.
 /// It stays in the tree because it is the canonical catalog-controls reference
 /// pinned by the product catalog verification suite, and because the shared
 /// sections below it are mounted by the routed pages. Feature work belongs on

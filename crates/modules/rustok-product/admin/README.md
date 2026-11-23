@@ -14,7 +14,7 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 - Exposes the product catalog admin root view used by `apps/admin`.
 - Keeps product list/create/edit/publish/archive workflow inside the product-owned package.
 - Keeps admin shell copy, profile-panel state, list/status/filter, list-card view-model, editor shell view-model, shipping-profile, selected-summary, pricing-preview and pricing deep-link presentation helpers in framework-agnostic `src/core.rs`, leaving Leptos as the render/effect adapter.
-- Isolates Leptos rendering in `src/ui/*`: `src/ui/root.rs` owns the mounted router shell, `src/ui/product_grid.rs`, `src/ui/product_editor.rs`, `src/ui/attributes.rs` and `src/ui/categories.rs` own the routed pages, and `src/ui/leptos.rs` owns the shared sections those pages mount (typed attribute values, variant axes, category-schema authoring). The crate root re-exports the mounted `ui::root::ProductAdmin`.
+- The mounted `ui::ProductAdmin` in `src/ui/mod.rs` renders the page selected by `src/core/route.rs`. `src/ui/product_grid.rs`, `src/ui/product_editor.rs`, `src/ui/attributes.rs` and `src/ui/categories.rs` own those pages. `src/ui/leptos.rs` owns the shared sections those pages mount, including typed attribute values, variant axes and category-schema authoring.
 - Routes admin data operations through `src/transport.rs`, with GraphQL operations in `src/transport/graphql_adapter.rs` and native server functions in `src/transport/native_server_adapter.rs`.
 - Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
@@ -24,7 +24,7 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 
 ## Entry Points
 
-- `ProductAdmin` - mounted root admin view re-exported from `ui::root` and rendered from the host admin registry.
+- `ProductAdmin` - mounted root admin view re-exported from `ui` and rendered from the host admin registry.
 - `ProductGridPage`, `ProductEditorPage`, `AttributesPage`, `CategoriesPage` - routed pages of the mounted surface.
 - `core::*` helpers for product admin shell copy, profile-panel state, product list/status/filter labels, list-card view-models, editor shell view-models, selected-summary view-models, pricing previews and pricing deep links.
 - `transport::*` facade functions for product admin native and GraphQL operations.
@@ -33,7 +33,7 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 
 `ui::leptos::ProductAdmin` and `ui::catalog_admin::ProductAdmin` (the same composition behind
 the catalog-controls query shell) are **not mounted**: the host code generator mounts
-`ui::root::ProductAdmin`. They remain the catalog-controls reference pinned by the catalog
+`ui::ProductAdmin`. They remain the catalog-controls reference pinned by the catalog
 verification suite, not alternate advertised entry points. A selected `product_id` now mounts
 the same keyed `ProductEditorPage` as the routed surface, independently of Product GET. The
 unselected catalog/create reference does not duplicate the saved-document recovery boundary.

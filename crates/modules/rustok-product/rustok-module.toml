@@ -27,6 +27,7 @@ pricing = { version_req = ">=0.1.0" }
 
 [provides.admin_ui]
 leptos_crate = "rustok-product-admin"
+next_package = "@rustok/product-admin"
 route_segment = "product"
 nav_label = "Products"
 
@@ -58,6 +59,7 @@ leptos_locales_path = "admin/locales"
 
 [provides.storefront_ui]
 leptos_crate = "rustok-product-storefront"
+next_package = "@rustok/product-frontend"
 slot = "home_after_catalog"
 route_segment = "products"
 page_title = "Products"

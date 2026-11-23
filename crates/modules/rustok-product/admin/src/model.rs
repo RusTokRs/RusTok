@@ -24,7 +24,7 @@ pub struct ProductAdminBootstrap {
     pub me: CurrentUser,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ProductList {
     pub items: Vec<ProductListItem>,
     pub total: u64,

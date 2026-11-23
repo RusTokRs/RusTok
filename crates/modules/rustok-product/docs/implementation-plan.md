@@ -886,6 +886,13 @@ deployment capture remains open.
 
 ## Source Layout: Port Responsibility Modularization
 
+Product follows the [shared native module standard](../../../../docs/modules/module-authoring.md#reference-modules).
+Its manifest identifies both existing Next.js packages, and the backend, admin
+and storefront contract tests are mounted through `src/tests/mod.rs`. The
+mounted Leptos admin selects its page in `core/route.rs` and renders it in
+`ui/mod.rs`. Strict source-layout verification still reports oversized sources,
+root-level owner adapters, persistence exposure and admin transport gaps.
+
 Per `docs/backend/module-backend-implementation.md`, `src/ports/` is organized into canonical responsibility submodules bounded below 32 KiB:
 
 - `ports/mod.rs`: Module facade, documentation, and public re-exports.

@@ -852,7 +852,7 @@ mod tests {
     use super::*;
     use crate::model::{
         PricingResolutionContext, ProductAttribute, ProductAttributeValue, ProductDetail,
-        ProductImage, ProductPrice, ProductTranslation,
+        ProductImage, ProductPrice, ProductTranslation, ProductVariant,
     };
 
     #[test]

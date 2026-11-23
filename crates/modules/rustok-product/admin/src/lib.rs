@@ -7,7 +7,7 @@
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;
 
 pub mod catalog_controls;
 pub mod catalog_transport;
@@ -38,8 +38,5 @@ pub use model::{
     VariantAxisValue, VariantAxisValueDraft,
 };
 pub use transport::fetch_catalog_search_options;
-// One mounted admin per surface: the host codegen mounts `ui::root::ProductAdmin`.
-// The reference compositions (`ui::catalog_admin`, `ui::leptos`) stay reachable
-// through their module paths, but they are no longer advertised as entry points.
-pub use ui::root::ProductAdmin;
+pub use ui::ProductAdmin;
 pub use ui::{CategoriesPage, ProductEditorPage, ProductGridPage};

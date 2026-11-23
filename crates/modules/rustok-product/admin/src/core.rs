@@ -1,6 +1,7 @@
 pub(crate) mod attribute_lifecycle;
 pub(crate) mod combinations;
 pub(crate) mod initial_catalog;
+pub(crate) mod route;
 pub(crate) mod variant_axes;
 pub(crate) mod variant_create;
 pub(crate) mod write_journal;

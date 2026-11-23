@@ -85,6 +85,21 @@ an FFA/FBA gate is mandatory:
 If an already completed functional slice does not pass this gate, the next change set first
 brings it to FBA-ready boundary evidence and only then extends functionality.
 
+### Reference modules
+
+Blog and Product illustrate the same native module contract. Follow Blog for
+responsibility-based backend placement and Product's mounted catalog surfaces
+for framework-independent UI policy, transport selection and host composition.
+The [backend guide](../backend/module-backend-implementation.md) and
+[UI package guide](../UI/module-package-implementation.md) define the rules
+for both examples. Each live Next.js surface registers its owner package and
+route alongside its Leptos counterpart in the module manifest.
+
+Run `cargo xtask module lint <slug>` for the common source and package checks.
+Use the module's implementation plan for the applicable runtime and parity
+evidence. Copy only the responsibilities and capabilities that the new owner
+actually implements.
+
 ## Release and Data Rollback Readiness Gate
 
 Every platform module (Core, Optional, or Capability extension) must declare its release, rollback, and data boundary readiness.

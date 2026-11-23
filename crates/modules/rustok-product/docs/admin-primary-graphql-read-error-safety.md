@@ -27,6 +27,13 @@ The result type remains `GraphqlHttpError`.
 
 HTTP status text and GraphQL server messages do not cross the Product Admin public boundary.
 
+## Current Product list routing
+
+The distributed build profile selects the list transport. SSR and hydrate
+use the native adapter and return a bounded error on rejection. Headless builds
+use the GraphQL adapter with the requested, normalized page and page size.
+The diagnostic record below describes the earlier read-mapper change.
+
 ## Diagnostic recheck
 
 The public mapper was already static and correlation-aware, but both tracing severity branches still recorded `raw_error = ?error`. Because `Http(String)` and `Graphql(String)` carry backend-controlled text, the complete typed error remained a structured diagnostic payload.

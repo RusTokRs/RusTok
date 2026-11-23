@@ -14,7 +14,7 @@ mod transport;
 mod ui;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;
 
 pub use model::{
     ProductCatalogFacet, ProductCatalogFacetValue, ProductCatalogSearchOption,

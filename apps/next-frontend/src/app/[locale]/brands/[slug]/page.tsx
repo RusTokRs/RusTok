@@ -16,7 +16,7 @@ import {
   fetchStorefrontProducts,
   ProductGrid,
   type StorefrontProductListResponse
-} from '../../../../../packages/rustok-product/src';
+} from '@rustok/product-frontend';
 
 interface BrandDetailPageProps {
   params: Promise<{ locale: string; slug: string }>;

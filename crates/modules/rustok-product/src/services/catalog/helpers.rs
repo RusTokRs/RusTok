@@ -1191,12 +1191,13 @@ mod product_handle_and_visibility_tests {
         };
         let reversed = vec![translation("zh"), translation("de"), translation("fr")];
         let forward = vec![translation("fr"), translation("de"), translation("zh")];
-        let pick = |items: &[ProductTranslationResponse]| {
-            pick_response_translation(items, "it", "en")
-                .map(|translation| translation.locale.as_str())
-        };
-        assert_eq!(pick(&reversed), Some("de"));
-        assert_eq!(pick(&forward), Some("de"));
+        for items in [&reversed, &forward] {
+            assert_eq!(
+                pick_response_translation(items, "it", "en")
+                    .map(|translation| translation.locale.as_str()),
+                Some("de"),
+            );
+        }
         assert_eq!(
             pick_response_translation(&reversed, "fr", "en")
                 .map(|translation| translation.locale.as_str()),
