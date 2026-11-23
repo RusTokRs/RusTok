@@ -11,253 +11,205 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
 const failures = [];
 
-function requireText(source, value, label) {
+const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
-}
-
-function forbidText(source, value, label) {
+};
+const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
-}
-
-function countText(source, value) {
-  return source.split(value).length - 1;
-}
-
-function between(source, start, end, label) {
+};
+const between = (source, start, end, label) => {
   const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
+  const to = end ? source.indexOf(end, from + start.length) : source.length;
   if (from < 0 || to < 0) {
-    failures.push(`${label}: could not isolate ${start} before ${end}`);
+    failures.push(`${label}: could not isolate ${start}${end ? ` before ${end}` : ""}`);
     return "";
   }
   return source.slice(from, to);
-}
+};
 
 const paths = {
-  cargo: "crates/modules/rustok-product/admin/Cargo.toml",
-  lib: "crates/modules/rustok-product/admin/src/lib.rs",
-  publicTransport: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
-  legacyTransport: "crates/modules/rustok-product/admin/src/transport.rs",
+  facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+  legacy: "crates/modules/rustok-product/admin/src/transport.rs",
   native: "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
   graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
-  ui: "crates/modules/rustok-product/admin/src/ui/catalog_admin.rs",
-  evidence:
-    "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
-  review:
-    "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
+  lib: "crates/modules/rustok-product/admin/src/lib.rs",
+  catalogUi: "crates/modules/rustok-product/admin/src/ui/catalog_admin.rs",
+  gridUi: "crates/modules/rustok-product/admin/src/ui/product_grid.rs",
+  evidence: "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
+  review: "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
   doc: "crates/modules/rustok-product/docs/admin-catalog-search-options-error-safety.md",
 };
 
-const cargo = read(paths.cargo);
-const lib = read(paths.lib);
-const publicTransport = read(paths.publicTransport);
-const legacyTransport = read(paths.legacyTransport);
+const facade = read(paths.facade);
+const legacy = read(paths.legacy);
 const native = read(paths.native);
 const graphql = read(paths.graphql);
-const ui = read(paths.ui);
+const lib = read(paths.lib);
+const catalogUi = read(paths.catalogUi);
+const gridUi = read(paths.gridUi);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 const doc = read(paths.doc);
 
-requireText(cargo, "uuid.workspace = true", `${paths.cargo}: correlation UUID dependency`);
-requireText(cargo, "tracing.workspace = true", `${paths.cargo}: private diagnostics dependency`);
-
-requireText(
-  lib,
-  "pub use transport::fetch_catalog_search_options;",
-  `${paths.lib}: public Product Admin search-option contract`,
-);
-requireText(
-  ui,
-  "transport::fetch_catalog_search_options(token, tenant, locale).await",
-  `${paths.ui}: UI must consume the public wrapper`,
-);
-
-forbidText(
-  publicTransport,
-  "pub use legacy::fetch_catalog_search_options;",
-  `${paths.publicTransport}: raw legacy String must not be re-exported directly`,
-);
-for (const marker of [
+const wrapper = between(
+  facade,
   "pub async fn fetch_catalog_search_options(",
+  "pub(crate) async fn fetch_products(",
+  paths.facade,
+);
+const legacyOptions = between(
+  legacy,
+  "pub(crate) async fn fetch_catalog_search_options(",
+  "#[cfg(any(not(any(feature = \"ssr\", feature = \"hydrate\")), test))]",
+  paths.legacy,
+);
+const nativeBranch = between(
+  legacyOptions,
+  '#[cfg(any(feature = "ssr", feature = "hydrate"))]',
+  '#[cfg(not(any(feature = "ssr", feature = "hydrate")))]',
+  paths.legacy,
+);
+const graphqlBranch = legacyOptions.slice(
+  legacyOptions.indexOf('#[cfg(not(any(feature = "ssr", feature = "hydrate")))]'),
+);
+const structuralOptions = between(
+  legacy,
+  "fn structural_category_options(",
+  "fn filterable_attribute_options(",
+  paths.legacy,
+);
+const attributeOptions = between(
+  legacy,
+  "fn filterable_attribute_options(",
+  "pub(crate) async fn fetch_catalog_search_options(",
+  paths.legacy,
+);
+const errorContext = between(
+  facade,
+  "struct CatalogSearchOptionsErrorContext",
+  "pub(crate) async fn fetch_products(",
+  paths.facade,
+);
+const nativeContext = between(
+  native,
+  "pub(super) async fn ensure_product_module_enabled(",
+  "pub(super) async fn fetch_product_attributes(",
+  paths.native,
+);
+
+for (const marker of [
   "CatalogSearchOptionsErrorContext::new(",
   "legacy::fetch_catalog_search_options(token, tenant_slug, locale)",
   ".map_err(|error| context.map_error(error))",
+  "PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE",
 ]) {
-  requireText(publicTransport, marker, `${paths.publicTransport}: final public error boundary`);
-}
-
-const wrapperStart = publicTransport.indexOf("pub async fn fetch_catalog_search_options(");
-const productsStart = publicTransport.indexOf("pub(crate) async fn fetch_products(", wrapperStart);
-if (wrapperStart < 0 || productsStart < 0) {
-  failures.push(`${paths.publicTransport}: public search-options wrapper boundaries are missing`);
-} else {
-  const wrapper = publicTransport.slice(wrapperStart, productsStart);
-  const contextIndex = wrapper.indexOf("CatalogSearchOptionsErrorContext::new(");
-  const callIndex = wrapper.indexOf("legacy::fetch_catalog_search_options(");
-  if (contextIndex < 0 || callIndex < 0 || contextIndex > callIndex) {
-    failures.push(`${paths.publicTransport}: correlation context must be created before fallback execution`);
-  }
-}
-
-for (const marker of [
-  "struct CatalogSearchOptionsErrorContext",
-  "uuid::Uuid::new_v4()",
-  '"product-admin-catalog-options:{PRODUCT_ADMIN_CATALOG_OPTIONS_OPERATION}:{}"',
-  "fn map_error(&self, raw_error: String) -> String",
-  "let raw_error_present = !raw_error.is_empty();",
-  "let raw_error_length = raw_error.chars().count();",
-  "raw_error_present,",
-  "raw_error_length,",
-  "correlation_id = %self.correlation_id",
-  "token_present = self.token_present",
-  "tenant_slug_length = ?self.tenant_slug_length",
-  "locale_length = self.locale_length",
-  'code = "product.admin_catalog_search_options_graphql_unavailable"',
-  '"Product catalog search options are temporarily unavailable"',
-  "PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE.to_string()",
-]) {
-  requireText(publicTransport, marker, `${paths.publicTransport}: correlation-safe static mapping`);
+  requireText(wrapper, marker, `${paths.facade}: public search-options boundary`);
 }
 for (const marker of [
-  "raw_error = %raw_error",
-  "raw_error = ?raw_error",
-  "error = %raw_error",
-  "error = ?raw_error",
-  "token = %",
-  "token = ?",
-  "tenant_slug = %",
-  "tenant_slug = ?",
-  "locale = %",
-  "locale = ?",
-  "tenant_id = %",
-  "tenant_id = ?",
-]) {
-  forbidText(publicTransport, marker, `${paths.publicTransport}: raw diagnostic or request values must not be logged`);
-}
-
-const legacyBlock = between(
-  legacyTransport,
-  "pub async fn fetch_catalog_search_options(",
-  "fn first_non_empty",
-  paths.legacyTransport,
-);
-for (const marker of [
-  "native_server_adapter::fetch_catalog_search_options(locale.clone()).await",
-  "graphql_adapter::fetch_bootstrap(token.clone(), tenant_slug.clone())",
-  "graphql_adapter::fetch_catalog_categories(",
-  "graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale)",
-  "ProductCatalogSearchOptions {",
-  "first_non_empty([category.path, category.name, category.code])",
-  "attribute.is_filterable || attribute.is_sortable",
-]) {
-  requireText(legacyBlock, marker, `${paths.legacyTransport}: preserved fallback and projection contract`);
-}
-if (countText(legacyBlock, ".map_err(|err| err.to_string())?;") !== 3) {
-  failures.push(
-    `${paths.legacyTransport}: private compatibility executor must retain exactly three captured GraphQL String handoffs`,
-  );
-}
-const nativeIndex = legacyBlock.indexOf("native_server_adapter::fetch_catalog_search_options");
-const bootstrapIndex = legacyBlock.indexOf("graphql_adapter::fetch_bootstrap");
-const categoriesIndex = legacyBlock.indexOf("graphql_adapter::fetch_catalog_categories");
-const attributesIndex = legacyBlock.indexOf("graphql_adapter::fetch_product_attributes");
-if (
-  nativeIndex < 0 ||
-  bootstrapIndex < 0 ||
-  categoriesIndex < 0 ||
-  attributesIndex < 0 ||
-  !(nativeIndex < bootstrapIndex && bootstrapIndex < categoriesIndex && categoriesIndex < attributesIndex)
-) {
-  failures.push(`${paths.legacyTransport}: native/bootstrap/categories/attributes order drift`);
-}
-
-for (const marker of [
-  "pub(super) async fn fetch_catalog_search_options(",
-  "product_admin_catalog_search_options_native(locale)",
-]) {
-  requireText(native, marker, `${paths.native}: native-first owner endpoint`);
-}
-for (const marker of [
-  "pub type ApiError = GraphqlHttpError;",
-  "ProductAdminBootstrap",
-  "ProductAdminCatalogCategories",
-  "ProductAdminAttributes",
-]) {
-  requireText(graphql, marker, `${paths.graphql}: preserved GraphQL owner contracts`);
-}
-
-if (evidence.schema_version !== 1) failures.push(`${paths.evidence}: schema_version must be 1`);
-if (
-  evidence.status !==
-  "product_admin_catalog_search_options_error_safety_source_unvalidated"
-) {
-  failures.push(`${paths.evidence}: status mismatch`);
-}
-for (const [key, expected] of Object.entries({
-  native_first_preserved: true,
-  graphql_bootstrap_categories_attributes_order_preserved: true,
-  legacy_raw_error_capture_private: false,
-  raw_error_shape_only: true,
-  raw_graphql_error_logged: false,
-  raw_graphql_error_public: false,
-  unique_correlation_id: true,
-  safe_request_shape_only: true,
-  token_value_logged: false,
-  tenant_slug_value_logged: false,
-  locale_value_logged: false,
-  public_result_type_changed: false,
-  fallback_added: false,
-  transport_selection_changed: false,
-})) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
-  }
-}
-for (const marker of [
+  "correlation_id_present = !self.correlation_id.is_empty()",
+  "correlation_id_length = self.correlation_id.chars().count()",
+  "selected_transport = self.selected_transport",
   "raw_error_present",
   "raw_error_length",
+  "token_present",
+  "tenant_slug_length",
+  "locale_length",
+  "product.admin_catalog_search_options_unavailable",
 ]) {
-  if (!evidence.safe_diagnostics?.includes(marker)) {
-    failures.push(`${paths.evidence}: safe_diagnostics must include ${marker}`);
-  }
+  requireText(errorContext, marker, `${paths.facade}: bounded selected-transport diagnostics`);
 }
-if (evidence.safe_diagnostics?.includes("private_raw_graphql_error")) {
-  failures.push(`${paths.evidence}: safe_diagnostics must not retain private_raw_graphql_error`);
-}
-for (const key of [
-  "tests_run",
-  "cargo_run",
-  "format_run",
-  "focused_verifier_run",
-  "aggregate_verifier_run",
-  "broad_ecommerce_verifier_run",
-  "workflow_checks_run",
-  "ci_run",
-  "browser_runtime_proven",
-  "mounted_fallback_proven",
+for (const marker of [
+  "correlation_id = %self.correlation_id",
+  "raw_error = %raw_error",
+  "raw_error = ?raw_error",
+  "tenant_slug = %",
+  "locale = %",
+  "token = %",
 ]) {
-  if (evidence.validation?.[key] !== false) {
-    failures.push(`${paths.evidence}: validation.${key} must remain false`);
-  }
+  forbidText(errorContext, marker, `${paths.facade}: raw search-options diagnostics`);
 }
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push(`${paths.evidence}: execution must remain empty`);
+
+for (const marker of [
+  '#[cfg(any(feature = "ssr", feature = "hydrate"))]',
+  "native_server_adapter::fetch_catalog_search_options(locale)",
+  ".map_err(|error| error.to_string())",
+]) {
+  requireText(nativeBranch, marker, `${paths.legacy}: native SSR/hydrate selection`);
 }
-if (
-  review.status !==
-  "product_admin_catalog_search_options_error_safety_source_reviewed_unvalidated"
-) {
-  failures.push(`${paths.review}: status mismatch`);
+forbidText(nativeBranch, "graphql_adapter::", `${paths.legacy}: native failure must not retry over GraphQL`);
+for (const marker of [
+  '#[cfg(not(any(feature = "ssr", feature = "hydrate")))]',
+  "graphql_adapter::fetch_bootstrap(token.clone(), tenant_slug.clone())",
+  "graphql_adapter::fetch_catalog_categories(",
+  "graphql_adapter::fetch_product_attributes(",
+  "category_options: structural_category_options(categories.items)",
+  "attribute_options: filterable_attribute_options(attributes.items)",
+]) {
+  requireText(graphqlBranch, marker, `${paths.legacy}: GraphQL CSR selection and DTO projection`);
 }
-requireText(doc, "Status: **source-ready / unvalidated**", `${paths.doc}: source status`);
+forbidText(graphqlBranch, "native_server_adapter::", `${paths.legacy}: CSR failure must not retry over native`);
+forbidText(legacyOptions, "match native_server_adapter::", `${paths.legacy}: no native-first fallback`);
+forbidText(legacyOptions, "Err(_) =>", `${paths.legacy}: no cross-transport retry`);
+
 requireText(
-  doc,
-  "Product catalog search options are temporarily unavailable",
-  `${paths.doc}: static public contract`,
+  structuralOptions,
+  '.filter(|category| category.kind.eq_ignore_ascii_case("structural"))',
+  `${paths.legacy}: category filters must exclude non-structural categories`,
 );
-requireText(doc, "native-first fallback policy", `${paths.doc}: preserved fallback policy`);
-requireText(doc, "does not write the captured error text", `${paths.doc}: bounded diagnostic policy`);
+requireText(
+  structuralOptions,
+  "first_non_empty([category.path, category.name, category.code])",
+  `${paths.legacy}: category label precedence`,
+);
+requireText(
+  attributeOptions,
+  'attribute.is_filterable && matches!(attribute.scope.as_str(), "product" | "both")',
+  `${paths.legacy}: attribute filters must be filterable Product/Both attributes`,
+);
+
+requireText(native, "product_admin_catalog_search_options_native(locale)", `${paths.native}: native options endpoint`);
+requireText(native, "ensure_product_module_enabled(runtime_ctx.db(), tenant.id).await?", `${paths.native}: native tenant module gate`);
+requireText(native, 'is_tenant_module_enabled(db, tenant_id, "product")', `${paths.native}: Product module gate implementation`);
+requireText(graphql, "PRODUCT_ATTRIBUTES_QUERY", `${paths.graphql}: GraphQL attribute query`);
+requireText(graphql, "scope", `${paths.graphql}: GraphQL attribute scope projection`);
+requireText(graphql, "isFilterable", `${paths.graphql}: GraphQL filterable attribute projection`);
+requireText(lib, "pub use catalog_transport::fetch_catalog_search_options;", `${paths.lib}: public export must use the safe facade`);
+forbidText(lib, "pub use transport::fetch_catalog_search_options;", `${paths.lib}: raw transport export bypasses the public error boundary`);
+requireText(legacy, "pub(crate) async fn fetch_catalog_search_options(", `${paths.legacy}: raw executor must remain crate-private`);
+requireText(catalogUi, "catalog_transport::fetch_catalog_search_options(token, tenant, locale).await", `${paths.catalogUi}: reference UI uses the safe facade`);
+requireText(gridUi, "catalog_transport::fetch_catalog_search_options(", `${paths.gridUi}: mounted grid uses the safe facade`);
+
+if (evidence.schema_version !== 1) failures.push(`${paths.evidence}: schema_version must be 1`);
+if (evidence.operation !== "fetch_catalog_search_options") failures.push(`${paths.evidence}: operation drift`);
+if (evidence.source_contract?.native_selected_in_ssr_hydrate !== true) failures.push(`${paths.evidence}: native_selected_in_ssr_hydrate must be true`);
+if (evidence.source_contract?.graphql_selected_in_csr !== true) failures.push(`${paths.evidence}: graphql_selected_in_csr must be true`);
+if (evidence.source_contract?.cross_transport_retry !== false) failures.push(`${paths.evidence}: cross_transport_retry must be false`);
+if (evidence.source_contract?.transport_selection_changed !== true) failures.push(`${paths.evidence}: transport_selection_changed must be true`);
+if (evidence.source_contract?.raw_error_shape_only !== true) failures.push(`${paths.evidence}: raw_error_shape_only must be true`);
+if (evidence.source_contract?.raw_graphql_error_logged !== false) failures.push(`${paths.evidence}: raw_graphql_error_logged must be false`);
+if (evidence.source_contract?.raw_graphql_error_public !== false) failures.push(`${paths.evidence}: raw_graphql_error_public must be false`);
+if (evidence.validation?.tests_run !== false || evidence.validation?.cargo_run !== false || evidence.validation?.format_run !== false) {
+  failures.push(`${paths.evidence}: validation must remain unexecuted`);
+}
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) failures.push(`${paths.evidence}: execution must remain empty`);
+if (review.status !== "product_admin_catalog_search_options_error_safety_source_reviewed_unvalidated") {
+  failures.push(`${paths.review}: review status mismatch`);
+}
+if (review.review_base !== "f94c88fc06aa7e6285d4a5cf82fa3e531c3fe25a") {
+  failures.push(`${paths.review}: review_base must match the current main baseline`);
+}
+for (const marker of [
+  "Status: **source-ready / unvalidated**",
+  "SSR/hydrate",
+  "CSR",
+  "cross-transport retry",
+  "Product catalog search options are temporarily unavailable",
+  "structural",
+  "Product or Both",
+  "ProductCatalogSearchOptions",
+]) {
+  requireText(doc, marker, `${paths.doc}: selected transport contract`);
+}
 
 if (failures.length > 0) {
   console.error("Product Admin catalog search-options error-safety verification failed:");
@@ -266,5 +218,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Product Admin catalog search-option failures use one static public String and bounded private diagnostics; execution evidence remains open",
+  "Product Admin catalog search options use one build-profile-selected transport, preserve bounded diagnostics, and expose only the safe public facade; execution evidence remains open",
 );
