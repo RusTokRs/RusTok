@@ -42,8 +42,8 @@ test('product catalog page selection is keyed by canonical product identity', ()
 });
 
 test('the URL remains authoritative when table filters change via browser history', () => {
-  assert.match(hookSource, /lastUrlColumnFilters = React\.useRef/);
-  assert.match(hookSource, /lastUrlColumnFilters\.current !== routeFilters/);
+  assert.match(hookSource, /lastUrlRouteSignature = React\.useRef/);
+  assert.match(hookSource, /lastUrlRouteSignature\.current !== currentRouteSignature/);
   assert.match(hookSource, /setColumnFilters\(initialColumnFilters\)/);
 });
 
