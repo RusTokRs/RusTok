@@ -1342,7 +1342,7 @@ mod cron_revision_tests {
     }
 
     #[tokio::test]
-    async fn deletion_preserves_running_and_pending_execution_evidence() {
+    async fn deletion_preserves_running_execution_and_claimed_cron_evidence() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
             migration.up(&SchemaManager::new(&db)).await.unwrap();
@@ -1386,6 +1386,12 @@ mod cron_revision_tests {
             &"0 * * * * *".parse().unwrap(), now,
         ).await.unwrap();
 
+        let firing = crate::services::cron_durable::pending_firings(&db, 1)
+            .await.unwrap().remove(0);
+        let claim = crate::services::cron_durable::claim_firing(&db, &firing, now)
+            .await.unwrap();
+        assert!(claim.is_some(), "at least one firing must have been admitted");
+
         let service = WorkflowService::new(db.clone());
         assert!(matches!(
             service.delete(tenant_id, workflow_id).await,
@@ -1404,15 +1410,17 @@ mod cron_revision_tests {
         assert!(matches!(
             service.delete(tenant_id, workflow_id).await,
             Err(WorkflowError::WorkflowDeletionBlocked(_)),
-        ), "queued cron slots independently block destructive deletion");
+        ), "an admitted cron claim independently blocks destructive deletion");
 
         workflow_cron_firing::Entity::update_many()
             .col_expr(
                 workflow_cron_firing::Column::Status,
                 Expr::value(workflow_cron_firing::SKIPPED),
             )
-            .filter(workflow_cron_firing::Column::WorkflowId.eq(workflow_id))
+            .filter(workflow_cron_firing::Column::Id.eq(firing.id))
             .exec(&db).await.unwrap();
+        // Other unstarted pending slots are deliberately cancelled as part of
+        // explicit workflow deletion, without pretending any effect occurred.
         service.delete(tenant_id, workflow_id).await.unwrap();
         assert!(WorkflowEntity::find_by_id(workflow_id)
             .one(&db).await.unwrap().is_none());
