@@ -1,5 +1,6 @@
 //! Restart-safe delivery of Product-owned committed Media removals.
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::run_admitted_worker_operation;
 use std::time::Duration;
 use tokio::{
     task::JoinHandle,
@@ -52,21 +53,28 @@ pub fn spawn_product_media_release_worker(
                 {
                     continue;
                 }
-                tokio::select! {
-                    // Cancellation cannot lose an obligation: a release whose result
-                    // was not acknowledged still has its committed queue row for replay.
-                    changed = stop.changed() => {if changed.is_err() || *stop.borrow() {break;}},
-                    result = runtime.process_media_releases(100) => {
-                        match result {
-                            Ok(report) => {if report.examined > 0 {
-                                tracing::info!(examined = report.examined, released = report.released, failed = report.failed,
-                                    "Product Media removal delivery completed");
-                            }},
-                            Err(_error) => tracing::error!(
-                                error_code = "product_media_release_delivery_failed",
-                                "Product Media removal delivery failed"
-                            ),
-                        }
+                // Finish a batch that already passed the stop-admission check.
+                // Cancelling here could drop the owner future after an external
+                // Media release but before confirmation/queue acknowledgement.
+                // Process loss or a bounded forced abort still requires durable replay.
+                match run_admitted_worker_operation(&stop, || runtime.process_media_releases(100))
+                    .await
+                {
+                    None => break,
+                    Some(Ok(report)) if report.examined > 0 => {
+                        tracing::info!(
+                            examined = report.examined,
+                            released = report.released,
+                            failed = report.failed,
+                            "Product Media removal delivery completed"
+                        );
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(_error)) => {
+                        tracing::error!(
+                            error_code = "product_media_release_delivery_failed",
+                            "Product Media removal delivery failed"
+                        );
                     }
                 }
             }

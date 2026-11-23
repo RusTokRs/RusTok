@@ -52,6 +52,30 @@ fn map_workflow_error(
             "Workflow operation could not be completed safely",
             "unexpected_execution_not_found",
         ),
+        WorkflowError::CronReconciliationConflict(_) => (
+            StatusCode::CONFLICT,
+            "workflow_cron_reconciliation_conflict",
+            "Workflow cron firing cannot be reconciled in its current state",
+            "cron_reconciliation_conflict",
+        ),
+        WorkflowError::InvalidCronReconciliationEvidence => (
+            StatusCode::BAD_REQUEST,
+            "workflow_cron_reconciliation_evidence_invalid",
+            "Workflow cron reconciliation requires valid evidence",
+            "invalid_reconciliation_evidence",
+        ),
+        WorkflowError::WorkflowDeletionBlocked(_) => (
+            StatusCode::CONFLICT,
+            "workflow_deletion_blocked",
+            "Workflow has running or unresolved execution history",
+            "unresolved_execution_blocks_deletion",
+        ),
+        WorkflowError::ExecutionOutcomeUncertain(_) => (
+            StatusCode::CONFLICT,
+            "workflow_execution_reconciliation_required",
+            "Workflow execution outcome requires operator reconciliation",
+            "execution_outcome_ambiguous",
+        ),
         WorkflowError::NotActive(_) => (
             StatusCode::CONFLICT,
             "workflow_state_conflict",
@@ -73,6 +97,12 @@ fn map_workflow_error(
             "workflow_webhook_unauthorized",
             "Webhook signature verification failed",
             "webhook_unauthorized",
+        ),
+        WorkflowError::StepTimedOut { .. } => (
+            StatusCode::GATEWAY_TIMEOUT,
+            "workflow_step_timed_out",
+            "Workflow step exceeded its configured execution deadline",
+            "step_timeout",
         ),
         WorkflowError::StepFailed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,

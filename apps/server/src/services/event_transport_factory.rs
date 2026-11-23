@@ -336,8 +336,15 @@ pub fn spawn_outbox_relay_worker(
             );
 
             let mut inner_tasks = tokio::task::JoinSet::new();
+            // The inner poller owns the current durable relay pass. Shutdown
+            // must stop admission of the next batch, not cancel this one
+            // between transport publication and its database acknowledgement.
+            let mut inner_stop_rx = stop_rx.clone();
             inner_tasks.spawn(async move {
                 loop {
+                    if *inner_stop_rx.borrow() {
+                        break;
+                    }
                     if let Err(error) = OutboxRelayPort::process_pending_once(
                         &relay,
                         outbox_relay_worker_context(),
@@ -354,7 +361,17 @@ pub fn spawn_outbox_relay_worker(
                             "Relay processing error"
                         );
                     }
-                    tokio::time::sleep(interval).await;
+                    if *inner_stop_rx.borrow() {
+                        break;
+                    }
+                    tokio::select! {
+                        _ = tokio::time::sleep(interval) => {}
+                        changed = inner_stop_rx.changed() => {
+                            if changed.is_err() || *inner_stop_rx.borrow() {
+                                break;
+                            }
+                        }
+                    }
                 }
             });
 
@@ -388,14 +405,140 @@ pub fn spawn_outbox_relay_worker(
                     }
                 }
                 _ = stop_rx.changed() => {
-                    tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
-                    inner_tasks.abort_all();
-                    while inner_tasks.join_next().await.is_some() {}
+                    tracing::info!(
+                        "Outbox relay supervisor received shutdown signal; draining current relay pass"
+                    );
+                    // Unlike abort_all(), a cooperative drain lets the owner
+                    // commit its outcome after transport publication. The
+                    // host's bounded shutdown still enforces the outer deadline.
+                    while let Some(result) = inner_tasks.join_next().await {
+                        if let Err(error) = result {
+                            tracing::error!(
+                                ?error,
+                                failure_code = "outbox_relay_shutdown_join_failed",
+                                "Outbox relay failed while draining its current pass"
+                            );
+                        }
+                    }
                     return;
                 }
             }
         }
     })
+}
+
+#[cfg(test)]
+mod outbox_relay_shutdown_tests {
+    use super::*;
+    use sea_orm::{Database, EntityTrait, Set};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use std::sync::Mutex;
+    use tokio::sync::oneshot;
+    use uuid::Uuid;
+
+    struct BlockingDelivery {
+        started: Mutex<Option<oneshot::Sender<()>>>,
+        complete: Mutex<Option<oneshot::Receiver<()>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl EventTransport for BlockingDelivery {
+        async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
+            let started = self.started.lock().expect("started lock").take();
+            if let Some(started) = started {
+                started.send(()).expect("notify dispatch start");
+            }
+            let complete = self.complete.lock().expect("complete lock").take()
+                .expect("one dispatched event");
+            complete.await.expect("permit external delivery completion");
+            Ok(())
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::InMemory
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_finishes_outbox_publication_and_acknowledgement() {
+        use rustok_outbox::{SysEventsMigration, entity};
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("outbox schema");
+
+        let tenant_id = Uuid::new_v4();
+        let event = EventEnvelope::new(
+            tenant_id,
+            None,
+            rustok_events::DomainEvent::TenantUpdated { tenant_id },
+        );
+        entity::Entity::insert(entity::ActiveModel {
+            id: Set(event.id),
+            event_type: Set(event.event_type.clone()),
+            schema_version: Set(i16::try_from(event.schema_version).expect("schema version fits")),
+            payload: Set(serde_json::to_value(&event).expect("serialize event")),
+            status: Set(entity::SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(chrono::Utc::now()),
+            dispatched_at: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("queue one event");
+
+        let (started_tx, started_rx) = oneshot::channel();
+        let (complete_tx, complete_rx) = oneshot::channel();
+        let transport = Arc::new(BlockingDelivery {
+            started: Mutex::new(Some(started_tx)),
+            complete: Mutex::new(Some(complete_rx)),
+        });
+        let relay = OutboxRelay::new(db.clone(), transport).with_config(RelayConfig {
+            worker_id: "graceful-outbox-relay".to_string(),
+            ..RelayConfig::default()
+        });
+        let (stop, stop_rx) = crate::services::stop_handle::StopHandle::new();
+        let supervisor = spawn_outbox_relay_worker(
+            RelayRuntimeConfig {
+                interval: Duration::from_millis(5),
+                relay,
+            },
+            stop_rx,
+        );
+
+        tokio::time::timeout(Duration::from_secs(2), started_rx)
+            .await
+            .expect("outbox dispatch began")
+            .expect("publication started");
+        stop.stop().await;
+        assert!(
+            !supervisor.is_finished(),
+            "stop must not cancel the current publish before acknowledgement"
+        );
+        complete_tx.send(()).expect("permit publish completion");
+        tokio::time::timeout(Duration::from_secs(2), supervisor)
+            .await
+            .expect("cooperative relay drain")
+            .expect("relay supervisor joined");
+
+        let acknowledged = entity::Entity::find_by_id(event.id)
+            .one(&db)
+            .await
+            .expect("read outbox event")
+            .expect("queued event retained");
+        assert_eq!(acknowledged.status, entity::SysEventStatus::Dispatched);
+    }
 }
 
 fn outbox_relay_worker_context() -> PortContext {
