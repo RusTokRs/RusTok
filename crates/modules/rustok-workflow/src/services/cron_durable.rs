@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::entities::{
     ExecutionStatus, Workflow, WorkflowExecutionEntity, WorkflowStatus, workflow,
-    workflow_cron_cursor as cursor, workflow_cron_firing as firing, workflow_execution,
+    workflow_cron_cursor as cursor, workflow_cron_firing as firing,
+    workflow_cron_review as review, workflow_execution,
 };
 use crate::error::{WorkflowError, WorkflowResult};
 use crate::services::{WorkflowEngine, WorkflowService};
@@ -329,6 +330,115 @@ pub async fn reconciliation_required_for_tenant(
         .order_by_asc(firing::Column::ScheduledAt)
         .limit(limit.min(100))
         .all(db).await?)
+}
+
+/// All decisions require a privileged transport to supply the authenticated
+/// actor. A stale claim has no automatic retry authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CronReconciliationDecision {
+    ConfirmTerminal,
+    RequeueConfirmedUnstarted,
+}
+
+/// Operator recovery is an explicit single-transaction state transition with
+/// immutable audit evidence, scoped to the current tenant and attempt fence.
+/// `prior_worker_fenced` must only be attested after the operator verified the
+/// previous runtime instance can no longer issue effects (e.g. terminated
+/// replica + confirmed DB rollback). A timestamp alone is not sufficient.
+pub async fn reconcile_firing(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    firing_id: Uuid,
+    actor_id: Uuid,
+    decision: CronReconciliationDecision,
+    evidence: &str,
+    prior_worker_fenced: bool,
+) -> WorkflowResult<firing::Model> {
+    let evidence = evidence.trim();
+    if tenant_id.is_nil() || actor_id.is_nil()
+        || evidence.len() < 32 || evidence.len() > 2_048
+        || evidence.contains('\0')
+    {
+        return Err(WorkflowError::InvalidCronReconciliationEvidence);
+    }
+    let txn = db.begin().await?;
+    let item = firing::Entity::find_by_id(firing_id)
+        .filter(firing::Column::TenantId.eq(tenant_id))
+        .one(&txn).await?
+        .ok_or(WorkflowError::CronReconciliationConflict(firing_id))?;
+    if item.status != firing::RECONCILIATION_REQUIRED {
+        return Err(WorkflowError::CronReconciliationConflict(firing_id));
+    }
+    let previous_token = item.attempt_token.ok_or(
+        WorkflowError::CronReconciliationConflict(firing_id)
+    )?;
+    let existing = WorkflowExecutionEntity::find()
+        .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
+        .filter(workflow_execution::Column::TenantId.eq(tenant_id))
+        .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
+        .one(&txn).await?;
+
+    let (next_status, execution_id, reason) = match decision {
+        CronReconciliationDecision::ConfirmTerminal => {
+            let execution = existing.ok_or(
+                WorkflowError::CronReconciliationConflict(firing_id)
+            )?;
+            if matches!(execution.status,
+                ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired
+            ) {
+                return Err(WorkflowError::CronReconciliationConflict(firing_id));
+            }
+            (firing::COMPLETED, Some(execution.id), "operator_confirmed_terminal")
+        }
+        CronReconciliationDecision::RequeueConfirmedUnstarted => {
+            // An execution journal is inserted *before* the engine's first
+            // step effect. If one exists, this command cannot prove that any
+            // effect was not already emitted. The old worker must also have
+            // been externally fenced; no process-local lease expiry suffices.
+            if existing.is_some() || !prior_worker_fenced {
+                return Err(WorkflowError::CronReconciliationConflict(firing_id));
+            }
+            (firing::PENDING, None, "operator_confirmed_unstarted")
+        }
+    };
+
+    let affected = firing::Entity::update_many()
+        .col_expr(firing::Column::Status, Expr::value(next_status))
+        .col_expr(firing::Column::ExecutionId, Expr::value(execution_id))
+        .col_expr(firing::Column::Reason, Expr::value(reason))
+        .col_expr(firing::Column::AttemptToken, Expr::value(None::<Uuid>))
+        .col_expr(firing::Column::ClaimedAt, Expr::value(None::<DateTime<FixedOffset>>))
+        .col_expr(firing::Column::CompletedAt, Expr::value(
+            if next_status == firing::COMPLETED { Some(at(Utc::now())) } else { None }
+        ))
+        .filter(firing::Column::Id.eq(firing_id))
+        .filter(firing::Column::TenantId.eq(tenant_id))
+        .filter(firing::Column::Status.eq(firing::RECONCILIATION_REQUIRED))
+        .filter(firing::Column::AttemptToken.eq(previous_token))
+        .exec(&txn).await?.rows_affected;
+    if affected != 1 {
+        return Err(WorkflowError::CronReconciliationConflict(firing_id));
+    }
+
+    review::Entity::insert(review::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        firing_id: Set(firing_id),
+        tenant_id: Set(tenant_id),
+        actor_id: Set(actor_id),
+        decision: Set(match decision {
+            CronReconciliationDecision::ConfirmTerminal => "confirm_terminal",
+            CronReconciliationDecision::RequeueConfirmedUnstarted => "requeue_confirmed_unstarted",
+        }.to_owned()),
+        evidence: Set(evidence.to_owned()),
+        previous_attempt_token: Set(Some(previous_token)),
+        created_at: Set(at(Utc::now())),
+    })
+    .exec_without_returning(&txn).await?;
+    txn.commit().await?;
+
+    firing::Entity::find_by_id(firing_id).one(db).await?
+        .ok_or(WorkflowError::CronReconciliationConflict(firing_id))
 }
 
 #[cfg(test)]
