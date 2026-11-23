@@ -122,6 +122,13 @@ decision, including its explicit reconciliation requirement.
 - The execution journal, not a transient engine return value, determines
   whether a cron firing has a durable terminal result. An error after the
   terminal journal write must not downgrade the firing to ambiguous.
+- Schedule definitions advance their revision timestamps monotonically
+  (minimum one microsecond beyond the previous committed definition revision).
+  Changing only failure-count bookkeeping must not reset a cron cursor; a
+  state transition such as automatic pause must invalidate older pending
+  occurrences. When a replica's wall clock is behind a persisted future
+  definition timestamp, new cursor seeding is capped at current UTC rather
+  than deferring firing until that future timestamp.
 
 ## Failure and operational semantics
 
