@@ -222,11 +222,13 @@ impl WorkflowService {
                 ExecutionStatus::ReconciliationRequired.to_string(),
             ]))
             .one(&transaction).await?.is_some();
+        // Pending firings have not issued effects and are cancelled by the
+        // explicit workflow deletion itself. Only admitted/uncertain work
+        // must block cascading removal of the owner journal.
         let unresolved_firing = workflow_cron_firing::Entity::find()
             .filter(workflow_cron_firing::Column::WorkflowId.eq(id))
             .filter(workflow_cron_firing::Column::TenantId.eq(tenant_id))
             .filter(workflow_cron_firing::Column::Status.is_in([
-                workflow_cron_firing::PENDING,
                 workflow_cron_firing::RUNNING,
                 workflow_cron_firing::RECONCILIATION_REQUIRED,
             ]))
