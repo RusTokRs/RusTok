@@ -6,6 +6,7 @@ import {
   listCatalogAttributeSearchOptions,
   listAdminCatalogFacets,
   normalizeProductAdminPagination,
+  normalizeProductAdminPageForTotal,
   normalizeProductStatus,
   ProductTable
 } from '@rustok/product-admin';
@@ -16,6 +17,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { getLocale } from '@rustok/next-fluent/server';
+import {
+  EFFECTIVE_LOCALE_HEADER,
+  LOCALE_COOKIE,
+  locales,
+  defaultLocale
+} from '@/i18n/config';
 
 export const metadata = {
   title: 'RusTok Admin: Catalog'
@@ -97,7 +104,12 @@ export default async function ProductPage({ searchParams }: PageProps) {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  const locale = await getLocale();
+  const locale = await getLocale({
+    headerName: EFFECTIVE_LOCALE_HEADER,
+    cookieName: LOCALE_COOKIE,
+    locales,
+    defaultLocale
+  });
   const filter = {
     page,
     perPage,
@@ -121,6 +133,27 @@ export default async function ProductPage({ searchParams }: PageProps) {
       !opts.token || !opts.tenantSlug || !opts.tenantId
         ? 'Sign in again to manage products.'
         : 'Product catalog is temporarily unavailable.';
+  }
+
+  if (result) {
+    const normalizedPage = normalizeProductAdminPageForTotal(
+      page,
+      result.total,
+      perPage
+    );
+    if (normalizedPage !== page) {
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        if (Array.isArray(value)) {
+          for (const entry of value) query.append(key, entry);
+        } else if (value !== undefined) {
+          query.append(key, value);
+        }
+      }
+      query.set('page', String(normalizedPage));
+      query.set('perPage', String(perPage));
+      redirect(`/dashboard/product?${query.toString()}`);
+    }
   }
 
   const products = result?.items ?? [];

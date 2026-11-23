@@ -39,6 +39,7 @@ export { productNavItems } from './nav';
 export { parsePriceAmount, salePercent, discountedPrice } from './money';
 export {
   normalizeProductAdminPagination,
+  normalizeProductAdminPageForTotal,
   MAX_PRODUCT_ADMIN_PAGE,
   MAX_PRODUCT_ADMIN_PAGE_SIZE
 } from './product-list-pagination';

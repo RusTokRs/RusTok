@@ -48,3 +48,14 @@ test('the server page loads category options, attribute options, and facets', ()
   assert.match(page, /listAdminCatalogFacets/);
   assert.match(page, /facets=\{facets\}/);
 });
+
+test('server page uses the host effective-locale header and cookie contract', () => {
+  assert.match(page, /getLocale\(\{[\s\S]*headerName: EFFECTIVE_LOCALE_HEADER/);
+  assert.match(page, /cookieName: LOCALE_COOKIE/);
+  assert.match(page, /locales,[\s\S]*defaultLocale/);
+});
+
+test('server page redirects out-of-range catalog pages using the owner total', () => {
+  assert.match(page, /normalizeProductAdminPageForTotal/);
+  assert.match(page, /query\.set\('page', String\(normalizedPage\)\)/);
+});
