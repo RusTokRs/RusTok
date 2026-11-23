@@ -44,8 +44,9 @@ pub fn admin_catalog_facets_to_grid(facets: &[AdminCatalogFacet]) -> Vec<GridFac
                     multi: facet.value_type.eq_ignore_ascii_case("multiselect"),
                 }
             };
+            let canonical_code = facet.code.to_ascii_lowercase();
             let mut mapped = GridFacet::from_buckets(
-                facet.code.as_str(),
+                canonical_code.as_str(),
                 facet.label.as_str(),
                 domain,
                 facet.total_products,
