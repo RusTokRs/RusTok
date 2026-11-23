@@ -15,6 +15,17 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
 ## Storefront and identity continuation (2026-11-13) — OPEN
 
+Fly editor hardening (2026-11-23, source/regressions only): the core style patch builder
+now preserves ordered merge/replace/remove semantics and rejects invalid reserved-field
+types; `fly-ui` preserves a failed drop and keeps edits after an in-flight save dirty;
+`fly-browser` blocks intents after stop, refuses fetch redirects and preserves lost-save
+warnings unless the host confirms `dirty: false`. **Still OPEN:** the current
+`UiIntent::SaveSucceeded` envelope has no request identity and hosts can acknowledge
+outside an active `SaveStarted` transition. Correlating out-of-order responses with a
+request token across core/UI/transports, proving hosted runtime behavior under CSP,
+and parity for the foundation-only Dioxus workspace require a separately coordinated
+contract/host migration. No local test or mounted-host verification is claimed for this pass.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

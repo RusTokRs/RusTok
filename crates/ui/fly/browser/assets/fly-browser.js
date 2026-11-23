@@ -471,8 +471,10 @@ function settleSaveFailure(adapter, result, request) {
     return;
   }
   const state = isObject(result.result) ? result.result : result;
+  // Missing "dirty" is not proof that a draft was saved. Only an explicit
+  // clean working-copy observation can retire a parked lost-save warning.
   const standing =
-    state.dirty === true ? readSaveFailure(adapter.pageId) : null;
+    state.dirty === false ? null : readSaveFailure(adapter.pageId);
   if (!standing) {
     clearSaveFailure(adapter.pageId);
     clearBrowserProblem(adapter);
