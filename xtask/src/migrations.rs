@@ -59,6 +59,7 @@ pub fn run(args: &[String]) -> Result<()> {
         "plan" => &["--reference", "--output"],
         "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
         "source-inputs" => &["--commit", "--inputs", "--compare"],
+        "bind-inventory" => &["--plan", "--inputs", "--side"],
         _ => bail!("unknown migration command {command}"),
     };
     let options = parse_options(&args[1..], allowed)?;
@@ -91,6 +92,12 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--inputs")?),
             options.get("--compare").map(String::as_str),
         ),
+        "bind-inventory" => source_inputs::bind_inventory(
+            &root,
+            Path::new(required("--plan")?),
+            Path::new(required("--inputs")?),
+            options.get("--side").map_or("reference", String::as_str),
+        ),
         // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
     }
@@ -102,6 +109,7 @@ fn help() -> Result<()> {
         "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
     );
     println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
+    println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate]");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
     );

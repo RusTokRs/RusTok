@@ -367,6 +367,24 @@ helpers, macro expansion, and generated or
 external inputs still require separate build evidence. Declarations without
 entrypoints produce hashes without a local link report.
 
+`bind-inventory` combines this source evidence with the executable inventory
+from a completed `verify-fresh` run. Pass the original `plan.json` and the
+reviewed source declarations. The command reads the selected inventory and
+both reports from the sibling `fresh` directory and verifies their hashes.
+The selected build snapshot must match the exact committed Git tree. The
+reference is selected by default. `--side candidate` checks the candidate
+export and rejects snapshots built with changes outside the specified commit.
+
+```sh
+cargo xtask migrations bind-inventory --plan target/migrations/review/plan.json --inputs source-inputs.json
+```
+
+The JSON report preserves the executable order, owner, dependency, safety
+and transaction declarations. A step without declared files has `source: null`.
+Unknown migration names fail the check. The report binds the source declaration
+file and records declared and locally checked coverage separately. It reports
+transitive build-input coverage as unverified and carries local evidence only.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.

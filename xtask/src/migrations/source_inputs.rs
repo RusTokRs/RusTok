@@ -9,7 +9,10 @@ use std::{
     path::Path,
 };
 
+mod inventory;
 mod local_links;
+
+pub(super) use inventory::bind_inventory;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -71,8 +74,7 @@ pub(super) fn run(
     inputs: &Path,
     compare: Option<&str>,
 ) -> Result<()> {
-    let declarations = parse_declarations(&read_source(inputs)?)
-        .with_context(|| format!("invalid source declarations in {}", inputs.display()))?;
+    let (declarations, _) = read_declarations(inputs)?;
     let reference = fingerprint(root, reference, &declarations)?;
     let candidate = compare
         .map(|commit| fingerprint(root, commit, &declarations))
@@ -88,16 +90,29 @@ pub(super) fn run(
         candidate: candidate.as_ref(),
         changed_inputs,
     };
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    serde_json::to_writer_pretty(&mut stdout, &report)?;
-    writeln!(stdout)?;
+    write_report(&report)?;
     ensure!(
         report.changed_inputs.is_empty(),
         "{} declared migration source input(s) changed",
         report.changed_inputs.len()
     );
     Ok(())
+}
+
+fn write_report(report: &impl Serialize) -> Result<()> {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    serde_json::to_writer_pretty(&mut stdout, report)?;
+    writeln!(stdout)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn read_declarations(inputs: &Path) -> Result<(MigrationFiles, Vec<u8>)> {
+    let bytes = read_source(inputs)?;
+    let declarations = parse_declarations(&bytes)
+        .with_context(|| format!("invalid source declarations in {}", inputs.display()))?;
+    Ok((declarations, bytes))
 }
 
 fn parse_declarations(bytes: &[u8]) -> Result<MigrationFiles> {
@@ -156,7 +171,7 @@ fn parse_declarations(bytes: &[u8]) -> Result<MigrationFiles> {
     Ok(migrations)
 }
 
-fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Result<CommitInputs> {
+fn check_commit(root: &Path, identity: &str) -> Result<()> {
     ensure!(
         matches!(identity.len(), 40 | 64)
             && identity
@@ -165,6 +180,11 @@ fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Re
             && commit(root, identity)? == identity,
         "source input fingerprint requires a full Git commit SHA"
     );
+    Ok(())
+}
+
+fn fingerprint(root: &Path, identity: &str, declarations: &MigrationFiles) -> Result<CommitInputs> {
+    check_commit(root, identity)?;
     let paths = declarations
         .values()
         .flat_map(|declaration| &declaration.files)

@@ -236,6 +236,10 @@ reviewed list of migration inputs across two commits. It detects changes to
 selected nested Rust helpers and SQL assets. Given explicit Rust entrypoints,
 it checks that the declaration contains every file reached through supported
 Rust module declarations and literal includes. This checks local syntax.
+The [`bind-inventory` command](../../xtask/README.md#migration-consolidation-commands)
+joins these source results to the ordered executable export validated by a
+completed `verify-fresh` run. It requires the build snapshot to match a Git
+commit and keeps uncovered migration rows visible in the report.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
