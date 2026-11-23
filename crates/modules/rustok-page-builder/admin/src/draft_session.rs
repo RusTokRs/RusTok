@@ -3169,6 +3169,174 @@ mod tests {
     }
 
     #[test]
+    fn in_memory_operation_receipt_replays_before_generation_and_rejects_key_reuse() {
+        let store = InMemorySsrDraftSessionStore::default();
+        let first = store
+            .commit(None, None, controller("home"), None)
+            .expect("create session");
+        let request_hash = "a".repeat(64);
+        let response = json!({
+            "operation_status": "committed",
+            "draft_generation": 2
+        });
+
+        let committed = store.commit_with_operation_receipt(
+            &first.token,
+            first.generation,
+            first.controller.clone(),
+            json!({ "context": "first" }),
+            None,
+            "operation-123",
+            &request_hash,
+            response.clone(),
+        ).expect("commit operation and receipt");
+        assert!(matches!(committed, SsrDraftOperationCommit::Committed(_)));
+
+        // A retry with the original generation receives the original result,
+        // even though the session has already advanced.
+        let replay = store.commit_with_operation_receipt(
+            &first.token,
+            first.generation,
+            controller("home"),
+            json!({ "context": "ignored-on-replay" }),
+            None,
+            "operation-123",
+            &request_hash,
+            json!({ "different": "response" }),
+        ).expect("replay receipt");
+        assert_eq!(replay, SsrDraftOperationCommit::Replayed(response.clone()));
+        assert_eq!(
+            store.lookup_operation_receipt(
+                &first.token, "home", None, "operation-123", Some(&request_hash),
+            ).expect("lookup"),
+            Some(response),
+        );
+        assert!(matches!(
+            store.commit_with_operation_receipt(
+                &first.token,
+                first.generation,
+                controller("home"),
+                json!({}),
+                None,
+                "operation-123",
+                &"b".repeat(64),
+                json!({}),
+            ),
+            Err(SsrDraftSessionError::OperationReceiptConflict)
+        ));
+        assert_eq!(
+            store.load(&first.token, "home", None).expect("load").unwrap().generation,
+            2,
+        );
+    }
+
+    #[test]
+    fn durable_operation_receipt_survives_store_restart() {
+        let temp_dir = std::env::temp_dir()
+            .join(format!("rustok_draft_receipt_restart_{}", Uuid::new_v4().simple()));
+        let file = FileSsrDraftSessionStore::new(
+            &temp_dir, Duration::from_secs(3600), 100,
+        ).expect("file store");
+        let store = DurableSsrDraftSessionStore::new(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
+            file,
+        );
+        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let request_hash = "c".repeat(64);
+        let response = json!({ "result": { "revision_id": "rev-2" } });
+        let committed = store.commit_with_operation_receipt(
+            &first.token,
+            first.generation,
+            first.controller,
+            json!({}),
+            None,
+            "operation-restart",
+            &request_hash,
+            response.clone(),
+        ).expect("commit");
+        assert!(matches!(committed, SsrDraftOperationCommit::Committed(_)));
+        drop(store);
+
+        let restarted = DurableSsrDraftSessionStore::new(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
+            FileSsrDraftSessionStore::new(
+                &temp_dir, Duration::from_secs(3600), 100,
+            ).expect("restarted file store"),
+        );
+        assert_eq!(
+            restarted.lookup_operation_receipt(
+                &first.token, "home", None, "operation-restart", None,
+            ).expect("lookup after restart"),
+            Some(response),
+        );
+        assert_eq!(
+            restarted.load(&first.token, "home", None).expect("load after restart")
+                .expect("session").generation,
+            2,
+        );
+        drop(restarted);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn independent_durable_stores_converge_on_one_concurrent_operation_receipt() {
+        let temp_dir = std::env::temp_dir()
+            .join(format!("rustok_draft_receipt_race_{}", Uuid::new_v4().simple()));
+        let make_store = || DurableSsrDraftSessionStore::new(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
+            FileSsrDraftSessionStore::new(
+                &temp_dir, Duration::from_secs(3600), 100,
+            ).expect("file store"),
+        );
+        let first_store = Arc::new(make_store());
+        let second_store = Arc::new(make_store());
+        let first = first_store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        let request_hash = "d".repeat(64);
+        let response = json!({ "operation_status": "committed" });
+        let token = first.token.clone();
+        let generation = first.generation;
+        let left_store = first_store.clone();
+        let right_store = second_store.clone();
+        let left_token = token.clone();
+        let right_token = token.clone();
+        let left_hash = request_hash.clone();
+        let right_hash = request_hash.clone();
+        let left_response = response.clone();
+        let right_response = response.clone();
+        let left_controller = first.controller.clone();
+        let right_controller = first.controller.clone();
+
+        let left = std::thread::spawn(move || left_store.commit_with_operation_receipt(
+            &left_token, generation, left_controller, json!({}), None,
+            "operation-race", &left_hash, left_response,
+        ));
+        let right = std::thread::spawn(move || right_store.commit_with_operation_receipt(
+            &right_token, generation, right_controller, json!({}), None,
+            "operation-race", &right_hash, right_response,
+        ));
+        let outcomes = [left.join().expect("left thread"), right.join().expect("right thread")];
+        assert_eq!(
+            outcomes.iter().filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Committed(_)))).count(),
+            1,
+        );
+        assert_eq!(
+            outcomes.iter().filter(|outcome| matches!(outcome, Ok(SsrDraftOperationCommit::Replayed(_)))).count(),
+            1,
+        );
+        assert_eq!(
+            second_store.lookup_operation_receipt(
+                &token, "home", None, "operation-race", Some(&request_hash),
+            ).expect("durable receipt"),
+            Some(response),
+        );
+        drop(first_store);
+        drop(second_store);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn ordinary_commit_preserves_existing_runtime_context() {
         let store = InMemorySsrDraftSessionStore::default();
         let first = store
