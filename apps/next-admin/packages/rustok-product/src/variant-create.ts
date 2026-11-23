@@ -5,9 +5,10 @@
  */
 
 import type { CreateVariantInput } from './api/types';
+import { MAX_PRODUCT_VARIANTS } from './limits';
 import { parsePriceAmount } from './money.ts';
 
-export const MAX_PRODUCT_VARIANTS = 256;
+export { MAX_PRODUCT_VARIANTS } from './limits';
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
