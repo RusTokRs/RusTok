@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-03T08:53:00Z",
+  "generated_at_utc": "2026-11-23T04:53:29Z",
   "status": "product_admin_category_graphql_read_error_safety_source_unvalidated",
-  "scope": "Product Admin category-bound GraphQL fallback read public and private diagnostic envelopes",
+  "scope": "Product Admin category and attribute schema read public envelope and selected transport diagnostics",
   "operations": [
     "fetch_product_attributes",
     "fetch_catalog_categories",
@@ -10,7 +10,7 @@
     "fetch_effective_product_form",
     "fetch_product_attribute_values"
   ],
-  "boundary": "product_admin_category_graphql_reads",
+  "boundary": "product_admin_category_selected_reads",
   "public_policy": {
     "network": "Network error",
     "http": "Http error: Product admin service is temporarily unavailable",
@@ -18,10 +18,6 @@
     "graphql": "GraphQL error: Product admin request could not be completed"
   },
   "source_contract": {
-    "final_public_wrapper": true,
-    "context_before_native_first_executor": true,
-    "native_first_preserved": true,
-    "graphql_fallback_preserved": true,
     "unique_correlation_id": true,
     "typed_graphql_error_classification": true,
     "network_static_public_envelope": true,
@@ -38,13 +34,22 @@
     "graphql_documents_changed": false,
     "graphql_variables_changed": false,
     "response_mapping_changed": false,
+    "fallback_added": false,
+    "final_public_wrapper": true,
+    "context_before_selected_transport_executor": true,
+    "native_selected_in_ssr_hydrate": true,
+    "graphql_selected_in_csr": true,
+    "cross_transport_retry": false,
     "retry_added": false,
-    "fallback_added": false
+    "native_first_preserved": false,
+    "graphql_fallback_preserved": false
   },
   "safe_diagnostics": [
     "owner",
     "owner_operation",
-    "correlation_id",
+    "correlation_id_present",
+    "correlation_id_length",
+    "selected_transport",
     "token_present",
     "tenant_slug_present",
     "tenant_slug_length",
@@ -56,7 +61,15 @@
     "category_id_length",
     "locale_present",
     "locale_length",
-    "native_fallback_attempted",
+    "search_present",
+    "search_length",
+    "status_present",
+    "status_length",
+    "vendor_present",
+    "vendor_length",
+    "attribute_filter_count",
+    "currency_code_present",
+    "currency_code_length",
     "error_payload_present",
     "error_payload_length",
     "error_kind",
@@ -70,14 +83,20 @@
     "product id value",
     "category id value",
     "locale value",
+    "search value",
+    "status value",
+    "vendor value",
+    "currency code value",
+    "raw correlation ID value",
     "complete GraphqlHttpError Debug payload",
     "HTTP status text",
     "GraphQL server message"
   ],
   "preserved": [
     "Product Admin category-bound read DTOs",
-    "native server-function-first execution",
-    "existing GraphQL fallback selection",
+    "SSR/hydrate use native server functions",
+    "CSR uses GraphQL",
+    "no cross-transport retry",
     "GraphQL documents and variables",
     "response mapping",
     "effective-form product/category selection",
@@ -87,7 +106,7 @@
     "technical versus ordinary severity"
   ],
   "remaining_scope": [
-    "Product Admin GraphQL writes and status mutations",
+    "Product Admin schema-authoring mutations still use native-first/GraphQL-fallback execution",
     "Product Admin browser and mounted transport evidence",
     "remaining ecommerce non-PortError public envelopes"
   ],

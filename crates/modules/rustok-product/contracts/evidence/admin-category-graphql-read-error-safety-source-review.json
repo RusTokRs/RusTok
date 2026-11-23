@@ -1,75 +1,68 @@
 {
   "schema_version": 1,
-  "reviewed_at_utc": "2026-08-03T08:53:00Z",
-  "review_base": "659576d3af1f541924b9bcb3b78ee042fc566609",
+  "reviewed_at_utc": "2026-11-23T04:53:29Z",
+  "review_base": "f94c88fc06aa7e6285d4a5cf82fa3e531c3fe25a",
   "status": "product_admin_category_graphql_read_error_safety_source_reviewed_unvalidated",
-  "scope": "Product Admin category-bound GraphQL fallback read public and private diagnostic boundary",
+  "scope": "Product Admin category/attribute reads selected transport, tenant admission, and bounded diagnostics",
   "reviewed_sources": [
-    "crates/modules/rustok-commerce/docs/implementation-plan.md",
-    "crates/modules/rustok-product/docs/implementation-plan.md",
     "crates/modules/rustok-product/admin/src/catalog_transport.rs",
     "crates/modules/rustok-product/admin/src/transport.rs",
     "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
     "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
     "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
-    "crates/modules/rustok-product/admin/src/ui/leptos.rs",
-    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
-    "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
-    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
+    "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs",
+    "crates/modules/rustok-commerce/src/graphql/product_catalog.rs",
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs"
   ],
   "findings": [
     {
-      "id": "category-public-envelope-already-static",
+      "id": "category-public-envelope-static",
       "severity": "preserved",
-      "finding": "Five category-bound Product Admin reads already kept native server functions first and mapped a final GraphQL fallback failure to the shared static Product Admin public policy."
+      "finding": "Category-bound Product Admin reads retain the shared static public error policy."
     },
     {
       "id": "category-private-debug-payload",
-      "severity": "confirmed",
-      "finding": "The shared GraphqlReadContext still emitted the complete GraphqlHttpError through Debug formatting. Http and Graphql variants could therefore place status or server-message payloads in structured tracing after the public envelope had been sanitized."
+      "severity": "fixed",
+      "finding": "The shared read mapper records payload presence and length only and no longer logs raw correlation IDs or complete backend payloads."
     },
     {
-      "id": "shared-bounded-read-fix",
-      "severity": "selected",
-      "finding": "The shared read mapper now retains only payload presence and character length together with closed error kind, stable code, correlation, boundary, severity, and bounded request shape."
+      "id": "category-selected-transport",
+      "severity": "fixed",
+      "finding": "Category and attribute schema reads now select native for SSR/hydrate and GraphQL for CSR; no operation is retried through the other transport."
     },
     {
-      "id": "native-first-semantics",
-      "severity": "preserved",
-      "finding": "The compatibility executor still calls native_server_adapter first and graphql_adapter only after native failure. No retry, fallback, owner call, query, variable, or response-mapping behavior changed."
+      "id": "native-module-admission",
+      "severity": "fixed",
+      "finding": "Native schema reads enforce Product module enablement and tenant-bound authenticated context before accessing owner data."
     },
     {
       "id": "mutation-boundary-separate",
       "severity": "open",
-      "finding": "Product Admin GraphQL writes and status mutations still use GraphqlMutationContext and remain an explicit separate cleanup slice."
+      "finding": "Schema-authoring mutations remain on a native-first/GraphQL-fallback path and need a separate atomic cutover."
     }
   ],
   "changed_files_expected": [
+    "crates/modules/rustok-product/admin/src/transport.rs",
+    "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs",
     "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
-    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
-    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json",
-    "crates/modules/rustok-product/docs/admin-primary-graphql-read-error-safety.md",
+    "crates/modules/rustok-commerce/src/graphql/product_catalog.rs",
     "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
     "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
     "crates/modules/rustok-product/docs/admin-category-graphql-read-error-safety.md",
-    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
-    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
-    "scripts/verify/verify-product-admin-category-read-error-safety.mjs"
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs"
   ],
   "preserved": [
-    "native-first category read execution",
-    "GraphQL fallback order",
     "GraphQL query documents and variables",
     "GraphQL response DTO mapping",
     "category-bound read result types",
     "effective-form request semantics",
     "attribute-value request semantics",
-    "primary-read and catalog-options public policies",
-    "technical versus ordinary severity",
-    "absence of new retry or fallback paths"
+    "static public error messages",
+    "technical versus ordinary severity"
   ],
   "remaining_scope": [
-    "Product Admin GraphQL writes and status mutations",
+    "Product Admin schema-authoring mutations native-first/GraphQL-fallback path",
     "Product Admin focused verifier execution and Cargo compilation",
     "browser and mounted transport evidence",
     "remaining ecommerce non-PortError public envelopes"
