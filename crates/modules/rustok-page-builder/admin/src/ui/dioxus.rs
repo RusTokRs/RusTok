@@ -451,6 +451,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let show_adapter_workspace = props.adapter_workspace;
     let workspace_facade = props.facade.clone();
     let toolbar_facade = props.facade.clone();
+    let on_workspace_error = EventHandler::new(move |error: String| {
+        session.write().fail(error);
+    });
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let effects = {
             let mut state = session.write();
@@ -577,6 +580,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             instance_id: Some(workspace_page_id.clone()),
                             on_intent: Some(on_workspace_intent),
                             on_change: None,
+                            on_error: Some(on_workspace_error),
                             messages: workspace_messages.clone(),
                             capabilities: Some(capabilities),
                             initial_page: Some(workspace_initial_page),

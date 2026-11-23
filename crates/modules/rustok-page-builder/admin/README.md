@@ -296,3 +296,7 @@ of truth is still AdminCanvasController, never a parallel editor instance.
 The Leptos adapter passes live effective capabilities to the shared Fly workspace. Host RBAC
 and provider-health changes now affect page controls, palette, tokens, property/style editors,
 assets and history buttons without a full remount. Back-end authorization remains mandatory.
+
+Dioxus PageBuilderAdmin also forwards FlyEditorWorkspace's own validation/runtime errors through
+its `on_error` callback into the session's accessible Page Builder error alert. Previously
+invalid token input and editor-local errors could be silently lost because `on_error` was unset.
