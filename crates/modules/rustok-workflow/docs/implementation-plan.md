@@ -1,5 +1,14 @@
 # Implementation plan for `rustok-workflow`
 
+## Monotonic cron revision follow-up (source only)
+
+Definition timestamps advance strictly across quick edits or backward
+wall clocks; failure-count-only bookkeeping is not a definition change.
+A real auto-pause still invalidates previously queued old-version firings.
+A future-skewed update timestamp cannot seed a cursor beyond the current
+clock and freeze the schedule. Unit source regressions were added; the
+canonical SQLite/PostgreSQL checks were not executed.
+
 ## Active cron admission / deletion guards (source-only)
 
 Activating or editing an active cron definition now parses a bounded
