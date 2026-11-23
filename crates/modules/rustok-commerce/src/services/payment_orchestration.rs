@@ -15,6 +15,7 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
+use tracing::instrument;
 
 use super::journaled_payment_provider::{
     execute_journaled_provider_operation, local_persistence_after_provider_error,
@@ -420,6 +421,7 @@ impl PaymentOrchestrationService {
 
     /// Internal owner-workflow entrypoint. The workflow must already have written
     /// an immutable return/change identity into metadata.
+    #[instrument(skip(self, input))]
     pub async fn create_refund(
         &self,
         tenant_id: Uuid,
@@ -432,6 +434,7 @@ impl PaymentOrchestrationService {
     }
 
     /// Public/provider-facing entrypoint with an explicit stable creation key.
+    #[instrument(skip(self, creation_key, input))]
     pub async fn create_refund_idempotent(
         &self,
         tenant_id: Uuid,

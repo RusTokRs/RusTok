@@ -8,6 +8,7 @@
 //! transaction — guarantees those relations follow the replies atomically
 //! instead of depending on a later manual recovery write.
 
+use tracing::instrument;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
@@ -70,6 +71,7 @@ fn derive_follow_up_operation_id(merge_operation_id: Uuid, domain_tag: &str) -> 
 /// through the public per-domain entry points whenever a later process moves
 /// the topics back into one category (the durable merge receipt is the
 /// recovery hook for that repair).
+#[instrument(skip_all)]
 pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,

@@ -121,7 +121,9 @@ impl CargoMetadataInspector {
                 status.map_err(|error| CargoMetadataError::Internal(error.to_string()))?
             }
             Err(_) => {
-                let _ = child.kill().await;
+                if let Err(error) = child.kill().await {
+                    tracing::warn!(%error, "failed to kill metadata process on timeout");
+                }
                 stdout_task.abort();
                 stderr_task.abort();
                 return Err(CargoMetadataError::ResourceLimit);

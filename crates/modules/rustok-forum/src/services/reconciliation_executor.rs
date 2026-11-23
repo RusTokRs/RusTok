@@ -1,4 +1,5 @@
 use std::time::Instant;
+use tracing::instrument;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
@@ -42,6 +43,7 @@ impl ReconciliationExecutor {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub async fn execute<F, T, Fut>(&self, security: &SecurityContext, f: F) -> ForumResult<T>
     where
         F: FnOnce() -> Fut,

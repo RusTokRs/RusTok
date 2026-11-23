@@ -10,6 +10,7 @@ use sea_orm::{
     QueryOrder, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::site_symbol;
@@ -173,6 +174,7 @@ impl SiteSymbolService {
     }
 
     /// Delete a site symbol only when it is not referenced by any layout template or active page.
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

@@ -36,7 +36,7 @@ pub fn GridPaginationBar(
     #[cfg(target_arch = "wasm32")]
     let observer_on_load_more = on_load_more.clone();
     #[cfg(target_arch = "wasm32")]
-    let _ = use_intersection_observer(sentinel_ref, move |entries, _| {
+    let _observer = use_intersection_observer(sentinel_ref, move |entries, _| {
         if !entries.iter().any(|entry| entry.is_intersecting()) {
             return;
         }

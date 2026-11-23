@@ -139,14 +139,14 @@ impl SourceArchiveBuilder {
         let archive_bytes = match result {
             Ok(bytes) => bytes,
             Err(error) => {
-                let _ = fs::remove_file(destination);
+                drop(fs::remove_file(destination));
                 return Err(error);
             }
         };
         let source_digest = match hash_archive(destination) {
             Ok(digest) => digest,
             Err(error) => {
-                let _ = fs::remove_file(destination);
+                drop(fs::remove_file(destination));
                 return Err(error);
             }
         };
@@ -336,9 +336,9 @@ fn remove_created_tree(path: &Path) {
         return;
     };
     if metadata.file_type().is_symlink() || metadata.is_file() {
-        let _ = fs::remove_file(path);
+        drop(fs::remove_file(path));
     } else if metadata.is_dir() {
-        let _ = fs::remove_dir_all(path);
+        drop(fs::remove_dir_all(path));
     }
 }
 

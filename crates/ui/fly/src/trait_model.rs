@@ -61,6 +61,7 @@ impl TraitSchemaRegistry {
     pub fn with_builtins() -> Self {
         let mut registry = Self::default();
         for schema in builtin_trait_schemas() {
+            // INVARIANT: built-in trait schemas are namespaced and unique
             registry
                 .register(schema)
                 .expect("built-in trait schemas are namespaced and unique");

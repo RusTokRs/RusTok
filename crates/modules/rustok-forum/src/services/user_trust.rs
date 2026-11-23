@@ -1,3 +1,4 @@
+use tracing::instrument;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -106,6 +107,7 @@ impl ForumUserTrustService {
         state_from_model(user_id, state)
     }
 
+    #[instrument(skip_all)]
     pub async fn set(
         &self,
         tenant_id: Uuid,

@@ -391,6 +391,15 @@ the runner completed the remaining composition and the tenant still had one
 enabled default locale at policy revision zero. The fixture database was
 removed. [Backfill recovery test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
 
+The integration of upstream `f94c88fc06` repeated the recovery checks on
+PostgreSQL 16.13. The stepwise suite covered transaction failure, cancellation,
+connection and process loss, and restart. The composed smoke applied all 598
+migrations, rolled back `m20261121_000001_add_sys_events_tenant_projection`,
+and reapplied it. The installer schema and signed import checks passed on
+separate fixtures. The database observer also detected changes to schema,
+data, privileges, and index enforcement. The fixture databases and roles
+were removed.
+
 Gate 3 still needs replay from an authenticated stable release baseline.
 Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition

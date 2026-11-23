@@ -12,6 +12,7 @@ use sea_orm::{
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
@@ -370,6 +371,7 @@ impl PageBuilderScenarioBaselineService {
         Ok(baseline)
     }
 
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
@@ -380,6 +382,7 @@ impl PageBuilderScenarioBaselineService {
             .await
     }
 
+    #[instrument(skip(self, security))]
     pub async fn delete_if_current(
         &self,
         tenant_id: Uuid,

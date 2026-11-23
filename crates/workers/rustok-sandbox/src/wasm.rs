@@ -296,8 +296,14 @@ impl rustok::module::host::Host for WasmStoreState {
 
 impl WasmComponentExecutor {
     pub fn new() -> Self {
-        Self::with_component_cache_policy(WasmComponentCachePolicy::default())
-            .expect("default Wasm component cache policy must be valid")
+        Self::with_component_cache_policy(WasmComponentCachePolicy::default()).unwrap_or_else(|_| {
+            Self {
+                cache: Arc::new(SerializedComponentCache::new(WasmComponentCachePolicy {
+                    max_entries: 1,
+                    max_serialized_bytes: 1,
+                })),
+            }
+        })
     }
 
     pub fn with_component_cache_policy(policy: WasmComponentCachePolicy) -> SandboxResult<Self> {
@@ -395,7 +401,9 @@ impl WasmComponentExecutor {
             spawn_wasm_watchdog(&engine, cancellation, request.policy.limits.wall_clock_ms);
         let result = invoke_wasm_component(&component, &linker, &mut store, request);
         watchdog_flags.completed.store(true, Ordering::Release);
-        let _ = watchdog.join();
+        if let Err(panic_err) = watchdog.join() {
+            tracing::warn!(?panic_err, "wasm watchdog thread panicked during execution");
+        }
         if watchdog_flags.cancelled.load(Ordering::Acquire) {
             return Err(SandboxError::Cancelled);
         }

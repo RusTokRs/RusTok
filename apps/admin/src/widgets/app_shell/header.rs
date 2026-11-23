@@ -188,7 +188,7 @@ fn HeaderGlobalSearch() -> impl IntoView {
     );
 
     Effect::new(move |_| {
-        let _ = query.get();
+        query.track();
         debounce_search();
     });
 

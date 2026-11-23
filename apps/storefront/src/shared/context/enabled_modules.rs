@@ -65,7 +65,7 @@ impl EnabledModulesContext {
         }
         crate::enabled_module_events::publish(&modules);
         // Event listeners run synchronously and may dispose the provider.
-        let _ = self.modules.try_set(modules);
+        drop(self.modules.try_set(modules));
     }
 
     pub fn set_module_enabled(&self, slug: &str, enabled: bool) {
@@ -78,7 +78,7 @@ impl EnabledModulesContext {
             modules.remove(slug);
         }
         crate::enabled_module_events::publish(&modules);
-        let _ = self.modules.try_set(modules);
+        drop(self.modules.try_set(modules));
     }
 }
 
@@ -161,10 +161,10 @@ pub fn EnabledModulesProvider(
             match result {
                 Ok(modules) => {
                     ctx.replace_modules(modules);
-                    let _ = state.try_set(AvailabilityState::Ready);
+                    drop(state.try_set(AvailabilityState::Ready));
                 }
                 Err(_) => {
-                    let _ = state.try_set(AvailabilityState::Failed);
+                    drop(state.try_set(AvailabilityState::Failed));
                 }
             }
         });

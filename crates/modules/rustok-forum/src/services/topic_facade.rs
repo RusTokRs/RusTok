@@ -1,3 +1,4 @@
+use tracing::instrument;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -76,6 +77,7 @@ impl TopicService {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -86,6 +88,7 @@ impl TopicService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_with_audience_context(
         &self,
         tenant_id: Uuid,
@@ -102,6 +105,7 @@ impl TopicService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_command(
         &self,
         tenant_id: Uuid,
@@ -112,6 +116,7 @@ impl TopicService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_command_with_audience_context(
         &self,
         tenant_id: Uuid,
@@ -317,6 +322,7 @@ impl TopicService {
         Ok(Some(topic))
     }
 
+    #[instrument(skip_all)]
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -328,6 +334,7 @@ impl TopicService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn update_command(
         &self,
         tenant_id: Uuid,
@@ -354,6 +361,7 @@ impl TopicService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
@@ -472,6 +480,7 @@ impl TopicService {
         topic_owner::TopicService::adjust_reply_count_in_tx(txn, tenant_id, topic_id, delta).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_pinned_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -481,6 +490,7 @@ impl TopicService {
         topic_owner::TopicService::set_pinned_in_tx(txn, tenant_id, topic_id, is_pinned).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_locked_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -490,6 +500,7 @@ impl TopicService {
         topic_owner::TopicService::set_locked_in_tx(txn, tenant_id, topic_id, is_locked).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

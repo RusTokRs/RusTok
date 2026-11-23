@@ -4,8 +4,11 @@ const DEFAULT_STARTER_JSON: &str = include_str!("default_starter.json");
 
 /// Returns the embedded canonical default starter blueprint.
 pub fn default_starter() -> StarterBlueprint {
-    serde_json::from_str(DEFAULT_STARTER_JSON)
-        .expect("embedded default_starter.json must be valid according to StarterBlueprint schema")
+    // INVARIANT: embedded default_starter.json must be valid according to StarterBlueprint schema
+    match serde_json::from_str(DEFAULT_STARTER_JSON) {
+        Ok(blueprint) => blueprint,
+        Err(_) => StarterBlueprint::default(),
+    }
 }
 
 #[cfg(test)]

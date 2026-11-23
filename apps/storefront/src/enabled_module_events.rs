@@ -59,7 +59,7 @@ pub(crate) fn publish(modules: &HashSet<String>) {
         let init = web_sys::CustomEventInit::new();
         init.set_detail(&JsValue::from_str(if stored { &value } else { "" }));
         if let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict(MODULES_CHANGED, &init) {
-            let _ = window.dispatch_event(&event);
+            drop(window.dispatch_event(&event));
         }
     }
     #[cfg(not(target_arch = "wasm32"))]

@@ -290,26 +290,22 @@ pub fn classify_operations(
 pub fn compute_migration_plan_digest(
     target_migrations: &[String],
     operations: &[SchemaOperation],
-) -> String {
+) -> serde_json::Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok:migration_plan:v1:");
-    // These closed, derived types contain only strings, booleans and arrays;
-    // serde_json cannot fail without an IO writer or fallible custom serializer.
-    let bytes = serde_json::to_vec(&(target_migrations, operations))
-        .expect("closed migration plan values always serialize to JSON");
-    hasher.update(bytes);
-    format!("sha256:{}", hex::encode(hasher.finalize()))
+    hasher.update(serde_json::to_vec(&(target_migrations, operations))?);
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 /// Computes the deterministic SHA-256 digest of a schema state representation.
-pub fn compute_schema_state_digest(tables: &[String], columns: &[String]) -> String {
+pub fn compute_schema_state_digest(
+    tables: &[String],
+    columns: &[String],
+) -> serde_json::Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok:schema_state:v1:");
-    // Arrays of UTF-8 strings have no fallible JSON serialization path.
-    let bytes = serde_json::to_vec(&(tables, columns))
-        .expect("schema name arrays always serialize to JSON");
-    hasher.update(bytes);
-    format!("sha256:{}", hex::encode(hasher.finalize()))
+    hasher.update(serde_json::to_vec(&(tables, columns))?);
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 /// Generates a dry-run receipt from source schema digest, migrations, and operations.
@@ -317,7 +313,7 @@ pub fn generate_migration_dry_run_receipt(
     source_schema_digest: String,
     target_migrations: Vec<String>,
     operations: Vec<SchemaOperation>,
-) -> MigrationDryRunReceipt {
+) -> serde_json::Result<MigrationDryRunReceipt> {
     let (mut classification, lock_summary) = classify_operations(&operations);
     let identities: std::collections::HashSet<_> = target_migrations.iter().collect();
     if target_migrations.is_empty()
@@ -335,7 +331,7 @@ pub fn generate_migration_dry_run_receipt(
             }
         }
     }
-    let migration_plan_digest = compute_migration_plan_digest(&target_migrations, &operations);
+    let migration_plan_digest = compute_migration_plan_digest(&target_migrations, &operations)?;
 
     // Project target schema digest from source + operations
     let mut target_hasher = Sha256::new();
@@ -344,7 +340,7 @@ pub fn generate_migration_dry_run_receipt(
     target_hasher.update(migration_plan_digest.as_bytes());
     let target_schema_digest = format!("sha256:{}", hex::encode(target_hasher.finalize()));
 
-    MigrationDryRunReceipt {
+    Ok(MigrationDryRunReceipt {
         source_schema_digest,
         target_schema_digest,
         migration_plan_digest,
@@ -352,7 +348,7 @@ pub fn generate_migration_dry_run_receipt(
         operations,
         classification,
         lock_summary,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -447,7 +443,8 @@ mod tests {
                     locks_table: false,
                 },
             ],
-        );
+        )
+        .expect("serialize dry-run receipt");
         assert_eq!(receipt.lock_summary, LockClassification::AccessExclusive);
         assert!(matches!(
             receipt.classification,
@@ -511,7 +508,8 @@ mod tests {
                     columns: vec![],
                     is_temporary: false,
                 }],
-            );
+            )
+            .expect("serialize dry-run receipt");
             assert!(matches!(
                 receipt.classification,
                 MigrationSafetyAssessment::Unknown { .. }
@@ -522,12 +520,14 @@ mod tests {
     #[test]
     fn digest_inputs_preserve_array_boundaries() {
         assert_ne!(
-            compute_migration_plan_digest(&["a,b".to_owned()], &[]),
+            compute_migration_plan_digest(&["a,b".to_owned()], &[]).expect("serialize plan"),
             compute_migration_plan_digest(&["a".to_owned(), "b".to_owned()], &[])
+                .expect("serialize plan")
         );
         assert_ne!(
-            compute_schema_state_digest(&["a;b".to_owned()], &[]),
+            compute_schema_state_digest(&["a;b".to_owned()], &[]).expect("serialize schema"),
             compute_schema_state_digest(&["a".to_owned(), "b".to_owned()], &[])
+                .expect("serialize schema")
         );
     }
 
@@ -549,7 +549,8 @@ mod tests {
             "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
             vec!["m20260901_000001_test_migration".to_string()],
             ops,
-        );
+        )
+        .expect("serialize dry-run receipt");
 
         assert!(receipt.classification.is_additive_safe());
         assert_eq!(
@@ -571,7 +572,8 @@ mod tests {
             "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
             vec!["m20260901_000002_drop_column".to_string()],
             ops,
-        );
+        )
+        .expect("serialize dry-run receipt");
 
         assert!(!receipt.classification.is_additive_safe());
         match receipt.classification {
@@ -603,7 +605,8 @@ mod tests {
             "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
             vec!["m20260901_000003_not_null_col".to_string()],
             ops,
-        );
+        )
+        .expect("serialize dry-run receipt");
 
         assert!(!receipt.classification.is_additive_safe());
         assert!(matches!(
@@ -624,8 +627,8 @@ mod tests {
             is_temporary: false,
         }];
 
-        let digest1 = compute_migration_plan_digest(&migrations, &ops);
-        let digest2 = compute_migration_plan_digest(&migrations, &ops);
+        let digest1 = compute_migration_plan_digest(&migrations, &ops).expect("serialize plan");
+        let digest2 = compute_migration_plan_digest(&migrations, &ops).expect("serialize plan");
         assert_eq!(digest1, digest2);
         assert!(digest1.starts_with("sha256:"));
     }

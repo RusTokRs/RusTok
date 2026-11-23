@@ -30,13 +30,13 @@ pub fn UserMenu() -> impl IntoView {
         {
             return;
         }
-        let _ = set_logout_failed.try_set(false);
+        set_logout_failed.set(false);
         let auth = auth.clone();
         spawn_local(async move {
             if auth.sign_out().await.is_err() {
-                let _ = set_logout_failed.try_set(true);
+                set_logout_failed.set(true);
             }
-            let _ = set_logout_busy.try_set(false);
+            set_logout_busy.set(false);
         });
     });
 

@@ -4,6 +4,7 @@ use rustok_fulfillment::{FulfillmentAdminCommandPort, FulfillmentService, Shipme
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -60,6 +61,7 @@ impl FulfillmentOrchestrationService {
         self
     }
 
+    #[instrument(skip(self, input))]
     pub async fn create_manual_fulfillment(
         &self,
         tenant_id: Uuid,

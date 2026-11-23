@@ -1,3 +1,4 @@
+use tracing::instrument;
 use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
@@ -61,6 +62,7 @@ impl ForumCategoryVisibilityPolicyService {
             .policy(category_id)
     }
 
+    #[instrument(skip_all)]
     pub async fn set(
         &self,
         tenant_id: Uuid,

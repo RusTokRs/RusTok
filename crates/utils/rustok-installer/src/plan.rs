@@ -304,6 +304,18 @@ pub enum InstallSurface {
     Registry,
 }
 
+impl InstallSurface {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "api",
+            Self::Admin => "admin",
+            Self::Storefront => "storefront",
+            Self::Worker => "worker",
+            Self::Registry => "registry",
+        }
+    }
+}
+
 impl InstallRole {
     /// Returns whether a process role may own a selected runtime surface.
     ///
@@ -493,8 +505,8 @@ impl InstallTopology {
                 if !assignment.role.supports_surface(*surface) {
                     return Err(format!(
                         "install role `{}` may not own surface `{}`",
-                        serde_name(assignment.role),
-                        serde_name(*surface),
+                        assignment.role.as_str(),
+                        surface.as_str(),
                     ));
                 }
             }
@@ -510,10 +522,10 @@ impl InstallTopology {
                 "install topology leaves a selected surface without exactly one owner".to_string(),
             );
         }
-        let distribution_roles = self
-            .distribution
-            .as_ref()
-            .expect("validated distribution binding must exist")
+        let Some(distribution) = self.distribution.as_ref() else {
+            return Err("install topology leaves a distribution binding unassigned".to_string());
+        };
+        let distribution_roles = distribution
             .roles
             .iter()
             .map(|artifact| artifact.role)
@@ -539,14 +551,6 @@ fn valid_sha256_digest(value: &str) -> bool {
         && value[7..]
             .chars()
             .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-}
-
-fn serde_name<T: Serialize>(value: T) -> String {
-    serde_json::to_value(value)
-        .expect("install topology enum serialization must be infallible")
-        .as_str()
-        .expect("install topology enum serialization must produce a string")
-        .to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

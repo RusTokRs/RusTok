@@ -59,6 +59,7 @@
   interrupted runner, database/step failures and combined execution/cleanup errors.
 - `Migrator`: Authoritative global migrator implementing `sea_orm_migration::MigratorTrait`.
   - `Migrator::migrations() -> Vec<Box<dyn MigrationTrait>>`
+  - `Migrator::inventory() -> Result<MigrationInventory, MigrationInventoryError>` gives callers the validated executable plan and its composition errors.
 - `SqliteTestMigrator`: Test-only portable schema migrator implementing `sea_orm_migration::MigratorTrait`.
   - `SqliteTestMigrator::migrations() -> Vec<Box<dyn MigrationTrait>>`
 - `sqlite_test_migration_is_compatible(name: &str) -> bool`: Predicate querying whether a migration is part of the portable SQLite test schema.
@@ -104,9 +105,9 @@ observer:
 - `rustok_core::MigrationSafetyAssessment`: canonical `AdditiveSafe`, `MaintenanceRequired` and `Unknown` facts. This crate defines no parallel classification enum. Supplied operations cannot establish observed N/N+1 compatibility or authorize production execution.
 - `MigrationDryRunReceipt`: diagnostic plan summary (`source_schema_digest`, projected `target_schema_digest`, `migration_plan_digest`, `operations`, `classification`, `lock_summary`). The assessment is authoritative; no separate automatic-eligibility boolean is stored.
 - `classify_operation` / `classify_operations`: return `(MigrationSafetyAssessment, LockClassification)`. Empty coverage and opaque SQL are unknown; missing/duplicate/empty migration identities cannot produce an additive-safe receipt. Locking foreign keys retain reasons; concurrent index creation requires owner-proven nontransactional recovery. Raw destructive SQL retains its destructive fact.
-- `compute_migration_plan_digest(target_migrations: &[String], operations: &[SchemaOperation]) -> String`
-- `compute_schema_state_digest(tables: &[String], columns: &[String]) -> String`
-- `generate_migration_dry_run_receipt(...) -> MigrationDryRunReceipt`
+- `compute_migration_plan_digest(target_migrations: &[String], operations: &[SchemaOperation]) -> serde_json::Result<String>`
+- `compute_schema_state_digest(tables: &[String], columns: &[String]) -> serde_json::Result<String>`
+- `generate_migration_dry_run_receipt(...) -> serde_json::Result<MigrationDryRunReceipt>`
 
 ### Descriptors
 - `MigrationDescriptor`: Owned ordering projection of

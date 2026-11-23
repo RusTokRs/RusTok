@@ -6,6 +6,7 @@ use sea_orm::{
     sea_query::{Expr, OnConflict},
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
@@ -373,6 +374,7 @@ impl PageStarterService {
 
     /// Atomically update only metadata of an existing tenant row at its observed revision.
     /// Built-ins have no tenant row and cannot be implicitly overridden by this operation.
+    #[instrument(skip(self, security))]
     pub async fn update_metadata(
         &self,
         tenant_id: Uuid,
@@ -417,6 +419,7 @@ impl PageStarterService {
 
     /// Delete a tenant-owned row only at the observed revision. Deleting an
     /// override reveals the built-in with that key; built-ins have no row.
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

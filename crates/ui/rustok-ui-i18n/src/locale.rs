@@ -47,7 +47,7 @@ fn parse_unicode_locale(locale: &str) -> Option<IcuLocale> {
     // before parsing the complete Unicode locale, including extensions.
     let normalized = trimmed.replace('_', "-");
     let mut locale = normalized.parse::<IcuLocale>().ok()?;
-    let _ = LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
+    LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
     Some(locale)
 }
 
@@ -67,7 +67,7 @@ pub(crate) fn canonicalize_language_identifier(langid: LanguageIdentifier) -> La
     let Ok(mut locale) = langid.to_string().parse::<IcuLocale>() else {
         return langid;
     };
-    let _ = LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
+    LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
     icu_to_fluent_langid(&locale).unwrap_or(langid)
 }
 
@@ -222,8 +222,8 @@ fn infer_script(langid: &LanguageIdentifier) -> Option<LanguageIdentifier> {
     let mut language = regional.clone();
     language.region = None;
 
-    let _ = expander.maximize(&mut regional);
-    let _ = expander.maximize(&mut language);
+    expander.maximize(&mut regional);
+    expander.maximize(&mut language);
 
     // Add an inferred branch only when the region changes the language's usual
     // script. This keeps common chains compact (`ru-RU` -> `ru`) while fixing

@@ -27,7 +27,9 @@ mod composition {
     use sea_orm_migration::sea_orm::{
         DatabaseConnection, DbBackend, Statement, TransactionError, TransactionTrait,
     };
-    use sea_orm_migration::{Migration, MigrationStatus};
+    use sea_orm_migration::{Migration, MigrationName, MigrationStatus};
+
+    use super::execution::Step;
 
     // Platform-core migrations — tables that are always present regardless of which
     // optional modules are installed: tenants, users, sessions, roles, permissions,
@@ -143,6 +145,15 @@ mod composition {
         !SQLITE_INCOMPATIBLE_MIGRATIONS.contains(&migration_name)
     }
 
+    impl SqliteTestMigrator {
+        fn checked_plan() -> Result<CheckedMigrationPlan, DbErr> {
+            let mut plan = Migrator::checked_plan()?;
+            plan.0
+                .retain(|migration| sqlite_test_migration_is_compatible(migration.name()));
+            Ok(plan)
+        }
+    }
+
     #[async_trait::async_trait]
     impl MigratorTrait for SqliteTestMigrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -150,6 +161,30 @@ mod composition {
                 .into_iter()
                 .filter(|migration| sqlite_test_migration_is_compatible(migration.name()))
                 .collect()
+        }
+
+        async fn install<C: ConnectionTrait>(db: &C) -> Result<(), DbErr> {
+            Migrator::install(db).await
+        }
+
+        async fn get_migration_with_status<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
+        }
+
+        async fn get_migration_with_status_read_only<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status_read_only(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
         }
     }
 
@@ -345,16 +380,71 @@ mod composition {
         pub fn inventory() -> Result<super::MigrationInventory, super::MigrationInventoryError> {
             super::MigrationInventory::compose(platform_migrations(), &module_migration_sources())
         }
+
+        fn checked_plan() -> Result<CheckedMigrationPlan, DbErr> {
+            CheckedMigrationPlan::from_inventory(Self::inventory())
+        }
+    }
+
+    struct CheckedMigrationPlan(Vec<Step>);
+
+    impl CheckedMigrationPlan {
+        fn from_inventory(
+            inventory: Result<super::MigrationInventory, super::MigrationInventoryError>,
+        ) -> Result<Self, DbErr> {
+            let inventory = inventory.map_err(|error| DbErr::Migration(error.to_string()))?;
+            Ok(Self(
+                inventory
+                    .into_migrations()
+                    .into_iter()
+                    .map(Step::from)
+                    .collect(),
+            ))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl sea_orm_migration::MigratorTraitSelf for CheckedMigrationPlan {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            self.0
+                .iter()
+                .map(|migration| Box::new(migration.clone()) as Box<dyn MigrationTrait>)
+                .collect()
+        }
     }
 
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            // SeaORM requires an infallible factory for this static compiled composition.
-            // Fallible operator paths use inventory() before any database operation.
+            // SeaORM's static factory cannot return a composition error. Its
+            // database entrypoints validate through install or the read-only path.
             Self::inventory()
-                .expect("compiled migration declarations must define a valid composition")
-                .into_migrations()
+                .map(|inv| inv.into_migrations())
+                .unwrap_or_default()
+        }
+
+        async fn install<C: ConnectionTrait>(db: &C) -> Result<(), DbErr> {
+            sea_orm_migration::MigratorTraitSelf::install(&Self::checked_plan()?, db).await
+        }
+
+        async fn get_migration_with_status<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
+        }
+
+        async fn get_migration_with_status_read_only<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status_read_only(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
         }
     }
 
@@ -427,6 +517,16 @@ mod composition {
         use sea_orm_migration::MigratorTrait;
 
         #[test]
+        fn invalid_composition_is_rejected_before_creating_an_execution_plan() {
+            let inventory = crate::MigrationInventory::compose(Vec::new(), &[]);
+            assert!(matches!(
+                super::CheckedMigrationPlan::from_inventory(inventory),
+                Err(sea_orm_migration::DbErr::Migration(message))
+                    if message == crate::MigrationInventoryError::EmptyPlan.to_string()
+            ));
+        }
+
+        #[test]
         fn sqlite_test_migrator_omits_only_declared_production_migrations() {
             let production_names = Migrator::migrations()
                 .into_iter()
@@ -482,10 +582,37 @@ mod composition {
         #[tokio::test]
         async fn sqlite_test_migrator_applies_the_portable_schema() {
             let db = rustok_test_utils::db::setup_test_db().await;
+            let expected: Vec<_> = Migrator::inventory()
+                .expect("valid compiled composition")
+                .migrations()
+                .iter()
+                .filter(|name| super::sqlite_test_migration_is_compatible(name))
+                .cloned()
+                .collect();
+            let pending: Vec<_> = SqliteTestMigrator::get_pending_migrations_read_only(&db)
+                .await
+                .expect("portable inventory can be read on an empty database")
+                .into_iter()
+                .map(|migration| migration.name().to_owned())
+                .collect();
+            assert_eq!(pending, expected);
+            assert!(
+                !sea_orm_migration::SchemaManager::new(&db)
+                    .has_table("seaql_migrations")
+                    .await
+                    .expect("journal table can be inspected")
+            );
 
             SqliteTestMigrator::up(&db, None)
                 .await
                 .expect("SQLite test migrator must apply its declared portable schema");
+            let applied: Vec<_> = SqliteTestMigrator::get_applied_migrations_read_only(&db)
+                .await
+                .expect("portable migrations can be read after execution")
+                .into_iter()
+                .map(|migration| migration.name().to_owned())
+                .collect();
+            assert_eq!(applied, expected);
         }
     }
 

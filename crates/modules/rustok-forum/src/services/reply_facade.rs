@@ -1,3 +1,4 @@
+use tracing::instrument;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -83,6 +84,7 @@ impl ReplyService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -100,6 +102,7 @@ impl ReplyService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_with_audience_context(
         &self,
         tenant_id: Uuid,
@@ -118,6 +121,7 @@ impl ReplyService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_command(
         &self,
         tenant_id: Uuid,
@@ -131,6 +135,7 @@ impl ReplyService {
         .await
     }
 
+    #[instrument(skip_all)]
     pub async fn create_command_with_audience_context(
         &self,
         tenant_id: Uuid,
@@ -213,6 +218,7 @@ impl ReplyService {
         require_localized_reply_response(response)
     }
 
+    #[instrument(skip_all)]
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -224,6 +230,7 @@ impl ReplyService {
             .await
     }
 
+    #[instrument(skip_all)]
     pub async fn update_command(
         &self,
         tenant_id: Uuid,
@@ -238,6 +245,7 @@ impl ReplyService {
         require_localized_reply_response(response)
     }
 
+    #[instrument(skip_all)]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
@@ -382,6 +390,7 @@ impl ReplyService {
         reply_owner::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

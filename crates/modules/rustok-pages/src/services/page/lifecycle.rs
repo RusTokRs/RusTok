@@ -193,6 +193,7 @@ impl PageService {
         Ok(())
     }
 
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

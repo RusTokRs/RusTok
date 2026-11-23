@@ -157,7 +157,10 @@ subjects, duplicate safety/dependency declarations and edges, missing dependency
 targets, and cycles. Cross-owner dependency targets remain supported. Missing
 safety metadata is explicit `null`, never additive-safe evidence. The exporter
 and operations CLI propagate typed composition errors before database work.
-SeaORM's infallible factory retains its static compiled-composition assertion.
+The SeaORM database entrypoints validate the composition before creating the
+journal or reading migration status. Read-only status keeps the database intact.
+Consumers that need the executable list and its errors use `Migrator::inventory`
+and receive the same inventory used by database execution.
 Ownership identifies the contributing migration source; it does not infer
 table ownership, confine SQL effects, or confer module authority.
 

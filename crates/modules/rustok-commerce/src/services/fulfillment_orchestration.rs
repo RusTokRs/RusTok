@@ -5,6 +5,7 @@ use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
+use tracing::instrument;
 
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_fulfillment::providers::{
@@ -89,6 +90,7 @@ impl FulfillmentOrchestrationService {
         self
     }
 
+    #[instrument(skip(self, input))]
     pub async fn create_manual_fulfillment(
         &self,
         tenant_id: Uuid,

@@ -1,3 +1,4 @@
+use tracing::instrument;
 use std::collections::HashMap;
 
 use chrono::Utc;
@@ -43,6 +44,7 @@ impl CategoryTopicPolicyService {
         })
     }
 
+    #[instrument(skip_all)]
     pub(super) async fn set(
         &self,
         tenant_id: Uuid,

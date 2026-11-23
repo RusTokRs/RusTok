@@ -12,6 +12,7 @@ use rustok_order::{OrderLineItemResponse, OrderReadPort, ReadOrderProjectionRequ
 use serde_json::Value;
 use uuid::Uuid;
 use validator::Validate;
+use tracing::instrument;
 
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
@@ -39,6 +40,7 @@ impl AdminManualFulfillmentOrchestrationService {
         }
     }
 
+    #[instrument(skip(self, read_context, write_context, input))]
     pub(crate) async fn create_manual_fulfillment(
         &self,
         read_context: PortContext,

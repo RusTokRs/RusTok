@@ -1,3 +1,4 @@
+use tracing::instrument;
 use std::sync::Arc;
 
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
@@ -72,6 +73,7 @@ impl CategoryService {
         self
     }
 
+    #[instrument(skip_all)]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -120,6 +122,7 @@ impl CategoryService {
 
     /// Archive the complete category subtree from normal product delete flows.
     /// Physical purge remains a separate retention concern.
+    #[instrument(skip_all)]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
@@ -179,6 +182,7 @@ impl CategoryService {
         self.policy.get(tenant_id, category_id, security).await
     }
 
+    #[instrument(skip_all)]
     pub async fn set_topic_policy(
         &self,
         tenant_id: Uuid,
@@ -215,6 +219,7 @@ impl CategoryService {
     }
 
     /// Update category metadata without bypassing the atomic placement commands.
+    #[instrument(skip_all)]
     pub async fn update(
         &self,
         tenant_id: Uuid,

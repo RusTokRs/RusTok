@@ -235,6 +235,7 @@ impl UserStatsService {
     /// visibility lifecycle transition or a thread deletion. Counting from
     /// canonical rows avoids divergent topic/reply/solution deltas and touches
     /// all affected authors in one SQL statement.
+    #[instrument(skip_all)]
     pub(crate) async fn reconcile_topic_thread_user_stats_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

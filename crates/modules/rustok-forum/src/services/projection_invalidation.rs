@@ -1,3 +1,4 @@
+use tracing::instrument;
 use rustok_events::{DomainEvent, ForumSearchProjectionEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, DbBackend, Statement};
@@ -9,6 +10,7 @@ pub(crate) const FORUM_PROJECTION_SCOPE: &str = "forum";
 pub(crate) const FORUM_CATEGORY_PROJECTION_TARGET: &str = "forum_category";
 pub(crate) const FORUM_TOPIC_PROJECTION_TARGET: &str = "forum_topic";
 
+#[instrument(skip_all)]
 pub(crate) async fn publish_forum_projection_scope_direct_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -18,6 +20,7 @@ pub(crate) async fn publish_forum_projection_scope_direct_in_tx(
         .await
 }
 
+#[instrument(skip_all)]
 pub(crate) async fn publish_forum_category_projection_direct_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -34,6 +37,7 @@ pub(crate) async fn publish_forum_category_projection_direct_in_tx(
     .await
 }
 
+#[instrument(skip_all)]
 pub(crate) async fn publish_forum_topic_projection_direct_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -50,6 +54,7 @@ pub(crate) async fn publish_forum_topic_projection_direct_in_tx(
     .await
 }
 
+#[instrument(skip_all)]
 pub(crate) async fn publish_forum_category_projection_in_tx(
     event_bus: &TransactionalEventBus,
     txn: &DatabaseTransaction,
@@ -68,6 +73,7 @@ pub(crate) async fn publish_forum_category_projection_in_tx(
     .await
 }
 
+#[instrument(skip_all)]
 pub(crate) async fn publish_forum_topic_projection_in_tx(
     event_bus: &TransactionalEventBus,
     txn: &DatabaseTransaction,

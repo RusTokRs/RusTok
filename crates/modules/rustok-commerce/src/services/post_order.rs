@@ -15,6 +15,7 @@ use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
+use tracing::instrument;
 
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
@@ -118,6 +119,7 @@ impl PostOrderOrchestrationService {
         self
     }
 
+    #[instrument(skip(self, idempotency_key, input))]
     pub async fn create_return_decision(
         &self,
         tenant_id: Uuid,

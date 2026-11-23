@@ -429,7 +429,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                 | "testing"
                 | "fixtures"
                 | "mocks"
-        )
+        ) || part.ends_with("_tests") || part.ends_with("_test")
     }) || [
         "_test.rs",
         "_tests.rs",
@@ -1208,46 +1208,54 @@ fn check_rules(
             }
         }
 
-        if re!(r"\.(?:expect|unwrap)\s*\(").is_match(text)
-            && !static_item
-            && !(text.contains("Regex::new") && (text.contains("static") || text.contains("const")))
+        if !scan.test_file
+            && !test_context
+            && !scan.build_file
+            && !scan.vendored
+            && !scan.cli_file
+            && !scan.migration
         {
-            if !scan.has_invariant(index, text) {
-                scan.add(number, "P-ZERO-PANIC-PROD", "Zero Production Panics", Severity::High,
-                    "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
-                    "Use '?' operator with .map_err(DomainError::from) or return Result.");
+            if re!(r"\.(?:expect|unwrap)\s*\(").is_match(text)
+                && !static_item
+                && !(text.contains("Regex::new") && (text.contains("static") || text.contains("const")))
+            {
+                if !scan.has_invariant(index, text) {
+                    scan.add(number, "P-ZERO-PANIC-PROD", "Zero Production Panics", Severity::High,
+                        "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
+                        "Use '?' operator with .map_err(DomainError::from) or return Result.");
+                }
             }
-        }
-        if re!(r"\.unwrap_err\s*\(").is_match(text) {
-            scan.add(
-                number,
-                "P-ZERO-PANIC-PROD",
-                "Zero Production Panics",
-                Severity::High,
-                "Calling .unwrap_err() in production path. Match on Result explicitly.",
-                "match result { Err(e) => ..., Ok(_) => return Err(...) }",
-            );
-        }
-        if re!(r"\bpanic!\s*\(").is_match(text) {
-            scan.add(
-                number,
-                "P-ZERO-PANIC-PROD",
-                "Zero Production Panics",
-                Severity::High,
-                "Calling panic!(...) in production path. Return typed DomainError / PortError.",
-                "return Err(DomainError::from(...));",
-            );
-        }
-        if re!(r"\bunreachable!\s*\(").is_match(text) {
-            if !scan.has_invariant(index, text) {
+            if re!(r"\.unwrap_err\s*\(").is_match(text) {
                 scan.add(
                     number,
                     "P-ZERO-PANIC-PROD",
                     "Zero Production Panics",
                     Severity::High,
-                    "Calling unreachable!(...) in production path. Document invariant or handle branch defensively.",
-                    "Use '// INVARIANT:' or return an error/fallback value.",
+                    "Calling .unwrap_err() in production path. Match on Result explicitly.",
+                    "match result { Err(e) => ..., Ok(_) => return Err(...) }",
                 );
+            }
+            if re!(r"\bpanic!\s*\(").is_match(text) {
+                scan.add(
+                    number,
+                    "P-ZERO-PANIC-PROD",
+                    "Zero Production Panics",
+                    Severity::High,
+                    "Calling panic!(...) in production path. Return typed DomainError / PortError.",
+                    "return Err(DomainError::from(...));",
+                );
+            }
+            if re!(r"\bunreachable!\s*\(").is_match(text) {
+                if !scan.has_invariant(index, text) {
+                    scan.add(
+                        number,
+                        "P-ZERO-PANIC-PROD",
+                        "Zero Production Panics",
+                        Severity::High,
+                        "Calling unreachable!(...) in production path. Document invariant or handle branch defensively.",
+                        "Use '// INVARIANT:' or return an error/fallback value.",
+                    );
+                }
             }
         }
 

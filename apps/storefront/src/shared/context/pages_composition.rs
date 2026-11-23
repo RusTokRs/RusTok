@@ -67,11 +67,11 @@ pub fn if_none_match_matches(if_none_match: Option<&str>, etag: &str) -> bool {
 }
 
 fn hex_digest(digest: &[u8]) -> String {
-    use std::fmt::Write as _;
-
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    for &byte in digest {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
     }
     encoded
 }

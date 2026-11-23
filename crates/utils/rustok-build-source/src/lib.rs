@@ -243,7 +243,7 @@ impl CasArchivePublisher {
 
         match fs::hard_link(&temporary_path, &destination) {
             Ok(()) => {
-                let _ = fs::hard_link(&destination, &tar_path);
+                drop(fs::hard_link(&destination, &tar_path));
                 fs::remove_file(&temporary_path).map_err(io_error)?;
                 Ok(CasArchivePublishReceipt {
                     source_digest: inspection.source_digest,
@@ -424,7 +424,7 @@ fn copy_and_hash_archive(
 }
 
 fn remove_upload_file(path: &Path) {
-    let _ = fs::remove_file(path);
+    drop(fs::remove_file(path));
 }
 
 fn verify_archive_digest(path: &Path, expected: &str) -> Result<(), CasArchiveError> {
@@ -668,7 +668,7 @@ fn remove_created_destination(destination: &Path) {
         && fs::symlink_metadata(destination)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
     {
-        let _ = fs::remove_dir_all(destination);
+        drop(fs::remove_dir_all(destination));
     }
 }
 
