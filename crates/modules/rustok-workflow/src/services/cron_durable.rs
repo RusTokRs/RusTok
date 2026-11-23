@@ -150,6 +150,14 @@ pub(super) async fn enqueue_due_slots(
     Ok(slots.len())
 }
 
+/// Missing Workflow-owned migration is a startup failure, not a healthy
+/// scheduler that logs a database error forever.
+pub(super) async fn verify_cron_schema(db: &DatabaseConnection) -> WorkflowResult<()> {
+    cursor::Entity::find().limit(1).all(db).await?;
+    firing::Entity::find().limit(1).all(db).await?;
+    Ok(())
+}
+
 /// Enumerate bounded pending work. Selecting is not a claim: every caller
 /// must perform a status CAS before invoking the engine.
 pub(super) async fn pending_firings(
