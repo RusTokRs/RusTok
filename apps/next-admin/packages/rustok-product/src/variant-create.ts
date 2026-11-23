@@ -5,9 +5,10 @@
  */
 
 import type { CreateVariantInput } from './api/types';
+import { MAX_INVENTORY_QUANTITY } from './limits';
 import { parsePriceAmount } from './money.ts';
 
-export { MAX_PRODUCT_VARIANTS } from './limits';
+export { MAX_INVENTORY_QUANTITY, MAX_PRODUCT_VARIANTS } from './limits';
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -52,7 +53,7 @@ export function isVariantCreateInput(
     value.axisValues.length > 32 ||
     !Number.isInteger(value.inventoryQuantity) ||
     (value.inventoryQuantity as number) < 0 ||
-    (value.inventoryQuantity as number) > 2147483647 ||
+    (value.inventoryQuantity as number) > MAX_INVENTORY_QUANTITY ||
     !['deny', 'continue'].includes(value.inventoryPolicy as string) ||
     !Array.isArray(value.prices) ||
     value.prices.length > 64
