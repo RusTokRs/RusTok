@@ -61,10 +61,15 @@ impl WorkflowCronScheduler {
     /// The host may still enforce a bounded forced-abort deadline.
     pub fn start_with_stop(self, stop_rx: watch::Receiver<bool>) -> JoinHandle<()> {
         tokio::spawn(async move {
+            // Do not touch storage when a host already requested shutdown.
+            if *stop_rx.borrow() {
+                return;
+            }
             if let Err(error) = self.validate_persistence().await {
                 error!(%error, "Workflow cron scheduler cannot run without durable owner storage");
                 return;
             }
+            // The async readiness query may have raced shutdown.
             if *stop_rx.borrow() {
                 return;
             }
