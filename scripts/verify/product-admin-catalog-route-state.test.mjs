@@ -49,7 +49,7 @@ test('only eligible owner attribute options can appear in filters and facets', (
   assert.match(filters, /pao\.attribute_id = pav\.attribute_id/);
   assert.match(filters, /pao\.archived_at IS NULL/);
   assert.match(facets, /Alias::new\("product_attribute_options"\)/);
-  assert.match(facets, /Alias::new\("archived_at"\)\)\.is_null\(\)/);
+  assert.match(facets, /Alias::new\("archived_at"\)\)\)\.is_null\(\)/);
 });
 
 test('Next catalog normalizes typed selection grammar and prioritizes active facets', () => {
