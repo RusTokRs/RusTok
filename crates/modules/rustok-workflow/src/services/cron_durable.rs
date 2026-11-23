@@ -531,6 +531,7 @@ mod tests {
             CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
         ).await.unwrap();
         assert_eq!(requeued.status, firing::PENDING);
+        assert!(!owns_current_claim(&db, &item, token).await.unwrap());
         assert!(!settle_claim(&db, &item, token, firing::COMPLETED, None, Some("stale"))
             .await.unwrap(), "old attempt cannot acknowledge a new admission");
         let next_token = claim_firing(&db, &requeued, now).await.unwrap().unwrap();
