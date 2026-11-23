@@ -38,7 +38,7 @@ function pickParam(value: string | string[] | undefined): string | undefined {
 
 function parseAttributeFilters(value: string | string[] | undefined): string[] {
   const entries = Array.isArray(value) ? value : value ? [value] : [];
-  return entries
+  const normalized = entries
     .flatMap((entry) => entry.split(';'))
     .map((entry) => entry.trim())
     .filter(Boolean)
@@ -50,6 +50,7 @@ function parseAttributeFilters(value: string | string[] | undefined): string[] {
         ? entry
         : `${entry.slice(0, equalsAt).trim().toLowerCase()}=${entry.slice(equalsAt + 1).trim()}`;
     });
+  return [...new Set(normalized)];
 }
 
 export default async function ProductPage({ searchParams }: PageProps) {
