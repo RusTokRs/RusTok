@@ -1136,8 +1136,8 @@ mod cron_revision_tests {
             assert_eq!(row.tenant_id, tenant_id);
             assert_eq!(row.step_executions.len(), 1);
             assert_eq!(
-                row.step_executions[0].output["tenant"],
-                tenant_id.to_string(),
+                row.step_executions[0].output["tenant"].as_str(),
+                Some(tenant_id.to_string().as_str()),
             );
         }
         assert!(service.list_executions(other_tenant, own_workflow)
