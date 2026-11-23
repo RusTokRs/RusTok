@@ -1,5 +1,20 @@
 # `rustok-workflow` Documentation
 
+### Legacy and event-driven uncertain execution visibility
+
+Previously persisted `running` execution journals without a new durable
+cron firing are not deleted, re-created or automatically retried. A bounded
+tenant-scoped REST GET `/api/workflows/executions/unconfirmed` and GraphQL
+`workflowUnconfirmedExecutions` now expose `running` and
+`reconciliation_required` execution receipts for human inspection under
+`workflow_executions:list`. These read-only projections intentionally have
+no universal "retry" button: no generic provider contract can prove whether
+a previously interrupted external side effect was accepted. The Workflow
+owner's new cron-firing reconciliation command applies only to firings with
+a tracked attempt token; legacy/event executions still require their own
+owner-specific evidence and recovery path before any re-dispatch.
+
+
 ### Workflow durable cron admission / outcome review refinement (2026-11-23)
 
 Cron now atomically checks the current firing attempt and locked workflow
