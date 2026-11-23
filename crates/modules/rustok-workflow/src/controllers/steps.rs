@@ -42,6 +42,12 @@ fn map_workflow_step_error(
             "Workflow step operation could not be completed safely",
             "unexpected_execution_not_found",
         ),
+        WorkflowError::ExecutionOutcomeUncertain(_) => (
+            StatusCode::CONFLICT,
+            "workflow_execution_reconciliation_required",
+            "Workflow execution outcome requires operator reconciliation",
+            "execution_outcome_ambiguous",
+        ),
         WorkflowError::NotActive(_) => (
             StatusCode::CONFLICT,
             "workflow_state_conflict",
