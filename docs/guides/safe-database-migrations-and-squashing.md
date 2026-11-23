@@ -263,6 +263,10 @@ for crates.io packages. New builds also capture the regular files in every
 Cargo-reported `OUT_DIR` and recheck those paths, modes and bytes before the
 run's report is published. Exact compiler reads, generated files outside
 these directories and transient inputs still require separate evidence.
+The report links captured files to the runner and exporter through each
+executable's Cargo dep-info. A listed `OUT_DIR` file missing from the capture
+fails verification. Other reported paths inside the build target are visible
+in `uncaptured_target_paths`.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
@@ -515,6 +519,10 @@ module loaded through `include!` from `OUT_DIR`. The recorded SHA-256
 matched the file. The verifier rejected an output directory outside the
 build target and edits, additions and deletions after capture. The earlier
 PostgreSQL pilot predates the generated output record.
+The fixture also verified dep-info for both binaries on Windows with spaces
+in the target path. Both dependency lists matched the included Rust file.
+The unused output was captured and absent from the dependency lists. A swapped
+dep-info file and a missing generated dependency failed verification.
 
 A separate PostgreSQL 16.13 test on the current composition rolled back the
 Blog index migration, then confirmed that over-width translation data blocks

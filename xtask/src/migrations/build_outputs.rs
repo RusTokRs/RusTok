@@ -1,8 +1,13 @@
-use super::{build_inputs::BuildInputs, collect_snapshot_files, safe_relative, SourceFile};
+use super::{
+    build_inputs::BuildInputs,
+    collect_snapshot_files, safe_relative,
+    source_inputs::{normalize_dep_path, parse_dep_info},
+    SourceFile,
+};
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -18,6 +23,12 @@ pub(super) struct GeneratedOutputs {
     #[serde(skip)]
     target: PathBuf,
     directories: BTreeMap<String, OutputDirectory>,
+}
+
+#[derive(Serialize)]
+pub(super) struct GeneratedDependencies {
+    out_dir_files: BTreeSet<String>,
+    uncaptured_target_paths: BTreeSet<String>,
 }
 
 impl GeneratedOutputs {
@@ -78,6 +89,58 @@ impl GeneratedOutputs {
             directory.files = read_output(&self.target, path)?;
         }
         Ok(())
+    }
+
+    pub(super) fn dependencies(
+        &self,
+        binary: &Path,
+        dep_info: &[u8],
+    ) -> Result<GeneratedDependencies> {
+        let (binary_path, dependencies) = parse_dep_info(dep_info)?;
+        let expected = normalize_dep_path(
+            binary
+                .to_str()
+                .context("Cargo executable path is not UTF-8")?,
+        );
+        ensure!(
+            binary_path == expected,
+            "Cargo dep-info target differs from the expected executable"
+        );
+        let target = normalize_dep_path(
+            self.target
+                .to_str()
+                .context("Cargo target path is not UTF-8")?,
+        );
+        let target_prefix = format!("{}/", target.trim_end_matches('/'));
+
+        let mut out_dir_files = BTreeSet::new();
+        let mut uncaptured_target_paths = BTreeSet::new();
+        for relative in dependencies
+            .iter()
+            .filter_map(|path| path.strip_prefix(&target_prefix))
+        {
+            safe_relative(relative)?;
+            if let Some((file, directory)) =
+                self.directories.iter().find_map(|(path, directory)| {
+                    relative
+                        .strip_prefix(path)
+                        .and_then(|suffix| suffix.strip_prefix('/'))
+                        .map(|file| (file, directory))
+                })
+            {
+                ensure!(
+                    directory.files.binary_search_by(|entry| entry.path.as_str().cmp(file)).is_ok(),
+                    "Cargo dep-info references an OUT_DIR file absent from the captured outputs: {relative}"
+                );
+                out_dir_files.insert(relative.to_owned());
+            } else {
+                uncaptured_target_paths.insert(relative.to_owned());
+            }
+        }
+        Ok(GeneratedDependencies {
+            out_dir_files,
+            uncaptured_target_paths,
+        })
     }
 
     pub(super) fn verify_unchanged(&self) -> Result<()> {

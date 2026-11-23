@@ -779,6 +779,7 @@ mod tests {
                 let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
                 std::fs::create_dir(out.join("schema")).unwrap();
                 std::fs::write(out.join("schema/generated.rs"), "pub const SCHEMA: u64 = 42;\n").unwrap();
+                std::fs::write(out.join("unused.txt"), "unused output\n").unwrap();
             }
         "#,
         )?;
@@ -786,6 +787,13 @@ mod tests {
             package.join("src/lib.rs"),
             r#"include!(concat!(env!("OUT_DIR"), "/schema/generated.rs"));"#,
         )?;
+        fs::create_dir(package.join("src/bin"))?;
+        for binary in BINARIES {
+            fs::write(
+                package.join("src/bin").join(format!("{binary}.rs")),
+                r#"fn main() { assert_eq!(rustok_migrations::SCHEMA, 42); }"#,
+            )?;
+        }
         let mut files = Vec::new();
         collect_snapshot_files(&fixture.root, &fixture.root, &mut files)?;
         files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -793,7 +801,7 @@ mod tests {
         let mut rustc = build_command("rustc", &fixture.root)?;
         rustc.arg("-Vv");
         let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
-        let target = fixture.directory.join("target");
+        let target = fixture.directory.join("target with spaces");
         let resolution = collect(&fixture.root, &expected, &target, &host)?;
         let mut build = build_command("cargo", &fixture.root)?;
         build
@@ -810,6 +818,7 @@ mod tests {
             .env("CARGO_TARGET_DIR", &target);
         let messages = run_process(&mut build, 120, 64 * 1024)?;
         let mut generated = build_outputs::GeneratedOutputs::new(&target)?;
+        let mut executables = Vec::new();
         let mut out_dir = None;
         for line in std::str::from_utf8(&messages)?.lines() {
             let message: Value = serde_json::from_str(line)?;
@@ -821,6 +830,12 @@ mod tests {
                 outside["out_dir"] = json!(fixture.root);
                 let error = generated.record(&outside, &resolution).unwrap_err();
                 assert!(error.to_string().contains("OUT_DIR escaped build output"));
+            } else if let Some(path) = message["executable"].as_str() {
+                if message["reason"] == "compiler-artifact"
+                    && message["target"]["kind"] == json!(["bin"])
+                {
+                    executables.push(PathBuf::from(path).canonicalize()?);
+                }
             }
         }
         let out_dir =
@@ -838,10 +853,25 @@ mod tests {
             .context("missing fixture output")?;
         assert_eq!(directory["package"], resolution.root_package);
         assert_eq!(directory["files"][0]["path"], "schema/generated.rs");
+        assert_eq!(directory["files"][1]["path"], "unused.txt");
         assert_eq!(
             directory["files"][0]["sha256"],
             digest(b"pub const SCHEMA: u64 = 42;\n")
         );
+
+        assert_eq!(executables.len(), BINARIES.len());
+        for binary in &executables {
+            let dep_info = read_source(&binary.with_extension("d"))?;
+            let dependencies = serde_json::to_value(generated.dependencies(binary, &dep_info)?)?;
+            let paths = dependencies["out_dir_files"]
+                .as_array()
+                .context("missing matched paths")?;
+            assert_eq!(paths.len(), 1);
+            assert!(paths[0].as_str().unwrap().ends_with("/schema/generated.rs"));
+            assert_eq!(dependencies["uncaptured_target_paths"], json!([]));
+        }
+        let dep_info = read_source(&executables[0].with_extension("d"))?;
+        assert!(generated.dependencies(&executables[1], &dep_info).is_err());
 
         let file = out_dir.join("schema/generated.rs");
         fs::write(&file, "pub const SCHEMA: u64 = 99;\n")?;
@@ -852,6 +882,14 @@ mod tests {
         fs::remove_file(out_dir.join("extra"))?;
         fs::remove_file(file)?;
         assert!(generated.verify_unchanged().is_err());
+        generated.capture()?;
+        let error = generated
+            .dependencies(&executables[0], &dep_info)
+            .err()
+            .context("missing generated dependency accepted")?;
+        assert!(error
+            .to_string()
+            .contains("absent from the captured outputs"));
         Ok(())
     }
 

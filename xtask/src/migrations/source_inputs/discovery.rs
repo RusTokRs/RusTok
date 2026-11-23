@@ -126,17 +126,7 @@ pub(in crate::migrations) fn discover(
 }
 
 fn read_dep_info(bytes: &[u8], build_root: &str) -> Result<(BTreeSet<String>, usize)> {
-    let text = std::str::from_utf8(bytes).context("Cargo dep-info must be UTF-8")?;
-    let mut records = text.lines().filter(|line| !line.trim().is_empty());
-    let record = records.next().context("Cargo dep-info is empty")?;
-    ensure!(
-        records.next().is_none(),
-        "expected a single Cargo binary dep-info rule"
-    );
-    let (target, dependencies) = record
-        .split_once(": ")
-        .context("invalid Cargo dep-info rule")?;
-    let target = normalize(target);
+    let (target, dependencies) = parse_dep_info(bytes)?;
     ensure!(
         target.ends_with("/export-migration-plan")
             || target.ends_with("/export-migration-plan.exe"),
@@ -152,12 +142,7 @@ fn read_dep_info(bytes: &[u8], build_root: &str) -> Result<(BTreeSet<String>, us
 
     let mut files = BTreeSet::new();
     let mut outside = 0;
-    for path in dep_tokens(dependencies) {
-        let path = normalize(&path);
-        ensure!(
-            is_absolute(&path),
-            "Cargo dep-info must contain absolute dependency paths"
-        );
+    for path in dependencies {
         if let Some(path) = path.strip_prefix(&prefix) {
             safe_relative(path)?;
             files.insert(path.to_owned());
@@ -172,7 +157,34 @@ fn read_dep_info(bytes: &[u8], build_root: &str) -> Result<(BTreeSet<String>, us
     Ok((files, outside))
 }
 
-fn normalize(path: &str) -> String {
+pub(in crate::migrations) fn parse_dep_info(bytes: &[u8]) -> Result<(String, Vec<String>)> {
+    let text = std::str::from_utf8(bytes).context("Cargo dep-info must be UTF-8")?;
+    let mut records = text.lines().filter(|line| !line.trim().is_empty());
+    let record = records.next().context("Cargo dep-info is empty")?;
+    ensure!(
+        records.next().is_none(),
+        "expected a single Cargo binary dep-info rule"
+    );
+    let (target, dependencies) = record
+        .split_once(": ")
+        .context("invalid Cargo dep-info rule")?;
+    let targets = dep_tokens(target);
+    let [target] = targets.as_slice() else {
+        anyhow::bail!("Cargo dep-info must describe one target")
+    };
+    let target = normalize(target);
+    let dependencies: Vec<_> = dep_tokens(dependencies)
+        .into_iter()
+        .map(|path| normalize(&path))
+        .collect();
+    ensure!(
+        is_absolute(&target) && dependencies.iter().all(|path| is_absolute(path)),
+        "Cargo dep-info must contain absolute paths"
+    );
+    Ok((target, dependencies))
+}
+
+pub(in crate::migrations) fn normalize(path: &str) -> String {
     let path = path.replace('\\', "/");
     if let Some(path) = path.strip_prefix("//?/UNC/") {
         return format!("//{path}");

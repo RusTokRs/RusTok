@@ -471,8 +471,11 @@ its package to the resolved graph and hashes the regular files under it,
 including their relative paths and modes. It checks the directory contents
 again before publishing the report. Changes, added files and missing files
 fail verification. The output observations apply to the reported directories
-after compilation. Exact compiler reads, proc-macro expansion and writes
-outside those directories still require separate evidence.
+after compilation. `generated_dependencies` records, for each executable,
+which of these files appear in Cargo's dep-info and which reported paths
+inside the build target lack a corresponding `OUT_DIR` capture. The report
+records dependency files listed by Cargo. Exact reads, proc-macro expansion
+and writes outside the reported directories still require separate evidence.
 
 Each side's build evidence binds the existing source snapshot, lockfile,
 repository Cargo/toolchain configuration, normalized Cargo dependency resolution,

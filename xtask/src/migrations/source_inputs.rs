@@ -15,6 +15,7 @@ mod local_links;
 mod registry;
 
 pub(super) use discovery::{compiler_sources, discover};
+pub(super) use discovery::{normalize as normalize_dep_path, parse_dep_info};
 pub(super) use inventory::bind_inventory;
 pub(super) use registry::{
     registry_inputs, verify_registry_cache, ExternalPackage, RegistryVerification,

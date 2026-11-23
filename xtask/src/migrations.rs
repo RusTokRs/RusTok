@@ -803,12 +803,18 @@ fn verify_fresh(
             input_digests.insert(runner.clone(), file_digest(&runner)?);
             input_digests.insert(exporter.clone(), file_digest(&exporter)?);
             let runner_dep_info = runner.with_extension("d");
-            let runner_dep_info_sha256 =
-                file_digest(&runner_dep_info).context("Cargo dep-info unavailable for runner")?;
-            input_digests.insert(runner_dep_info, runner_dep_info_sha256);
+            let runner_dep_bytes =
+                read_source(&runner_dep_info).context("Cargo dep-info unavailable for runner")?;
+            let runner_generated = generated
+                .dependencies(&runner, &runner_dep_bytes)
+                .with_context(|| format!("invalid {side} runner generated dependencies"))?;
+            input_digests.insert(runner_dep_info, digest(&runner_dep_bytes));
             let exporter_dep_info = exporter.with_extension("d");
             let dep_info = read_source(&exporter_dep_info)
                 .context("Cargo dep-info unavailable for exporter")?;
+            let exporter_generated = generated
+                .dependencies(&exporter, &dep_info)
+                .with_context(|| format!("invalid {side} exporter generated dependencies"))?;
             let source_root = source
                 .to_str()
                 .context("build source directory is not UTF-8")?;
@@ -849,6 +855,10 @@ fn verify_fresh(
                 "inventory_sha256": input_digests[&plan_output],
                 "compiler_sources": compiler_sources,
                 "generated_build_outputs": generated,
+                "generated_dependencies": {
+                    "rustok-migrate": runner_generated,
+                    "export-migration-plan": exporter_generated,
+                },
             });
             if let Some(verification) = registry_before {
                 identity["registry_sources"] = serde_json::json!({
