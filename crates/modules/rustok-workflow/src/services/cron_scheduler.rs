@@ -127,7 +127,7 @@ impl WorkflowCronScheduler {
         // Bounded keyset pagination gives every active tenant's workflow a
         // turn without materializing the entire deployment on each tick.
         let mut select = WorkflowEntity::find()
-            .filter(workflow::Column::Status.eq(WorkflowStatus::Active))
+            .filter(workflow::Column::Status.eq(WorkflowStatus::Active.to_string()))
             .order_by_asc(workflow::Column::Id)
             .limit(WORKFLOW_PAGE_SIZE);
         if let Some(after) = workflow_cursor {
