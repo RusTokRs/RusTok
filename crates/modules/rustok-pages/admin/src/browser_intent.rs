@@ -1246,6 +1246,29 @@ mod tests {
     }
 
     #[test]
+    fn receipt_replay_precedes_generation_conflict_and_resolution_never_dispatches() {
+        let source = include_str!("browser_intent.rs");
+        let resolution = source
+            .find("if envelope.intent == \"resolve_operation\"")
+            .expect("read-only receipt resolution");
+        let dispatch = source
+            .find("dispatch_browser_intent(")
+            .expect("normal intent dispatch");
+        assert!(resolution < dispatch, "receipt resolution must not execute the command");
+
+        let receipt_lookup = source
+            .find("if let (Some(operation_id), Some(request_hash), Some(session))")
+            .expect("same-request receipt lookup");
+        let generation_check = source
+            .find("if let (Some(expected), Some(session))")
+            .expect("draft generation check");
+        assert!(
+            receipt_lookup < generation_check,
+            "a committed request must replay even when its original generation is now stale"
+        );
+    }
+
+    #[test]
     fn operation_fingerprint_ignores_identity_but_binds_the_exact_command() {
         let mut envelope = form_envelope("insert_block", json!({ "block_id": "hero" }));
         envelope.draft_token = Some("draft-token".to_string());
