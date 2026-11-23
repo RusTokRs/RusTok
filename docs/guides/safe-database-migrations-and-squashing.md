@@ -383,6 +383,14 @@ bootstrap, and resolved the same release before and after applying the complete
 schema. A repeat import reused the original record. The fixture database was
 removed. [Signed base-distribution test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs)
 
+The Tenant locale backfill ran on PostgreSQL 16.13 at `main@c555cc3493`.
+The fixture seeded a tenant in the schema immediately before
+`m20260726_000001_enforce_tenant_locale_policy`. A deliberately failing
+post-step assertion stopped execution before the next migration. After restart,
+the runner completed the remaining composition and the tenant still had one
+enabled default locale at policy revision zero. The fixture database was
+removed. [Backfill recovery test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
 Gate 3 still needs replay from an authenticated stable release baseline.
 Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition
