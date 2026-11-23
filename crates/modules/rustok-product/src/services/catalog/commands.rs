@@ -424,12 +424,14 @@ impl CatalogService {
                 .map_err(|_| CommerceError::Validation("too many Product variants".to_owned()))?;
             let variant_id = generate_id();
             created_variant_ids.push(variant_id);
+            let normalized_sku =
+                super::helpers::normalize_variant_sku(var_input.sku.as_deref());
 
             let variant = entities::product_variant::ActiveModel {
                 id: Set(variant_id),
                 product_id: Set(product_id),
                 tenant_id: Set(tenant_id),
-                sku: Set(var_input.sku.clone()),
+                sku: Set(normalized_sku.clone()),
                 barcode: Set(var_input.barcode.clone()),
                 shipping_profile_slug: Set(var_input
                     .shipping_profile_slug
@@ -451,7 +453,7 @@ impl CatalogService {
             };
             variant.insert(&txn).await.map_err(|error| {
                 tracing::error!(%error, "variant.insert failed in create_product");
-                map_product_unique_violation(error, "", "", var_input.sku.as_deref())
+                map_product_unique_violation(error, "", "", normalized_sku.as_deref())
             })?;
 
             if !var_input.axis_values.is_empty() {
@@ -466,7 +468,7 @@ impl CatalogService {
 
             initial_inventories.push(crate::ports::ProductInitialInventory {
                 variant_id,
-                sku: var_input.sku.clone(),
+                sku: normalized_sku,
                 available_quantity: var_input.inventory_quantity,
             });
 
@@ -1475,12 +1477,13 @@ impl CatalogService {
 
         let variant_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
+        let normalized_sku = super::helpers::normalize_variant_sku(input.sku.as_deref());
 
         let variant = entities::product_variant::ActiveModel {
             id: Set(variant_id),
             product_id: Set(product_id),
             tenant_id: Set(tenant_id),
-            sku: Set(input.sku.clone()),
+            sku: Set(normalized_sku.clone()),
             barcode: Set(input.barcode.clone()),
             shipping_profile_slug: Set(input
                 .shipping_profile_slug
@@ -1502,7 +1505,7 @@ impl CatalogService {
         variant
             .insert(&txn)
             .await
-            .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
+            .map_err(|error| map_product_unique_violation(error, "", "", normalized_sku.as_deref()))?;
 
         if !input.axis_values.is_empty() {
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
@@ -1516,7 +1519,7 @@ impl CatalogService {
                 actor_id,
                 vec![crate::ports::ProductInitialInventory {
                     variant_id,
-                    sku: input.sku.clone(),
+                    sku: normalized_sku,
                     available_quantity: input.inventory_quantity,
                 }],
             )
@@ -1663,11 +1666,14 @@ impl CatalogService {
         let mut active: entities::product_variant::ActiveModel = variant.into();
         active.updated_at = Set(Utc::now().into());
 
-        // Keep leaves the loaded ActiveValue untouched; Clear writes SQL NULL.
-        match &input.sku {
-            Patch::Keep => {}
-            Patch::Clear => active.sku = Set(None),
-            Patch::Set(value) => active.sku = Set(Some(value.clone())),
+        // Keep leaves the loaded ActiveValue untouched; Clear and blank Set write SQL NULL.
+        let requested_sku = match &input.sku {
+            Patch::Keep => None,
+            Patch::Clear => Some(None),
+            Patch::Set(value) => Some(super::helpers::normalize_variant_sku(Some(value.as_str()))),
+        };
+        if let Some(sku) = &requested_sku {
+            active.sku = Set(sku.clone());
         }
         match input.barcode {
             Patch::Keep => {}
@@ -1696,14 +1702,20 @@ impl CatalogService {
             Patch::Clear => active.weight_unit = Set(None),
             Patch::Set(value) => active.weight_unit = Set(Some(value)),
         }
-        let requested_sku = match &input.sku {
-            Patch::Set(value) => Some(value.as_str()),
-            Patch::Keep | Patch::Clear => None,
-        };
+        let requested_sku_for_unique_error =
+            requested_sku.as_ref().and_then(|sku| sku.as_deref());
         let _updated_variant = active
             .update(&txn)
             .await
-            .map_err(|error| map_product_unique_violation(error, "", "", requested_sku))?;
+            .map_err(|error| {
+                map_product_unique_violation(error, "", "", requested_sku_for_unique_error)
+            })?;
+
+        if let Some(sku) = requested_sku {
+            self.inventory()
+                .sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)
+                .await?;
+        }
 
         if let Some(ref axis_values) = input.axis_values {
             let configured_axes =

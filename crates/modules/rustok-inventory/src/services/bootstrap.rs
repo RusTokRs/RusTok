@@ -186,6 +186,18 @@ impl BootstrapService {
         Ok(())
     }
 
+    /// Synchronizes Inventory's SKU snapshot without changing stock levels or history.
+    #[instrument(skip(txn))]
+    pub async fn sync_variant_sku_in_tx(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        sku: Option<String>,
+    ) -> Result<(), super::QuantityWriteError> {
+        super::quantity::sync_variant_sku(txn, tenant_id, actor_id, variant_id, sku).await
+    }
+
     /// Read-only owner selector shared with quantity planning; creation is a separate operation.
     pub(super) async fn find_default_location_in_tx<C>(
         conn: &C,

@@ -117,6 +117,15 @@ pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
         .map(|value| value.to_owned())
 }
 
+/// Canonical Product SKU representation shared by every Product write path.
+/// Empty/whitespace-only values mean that the variant has no SKU.
+pub fn normalize_variant_sku(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
 pub fn slugify(text: &str) -> String {
     const MAX_LENGTH: usize = 255;
     const RESERVED_NAMES: &[&str] = &["admin", "api", "null", "undefined", "new", "edit", "delete"];
@@ -840,7 +849,9 @@ where
 
 #[cfg(test)]
 mod product_metadata_tests {
-    use super::{reject_reserved_tag_metadata, resolve_product_metadata_with_schema};
+    use super::{
+        normalize_variant_sku, reject_reserved_tag_metadata, resolve_product_metadata_with_schema,
+    };
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
     use serde_json::json;
     use std::collections::HashMap;
@@ -868,6 +879,16 @@ mod product_metadata_tests {
         assert!(error.to_string().contains("typed tags field"));
         reject_reserved_tag_metadata(&json!({"source": "erp"}))
             .expect("unrelated metadata should remain valid");
+    }
+
+    #[test]
+    fn variant_sku_is_trimmed_and_blank_values_become_unset() {
+        assert_eq!(
+            normalize_variant_sku(Some("  SKU-123 \n")),
+            Some("SKU-123".to_owned())
+        );
+        assert_eq!(normalize_variant_sku(Some(" \t ")), None);
+        assert_eq!(normalize_variant_sku(None), None);
     }
 
     #[test]
