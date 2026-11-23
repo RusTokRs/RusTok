@@ -53,6 +53,17 @@ post-commit result drift but does not give cross-session replay.
    with failure, or automatically retry an ambiguous mutation. A caller with
    its original payload may retry with the same key; alternatively it may
    query the receipt and then show an explicit reload/recovery path.
+9. The Leptos SSR store performs one read-only receipt lookup after an
+   ambiguous network/HTTP 408/429/5xx response; a known completed receipt
+   is the only evidence that can turn it into a success acknowledgement.
+   GraphQL business rejections, authorization errors and ordinary HTTP 4xx
+   remain definite errors. An absent or unreadable receipt is reported as
+   `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` (an application-level 503)
+   while retaining the dirty editor draft. This is not an automatic resend
+   and does not imply that an in-flight request has stopped.
+10. Source-only test scenarios cover two independent SQLite connections,
+    duplicate-key replay, competing distinct CAS writers, and an opt-in
+    PostgreSQL two-session test. No database test has been executed.
 
 ## Relation to the shared owner receipt primitive
 

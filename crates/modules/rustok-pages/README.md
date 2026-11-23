@@ -123,6 +123,16 @@ These are gaps in what the runtime actually does, not accepted design:
   GraphQL, SSR/CSR and browser E2E verification are still required. See
   [Pages save receipt ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
 
+  After an uncertain HTTP result (`Network`, 408, 429, or 5xx), the SSR
+  Page Builder store performs one read-only lookup of the same receipt ID.
+  It acknowledges the save only when that lookup returns the original stored
+  response; a missing or failed lookup yields stable
+  `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, maps to an unsaved draft and is
+  represented as 503 rather than a client-validation failure. Deterministic
+  GraphQL rejections, authentication failures and ordinary HTTP 4xx are
+  **not** converted into apparent successes. A missing receipt still cannot
+  prove an in-flight request will not commit.
+
 - **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors
   schedule/cancel a publication (`pagePublishSchedule`, `schedulePagePublish`,
   `cancelPagePublish`; REST `/api/admin/pages/{id}/publish-schedule`; admin schedule

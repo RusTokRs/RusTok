@@ -159,8 +159,16 @@ tenant, actor, page, expected revision, locale and canonical project.
 See the [save receipts ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
 Restore/lifecycle commands do not yet have this save receipt contract.
 PostgreSQL/MySQL use the page lock; SQLite may return busy/locked errors.
-The new migration supports PostgreSQL/SQLite, not MySQL; backend concurrency
-checks and production release sign-off remain pending.
+The new migration supports PostgreSQL/SQLite, not MySQL. The SSR Page Builder
+adapter performs one receipt query after ambiguous network/HTTP 408, 429 or 5xx
+save errors and accepts only a stored acknowledgement for that request. When
+the receipt is absent or cannot be read, it returns stable
+`PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` and preserves the unsaved draft; this
+maps to an application-level 503 problem, not a 422 validation rejection.
+GraphQL/auth/ordinary HTTP 4xx failures are never silently reconciled. The
+query is not an automatic retry or proof of a failed operation. Independent
+SQLite-connection and opt-in PostgreSQL race tests are authored, but remain
+unexecuted; production release sign-off is pending.
 
 ## Events
 

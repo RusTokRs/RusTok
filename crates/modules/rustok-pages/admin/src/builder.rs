@@ -1,3 +1,4 @@
+#[cfg(feature = "ssr")]
 use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;

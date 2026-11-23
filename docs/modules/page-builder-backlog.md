@@ -1228,3 +1228,17 @@ checks.
   SQLite transactions with real independent connections, mounted SSR/CSR/
   Dioxus, CSP, rich-text, drag/drop/resize, and all maintainer verification.
   Draft PR #4788 must not be merged until these checks are complete.
+
+2026-11-23 follow-up on ambiguous result and concurrent database access
+(source-only): the Leptos SSR Page Builder store now probes
+`pageDocumentSaveReceipt` after Network, HTTP 408, HTTP 429 or 5xx save
+transport errors, and accepts a saved result only if the authoritative
+Pages receipt resolves. The unknown status `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`
+returns a 503-level application problem and preserves the dirty draft;
+deterministic GraphQL/business and auth errors never use this recovery.
+Added two-pool SQLite race regressions (duplicate identity and competing
+distinct CAS), an opt-in two-session PostgreSQL race/receipt lookup
+harness, and scoped source tests for transport classification and
+unknown-outcome status. **All remain unexecuted.** Browser-side persistent
+operation handling across reloads, user-facing reconciliation controls,
+MySQL schema, deployment verification and full Dioxus gestures remain open.
