@@ -376,44 +376,46 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() {
             return Err(WorkflowError::NotFound(workflow_id));
         }
-        // Increment failure_count
-        workflow::Entity::update_many()
-            .col_expr(
-                workflow::Column::FailureCount,
-                sea_orm::sea_query::ExprTrait::add(
-                    sea_orm::sea_query::Expr::col(workflow::Column::FailureCount),
-                    1,
-                ),
-            )
-            .col_expr(
-                workflow::Column::UpdatedAt,
-                Expr::value(Utc::now().fixed_offset()),
-            )
-            .filter(workflow::Column::Id.eq(workflow_id))
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .exec(&self.db)
-            .await?;
+        // A zero threshold cannot represent a positive number of consecutive
+        // failures. Converting a large u32 to i32 with `as` used to wrap.
+        let threshold = i32::try_from(auto_disable_threshold).ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "auto_disable_threshold must be between 1 and i32::MAX".into(),
+            ))?;
 
-        // Re-fetch to check threshold
-        let wf = WorkflowEntity::find_by_id(workflow_id)
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
-
-        if wf.failure_count >= auto_disable_threshold as i32 {
-            let mut model: WorkflowActiveModel = wf.into();
+        // The failure counter and an optional transition to paused must be
+        // serialized with manual updates, restores and concurrent failures.
+        // A failed/paused workflow must not be re-paused based on a stale read,
+        // nor should it overwrite a newer operator status transition.
+        let transaction = self.db.begin().await?;
+        let existing = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        if existing.status != WorkflowStatus::Active {
+            transaction.commit().await?;
+            return Ok(());
+        }
+        let next_failure_count = existing.failure_count.checked_add(1)
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "workflow consecutive failure counter exhausted".into(),
+            ))?;
+        let should_disable = next_failure_count >= threshold;
+        let mut model: WorkflowActiveModel = existing.into();
+        model.failure_count = Set(next_failure_count);
+        model.updated_at = Set(Utc::now().fixed_offset());
+        if should_disable {
             model.status = Set(WorkflowStatus::Paused);
             model.auto_disabled_at = Set(Some(Utc::now().fixed_offset()));
-            model.updated_at = Set(Utc::now().fixed_offset());
-            model.update(&self.db).await?;
+        }
+        model.update(&transaction).await?;
+        transaction.commit().await?;
 
+        if should_disable {
             tracing::warn!(
                 workflow_id = %workflow_id,
-                threshold = auto_disable_threshold,
+                threshold,
                 "Workflow auto-disabled after consecutive failures"
             );
         }
-
         Ok(())
     }
 
