@@ -94,8 +94,12 @@ test('overlapping local filter navigations and browser history cannot replay sta
     hookSource,
     /debouncedSetFilterValues\(filterUpdates, filterNavigationVersion\.current\)/
   );
-  assert.match(hookSource, /routeQuerySignature\(routeQuery\)/);
+  assert.match(hookSource, /routeQuerySignature\(currentRouteQuery\)/);
   assert.match(hookSource, /routeQuery\?: Record<string, string>/);
+  assert.match(hookSource, /mergeTableStateIntoRouteQuery\(/);
+  assert.match(hookSource, /filterValues,\s*page,\s*perPage/);
+  assert.match(hookSource, /currentRouteQuery = routeQuery/);
+
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/);
   assert.match(hookSource, /Object\.prototype\.hasOwnProperty\.call\(expectedQuery, PAGE_KEY\)/);
 });
