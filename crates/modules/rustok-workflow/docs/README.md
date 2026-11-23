@@ -60,8 +60,8 @@ Completed and failed execution receipts are replayed without executing
 steps twice. An existing running or `reconciliation_required` receipt is
 *never* interpreted as safe to replay. External HTTP/notification/script
 errors enter reconciliation rather than performing blind `OnError::Retry`
-or `OnError::Skip`; validation errors that run before effects retain typed
-validation failures. The event listener now awaits its execution instead of
+or `OnError::Skip`. A validation-looking error from a pluggable external
+executor does not prove the effect was never sent. The event listener now awaits its execution instead of
 acknowledging after a detached spawn.
 
 The tenant-scoped REST GET `/api/workflows/cron/reconciliation` and GraphQL
