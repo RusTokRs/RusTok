@@ -1572,6 +1572,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         page_id: &str,
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
+        request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         validate_operation_id(operation_id)?;
         let Some(record) = self.load_record(token, owner)? else {
