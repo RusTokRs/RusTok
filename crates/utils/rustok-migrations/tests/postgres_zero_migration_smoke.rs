@@ -276,6 +276,27 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
         let fixture = load_contract_fixtures(&[target])?
             .pop()
             .ok_or("missing tenant locale backfill fixture")?;
+        let existing_locales = BackfillFixture {
+            id: "tenant-existing-locales".into(),
+            migration: target.into(),
+            setup_sql: r#"
+                INSERT INTO tenants (id, name, slug, default_locale)
+                VALUES ('33000000-0000-0000-0000-000000000002', 'Localized tenant', 'localized-tenant-fixture', 'fr');
+                INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale)
+                VALUES
+                    ('33000000-0000-0000-0000-000000000011', '33000000-0000-0000-0000-000000000002', 'fr', 'French', 'Francais', true, true, NULL),
+                    ('33000000-0000-0000-0000-000000000012', '33000000-0000-0000-0000-000000000002', 'fr-CA', 'Canadian French', 'Francais canadien', false, false, 'fr');
+            "#.into(),
+            assertion_sql: r#"
+                SELECT (COUNT(*) = 2 AND COUNT(*) FILTER (WHERE policy_revision = 0) = 2
+                    AND COUNT(*) FILTER (WHERE id = '33000000-0000-0000-0000-000000000011'
+                        AND locale = 'fr' AND is_default AND is_enabled AND fallback_locale IS NULL) = 1
+                    AND COUNT(*) FILTER (WHERE id = '33000000-0000-0000-0000-000000000012'
+                        AND locale = 'fr-CA' AND NOT is_default AND NOT is_enabled AND fallback_locale = 'fr') = 1
+                ) AS passed
+                FROM tenant_locales WHERE tenant_id = '33000000-0000-0000-0000-000000000002';
+            "#.into(),
+        };
         let plan = Migrator::migrations();
         let index = plan
             .iter()
@@ -299,18 +320,19 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
         runner.close().await?;
         prefix?;
 
-        let mut rejected = fixture.clone();
+        let mut rejected = existing_locales.clone();
         rejected.assertion_sql = "SELECT false AS passed".into();
-        let error = apply_migrations_and_assert_schema(&url, true, false, &[rejected])
+        let error = apply_migrations_and_assert_schema(&url, true, false, &[fixture.clone(), rejected])
             .await
             .err()
-            .ok_or("a failing boundary assertion was accepted")?;
+            .ok_or("a failing second boundary assertion was accepted")?;
         if !error
             .to_string()
-            .contains(&format!("failed after migration {target}"))
+            .contains(&format!("{} failed after migration {target}", existing_locales.id))
         {
             return Err(format!("unexpected boundary failure: {error}").into());
         }
+        let fixtures = [fixture, existing_locales];
         let db = connect_postgres(&url).await?;
         let check = async {
             if !migration_is_applied(&db, target).await?
@@ -318,16 +340,16 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
             {
                 return Err("executor advanced beyond the failing fixture boundary".into());
             }
-            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            assert_backfill_results(&db, &fixtures).await?;
             // A completed target cannot silently count as pending fixture coverage.
-            if apply_migrations_and_assert_schema(&url, true, false, std::slice::from_ref(&fixture))
+            if apply_migrations_and_assert_schema(&url, true, false, &fixtures)
                 .await
                 .is_ok()
             {
                 return Err("already-applied fixture target was accepted".into());
             }
             apply_migrations_and_assert_schema(&url, true, false, &[]).await?;
-            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            assert_backfill_results(&db, &fixtures).await?;
             Ok::<_, Box<dyn std::error::Error>>(())
         }
         .await;

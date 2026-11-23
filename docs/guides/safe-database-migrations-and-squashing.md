@@ -579,6 +579,12 @@ the runner completed the remaining composition and the tenant still had one
 enabled default locale at policy revision zero. The fixture database was
 removed. [Backfill recovery test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
 
+The expanded PostgreSQL 16.13 regression uses two tenants at the same boundary.
+It seeds a default locale for the tenant without locales and preserves the
+other tenant's existing locale IDs, default, disabled locale and fallback.
+A deliberate failure in the second case stops before the next migration.
+Both data assertions pass at the stopped boundary and after resuming the chain.
+
 The integration of upstream `f94c88fc06` repeated the recovery checks on
 PostgreSQL 16.13. The stepwise suite covered transaction failure, cancellation,
 connection and process loss, and restart. The composed smoke applied all 598
