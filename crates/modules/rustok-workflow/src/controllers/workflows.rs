@@ -64,6 +64,12 @@ fn map_workflow_error(
             "Workflow cron reconciliation requires valid evidence",
             "invalid_reconciliation_evidence",
         ),
+        WorkflowError::WorkflowDeletionBlocked(_) => (
+            StatusCode::CONFLICT,
+            "workflow_deletion_blocked",
+            "Workflow has pending or unresolved execution history",
+            "unresolved_execution_blocks_deletion",
+        ),
         WorkflowError::ExecutionOutcomeUncertain(_) => (
             StatusCode::CONFLICT,
             "workflow_execution_reconciliation_required",
