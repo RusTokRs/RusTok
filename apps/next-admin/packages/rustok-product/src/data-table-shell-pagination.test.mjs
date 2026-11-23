@@ -51,7 +51,7 @@ test('browser history invalidates pending debounced filter writes without cancel
   assert.match(hookSource, /filterNavigationVersion = React\.useRef\(0\)/);
   assert.match(hookSource, /version !== filterNavigationVersion\.current/);
   assert.match(hookSource, /pendingLocalFilterSignature\.current === routeFilters/);
-  assert.match(hookSource, /React\.useLayoutEffect\(/);
+  assert.match(hookSource, /useIsomorphicLayoutEffect\(/);
   assert.match(hookSource, /filterNavigationVersion\.current \+= 1/);
   assert.match(
     hookSource,
