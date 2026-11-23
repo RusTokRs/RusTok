@@ -1668,7 +1668,11 @@ export class FlyBrowserAdapter {
   async postIntent(input, requestOptions = {}) {
     if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
     if (!this.intentEndpoint) return null;
-    const request = normalizedIntent(this, input);
+    const preserveOriginalRequest = isObject(requestOptions) && requestOptions.preserveOriginalRequest === true;
+    const retryPending = isObject(requestOptions) && requestOptions.retryPending === true;
+    let request = preserveOriginalRequest && isObject(input)
+      ? { ...input, payload: isObject(input.payload) ? { ...input.payload } : {} }
+      : normalizedIntent(this, input);
     if (!request.intent) return null;
 
     const limit = limitFor(
@@ -1686,6 +1690,14 @@ export class FlyBrowserAdapter {
     const authoritative = !READ_ONLY_INTENTS.has(request.intent);
     if (authoritative && this.peerWriteConflict) {
       return this.rejectPeerWriteIntent(request);
+    }
+    if (
+      authoritative &&
+      this.requiresOperationReceipts &&
+      this.pendingOperationUnresolved &&
+      !retryPending
+    ) {
+      return this.rejectPendingOperation(request);
     }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
@@ -1705,10 +1717,44 @@ export class FlyBrowserAdapter {
         });
       });
     }
+    if (authoritative && this.requiresOperationReceipts) {
+      if (!request.operation_id) request.operation_id = createOperationId();
+      if (
+        !request.operation_id ||
+        !request.draft_token ||
+        !Number.isSafeInteger(request.draft_generation)
+      ) {
+        reportBrowserProblem(this, {
+          result: {
+            code: "PENDING_OPERATION_IDENTITY_UNAVAILABLE",
+            error: "The editor could not establish a durable operation identity and draft generation. No request was sent.",
+          },
+          request,
+        }, "PENDING_OPERATION_IDENTITY_UNAVAILABLE");
+        return null;
+      }
+      if (!writePendingOperation(this.pageId, request)) {
+        reportBrowserProblem(this, {
+          result: {
+            code: "PENDING_OPERATION_STORAGE_UNAVAILABLE",
+            error: "The pending operation could not be stored in this browser tab. No request was sent; enable session storage or use a supported browser.",
+          },
+          request,
+        }, "PENDING_OPERATION_STORAGE_UNAVAILABLE");
+        return null;
+      }
+      this.pendingOperation = {
+        at: Date.now(),
+        request: JSON.parse(JSON.stringify(request)),
+      };
+      if (!retryPending) this.pendingOperationUnresolved = false;
+    }
     if (authoritative) this.authoritativeInFlight = true;
     // A failed, redirected, unconfirmed or navigation-producing write does not
     // establish the revision the next queued mutation must use.
     let acknowledgedAuthoritativeResult = false;
+    let operationCommitted = false;
+    let shouldResolvePendingAfterRequest = false;
 
     const transport = normalizedTransportOptions(requestOptions);
     const abort = newAbortMetadata();
@@ -1793,6 +1839,48 @@ export class FlyBrowserAdapter {
       const responseState = isObject(result)
         ? (isObject(result.result) ? result.result : result)
         : null;
+      const operationReceiptCommitted = this.requiresOperationReceipts &&
+        authoritative &&
+        response.ok &&
+        isObject(result) &&
+        result.operation_status === "committed" &&
+        result.operation_id === request.operation_id;
+      if (operationReceiptCommitted) {
+        operationCommitted = true;
+        this.clearPendingOperation();
+      }
+      const resolvedPendingReceipt = request.intent === "resolve_operation" &&
+        response.ok &&
+        isObject(result) &&
+        result.operation_status === "committed" &&
+        result.operation_id === request.operation_id;
+      if (resolvedPendingReceipt) {
+        this.clearPendingOperation();
+      } else if (
+        request.intent === "resolve_operation" &&
+        response.ok &&
+        isObject(result) &&
+        result.operation_status === "unknown"
+      ) {
+        this.pendingOperationUnresolved = true;
+        showPendingOperationNotice(this, "unknown");
+      }
+      if (request.intent === "resolve_operation" && !response.ok) {
+        this.pendingOperationUnresolved = true;
+        showPendingOperationNotice(this, "unavailable");
+      }
+      if (authoritative && this.requiresOperationReceipts && !operationReceiptCommitted) {
+        if (response.ok) {
+          this.pendingOperationUnresolved = true;
+          shouldResolvePendingAfterRequest = true;
+        } else if ([400, 401, 403, 404, 413, 422].includes(response.status)) {
+          // These responses are deterministic pre-commit rejections.
+          this.clearPendingOperation();
+        } else {
+          this.pendingOperationUnresolved = true;
+          shouldResolvePendingAfterRequest = true;
+        }
+      }
       acknowledgedAuthoritativeResult = authoritative &&
         response.ok &&
         responseState !== null &&
@@ -1800,7 +1888,8 @@ export class FlyBrowserAdapter {
         nonEmptyString(responseState.project_hash) !== null &&
         !isObject(result.save_failure) &&
         result.reload !== true &&
-        typeof result.location !== "string";
+        typeof result.location !== "string" &&
+        (!this.requiresOperationReceipts || operationReceiptCommitted);
       const current = authoritative
         ? requestGeneration === this.latestAuthoritativeRequestGeneration
         : !readStartedDuringWrite &&
@@ -1820,7 +1909,9 @@ export class FlyBrowserAdapter {
         }),
       );
       if (current) {
-        if (this.peerWriteConflict) {
+        if (request.intent === "resolve_operation" && result?.operation_status === "unknown") {
+          updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
+        } else if (this.peerWriteConflict) {
           updateNetworkIndicator(this.root, "error", PEER_WRITE_CONFLICT_CODE);
         } else if (response.ok && (!authoritative || acknowledgedAuthoritativeResult)) {
           updateNetworkIndicator(this.root, "saved");
@@ -1910,6 +2001,15 @@ export class FlyBrowserAdapter {
       if (current) {
         updateNetworkIndicator(this.root, "error", error);
       }
+      if (authoritative && this.requiresOperationReceipts && this.pendingOperation) {
+        this.pendingOperationUnresolved = true;
+        shouldResolvePendingAfterRequest = true;
+        showPendingOperationNotice(this, "checking");
+      }
+      if (request.intent === "resolve_operation") {
+        this.pendingOperationUnresolved = true;
+        showPendingOperationNotice(this, "unavailable");
+      }
       if (controller.signal.aborted) {
         this.root.dispatchEvent(
           new CustomEvent("fly:browser-intent-aborted", {
@@ -1948,6 +2048,13 @@ export class FlyBrowserAdapter {
       if (authoritative) {
         this.authoritativeInFlight = false;
         if (
+          this.requiresOperationReceipts &&
+          this.pendingOperation &&
+          !operationCommitted
+        ) {
+          this.pendingOperationUnresolved = true;
+        }
+        if (
           !acknowledgedAuthoritativeResult ||
           this.peerWriteConflict ||
           this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED
@@ -1976,6 +2083,9 @@ export class FlyBrowserAdapter {
             break;
           }
         }
+      }
+      if (shouldResolvePendingAfterRequest) {
+        queueMicrotask(() => void this.resolvePendingOperation());
       }
     }
   }
