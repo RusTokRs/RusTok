@@ -30,6 +30,18 @@ const FILTER_QUERY_KEYS = new Set([
   'sort_direction'
 ]);
 
+function hasFacetCode(entry: string, code: string): boolean {
+  const equalsAt = entry.indexOf('=');
+  return (
+    equalsAt > 0 &&
+    entry.slice(0, equalsAt).trim().toLowerCase() === code.toLowerCase()
+  );
+}
+
+function hasFacetValue(entry: string, code: string, value: string): boolean {
+  return hasFacetCode(entry, code) && entry.slice(entry.indexOf('=') + 1).trim() === value;
+}
+
 export function ProductCatalogFilters({
   categoryOptions,
   attributeOptions,
@@ -66,15 +78,15 @@ export function ProductCatalogFilters({
 
   function toggleFacetValue(code: string, value: string) {
     const entry = `${code}=${value}`;
-    const nextFilters = attributeFilters.includes(entry)
-      ? attributeFilters.filter((item) => item !== entry)
+    const nextFilters = attributeFilters.some((item) => hasFacetValue(item, code, value))
+      ? attributeFilters.filter((item) => !hasFacetValue(item, code, value))
       : [...attributeFilters, entry];
     return buildHref(nextFilters);
   }
 
   function clearFacet(code: string) {
     return buildHref(
-      attributeFilters.filter((entry) => !entry.startsWith(`${code}=`))
+      attributeFilters.filter((entry) => !hasFacetCode(entry, code))
     );
   }
 
@@ -181,8 +193,8 @@ export function ProductCatalogFilters({
                 {facet.values.length > 0 ? (
                   <ul className='space-y-1'>
                     {facet.values.map((item) => {
-                      const selected = attributeFilters.includes(
-                        `${facet.code}=${item.value}`
+                      const selected = attributeFilters.some((entry) =>
+                        hasFacetValue(entry, facet.code, item.value)
                       );
                       return (
                         <li key={item.value}>
@@ -211,7 +223,7 @@ export function ProductCatalogFilters({
                   </p>
                 )}
                 {attributeFilters.some((entry) =>
-                  entry.startsWith(`${facet.code}=`)
+                  hasFacetCode(entry, facet.code)
                 ) && (
                   <Link
                     href={clearFacet(facet.code)}
