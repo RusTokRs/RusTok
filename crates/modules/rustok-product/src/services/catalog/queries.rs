@@ -545,7 +545,7 @@ pub(super) fn product_title_search_condition(
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
                   AND pt.tenant_id = ?
-                  AND pt.title LIKE ? ESCAPE '!'
+                  AND LOWER(pt.title) LIKE LOWER(?) ESCAPE '!'
             )"
         }
         _ => {
@@ -554,7 +554,7 @@ pub(super) fn product_title_search_condition(
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
                   AND pt.tenant_id = $1
-                  AND pt.title LIKE $2 ESCAPE '!'
+                  AND LOWER(pt.title) LIKE LOWER($2) ESCAPE '!'
             )"
         }
     };
@@ -678,6 +678,7 @@ mod product_title_search_tenant_tests {
             assert!(statement.sql.contains("pt.product_id = products.id"));
             assert!(statement.sql.contains("pt.tenant_id ="));
             assert!(statement.sql.contains("ESCAPE '!'"));
+            assert!(statement.sql.contains("LOWER(pt.title) LIKE LOWER("));
             assert_eq!(statement.values.as_ref().map(|v| v.0.len()), Some(2));
         }
     }
