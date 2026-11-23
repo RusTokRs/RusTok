@@ -8,7 +8,7 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{WorkflowCronReconciliationItem, WorkflowError, WorkflowExecutionResponse, WorkflowService};
+use crate::{WorkflowCronReconciliationItem, WorkflowUnconfirmedExecutionItem, WorkflowError, WorkflowExecutionResponse, WorkflowService};
 
 fn map_workflow_execution_error(
     error: WorkflowError,
@@ -171,6 +171,26 @@ pub async fn get_execution(
             )
         })?;
     Ok(Json(execution))
+}
+
+/// Review legacy or event-driven execution receipts whose results remain
+/// uncertain. These receipts have no generic safe replay operation.
+pub async fn list_unconfirmed_executions(
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+) -> HttpResult<Json<Vec<WorkflowUnconfirmedExecutionItem>>> {
+    ensure_execution_permission(
+        &auth,
+        &[Permission::WORKFLOW_EXECUTIONS_LIST],
+        "Permission denied: workflow_executions:list required",
+    )?;
+    let items = crate::services::unconfirmed_executions_for_tenant(
+        &runtime.db_clone(), tenant.id, 100,
+    ).await.map_err(|error| map_workflow_execution_error(
+        error, "list_unconfirmed_executions", tenant.id, None, None,
+    ))?;
+    Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
 /// Review-only projection. A stale claim cannot be retried from this endpoint.
