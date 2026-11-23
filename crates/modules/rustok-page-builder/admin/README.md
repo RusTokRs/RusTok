@@ -238,3 +238,9 @@ project hash, or command sequence before calling a facade. Previously a mismatch
 was silently turned into `None` and the request sequence was ignored. Concurrent preview requests
 are blocked instead of replacing one another's request snapshot. All of these are source changes
 awaiting the final user-led checks.
+
+The Dioxus PageBuilderAdmin host now keys its child session by owning page ID and server
+revision. A route/document switch or an authoritative revision replacement remounts the editor
+instead of reusing `use_signal` state from the prior document. Same-revision local edits remain
+inside the existing session; consumers mounting the inner WithController component directly
+must provide their own stable instance key for owner changes. Source regression authored, not run.

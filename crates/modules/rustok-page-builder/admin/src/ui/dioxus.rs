@@ -215,6 +215,18 @@ fn dispatch_facade_effects(
     }
 }
 
+/// A session is owned by an exact page and its server revision. A new
+/// owner/revision is a new editor session: reusing the old Dioxus hook storage
+/// would leave the previous page's draft and selection mounted.
+fn controller_session_key(controller: &AdminCanvasController) -> String {
+    format!(
+        "page:{}:{}|revision:{}",
+        controller.page_id().len(),
+        controller.page_id(),
+        controller.revision_id(),
+    )
+}
+
 /// Dioxus PageBuilderAdmin component.
 #[component]
 pub fn PageBuilderAdmin() -> Element {
@@ -223,8 +235,11 @@ pub fn PageBuilderAdmin() -> Element {
     let locale = route_context.locale;
 
     match host_context {
-        Some(context) => rsx! {
+        Some(context) => {
+            let session_key = controller_session_key(&context.controller);
+            rsx! {
             PageBuilderAdminWithController {
+                key: "{session_key}",
                 controller: context.controller,
                 facade: context.facade,
                 trait_schemas: context.trait_schemas,
@@ -235,6 +250,7 @@ pub fn PageBuilderAdmin() -> Element {
                 runtime_scenarios: context.runtime_scenarios,
                 runtime_publish_gate_policy: context.runtime_publish_gate_policy,
                 adapter_workspace: context.adapter_workspace,
+            }
             }
         },
         None => {
@@ -528,5 +544,20 @@ mod props_regression_tests {
         let mut workspace = original.clone();
         workspace.adapter_workspace = true;
         assert!(original != workspace, "mount mode must trigger prop update");
+    }
+
+    #[test]
+    fn session_keys_are_scoped_to_page_and_revision() {
+        let doc = json!({
+            "pages": [{ "id": "home", "component": { "id": "root", "type": "wrapper" } }]
+        });
+        let home_v1 = AdminCanvasController::new("home", "rev-1", doc.clone())
+            .expect("first page");
+        let home_v2 = AdminCanvasController::new("home", "rev-2", doc.clone())
+            .expect("second revision");
+        let other = AdminCanvasController::new("other", "rev-1", doc)
+            .expect("second page");
+        assert_ne!(controller_session_key(&home_v1), controller_session_key(&home_v2));
+        assert_ne!(controller_session_key(&home_v1), controller_session_key(&other));
     }
 }
