@@ -7,9 +7,6 @@ use validator::Validate;
 
 use super::{PriceResponse, VariantAxisValueInput, VariantAxisValueResponse};
 
-/// Product-wide maximum number of SKUs accepted by the owner and complete projections.
-pub const MAX_PRODUCT_VARIANTS: usize = 256;
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct CreateVariantInput {
     #[validate(length(max = 100, message = "SKU must be max 100 characters"))]
