@@ -425,24 +425,68 @@ pub(super) async fn execute_claim(
 
     let recorded = WorkflowExecutionEntity::find()
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
+        .filter(workflow_execution::Column::TenantId.eq(item.tenant_id))
         .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
         .one(db).await?;
-    match (result, recorded) {
-        (Ok(id), Some(execution))
-            if id == execution.id
-                && matches!(execution.status, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::TimedOut) =>
+    // The journal is the authority. If the engine returned a transport error
+    // after writing a terminal receipt, do not overwrite that known result
+    // with an ambiguous firing status.
+    let (next_status, reason) = match recorded.as_ref() {
+        Some(execution)
+            if execution.id == execution_id
+                && matches!(execution.status,
+                    ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::TimedOut
+                ) =>
         {
-            let _ = settle_claim(db, &item, token, firing::COMPLETED, Some(id),
-                Some(if execution.status == ExecutionStatus::Completed { "completed" } else { "execution_failed" })
-            ).await?;
+            if let Err(error) = &result {
+                tracing::warn!(
+                    firing_id = %item.id, %error,
+                    "Workflow engine returned an error after a durable terminal journal"
+                );
+            }
+            (
+                firing::COMPLETED,
+                if execution.status == ExecutionStatus::Completed {
+                    "completed"
+                } else {
+                    "execution_failed"
+                },
+            )
         }
-        (_, maybe_execution) => {
-            let _ = settle_claim(db, &item, token, firing::RECONCILIATION_REQUIRED,
-                maybe_execution.map(|execution| execution.id),
-                Some("execution_outcome_ambiguous")).await?;
-        }
+        _ => (firing::RECONCILIATION_REQUIRED, "execution_outcome_ambiguous"),
+    };
+    // The reservation wrote this ID before any external effect. Keep the ID
+    // even if a subsequent journal lookup fails, so operators can investigate.
+    if !settle_claim(db, &item, token, next_status, Some(execution_id), Some(reason)).await? {
+        tracing::warn!(
+            firing_id = %item.id,
+            "Cron firing was already fenced by a concurrent recovery decision"
+        );
     }
     Ok(())
+}
+
+/// Quarantine only if the SAME attempt remains older than the cutoff.
+/// A previously selected candidate may have heartbeated since the read:
+/// checking the age again in the update CAS is mandatory.
+async fn quarantine_stale_candidate(
+    db: &DatabaseConnection,
+    item: &firing::Model,
+    cutoff: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> WorkflowResult<bool> {
+    let Some(token) = item.attempt_token else { return Ok(false) };
+    let affected = firing::Entity::update_many()
+        .col_expr(firing::Column::Status, Expr::value(firing::RECONCILIATION_REQUIRED))
+        .col_expr(firing::Column::Reason, Expr::value("stale_attempt_requires_reconciliation"))
+        .col_expr(firing::Column::CompletedAt, Expr::value(at(now)))
+        .filter(firing::Column::Id.eq(item.id))
+        .filter(firing::Column::TenantId.eq(item.tenant_id))
+        .filter(firing::Column::Status.eq(firing::RUNNING))
+        .filter(firing::Column::AttemptToken.eq(token))
+        .filter(firing::Column::ClaimedAt.lt(at(cutoff)))
+        .exec(db).await?.rows_affected;
+    Ok(affected == 1)
 }
 
 /// A crash leaves a running attempt. Time alone does not authorize retry:
@@ -451,19 +495,17 @@ pub(super) async fn quarantine_stale_attempts(
     db: &DatabaseConnection,
     now: DateTime<Utc>,
 ) -> WorkflowResult<u64> {
+    let cutoff = now - ChronoDuration::minutes(STALE_ATTEMPT_MINUTES);
     let stale = firing::Entity::find()
         .filter(firing::Column::Status.eq(firing::RUNNING))
-        .filter(firing::Column::ClaimedAt.lt(at(now - ChronoDuration::minutes(STALE_ATTEMPT_MINUTES))))
+        .filter(firing::Column::ClaimedAt.lt(at(cutoff)))
         .order_by_asc(firing::Column::ClaimedAt)
         .limit(STALE_SCAN_LIMIT)
         .all(db).await?;
     let mut quarantined = 0;
     for item in stale {
-        if let Some(token) = item.attempt_token {
-            if settle_claim(db, &item, token, firing::RECONCILIATION_REQUIRED,
-                item.execution_id, Some("stale_attempt_requires_reconciliation")).await? {
-                quarantined += 1;
-            }
+        if quarantine_stale_candidate(db, &item, cutoff, now).await? {
+            quarantined += 1;
         }
     }
     Ok(quarantined)
