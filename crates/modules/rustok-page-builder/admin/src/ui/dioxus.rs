@@ -139,26 +139,27 @@ fn dispatch_facade_effects(
                 };
                 if let PageBuilderCapabilityRequest::Preview(input) = &request {
                     let mut state = session.write();
-                    if state.preview_in_progress && state.preview_request.is_none() {
-                        state.fail("Preview is already in progress");
+                    if state.preview_in_progress {
+                        // An already prepared preview still has an in-flight
+                        // response. Do not allow a second request to steal its
+                        // correlation snapshot or clear its status on completion.
+                        state.fail("Preview already in progress");
                         continue;
                     }
-                    if !state.preview_in_progress {
-                        // Browser-origin previews supply runtime context in the
-                        // request instead of calling prepare_server_preview_request.
-                        let context = input.runtime.context.clone();
-                        let scenario = input.runtime.scenario_id.clone();
-                        state.runtime_context = context.clone();
-                        state.runtime_context_configured = true;
-                        state.active_runtime_scenario = scenario.clone();
-                        state.preview_request = Some((
-                            state.controller.editor().revision().project_hash,
-                            state.controller.active_page_index(),
-                            context,
-                            scenario,
-                        ));
-                        state.preview_in_progress = true;
-                    }
+                    // Browser-origin previews supply runtime context in the
+                    // request instead of calling prepare_server_preview_request.
+                    let context = input.runtime.context.clone();
+                    let scenario = input.runtime.scenario_id.clone();
+                    state.runtime_context = context.clone();
+                    state.runtime_context_configured = true;
+                    state.active_runtime_scenario = scenario.clone();
+                    state.preview_request = Some((
+                        state.controller.editor().revision().project_hash,
+                        state.controller.active_page_index(),
+                        context,
+                        scenario,
+                    ));
+                    state.preview_in_progress = true;
                 }
                 spawn(async move {
                     let outcome = facade.execute(request).await;
@@ -368,20 +369,50 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
-                    state.last_error = None;
+                    // A command from a stale workspace must never dispatch its
+                    // asynchronous persistence effect against a newer document.
                     let current_hash = state.controller.editor().revision().project_hash;
-                    result.effects.into_iter().map(|effect| match effect {
-                        BrowserIntentEffect::Announce { message } =>
-                            EditorSessionEffect::Announce(message),
-                        BrowserIntentEffect::Request { request, expected_hash, .. } => {
-                            // The request was produced synchronously by this
-                            // controller; never substitute a mismatched hash.
-                            let expected_hash = expected_hash
-                                .filter(|hex| hex == &current_hash.hex())
-                                .map(|_| current_hash);
-                            EditorSessionEffect::ExecuteRequest { request, expected_hash }
+                    let current_sequence = state.controller.editor().revision().command_sequence;
+                    if result.page_id != state.controller.page_id()
+                        || result.revision_id != state.controller.revision_id()
+                        || result.project_hash != current_hash.hex()
+                        || result.command_sequence != current_sequence
+                    {
+                        state.fail("Browser workspace response no longer matches the active document");
+                        return;
+                    }
+                    let mut effects = Vec::new();
+                    for effect in result.effects {
+                        match effect {
+                            BrowserIntentEffect::Announce { message } => {
+                                effects.push(EditorSessionEffect::Announce(message));
+                            }
+                            BrowserIntentEffect::Request {
+                                request,
+                                expected_hash,
+                                command_sequence,
+                            } => {
+                                if command_sequence != current_sequence {
+                                    state.fail("Browser workspace request has a stale command sequence");
+                                    return;
+                                }
+                                let expected_hash = match expected_hash {
+                                    Some(hex) if hex == current_hash.hex() => Some(current_hash),
+                                    Some(_) => {
+                                        state.fail("Browser workspace request has a mismatched project hash");
+                                        return;
+                                    }
+                                    None => None,
+                                };
+                                effects.push(EditorSessionEffect::ExecuteRequest {
+                                    request,
+                                    expected_hash,
+                                });
+                            }
                         }
-                    }).collect::<Vec<_>>()
+                    }
+                    state.last_error = None;
+                    effects
                 }
                 Err(error) => {
                     state.fail(error.to_string());

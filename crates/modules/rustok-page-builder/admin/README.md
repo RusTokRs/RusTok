@@ -232,3 +232,9 @@ All framework workspace Publish effects now honor the same runtime publish gate 
 standard toolbar flow. Leptos re-evaluates the gate in `apply_browser_result`, while Dioxus
 checks it before starting a facade save; neither workspace can bypass host runtime readiness
 policy merely by producing a direct browser intent request.
+
+Dioxus workspace effect handling now rejects a mismatched owning document, server revision,
+project hash, or command sequence before calling a facade. Previously a mismatched effect hash
+was silently turned into `None` and the request sequence was ignored. Concurrent preview requests
+are blocked instead of replacing one another's request snapshot. All of these are source changes
+awaiting the final user-led checks.
