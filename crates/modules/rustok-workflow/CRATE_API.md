@@ -1,5 +1,15 @@
 # rustok-workflow / CRATE_API
 
+## Schedule revision consistency
+
+- All definition edits (including workflow step graph changes and restore)
+  advance `updated_at` monotonically by at least 1 microsecond. Concurrent
+  writers use the existing parent-row transaction lock.
+- A failure counter increment without a state change does not alter the
+  schedule revision. Actual auto-pause does advance the revision.
+- A newly seeded cursor clamps a future-skewed updated timestamp to current
+  UTC, preserving the bounded catch-up horizon.
+
 ## Lifecycle and admission guards
 
 - Cron syntax is validated with the runtime parser when a Workflow enters
