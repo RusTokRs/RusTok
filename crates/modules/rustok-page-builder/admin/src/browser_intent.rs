@@ -58,12 +58,26 @@ pub fn dispatch_browser_intent(
 ) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
     let envelope = envelope.normalized()?;
     validate_revision(controller, &envelope)?;
-    apply_selection_hint(controller, &envelope.payload)?;
-    let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
-    // Non-mutating intents (select/hover/…) get a lightweight result without
-    // the project document; mutating ones keep the full snapshot so any
-    // consumer that still relies on it sees no behavior change (audit §5.1).
-    result(controller, effects, is_mutating_intent(&envelope))
+    let mutating = is_mutating_intent(&envelope);
+    // An intent is one user gesture even when it internally performs several
+    // controller operations (selection hint + insert, duplicate copy + paste,
+    // create/move page + activate). A later failure must not commit only the
+    // first steps. Read-only hot paths without hints keep their clone-free path.
+    let snapshot = (mutating || envelope.payload.get("selected_component_id").is_some())
+        .then(|| controller.clone());
+    let dispatched = (|| {
+        apply_selection_hint(controller, &envelope.payload)?;
+        let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
+        // Read-only intents return lightweight snapshots; mutating ones include
+        // the full document for the consumer's current response contract.
+        result(controller, effects, mutating)
+    })();
+    if dispatched.is_err() {
+        if let Some(snapshot) = snapshot {
+            *controller = snapshot;
+        }
+    }
+    dispatched
 }
 
 fn dispatch_named_intent(
@@ -867,6 +881,21 @@ mod tests {
             assert_eq!(preview.runtime.context, json!({}));
             assert_eq!(preview.runtime.scenario_id, None);
         }
+    }
+
+    #[test]
+    fn browser_intent_failure_restores_selection_and_clipboard_from_the_same_gesture() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let request = intent(
+            "insert_block",
+            json!({
+                "block_id": "unregistered.block",
+                "selected_component_id": "hero"
+            }),
+        );
+        assert!(dispatch_browser_intent(&mut controller, request).is_err());
+        assert_eq!(controller, before);
     }
 
     #[test]

@@ -183,3 +183,10 @@ browser clients must send their observed revision and cannot obtain a fresh one 
 Both Leptos and Dioxus trusted in-process editor workspaces attach their current revision and
 project hash to typed Fly intents before checked dispatch. The SSR page-form contract tests
 simulate that same host binding; no HTTP input is silently upgraded to a current revision.
+
+The browser intent dispatcher now applies selection hints, composed commands and response
+construction as one transactional gesture. A failed insertion or later step rolls the controller
+back instead of leaving a changed selection/clipboard or half-finished page operation. A snapshot
+is taken for mutating intents and intents with selection hints; pure read-only hover/select without
+hints retain the lightweight path. This adds a state snapshot to mutating browser dispatches;
+profile the cost with large projects before certifying performance.
