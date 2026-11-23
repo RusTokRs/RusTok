@@ -255,6 +255,11 @@ selected crates.io cache archives against the committed `Cargo.lock` and
 the extracted files against those archives. It records the cache bytes
 observed during verification. Exact external inputs used during a build and
 non-crates.io sources still require separate provenance.
+For a new `verify-fresh` run, `--registry-cache` checks the cache at both
+ends of each build and verifies that Cargo resolved the package manifests
+from that extraction. The selected build identity then includes the
+matching crate and file digests. This establishes endpoint observations
+for crates.io packages, with generated and transient inputs still open.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.
@@ -497,6 +502,10 @@ the supplied extracted cache. The result is retained under the pilot root
 as `registry-cache-reference.json` with SHA-256
 `2207bc20f110901007d2027f77f565e241f30bd42499881dc57fa8702bd3e0b8`.
 It establishes the observed cache contents for this package selection.
+The build-time check was exercised on an offline Cargo fixture using
+the resolved `hex` 0.4.3 package. Cargo's manifest path matched the inspected
+cache, and both endpoint observations were equal. The regression also
+rejects a different manifest path or modified extracted source bytes.
 
 A separate PostgreSQL 16.13 test on the current composition rolled back the
 Blog index migration, then confirmed that over-width translation data blocks

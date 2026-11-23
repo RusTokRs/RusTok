@@ -57,7 +57,13 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let allowed: &[&str] = match command.as_str() {
         "plan" => &["--reference", "--output"],
-        "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
+        "verify-fresh" => &[
+            "--plan",
+            "--verifier",
+            "--pg-dump",
+            "--admin-url-env",
+            "--registry-cache",
+        ],
         "source-inputs" => &["--commit", "--inputs", "--compare"],
         "bind-inventory" => &["--plan", "--inputs", "--side", "--dep-info", "--build-root"],
         "discover-source-inputs" => &["--commit", "--inventory", "--dep-info", "--build-root"],
@@ -87,6 +93,7 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--verifier")?),
             Path::new(required("--pg-dump")?),
             required("--admin-url-env")?,
+            options.get("--registry-cache").map(Path::new),
         ),
         "source-inputs" => source_inputs::run(
             &root,
@@ -129,7 +136,7 @@ pub fn run(args: &[String]) -> Result<()> {
 fn help() -> Result<()> {
     println!("cargo xtask migrations plan --reference REF [--output target/migrations/RUN]");
     println!(
-        "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
+        "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV [--registry-cache DIR]"
     );
     println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
     println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate] [--dep-info FILE --build-root DIR]");
@@ -659,6 +666,7 @@ fn verify_fresh(
     verifier: &Path,
     pg_dump: &Path,
     admin_env: &str,
+    registry_cache: Option<&Path>,
 ) -> Result<()> {
     let plan_path = root.join(plan_path).canonicalize()?;
     let directory = plan_path.parent().context("plan directory missing")?;
@@ -682,6 +690,7 @@ fn verify_fresh(
         .join(pg_dump)
         .canonicalize()
         .context("--pg-dump requires a file path")?;
+    let registry_cache = registry_cache.map(|cache| root.join(cache));
     let verifier_digest = file_digest(&verifier)?;
     let pg_dump_digest = file_digest(&pg_dump)?;
     ensure!(
@@ -728,6 +737,11 @@ fn verify_fresh(
             };
             let resolution = build_inputs::collect(source, source_snapshot, &target, &host)?;
             let resolution_sha256 = digest(&serde_json::to_vec(&resolution)?);
+            let registry_before = registry_cache
+                .as_deref()
+                .map(|cache| resolution.verify_registry(source, cache))
+                .transpose()
+                .with_context(|| format!("{side} registry inputs before build"))?;
             let build_args = [
                 "build",
                 "--locked",
@@ -799,17 +813,21 @@ fn verify_fresh(
             run_process(&mut export, 30, 4096)
                 .with_context(|| format!("{side} executable migration plan export failed"))?;
             input_digests.insert(plan_output.clone(), file_digest(&plan_output)?);
+            let resolved_after = build_inputs::collect(source, source_snapshot, &target, &host)?;
             ensure!(
-                digest(&serde_json::to_vec(&build_inputs::collect(
-                    source,
-                    source_snapshot,
-                    &target,
-                    &host
-                )?)?)
-                    == resolution_sha256,
+                digest(&serde_json::to_vec(&resolved_after)?) == resolution_sha256,
                 "Cargo resolution changed during build"
             );
-            let identity = serde_json::json!({
+            let registry_after = registry_cache
+                .as_deref()
+                .map(|cache| resolved_after.verify_registry(source, cache))
+                .transpose()
+                .with_context(|| format!("{side} registry inputs after build"))?;
+            ensure!(
+                registry_after == registry_before,
+                "registry source evidence changed during build"
+            );
+            let mut identity = serde_json::json!({
                 "cargo": cargo_version,
                 "rustc": rustc_version,
                 "arguments": build_args,
@@ -823,6 +841,12 @@ fn verify_fresh(
                 "inventory_sha256": input_digests[&plan_output],
                 "compiler_sources": compiler_sources,
             });
+            if let Some(verification) = registry_before {
+                identity["registry_sources"] = serde_json::json!({
+                    "scope": "crates-io-before-and-after-build",
+                    "verification": verification,
+                });
+            }
             build_identity.insert(
                 side,
                 serde_json::json!({

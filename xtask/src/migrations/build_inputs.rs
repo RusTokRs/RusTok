@@ -83,6 +83,8 @@ struct ResolvedPackage {
     features: BTreeSet<String>,
     targets: BTreeSet<ResolvedTarget>,
     dependencies: BTreeSet<ResolvedDependency>,
+    #[serde(skip)]
+    external_manifest: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -105,6 +107,29 @@ struct ResolvedDependency {
     name: String,
     package: String,
     kinds: BTreeSet<DependencyKind>,
+}
+
+impl BuildInputs {
+    pub(super) fn verify_registry(
+        &self,
+        source: &Path,
+        cache: &Path,
+    ) -> Result<source_inputs::RegistryVerification> {
+        let lock = read_source(&source.join("Cargo.lock"))?;
+        let packages = self.packages.iter().filter_map(|(id, package)| {
+            let PackageSource::External { identity } = &package.source else {
+                return None;
+            };
+            Some(source_inputs::ExternalPackage {
+                id,
+                name: &package.name,
+                version: &package.version,
+                identity,
+                manifest: package.external_manifest.as_deref(),
+            })
+        });
+        source_inputs::verify_registry_cache(&lock, &self.lockfile_sha256, cache, packages)
+    }
 }
 
 pub(super) fn native_target(rustc_version: &str) -> Result<String> {
@@ -374,6 +399,10 @@ fn project(
                 features: node.features.iter().cloned().collect(),
                 targets,
                 dependencies,
+                external_manifest: package
+                    .source
+                    .as_ref()
+                    .map(|_| package.manifest_path.clone()),
             },
         );
     }
@@ -719,6 +748,73 @@ mod tests {
         )?;
         assert_eq!(inputs.packages.len(), 1);
         assert_eq!(inputs.source_sha256, fixture.snapshot.sha256);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a Cargo cache with hex 0.4.3 and compiles a small offline fixture"]
+    fn actual_cargo_build_keeps_verified_registry_sources() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let manifest = fixture.root.join(ROOT_MANIFEST);
+        let mut manifest_text = fs::read_to_string(&manifest)?;
+        manifest_text.push_str("\n[dependencies]\nhex = \"=0.4.3\"\n");
+        fs::write(&manifest, manifest_text)?;
+        fs::write(
+            fixture
+                .root
+                .join("crates/utils/rustok-migrations/src/lib.rs"),
+            "pub fn observed() -> String { hex::encode([0xff]) }\n",
+        )?;
+        let mut lock = build_command("cargo", &fixture.root)?;
+        lock.args(["generate-lockfile", "--offline"]);
+        run_process(&mut lock, 60, 4096)?;
+        let mut files = Vec::new();
+        collect_snapshot_files(&fixture.root, &fixture.root, &mut files)?;
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let expected = snapshot(files)?;
+        let mut rustc = build_command("rustc", &fixture.root)?;
+        rustc.arg("-Vv");
+        let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
+        let target = fixture.directory.join("target");
+        let before_resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let hex = before_resolution
+            .packages
+            .values()
+            .find(|package| package.name == "hex")
+            .context("hex must be resolved")?;
+        let extraction = hex
+            .external_manifest
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .context("hex has no Cargo registry source root")?;
+        let cache = extraction
+            .parent()
+            .and_then(Path::parent)
+            .context("registry directory missing")?
+            .join("cache")
+            .join(extraction.file_name().context("registry bucket missing")?);
+        let before = before_resolution.verify_registry(&fixture.root, &cache)?;
+
+        let mut build = build_command("cargo", &fixture.root)?;
+        build
+            .args([
+                "build",
+                "--locked",
+                "--offline",
+                "-p",
+                "rustok-migrations",
+                "--target",
+                &host,
+            ])
+            .env("CARGO_TARGET_DIR", &target);
+        run_process(&mut build, 120, 8192)?;
+        let after_resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let after = after_resolution.verify_registry(&fixture.root, &cache)?;
+        assert!(before == after);
+        let observed = serde_json::to_value(after)?;
+        assert_eq!(observed["crates_io_packages"].as_object().unwrap().len(), 1);
+        assert_eq!(observed["unverified_external_packages"], json!([]));
         Ok(())
     }
 

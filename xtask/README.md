@@ -440,6 +440,14 @@ A retrospective check establishes the bytes present in the supplied cache at
 verification time. Historical compiler reads, generated outputs and native
 or filesystem metadata require separate evidence.
 
+For a new run, pass the same `--registry-cache` option to `verify-fresh`.
+It checks the selected crates.io archives and extracted source trees before
+and after each side's build. Each manifest path reported by Cargo must point
+to the inspected extraction. The build identity records matching verification
+results under `registry_sources`. This optional check measures both endpoints
+and leaves transient changes, generated outputs and non-crates.io sources
+outside its verified coverage.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.

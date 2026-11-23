@@ -16,7 +16,9 @@ mod registry;
 
 pub(super) use discovery::{compiler_sources, discover};
 pub(super) use inventory::bind_inventory;
-pub(super) use registry::registry_inputs;
+pub(super) use registry::{
+    registry_inputs, verify_registry_cache, ExternalPackage, RegistryVerification,
+};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
