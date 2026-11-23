@@ -86,26 +86,24 @@ impl EventHandler for WorkflowTriggerHandler {
 
         for workflow in matching {
             let workflow_id = workflow.id;
-            let steps = match self.service.load_steps(workflow_id).await {
-                Ok(s) => s,
-                Err(e) => {
-                    error!(workflow_id = %workflow_id, error = %e, "Failed to load steps");
-                    continue;
-                }
-            };
-
-            let engine = self.engine.clone();
-            let ctx = initial_context.clone();
-            let event_id = envelope.id;
-
-            let _exec_task = tokio::spawn(async move {
-                if let Err(e) = engine
-                    .execute(workflow_id, tenant_id, Some(event_id), steps, ctx)
-                    .await
-                {
-                    error!(workflow_id = %workflow_id, error = %e, "Workflow execution failed");
-                }
-            });
+            let steps = self.service.load_steps(workflow_id).await.map_err(|error| {
+                rustok_core::Error::External(format!(
+                    "Workflow steps for {workflow_id} could not be loaded: {error}"
+                ))
+            })?;
+            // The source Outbox event must not be acknowledged while an
+            // execution is only detached in memory. Await the owner journal's
+            // terminal outcome, returning an error for an ambiguous running
+            // receipt so the transport retains its redelivery identity.
+            self.engine
+                .execute(workflow_id, tenant_id, Some(envelope.id), steps, initial_context.clone())
+                .await
+                .map_err(|error| {
+                    error!(workflow_id = %workflow_id, %error, "Workflow execution not acknowledged");
+                    rustok_core::Error::External(format!(
+                        "Workflow execution for {workflow_id} was not durably confirmed: {error}"
+                    ))
+                })?;
         }
 
         Ok(())
