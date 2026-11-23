@@ -194,3 +194,16 @@ response from reapplying its pagination or list after browser history
 navigation. The GET controls preserve an existing server-side search/status
 deep link. None of these changes has been built or run; the maintainer owns
 runtime SSR/hydration and browser history verification.
+
+## Server-owned catalog column filters (2026-11-23; source only)
+
+The mounted Leptos grid is server-paginated. Its title, status and vendor column
+filters now serialize into the same URL-owned `search`, `status` and `vendor`
+inputs used by the Product owner, and those values are restored into the grid on
+SSR, hydration and browser history navigation. The grid no longer applies a
+second client-side predicate to only the currently loaded page. Product type
+and creation-date column filters are intentionally not offered until the
+owner's admin list contract supports those predicates; category and typed
+attribute filtering remain in the catalog controls/facet panel. Vendor means
+an exact Product vendor match, matching the owner and Next admin contract.
+Rust/source regression coverage is authored but not executed.
