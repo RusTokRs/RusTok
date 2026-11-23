@@ -65,14 +65,15 @@ export default async function ProductPage({ searchParams }: PageProps) {
   const canonicalStatus = normalizeProductStatus(rawStatus)?.toLowerCase();
   const rawTitle = pickParam(params.title);
   const rawSearch = pickParam(params.search);
-  const search = rawTitle?.trim() || rawSearch?.trim() || undefined;
+  const trimmedTitle = rawTitle?.trim() ?? '';
+  const search = trimmedTitle || rawSearch?.trim() || undefined;
   const hasNonCanonicalTitle =
     params.title !== undefined &&
     (Array.isArray(params.title) && params.title.length !== 1
       ? true
-      : !rawTitle?.trim() ||
-        rawTitle !== rawTitle.trim() ||
-        rawTitle.trim() !== (search ?? ''));
+      : !trimmedTitle ||
+        rawTitle !== trimmedTitle ||
+        trimmedTitle !== (search ?? ''));
   const hasLegacySearch = params.search !== undefined;
   // The table owns the `title` key. Migrate legacy `search` links into that
   // key before hydration so the visible filter and the server query cannot diverge.
