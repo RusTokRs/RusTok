@@ -200,3 +200,8 @@ The Leptos facade runtime captures the unique local save attempt when it dispatc
 request. Publish response handlers now acknowledge or fail only that captured attempt, so a
 late old request cannot corrupt the state of a newer identical retry. This is not a guarantee
 for external callback transports, which need an explicit request/response correlation contract.
+
+The framework-neutral `EditorSessionState` now also supports attempt-bound save starts,
+publish acknowledgements and failures, so Dioxus and external host adapters can avoid accepting
+late responses to an identical retry. Legacy hash-only `SaveAcknowledged` remains available
+for compatibility, but is not a substitute for the attempt-bound response path.
