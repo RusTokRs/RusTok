@@ -459,18 +459,20 @@ function showPendingOperationNotice(adapter, state = "unknown") {
   if (!notice) {
     notice = document.createElement("section");
     notice.dataset.flyPendingOperationNotice = "true";
-    notice.className = "fly-browser-pending-operation";
+    notice.className = "fly-browser-pending-operation rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive";
     notice.setAttribute("role", "alert");
     const message = document.createElement("p");
     message.dataset.flyPendingOperationMessage = "true";
     const check = document.createElement("button");
     check.type = "button";
     check.dataset.flyPendingOperationCheck = "true";
+    check.className = "mr-2 rounded-md border px-3 py-1";
     check.textContent = "Check status";
     check.addEventListener("click", () => void adapter.resolvePendingOperation());
     const retry = document.createElement("button");
     retry.type = "button";
     retry.dataset.flyPendingOperationRetry = "true";
+    retry.className = "rounded-md border px-3 py-1";
     retry.textContent = "Retry the same operation";
     retry.addEventListener("click", () => void adapter.retryPendingOperation());
     notice.append(message, check, retry);
