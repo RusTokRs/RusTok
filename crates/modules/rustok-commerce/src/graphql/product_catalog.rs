@@ -335,7 +335,7 @@ impl ProductCatalogQuery {
             tenant.id.to_string(),
             PortActor::service("commerce-storefront-graphql"),
             requested_locale.as_str(),
-            format!("commerce-graphql-product:storefront-catalog:{page}:{per_page}"),
+            product_catalog_correlation_id(request_context),
         )
         .with_deadline(std::time::Duration::from_secs(2));
         let port_context = match public_channel_slug.as_deref() {
@@ -435,7 +435,7 @@ impl ProductCatalogQuery {
             tenant.id.to_string(),
             PortActor::service("commerce-storefront-graphql"),
             requested_locale.as_str(),
-            "commerce-graphql-product:storefront-catalog-facets".to_string(),
+            product_catalog_correlation_id(request_context),
         )
         .with_deadline(std::time::Duration::from_secs(2));
         let port_context = match public_channel_slug.as_deref() {
@@ -520,7 +520,7 @@ impl ProductCatalogQuery {
             tenant_id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             requested_locale.as_str(),
-            "commerce-graphql-product:admin-catalog-facets".to_string(),
+            product_catalog_correlation_id(request_context),
         )
         .with_deadline(std::time::Duration::from_secs(2));
         let port_context = match request_context.and_then(|context| context.channel_slug.as_deref())
@@ -606,7 +606,7 @@ impl ProductCatalogQuery {
             tenant_id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             requested_locale.as_str(),
-            format!("commerce-graphql-product:admin-catalog:{page}:{per_page}"),
+            product_catalog_correlation_id(request_context),
         )
         .with_deadline(std::time::Duration::from_secs(2));
         let port_context = match request_context.and_then(|context| context.channel_slug.as_deref())
