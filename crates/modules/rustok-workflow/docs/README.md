@@ -10,7 +10,8 @@ uses (maximum 512 bytes). Invalid active definitions return
 
 Workflow deletion now returns `409 workflow_deletion_blocked` while any
 running or reconciliation-required execution exists, or when a cron firing is
-pending, running or awaiting reconciliation. This prevents a parent-row
+running or awaiting reconciliation. Unstarted pending firings are cancelled
+by explicit workflow deletion. This prevents a parent-row
 cascade from erasing unresolved owner receipts before the side effects are
 accounted for. Once those states become terminal, the existing hard-delete
 behavior and its historical-data retention implications still apply; no
