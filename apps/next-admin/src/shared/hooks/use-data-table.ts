@@ -45,6 +45,21 @@ function columnFiltersSignature(filters: ColumnFiltersState): string {
   );
 }
 
+function routeQuerySignature(query: Record<string, string>): string {
+  return JSON.stringify(
+    Object.entries(query).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function tableStateSignature(
+  page: number,
+  perPage: number,
+  sorting: SortingState,
+  filters: string
+): string {
+  return JSON.stringify([page, perPage, sorting, filters]);
+}
+
 interface UseDataTableProps<TData extends RowData = any>
   extends
     Omit<
@@ -70,6 +85,8 @@ interface UseDataTableProps<TData extends RowData = any>
   enableAdvancedFilter?: boolean;
   scroll?: boolean;
   shallow?: boolean;
+  /** Full server route query, including non-table filters such as Product facets. */
+  routeQuery?: Record<string, string>;
   startTransition?: React.TransitionStartFunction;
 }
 
@@ -88,6 +105,7 @@ export function useDataTable<TData extends RowData = any>(
     enableAdvancedFilter = false,
     scroll = false,
     shallow = true,
+    routeQuery,
     startTransition,
     ...tableProps
   } = props;
@@ -210,7 +228,7 @@ export function useDataTable<TData extends RowData = any>(
   const [filterValues, setFilterValues] = useQueryStates(filterParsers);
 
   const filterNavigationVersion = React.useRef(0);
-  const pendingLocalFilterSignature = React.useRef<string | null>(null);
+  const pendingLocalRouteSignature = React.useRef<string | null>(null);
 
   const initialColumnFilters: ColumnFiltersState = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
@@ -235,17 +253,49 @@ export function useDataTable<TData extends RowData = any>(
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
   const currentFilterSignature = columnFiltersSignature(initialColumnFilters);
+  const currentRouteSignature = routeQuery
+    ? routeQuerySignature(routeQuery)
+    : tableStateSignature(page, perPage, sorting, currentFilterSignature);
   const debouncedSetFilterValues = useDebouncedCallback(
     (values: typeof filterValues, version: number) => {
-      // A route change invalidates callbacks scheduled against the old URL.
+      // Any route navigation invalidates callbacks scheduled against the old URL.
       if (version !== filterNavigationVersion.current) return;
 
       const expectedFilters = Object.entries(values)
         .filter(([, value]) => value !== null)
         .map(([id, value]) => ({ id, value }));
-      const expectedSignature = columnFiltersSignature(expectedFilters);
-      pendingLocalFilterSignature.current =
-        expectedSignature === currentFilterSignature ? null : expectedSignature;
+      const expectedFilterSignature = columnFiltersSignature(expectedFilters);
+
+      let expectedRouteSignature: string;
+      if (routeQuery) {
+        const expectedQuery = { ...routeQuery };
+        // nuqs does not rewrite the default page when it is already selected.
+        if (page !== 1 || Object.hasOwn(expectedQuery, PAGE_KEY)) {
+          expectedQuery[PAGE_KEY] = '1';
+        }
+        for (const [key, value] of Object.entries(values)) {
+          if (value === null) {
+            delete expectedQuery[key];
+          } else {
+            expectedQuery[key] = Array.isArray(value)
+              ? value.join(ARRAY_SEPARATOR)
+              : value;
+          }
+        }
+        expectedRouteSignature = routeQuerySignature(expectedQuery);
+      } else {
+        expectedRouteSignature = tableStateSignature(
+          1,
+          perPage,
+          sorting,
+          expectedFilterSignature
+        );
+      }
+
+      pendingLocalRouteSignature.current =
+        expectedRouteSignature === currentRouteSignature
+          ? null
+          : expectedRouteSignature;
 
       void setPage(1);
       void setFilterValues(values);
@@ -253,23 +303,23 @@ export function useDataTable<TData extends RowData = any>(
     debounceMs
   );
 
-  // URL changes caused by Back/Forward or a server navigation are authoritative.
-  // A locally scheduled write is recognized so it does not cancel a newer edit.
-  const lastUrlColumnFilters = React.useRef(currentFilterSignature);
+  // Server navigation can change facets/category/page without changing the
+  // table's own filter keys. Compare the complete route query when supplied.
+  // Local filter writes are recognized so they do not cancel a newer edit.
+  const lastUrlRouteSignature = React.useRef(currentRouteSignature);
   useIsomorphicLayoutEffect(() => {
-    const routeFilters = columnFiltersSignature(initialColumnFilters);
-    if (lastUrlColumnFilters.current !== routeFilters) {
-      lastUrlColumnFilters.current = routeFilters;
-      if (pendingLocalFilterSignature.current === routeFilters) {
-        pendingLocalFilterSignature.current = null;
+    if (lastUrlRouteSignature.current !== currentRouteSignature) {
+      lastUrlRouteSignature.current = currentRouteSignature;
+      if (pendingLocalRouteSignature.current === currentRouteSignature) {
+        pendingLocalRouteSignature.current = null;
         return;
       }
 
-      pendingLocalFilterSignature.current = null;
+      pendingLocalRouteSignature.current = null;
       filterNavigationVersion.current += 1;
       setColumnFilters(initialColumnFilters);
     }
-  }, [initialColumnFilters]);
+  }, [currentRouteSignature, initialColumnFilters]);
 
   const onColumnFiltersChange = React.useCallback(
     (updaterOrValue: Updater<ColumnFiltersState>) => {
