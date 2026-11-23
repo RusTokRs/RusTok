@@ -231,6 +231,13 @@ export function useDataTable<TData extends RowData = any>(
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>(initialColumnFilters);
 
+  // URL changes caused by Back/Forward or a server navigation are authoritative.
+  // Keep the controlled toolbar in sync without discarding in-progress typing:
+  // local edits are debounced, so only an actual route-state change triggers this.
+  React.useEffect(() => {
+    setColumnFilters(initialColumnFilters);
+  }, [initialColumnFilters]);
+
   const onColumnFiltersChange = React.useCallback(
     (updaterOrValue: Updater<ColumnFiltersState>) => {
       if (enableAdvancedFilter) return;
