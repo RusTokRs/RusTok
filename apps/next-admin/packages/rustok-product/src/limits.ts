@@ -6,3 +6,4 @@
 
 /** Product-wide SKU capacity; the Product owner enforces the same bound. */
 export const MAX_PRODUCT_VARIANTS = 256;
+export const MAX_INVENTORY_QUANTITY = 2_147_483_647;
