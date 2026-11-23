@@ -202,6 +202,9 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::Drop => {
+                // Authorization must be revalidated at commit time, not inherited from
+                // BeginDrag: restored state or changed policy must not enable a write.
+                self.require_edit_capability("drag_drop", self.state.capabilities.drag_drop)?;
                 // Build and validate the command before consuming the drag. A rejected
                 // candidate or unsupported source must remain retryable/cancellable.
                 let drag = self.state.drag.as_ref().ok_or(UiError::NoActiveDrag)?;

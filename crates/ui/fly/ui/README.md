@@ -58,3 +58,5 @@ unresolved revision conflict are rejected by `RequestSave`. Resolving a conflict
 host to reload/rebase the draft or explicitly acknowledge an actual successful save; Fly does
 not implement automatic merge. Hosts remain responsible for correlating transport responses
 with the saves they initiate.
+Drop rechecks the current presentation and drag capability at commit time, including when
+restored state contains a drag started under a different policy.

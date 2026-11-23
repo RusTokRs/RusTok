@@ -307,6 +307,34 @@ fn a_rejected_drop_does_not_destroy_drag_or_insertion_overlay() {
 }
 
 #[test]
+fn drop_rechecks_edit_permission_even_with_a_restored_drag() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
+    // A deserialized/restored state can contain a drag that was begun under a
+    // different capability profile. Drop is its own mutation admission boundary.
+    machine.state.presentation = Presentation::ReadOnly;
+    assert_eq!(machine.dispatch(UiIntent::Drop), Err(UiError::ReadOnly));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+    machine.state.presentation = Presentation::Full;
+    machine.state.capabilities.drag_drop = false;
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+}
+
+#[test]
 fn save_acknowledgement_cannot_clean_edits_made_during_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
