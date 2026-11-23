@@ -15,8 +15,44 @@ use crate::entities::{
 use crate::error::WorkflowResult;
 use crate::steps::{
     ActionStep, AlloyScriptStep, ConditionStep, DelayStep, EmitEventStep, HttpStep, NotifyStep,
-    StepContext, WorkflowStep,
+    StepContext, StepOutput, WorkflowStep,
 };
+
+/// A configured step timeout is an actual deadline, not stored-only
+/// metadata. Very large or nonpositive durations are rejected explicitly.
+const MAX_STEP_TIMEOUT_MS: i64 = 3_600_000;
+
+pub(crate) fn validate_step_timeout_ms(timeout_ms: Option<i64>) -> WorkflowResult<()> {
+    if let Some(ms) = timeout_ms {
+        if !(1..=MAX_STEP_TIMEOUT_MS).contains(&ms) {
+            return Err(crate::error::WorkflowError::InvalidStepConfig(format!(
+                "timeout_ms must be between 1 and {MAX_STEP_TIMEOUT_MS}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn execute_with_step_timeout(
+    executor: &dyn WorkflowStep,
+    step: &crate::entities::WorkflowStep,
+    context: StepContext,
+) -> WorkflowResult<StepOutput> {
+    validate_step_timeout_ms(step.timeout_ms)?;
+    if let Some(timeout_ms) = step.timeout_ms {
+        tokio::time::timeout(
+            tokio::time::Duration::from_millis(timeout_ms as u64),
+            executor.execute(&step.config, context),
+        )
+        .await
+        .map_err(|_| crate::error::WorkflowError::StepTimedOut {
+            step_id: step.id,
+            timeout_ms: timeout_ms as u64,
+        })?
+    } else {
+        executor.execute(&step.config, context).await
+    }
+}
 
 /// External or script steps do not support blind retries. Their owners need
 /// an idempotency receipt or explicit reconciliation before re-dispatch.
@@ -135,6 +171,7 @@ impl WorkflowEngine {
 
         let mut context = StepContext::new(initial_context);
         let mut failed = false;
+        let mut timed_out = false;
         let mut failure_msg = String::new();
 
         'steps: for step in &steps {
@@ -199,7 +236,7 @@ impl WorkflowEngine {
                 }
             };
 
-            let result = executor.execute(&step.config, context.clone()).await;
+            let result = execute_with_step_timeout(executor.as_ref(), step, context.clone()).await;
 
             match result {
                 Ok(output) => {
@@ -221,6 +258,7 @@ impl WorkflowEngine {
                 }
                 Err(err) => {
                     let err_msg = err.to_string();
+                    let step_timed_out = matches!(err, crate::error::WorkflowError::StepTimedOut { .. });
                     error!(step_id = %step.id, error = %err_msg, "Step failed");
 
                     let external_outcome_uncertain = potentially_external_step(&step.step_type);
@@ -273,6 +311,7 @@ impl WorkflowEngine {
                     match step.on_error {
                         OnError::Stop => {
                             failed = true;
+                            timed_out = step_timed_out;
                             failure_msg = err_msg;
                             break 'steps;
                         }
@@ -301,6 +340,7 @@ impl WorkflowEngine {
                                 .unwrap_or(1000);
 
                             let mut last_err = err_msg.clone();
+                            let mut last_timed_out = step_timed_out;
                             let mut succeeded = false;
                             let mut stop_after_success = false;
 
@@ -318,7 +358,9 @@ impl WorkflowEngine {
                                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff))
                                     .await;
 
-                                match executor.execute(&step.config, context.clone()).await {
+                                match execute_with_step_timeout(
+                                    executor.as_ref(), step, context.clone(),
+                                ).await {
                                     Ok(out) => {
                                         stop_after_success = !out.should_continue;
                                         self.finish_step_execution(
@@ -334,6 +376,9 @@ impl WorkflowEngine {
                                         break;
                                     }
                                     Err(retry_err) => {
+                                        last_timed_out = matches!(
+                                            retry_err, crate::error::WorkflowError::StepTimedOut { .. }
+                                        );
                                         last_err = retry_err.to_string();
                                     }
                                 }
@@ -346,6 +391,7 @@ impl WorkflowEngine {
                             }
                             if !succeeded {
                                 failed = true;
+                                timed_out = last_timed_out;
                                 failure_msg = last_err.clone();
                                 self.finish_step_execution(
                                     step_execution_id,
@@ -371,7 +417,9 @@ impl WorkflowEngine {
         }
 
         // Finalize execution
-        let final_status = if failed {
+        let final_status = if failed && timed_out {
+            ExecutionStatus::TimedOut
+        } else if failed {
             ExecutionStatus::Failed
         } else {
             ExecutionStatus::Completed
