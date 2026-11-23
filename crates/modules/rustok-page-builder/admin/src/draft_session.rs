@@ -58,7 +58,6 @@ pub struct SsrDraftRenderBinding {
 /// refused. Bump it only together with a migration for the previous value.
 pub const DRAFT_SESSION_RECORD_FORMAT: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// A bounded, session-owned acknowledgement of one browser intent. The response is a compact
 /// transport projection; the canonical controller remains the session's source of truth.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -78,9 +77,9 @@ pub enum SsrDraftOperationCommit {
 
 /// Maximum number of distinct browser operation identities retained per draft session.
 /// Receipts are never evicted silently: once this bound is reached, writes fail closed.
-pub const MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION: usize = 1024;
+pub const MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION: usize = 256;
 /// Operation acknowledgements are compact projections, never full document snapshots.
-pub const MAX_DRAFT_OPERATION_RECEIPT_BYTES: usize = 16 * 1024;
+pub const MAX_DRAFT_OPERATION_RECEIPT_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PersistentDraftSessionRecord {
