@@ -21,6 +21,14 @@ const nextPage = readFileSync(
   new URL('../../apps/next-admin/src/app/dashboard/product/page.tsx', import.meta.url),
   'utf8'
 );
+const nextFacetPanel = readFileSync(
+  new URL('../../apps/next-admin/packages/rustok-product/src/components/products/product-table/product-catalog-filters.tsx', import.meta.url),
+  'utf8'
+);
+const nativeCatalogControls = readFileSync(
+  new URL('../../crates/modules/rustok-product/admin/src/catalog_controls.rs', import.meta.url),
+  'utf8'
+);
 
 test('mounted Leptos catalog uses current router filters for owner and facet requests', () => {
   assert.match(grid, /let catalog_controls = Memo::new/);
@@ -56,4 +64,11 @@ test('Next catalog normalizes typed selection grammar and prioritizes active fac
   assert.match(nextPage, /entry\.indexOf\('='\)/);
   assert.match(nextPage, /selectedFacetCodes/);
   assert.match(nextPage, /orderedFacetCodes/);
+});
+
+test('Next and native admin facets agree with owner case-insensitive attribute codes', () => {
+  assert.match(nextPage, /trim\(\)\.toLowerCase\(\)/);
+  assert.match(nextFacetPanel, /function hasFacetCode\(/);
+  assert.match(nextFacetPanel, /function hasFacetValue\(/);
+  assert.match(nativeCatalogControls, /code\.trim\(\)\.to_ascii_lowercase\(\)/);
 });
