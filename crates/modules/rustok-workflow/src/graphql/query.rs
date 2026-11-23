@@ -105,7 +105,7 @@ impl WorkflowQuery {
             &[Permission::WORKFLOW_EXECUTIONS_LIST],
             "Permission denied: workflow_executions:list required",
         )?;
-        let items = crate::services::reconciliation_required_for_tenant(db, tenant.id, 100)
+        let items = crate::services::reconciliation_required_for_tenant(&db, tenant.id, 100)
             .await
             .map_err(|_| async_graphql::Error::new("Workflow cron reconciliation is unavailable"))?;
         Ok(items
