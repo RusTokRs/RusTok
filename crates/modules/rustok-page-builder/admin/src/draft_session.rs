@@ -145,6 +145,7 @@ pub trait SsrDraftSessionStore: Send + Sync {
         page_id: &str,
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
+        request_hash: Option<&str>,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         let _ = (token, page_id, owner, operation_id);
         Err(SsrDraftSessionError::OperationReceiptsUnsupported)
@@ -222,18 +223,24 @@ pub trait SsrDraftSessionStore: Send + Sync {
     fn prune(&self) -> Result<usize, SsrDraftSessionError>;
 }
 
+fn validate_operation_id(operation_id: &str) -> Result<(), SsrDraftSessionError> {
+    let valid_id = (1..=128).contains(&operation_id.len())
+        && operation_id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+        });
+    if valid_id {
+        Ok(())
+    } else {
+        Err(SsrDraftSessionError::InvalidOperationId)
+    }
+}
+
 fn validate_operation_receipt_input(
     operation_id: &str,
     request_hash: &str,
     response: &Value,
 ) -> Result<(), SsrDraftSessionError> {
-    let valid_id = (1..=128).contains(&operation_id.len())
-        && operation_id.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
-        });
-    if !valid_id {
-        return Err(SsrDraftSessionError::InvalidOperationId);
-    }
+    validate_operation_id(operation_id)?;
     if request_hash.len() != 64
         || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
@@ -587,7 +594,7 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        validate_operation_id(operation_id)?;
         let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = self.now();
         let Some(entry) = entries.get(token.trim()).filter(|entry| entry.expires_at.get() > now) else {
@@ -600,7 +607,10 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             });
         }
         ensure_session_owner(entry.owner.as_ref(), owner)?;
-        Ok(lookup_operation_receipt(&entry.operation_receipts, operation_id))
+        match request_hash {
+            Some(hash) => check_operation_receipt_hash(&entry.operation_receipts, operation_id, hash),
+            None => Ok(lookup_operation_receipt(&entry.operation_receipts, operation_id)),
+        }
     }
 
     fn commit_with_operation_receipt(
@@ -1548,7 +1558,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        validate_operation_id(operation_id)?;
         let Some(record) = self.load_record(token, owner)? else {
             return Ok(None);
         };
@@ -1559,7 +1569,10 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             });
         }
         ensure_session_owner(record.owner.as_ref(), owner)?;
-        Ok(lookup_operation_receipt(&record.operation_receipts, operation_id))
+        match request_hash {
+            Some(hash) => check_operation_receipt_hash(&record.operation_receipts, operation_id, hash),
+            None => Ok(lookup_operation_receipt(&record.operation_receipts, operation_id)),
+        }
     }
 
     fn commit_with_operation_receipt(
@@ -2395,7 +2408,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         owner: Option<&DraftSessionOwner>,
         operation_id: &str,
     ) -> Result<Option<Value>, SsrDraftSessionError> {
-        validate_operation_receipt_input(operation_id, &"0".repeat(64), &Value::Null)?;
+        validate_operation_id(operation_id)?;
         let Some(record) = self.backend.load_record(token, owner)? else {
             return Ok(None);
         };
