@@ -18,6 +18,8 @@ use uuid::Uuid;
 
 pub(crate) const MAX_PRICE_ROWS: usize = 64;
 
+use rustok_product_ports::MAX_PRODUCT_VARIANTS;
+
 pub(crate) fn empty_draft(currency: &str) -> VariantDraft {
     VariantDraft {
         prices: vec![VariantPriceDraft {
@@ -32,7 +34,7 @@ pub(crate) fn empty_draft(currency: &str) -> VariantDraft {
 }
 
 pub(crate) fn can_create(product: &ProductDetail) -> bool {
-    product.variants.len() < 256
+    product.variants.len() < MAX_PRODUCT_VARIANTS
         && (!product.variant_axes.is_empty() || product.variants.is_empty())
 }
 
