@@ -222,3 +222,8 @@ and announcement effects to `AdminEditorRuntime`. Before this change, it discard
 after the controller mutation: Save/Preview could look interactive but never reach the consumer
 facade. The runtime compares the command sequence and expected project hash before dispatch and
 registers the browser-provided preview context for response correlation.
+
+Browser intent admission also rejects a supplied document page ID that disagrees with the
+controller's own page ID, including read-only intents. Leptos validates the completed workspace
+result's page, revision, hash and command sequence before dispatching any facade effects. This
+prevents a late/switching-document callback from executing effects against a different draft.

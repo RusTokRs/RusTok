@@ -272,6 +272,16 @@ impl AdminEditorRuntime {
     /// the same consumer facade as toolbar commands. Merely dispatching the
     /// intent changed local state but silently dropped Publish/Preview before.
     pub fn apply_browser_result(&self, result: crate::BrowserIntentDispatchResult) {
+        let in_scope = self.controller.with(|controller| {
+            result.page_id == controller.page_id()
+                && result.revision_id == controller.revision_id()
+                && result.project_hash == controller.editor().revision().project_hash.hex()
+                && result.command_sequence == controller.editor().revision().command_sequence
+        });
+        if !in_scope {
+            self.fail("Browser workspace response no longer matches the active document");
+            return;
+        }
         self.last_error.set(None);
         for effect in result.effects {
             match effect {

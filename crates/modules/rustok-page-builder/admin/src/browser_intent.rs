@@ -57,6 +57,14 @@ pub fn dispatch_browser_intent(
     envelope: BrowserIntentEnvelope,
 ) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
     let envelope = envelope.normalized()?;
+    if let Some(request_page_id) = envelope.page_id.as_deref() {
+        if request_page_id != controller.page_id() {
+            return Err(BrowserIntentDispatchError::PageScopeConflict {
+                expected: controller.page_id().to_string(),
+                actual: request_page_id.to_string(),
+            });
+        }
+    }
     validate_revision(controller, &envelope)?;
     let mutating = is_mutating_intent(&envelope);
     // An intent is one user gesture even when it internally performs several
@@ -723,6 +731,8 @@ pub enum BrowserIntentDispatchError {
     RevisionConflict { expected: String, actual: String },
     #[error("browser project hash conflict: expected `{expected}`, received `{actual}`")]
     ProjectHashConflict { expected: String, actual: String },
+    #[error("browser page scope conflict: expected `{expected}`, received `{actual}`")]
+    PageScopeConflict { expected: String, actual: String },
 }
 
 fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str) -> String {
@@ -881,6 +891,30 @@ mod tests {
             assert_eq!(preview.runtime.context, json!({}));
             assert_eq!(preview.runtime.scenario_id, None);
         }
+    }
+
+    #[test]
+    fn browser_intents_cannot_cross_controller_document_scope() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let mut request = intent(
+            "insert_block",
+            json!({ "block_id": "text", "selected_component_id": "hero" }),
+        );
+        request.page_id = Some("foreign-page".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, request),
+            Err(BrowserIntentDispatchError::PageScopeConflict { .. })
+        ));
+        assert_eq!(controller, before);
+
+        let mut inspect = intent("select", json!({ "component_id": "hero" }));
+        inspect.page_id = Some("foreign-page".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, inspect),
+            Err(BrowserIntentDispatchError::PageScopeConflict { .. })
+        ));
+        assert_eq!(controller, before);
     }
 
     #[test]
