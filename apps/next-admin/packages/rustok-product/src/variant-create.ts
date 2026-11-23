@@ -5,7 +5,6 @@
  */
 
 import type { CreateVariantInput } from './api/types';
-import { MAX_PRODUCT_VARIANTS } from './limits';
 import { parsePriceAmount } from './money.ts';
 
 export { MAX_PRODUCT_VARIANTS } from './limits';
