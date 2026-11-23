@@ -1487,6 +1487,10 @@ export class FlyBrowserAdapter {
       return null;
     }
     const request = pending.request;
+    if (this.authoritativeInFlight) {
+      showPendingOperationNotice(this, "checking");
+      return null;
+    }
     if (
       request.page_id !== this.pageId ||
       request.draft_token !== this.draftSession?.token ||
@@ -1496,6 +1500,7 @@ export class FlyBrowserAdapter {
       showPendingOperationNotice(this, "unavailable");
       return null;
     }
+    showPendingOperationNotice(this, "checking");
     return this.postIntent(request, {
       preserveOriginalRequest: true,
       retryPending: true,
@@ -1704,6 +1709,10 @@ export class FlyBrowserAdapter {
     }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
+    if (retryPending && this.authoritativeInFlight) {
+      showPendingOperationNotice(this, "checking");
+      return null;
+    }
     if (authoritative && this.authoritativeInFlight) {
       // A second write must not race the first with the same observed draft
       // generation/revision. Preserve the clicked target and payload while
