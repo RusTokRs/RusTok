@@ -1555,6 +1555,13 @@ fn PagesFlyBuilder(
             </div>
         }.into_any();
     }
+    if can_edit && !pages_browser_draft_store().supports_operation_receipts() {
+        return view! {
+            <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert" data-pages-draft-receipts-error="true">
+                "The configured draft store does not provide atomic operation receipts. Editing is stopped rather than risking duplicate or lost operations."
+            </div>
+        }.into_any();
+    }
     // Never render a saved page under a draft token that failed to load. The browser
     // would keep sending that token and could otherwise silently seed a new session.
     let route_draft = match load_route_draft(
