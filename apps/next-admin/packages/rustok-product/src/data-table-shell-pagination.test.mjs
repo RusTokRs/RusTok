@@ -43,30 +43,50 @@ test('product catalog page selection is keyed by canonical product identity', ()
 
 test('the URL remains authoritative when table filters change via browser history', () => {
   assert.match(hookSource, /lastUrlRouteSignature = React\.useRef/);
-  assert.match(hookSource, /lastUrlRouteSignature\.current !== currentRouteSignature/);
+  assert.match(
+    hookSource,
+    /lastUrlRouteSignature\.current !== currentRouteSignature/
+  );
   assert.match(hookSource, /setColumnFilters\(initialColumnFilters\)/);
 });
 
 test('overlapping local filter navigations and browser history cannot replay stale debounces', () => {
   assert.match(hookSource, /filterNavigationVersion = React\.useRef\(0\)/);
   assert.match(hookSource, /version !== filterNavigationVersion\.current/);
-  assert.match(hookSource, /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/);
+  assert.match(
+    hookSource,
+    /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/
+  );
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.push\(expectedRouteSignature\)/);
   assert.match(hookSource, /pendingRouteWrites\.length > 0/);
-  assert.match(hookSource, /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !== expectedRouteSignature/);
+  assert.match(
+    hookSource,
+    /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !== expectedRouteSignature/
+  );
   assert.match(hookSource, /pendingLocalColumnFilterSignature = React\.useRef<string \| null>\(null\)/);
   assert.match(hookSource, /pendingLocalColumnFilterSignature\.current = columnFiltersSignature\(next\)/);
   assert.match(hookSource, /pendingLocalColumnFilterSignature\.current !== null/);
-  assert.match(hookSource, /pendingLocalColumnFilterSignature\.current ===\s*columnFiltersSignature\(initialColumnFilters\)/);
+  assert.match(
+    hookSource,
+    /pendingLocalColumnFilterSignature\.current ===\s*columnFiltersSignature\(initialColumnFilters\)/
+  );
   assert.match(hookSource, /no-op URL write has no route response to acknowledge it/);
 
 
-  assert.match(hookSource, /pendingLocalRouteSignatures\.current\.splice\(matchedLocalNavigation, 1\)/);
+  assert.match(
+    hookSource,
+    /pendingLocalRouteSignatures\.current\.splice\(matchedLocalNavigation, 1\)/
+  );
   assert.match(hookSource, /pendingLocalRouteSignatures\.current = \[\]/);
-  assert.match(hookSource, /window\.addEventListener\('popstate', invalidatePendingFilterNavigation\)/);
-  assert.match(hookSource, /window\.removeEventListener\('popstate', invalidatePendingFilterNavigation\)/);
+  assert.match(
+    hookSource,
+    /window\.addEventListener\(\s*'popstate',\s*invalidatePendingFilterNavigation\s*\)/
+  );
+  assert.match(
+    hookSource,
+    /window\.removeEventListener\(\s*'popstate',\s*invalidatePendingFilterNavigation\s*\)/
+  );
   assert.match(hookSource, /invalidatePendingFilterNavigation = \(\) => \{/);
-
 
   assert.match(hookSource, /useIsomorphicLayoutEffect\(/);
   assert.match(hookSource, /filterNavigationVersion\.current \+= 1/);
