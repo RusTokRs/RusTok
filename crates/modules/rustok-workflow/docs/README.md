@@ -1,5 +1,16 @@
 # `rustok-workflow` Documentation
 
+## Monotonic schedule versions and clock skew
+
+The owner derives the schedule revision from the Workflow definition update
+timestamp. Definition writes and step-graph mutations advance it strictly
+monotonically, even if two edits land in the same database timestamp tick.
+A failure-count increment alone is bookkeeping and no longer invalidates
+pending cron occurrences; a real automatic transition to `paused` does.
+For a workflow whose last update was recorded ahead of local UTC because
+of replica clock skew, the new cursor is capped at the current UTC instant
+rather than postponing all cron firings until the future timestamp.
+
 ## Active cron admission and deletion safety
 
 Draft Workflow definitions may contain incomplete cron expressions. Activating
