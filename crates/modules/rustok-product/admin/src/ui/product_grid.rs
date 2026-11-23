@@ -84,7 +84,6 @@ pub fn ProductGridPage() -> impl IntoView {
         .with_vendor(route_vendor.get())
     });
     let initial_catalog_controls = catalog_controls.get_untracked();
-    provide_context(initial_catalog_controls.clone());
     let filters = RwSignal::new(product_admin_grid_filters(&initial_catalog_controls));
     Effect::new(move |_| {
         let next_filters = product_admin_grid_filters(&catalog_controls.get());
