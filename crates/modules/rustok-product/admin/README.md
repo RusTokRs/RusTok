@@ -180,3 +180,17 @@ same owner decisions; saved owner impact outranks advisory reads.
 and [API](CRATE_API.md#attributeoption-definition-lifecycle) specify bounds and exact-copy semantics.
 Regression sources are written but unrun; this is not Rust/macro/SQL/mounted-client certification
 or a general durable CRUD/storefront cutover.
+
+## Mounted catalog URL state and stale fetch safety (2026-11-23; source only)
+
+The mounted `ProductGridPage` derives its admin catalog filters and pagination
+from `leptos-ui-routing` reactive query signals rather than a static
+`UiRouteContext` snapshot. Both the owner list and facet requests read the
+same route-driven selection. Changing category, vendor, typed attributes,
+status, search or date sort invalidates accumulated infinite rows, selected
+products and the active fetch generation. Products carry the originating
+filter snapshot as well as generation, preventing an earlier asynchronous
+response from reapplying its pagination or list after browser history
+navigation. The GET controls preserve an existing server-side search/status
+deep link. None of these changes has been built or run; the maintainer owns
+runtime SSR/hydration and browser history verification.
