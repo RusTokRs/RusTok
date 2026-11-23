@@ -1251,6 +1251,84 @@ mod tests {
     }
 
     #[test]
+    fn operation_fingerprint_ignores_identity_but_binds_the_exact_command() {
+        let mut envelope = form_envelope("insert_block", json!({ "block_id": "hero" }));
+        envelope.draft_token = Some("draft-token".to_string());
+        envelope.draft_generation = Some(4);
+        envelope.operation_id = Some("operation-a".to_string());
+        let first = browser_operation_request_hash(&envelope).expect("fingerprint");
+
+        envelope.operation_id = Some("operation-b".to_string());
+        assert_eq!(
+            first,
+            browser_operation_request_hash(&envelope).expect("same command fingerprint"),
+            "the id is a lookup key, not part of the request fingerprint"
+        );
+
+        envelope.payload = json!({ "block_id": "footer" });
+        assert_ne!(
+            first,
+            browser_operation_request_hash(&envelope).expect("changed command fingerprint")
+        );
+    }
+
+    #[test]
+    fn operation_receipt_projection_is_compact_and_replay_uses_current_session() {
+        let response = PagesBrowserIntentResponse {
+            reload: false,
+            result: BrowserIntentDispatchResult {
+                page_id: "home".to_string(),
+                revision_id: "rev-2".to_string(),
+                project_hash: "hash-2".to_string(),
+                command_sequence: 7,
+                dirty: true,
+                selected_component_id: Some("hero".to_string()),
+                project_data: Some(json!({ "pages": [{ "component": { "content": "large" } }] })),
+                effects: Vec::new(),
+            },
+            persistence: None,
+            save_failure: None,
+            draft_token: "draft-token".to_string(),
+            draft_generation: 4,
+            runtime_context: json!({ "preview": { "large": "context" } }),
+            operation_id: Some("operation-a".to_string()),
+            operation_status: Some("committed".to_string()),
+            operation_replayed: false,
+        };
+        let compact = compact_operation_receipt(&response).expect("compact receipt");
+        assert!(compact["result"].get("project_data").is_none());
+        assert_eq!(compact["result"]["effects"], json!([]));
+        assert_eq!(compact["runtime_context"], json!({}));
+        assert_eq!(compact["reload"], Value::Bool(true));
+        assert_eq!(compact["operation_status"], json!("committed"));
+
+        let session = SsrDraftSessionSnapshot {
+            token: "draft-token".to_string(),
+            generation: 9,
+            controller: controller("home"),
+            runtime_context: json!({ "latest": true }),
+            owner: None,
+        };
+        let unknown = operation_response_from_receipt(&session, "operation-a", None, false)
+            .expect("unknown operation response");
+        assert_eq!(unknown.operation_status.as_deref(), Some("unknown"));
+        assert!(!unknown.reload);
+        assert_eq!(unknown.draft_generation, 9);
+        assert!(unknown.result.project_data.is_none());
+
+        let replay = operation_response_from_receipt(
+            &session,
+            "operation-a",
+            Some(&compact),
+            true,
+        ).expect("replayed operation response");
+        assert_eq!(replay.operation_status.as_deref(), Some("committed"));
+        assert!(replay.operation_replayed);
+        assert!(replay.reload);
+        assert_eq!(replay.draft_generation, 9);
+    }
+
+    #[test]
     fn save_failure_is_serialized_only_when_present() {
         let response = |save_failure: Option<PagesBrowserIntentProblem>| {
             let controller = dirty_controller();
