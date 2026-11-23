@@ -458,6 +458,29 @@ mod tests {
     }
 
     #[test]
+    fn selected_admin_facets_survive_the_owner_eight_code_limit() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: (0..12)
+                .map(|index| crate::model::ProductCatalogSearchOption {
+                    value: format!("attribute_{index}"),
+                    label: format!("Attribute {index}"),
+                })
+                .collect(),
+        };
+        let selected = vec![
+            " ATTRIBUTE_11 = blue ".to_string(),
+            "attribute_9=red".to_string(),
+        ];
+        let codes = build_product_admin_facet_codes_for_filters(&options, &selected);
+        assert_eq!(codes.len(), MAX_PRODUCT_CATALOG_FACET_CODES);
+        assert_eq!(codes[0], "attribute_9");
+        assert_eq!(codes[1], "attribute_11");
+        assert_eq!(codes[2], "attribute_0");
+        assert!(!codes.contains(&"attribute_7".to_string()));
+    }
+
+    #[test]
     fn empty_owner_answer_renders_the_empty_state_without_a_clear_link() {
         let panel = build_product_admin_facet_panel(
             "/modules/product",
