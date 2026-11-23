@@ -340,6 +340,27 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         if let Some(schemas) = props.trait_schemas {
             s = s.with_trait_schemas(schemas);
         }
+        // Dioxus used to keep the constructor's default full capabilities
+        // even when a host supplied tenant/RBAC restrictions. Match the
+        // Leptos admission policy and narrow those permissions with provider
+        // health before the first editable intent can be dispatched.
+        let evaluated_capabilities = props
+            .editor_capability_evaluation
+            .as_ref()
+            .map(|evaluation| evaluation.effective);
+        let host_capabilities = props.editor_capabilities.or(evaluated_capabilities);
+        let provider_status = props.facade.as_ref().and_then(|facade| facade.provider_status());
+        if host_capabilities.is_some() || provider_status.is_some() {
+            let capabilities =
+                host_capabilities.unwrap_or(s.controller.ui().state.capabilities);
+            let capabilities = provider_status
+                .as_ref()
+                .map(|status| status.limit_capabilities(capabilities))
+                .unwrap_or(capabilities);
+            if let Err(error) = s.controller.dispatch(UiIntent::SetEditableCapabilities(capabilities)) {
+                s.fail(format!("Cannot apply editor capabilities: {error}"));
+            }
+        }
         if let Some(evaluation) = props.editor_capability_evaluation {
             s = s.with_editor_capability_evaluation(evaluation);
         }
@@ -361,8 +382,13 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let workspace_page_id = page_id.clone();
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
-    let can_undo = current.controller.can_undo();
-    let can_redo = current.controller.can_redo();
+    let capabilities = current.controller.ui().state.capabilities;
+    let can_undo = capabilities.history && current.controller.can_undo();
+    let can_redo = capabilities.history && current.controller.can_redo();
+    let can_save = capabilities.edit
+        && !current.controller.ui().state.dirty.save_in_progress
+        && !current.controller.ui().state.dirty.save_conflict
+        && !current.controller.ui().state.has_blocking_diagnostics();
 
     let route_locale = locale.clone();
     let workspace_messages: Option<EditorMessages> = props
@@ -469,7 +495,8 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         "Redo"
                     }
                     button {
-                        class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90",
+                        class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
+                        disabled: !can_save,
                         onclick: move |_| {
                             let effects = session.write().dispatch(
                                 EditorSessionAction::DispatchIntent(UiIntent::RequestSave)

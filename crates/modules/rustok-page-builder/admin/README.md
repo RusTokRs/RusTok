@@ -244,3 +244,9 @@ revision. A route/document switch or an authoritative revision replacement remou
 instead of reusing `use_signal` state from the prior document. Same-revision local edits remain
 inside the existing session; consumers mounting the inner WithController component directly
 must provide their own stable instance key for owner changes. Source regression authored, not run.
+
+Dioxus now applies the effective tenant/RBAC capability profile on session creation, narrowed
+by the facade's provider status exactly as in the Leptos AdminCanvas, instead of always
+starting with Fly's default full editing permissions. Undo/Redo also require history capability;
+Save is disabled without edit permission, during an active/conflicted save, or with blocking
+validation diagnostics. Dispatch remains the authoritative guard against forged UI events.
