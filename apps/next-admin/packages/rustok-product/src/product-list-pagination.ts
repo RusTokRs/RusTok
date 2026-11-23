@@ -42,3 +42,22 @@ export function normalizeProductAdminPagination(input: {
     )
   };
 }
+
+/**
+ * Clamp a syntactically valid page to the last page that actually exists.
+ * Empty catalogs still have one navigable page.
+ */
+export function normalizeProductAdminPageForTotal(
+  page: number,
+  total: number,
+  perPage: number
+): number {
+  const pagination = normalizeProductAdminPagination({ page, perPage });
+  const safeTotal =
+    Number.isSafeInteger(total) && total > 0 ? total : 0;
+  const lastPage = Math.max(
+    1,
+    Math.ceil(safeTotal / pagination.perPage)
+  );
+  return Math.min(pagination.page, lastPage);
+}

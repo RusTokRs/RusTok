@@ -1353,3 +1353,23 @@ pages-layout-suggestionMissing = Недоступен вам для этой л�
 pages-layout-contextAfterCreate = Сессия, организация или локаль изменилась во время создания страницы. Страница могла быть создана в прежнем контексте; проверьте это перед повторной попыткой.
 
 pages-layout-permissionsHint = Для работы билдера с нестандартными макетами требуется pages:manage.
+
+# Фильтры и фасеты каталога товаров
+product-catalog-filters = Фильтры каталога
+product-catalog-filtersDescription = Сузьте каталог по структурной категории и типизированным атрибутам товаров.
+product-catalog-clear = Сбросить фильтры каталога
+product-catalog-category = Основная категория
+product-catalog-allCategories = Все структурные категории
+product-catalog-attributeFilters = Фильтры атрибутов
+product-catalog-attributeFiltersPlaceholder = color=red;weight=12.5
+product-catalog-sortBy = Сортировка
+product-catalog-publishedAt = Дата публикации
+product-catalog-createdAt = Дата создания
+product-catalog-sortDirection = Направление
+product-catalog-newestFirst = Сначала новые
+product-catalog-oldestFirst = Сначала старые
+product-catalog-apply = Применить фильтры
+product-catalog-availableAttributes = Доступные фильтруемые атрибуты
+product-catalog-manualFacetHint = Введите выражение code=value выше, чтобы отфильтровать этот атрибут.
+product-catalog-truncated = Часть значений скрыта; уточните фильтры, чтобы увидеть больше.
+product-catalog-clearFacet = Сбросить этот фасет

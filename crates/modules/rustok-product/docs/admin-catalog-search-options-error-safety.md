@@ -1,108 +1,65 @@
-# Product Admin catalog search-options error safety
+# Product Admin catalog search-options and selected transport
 
 Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the final public `String` error and its private diagnostic envelope for Product Admin catalog search-option discovery:
+This slice covers the Product Admin category and attribute discovery used by the catalog filters, together with the selected transport, tenant admission, error boundary, and pagination behavior that consumes the results.
 
-- `crates/modules/rustok-product/admin/src/catalog_transport.rs`;
-- public `fetch_catalog_search_options` re-exported from the Product Admin crate root.
+## Selected transport contract
 
-The existing implementation in `transport.rs` remains the private compatibility executor. It still tries the native owner endpoint first and, only after native failure, performs the GraphQL fallback sequence:
+The Product Admin catalog uses exactly one transport for a build profile:
 
-1. load the current tenant bootstrap;
-2. load catalog categories;
-3. load product attributes;
-4. build category and attribute search options.
+- **SSR and hydrate:** call the native Product Admin server function.
+- **CSR:** use GraphQL bootstrap, then load categories and product attributes.
+- **Failure:** do not retry the same operation through the other transport.
 
-## Recheck finding
+The native and GraphQL paths build the same `ProductCatalogSearchOptions` DTO. Category options include structural categories only. Attribute options include attributes that are filterable and have Product or Both scope. Category labels prefer `path`, then `name`, then `code`.
 
-The public boundary was already static and safe. The compatibility executor converted each GraphQL failure with `err.to_string()`, and the crate-root wrapper replaced that value with `Product catalog search options are temporarily unavailable` before returning it to the UI.
+The native schema-read context and the native catalog list/facet server functions enforce the Product module-enabled gate for the current tenant. Native list and facet reads use the trusted request correlation ID and channel when building the Product read-port context.
 
-The residual gap was private diagnostics: `CatalogSearchOptionsErrorContext::map_error` still wrote the complete captured String through `raw_error = %raw_error`. Depending on the failure, that payload could contain GraphQL server messages, HTTP status text, parse details, or transport classification. The focused verifier and retained evidence explicitly required that complete payload.
+## Public error boundary
 
-## Boundary placement
+The crate-root export now points to `catalog_transport::fetch_catalog_search_options`. The underlying `transport::fetch_catalog_search_options` executor is crate-private, so external hosts cannot bypass the bounded public wrapper.
 
-The crate-root catalog transport continues to own the public wrapper around the unchanged compatibility executor. It creates `CatalogSearchOptionsErrorContext` before the native/GraphQL fallback begins.
-
-When the compatibility executor returns an error, the wrapper now:
-
-- does not write the captured error text to structured tracing;
-- records only whether the raw error is present and its character length;
-- attaches a unique correlation id;
-- records token presence, tenant-slug presence/length, and locale length;
-- returns `Product catalog search options are temporarily unavailable`.
-
-The public success DTO and `Result<_, String>` shape remain unchanged.
-
-## Correlation policy
-
-Each request receives an id in the namespace:
+The wrapper keeps the public message:
 
 ```text
-product-admin-catalog-options:fetch_catalog_search_options:<uuid>
+Product catalog search options are temporarily unavailable
 ```
 
-The stable internal code is:
+Its diagnostics record only bounded facts: selected transport, correlation-ID presence/length, token presence, tenant-slug length, locale length, and raw-error presence/length. The complete native or GraphQL error text is not logged or returned to the public UI.
 
-```text
-product.admin_catalog_search_options_graphql_unavailable
-```
+## GraphQL/native parity
 
-## Data minimization
+The GraphQL ProductCatalogReadPort uses the trusted RequestContext correlation ID rather than a deterministic operation/page string. The native ProductCatalogReadPort uses the same RequestContext correlation ID and channel. Native port errors use the same public error codes and messages as the GraphQL owner mapper, with a request reference in the ServerFnError envelope.
 
-Structured diagnostics contain only bounded classification and shape facts. They do not contain:
+The optional native facet request no longer silently discards failures: it records bounded selected-transport diagnostics before degrading to no facets, matching the GraphQL optional-facet behavior.
 
-- the complete GraphQL, HTTP, parse, or transport error payload;
-- the authentication token;
-- tenant slug or tenant id;
-- locale value;
-- category ids;
-- attribute ids or codes;
-- option labels;
-- GraphQL variables or response data.
+## Next.js catalog behavior
 
-The raw error is consumed only to derive presence and character length before the static public message is returned.
+The Next.js product page now resolves locale using the host's `EFFECTIVE_LOCALE_HEADER`, `LOCALE_COOKIE`, `locales`, and `defaultLocale` configuration.
 
-## Preserved behavior
+After the server returns the catalog total, the route clamps an out-of-range page to the last valid page (or page 1 for an empty catalog), preserving the active filters and page size in the redirect. This avoids rendering an empty page such as page 99 of 2.
 
-This slice does not change:
+The Leptos quick search and local column filters no longer refetch the same server page on every keystroke. They only request page 1 when the current page actually needs to be reset.
 
-- the native-first fallback policy;
-- the native search-options server function;
-- GraphQL bootstrap, category, or attribute documents and variables;
-- tenant resolution order;
-- category label precedence (`path`, then `name`, then `code`);
-- filterable/sortable attribute selection;
-- `ProductCatalogSearchOptions` or its public re-export;
-- the UI resource call;
-- retries, transport selection, or fallback count;
-- Product FFA/FBA, browser, mounted, CI, or production status.
+## Remaining scope
 
-## Static evidence
+Schema-authoring mutations still have a native-first/GraphQL-fallback adapter and need a separate selected-transport cutover. Product detail, pricing, and shipping-profile reads remain GraphQL-only. This slice does not claim full Product Admin transport completion.
 
-- `crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json`;
-- `crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json`;
-- `scripts/verify/verify-product-admin-catalog-options-error-safety.mjs`.
+## Validation
 
-The focused verifier now fails closed if the complete raw error returns to structured tracing. All execution fields remain false. Source review does not prove compilation, verifier execution, browser behavior, or mounted fallback behavior.
+Tests, compilation, formatting, focused verifiers, browser behavior, and mounted SSR/hydrate behavior were not run. They remain for the maintainer to execute.
 
-## Remaining work
-
-The ecommerce correlation-safe mapper cleanup remains open for other Product Admin GraphQL reads and mutations, other owner adapters, and remaining non-`PortError` envelopes.
-
-## Suggested maintainer checks
+Suggested checks:
 
 ```bash
 node scripts/verify/verify-product-admin-catalog-options-error-safety.mjs
+node scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs
 node scripts/verify/verify-product-admin-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-product-admin
 cargo check -p rustok-product-admin --features hydrate
 cargo check -p rustok-product-admin --features ssr
 ```
-
-## Landing note (2026-10-07)
-
-`admin/src/catalog_transport.rs` now holds the wrapper described above and the mounted admin pages consume it (`ui/catalog_admin.rs`, `ui/product_grid.rs`), while `lib.rs` keeps the compatibility re-export `pub use transport::fetch_catalog_search_options;` for hosts that still call the private executor. `scripts/verify/verify-product-admin-catalog-options-error-safety.mjs` passes with the canonical wrapper in use.

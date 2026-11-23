@@ -44,6 +44,7 @@ struct AdminProductCatalogFacetsVariables {
 struct AdminProductCatalogFilter {
     search: Option<String>,
     status: Option<String>,
+    vendor: Option<String>,
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
     #[serde(rename = "sortBy")]
@@ -70,6 +71,7 @@ fn build_admin_product_catalog_filter(
     AdminProductCatalogFilter {
         search: controls.search,
         status: controls.status,
+        vendor: controls.vendor,
         category_id: controls.category_id,
         sort_by: controls.sort_by,
         sort_direction: controls.sort_direction,
@@ -149,6 +151,18 @@ mod tests {
 
         assert_eq!(filter.page, Some(3));
         assert_eq!(filter.per_page, Some(50));
+    }
+
+    #[test]
+    fn admin_catalog_graphql_forwards_vendor_filter() {
+        let filter = build_admin_product_catalog_filter(
+            ProductAdminListInput {
+                vendor: Some("Acme".to_string()),
+                ..ProductAdminListInput::default()
+            },
+            true,
+        );
+        assert_eq!(filter.vendor.as_deref(), Some("Acme"));
     }
 
     #[test]

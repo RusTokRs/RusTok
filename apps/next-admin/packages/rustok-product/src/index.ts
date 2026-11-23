@@ -19,7 +19,9 @@ import type {
   ProductDetail,
   ProductTranslation,
   ProductAttributeSummary,
-  CatalogCategorySummary
+  CatalogCategorySummary,
+  ProductCatalogSearchOption,
+  ProductCatalogFacet
 } from './api/types';
 import { productNavItems } from './nav';
 import { parsePriceAmount } from './money';
@@ -37,6 +39,7 @@ export { productNavItems } from './nav';
 export { parsePriceAmount, salePercent, discountedPrice } from './money';
 export {
   normalizeProductAdminPagination,
+  normalizeProductAdminPageForTotal,
   MAX_PRODUCT_ADMIN_PAGE,
   MAX_PRODUCT_ADMIN_PAGE_SIZE
 } from './product-list-pagination';
@@ -90,11 +93,6 @@ export * from './pages/categories-page';
 export * from './pages/attributes-page';
 export * from './pages/product-editor-page';
 export * from './pages/bundles-page';
-
-export type ProductCatalogSearchOption = {
-  value: string;
-  label: string;
-};
 
 export const PRODUCTS_QUERY = `
 query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: AdminProductCatalogFilter) {
@@ -176,6 +174,7 @@ query ProductCatalogSearchAttributes($tenantId: UUID!, $locale: String!) {
       valueType
       isFilterable
       isSortable
+      scope
       label
     }
   }
@@ -330,10 +329,12 @@ export async function listCatalogCategorySearchOptions(
     opts.tenantSlug
   );
 
-  return data.catalogCategories.items.map((category) => ({
-    value: category.id,
-    label: category.path || category.name || category.code
-  }));
+  return data.catalogCategories.items
+    .filter((category) => category.kind.toLowerCase() === 'structural')
+    .map((category) => ({
+      value: category.id,
+      label: category.path || category.name || category.code
+    }));
 }
 
 export async function listCatalogAttributeSearchOptions(
@@ -356,11 +357,90 @@ export async function listCatalogAttributeSearchOptions(
   );
 
   return data.productAttributes.items
-    .filter((attribute) => attribute.isFilterable || attribute.isSortable)
+    .filter(
+      (attribute) =>
+        attribute.isFilterable &&
+        (attribute.scope === 'product' || attribute.scope === 'both')
+    )
     .map((attribute) => ({
       value: attribute.code,
       label: `${attribute.label || attribute.code} (${attribute.code})`
     }));
+}
+
+export const ADMIN_PRODUCT_CATALOG_FACETS_QUERY = `
+query ProductAdminCatalogFacets($tenantId: UUID!, $locale: String, $filter: AdminProductCatalogFilter, $facetCodes: [String!]!) {
+  adminProductCatalogFacets(tenantId: $tenantId, locale: $locale, filter: $filter, facetCodes: $facetCodes) {
+    code
+    label
+    valueType
+    isLocalized
+    isEnumerable
+    isTruncated
+    totalProducts
+    values {
+      value
+      label
+      count
+    }
+  }
+}`;
+
+type AdminCatalogFacetsResponse = {
+  adminProductCatalogFacets?: ProductCatalogFacet[] | null;
+};
+
+export async function listAdminCatalogFacets(
+  opts: GqlOpts,
+  filter: ListProductsFilter,
+  facetCodes: string[],
+  locale: string
+): Promise<ProductCatalogFacet[]> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    return [];
+  }
+
+  const normalizedFacetCodes = [
+    ...new Set(facetCodes.map((code) => code.trim()).filter(Boolean))
+  ].slice(0, 8);
+  if (normalizedFacetCodes.length === 0) {
+    return [];
+  }
+
+  const gqlFilter = {
+    search: filter.search?.trim() || undefined,
+    status: normalizeProductStatus(filter.status),
+    vendor: filter.vendor?.trim() || undefined,
+    categoryId: filter.categoryId?.trim() || undefined,
+    sortBy: filter.sortBy?.trim() || undefined,
+    sortDirection: filter.sortDirection?.trim() || undefined,
+    attributeFilters: filter.attributeFilters
+      ?.map((value) => value.trim())
+      .filter(Boolean)
+  };
+
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    {
+      tenantId: string;
+      locale: string;
+      filter: typeof gqlFilter;
+      facetCodes: string[];
+    },
+    AdminCatalogFacetsResponse
+  >(
+    ADMIN_PRODUCT_CATALOG_FACETS_QUERY,
+    {
+      tenantId: opts.tenantId,
+      locale,
+      filter: gqlFilter,
+      facetCodes: normalizedFacetCodes
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.adminProductCatalogFacets ?? [];
 }
 
 export type CreateProductPayload = {

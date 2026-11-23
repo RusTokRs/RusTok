@@ -4,7 +4,8 @@ import {
   DEFAULT_PRODUCT_ADMIN_PAGE_SIZE,
   MAX_PRODUCT_ADMIN_PAGE,
   MAX_PRODUCT_ADMIN_PAGE_SIZE,
-  normalizeProductAdminPagination
+  normalizeProductAdminPagination,
+  normalizeProductAdminPageForTotal
 } from './product-list-pagination.ts';
 
 test('product admin pagination retains valid server page requests', () => {
@@ -37,4 +38,11 @@ test('product admin pagination refuses malformed, negative, zero and fractional 
       DEFAULT_PRODUCT_ADMIN_PAGE_SIZE
     );
   }
+});
+
+test('product admin page clamps to the last page returned by the server total', () => {
+  assert.equal(normalizeProductAdminPageForTotal(99, 41, 20), 3);
+  assert.equal(normalizeProductAdminPageForTotal(2, 41, 20), 2);
+  assert.equal(normalizeProductAdminPageForTotal(99, 0, 20), 1);
+  assert.equal(normalizeProductAdminPageForTotal(99, 41, 0), 3);
 });

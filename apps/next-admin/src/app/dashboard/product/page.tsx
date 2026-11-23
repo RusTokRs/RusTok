@@ -2,7 +2,11 @@ import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
 import {
   listProducts,
+  listCatalogCategorySearchOptions,
+  listCatalogAttributeSearchOptions,
+  listAdminCatalogFacets,
   normalizeProductAdminPagination,
+  normalizeProductAdminPageForTotal,
   normalizeProductStatus,
   ProductTable
 } from '@rustok/product-admin';
@@ -12,6 +16,13 @@ import { PageContainer } from '@/widgets/app-shell';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
+import { getLocale } from '@rustok/next-fluent/server';
+import {
+  EFFECTIVE_LOCALE_HEADER,
+  LOCALE_COOKIE,
+  locales,
+  defaultLocale
+} from '@/i18n/config';
 
 export const metadata = {
   title: 'RusTok Admin: Catalog'
@@ -93,21 +104,28 @@ export default async function ProductPage({ searchParams }: PageProps) {
     tenantId: session?.user?.tenantId ?? null
   };
 
+  const locale = await getLocale({
+    headerName: EFFECTIVE_LOCALE_HEADER,
+    cookieName: LOCALE_COOKIE,
+    locales,
+    defaultLocale
+  });
+  const filter = {
+    page,
+    perPage,
+    search,
+    status,
+    vendor,
+    categoryId,
+    sortBy,
+    sortDirection,
+    attributeFilters
+  };
   let result: Awaited<ReturnType<typeof listProducts>> | null = null;
   let error: string | null = null;
 
   try {
-    result = await listProducts(opts, {
-      page,
-      perPage,
-      search,
-      status,
-      vendor,
-      categoryId,
-      sortBy,
-      sortDirection,
-      attributeFilters
-    });
+    result = await listProducts(opts, filter, locale);
   } catch {
     // Transport failures can carry server-controlled details. The view
     // displays only an operator-safe message, never a raw GraphQL payload.
@@ -117,8 +135,52 @@ export default async function ProductPage({ searchParams }: PageProps) {
         : 'Product catalog is temporarily unavailable.';
   }
 
+  if (result) {
+    const normalizedPage = normalizeProductAdminPageForTotal(
+      page,
+      result.total,
+      perPage
+    );
+    if (normalizedPage !== page) {
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        if (Array.isArray(value)) {
+          for (const entry of value) query.append(key, entry);
+        } else if (value !== undefined) {
+          query.append(key, value);
+        }
+      }
+      query.set('page', String(normalizedPage));
+      query.set('perPage', String(perPage));
+      redirect(`/dashboard/product?${query.toString()}`);
+    }
+  }
+
   const products = result?.items ?? [];
   const total = result?.total ?? 0;
+  const categoryOptions = result
+    ? await listCatalogCategorySearchOptions(opts, locale).catch(() => [])
+    : [];
+  const attributeOptions = result
+    ? await listCatalogAttributeSearchOptions(opts, locale).catch(() => [])
+    : [];
+  const facets = result
+    ? await listAdminCatalogFacets(
+        opts,
+        filter,
+        attributeOptions.map((option) => option.value),
+        locale
+      ).catch(() => [])
+    : [];
+  const routeQuery: Record<string, string> = Object.fromEntries(
+    Object.entries(params).flatMap(([key, value]) => {
+      const selected = pickParam(value);
+      return selected === undefined ? [] : [[key, selected]];
+    })
+  );
+  if (attributeFilters.length > 0) {
+    routeQuery.attribute_filters = attributeFilters.join(';');
+  }
 
   return (
     <PageContainer
@@ -142,7 +204,19 @@ export default async function ProductPage({ searchParams }: PageProps) {
             </CardContent>
           </Card>
         ) : (
-          <ProductTable data={products} totalItems={total} />
+          <ProductTable
+            data={products}
+            totalItems={total}
+            categoryOptions={categoryOptions}
+            attributeOptions={attributeOptions}
+            facets={facets}
+            categoryId={categoryId}
+            attributeFilters={attributeFilters}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            perPage={perPage}
+            routeQuery={routeQuery}
+          />
         )}
       </div>
     </PageContainer>

@@ -558,6 +558,18 @@ fn service_from_context(
 }
 
 #[cfg(feature = "ssr")]
+pub(super) async fn ensure_product_module_enabled(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    match rustok_api::is_tenant_module_enabled(db, tenant_id, "product").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ServerFnError::new("Product module is not enabled")),
+        Err(_) => Err(map_product_internal_error()),
+    }
+}
+
+#[cfg(feature = "ssr")]
 async fn native_context() -> Result<
     (
         rustok_product::ProductCatalogSchemaService,
@@ -575,11 +587,12 @@ async fn native_context() -> Result<
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
         .map_err(|_| map_product_internal_error())?;
-    if auth.tenant_id != tenant.id {
+    if auth.tenant_id != tenant.id || tenant.id.is_nil() || auth.user_id.is_nil() {
         return Err(ServerFnError::new(
             "Authenticated actor is not bound to the current tenant",
         ));
     }
+    ensure_product_module_enabled(runtime_ctx.db(), tenant.id).await?;
     Ok((service, auth, tenant))
 }
 
