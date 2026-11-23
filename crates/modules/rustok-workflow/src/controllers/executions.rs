@@ -42,6 +42,12 @@ fn map_workflow_execution_error(
             "Workflow execution was not found",
             "execution_not_found",
         ),
+        WorkflowError::ExecutionOutcomeUncertain(_) => (
+            StatusCode::CONFLICT,
+            "workflow_execution_reconciliation_required",
+            "Workflow execution outcome requires operator reconciliation",
+            "execution_outcome_ambiguous",
+        ),
         WorkflowError::NotActive(_) => (
             StatusCode::CONFLICT,
             "workflow_state_conflict",
