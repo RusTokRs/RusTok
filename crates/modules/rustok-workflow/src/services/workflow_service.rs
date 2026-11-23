@@ -17,7 +17,7 @@ use crate::entities::{
     WorkflowActiveModel, WorkflowEntity, WorkflowExecutionEntity, WorkflowStatus,
     WorkflowStepActiveModel, WorkflowStepEntity, WorkflowStepExecutionEntity,
     WorkflowVersionActiveModel, WorkflowVersionEntity, workflow, workflow_execution, workflow_step,
-    workflow_step_execution, workflow_version,
+    workflow_step_execution, workflow_version, workflow_cron_firing, ExecutionStatus,
 };
 use crate::error::{WorkflowError, WorkflowResult};
 use tracing::instrument;
@@ -209,6 +209,32 @@ impl WorkflowService {
         }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
+
+        // A hard delete would cascade to the only execution and recovery
+        // evidence, even while external effects may still be running.
+        // The same parent-row lock also serializes with the durable cron
+        // reservation transaction before it starts issuing effects.
+        let unresolved_execution = WorkflowExecutionEntity::find()
+            .filter(workflow_execution::Column::WorkflowId.eq(id))
+            .filter(workflow_execution::Column::TenantId.eq(tenant_id))
+            .filter(workflow_execution::Column::Status.is_in([
+                ExecutionStatus::Running.to_string(),
+                ExecutionStatus::ReconciliationRequired.to_string(),
+            ]))
+            .one(&transaction).await?.is_some();
+        let unresolved_firing = workflow_cron_firing::Entity::find()
+            .filter(workflow_cron_firing::Column::WorkflowId.eq(id))
+            .filter(workflow_cron_firing::Column::TenantId.eq(tenant_id))
+            .filter(workflow_cron_firing::Column::Status.is_in([
+                workflow_cron_firing::PENDING,
+                workflow_cron_firing::RUNNING,
+                workflow_cron_firing::RECONCILIATION_REQUIRED,
+            ]))
+            .one(&transaction).await?.is_some();
+        if unresolved_execution || unresolved_firing {
+            return Err(WorkflowError::WorkflowDeletionBlocked(id));
+        }
+
         let model: WorkflowActiveModel = existing.into();
         model.delete(&transaction).await?;
         transaction.commit().await?;
