@@ -36,6 +36,8 @@ const SORT_KEY = 'sort';
 const ARRAY_SEPARATOR = ',';
 const DEBOUNCE_MS = 300;
 const THROTTLE_MS = 50;
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
 
 function columnFiltersSignature(filters: ColumnFiltersState): string {
   return JSON.stringify(
@@ -254,7 +256,7 @@ export function useDataTable<TData extends RowData = any>(
   // URL changes caused by Back/Forward or a server navigation are authoritative.
   // A locally scheduled write is recognized so it does not cancel a newer edit.
   const lastUrlColumnFilters = React.useRef(currentFilterSignature);
-  React.useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const routeFilters = columnFiltersSignature(initialColumnFilters);
     if (lastUrlColumnFilters.current !== routeFilters) {
       lastUrlColumnFilters.current = routeFilters;
