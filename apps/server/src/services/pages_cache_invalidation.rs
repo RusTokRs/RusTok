@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 
@@ -12,40 +13,37 @@ use rustok_pages::{
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
-// Dedupe belongs to the cache backend that must observe the invalidation, not
-// to the entire process. Two independent CacheService instances can have
-// independent namespace generations, even when they process the same event ID.
-// Weak references avoid retaining an old backend/dedupe across host restarts.
-const MAX_PAGE_CACHE_DEDUPE_BACKENDS: usize = 256;
+// A cache service's generation owner, not its value backend, owns success
+// deduplication. Invalidating generations must never initialize value storage.
+const MAX_PAGE_CACHE_DEDUPE_OWNERS: usize = 256;
 type SharedPagesDedupeRegistry =
-    Vec<(Weak<dyn CacheBackend>, Weak<BoundedCacheEventDedupe>)>;
+    Vec<(Weak<dyn Any + Send + Sync>, Weak<BoundedCacheEventDedupe>)>;
 static PAGE_CACHE_DEDUPES: OnceLock<Mutex<SharedPagesDedupeRegistry>> = OnceLock::new();
 
 fn successful_page_invalidations_for(
-    backend: &Arc<dyn CacheBackend>,
+    generation_owner: &Arc<dyn Any + Send + Sync>,
 ) -> Arc<BoundedCacheEventDedupe> {
     let registry = PAGE_CACHE_DEDUPES.get_or_init(|| Mutex::new(Vec::new()));
     let mut entries = registry
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    entries.retain(|(key, dedupe)| key.strong_count() > 0 && dedupe.strong_count() > 0);
-    for (key, dedupe) in entries.iter() {
-        if let (Some(registered_backend), Some(registered_dedupe)) =
-            (key.upgrade(), dedupe.upgrade())
+    entries.retain(|(owner, dedupe)| owner.strong_count() > 0 && dedupe.strong_count() > 0);
+    for (owner, dedupe) in entries.iter() {
+        if let (Some(registered_owner), Some(registered_dedupe)) =
+            (owner.upgrade(), dedupe.upgrade())
         {
-            if Arc::ptr_eq(&registered_backend, backend) {
+            if Arc::ptr_eq(&registered_owner, generation_owner) {
                 return registered_dedupe;
             }
         }
     }
 
     let dedupe = Arc::new(BoundedCacheEventDedupe::default());
-    if entries.len() < MAX_PAGE_CACHE_DEDUPE_BACKENDS {
-        entries.push((Arc::downgrade(backend), Arc::downgrade(&dedupe)));
+    if entries.len() < MAX_PAGE_CACHE_DEDUPE_OWNERS {
+        entries.push((Arc::downgrade(generation_owner), Arc::downgrade(&dedupe)));
     } else {
-        // A full optimization registry must never suppress invalidation.
-        // An unshared dedupe may bump an extra generation, which is safe.
-        tracing::warn!("Pages cache dedupe registry reached its live backend capacity");
+        // Saturation may rotate an extra generation, but never skip one.
+        tracing::warn!("Pages cache dedupe registry reached its live owner capacity");
     }
     dedupe
 }
@@ -55,7 +53,7 @@ pub struct ServerPagesCachePort {
     cache: CacheService,
     generations: CacheNamespaceGenerationStore,
     backend: Arc<OnceCell<Arc<dyn CacheBackend>>>,
-    successful_invalidations: Arc<OnceCell<Arc<BoundedCacheEventDedupe>>>,
+    successful_invalidations: Arc<BoundedCacheEventDedupe>,
 }
 
 impl ServerPagesCachePort {
@@ -64,7 +62,9 @@ impl ServerPagesCachePort {
             cache: cache.clone(),
             generations: cache.namespace_generations(),
             backend: Arc::new(OnceCell::new()),
-            successful_invalidations: Arc::new(OnceCell::new()),
+            successful_invalidations: successful_page_invalidations_for(
+                &cache.generation_store_identity(),
+            ),
         }
     }
 
@@ -78,16 +78,6 @@ impl ServerPagesCachePort {
                         PAGES_STOREFRONT_CACHE_MAX_CAPACITY,
                     )
                     .await
-            })
-            .await
-            .clone()
-    }
-
-    async fn successful_invalidations(&self) -> Arc<BoundedCacheEventDedupe> {
-        self.successful_invalidations
-            .get_or_init(|| async {
-                let backend = self.backend().await;
-                successful_page_invalidations_for(&backend)
             })
             .await
             .clone()
@@ -121,7 +111,7 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
         &self,
         request: PageCacheInvalidationRequest,
     ) -> Result<PageCacheInvalidationReceipt, PageCacheError> {
-        let successful_invalidations = self.successful_invalidations().await;
+        let successful_invalidations = Arc::clone(&self.successful_invalidations);
         let _event_guard = successful_invalidations.serialize_event(request.event_id).await;
         if successful_invalidations.is_duplicate(request.event_id) {
             tracing::debug!(
@@ -243,6 +233,36 @@ mod tests {
         assert_eq!(duplicate, first);
         assert_eq!(
             port.generation_snapshot(request.tenant_id).await.unwrap(),
+            PageCacheGenerationSnapshot::new(1, 1, 1)
+        );
+    }
+
+    #[tokio::test]
+    async fn invalidation_does_not_construct_the_cache_value_backend() {
+        let cache = local_only_cache();
+        let port = ServerPagesCachePort::new(&cache);
+        assert_eq!(cache.shared_backend_construction_count(), 0);
+        port.invalidate(request(PageCacheInvalidationCause::Updated))
+            .await
+            .unwrap();
+        assert_eq!(
+            cache.shared_backend_construction_count(),
+            0,
+            "rotating generations must not initialize value storage"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_ports_from_one_cache_service_rotate_each_event_only_once() {
+        let cache = local_only_cache();
+        let first = ServerPagesCachePort::new(&cache);
+        let second = ServerPagesCachePort::new(&cache.clone());
+        let event = request(PageCacheInvalidationCause::Published);
+        let (first_receipt, second_receipt) =
+            tokio::join!(first.invalidate(event.clone()), second.invalidate(event.clone()));
+        assert_eq!(first_receipt.unwrap(), second_receipt.unwrap());
+        assert_eq!(
+            first.generation_snapshot(event.tenant_id).await.unwrap(),
             PageCacheGenerationSnapshot::new(1, 1, 1)
         );
     }

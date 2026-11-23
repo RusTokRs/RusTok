@@ -18,6 +18,9 @@
     private, so these constructors are the only entry point, and both TTL constructors reject a zero
     TTL with `CachePolicyError::ZeroTtl`. No policy that only fails at use time can be built.
   - `CacheNamespaceGenerationStore`, `CacheInvalidationService`
+  - `CacheService::generation_store_identity()`: opaque clone-shared
+    generation-owner token for process-local deduplication; compare with
+    `Arc::ptr_eq`, never persist raw addresses, and no value backend is created
   - `DurableCacheInvalidationConsumer`, `DurableInvalidationProcessOutcome`
   - `BoundedCacheInvalidationGapTracker` (canonical; no unbounded variant), `BoundedCacheEventDedupe`
   - `CacheInvalidationError` (`InvalidMessage`, `SharedTransport`), `DurableCacheInvalidationError::Transport`
