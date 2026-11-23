@@ -114,6 +114,7 @@ pub enum GqlExecutionStatus {
     Completed,
     Failed,
     TimedOut,
+    ReconciliationRequired,
 }
 
 impl From<ExecutionStatus> for GqlExecutionStatus {
@@ -123,6 +124,7 @@ impl From<ExecutionStatus> for GqlExecutionStatus {
             ExecutionStatus::Completed => Self::Completed,
             ExecutionStatus::Failed => Self::Failed,
             ExecutionStatus::TimedOut => Self::TimedOut,
+            ExecutionStatus::ReconciliationRequired => Self::ReconciliationRequired,
         }
     }
 }
