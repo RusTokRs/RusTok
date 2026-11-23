@@ -231,9 +231,10 @@ impl WorkflowEngine {
                     // on_error=retry nor on_error=skip can prove it is safe to
                     // send again or ignore the result. Preserve uncertainty
                     // for an operator instead of claiming a terminal failure.
-                    if potentially_external_step(&step.step_type)
-                        && !matches!(err, crate::error::WorkflowError::InvalidStepConfig(_))
-                    {
+                    // An error variant does not prove where the external
+                    // effect stopped. Even a misclassified validation error
+                    // from a pluggable executor may follow a remote send.
+                    if potentially_external_step(&step.step_type) {
                         let uncertain_reason =
                             Some(format!("step {} has an unconfirmed external outcome", step.id));
                         if let Some((firing_id, token)) = cron_fence {
