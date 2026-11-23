@@ -318,6 +318,11 @@ fn option_condition(
                 SELECT 1
                 FROM product_attribute_values pav
                 JOIN product_attribute_value_options pavo ON pavo.value_id = pav.id
+                JOIN product_attribute_options pao
+                  ON pao.id = pavo.option_id
+                 AND pao.tenant_id = pav.tenant_id
+                 AND pao.attribute_id = pav.attribute_id
+                 AND pao.archived_at IS NULL
                 WHERE pav.product_id = products.id
                   AND pav.tenant_id = {p1}
                   AND pav.attribute_id = {p2}
@@ -338,6 +343,7 @@ fn option_condition(
             JOIN product_attribute_options pao
               ON pao.id = pavo.option_id
              AND pao.tenant_id = pav.tenant_id
+             AND pao.attribute_id = pav.attribute_id
             WHERE pav.product_id = products.id
               AND pav.tenant_id = {p1}
               AND pav.attribute_id = {p2}
