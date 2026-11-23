@@ -1,4 +1,5 @@
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, TransactionTrait,
@@ -15,7 +16,7 @@ use crate::dto::{
     PageBodyRevisionResponse, PageBodyRevisionSource, PageResponse, RestorePageBodyRevisionInput,
     SavePageDocumentInput,
 };
-use crate::entities::{page, page_body_revision, page_translation};
+use crate::entities::{page, page_body_revision, page_document_save_receipt, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{can_read_page_source, enforce_owned_scope};
 
@@ -23,6 +24,10 @@ use super::helpers::{next_body_revision_timestamp, normalize_locale, normalize_p
 use super::{PAGE_KIND, PageService, PreparedPageBody, WorkingBody};
 
 pub const PAGE_DOCUMENT_REVISION_CONFLICT: &str = "PAGE_DOCUMENT_REVISION_CONFLICT";
+pub const PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT: &str = "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT";
+pub const PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED: &str = "PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED";
+const MAX_REPLAYABLE_SAVE_RECEIPTS_PER_PAGE: u64 = 64;
+const MAX_SAVE_RECEIPT_KEY_BYTES: usize = 128;
 pub const PAGE_BODY_REVISION_NOT_FOUND: &str = "PAGE_BODY_REVISION_NOT_FOUND";
 
 /// Newest body revisions returned by one history read.
@@ -42,6 +47,28 @@ impl PageService {
         page_id: Uuid,
         input: SavePageDocumentInput,
     ) -> PagesResult<PageResponse> {
+        self.save_document_with_receipt(tenant_id, security, page_id, input, None).await
+    }
+
+    /// A durable, caller-identified save. Repeating the same key and normalized
+    /// payload returns the original acknowledgement, even after another editor
+    /// changed the page. Reusing a key with different content fails closed.
+    ///
+    /// Callers must generate one stable key for each *attempt* and retain it
+    /// across network retries; fresh edits must receive a new key.
+    #[instrument(skip(self, input, security))]
+    pub async fn save_document_with_receipt(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        input: SavePageDocumentInput,
+        idempotency_key: Option<String>,
+    ) -> PagesResult<PageResponse> {
+        let idempotency_key = idempotency_key
+            .as_deref()
+            .map(normalize_document_save_key)
+            .transpose()?;
         let mut body = normalize_page_body_input(Some(input.body))?
             .ok_or_else(|| PagesError::validation("Page document body is required"))?;
         if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
@@ -50,6 +77,15 @@ impl PageService {
             ));
         }
         body.content = super::layout::strip_layout_nodes(&body.content)?;
+        let request_hash = idempotency_key
+            .as_ref()
+            .map(|_| document_save_request_hash(
+                tenant_id,
+                page_id,
+                &input.expected_revision,
+                &body,
+            ))
+            .transpose()?;
         let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -68,6 +104,19 @@ impl PageService {
             Action::Update,
             locked_page.author_id,
         )?;
+
+        // Replays are resolved *before* the current revision check, otherwise a
+        // write that committed but lost its HTTP reply would always conflict.
+        if let (Some(key), Some(hash)) = (idempotency_key.as_deref(), request_hash.as_deref()) {
+            if let Some(receipt) = find_document_save_receipt_in_tx(
+                &txn, tenant_id, page_id, key,
+            ).await? {
+                verify_document_save_receipt(&receipt, security.user_id, hash)?;
+                let result = page_response_from_receipt(&receipt)?;
+                txn.commit().await?;
+                return Ok(result);
+            }
+        }
 
         let translation_exists = page_translation::Entity::find()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
@@ -197,8 +246,71 @@ impl PageService {
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
             .await?;
+        if let (Some(key), Some(hash)) = (idempotency_key, request_hash) {
+            let result_revision = response.body.as_ref().ok_or_else(|| {
+                PagesError::validation("Accepted document save has no authoring body")
+            })?.updated_at.clone();
+            let response_json = serde_json::to_string(&response).map_err(|error| {
+                PagesError::validation(format!("Cannot serialize page document save receipt: {error}"))
+            })?;
+            page_document_save_receipt::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                page_id: Set(page_id),
+                actor_id: Set(security.user_id),
+                idempotency_key: Set(key),
+                request_hash: Set(hash),
+                result_revision: Set(result_revision),
+                response_json: Set(Some(response_json)),
+                created_at: Set(Utc::now().into()),
+            }
+            .insert(&txn)
+            .await?;
+            // Retain permanent tiny key/hash tombstones while bounding the
+            // number of *full document snapshots* retained per page.
+            expire_old_document_save_receipts_in_tx(&txn, tenant_id, page_id).await?;
+        }
         txn.commit().await?;
         Ok(response)
+    }
+
+
+    /// Lookup an already committed save by its stable ID without replaying the mutation.
+    /// A missing receipt is not proof that an in-flight request failed.
+    #[instrument(skip(self, security))]
+    pub async fn document_save_receipt(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        idempotency_key: &str,
+    ) -> PagesResult<Option<PageResponse>> {
+        let key = normalize_document_save_key(idempotency_key)?;
+        let page = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            page.author_id,
+        )?;
+        let receipt = page_document_save_receipt::Entity::find()
+            .filter(page_document_save_receipt::Column::TenantId.eq(tenant_id))
+            .filter(page_document_save_receipt::Column::PageId.eq(page_id))
+            .filter(page_document_save_receipt::Column::IdempotencyKey.eq(&key))
+            .one(&self.db)
+            .await?;
+        match receipt {
+            Some(receipt) => {
+                if receipt.actor_id != security.user_id {
+                    return Err(document_save_receipt_error(
+                        PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT,
+                        "A document save idempotency key belongs to a different actor",
+                    ));
+                }
+                Ok(Some(page_response_from_receipt(&receipt)?))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Restores one journaled body revision into the locale's working copy.
@@ -403,6 +515,124 @@ impl PageService {
             })
             .collect())
     }
+}
+
+
+fn normalize_document_save_key(raw: &str) -> PagesResult<String> {
+    if raw.is_empty()
+        || raw.len() > MAX_SAVE_RECEIPT_KEY_BYTES
+        || !raw.bytes().all(|byte| byte.is_ascii_alphanumeric() ||
+            matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err(PagesError::validation(
+            "Document save idempotency key must be 1..128 ASCII letters, digits, '-' '_' '.' or ':'",
+        ));
+    }
+    Ok(raw.to_string())
+}
+
+fn document_save_request_hash(
+    tenant_id: Uuid,
+    page_id: Uuid,
+    expected_revision: &str,
+    body: &PreparedPageBody,
+) -> PagesResult<String> {
+    // Hash the normalized, layout-stripped persisted command, not raw JSON
+    // supplied by one client: semantically equivalent encodings replay.
+    let bytes = serde_json::to_vec(&(
+        "page-document-save-v1",
+        tenant_id,
+        page_id,
+        expected_revision,
+        &body.locale,
+        &body.format,
+        &body.content,
+    ))
+    .map_err(|error| PagesError::validation(format!("Cannot hash document save: {error}")))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+async fn find_document_save_receipt_in_tx(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    key: &str,
+) -> PagesResult<Option<page_document_save_receipt::Model>> {
+    Ok(page_document_save_receipt::Entity::find()
+        .filter(page_document_save_receipt::Column::TenantId.eq(tenant_id))
+        .filter(page_document_save_receipt::Column::PageId.eq(page_id))
+        .filter(page_document_save_receipt::Column::IdempotencyKey.eq(key))
+        .one(txn)
+        .await?)
+}
+
+fn verify_document_save_receipt(
+    receipt: &page_document_save_receipt::Model,
+    actor_id: Option<Uuid>,
+    expected_hash: &str,
+) -> PagesResult<()> {
+    if receipt.request_hash != expected_hash || receipt.actor_id != actor_id {
+        return Err(document_save_receipt_error(
+            PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT,
+            "A document save idempotency key was reused for a different request or actor",
+        ));
+    }
+    Ok(())
+}
+
+fn page_response_from_receipt(
+    receipt: &page_document_save_receipt::Model,
+) -> PagesResult<PageResponse> {
+    let encoded = receipt.response_json.as_deref().ok_or_else(|| {
+        document_save_receipt_error(
+            PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED,
+            "The saved operation is known but its full response has expired; reload the current document",
+        )
+    })?;
+    let response: PageResponse = serde_json::from_str(encoded).map_err(|_| {
+        PagesError::validation("Persisted page document save receipt is invalid")
+    })?;
+    if response.id != receipt.page_id ||
+        response.body.as_ref().map(|body| body.updated_at.as_str())
+            != Some(receipt.result_revision.as_str())
+    {
+        return Err(PagesError::validation(
+            "Persisted page document save receipt is inconsistent with its result revision",
+        ));
+    }
+    Ok(response)
+}
+
+fn document_save_receipt_error(code: &'static str, detail: &str) -> PagesError {
+    PagesError::Rich(Box::new(
+        RichError::new(ErrorKind::Conflict, format!("{code}: {detail}"))
+            .with_user_message(detail)
+            .with_field("error_code", code)
+            .with_error_code(code),
+    ))
+}
+
+async fn expire_old_document_save_receipts_in_tx(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> PagesResult<()> {
+    let to_expire = page_document_save_receipt::Entity::find()
+        .filter(page_document_save_receipt::Column::TenantId.eq(tenant_id))
+        .filter(page_document_save_receipt::Column::PageId.eq(page_id))
+        .filter(page_document_save_receipt::Column::ResponseJson.is_not_null())
+        .order_by_desc(page_document_save_receipt::Column::CreatedAt)
+        .order_by_desc(page_document_save_receipt::Column::Id)
+        .offset(MAX_REPLAYABLE_SAVE_RECEIPTS_PER_PAGE)
+        .limit(MAX_REPLAYABLE_SAVE_RECEIPTS_PER_PAGE)
+        .all(txn)
+        .await?;
+    for old in to_expire {
+        let mut model: page_document_save_receipt::ActiveModel = old.into();
+        model.response_json = Set(None);
+        model.update(txn).await?;
+    }
+    Ok(())
 }
 
 /// Working-copy revision token: the copy's `updated_at`, or `page:<page_id>:initial`
