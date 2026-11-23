@@ -50,9 +50,9 @@ struct BuildIdentity {
 }
 
 #[derive(Deserialize)]
-struct Export {
+pub(super) struct Export {
     schema_version: u32,
-    migrations: Vec<String>,
+    pub(super) migrations: Vec<String>,
     entries: Vec<Value>,
 }
 
@@ -208,7 +208,7 @@ fn validate_build<'a>(
     Ok(build)
 }
 
-fn read_inventory(bytes: &[u8]) -> Result<Export> {
+pub(super) fn read_inventory(bytes: &[u8]) -> Result<Export> {
     let inventory: Export =
         serde_json::from_slice(bytes).context("invalid executable migration inventory")?;
     ensure!(

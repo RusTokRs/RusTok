@@ -26,8 +26,16 @@ pub(super) fn check(
     tree: &BTreeSet<&str>,
     blobs: &BTreeMap<String, Vec<u8>>,
 ) -> Result<BTreeSet<String>> {
-    let mut pending: Vec<_> = declaration
-        .entrypoints
+    discover(&declaration.entrypoints, &declaration.files, tree, blobs)
+}
+
+pub(super) fn discover(
+    entrypoints: &BTreeSet<String>,
+    available: &BTreeSet<String>,
+    tree: &BTreeSet<&str>,
+    blobs: &BTreeMap<String, Vec<u8>>,
+) -> Result<BTreeSet<String>> {
+    let mut pending: Vec<_> = entrypoints
         .iter()
         .map(|path| Source {
             path: path.clone(),
@@ -49,7 +57,7 @@ pub(super) fn check(
                 scan(&source, text, tree).with_context(|| format!("in {}", source.path))?;
             for target in linked {
                 ensure!(
-                    declaration.files.contains(&target.path),
+                    available.contains(&target.path),
                     "{} references undeclared source {}",
                     source.path,
                     target.path

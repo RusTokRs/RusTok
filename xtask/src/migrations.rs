@@ -60,6 +60,7 @@ pub fn run(args: &[String]) -> Result<()> {
         "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
         "source-inputs" => &["--commit", "--inputs", "--compare"],
         "bind-inventory" => &["--plan", "--inputs", "--side"],
+        "discover-source-inputs" => &["--commit", "--inventory", "--dep-info", "--build-root"],
         _ => bail!("unknown migration command {command}"),
     };
     let options = parse_options(&args[1..], allowed)?;
@@ -98,6 +99,13 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--inputs")?),
             options.get("--side").map_or("reference", String::as_str),
         ),
+        "discover-source-inputs" => source_inputs::discover(
+            &root,
+            required("--commit")?,
+            Path::new(required("--inventory")?),
+            Path::new(required("--dep-info")?),
+            required("--build-root")?,
+        ),
         // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
     }
@@ -110,6 +118,7 @@ fn help() -> Result<()> {
     );
     println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
     println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate]");
+    println!("cargo xtask migrations discover-source-inputs --commit SHA --inventory FILE --dep-info FILE --build-root DIR");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
     );
@@ -755,6 +764,13 @@ fn verify_fresh(
                 .context("Cargo did not produce export-migration-plan")?;
             input_digests.insert(runner.clone(), file_digest(&runner)?);
             input_digests.insert(exporter.clone(), file_digest(&exporter)?);
+            for binary in [&runner, &exporter] {
+                let dep_info = binary.with_extension("d");
+                let dep_info_sha256 = file_digest(&dep_info).with_context(|| {
+                    format!("Cargo dep-info unavailable for {}", binary.display())
+                })?;
+                input_digests.insert(dep_info, dep_info_sha256);
+            }
             let plan_output = evidence.join(format!("{side}-plan.json"));
             let mut export = runtime_command(&exporter);
             export.current_dir(source).arg("--output").arg(&plan_output);

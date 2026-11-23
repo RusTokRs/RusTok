@@ -240,6 +240,10 @@ The [`bind-inventory` command](../../xtask/README.md#migration-consolidation-com
 joins these source results to the ordered executable export validated by a
 completed `verify-fresh` run. It requires the build snapshot to match a Git
 commit and keeps uncovered migration rows visible in the report.
+The same workflow can generate reviewable declarations from the executable
+inventory, Cargo's saved dep-info paths, and the committed Rust name and
+module declarations. Ambiguous names and unsupported local links require
+review before the generated declarations are used.
 Trusted release tooling still needs to prove that the list covers all build
 and execution inputs, authenticate and select the boundary,
 cover independent module seals, and authorize any draft replacement.

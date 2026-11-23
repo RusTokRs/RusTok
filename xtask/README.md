@@ -385,6 +385,26 @@ Unknown migration names fail the check. The report binds the source declaration
 file and records declared and locally checked coverage separately. It reports
 transitive build-input coverage as unverified and carries local evidence only.
 
+`discover-source-inputs` prepares the declaration input from an executable
+export and the saved `export-migration-plan.d` Cargo dep-info file. Give it
+the full source commit and the original absolute build source root recorded
+in the `.d` file, even if the root has been cleaned up. The tool matches
+observed paths to regular Git blobs. It associates `DeriveMigrationName`
+and literal `MigrationName` implementations with the exported steps, then
+uses the local link check to collect nested files and literal assets.
+
+```sh
+cargo xtask migrations discover-source-inputs --commit SHA --inventory fresh/reference-plan.json --dep-info path/to/export-migration-plan.d --build-root path/to/original/source > source-inputs.json
+```
+
+Unknown or ambiguous names and unsupported links produce diagnostics and a
+nonzero status. The output can contain partial declarations for review. A
+file seen by Cargo contributes only to this build's observed paths. Package
+imports, external and generated inputs, alternate build configurations and
+exact attribution of shared dependency code still require separate evidence.
+New `verify-fresh` reports also record the Cargo dep-info file digests for
+the runner and exporter alongside their build artifacts.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
