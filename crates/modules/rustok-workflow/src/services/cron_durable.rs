@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::entities::{
-    ExecutionStatus, Workflow, WorkflowExecutionEntity, WorkflowStatus, workflow,
+    ExecutionStatus, Workflow, WorkflowExecutionActiveModel, WorkflowExecutionEntity, WorkflowStatus, workflow,
     workflow_cron_cursor as cursor, workflow_cron_firing as firing,
     workflow_cron_review as review, workflow_execution,
 };
@@ -229,6 +229,53 @@ async fn owns_current_claim(
         .one(db).await?.is_some())
 }
 
+/// Atomically reserve the execution journal in the same transaction that
+/// verifies and writes the current firing attempt. A reconciliation transaction
+/// cannot see 'no execution' and requeue while the previous worker is about
+/// to create an execution: one of the two operations wins the firing-row CAS.
+async fn reserve_execution_for_claim(
+    db: &DatabaseConnection,
+    item: &firing::Model,
+    token: Uuid,
+    context: &serde_json::Value,
+) -> WorkflowResult<Option<Uuid>> {
+    let transaction = db.begin().await?;
+    let affected = firing::Entity::update_many()
+        .col_expr(firing::Column::ClaimedAt, Expr::value(at(Utc::now())))
+        .filter(firing::Column::Id.eq(item.id))
+        .filter(firing::Column::TenantId.eq(item.tenant_id))
+        .filter(firing::Column::Status.eq(firing::RUNNING))
+        .filter(firing::Column::AttemptToken.eq(token))
+        .exec(&transaction).await?.rows_affected;
+    if affected != 1 {
+        return Ok(None);
+    }
+
+    let prior = WorkflowExecutionEntity::find()
+        .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
+        .filter(workflow_execution::Column::TenantId.eq(item.tenant_id))
+        .filter(workflow_execution::Column::TriggerEventId.eq(item.id))
+        .one(&transaction).await?;
+    if prior.is_some() {
+        return Err(WorkflowError::CronReconciliationConflict(item.id));
+    }
+
+    let execution_id = Uuid::new_v4();
+    WorkflowExecutionActiveModel {
+        id: Set(execution_id),
+        workflow_id: Set(item.workflow_id),
+        tenant_id: Set(item.tenant_id),
+        trigger_event_id: Set(Some(item.id)),
+        status: Set(ExecutionStatus::Running),
+        context: Set(context.clone()),
+        error: Set(None),
+        started_at: Set(at(Utc::now())),
+        completed_at: Set(None),
+    }.insert(&transaction).await?;
+    transaction.commit().await?;
+    Ok(Some(execution_id))
+}
+
 /// A firing can only advance when its schedule is still active. Claims
 /// from old revisions become skipped rather than being executed under
 /// changed workflow definition or a paused/archived workflow.
@@ -286,11 +333,14 @@ pub(super) async fn execute_claim(
             "firing_id": item.id.to_string()
         }
     });
-    // Reusing the stored firing UUID as trigger_event_id invokes the
-    // existing unique (workflow_id, trigger_event_id) engine guard.
-    let result = engine.execute(
-        item.workflow_id, item.tenant_id, Some(item.id), steps, context,
-    ).await;
+    // Both the attempt check and the first execution record are committed
+    // together, before the first possible external step side effect. This
+    // closes the stale-worker vs operator "no journal yet" requeue window.
+    let execution_id = match reserve_execution_for_claim(db, &item, token, &context).await? {
+        Some(execution_id) => execution_id,
+        None => return Ok(()),
+    };
+    let result = engine.execute_preclaimed_cron(execution_id, steps, context).await;
 
     let recorded = WorkflowExecutionEntity::find()
         .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
