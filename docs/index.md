@@ -33,6 +33,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 
 - [Architecture Quick Reference](../ARCHITECTURE.md)
 - [ADR Registry](../DECISIONS/README.md)
+- [Proposed ADR: Workflow cron durable scheduling and recovery](../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) — workflow-owned schedule cursors, per-firing claims, conservative recovery and operator evidence.
 - [Platform Overview](./architecture/overview.md)
 - [Architecture Principles](./architecture/principles.md)
 - [API and Surface Contracts](./architecture/api.md)
