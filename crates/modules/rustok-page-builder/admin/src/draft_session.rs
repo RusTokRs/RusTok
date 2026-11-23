@@ -2425,7 +2425,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         if !FileSsrDraftSessionStore::is_safe_token(token) {
             return Err(SsrDraftSessionError::OperationReceiptRequiresSession);
         }
-        let Some(mut expected_record) = self.backend.load_record(token, owner)? else {
+        let Some(expected_record) = self.backend.load_record(token, owner)? else {
             return Err(SsrDraftSessionError::DraftUnavailable);
         };
         if expected_record.controller.page_id() != controller.page_id() {
@@ -2451,6 +2451,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
             });
         }
+        let controller_page_id = controller.page_id().to_string();
         let generation = expected_record.generation.checked_add(1)
             .ok_or(SsrDraftSessionError::GenerationExhausted)?;
         let mut new_record = expected_record.clone();
@@ -2485,7 +2486,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                     self.memory.evict(token)?;
                     return Err(SsrDraftSessionError::DraftUnavailable);
                 };
-                if current.controller.page_id() != controller.page_id() {
+                if current.controller.page_id() != controller_page_id {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: current.controller.page_id().to_string(),
                         actual: controller.page_id().to_string(),
@@ -4125,6 +4126,7 @@ mod tests {
             runtime_context: json!({}),
             owner: None,
             expires_at_unix_secs,
+            operation_receipts: Vec::new(),
         };
         serde_json::to_value(&record).expect("json")
     }
@@ -5397,6 +5399,7 @@ mod tests {
             runtime_context: json!({ "generation": generation }),
             owner: None,
             expires_at_unix_secs,
+            operation_receipts: Vec::new(),
         };
         driver
             .set(
