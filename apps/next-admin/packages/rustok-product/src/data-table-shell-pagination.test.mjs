@@ -47,13 +47,17 @@ test('the URL remains authoritative when table filters change via browser histor
   assert.match(hookSource, /setColumnFilters\(initialColumnFilters\)/);
 });
 
-test('browser history invalidates pending debounced filter writes without cancelling newer local edits', () => {
+test('overlapping local filter navigations and browser history cannot replay stale debounces', () => {
   assert.match(hookSource, /filterNavigationVersion = React\.useRef\(0\)/);
   assert.match(hookSource, /version !== filterNavigationVersion\.current/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.push\(expectedRouteSignature\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.splice\(0, matchedLocalNavigation \+ 1\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current = \[\]/);
+  assert.match(hookSource, /window\.addEventListener\('popstate', invalidatePendingFilterNavigation\)/);
+  assert.match(hookSource, /window\.removeEventListener\('popstate', invalidatePendingFilterNavigation\)/);
+  assert.match(hookSource, /invalidatePendingFilterNavigation = \(\) => \{/);
+
 
   assert.match(hookSource, /useIsomorphicLayoutEffect\(/);
   assert.match(hookSource, /filterNavigationVersion\.current \+= 1/);
@@ -65,7 +69,6 @@ test('browser history invalidates pending debounced filter writes without cancel
   assert.match(hookSource, /routeQuery\?: Record<string, string>/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/);
   assert.match(hookSource, /Object\.prototype\.hasOwnProperty\.call\(expectedQuery, PAGE_KEY\)/);
-
 });
 
 test('Product table passes non-table facet state into navigation reconciliation', () => {
