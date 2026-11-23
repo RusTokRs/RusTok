@@ -1,3 +1,14 @@
+
+### Cron lifecycle ownership (2026-11-23)
+
+`WorkflowCronScheduler::start_with_stop` binds the Workflow owner's cron
+scheduler to a host-provided watch stop receiver. The scheduler tracks its
+spawned execution tasks, refuses new triggers on stop (including after async
+step loading), and joins accepted executions on cooperative shutdown. A forced
+host abort or process crash still interrupts those tasks and is **not**
+reconciled as a durable execution completion. The legacy `start` method also
+retains child-task ownership. No cross-replica or missed-firing guarantees are
+added by this local lifecycle fix.
 # rustok-workflow / CRATE_API
 
 ## Public surface
