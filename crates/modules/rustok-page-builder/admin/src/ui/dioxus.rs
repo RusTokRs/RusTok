@@ -410,6 +410,8 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let page_id = current.controller.page_id().to_string();
     let workspace_document = current.controller.editor().document().clone();
     let workspace_page_id = page_id.clone();
+    let workspace_selected = current.controller.ui().state.selection.component_id.clone();
+    let workspace_initial_page = current.controller.active_page_index();
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
     let capabilities = current.controller.ui().state.capabilities;
@@ -558,6 +560,10 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             on_change: None,
                             messages: workspace_messages.clone(),
                             capabilities: Some(capabilities),
+                            initial_page: Some(workspace_initial_page),
+                            selected_component_id: workspace_selected.clone(),
+                            host_can_undo: Some(can_undo),
+                            host_can_redo: Some(can_redo),
                             csp_nonce: workspace_csp_nonce.clone(),
                         }
                     },

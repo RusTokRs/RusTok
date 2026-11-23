@@ -38,3 +38,4 @@ This crate depends strictly on:
 - `dioxus`: Dioxus 0.7 UI rendering framework.
 
 It contains **zero** Leptos dependencies and **zero** RusTok domain module persistence logic.
+\n## Controlled intent-mode document source of truth\n\nWhen `on_intent` is provided, the host's `document` prop is authoritative at every render.\nThe Dioxus workspace's local FlyEditor signal is retained only for standalone mode and must\nnot shadow a later host document, selection or undo/redo availability. The host may provide\n`selected_component_id`, `host_can_undo`, and `host_can_redo` alongside `initial_page` and\n`capabilities`. Standalone mode still uses its own live editor document and history.\n

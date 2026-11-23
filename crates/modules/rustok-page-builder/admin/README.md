@@ -263,3 +263,8 @@ Dioxus dispatch paths reject disabled previews before calling the facade and cle
 preview state rather than leaving an in-progress indicator stranded.
 
 The shared `FlyEditorWorkspace` already accepts a `capabilities` prop to disable palette, style and authoring controls. Dioxus now forwards the controller's effective permissions rather than omitting that prop and allowing the workspace to default to full editing affordances.
+
+Dioxus Page Builder now passes host selection, active page and undo/redo availability to the
+controlled Fly workspace, whose intent-mode canvas/layers/tokens render the latest controller
+document prop rather than a locally cached first-mount FlyEditor. This fixes stale visual state
+after edits without resetting the standalone editor's local history.
