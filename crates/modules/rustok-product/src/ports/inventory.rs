@@ -23,7 +23,7 @@ use uuid::Uuid;
 use crate::CommerceError;
 
 /// Bound for atomic Product/Inventory deletion collaboration.
-pub const MAX_CATALOG_DELETE_VARIANTS: usize = 256;
+pub const MAX_CATALOG_DELETE_VARIANTS: usize = crate::dto::MAX_PRODUCT_VARIANTS;
 
 /// Input for creating initial inventory state for a newly persisted product variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
