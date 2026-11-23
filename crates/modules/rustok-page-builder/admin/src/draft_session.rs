@@ -3237,6 +3237,52 @@ mod tests {
     }
 
     #[test]
+    fn operation_receipt_capacity_fails_closed_without_evicting_older_acknowledgements() {
+        let store = InMemorySsrDraftSessionStore::default();
+        assert!(store.supports_operation_receipts());
+        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let token = first.token.clone();
+
+        for index in 0..MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            let current = store.load(&token, "home", None).expect("load").expect("session");
+            let operation_id = format!("operation-{index}");
+            let request_hash = format!("{index:064x}");
+            store.commit_with_operation_receipt(
+                &token,
+                current.generation,
+                current.controller,
+                current.runtime_context,
+                None,
+                &operation_id,
+                &request_hash,
+                json!({ "index": index }),
+            ).expect("receipt commit");
+        }
+
+        let current = store.load(&token, "home", None).expect("load").expect("session");
+        let overflow = store.commit_with_operation_receipt(
+            &token,
+            current.generation,
+            current.controller,
+            current.runtime_context,
+            None,
+            "operation-overflow",
+            &"f".repeat(64),
+            json!({ "overflow": true }),
+        );
+        assert!(matches!(
+            overflow,
+            Err(SsrDraftSessionError::OperationReceiptCapacity { .. })
+        ));
+        assert_eq!(
+            store.lookup_operation_receipt(
+                &token, "home", None, "operation-0", None,
+            ).expect("oldest receipt remains"),
+            Some(json!({ "index": 0 })),
+        );
+    }
+
+    #[test]
     fn durable_operation_receipt_survives_store_restart() {
         let temp_dir = std::env::temp_dir()
             .join(format!("rustok_draft_receipt_restart_{}", Uuid::new_v4().simple()));
