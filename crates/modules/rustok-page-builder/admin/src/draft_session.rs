@@ -1635,6 +1635,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             }
             let generation = record.generation.checked_add(1)
                 .ok_or(SsrDraftSessionError::GenerationExhausted)?;
+            record.format = DRAFT_SESSION_RECORD_FORMAT;
             record.generation = generation;
             record.controller = controller;
             record.runtime_context = runtime_context;
@@ -2491,6 +2492,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let generation = expected_record.generation.checked_add(1)
             .ok_or(SsrDraftSessionError::GenerationExhausted)?;
         let mut new_record = expected_record.clone();
+        new_record.format = DRAFT_SESSION_RECORD_FORMAT;
         new_record.generation = generation;
         new_record.controller = controller;
         new_record.runtime_context = runtime_context;
