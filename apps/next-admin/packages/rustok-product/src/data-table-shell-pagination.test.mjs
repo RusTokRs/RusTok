@@ -52,6 +52,9 @@ test('overlapping local filter navigations and browser history cannot replay sta
   assert.match(hookSource, /version !== filterNavigationVersion\.current/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.indexOf\(currentRouteSignature\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.push\(expectedRouteSignature\)/);
+  assert.match(hookSource, /pendingRouteWrites\.length > 0/);
+  assert.match(hookSource, /pendingRouteWrites\[pendingRouteWrites\.length - 1\] !== expectedRouteSignature/);
+
   assert.match(hookSource, /pendingLocalRouteSignatures\.current\.splice\(0, matchedLocalNavigation \+ 1\)/);
   assert.match(hookSource, /pendingLocalRouteSignatures\.current = \[\]/);
   assert.match(hookSource, /window\.addEventListener\('popstate', invalidatePendingFilterNavigation\)/);
