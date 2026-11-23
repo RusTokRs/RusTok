@@ -393,11 +393,14 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     use_effect(use_reactive!(|effective_capabilities| {
         let current = session.peek().controller.ui().editable_capabilities();
         if current != effective_capabilities {
-            if let Err(error) = session
-                .write()
-                .controller
-                .dispatch(UiIntent::SetEditableCapabilities(effective_capabilities))
-            {
+            // Drop the write guard before taking another one to report an
+            // error; a temporary held by if-let could otherwise overlap.
+            let result = {
+                session.write().controller.dispatch(
+                    UiIntent::SetEditableCapabilities(effective_capabilities),
+                )
+            };
+            if let Err(error) = result {
                 session.write().fail(format!("Cannot refresh editor capabilities: {error}"));
             }
         }
@@ -598,6 +601,24 @@ mod props_regression_tests {
         let mut workspace = original.clone();
         workspace.adapter_workspace = true;
         assert!(original != workspace, "mount mode must trigger prop update");
+    }
+
+    #[test]
+    fn restricted_host_capability_disables_editing_and_saving() {
+        let mut controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({ "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }] }),
+        ).expect("controller");
+        controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
+            .expect("apply the host restriction");
+        assert!(!controller.ui().state.capabilities.edit);
+        assert!(!controller.ui().state.capabilities.history);
+        assert!(controller.dispatch(UiIntent::RequestSave).is_err());
+        assert!(controller.dispatch(UiIntent::Undo).is_err());
     }
 
     #[test]
