@@ -223,7 +223,7 @@ impl WorkflowService {
         let transaction = self.db.begin().await?;
         // Lock the parent workflow so concurrent workflow updates/restores cannot
         // interleave with step creation.
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let step_id = Uuid::new_v4();
         let model = WorkflowStepActiveModel {
@@ -236,6 +236,7 @@ impl WorkflowService {
             timeout_ms: Set(input.timeout_ms),
         };
         model.insert(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(step_id)
@@ -253,7 +254,7 @@ impl WorkflowService {
             return Err(WorkflowError::StepNotFound(step_id));
         }
         let transaction = self.db.begin().await?;
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
@@ -278,6 +279,7 @@ impl WorkflowService {
             model.timeout_ms = Set(Some(timeout_ms));
         }
         model.update(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(())
@@ -304,6 +306,7 @@ impl WorkflowService {
 
         let model: WorkflowStepActiveModel = existing.into();
         model.delete(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(())
@@ -931,6 +934,19 @@ fn hex_nibble(byte: u8) -> Option<u8> {
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
     }
+}
+
+/// Step edits must advance the parent revision in the SAME transaction;
+/// otherwise cron firings queued under an old step definition may be
+/// executed against a newly edited step graph without being invalidated.
+async fn touch_workflow_after_step_mutation(
+    transaction: &sea_orm::DatabaseTransaction,
+    parent: crate::entities::Workflow,
+) -> WorkflowResult<()> {
+    let mut model: WorkflowActiveModel = parent.into();
+    model.updated_at = Set(Utc::now().fixed_offset());
+    model.update(transaction).await?;
+    Ok(())
 }
 
 async fn lock_workflow_for_update(
