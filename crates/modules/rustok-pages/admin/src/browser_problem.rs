@@ -373,6 +373,39 @@ mod tests {
     }
 
     #[test]
+    fn operation_receipt_errors_have_stable_conflict_and_server_statuses() {
+        let conflict = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptConflict),
+        );
+        let problem = PagesBrowserIntentProblem::from(&conflict);
+        assert_eq!(problem.status, HTTP_CONFLICT);
+        assert_eq!(problem.code.as_deref(), Some(BROWSER_OPERATION_ID_CONFLICT_CODE));
+
+        let unsupported = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptsUnsupported),
+        );
+        let problem = PagesBrowserIntentProblem::from(&unsupported);
+        assert_eq!(problem.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
+        );
+
+        let too_large = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptTooLarge {
+                bytes: MAX_DRAFT_OPERATION_RECEIPT_BYTES + 1,
+                maximum: MAX_DRAFT_OPERATION_RECEIPT_BYTES,
+            }),
+        );
+        let problem = PagesBrowserIntentProblem::from(&too_large);
+        assert_eq!(problem.status, HTTP_PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE),
+        );
+    }
+
+    #[test]
     fn save_failure_problem_matches_the_http_mapping_of_the_same_error() {
         for facade_error in [
             PageBuilderAdminFacadeError::with_stable_code(
