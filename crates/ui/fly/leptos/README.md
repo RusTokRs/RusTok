@@ -27,3 +27,13 @@ the render tests in `src/editor.rs` fail first. See
 It intentionally does not yet claim the Phase 3 gate. Iframe orchestration, real-DOM overlays,
 auto-scroll, pointer capture, resize handles, full drag-and-drop, and browser interaction suites
 remain open in the central implementation plan.
+
+## Controlled Page Builder workspace updates
+
+An intent-mode consumer may supply `controlled_document`, `controlled_selection`,
+`controlled_page`, `controlled_can_undo`, and `controlled_can_redo` as Leptos `Signal`s.
+The workspace synchronizes the canonical controller document and selection into its internal
+FlyEditor projection, and the active page into its navigation signal. Standalone mode retains
+its own mutable FlyEditor/history; no external synchronization occurs without `on_intent`.
+Page tabs are derived reactively from the editor's live document instead of the initial prop.
+No entire-workspace remount is needed for a normal user edit.
