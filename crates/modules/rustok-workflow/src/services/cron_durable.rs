@@ -490,6 +490,12 @@ pub async fn reconciliation_required_for_tenant(
 pub enum CronReconciliationDecision {
     ConfirmTerminal,
     RequeueConfirmedUnstarted,
+    /// Operator has independently reconciled the entire ambiguous workflow
+    /// and certifies the full execution completed.
+    ConfirmExternalCompleted,
+    /// Operator has fenced the prior worker and certifies the execution
+    /// failed/stopped; no remaining steps will be automatically reissued.
+    ConfirmExternalFailed,
 }
 
 /// Operator recovery is an explicit single-transaction state transition with
@@ -542,6 +548,62 @@ pub async fn reconcile_firing(
             }
             (firing::COMPLETED, Some(execution.id), "operator_confirmed_terminal")
         }
+        CronReconciliationDecision::ConfirmExternalCompleted
+        | CronReconciliationDecision::ConfirmExternalFailed => {
+            // No operator may settle an ambiguous result while the old
+            // executor can still write. A completed/failed declaration here
+            // is an explicit human reconciliation, never inference from time.
+            if !prior_worker_fenced {
+                return Err(WorkflowError::CronReconciliationConflict(firing_id));
+            }
+            let execution = existing.ok_or(
+                WorkflowError::CronReconciliationConflict(firing_id)
+            )?;
+            if !matches!(execution.status,
+                ExecutionStatus::Running | ExecutionStatus::ReconciliationRequired
+            ) {
+                return Err(WorkflowError::CronReconciliationConflict(firing_id));
+            }
+            let completed_status = match decision {
+                CronReconciliationDecision::ConfirmExternalCompleted =>
+                    ExecutionStatus::Completed,
+                _ => ExecutionStatus::Failed,
+            };
+            let affected = WorkflowExecutionEntity::update_many()
+                .col_expr(
+                    workflow_execution::Column::Status,
+                    Expr::value(completed_status.to_string()),
+                )
+                .col_expr(
+                    workflow_execution::Column::Error,
+                    Expr::value(Some("operator_reconciled_external_outcome".to_owned())),
+                )
+                .col_expr(
+                    workflow_execution::Column::CompletedAt,
+                    Expr::value(at(Utc::now())),
+                )
+                .filter(workflow_execution::Column::Id.eq(execution.id))
+                .filter(workflow_execution::Column::TenantId.eq(tenant_id))
+                .filter(workflow_execution::Column::WorkflowId.eq(item.workflow_id))
+                .filter(workflow_execution::Column::TriggerEventId.eq(firing_id))
+                .filter(workflow_execution::Column::Status.is_in([
+                    ExecutionStatus::Running.to_string(),
+                    ExecutionStatus::ReconciliationRequired.to_string(),
+                ]))
+                .exec(&txn).await?.rows_affected;
+            if affected != 1 {
+                return Err(WorkflowError::CronReconciliationConflict(firing_id));
+            }
+            (
+                firing::COMPLETED,
+                Some(execution.id),
+                if completed_status == ExecutionStatus::Completed {
+                    "operator_confirmed_external_completed"
+                } else {
+                    "operator_confirmed_external_failed"
+                },
+            )
+        }
         CronReconciliationDecision::RequeueConfirmedUnstarted => {
             // An execution journal is inserted *before* the engine's first
             // step effect. If one exists, this command cannot prove that any
@@ -580,6 +642,8 @@ pub async fn reconcile_firing(
         decision: Set(match decision {
             CronReconciliationDecision::ConfirmTerminal => "confirm_terminal",
             CronReconciliationDecision::RequeueConfirmedUnstarted => "requeue_confirmed_unstarted",
+            CronReconciliationDecision::ConfirmExternalCompleted => "confirm_external_completed",
+            CronReconciliationDecision::ConfirmExternalFailed => "confirm_external_failed",
         }.to_owned()),
         evidence: Set(evidence.to_owned()),
         previous_attempt_token: Set(Some(previous_token)),
