@@ -23,7 +23,7 @@ const policies = vm.runInNewContext(
 export const axisPolicyCore = policies;
 export const variantDraftCore = vm.runInNewContext(
   core('./variant-draft.ts') +
-    '\n({ emptyInitialVariant, suggestedInitialAxes, validateAxisValues, normalizeInitialCatalog, initialVariantInput, setInitialAxis, setInitialAllowedValue, setInitialAssignment, appendInitialCombination, initialCombinationAxes });',
+    '\n({ emptyInitialVariant, suggestedInitialAxes, validateAxisValues, normalizeInitialCatalog, initialVariantInput, setInitialAxis, setInitialAllowedValue, setInitialAssignment, appendInitialCombination, initialCombinationAxes, buildVariantUpdatePatch });',
   {
     Error,
     Map,

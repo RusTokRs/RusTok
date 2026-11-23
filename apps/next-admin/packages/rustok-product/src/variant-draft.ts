@@ -5,9 +5,11 @@
  */
 import type {
   ProductEffectiveForm,
+  ProductVariant,
   VariantAxisDraftInput,
   VariantAxisValueInput
 } from './api/types';
+import type { UpdateVariantInput } from './api/products';
 import type { CombinationAxis } from './combinations';
 import { chooseCombination, CombinationError } from './combinations.ts';
 import { MAX_INVENTORY_QUANTITY } from './limits';
@@ -334,4 +336,53 @@ export function setInitialAssignment(
     ...variant.axisValues.filter((value) => value.attributeId !== attributeId),
     { attributeId, optionId }
   ];
+}
+
+
+/** Build a sparse variant PATCH; unchanged Inventory/Pricing snapshots are never replayed. */
+export function buildVariantUpdatePatch(
+  current: ProductVariant,
+  draft: {
+    sku: string;
+    barcode: string;
+    inventoryQuantity: number;
+    inventoryPolicy: string;
+    prices: Array<{
+      currencyCode: string;
+      amount: string;
+      compareAtAmount?: string | null;
+    }>;
+  }
+): UpdateVariantInput {
+  const patch: UpdateVariantInput = {};
+  const sku = draft.sku.trim() || null;
+  const barcode = draft.barcode.trim() || null;
+  if (sku !== (current.sku ?? null)) patch.sku = sku;
+  if (barcode !== (current.barcode ?? null)) patch.barcode = barcode;
+  if (draft.inventoryQuantity !== current.inventoryQuantity) {
+    patch.inventoryQuantity = draft.inventoryQuantity;
+  }
+  if (draft.inventoryPolicy !== (current.inventoryPolicy ?? 'deny')) {
+    patch.inventoryPolicy = draft.inventoryPolicy;
+  }
+
+  const currentPrices = current.prices ?? [];
+  const samePrices =
+    currentPrices.length === draft.prices.length &&
+    currentPrices.every((price, index) => {
+      const next = draft.prices[index];
+      return (
+        price.currencyCode === next.currencyCode &&
+        price.amount === next.amount &&
+        (price.compareAtAmount ?? null) === (next.compareAtAmount?.trim() || null)
+      );
+    });
+  if (!samePrices) {
+    patch.prices = draft.prices.map((price) => ({
+      currencyCode: price.currencyCode,
+      amount: price.amount,
+      compareAtAmount: price.compareAtAmount?.trim() || null
+    }));
+  }
+  return patch;
 }

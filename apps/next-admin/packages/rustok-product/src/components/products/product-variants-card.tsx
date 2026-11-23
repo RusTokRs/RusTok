@@ -22,7 +22,10 @@ import {
   savedCombinationAxes,
   retainedCombinationLabels
 } from '../../combinations';
-import { validateAxisValues } from '../../variant-draft';
+import {
+  buildVariantUpdatePatch,
+  validateAxisValues
+} from '../../variant-draft';
 import type { VariantAxisConfig, VariantAxisValueInput } from '../../api/types';
 import { parsePriceAmount, salePercent, discountedPrice } from '../../money';
 import {
@@ -243,24 +246,19 @@ export function ProductVariantsCard({
 
   const handleSaveDialog = async () => {
     if (disabled || isBusy) return;
-    // Bind the intended operation before validating or closing. A disappearing updater
-    // must never turn an edit into a create (or a missing writer into fake success).
-    const saveVariant = editingVariant
-      ? onUpdateVariant &&
-        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
-          onUpdateVariant(editingVariant.id, fields))
-      : onAddVariant &&
-        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
-          onAddVariant({ ...fields, axisValues: formAxisValues }));
-    if (!saveVariant) {
+    if (editingVariant ? !onUpdateVariant : !onAddVariant) {
       setError(combinationsCopy('writeUnavailable'));
       return;
     }
+
     const qty = Number(formStock);
+    const inventoryQuantityChanged =
+      !editingVariant || qty !== editingVariant.inventoryQuantity;
     if (
-      !/^\d+$/.test(formStock) ||
-      !Number.isInteger(qty) ||
-      qty > MAX_INVENTORY_QUANTITY
+      inventoryQuantityChanged &&
+      (!/^\\d+$/.test(formStock) ||
+        !Number.isInteger(qty) ||
+        qty > MAX_INVENTORY_QUANTITY)
     ) {
       setError('Inventory must be a non-negative 32-bit integer.');
       return;
@@ -294,16 +292,30 @@ export function ProductVariantsCard({
 
     setIsBusy(true);
     try {
-      await saveVariant({
-        sku: (editingVariant ? formSku.trim() : formSku) || null,
-        barcode: (editingVariant ? formBarcode.trim() : formBarcode) || null,
-        inventoryQuantity: qty,
-        inventoryPolicy: formPolicy,
-        prices: mappedPrices,
-        ...(!editingVariant
-          ? { shippingProfileSlug: formShippingProfile || null }
-          : {})
-      });
+      if (editingVariant) {
+        const patch = buildVariantUpdatePatch(editingVariant, {
+          sku: formSku,
+          barcode: formBarcode,
+          inventoryQuantity: qty,
+          inventoryPolicy: formPolicy,
+          prices: mappedPrices
+        });
+        if (Object.keys(patch).length === 0) {
+          setDialogOpen(false);
+          return;
+        }
+        await onUpdateVariant!(editingVariant.id, patch);
+      } else {
+        await onAddVariant!({
+          sku: formSku || null,
+          barcode: formBarcode || null,
+          inventoryQuantity: qty,
+          inventoryPolicy: formPolicy,
+          prices: mappedPrices,
+          shippingProfileSlug: formShippingProfile || null,
+          axisValues: formAxisValues
+        });
+      }
       setDialogOpen(false);
     } catch (failure) {
       setError(

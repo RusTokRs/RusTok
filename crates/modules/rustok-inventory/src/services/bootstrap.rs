@@ -187,7 +187,7 @@ impl BootstrapService {
     }
 
     /// Synchronizes Inventory's SKU snapshot without changing stock levels or history.
-    #[instrument(skip(txn))]
+    #[instrument(skip(txn, sku))]
     pub async fn sync_variant_sku_in_tx(
         txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
