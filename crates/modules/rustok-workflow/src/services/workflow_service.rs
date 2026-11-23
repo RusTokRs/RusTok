@@ -438,17 +438,32 @@ impl WorkflowService {
             .all(&self.db)
             .await?;
 
-        let mut result = Vec::with_capacity(executions.len());
-        for exec in executions {
-            let step_execs = WorkflowStepExecutionEntity::find()
-                .filter(workflow_step_execution::Column::ExecutionId.eq(exec.id))
-                .order_by(workflow_step_execution::Column::StartedAt, Order::Asc)
-                .all(&self.db)
-                .await?;
-
-            result.push(execution_to_response(exec, step_execs));
+        if executions.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(result)
+
+        // One bounded batch for the step logs, not one query per execution.
+        // The execution IDs come only from the tenant-scoped parent query, so
+        // unrelated tenants cannot inject their step histories into this view.
+        let execution_ids: Vec<Uuid> = executions.iter().map(|item| item.id).collect();
+        let step_rows = WorkflowStepExecutionEntity::find()
+            .filter(workflow_step_execution::Column::ExecutionId.is_in(execution_ids))
+            .order_by(workflow_step_execution::Column::StartedAt, Order::Asc)
+            .order_by(workflow_step_execution::Column::Id, Order::Asc)
+            .all(&self.db)
+            .await?;
+        let mut by_execution: std::collections::HashMap<
+            Uuid, Vec<crate::entities::WorkflowStepExecution>
+        > = std::collections::HashMap::new();
+        for row in step_rows {
+            by_execution.entry(row.execution_id).or_default().push(row);
+        }
+        Ok(executions.into_iter()
+            .map(|execution| {
+                let steps = by_execution.remove(&execution.id).unwrap_or_default();
+                execution_to_response(execution, steps)
+            })
+            .collect())
     }
 
     /// Get a single execution by id (tenant-scoped).
