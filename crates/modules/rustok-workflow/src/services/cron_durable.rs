@@ -460,6 +460,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_cron_owner_schema_rejects_bootstrap() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        assert!(verify_cron_schema(&db).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn expired_claim_requires_evidence_and_old_attempt_is_fenced() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let now = Utc::now();
+        let wf_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        workflow::ActiveModel {
+            id: Set(wf_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Reviewable cron".to_owned()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({"type":"cron","expression":"0 * * * * *"})),
+            created_by: Set(None),
+            created_at: Set(at(now - ChronoDuration::minutes(5))),
+            updated_at: Set(at(now - ChronoDuration::minutes(5))),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let current = workflow::Entity::find_by_id(wf_id).one(&db).await.unwrap().unwrap();
+        let expression = "0 * * * * *";
+        enqueue_due_slots(&db, &current, expression, &expression.parse().unwrap(), now)
+            .await.unwrap();
+        let item = pending_firings(&db, 1).await.unwrap().remove(0);
+        let token = claim_firing(&db, &item, now - ChronoDuration::minutes(15))
+            .await.unwrap().expect("first attempt owns the claim");
+        assert_eq!(quarantine_stale_attempts(&db, now).await.unwrap(), 1);
+        assert!(pending_firings(&db, 10).await.unwrap().iter().all(|row| row.id != item.id));
+
+        let actor_id = Uuid::new_v4();
+        let evidence = "Process was stopped and no execution journal entry was created";
+        assert!(reconcile_firing(&db, tenant_id, item.id, actor_id,
+            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, false,
+        ).await.is_err(), "time expiry alone cannot requeue uncertain work");
+        assert!(reconcile_firing(&db, Uuid::new_v4(), item.id, actor_id,
+            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
+        ).await.is_err(), "another tenant cannot reconcile this firing");
+
+        let requeued = reconcile_firing(&db, tenant_id, item.id, actor_id,
+            CronReconciliationDecision::RequeueConfirmedUnstarted, evidence, true,
+        ).await.unwrap();
+        assert_eq!(requeued.status, firing::PENDING);
+        assert!(!settle_claim(&db, &item, token, firing::COMPLETED, None, Some("stale"))
+            .await.unwrap(), "old attempt cannot acknowledge a new admission");
+        let next_token = claim_firing(&db, &requeued, now).await.unwrap().unwrap();
+        assert_ne!(next_token, token);
+        let audit = review::Entity::find().all(&db).await.unwrap();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].actor_id, actor_id);
+        assert_eq!(audit[0].previous_attempt_token, Some(token));
+        assert_eq!(audit[0].evidence, evidence);
+    }
+
+    #[tokio::test]
     async fn same_slot_is_queued_once_and_claimed_by_one_attempt() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for migration in crate::migrations::migrations() {
