@@ -747,6 +747,8 @@ mod tests {
 
     #[tokio::test]
     async fn finished_module_work_scheduler_cannot_satisfy_repeat_bootstrap() {
+        use super::ServerRuntimeContext;
+        use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
         use crate::services::app_lifecycle::ModuleWorkSchedulerHandle;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
@@ -1127,6 +1129,7 @@ mod tests {
     #[cfg(feature = "mod-workflow")]
     #[tokio::test]
     async fn finished_workflow_cron_scheduler_fails_repeat_initialization() {
+        use super::ServerRuntimeContext;
         use crate::services::app_lifecycle::WorkflowCronSchedulerHandle;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
