@@ -4,6 +4,25 @@ Local documentation for the main RusToK backend host application. This file capt
 
 ## Purpose
 
+## Server audit continuation — scheduler startup liveness (2026-11-23)
+
+The module-work and Workflow cron scheduler initializers previously treated a stored
+`JoinHandle` as healthy on repeat bootstrap even if its task had already
+terminated. The module-work initializer now uses the shared worker-liveness
+guard to fail closed without deleting the handle needed for shutdown accounting.
+The Workflow cron initializer applies the same guard and propagates this startup
+failure through application bootstrap instead of returning a false success.
+Concurrent healthy initializers still reuse the running handle, and host stop
+continues to prevent late task publication under each initialization lock.
+
+Focused source regressions create already-finished tasks for both paths and assert
+that repeat initialization returns an error while preserving shutdown ownership.
+They have not been executed; Cargo, Rust tests, compilation and formatting are
+reserved for maintainer verification. This change does not solve cron execution
+deduplication across replicas, missed schedules after process crashes, or detached
+execution-task supervision; those require the Workflow owner's durable contract.
+
+
 RBAC durable-generation bootstrap now treats only the absence of its
 own `rbac_invalidation_state` table as a pre-migration condition and
 cancels pending watchdog initialization on host stop. Module
