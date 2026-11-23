@@ -36,6 +36,12 @@ impl WorkflowCronScheduler {
         }
     }
 
+    /// Validate the Workflow-owned cursor/firing schema before publishing the
+    /// host scheduler handle. A missing migration is a fatal readiness error.
+    pub async fn validate_persistence(&self) -> crate::error::WorkflowResult<()> {
+        crate::services::cron_durable::verify_cron_schema(&self.db).await
+    }
+
     /// Start the scheduler without a host shutdown signal.
     /// Aborting this handle also drops and aborts its owned executions; callers
     /// with a lifecycle signal should prefer `start_with_stop`.
