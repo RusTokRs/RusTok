@@ -732,6 +732,36 @@ mod tests {
     use sea_orm_migration::SchemaManager;
 
     #[test]
+    fn skewed_future_workflow_timestamp_never_seeds_a_future_cursor() {
+        let now = Utc::now();
+        let mut workflow = workflow::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Skewed clock".to_owned(),
+            description: None,
+            status: WorkflowStatus::Active,
+            trigger_config: serde_json::json!({
+                "type": "cron", "expression": "0 * * * * *"
+            }),
+            created_by: None,
+            created_at: at(now - ChronoDuration::hours(1)),
+            updated_at: at(now + ChronoDuration::minutes(10)),
+            failure_count: 0,
+            auto_disabled_at: None,
+            webhook_slug: None,
+            webhook_secret: None,
+        };
+        assert_eq!(seed_cursor(&workflow, now), now);
+
+        workflow.created_at = at(now - ChronoDuration::hours(48));
+        workflow.updated_at = at(now - ChronoDuration::hours(36));
+        assert_eq!(
+            seed_cursor(&workflow, now),
+            now - ChronoDuration::hours(CATCH_UP_HORIZON_HOURS),
+        );
+    }
+
+    #[test]
     fn missed_cron_slots_are_bounded_and_reproducible() {
         use std::str::FromStr;
         let schedule = Schedule::from_str("0 * * * * *").unwrap();
