@@ -296,3 +296,111 @@ test('read-only intent cannot eclipse the acknowledgement of an earlier write', 
     ]
   });
 });
+
+
+
+test('mutating intents are serialized and rebase on the previous response', async ({
+  page
+}) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-revision="rev-1" data-fly-project-hash="hash-1"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Serialized canvas"></iframe>
+    </div>
+  `);
+  const evidence = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    const requests: Array<{ revision: string; project_hash: string; intent: string }> = [];
+    const pending: Array<(value: Response) => void> = [];
+    globalThis.fetch = async (_url, options = {}) => {
+      requests.push(JSON.parse(String(options.body)));
+      return new Promise<Response>((resolve) => pending.push(resolve));
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const first = adapter.emitIntent('patch_selected', { value: 'a' });
+    const second = adapter.emitIntent('patch_selected', { value: 'b' });
+    const simultaneousRequests = requests.length;
+    pending[0](new Response(JSON.stringify({
+      result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: true }
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await first;
+    const firstSettledRequests = requests.length;
+    pending[1](new Response(JSON.stringify({
+      result: { revision_id: 'rev-3', project_hash: 'hash-3', dirty: true }
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await second;
+    const state = {
+      simultaneousRequests,
+      firstSettledRequests,
+      requests,
+      finalRevision: root.dataset.flyRevision,
+    };
+    adapter.stop();
+    return state;
+  }, adapterSource);
+  expect(evidence).toEqual({
+    simultaneousRequests: 1,
+    firstSettledRequests: 2,
+    requests: [
+      { revision: 'rev-1', project_hash: 'hash-1', intent: 'patch_selected' },
+      { revision: 'rev-2', project_hash: 'hash-2', intent: 'patch_selected' }
+    ],
+    finalRevision: 'rev-3'
+  });
+});
+
+
+test('stop resolves queued mutations without sending them', async ({ page }) => {
+  const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.setContent(`
+    <div id="fly-root" data-fly-browser-root data-fly-page-id="home"
+      data-fly-expected-origin="null">
+      <iframe data-fly-iframe-canvas title="Queued stop canvas"></iframe>
+    </div>
+  `);
+  const result = await page.evaluate(async (source) => {
+    const scope = globalThis as IsolationScope;
+    scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
+    let sends = 0;
+    globalThis.fetch = async (_url, opts = {}) => {
+      sends += 1;
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = opts.signal;
+        if (signal?.aborted) {
+          reject(new DOMException('Aborted', 'AbortError'));
+        } else {
+          signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        }
+      });
+    };
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    try {
+      await import(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root missing');
+    const adapter = scope.FlyBrowser?.mount?.(root, { intentEndpoint: '/intent' });
+    if (!adapter) throw new Error('Fly adapter missing');
+    const first = adapter.emitIntent('save', {});
+    const second = adapter.emitIntent('save', {});
+    adapter.stop();
+    return { sends, first: await first, second: await second };
+  }, adapterSource);
+  expect(result).toEqual({ sends: 1, first: null, second: null });
+});

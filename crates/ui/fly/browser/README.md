@@ -52,3 +52,10 @@ in-flight editing response: authoritative commands have their own response gener
 Read requests started while a write is pending are not permitted to overwrite the later
 write's revision/hash or clear its save warning. Concurrent *writes* still need a serialized
 transport/request-identity contract; this is not an end-to-end ordering guarantee.
+
+Authoritative writes from the same mounted browser adapter are now sent in sequence, with a
+bounded queue under `maxPendingIntentRequests`; the next request takes its revision, hash and
+draft generation from the preceding response while retaining the original clicked target.
+Stopping the adapter resolves queued promises without sending them and suppresses late error
+reports. This serializes one adapter instance only; cross-tab conflicts and unconfirmed transport
+outcomes remain under the server's revision/failure handling and require host-level evidence.

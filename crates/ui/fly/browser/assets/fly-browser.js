@@ -685,6 +685,11 @@ export class FlyBrowserAdapter {
     this.latestIntentRequestGeneration = 0;
     this.latestAuthoritativeRequestGeneration = 0;
     this.pendingIntentRequests = new Map();
+    // Keep document-mutating requests strictly ordered within one editor instance.
+    // The next request is rebased onto the revision/draft token returned by the
+    // preceding request, not onto the stale revision captured when it was clicked.
+    this.authoritativeInFlight = false;
+    this.queuedAuthoritativeIntents = [];
     this.lastSequence = null;
     this.geometry = new Map();
     this.selectedId = null;
@@ -857,6 +862,9 @@ export class FlyBrowserAdapter {
       }
     }
     this.pendingIntentRequests.clear();
+    for (const queued of this.queuedAuthoritativeIntents.splice(0)) {
+      queued.resolve(null);
+    }
     this.abortController.abort();
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
@@ -1357,10 +1365,30 @@ export class FlyBrowserAdapter {
       "flyMaxPendingIntentRequests",
       DEFAULT_MAX_PENDING_INTENT_REQUESTS,
     );
-    const observed = this.pendingIntentRequests.size + 1;
+    const observed =
+      this.pendingIntentRequests.size + this.queuedAuthoritativeIntents.length + 1;
     if (observed > limit) {
       return this.rejectPendingIntent(request, limit, observed);
     }
+
+    const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    if (authoritative && this.authoritativeInFlight) {
+      // A second write must not race the first with the same observed draft
+      // generation/revision. Preserve the clicked target and payload while
+      // refreshing transport metadata when the first write finishes.
+      return new Promise((resolve) => {
+        this.queuedAuthoritativeIntents.push({
+          input: {
+            intent: request.intent,
+            payload: request.payload,
+            sequence: request.sequence,
+          },
+          requestOptions,
+          resolve,
+        });
+      });
+    }
+    if (authoritative) this.authoritativeInFlight = true;
 
     const transport = normalizedTransportOptions(requestOptions);
     const abort = newAbortMetadata();
@@ -1372,12 +1400,11 @@ export class FlyBrowserAdapter {
     );
     const requestKey = Symbol("fly.browser.intent.request");
     const requestGeneration = ++this.intentRequestGeneration;
-    const authoritative = !READ_ONLY_INTENTS.has(request.intent);
     // A read-only selection/preview must not make a preceding edit's successful
     // acknowledgement stale. Conversely, an old read must not overwrite state
     // after a newer edit was submitted.
     const readStartedDuringWrite = !authoritative &&
-      [...this.pendingIntentRequests.values()].some(record => record.authoritative);
+      (this.authoritativeInFlight || this.queuedAuthoritativeIntents.length > 0);
     this.latestIntentRequestGeneration = requestGeneration;
     if (authoritative) this.latestAuthoritativeRequestGeneration = requestGeneration;
     const record = {
@@ -1509,6 +1536,9 @@ export class FlyBrowserAdapter {
       }
       return result;
     } catch (error) {
+      // The adapter was disposed: late rejected/aborted promises must not
+      // repaint a stopped root or emit misleading lifecycle events.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
       const current = authoritative
         ? requestGeneration === this.latestAuthoritativeRequestGeneration
         : !readStartedDuringWrite &&
@@ -1552,6 +1582,23 @@ export class FlyBrowserAdapter {
       }
       releaseForwardedAbort?.();
       this.pendingIntentRequests.delete(requestKey);
+      if (authoritative) {
+        this.authoritativeInFlight = false;
+        const next = this.queuedAuthoritativeIntents.shift();
+        if (next) {
+          if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) {
+            next.resolve(null);
+          } else {
+            // postIntent refreshes revision, hash and draft generation from
+            // the preceding response. Its synchronous setup restores the
+            // in-flight guard before another DOM callback can enqueue a write.
+            void this.postIntent(next.input, next.requestOptions).then(
+              next.resolve,
+              () => next.resolve(null),
+            );
+          }
+        }
+      }
     }
   }
 
