@@ -87,7 +87,8 @@ test('vendor, category, sort and attribute filters are canonical before hydratio
   ]) {
     assert.match(nextPage, new RegExp(name));
   }
-  assert.match(nextPage, /rawStatus !== rawStatus\.trim\(\)/);
+  assert.match(nextPage, /const trimmedStatus = rawStatus\?\.trim\(\) \?\? ''/);
+  assert.match(nextPage, /rawStatus !== trimmedStatus/);
   assert.match(nextPage, /return \[\.\.\.new Set\(normalized\)\]/);
   assert.match(nextPage, /query\.set\('vendor', vendor\)/);
   assert.match(nextPage, /query\.set\('category_id', categoryId\)/);
