@@ -234,8 +234,13 @@ export function useDataTable<TData extends RowData = any>(
   // URL changes caused by Back/Forward or a server navigation are authoritative.
   // Keep the controlled toolbar in sync without discarding in-progress typing:
   // local edits are debounced, so only an actual route-state change triggers this.
+  const lastUrlColumnFilters = React.useRef(JSON.stringify(initialColumnFilters));
   React.useEffect(() => {
-    setColumnFilters(initialColumnFilters);
+    const routeFilters = JSON.stringify(initialColumnFilters);
+    if (lastUrlColumnFilters.current !== routeFilters) {
+      lastUrlColumnFilters.current = routeFilters;
+      setColumnFilters(initialColumnFilters);
+    }
   }, [initialColumnFilters]);
 
   const onColumnFiltersChange = React.useCallback(
