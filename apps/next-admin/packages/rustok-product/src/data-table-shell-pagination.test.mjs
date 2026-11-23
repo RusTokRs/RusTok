@@ -75,7 +75,7 @@ test('overlapping local filter navigations and browser history cannot replay sta
 
   assert.match(
     hookSource,
-    /pendingLocalRouteSignatures\.current\.splice\(matchedLocalNavigation, 1\)/
+    /pendingLocalRouteSignatures\.current\.splice\(0, matchedLocalNavigation \+ 1\)/
   );
   assert.match(hookSource, /pendingLocalRouteSignatures\.current = \[\]/);
   assert.match(
