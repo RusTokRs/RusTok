@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { parseReleaseTag } from "./verify-release-contract.mjs";
 
 const repository = "RusTokRs/RusTok";
@@ -95,7 +97,7 @@ async function resolveRelease(read, release) {
   return { id: release.id, tag, tag_object: tagObject, commit };
 }
 
-async function resolveReleaseHistory(read) {
+export async function resolveReleaseHistory(read = readGitHub) {
   const stable = await stableReleases(read);
   if (stable.length === 0) {
     throw new Error(`no published stable releases found for ${repository}; no release boundary established`);
@@ -190,17 +192,23 @@ async function runSelfTest() {
   console.log("✔ published release history resolver self-test passed");
 }
 
-try {
+async function main() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--self-test") {
     await runSelfTest();
   } else if (args.length === 0) {
-    const history = await resolveReleaseHistory(readGitHub);
+    const history = await resolveReleaseHistory();
     console.log(JSON.stringify(history, null, 2));
   } else {
     throw new Error("usage: resolve-release-history.mjs [--self-test]");
   }
-} catch (error) {
-  console.error(`release history resolution failed: ${error.message}`);
-  process.exitCode = 1;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`release history resolution failed: ${error.message}`);
+    process.exitCode = 1;
+  }
 }

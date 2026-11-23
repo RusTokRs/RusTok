@@ -197,10 +197,23 @@ an empty history, inconsistent metadata or any unavailable release identity.
 node scripts/release/resolve-release-history.mjs
 ```
 
-The history identifies published platform releases. The migration boundary
-still requires their attested migration manifests, the independent module
-seals and any stable reservations made before a container was exposed. An
-empty GitHub history cannot substitute for an explicit bootstrap record.
+The [release manifest verifier](../../scripts/release/verify-release-manifests.mjs)
+uses the same history to fetch each `release-manifest.json`. It verifies both
+asset membership in the immutable release and provenance from `release.yml`
+for the signed tag and commit. It then matches the manifest's repository, tag,
+version and commit and reports its SHA-256 and artifact index. The command
+requires an authenticated GitHub CLI with `release verify-asset` and
+`attestation verify` support. Provide an existing scratch directory owned by
+the verifier.
+
+```sh
+node scripts/release/verify-release-manifests.mjs --scratch target
+```
+
+The released migration boundary still requires attested migration manifests
+and their source-input hashes, independent module seals and any stable
+reservations made before a container was exposed. An empty GitHub history
+cannot substitute for an explicit bootstrap record.
 
 A local declaration check takes the ordered inventory projection of one
 composition's protected prefix and a full candidate export.

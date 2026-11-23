@@ -397,6 +397,7 @@ forbidMarkers("apps/admin/index.html", ['href="/output.css"']);
 requireMarkers("scripts/verify/verify-release-tooling-self-test.mjs", [
   "verify-release-contract.mjs",
   "resolve-release-history.mjs",
+  "verify-release-manifests.mjs",
   "verify-release-collisions.mjs",
   "generate-spdx-sbom.mjs",
   "finalize-release-artifacts.mjs",
@@ -409,6 +410,7 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   ".github/workflows/release-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
   "scripts/release/resolve-release-history.mjs",
+  "scripts/release/verify-release-manifests.mjs",
   "apps/admin/Trunk.toml",
   "apps/admin/package-lock.json",
   "apps/admin/scripts/tailwind-build.mjs",
