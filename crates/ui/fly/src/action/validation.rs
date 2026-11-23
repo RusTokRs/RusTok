@@ -381,16 +381,9 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(format!("{label} must not be empty"));
-    }
-    if !value.chars().all(|character| {
-        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':')
-    }) {
-        return Err(format!("{label} `{value}` contains unsupported characters"));
-    }
-    Ok(())
+    // This must share the core 128-byte and ASCII rules used for component
+    // and page IDs. A second hand-written validator omitted the length bound.
+    crate::validate_identifier(value).map_err(|reason| format!("{label}: {reason}"))
 }
 
 fn validate_base_path(value: &str) -> Result<(), String> {
@@ -460,5 +453,19 @@ pub(super) fn action_diagnostic(
             .map(|id| format!("component:{id}"))
             .unwrap_or_else(|| path.to_string()),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod identifier_limit_tests {
+    use super::*;
+
+    #[test]
+    fn action_form_and_target_identifiers_obey_core_bounds() {
+        for value in ["x".repeat(129), format!(" {}", "a".repeat(127))] {
+            assert!(validate_identifier(&value, "form id").is_err());
+            assert!(validate_identifier(&value, "target component id").is_err());
+        }
+        assert!(validate_identifier(&"a".repeat(128), "id").is_ok());
     }
 }
