@@ -149,6 +149,110 @@ async fn save_and_restore_revision_tokens_advance_after_clock_rollback() -> Test
 }
 
 #[tokio::test]
+async fn save_receipts_replay_the_original_response_after_a_newer_save() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db().await?;
+    let user = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let other_user = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let (page_id, revision) = seed_published_page(&db, tenant_id).await?;
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+    let first_request = SavePageDocumentInput {
+        expected_revision: revision.clone(),
+        body: builder_body("receipt-first"),
+    };
+    let first = service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        first_request.clone(), Some("fly:op-1".to_string()),
+    ).await?;
+    let original = serde_json::to_value(&first)?;
+    let first_token = first.body.expect("first saved body").updated_at;
+    let replay = service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        first_request.clone(), Some("fly:op-1".to_string()),
+    ).await?;
+    assert_eq!(serde_json::to_value(&replay)?, original);
+    assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 1);
+
+    service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        SavePageDocumentInput {
+            expected_revision: first_token,
+            body: builder_body("receipt-later"),
+        },
+        Some("fly:op-2".to_string()),
+    ).await?;
+    let replay = service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        first_request.clone(), Some("fly:op-1".to_string()),
+    ).await?;
+    assert_eq!(serde_json::to_value(&replay)?, original);
+    let receipt = service.document_save_receipt(
+        tenant_id, user.clone(), page_id, "fly:op-1",
+    ).await?.expect("durable acknowledgement");
+    assert_eq!(serde_json::to_value(&receipt)?, original);
+    assert_eq!(draft_body(&db, tenant_id, page_id).await?.content, builder_content("receipt-later"));
+    assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 2);
+
+    let changed_payload = service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        SavePageDocumentInput {
+            expected_revision: revision,
+            body: builder_body("different"),
+        }, Some("fly:op-1".to_string()),
+    ).await.expect_err("key reuse for another payload");
+    assert!(changed_payload.to_string().contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT"));
+    let changed_actor = service.save_document_with_receipt(
+        tenant_id, other_user, page_id,
+        first_request, Some("fly:op-1".to_string()),
+    ).await.expect_err("key reuse for another user");
+    assert!(changed_actor.to_string().contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT"));
+    assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), 2);
+    assert!(service.document_save_receipt(
+        tenant_id, user, page_id, "fly:missing",
+    ).await?.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn older_receipts_remain_tombstones_after_full_response_expiration() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db().await?;
+    let user = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let (page_id, mut revision) = seed_published_page(&db, tenant_id).await?;
+    let first = revision.clone();
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+
+    for index in 0..65 {
+        let response = service.save_document_with_receipt(
+            tenant_id, user.clone(), page_id,
+            SavePageDocumentInput {
+                expected_revision: revision,
+                body: builder_body(&format!("revision-{index}")),
+            },
+            Some(format!("fly:receipt-{index}")),
+        ).await?;
+        revision = response.body.expect("saved body").updated_at;
+    }
+    let revisions_before = revisions(&db, tenant_id, page_id).await?.len();
+    let error = service.save_document_with_receipt(
+        tenant_id, user.clone(), page_id,
+        SavePageDocumentInput {
+            expected_revision: first,
+            body: builder_body("revision-0"),
+        },
+        Some("fly:receipt-0".to_string()),
+    ).await.expect_err("expired acknowledgement must not rerun save");
+    assert!(error.to_string().contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED"));
+    assert_eq!(draft_body(&db, tenant_id, page_id).await?.updated_at.to_string(), revision);
+    assert_eq!(revisions(&db, tenant_id, page_id).await?.len(), revisions_before);
+    let recent = service.document_save_receipt(
+        tenant_id, user, page_id, "fly:receipt-64",
+    ).await?.expect("recent acknowledgement remains replayable");
+    assert_eq!(recent.body.expect("body").updated_at, revision);
+    Ok(())
+}
+
+#[tokio::test]
 async fn rejected_saves_append_nothing_and_keep_the_working_copy() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db().await?;
