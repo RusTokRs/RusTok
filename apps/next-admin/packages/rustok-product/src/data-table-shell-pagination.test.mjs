@@ -38,7 +38,7 @@ test('product catalog page selection is keyed by canonical product identity', ()
   assert.match(productTableSource, /getRowId=\{\(product\) => product\.id\}/);
   assert.match(productTableSource, /defaultPageSize=\{perPage\}/);
   assert.match(shellSource, /getRowId\?: \(row: TData, index: number\) => string/);
-  assert.match(shellSource, /getRowId,\s*pageCount,/);
+  assert.match(shellSource, /getRowId,\s*routeQuery,\s*pageCount,/);
 });
 
 test('the URL remains authoritative when table filters change via browser history', () => {
