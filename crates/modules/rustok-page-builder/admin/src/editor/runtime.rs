@@ -39,16 +39,21 @@ fn make_peer_write_channel(
         )
     });
     let on_conflict = move |conflict| {
-        let has_active_save =
-            controller.with_untracked(|controller| controller.active_save_attempt().is_some());
-        if !has_active_save {
-            let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
-            if let Some(Err(error)) = controller.try_update(|controller| {
-                controller.mark_save_conflict(expected, conflict.revision.clone())
-            }) {
-                tracing::warn!(?error, "Failed to mark peer-tab save conflict");
+        let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
+        let active_attempt = controller.with_untracked(|controller| controller.active_save_attempt());
+        let actual = conflict.revision.clone();
+        if let Some(Err(error)) = controller.try_update(|controller| {
+            match active_attempt.as_ref() {
+                Some(attempt) => controller
+                    .mark_save_conflict_for_attempt(attempt, expected.clone(), actual.clone())
+                    .map(|_| ()),
+                None => controller.mark_save_conflict(expected.clone(), actual.clone()),
             }
+        }) {
+            tracing::warn!(?error, "Failed to mark peer-tab save conflict");
         }
+        // Retiring an in-flight attempt makes its delayed response stale; the response can no
+        // longer clear this conflict or move the local revision backwards.
         if let Some(Err(error)) = controller.try_update(|controller| {
             controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
         }) {
@@ -708,11 +713,13 @@ impl AdminEditorRuntime {
                 });
                 match result {
                     Some(Ok(())) => {
-                        self.last_error.set(None);
+                        if !self.peer_write_conflicted() {
+                            self.last_error.set(None);
+                            self.announce(self.save_succeeded.clone());
+                        }
                         if let Some(expected_hash) = expected_hash {
                             self.broadcast_confirmed_write(&response.revision_id, expected_hash);
                         }
-                        self.announce(self.save_succeeded.clone());
                     }
                     Some(Err(error)) => {
                         if self.finish_failed_request(capability, save_attempt.as_ref()) {
