@@ -950,7 +950,7 @@ async fn get_scaffold_draft(
 fn mcp_management_audit_actor(
     user: &crate::extractors::auth::CurrentUser,
 ) -> (Option<String>, Option<String>, Option<Uuid>) {
-    if matches!(user.principal_kind, rustok_api::AuthPrincipalKind::Service) {
+    if matches!(&user.principal_kind, &rustok_api::AuthPrincipalKind::Service) {
         (
             Some(user.client_id.unwrap_or(user.user.id).to_string()),
             Some("service_client".to_string()),
