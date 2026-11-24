@@ -1,6 +1,6 @@
 //! High-level model helpers for `user_field_definitions`.
 
-use sea_orm::prelude::*;
+use sea_orm::{ConnectionTrait, prelude::*};
 use std::collections::HashMap;
 
 use rustok_core::field_schema::{FieldDefinition, FieldType, ValidationRule};
@@ -13,10 +13,13 @@ pub const MAX_FIELDS_PER_TENANT: usize = 50;
 
 impl Entity {
     /// Load all active definitions for a tenant, ordered by position.
-    pub async fn find_active_by_tenant(
-        db: &DatabaseConnection,
+    pub async fn find_active_by_tenant<C>(
+        db: &C,
         tenant_id: Uuid,
-    ) -> Result<Vec<Model>, DbErr> {
+    ) -> Result<Vec<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
         Self::find()
