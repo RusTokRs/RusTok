@@ -17,6 +17,19 @@ fn public_bundle_bounds_and_aborts_pending_intents() {
 }
 
 #[test]
+fn pending_operation_fence_does_not_block_read_only_intents() {
+    let source = include_str!("../assets/fly-browser.js");
+    let gate = source
+        .find("this.pendingOperationUnresolved &&")
+        .expect("pending operation fence");
+    let condition = &source[gate..gate + 120];
+    assert!(
+        condition.contains("!READ_ONLY_INTENTS.has(request.intent)"),
+        "only mutating intents should be blocked during receipt recovery"
+    );
+}
+
+#[test]
 fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_auto_retry() {
     let source = include_str!("../assets/fly-browser.js");
     assert!(source.contains("PENDING_OPERATION_PREFIX"));
