@@ -16,6 +16,7 @@ type PeerScope = typeof globalThis & {
     emitIntent: (intent: string, payload: Record<string, unknown>) => Promise<unknown>;
     stop: () => void;
   };
+  __flyPeerAdapterTwo?: PeerScope['__flyPeerAdapter'];
   FlyBrowser?: {
     mount: (root: Element, options?: Record<string, unknown>) =>
       PeerScope['__flyPeerAdapter'];
@@ -27,6 +28,7 @@ async function mountEditor(page: Page, documentId: string, source: string) {
   await page.evaluate(async ({ documentId, source }) => {
     document.body.innerHTML = `
       <div id="fly-root" data-fly-browser-root
+        data-fly-peer-write-scope-id="editor-one"
         data-fly-page-id="${documentId}"
         data-fly-expected-origin="null"
         data-fly-revision="rev-1"
@@ -157,6 +159,55 @@ test('same-document Rust and JS channels advance one baseline without a false co
   await expect(page.locator('#fly-root')).toHaveAttribute(
     'data-fly-peer-write-conflict', 'true'
   );
+});
+
+test('separate editor roots in one document are treated as peers', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.evaluate(() => {
+    const root = document.createElement('div');
+    root.id = 'fly-root-two';
+    root.dataset.flyBrowserRoot = 'true';
+    root.dataset.flyPeerWriteScopeId = 'editor-two';
+    root.dataset.flyPageId = 'same-page';
+    root.dataset.flyExpectedOrigin = 'null';
+    root.dataset.flyRevision = 'rev-1';
+    root.dataset.flyProjectHash = 'hash-1';
+    root.dataset.flyIntentEndpoint = '/fly-intent';
+    const iframe = document.createElement('iframe');
+    iframe.id = 'fly-frame-two';
+    iframe.title = 'Second peer-write canvas';
+    iframe.dataset.flyIframeCanvas = 'true';
+    root.append(iframe);
+    document.body.append(root);
+
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapterTwo = scope.FlyBrowser?.mount(root, {
+      intentEndpoint: '/fly-intent',
+    });
+    if (!scope.__flyPeerAdapterTwo) throw new Error('second editor did not mount');
+  });
+
+  const [firstSender, secondSender] = await Promise.all([
+    page.locator('#fly-root').getAttribute('data-fly-peer-write-sender-id'),
+    page.locator('#fly-root-two').getAttribute('data-fly-peer-write-sender-id'),
+  ]);
+  expect(firstSender).toBeTruthy();
+  expect(secondSender).toBeTruthy();
+  expect(firstSender).not.toBe(secondSender);
+
+  await page.evaluate(async () => {
+    await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+  });
+  await expect(page.locator('#fly-root-two')).toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+
+  await page.evaluate(() => {
+    (globalThis as PeerScope).__flyPeerAdapter?.stop();
+    (globalThis as PeerScope).__flyPeerAdapterTwo?.stop();
+  });
 });
 
 test('server revision conflicts fence the browser editor without BroadcastChannel', async ({ page }) => {
