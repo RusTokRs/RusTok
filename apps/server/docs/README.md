@@ -56,6 +56,11 @@ Local documentation for the main RusToK backend host application. This file capt
 - The in-process artifact executor fingerprints the running server binary on
   Tokio's blocking pool; hashing a large executable no longer occupies an async
   worker thread during runtime composition.
+- The release image sets the production environment, config directory and
+  HTTPS/HSTS declaration explicitly. It contains only the server binary and an
+  empty operator-mounted `/app/config`; development/test/browser-smoke YAML is
+  never copied into the production image. The Linux release archive carries
+  only `production.yaml.example` plus setup instructions.
 
 ## Purpose
 

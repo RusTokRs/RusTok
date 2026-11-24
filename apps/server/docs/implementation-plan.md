@@ -3305,3 +3305,24 @@ composition error. The synchronous helper remains private and is only invoked
 through the blocking-pool wrapper.
 
 No tests, compilation or formatting were run, as requested by the maintainer.
+
+
+## Follow-up code review — release runtime configuration contract (2026-11-24)
+
+The reproducible release image did not set `RUSTOK_HTTPS=true`, although
+production host startup rejects the deployment unless HSTS is explicitly
+enabled. It also copied the entire archive config directory into the image,
+including development, test and browser-smoke YAML containing known local
+credentials. The release workflow now builds a runtime context containing only
+the binary and Dockerfile; the image creates an empty operator-owned
+`/app/config` and explicitly sets `RUSTOK_ENV=production`,
+`RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`.
+
+The binary release archive previously copied every YAML file. It now includes
+only the placeholder production template as `config/production.yaml.example`
+and a README that explains how to create `production.yaml`, replace secrets,
+and configure HTTPS/Redis. Its self-test checks that development, test and
+browser-smoke files do not enter the archive. The release-image verifier now
+locks these runtime and packaging contracts.
+
+Tests and release-image builds were not run, as requested by the maintainer.
