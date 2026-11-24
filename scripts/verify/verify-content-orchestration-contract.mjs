@@ -190,7 +190,7 @@ check(
   includesAll(productionBridge, [
     'TaxonomyOwnerReader',
     'load_terms_by_ids_in_tx(',
-    'load_post_tag_ids_in_tx(',
+    'load_post_tag_names_in_tx(',
     '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
   ]) &&
     !productionBridge.includes('taxonomy_term::Entity') &&
@@ -201,8 +201,8 @@ check(
 
 const blogTagSync = between(
   productionBridge,
-  'async fn sync_blog_tags_for_post_in_tx(',
-  'async fn sync_forum_tags_for_topic_in_tx(',
+  'pub(crate) async fn promote_topic_to_post(',
+  'pub(crate) async fn demote_post_to_topic(',
 );
 const forumTagSync = between(
   productionBridge,
@@ -219,7 +219,7 @@ const forumTagSync = between(
 check(
   'blog conversion tag sync delegates to the Blog owner command',
   includesAll(blogTagSync, [
-    'replace_post_tag_links_in_tx(',
+    'sync_promoted_post_tags_in_tx(',
     'blog_error_to_content_error',
   ]) &&
     !blogTagSync.includes('blog_post_tag::Entity::delete_many()') &&
