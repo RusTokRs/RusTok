@@ -424,6 +424,8 @@ fn subscribe_canvas_iframe(
     let mut message_port = use_signal(|| {
         fly_web::IframeMessagePort::new(instance_id.clone(), expected_origin.clone()).ok()
     });
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut subscription_initialized = use_signal(|| false);
 
     let iframe_id = id.clone();
     let expected_instance = instance_id.clone();
@@ -457,6 +459,10 @@ fn subscribe_canvas_iframe(
         let effect_instance_id = instance_id.clone();
         let effect_expected_origin = expected_origin.clone();
         use_effect(move || {
+            if *subscription_initialized.read() {
+                return;
+            }
+            subscription_initialized.set(true);
             subscribe_canvas_iframe(
                 &effect_iframe_id,
                 &effect_instance_id,
