@@ -99,6 +99,26 @@ mod conflict_revision_tests {
     }
 }
 
+fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
+    matches!(
+        intent,
+        UiIntent::BeginDrag(_)
+            | UiIntent::UpdateHitTest(_)
+            | UiIntent::ActivateDropCandidate(_)
+            | UiIntent::Drop
+            | UiIntent::CutSelection
+            | UiIntent::PasteClipboard
+            | UiIntent::Execute(_)
+            | UiIntent::Undo
+            | UiIntent::Redo
+            | UiIntent::RequestSave
+            | UiIntent::SaveStarted { .. }
+            | UiIntent::SaveSucceeded { .. }
+            | UiIntent::SaveFailed { .. }
+            | UiIntent::SaveConflict { .. }
+    )
+}
+
 fn conflict_actual_revision(message: &str) -> Option<String> {
     for marker in ["found `", "current revision `", "current page is `"] {
         if let Some((_, tail)) = message.split_once(marker) {
@@ -126,6 +146,22 @@ impl PageBuilderCapabilityExecution {
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
         self.on_complete.run(outcome);
+    }
+}
+
+#[cfg(test)]
+mod peer_conflict_intent_tests {
+    use super::*;
+
+    #[test]
+    fn peer_write_fence_blocks_mutations_but_allows_navigation_and_cancel() {
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Drop));
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Undo));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::Select(Some("hero".to_string()))));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::CancelDrag));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::SetEditableCapabilities(
+            CapabilityState::read_only(),
+        )));
     }
 }
 
@@ -417,6 +453,12 @@ impl AdminEditorRuntime {
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
+        if self.peer_write_conflicted() && peer_conflict_blocks_ui_intent(&intent) {
+            self.fail(
+                "Another tab saved this page. This editor is read-only; preserve your local changes and reload before editing again.",
+            );
+            return;
+        }
         if matches!(
             &intent,
             UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::ActivatePage { .. }
