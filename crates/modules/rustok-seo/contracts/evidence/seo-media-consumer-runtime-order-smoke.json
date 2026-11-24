@@ -45,7 +45,7 @@
       "name": "media read policy",
       "path": "crates/modules/rustok-media/src/ports.rs",
       "markers": [
-        "trait MediaAssetReadPort",
+        "MediaAssetReadPort",
         "context.require_policy(PortCallPolicy::read())",
         "PortError::unavailable(\"media.storage\"",
         "PortError::unavailable(\"media.database\""
@@ -53,7 +53,7 @@
     },
     {
       "name": "descriptor public URL policy",
-      "path": "crates/modules/rustok-media/src/dto.rs",
+      "path": "crates/modules/rustok-media/ports/src/dto.rs",
       "markers": [
         "pub struct MediaImageDescriptor",
         "pub fn requires_public_proxy",

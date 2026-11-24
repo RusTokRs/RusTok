@@ -258,7 +258,9 @@ async fn post_lifecycle_uses_blog_owned_tables() {
 
     let transport = OutboxTransport::new(db.clone());
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus);
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -316,7 +318,9 @@ async fn customer_cannot_create_or_read_draft_posts() {
 
     let transport = OutboxTransport::new(db.clone());
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus);
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -401,7 +405,9 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
 
     let transport = OutboxTransport::new(db.clone());
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus);
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
 
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;

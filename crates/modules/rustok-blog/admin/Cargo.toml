@@ -12,6 +12,9 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [features]
 default = []
 csr = ["leptos/csr", "rustok-auth-ui/csr", "rustok-grid-leptos/csr"]

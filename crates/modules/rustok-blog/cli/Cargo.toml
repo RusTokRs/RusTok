@@ -12,6 +12,9 @@ description = "Operational command adapters for the RusToK blog module"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 rustok-blog.workspace = true

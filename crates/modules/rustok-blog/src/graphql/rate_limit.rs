@@ -54,6 +54,7 @@ enum BlogGraphqlSurface {
     BlogCategory,
     BlogCategories,
     BlogTags,
+    BlogStats,
     WidgetCatalog,
     WidgetValidation,
     WidgetPreview,
@@ -91,6 +92,7 @@ impl BlogGraphqlSurface {
             (OperationType::Query, "blogCategory") => Some(Self::BlogCategory),
             (OperationType::Query, "blogCategories") => Some(Self::BlogCategories),
             (OperationType::Query, "blogTags") => Some(Self::BlogTags),
+            (OperationType::Query, "blogStats") => Some(Self::BlogStats),
             (OperationType::Query, "blogWidgetCatalog") => Some(Self::WidgetCatalog),
             (OperationType::Query, "validateBlogWidget") => Some(Self::WidgetValidation),
             (OperationType::Query, "previewBlogWidget") => Some(Self::WidgetPreview),
@@ -129,6 +131,7 @@ impl BlogGraphqlSurface {
             Self::BlogCategory => "blog_category",
             Self::BlogCategories => "blog_categories",
             Self::BlogTags => "blog_tags",
+            Self::BlogStats => "blog_stats",
             Self::WidgetCatalog => "widget_catalog",
             Self::WidgetValidation => "widget_validation",
             Self::WidgetPreview => "widget_preview",
@@ -166,6 +169,7 @@ impl BlogGraphqlSurface {
             | Self::BlogCategory
             | Self::BlogCategories
             | Self::BlogTags
+            | Self::BlogStats
             | Self::WidgetCatalog
             | Self::WidgetValidation
             | Self::WidgetPreview => "read",
@@ -190,9 +194,10 @@ impl BlogGraphqlSurface {
             | Self::BlogCategory
             | Self::BlogCategories
             | Self::BlogTags => None,
-            Self::WidgetCatalog | Self::WidgetValidation | Self::WidgetPreview => {
-                Some(Permission::BLOG_POSTS_READ)
-            }
+            Self::WidgetCatalog
+            | Self::WidgetValidation
+            | Self::WidgetPreview
+            | Self::BlogStats => Some(Permission::BLOG_POSTS_READ),
             Self::CreatePost => Some(Permission::BLOG_POSTS_CREATE),
             Self::UpdatePost | Self::CreatePreviewToken | Self::RevokePreviewToken => {
                 Some(Permission::BLOG_POSTS_UPDATE)

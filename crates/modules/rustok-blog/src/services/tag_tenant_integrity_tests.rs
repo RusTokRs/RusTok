@@ -59,7 +59,9 @@ fn create_input(slug: &str, tag: &str) -> CreatePostInput {
 async fn storage_rejects_cross_tenant_blog_post_tag_attachment() {
     let db = setup_schema().await;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
-    let service = PostService::new(db.clone(), event_bus);
+    let service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
 
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();

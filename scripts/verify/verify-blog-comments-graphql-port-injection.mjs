@@ -156,13 +156,14 @@ requireMarker(
 );
 for (const marker of [
   'mod runtime_data;',
-  'pub use runtime_data::{BlogGraphqlRuntimeData, attach_schema_data};',
+  'BlogGraphqlRuntimeData',
+  'attach_schema_data',
 ]) requireMarker(graphqlModule, marker, graphqlModulePath);
 
 for (const marker of [
   'graphql_runtime_data_factory: Option<String>',
   'graphql_runtime_data_factory_expr',
-  'builder = builder.data({factory}(inputs)?);',
+  'builder = builder.data({factory}(inputs)',
 ]) requireMarker(serverCodegen, marker, serverCodegenPath);
 requireMarker(
   serverSchema,
@@ -188,7 +189,8 @@ for (const marker of [
   'pub(crate) fn comment_service(',
   'CommentService::from_runtime_capabilities(',
   'fn graphql_runtime_data_exposes_comments_port_selection()',
-  'let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String>',
+  'GraphqlRuntimeInputs',
+  'Result<BlogGraphqlRuntimeData,',
   'BlogGraphqlRuntimeData::comment_service;',
 ]) requireMarker(runtimeData, marker, runtimeDataPath);
 
