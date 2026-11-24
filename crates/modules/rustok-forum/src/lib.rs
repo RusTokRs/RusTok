@@ -198,7 +198,10 @@ pub use reply_create_transport::{ForumReplyCreateTransport, reply_create_audienc
 pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
 };
-pub use search_projection::ForumSearchProjectionSourceFactory;
+pub use search_projection::{
+    ForumSearchProjectionSourceFactory, load_topic_tags_for_topics,
+    load_topic_tags_for_topics_with_port,
+};
 pub use services::moderation_report::ForumModerationReportService;
 pub use services::{
     ApplyExactForumReplyTranslationInput, ApplyExactForumTopicTranslationInput, CategoryService,

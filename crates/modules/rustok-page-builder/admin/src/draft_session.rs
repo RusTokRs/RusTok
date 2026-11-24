@@ -2581,7 +2581,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 if current.controller.page_id() != controller_page_id {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: current.controller.page_id().to_string(),
-                        actual: controller.page_id().to_string(),
+                        actual: controller_page_id,
                     });
                 }
                 ensure_session_owner(current.owner.as_ref(), owner)?;

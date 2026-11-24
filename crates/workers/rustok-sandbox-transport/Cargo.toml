@@ -12,6 +12,9 @@ description = "Typed mTLS streaming transport for isolated RusToK sandbox execut
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 futures-util.workspace = true

@@ -405,7 +405,7 @@ pub(crate) struct RuntimeWorkerSnapshot {
 pub(crate) fn additional_cache_reconciliation_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
-    let mut snapshots = vec![RuntimeWorkerSnapshot {
+    let snapshots = vec![RuntimeWorkerSnapshot {
         name: "field_definition_cache_generation",
         required: true,
         finished: ctx.shared_map::<

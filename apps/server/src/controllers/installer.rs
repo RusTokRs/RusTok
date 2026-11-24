@@ -519,7 +519,9 @@ async fn await_installer_job_with_heartbeat<F>(
     });
 
     execute.await;
-    let _ = stop_tx.send(());
+    if stop_tx.send(()).is_err() {
+        tracing::debug!(%job_id, "Installer HTTP job heartbeat already terminated before stop signal");
+    }
     if heartbeat.await.is_err() {
         tracing::error!(%job_id, "Installer HTTP job heartbeat task panicked");
     }

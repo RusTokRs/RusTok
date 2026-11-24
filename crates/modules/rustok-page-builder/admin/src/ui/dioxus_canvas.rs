@@ -495,10 +495,9 @@ pub fn DioxusIsolatedCanvas(
                             class: "fill-emerald-500/10 stroke-emerald-500 stroke-2 stroke-dasharray-4",
                         }
                     }
-                    if preview_rect.is_some() && selected_can_resize {
+                    if let Some(rect) = preview_rect.filter(|_| selected_can_resize) {
                         for handle in RESIZE_HANDLES {
                             {
-                                let rect = preview_rect.expect("resize handles require a selected rect");
                                 let (x, y) = resize_handle_position(rect, handle);
                                 let name = resize_handle_name(handle);
                                 let cursor = resize_handle_cursor(handle);

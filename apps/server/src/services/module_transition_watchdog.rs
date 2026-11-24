@@ -104,7 +104,7 @@ pub fn spawn_module_transition_watchdog_handle(
                                 );
                             }
                         }
-                        Err(err) => {
+                        Err(_err) => {
                             error!(
                                 worker = "module_transition_watchdog",
                                 instance_id,

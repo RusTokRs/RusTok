@@ -112,18 +112,20 @@ pub async fn run() -> Result<()> {
     // Do not cancel a migration halfway through. If shutdown arrives during
     // migration, let the current migration finish and then exit before starting
     // workers or opening the HTTP listener.
-    let migration = migrate_database_if_enabled(&db, config.database.auto_migrate);
-    tokio::pin!(migration);
-    let shutdown_during_migration = tokio::select! {
-        biased;
-        result = &mut migration => {
-            result?;
-            false
-        }
-        _ = &mut shutdown_signal => {
-            tracing::info!("Shutdown signal received during database migration; waiting for migration to finish");
-            migration.await?;
-            true
+    let shutdown_during_migration = {
+        let migration = migrate_database_if_enabled(&db, config.database.auto_migrate);
+        tokio::pin!(migration);
+        tokio::select! {
+            biased;
+            result = &mut migration => {
+                result?;
+                false
+            }
+            _ = &mut shutdown_signal => {
+                tracing::info!("Shutdown signal received during database migration; waiting for migration to finish");
+                migration.await?;
+                true
+            }
         }
     };
     if shutdown_during_migration {

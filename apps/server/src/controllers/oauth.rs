@@ -1100,7 +1100,7 @@ fn redirect_with_code(
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
-        Err(err) => {
+        Err(_err) => {
             tracing::error!(
                 error_code = "oauth.redirect_with_code.invalid_uri",
                 redirect_uri_length = redirect_uri.len(),
@@ -1148,7 +1148,7 @@ fn redirect_with_error(
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
-        Err(err) => {
+        Err(_err) => {
             tracing::error!(
                 error_code = "oauth.redirect_with_error.invalid_uri",
                 redirect_uri_length = redirect_uri.len(),

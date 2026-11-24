@@ -124,9 +124,7 @@ pub mod module_event_dispatcher {
         build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
     };
-    pub(crate) use super::module_event_dispatcher_base::{
-        take_dispatcher_started_worker_for_shutdown, take_module_dispatcher_for_shutdown,
-    };
+    pub(crate) use super::module_event_dispatcher_base::take_module_dispatcher_for_shutdown;
 
     /// Search source modules whose indexed documents are public discovery material.
     ///
