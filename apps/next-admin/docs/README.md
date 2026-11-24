@@ -162,6 +162,8 @@ and surface read errors. Runtime and browser verification remain required.
 
 The Product host save action forwards typed locale/value batches in the existing create/update
 input. It must not issue a subsequent value-save request or compensate create with deletion.
+The editor loads attribute values for each selected locale, retains dirty localized drafts
+independently, and coalesces nonlocalized edits into one shared batch.
 Publication, document/category changes, values and the success receipt belong to one Product owner
 transaction. Source cutover is covered by `verify:product:atomic-save`; browser/backend execution
 remains pending in the Product owner plan. Save/status/delete and variant update/delete retain durable browser-local
