@@ -127,7 +127,7 @@ test('same-document Rust and JS channels advance one baseline without a false co
   await page.evaluate(() => {
     const senderId = document.querySelector('#fly-root')
       ?.getAttribute('data-fly-peer-write-sender-id');
-    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    const channel = new BroadcastChannel('fly:page-authoring-writes');
     channel.postMessage({
       kind: 'confirmed-write',
       pageId: 'same-page',
@@ -144,7 +144,7 @@ test('same-document Rust and JS channels advance one baseline without a false co
   );
 
   await page.evaluate(() => {
-    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    const channel = new BroadcastChannel('fly:page-authoring-writes');
     channel.postMessage({
       kind: 'confirmed-write',
       pageId: 'same-page',
