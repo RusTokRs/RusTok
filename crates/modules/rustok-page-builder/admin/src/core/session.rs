@@ -621,17 +621,17 @@ mod tests {
         let mut session = EditorSessionState::new(controller, "Missing", "Saved");
         let hash = session.controller.editor().revision().project_hash;
         let first = session.mark_save_started_with_id().expect("first start");
-        assert!(session.handle_publish_error_for_attempt(first, "network failure"));
+        assert!(session.handle_publish_error_for_attempt(&first, "network failure"));
         let retry = session.mark_save_started_with_id().expect("retry");
         assert_ne!(first, retry);
-        assert!(!session.handle_publish_error_for_attempt(first, "stale error"));
+        assert!(!session.handle_publish_error_for_attempt(&first, "stale error"));
         assert!(session.handle_publish_response_for_attempt(
-            "home", "old-revision", Some(hash), first,
+            "home", "old-revision", Some(hash), &first,
         ).is_err());
-        assert_eq!(session.controller.active_save_attempt_id(), Some(retry));
+        assert_eq!(session.controller.active_save_attempt().as_ref(), Some(&retry));
         assert_eq!(session.last_error.as_deref(), Some("network failure"));
         session.handle_publish_response_for_attempt(
-            "home", "rev-2", Some(hash), retry,
+            "home", "rev-2", Some(hash), &retry,
         ).expect("accepted response");
         assert_eq!(session.controller.revision_id(), "rev-2");
         assert!(session.last_error.is_none());
