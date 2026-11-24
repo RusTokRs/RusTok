@@ -302,13 +302,16 @@ mod tests {
         use rustok_rbac::PermissionCache;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
             crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),
             db,
+            cache_service,
         };
         let tenant = Uuid::new_v4();
         let actor = Uuid::new_v4();
@@ -339,13 +342,16 @@ mod tests {
     async fn role_membership_lookup_failure_still_invalidates_current_scope() {
         // No tables: the membership query must fail after local invalidation.
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
             crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {
             runtime: UserAdminMutationRuntime::new(Arc::new(provider)),
             db,
+            cache_service,
         };
         let tenant = Uuid::new_v4();
         let actor = Uuid::new_v4();
