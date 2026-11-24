@@ -125,9 +125,11 @@ pub fn router(
 ) -> Router {
     let cleanup: Arc<dyn rustok_blog::BlogCategoryDeleteCleanupPort> =
         Arc::new(UnusedCategoryCleanup);
+    let taxonomy_port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
     let host = rustok_api::HostRuntimeContext::new(db)
         .with_shared_value(bus)
-        .with_shared_value(cleanup);
+        .with_shared_value(cleanup)
+        .with_shared_value(taxonomy_port);
     let router = rustok_blog::controllers::axum_router(&host)
         .unwrap()
         .layer(Extension(rustok_api::context::TenantContextExtension(

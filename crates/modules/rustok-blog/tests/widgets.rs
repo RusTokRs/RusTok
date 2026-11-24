@@ -74,7 +74,9 @@ async fn preview_uses_migrated_owner_reads_and_never_changes_rows_or_events() {
 
 async fn owner_preview_contract((db, bus, tenant, auth): Fixture) {
     let admin = SecurityContext::new(UserRole::Admin, Some(auth.user_id));
+    let taxonomy_port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
     let category = CategoryService::new(db.clone(), bus.clone())
+        .with_taxonomy_port(taxonomy_port.clone())
         .create(
             tenant.id,
             admin.clone(),
@@ -90,7 +92,7 @@ async fn owner_preview_contract((db, bus, tenant, auth): Fixture) {
         )
         .await
         .unwrap();
-    let posts = PostService::new(db.clone(), bus.clone());
+    let posts = PostService::new(db.clone(), bus.clone()).with_taxonomy_port(taxonomy_port.clone());
     let first = create_post(&posts, tenant.id, auth.user_id, "First", Some(category)).await;
     create_post(&posts, tenant.id, auth.user_id, "Second", Some(category)).await;
     let before = posts
@@ -107,7 +109,7 @@ async fn owner_preview_contract((db, bus, tenant, auth): Fixture) {
         .unwrap()
         .try_get::<i64>("", "count")
         .unwrap();
-    let service = BlogWidgetService::new(db.clone(), bus);
+    let service = BlogWidgetService::new(db.clone(), bus).with_taxonomy_port(taxonomy_port);
     let auth_service = service_auth(&auth);
     let service_security = rustok_core::security_context_from_access_token(
         auth_service.user_id,
@@ -267,7 +269,8 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
             .await
             .unwrap();
     }
-    let posts = PostService::new(db.clone(), bus.clone());
+    let posts = PostService::new(db.clone(), bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
     let admin = SecurityContext::new(UserRole::Admin, Some(auth.user_id));
     let mut expected = Vec::new();
     let mut hidden = None;
@@ -365,7 +368,8 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
 #[tokio::test]
 async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_module_denial() {
     let (db, bus, tenant, auth) = fixture().await;
-    let posts = PostService::new(db.clone(), bus.clone());
+    let posts = PostService::new(db.clone(), bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
     let id = create_post(&posts, tenant.id, auth.user_id, "GraphQL preview", None).await;
     let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription)
         .data(db.clone())
@@ -456,7 +460,8 @@ async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_modu
 #[tokio::test]
 async fn real_rest_router_serves_catalog_validation_preview_and_explicit_denials() {
     let (db, bus, tenant, auth) = fixture().await;
-    let posts = PostService::new(db.clone(), bus.clone());
+    let posts = PostService::new(db.clone(), bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
     let id = create_post(&posts, tenant.id, auth.user_id, "HTTP preview", None).await;
     let app = router(db.clone(), bus.clone(), tenant.clone(), Some(auth.clone()));
     let (status, catalog) =
