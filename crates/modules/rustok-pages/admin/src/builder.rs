@@ -433,10 +433,13 @@ async fn dispatch_pages_page_builder_capability(
                     "Pages document was not found after Page Builder publish",
                 )
             })?;
-        if let PageBuilderCapabilityResponse::Publish(result) = &response {
-            let current_revision = persisted_revision(&saved_page)?;
-            ensure_publish_receipt_is_current(&result.revision_id, &current_revision)?;
-        }
+        let PageBuilderCapabilityResponse::Publish(result) = &response else {
+            return Err(PageBuilderAdminFacadeError::new(
+                "Pages save endpoint returned a non-publish response for a publish request",
+            ));
+        };
+        let current_revision = persisted_revision(&saved_page)?;
+        ensure_publish_receipt_is_current(&result.revision_id, &current_revision)?;
         on_saved(PageMutationResult::from(&saved_page), project_data);
     }
     Ok(response)
