@@ -20,6 +20,8 @@ use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
 };
 use serde_json::{Map, Value};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
@@ -92,9 +94,8 @@ fn conflict_actual_revision(message: &str) -> Option<String> {
 pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
     pub save_attempt: Option<SaveAttempt>,
-    /// Complete this exact request after the host finishes its asynchronous work.
-    /// Call once; stale save completions are ignored by the captured request identity.
-    pub on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
+    /// Shared by cloned execution contexts so completion is delivered at most once.
+    on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
 }
 
 impl PageBuilderCapabilityExecution {
@@ -104,6 +105,20 @@ impl PageBuilderCapabilityExecution {
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
         self.on_complete.run(outcome);
+    }
+}
+
+#[cfg(test)]
+mod completion_guard_tests {
+    use super::*;
+
+    #[test]
+    fn cloned_callback_contexts_share_one_completion_guard() {
+        let completed = Rc::new(Cell::new(false));
+        let first = Rc::clone(&completed);
+        let second = Rc::clone(&completed);
+        assert!(!first.replace(true));
+        assert!(second.replace(true));
     }
 }
 
@@ -584,7 +599,12 @@ impl AdminEditorRuntime {
             let runtime = self.clone();
             let completion_hash = expected_hash.clone();
             let completion_attempt = save_attempt.clone();
+            let completed = Rc::new(Cell::new(false));
+            let completion_guard = Rc::clone(&completed);
             let on_complete = Callback::new(move |outcome| {
+                if completion_guard.replace(true) {
+                    return;
+                }
                 runtime.complete_capability_request(
                     capability,
                     completion_hash.clone(),
