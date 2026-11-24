@@ -72,6 +72,7 @@ pub struct PageBuilderAdminFacadeError {
 }
 
 impl PageBuilderAdminFacadeError {
+    /// Rehydrates the known stable save codes appended by a server-function error boundary.
     pub fn new(message: impl Into<String>) -> Self {
         let message = message.into();
         let stable_code = [
