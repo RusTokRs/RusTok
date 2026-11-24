@@ -1211,15 +1211,16 @@ mod category_filter_subtree_tests {
     async fn subtree_refuses_filters_whose_live_tree_exceeds_the_bound() {
         let db = subtree_db().await;
         let tenant_id = Uuid::new_v4();
-        let mut parent = Uuid::new_v4();
-        insert_category(&db, tenant_id, parent, None, false).await;
+        let root = Uuid::new_v4();
+        let mut parent = root;
+        insert_category(&db, tenant_id, root, None, false).await;
         for _ in 0..MAX_CATEGORY_FILTER_SUBTREE {
             let next = Uuid::new_v4();
             insert_category(&db, tenant_id, next, Some(parent), false).await;
             parent = next;
         }
 
-        let error = load_category_filter_subtree(&db, tenant_id, parent)
+        let error = load_category_filter_subtree(&db, tenant_id, root)
             .await
             .expect_err("an oversized subtree must be refused");
         assert!(matches!(error, CommerceError::Validation(_)));

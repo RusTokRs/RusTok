@@ -212,7 +212,7 @@ impl CatalogService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::DbBackend;
+    use sea_orm::{DbBackend, QueryTrait};
 
     #[test]
     fn admin_catalog_title_filter_uses_tenant_scoped_case_insensitive_search() {
