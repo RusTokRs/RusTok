@@ -82,9 +82,9 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     for price in prices {
         let currency = price.currency_code.trim().to_ascii_uppercase();
-        if currency.len() != 3 {
+        if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
             return Err(CommerceError::Validation(format!(
-                "Currency code `{}` must be exactly 3 characters (ISO 4217)",
+                "Currency code `{}` must contain exactly 3 ASCII letters (ISO 4217)",
                 price.currency_code
             )));
         }
@@ -3257,6 +3257,32 @@ mod tests {
         let err = validate_variant_prices(&prices).unwrap_err();
         assert!(matches!(err, CommerceError::Validation(_)));
     }
+    #[test]
+    fn validate_variant_prices_rejects_non_ascii_or_non_alphabetic_currency_codes() {
+        for currency_code in ["1$!", "US1", "UŠD", "USD ", ""] {
+            let prices = vec![PriceInput {
+                currency_code: currency_code.to_owned(),
+                channel_id: None,
+                channel_slug: None,
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            }];
+            assert!(
+                validate_variant_prices(&prices).is_err(),
+                "currency code {currency_code:?} must be rejected"
+            );
+        }
+
+        let prices = vec![PriceInput {
+            currency_code: " usd ".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }];
+        assert!(validate_variant_prices(&prices).is_ok());
+    }
+
     #[tokio::test]
     async fn sync_variant_auto_titles_seeds_missing_advances_auto_and_preserves_authored() {
         use sea_orm::TransactionTrait;
