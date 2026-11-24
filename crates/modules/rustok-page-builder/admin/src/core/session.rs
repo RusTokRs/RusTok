@@ -12,6 +12,14 @@ use rustok_page_builder::{
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
+fn optional_arc_changed<T>(current: &Option<Arc<T>>, next: &Option<Arc<T>>) -> bool {
+    match (current, next) {
+        (None, None) => false,
+        (Some(current), Some(next)) => !Arc::ptr_eq(current, next),
+        _ => true,
+    }
+}
+
 /// Framework-agnostic mutable state of an editor session.
 ///
 /// Contains zero framework-specific reactive primitives (no Leptos Signals, no Dioxus Signals).
@@ -123,9 +131,16 @@ impl EditorSessionState {
         let runtime_scenarios = runtime_scenarios.unwrap_or_else(|| Arc::new(Vec::new()));
         let runtime_inputs_changed = self.runtime_context != runtime_context
             || self.runtime_context_configured != runtime_context_configured
-            || self.runtime_scenarios.as_ref() != runtime_scenarios.as_ref()
-            || self.runtime_publish_gate_policy.as_deref()
-                != runtime_publish_gate_policy.as_deref();
+            || optional_arc_changed(&self.trait_schemas, &trait_schemas)
+            || optional_arc_changed(
+                &self.editor_capability_evaluation,
+                &editor_capability_evaluation,
+            )
+            || optional_arc_changed(&self.runtime_scenarios, &runtime_scenarios)
+            || optional_arc_changed(
+                &self.runtime_publish_gate_policy,
+                &runtime_publish_gate_policy,
+            );
 
         self.trait_schemas =
             trait_schemas.unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
