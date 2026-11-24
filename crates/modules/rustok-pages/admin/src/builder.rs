@@ -689,6 +689,20 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                             "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; the save receipt is not yet visible; preserve the draft and reconcile before a new save"
                         )));
                     }
+                    Err(probe_error)
+                        if probe_error.to_string().contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED") =>
+                    {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED: {probe_error}; the save is known to have committed but its full acknowledgement expired; reload the current document before editing again"
+                        )));
+                    }
+                    Err(probe_error)
+                        if probe_error.to_string().contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT") =>
+                    {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT: {probe_error}; preserve the draft and reload before retrying"
+                        )));
+                    }
                     Err(probe_error) => {
                         return Err(PageBuilderServiceError::Runtime(format!(
                             "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
