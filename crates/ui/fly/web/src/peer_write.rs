@@ -161,15 +161,27 @@ mod browser {
             page_id: impl Into<String>,
             revision: impl Into<String>,
             project_hash: impl Into<String>,
-            mut on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
+            on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
             let sender_id = peer_write_sender_id()?;
+            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
+        }
+
+        /// Construct a channel that shares a logical editor identity with another adapter in
+        /// the same DOM root (for example, the Leptos runtime and fly-browser.js).
+        pub fn new_with_sender_id(
+            page_id: impl Into<String>,
+            revision: impl Into<String>,
+            project_hash: impl Into<String>,
+            sender_id: impl Into<String>,
+            mut on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
+        ) -> Result<Self, BrowserRuntimeError> {
             let base = Rc::new(RefCell::new(
                 PeerWriteBase::new(
                     page_id.into(),
                     revision.into(),
                     project_hash.into(),
-                    sender_id,
+                    sender_id.into(),
                 )
                 .map_err(BrowserRuntimeError::Serialization)?,
             ));
