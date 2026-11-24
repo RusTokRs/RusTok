@@ -341,7 +341,7 @@ impl InMemorySsrDraftSessionStore {
     }
 
     pub fn editor_default() -> Self {
-        Self::new(Duration::from_secs(60 * 60 * 8), 10_000)
+        Self::new(DEFAULT_EDITOR_DRAFT_SESSION_TTL, 10_000)
     }
 
     pub fn len(&self) -> Result<usize, SsrDraftSessionError> {
@@ -844,9 +844,15 @@ pub trait PersistentDraftSessionBackend: Send + Sync {
 }
 
 /// Environment variable naming the directory that holds file-backed draft
-/// sessions. Unset or empty falls back to a private directory under the OS
-/// temp dir (audit §2.6).
+/// sessions. Unset or empty falls back to a private per-user state directory.
+/// Operators should mount that directory on persistent storage for recovery
+/// across host restarts; multi-instance deployments should use a shared KV store.
 pub const DRAFT_SESSION_DIR_ENV: &str = "RUSTOK_DRAFT_SESSION_DIR";
+
+/// Default retention for editor draft sessions. Expiration is measured from
+/// the last successful write, not from the first open.
+pub const DEFAULT_EDITOR_DRAFT_SESSION_TTL: Duration =
+    Duration::from_secs(60 * 60 * 24 * 30);
 
 /// Partition for sessions without an owner (hosts without a user identity).
 const UNATTRIBUTED_PARTITION: &str = "_unattributed";
@@ -907,7 +913,10 @@ impl FileSsrDraftSessionStore {
     }
 
     /// Storage directory used by [`Self::editor_default`]: the value of
-    /// [`DRAFT_SESSION_DIR_ENV`], or `<temp dir>/rustok_draft_sessions`.
+    /// [`DRAFT_SESSION_DIR_ENV`], or a persistent per-user state directory.
+    ///
+    /// Linux uses XDG_STATE_HOME or HOME/.local/state, macOS uses
+    /// HOME/Library/Application Support, and Windows uses LOCALAPPDATA.
     pub fn default_dir() -> PathBuf {
         Self::resolve_dir(std::env::var_os(DRAFT_SESSION_DIR_ENV))
     }
@@ -915,8 +924,53 @@ impl FileSsrDraftSessionStore {
     fn resolve_dir(configured: Option<std::ffi::OsString>) -> PathBuf {
         match configured.filter(|value| !value.is_empty()) {
             Some(value) => PathBuf::from(value),
-            None => std::env::temp_dir().join("rustok_draft_sessions"),
+            None => Self::resolve_default_dir(
+                std::env::var_os("XDG_STATE_HOME"),
+                std::env::var_os("LOCALAPPDATA"),
+                std::env::var_os("HOME"),
+                std::env::current_dir().ok(),
+            ),
         }
+    }
+
+    fn resolve_default_dir(
+        xdg_state_home: Option<std::ffi::OsString>,
+        local_app_data: Option<std::ffi::OsString>,
+        home: Option<std::ffi::OsString>,
+        current_dir: Option<PathBuf>,
+    ) -> PathBuf {
+        if let Some(xdg_state_home) = xdg_state_home.filter(|value| !value.is_empty()) {
+            return PathBuf::from(xdg_state_home)
+                .join("rustok")
+                .join("draft_sessions");
+        }
+        if cfg!(target_os = "windows")
+            && let Some(local_app_data) = local_app_data.filter(|value| !value.is_empty())
+        {
+            return PathBuf::from(local_app_data)
+                .join("RusTok")
+                .join("draft_sessions");
+        }
+        if cfg!(target_os = "macos")
+            && let Some(home) = home.as_ref().filter(|value| !value.is_empty())
+        {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("RusTok")
+                .join("draft_sessions");
+        }
+        if let Some(home) = home.filter(|value| !value.is_empty()) {
+            return PathBuf::from(home)
+                .join(".local")
+                .join("state")
+                .join("rustok")
+                .join("draft_sessions");
+        }
+        current_dir
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".rustok")
+            .join("draft_sessions")
     }
 
     /// Store rooted at [`Self::default_dir`]. When that directory cannot be
@@ -924,7 +978,7 @@ impl FileSsrDraftSessionStore {
     /// reason — rather than falling back to an unprotected location.
     pub fn editor_default() -> Self {
         let dir = Self::default_dir();
-        let ttl = Duration::from_secs(60 * 60 * 8);
+        let ttl = DEFAULT_EDITOR_DRAFT_SESSION_TTL;
         let maximum_entries = 10_000;
         match Self::new(dir.clone(), ttl, maximum_entries) {
             Ok(store) => store,
@@ -5180,15 +5234,45 @@ mod tests {
     }
 
     #[test]
-    fn file_store_directory_is_configurable() {
+    fn file_store_directory_is_configurable_and_persistent_by_default() {
         let configured =
             FileSsrDraftSessionStore::resolve_dir(Some("/var/lib/rustok/drafts".into()));
         assert_eq!(configured, PathBuf::from("/var/lib/rustok/drafts"));
-        let fallback = std::env::temp_dir().join("rustok_draft_sessions");
-        assert_eq!(FileSsrDraftSessionStore::resolve_dir(None), fallback);
+
+        let xdg = FileSsrDraftSessionStore::resolve_default_dir(
+            Some("/state".into()),
+            None,
+            Some("/home/editor".into()),
+            None,
+        );
+        assert_eq!(xdg, PathBuf::from("/state/rustok/draft_sessions"));
+
+        let fallback = FileSsrDraftSessionStore::resolve_dir(None);
+        assert!(
+            fallback.ends_with(Path::new("rustok").join("draft_sessions"))
+                || fallback.ends_with(Path::new(".rustok").join("draft_sessions"))
+                || fallback.ends_with(Path::new("RusTok").join("draft_sessions"))
+        );
+        assert_ne!(
+            fallback,
+            std::env::temp_dir().join("rustok_draft_sessions"),
+            "editor_default must not silently use ephemeral temp storage"
+        );
         assert_eq!(
             FileSsrDraftSessionStore::resolve_dir(Some("".into())),
             fallback
+        );
+    }
+
+    #[test]
+    fn editor_default_draft_session_retention_is_thirty_days() {
+        assert_eq!(
+            DEFAULT_EDITOR_DRAFT_SESSION_TTL,
+            Duration::from_secs(60 * 60 * 24 * 30)
+        );
+        assert_eq!(
+            InMemorySsrDraftSessionStore::editor_default().ttl(),
+            DEFAULT_EDITOR_DRAFT_SESSION_TTL
         );
     }
 

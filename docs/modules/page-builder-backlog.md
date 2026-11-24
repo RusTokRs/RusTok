@@ -30,19 +30,33 @@ by the separate release/publish gate. Leptos Rust and JS adapters share a docume
 editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
 other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
 has source integration for the isolated iframe, pointer/drag/drop and bounded resize path.
-**Still OPEN:** durable client reconciliation after remount across every host,
-multi-connection PostgreSQL verification, mounted Dioxus/CSP/browser verification,
-and the final integration audit. PostgreSQL is the production database; SQLite
-is used for isolated integration tests. Pages PageService now records durable receipts for document saves,
-revision restores, page creation (including an initial document), and unpublish/archive/
-delete lifecycle commands. Next Admin persists pending operation keys in tab-scoped
-`sessionStorage` and sends expected page versions for unpublish/delete. The Dioxus host
-inherits document-save protection when wired through `PagesBuilderFacade`; custom
-facade and mounted recovery behavior remain unverified. The classic Next admin still
-does not implement content editing or call `savePageDocument`; it creates pages and
-links to the Rust admin builder. Peer notifications are advisory; server revision
-checks and receipts are authoritative. No build, Rust test, lint or Playwright run is
-claimed for this pass.
+Dioxus recovery is now implemented in source behind an explicit opaque tenant/actor scope:
+each tab writes a separate browser-local record with its server base revision/document and current
+draft; after reload, records are merged against the latest server document using recursive object
+merging and stable-id array merging. Ambiguous or overlapping changes remain preserved and put
+the editor in a read-only conflict state; storage errors expose a manual JSON-copy path. The
+localStorage record ceiling is 2 MiB and this is recovery, not live collaborative editing.
+The default file-backed SSR editor store now uses a persistent per-user state directory and
+30-day sliding retention; containers must mount that path persistently, and multi-replica hosts
+must use a shared KV backend. Dioxus palette/layer drag sources now use native HTML5 dragstart/
+dragend, failed drops cancel the Fly drag, iframe dropEffect is explicit, and parent pointer
+events no longer cancel a cross-iframe drag. Selected-layer move now selects and begins moving
+as one rollback-safe browser intent. The existing independent-connection PostgreSQL save-race
+test now also asserts that exactly one complete winner body is persisted through the secondary
+connection.
+
+**Still OPEN:** run the PostgreSQL integration test against PostgreSQL, compile and test the
+Dioxus WASM profile, run mounted Dioxus iframe/drag/drop/resize/pointer-capture/CSP tests, and
+complete the final integration audit across Dioxus, Leptos, classic browser and all Fly adapters.
+The recovery scope must be configured by each Dioxus host; browser storage quota and same-origin
+security limitations remain. PostgreSQL is the production database; SQLite is used for isolated
+integration tests. Pages PageService records durable receipts for document saves, revision
+restores, page creation (including an initial document), and unpublish/archive/delete lifecycle
+commands. Next Admin persists pending operation keys in tab-scoped `sessionStorage` and sends
+expected page versions for unpublish/delete. The classic Next admin still does not implement
+content editing or call `savePageDocument`; it creates pages and links to the Rust admin builder.
+Peer notifications are advisory; server revision checks and receipts are authoritative. No build,
+Rust test, lint or Playwright run is claimed for this pass.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of

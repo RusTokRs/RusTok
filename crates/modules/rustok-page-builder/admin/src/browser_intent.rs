@@ -177,10 +177,31 @@ fn dispatch_named_intent(
             controller.dispatch(intent)?
         }
         "begin_selected_move" => {
-            let intent = controller
-                .begin_selected_move_intent()
-                .map_err(BrowserIntentDispatchError::Authoring)?;
-            controller.dispatch(intent)?
+            if payload.get("selected_component_id").is_some() {
+                let component_id = required_string(payload, "selected_component_id")?;
+                let before = controller.clone();
+                let result = (|| {
+                    controller.dispatch(UiIntent::Select(Some(component_id.to_string())))?;
+                    let intent = controller
+                        .begin_selected_move_intent()
+                        .map_err(BrowserIntentDispatchError::Authoring)?;
+                    Ok::<_, BrowserIntentDispatchError>(controller.dispatch(intent)?)
+                })();
+                match result {
+                    Ok(effects) => effects,
+                    Err(error) => {
+                        *controller = before;
+                        return Err(error);
+                    }
+                }
+            } else {
+                // Leptos and the classic browser adapter select the layer before arming a move.
+                // Keep their existing two-step contract while Dioxus uses the atomic payload.
+                let intent = controller
+                    .begin_selected_move_intent()
+                    .map_err(BrowserIntentDispatchError::Authoring)?;
+                controller.dispatch(intent)?
+            }
         }
         "remove_selected" => {
             let intent = controller
@@ -994,6 +1015,65 @@ mod tests {
         )
         .expect("insert");
         assert!(inserted.dirty);
+    }
+
+    #[test]
+    fn begin_selected_move_selects_and_starts_drag_atomically() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "begin_selected_move",
+                json!({ "selected_component_id": "hero" }),
+            ),
+        )
+        .expect("begin selected move");
+
+        assert_eq!(result.selected_component_id.as_deref(), Some("hero"));
+        assert_eq!(
+            controller.ui().state.selection.component_id.as_deref(),
+            Some("hero")
+        );
+        assert!(
+            controller.ui().state.drag.is_some(),
+            "selection and drag must be active after the same intent"
+        );
+    }
+
+    #[test]
+    fn begin_selected_move_without_payload_keeps_the_existing_adapter_contract() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select before arming move");
+
+        dispatch_browser_intent(
+            &mut controller,
+            intent("begin_selected_move", json!({})),
+        )
+        .expect("legacy two-step begin selected move");
+
+        assert!(controller.ui().state.drag.is_some());
+        assert_eq!(
+            controller.ui().state.selection.component_id.as_deref(),
+            Some("hero")
+        );
+    }
+
+    #[test]
+    fn failed_selected_move_restores_the_previous_controller_state() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "begin_selected_move",
+                json!({ "selected_component_id": "missing-component" }),
+            ),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(controller, before);
     }
 
     #[test]

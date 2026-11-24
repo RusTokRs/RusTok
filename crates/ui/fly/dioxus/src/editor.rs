@@ -69,14 +69,16 @@ pub fn FlyContributionSummary(
 /// The markup is the one `fly-leptos` renders, so the `fly-browser` SSR control contract,
 /// shared styles and browser evidence runners see one palette whichever adapter produced it:
 /// an item with `data-fly-block-id`, `data-fly-can-insert` and `data-fly-can-drag`, an insert
-/// control with `data-fly-action="insert-block"`, and a drag control with
+/// control with `data-fly-action="insert-block"`, and a native HTML5 drag source with
 /// `data-fly-action="begin-block-drag"`. The drag control renders only when the host passes
-/// `on_begin_drag`: a surface with no drag transport must not show a control that does nothing.
+/// both `on_begin_drag` and `on_cancel_drag`, so cancelled drags cannot leave stale editor state.
 #[component]
 pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
     on_insert: EventHandler<String>,
     on_begin_drag: Option<EventHandler<String>>,
+    #[props(default)]
+    on_cancel_drag: Option<EventHandler<()>>,
     capabilities: Option<CapabilityState>,
     messages: Option<EditorMessages>,
 ) -> Element {
@@ -110,6 +112,9 @@ pub fn FlyPalette(
                                 let contribution_ids = item.contribution_ids.join(",");
                                 let insert_name = format!("{insert_label}: {}", item.label);
                                 let drag_name = format!("{drag_label}: {}", item.label);
+                                let drag_enabled = can_drag
+                                    && on_begin_drag.is_some()
+                                    && on_cancel_drag.is_some();
                                 rsx! {
                                     div {
                                         key: "{item.id}",
@@ -119,7 +124,7 @@ pub fn FlyPalette(
                                         "data-fly-category": "{item.category}",
                                         "data-fly-contribution-ids": "{contribution_ids}",
                                         "data-fly-can-insert": "{can_insert}",
-                                        "data-fly-can-drag": "{can_drag}",
+                                        "data-fly-can-drag": "{drag_enabled}",
                                         button {
                                             r#type: "button",
                                             class: "fly-palette__block",
@@ -135,9 +140,26 @@ pub fn FlyPalette(
                                                 class: "fly-palette__drag",
                                                 aria_label: "{drag_name}",
                                                 "data-fly-action": "begin-block-drag",
-                                                disabled: !can_drag,
-                                                onclick: move |_| {
-                                                    on_begin_drag.call(drag_id.clone())
+                                                draggable: drag_enabled,
+                                                disabled: !drag_enabled,
+                                                ondragstart: move |event| {
+                                                    if !drag_enabled {
+                                                        event.prevent_default();
+                                                        return;
+                                                    }
+                                                    let transfer = event.data.data_transfer();
+                                                    let _ = transfer.set_data("text/plain", &drag_id);
+                                                    transfer.set_effect_allowed("move");
+                                                    if let Some(handler) = on_begin_drag {
+                                                        handler.call(drag_id.clone());
+                                                    }
+                                                },
+                                                ondragend: move |event| {
+                                                    if event.data.data_transfer().drop_effect() == "none" {
+                                                        if let Some(handler) = on_cancel_drag {
+                                                            handler.call(());
+                                                        }
+                                                    }
                                                 },
                                                 "{drag_label}"
                                             }
@@ -165,6 +187,8 @@ pub fn FlyLayerTree(
     messages: Option<EditorMessages>,
     #[props(default)]
     on_begin_move: Option<EventHandler<String>>,
+    #[props(default)]
+    on_cancel_drag: Option<EventHandler<()>>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let layers_label = messages.layers.clone();
@@ -178,6 +202,9 @@ pub fn FlyLayerTree(
                     let move_id = item.id.clone();
                     let selectable = !item.opaque && !item.id.is_empty();
                     let can_move = selectable && item.depth > 0 && !item.is_locked;
+                    let move_enabled = can_move
+                        && on_begin_move.is_some()
+                        && on_cancel_drag.is_some();
                     let browser_component_id = selectable.then(|| item.id.clone());
                     let browser_action = selectable.then_some("select-component");
                     let is_selected = selected.as_deref() == Some(&item_id);
@@ -204,8 +231,29 @@ pub fn FlyLayerTree(
                                     r#type: "button",
                                     class: "fly-layers__move",
                                     aria_label: format!("{} {}", move_label, move_id),
-                                    disabled: !can_move,
-                                    onclick: move |_| on_begin_move.call(move_id.clone()),
+                                    "data-fly-action": "begin-component-move",
+                                    "data-fly-component-id": "{move_id}",
+                                    draggable: move_enabled,
+                                    disabled: !move_enabled,
+                                    ondragstart: move |event| {
+                                        if !move_enabled {
+                                            event.prevent_default();
+                                            return;
+                                        }
+                                        let transfer = event.data.data_transfer();
+                                        let _ = transfer.set_data("text/plain", &move_id);
+                                        transfer.set_effect_allowed("move");
+                                        if let Some(handler) = on_begin_move {
+                                            handler.call(move_id.clone());
+                                        }
+                                    },
+                                    ondragend: move |event| {
+                                        if event.data.data_transfer().drop_effect() == "none" {
+                                            if let Some(handler) = on_cancel_drag {
+                                                handler.call(());
+                                            }
+                                        }
+                                    },
                                     "{move_label}"
                                 }
                             }
@@ -645,15 +693,29 @@ pub fn FlyEditorWorkspace(
         }
     });
     let on_begin_drag = (intent_mode && canvas_interactive).then_some(begin_palette_drag);
+    let cancel_drag = use_callback({
+        let instance = intent_instance.clone();
+        move |_| {
+            if let Some(handler) = on_intent {
+                handler.call(BrowserIntentEnvelope::new(
+                    &instance,
+                    BrowserIntentKind::CancelDrag,
+                    serde_json::json!({}),
+                ));
+            }
+        }
+    });
+    let on_cancel_drag = (intent_mode && canvas_interactive).then_some(cancel_drag);
     let begin_selected_move = use_callback({
         let instance = intent_instance.clone();
         move |component_id: String| {
             if let Some(handler) = on_intent {
-                handler.call(BrowserIntentEnvelope::select(&instance, Some(&component_id)));
                 handler.call(BrowserIntentEnvelope::new(
                     &instance,
                     BrowserIntentKind::BeginSelectedMove,
-                    serde_json::json!({}),
+                    serde_json::json!({
+                        "selected_component_id": component_id,
+                    }),
                 ));
             }
         }
@@ -814,6 +876,7 @@ pub fn FlyEditorWorkspace(
                         }
                     },
                     on_begin_drag,
+                    on_cancel_drag,
                     capabilities,
                     messages: Some(messages.clone()),
                 }
@@ -915,6 +978,7 @@ pub fn FlyEditorWorkspace(
                     },
                     messages: Some(messages),
                     on_begin_move,
+                    on_cancel_drag,
                 }
                 if let Some(canvas) = canvas {
                     {canvas}

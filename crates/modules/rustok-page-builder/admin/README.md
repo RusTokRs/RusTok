@@ -25,21 +25,37 @@ A consumer provides `PageBuilderAdminHostContext` with an `AdminCanvasController
 canonical responses. The editor owns save-start, save-failure and acknowledgement state, including
 acknowledgement against the exact project hash that was dispatched.
 
-For Dioxus hosts, `DioxusPageBuilderAdminHostContext::on_reload_requested` may be
-provided with the consumer's authoritative refresh action. A peer-tab notice or
-server revision conflict makes the editor read-only and exposes the exact local
-project JSON for copying before reload. The callback must fetch the latest
-server-owned document and replace the controller; it must not silently discard
-the local draft. The editor does not perform an automatic three-way merge.
-Without the callback, the host's own page refresh action remains responsible for
-reloading the latest controller after the local JSON has been copied.
+For Dioxus hosts, configure
+`DioxusPageBuilderAdminHostContext::with_draft_recovery_scope` (or the
+`draft_recovery_scope` prop) with a stable, opaque value derived from the
+authenticated tenant and actor. Do not pass an email address or other direct
+identifier. This enables browser-local recovery in `localStorage`: each tab
+writes to its own writer key and records the server base revision/document plus
+the unsaved document. The host's `on_reload_requested` remains the authoritative
+refresh action; after reload, records from all tabs are reconciled against the
+latest server document using a conservative three-way merge. Object fields are
+merged recursively and arrays of uniquely identified objects are merged by
+stable `id`; simultaneous edits to the same value, ambiguous arrays and
+incompatible reorderings stop in a read-only conflict state. The local copies
+and conflicting paths remain visible until the author copies or explicitly
+discards them. Records are retired only after a confirmed save, using
+compare-before-delete so a newer tab write is not removed.
+
+Browser recovery is disabled when the host does not supply a scope. A single
+record is limited to 2 MiB to stay within common browser storage quotas; quota,
+serialization and storage-security errors are surfaced and the current project
+JSON remains available for manual copying. The browser store is same-origin
+storage, not encrypted storage. Cross-tab draft edits are not live collaboration:
+they are merged on a reload/reconciliation boundary, while BroadcastChannel
+notices remain advisory and server revision checks are authoritative.
 
 When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
-keeps the draft read-only and offers an exact same-request retry. The Pages
-facade derives its receipt key from the same page revision and canonical project,
-so retrying without changing the payload replays the committed result rather
-than creating a second write. This in-memory retry state is not yet durable
-across a full remount; copy the exposed project JSON before navigating away.
+keeps the editor read-only and offers an exact same-request retry while mounted.
+The durable local recovery record also makes a full reload recoverable: if the
+first request committed, the latest server document already contains the
+submitted draft; if it did not, the local draft can be merged against the
+unchanged server base. The server receipt remains the authority for whether a
+write committed.
 
 `frames[0].component` data into canonical `pages[].component`, keeps a synchronized frame snapshot
 for the existing JSON fallback, performs optimistic `updated_at` revision checks, and persists
@@ -66,6 +82,12 @@ stylesheet of the server preview document (`fly::document_html_with_style_nonce`
 documents inherit the host policy. The adapter workspace reaches the same nonce from the same
 context: `AdapterWorkspacePanel` passes it to `fly_leptos::FlyEditorWorkspace`, whose canvas
 renders the project stylesheet as an inline `<style>` that the policy would otherwise drop.
+
+The default file-backed SSR editor draft store uses a persistent per-user state directory
+(`XDG_STATE_HOME`, `LOCALAPPDATA`, or the platform home state path) and a 30-day
+sliding editor retention. Set `RUSTOK_DRAFT_SESSION_DIR` to an explicitly mounted
+persistent directory in containers; multi-replica deployments must use a shared
+KV backend rather than relying on a node-local filesystem.
 
 A consumer that restores SSR draft sessions provides `SsrDraftRenderBinding`, including the
 exact token and generation that produced the rendered controller (or an explicit saved-page
@@ -99,6 +121,7 @@ node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node scripts/verify/verify-pages-ui-boundary.mjs
 cargo check -p rustok-page-builder-admin --no-default-features --features hydrate --target wasm32-unknown-unknown
 cargo check -p rustok-page-builder-admin --no-default-features --features ssr
+cargo check -p rustok-page-builder-admin --no-default-features --features dioxus-web --target wasm32-unknown-unknown
 ```
 
 Rust unit and browser interaction tests must also be run in a checkout with the repository Rust

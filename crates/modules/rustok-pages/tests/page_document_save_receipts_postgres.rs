@@ -227,6 +227,22 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
         "stale writer must receive typed CAS conflict: {loser}"
     );
     assert_eq!(revision_count(&secondary, tenant_id, competing_id).await?, 1);
+    let persisted_body = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
+        .filter(page_body::Column::PageId.eq(competing_id))
+        .filter(page_body::Column::Locale.eq("en"))
+        .one(&secondary)
+        .await?
+        .expect("the winning writer's body remains persisted");
+    let persisted_document: serde_json::Value =
+        serde_json::from_str(&persisted_body.content)?;
+    let persisted_label = persisted_document["pages"][0]["component"]["components"][0]
+        ["content"]
+        .as_str();
+    assert!(
+        matches!(persisted_label, Some("left") | Some("right")),
+        "independent connections must persist exactly one complete winner, got {persisted_label:?}"
+    );
 
     // The original request can still be queried across a second process/
     // connection, not only from the service instance that performed the save.
