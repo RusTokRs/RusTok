@@ -21,6 +21,7 @@ use rustok_page_builder::{
 };
 use serde_json::{Map, Value};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
 
@@ -50,7 +51,11 @@ fn make_peer_write_channel(
             }
         }
         if let Some(Err(error)) = controller.try_update(|controller| {
-            controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
+            if controller.ui().state.drag.is_some() {
+                controller.dispatch(UiIntent::CancelDrag)?;
+            }
+            controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))?;
+            Ok(())
         }) {
             tracing::warn!(?error, "Failed to fence Page Builder after peer-tab write");
         }
@@ -98,22 +103,80 @@ fn conflict_actual_revision(message: &str) -> Option<String> {
     None
 }
 
-#[derive(Clone)]
+#[must_use = "dropping an incomplete Page Builder execution fails its request"]
 pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
     pub save_attempt: Option<SaveAttempt>,
-    /// Complete this exact request after the host finishes its asynchronous work.
-    /// Call once; stale save completions are ignored by the captured request identity.
-    pub on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
+    on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
+    completed: Arc<AtomicBool>,
 }
 
 impl PageBuilderCapabilityExecution {
     /// Deliver the host result through the same validation and acknowledgement path as a facade.
+    /// Returns false when another clone has already completed this request.
     pub fn complete(
         &self,
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
-    ) {
+    ) -> bool {
+        if self.completed.swap(true, Ordering::AcqRel) {
+            return false;
+        }
         self.on_complete.run(outcome);
+        true
+    }
+}
+
+impl Drop for PageBuilderCapabilityExecution {
+    fn drop(&mut self) {
+        if !self.completed.swap(true, Ordering::AcqRel) {
+            self.on_complete.run(Err(PageBuilderAdminFacadeError::new(
+                "Page Builder host dropped a capability request without completing it",
+            )));
+        }
+    }
+}
+
+#[cfg(test)]
+mod execution_completion_tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    fn execution(
+        on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
+    ) -> PageBuilderCapabilityExecution {
+        PageBuilderCapabilityExecution {
+            request: PageBuilderCapabilityRequest::Preview(
+                PreviewPageBuilderInput::new("page", Value::Null),
+            ),
+            save_attempt: None,
+            on_complete,
+            completed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    #[test]
+    fn host_completion_is_at_most_once_and_abandoned_requests_fail() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let callback = Callback::new({
+            let calls = Arc::clone(&calls);
+            move |_outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>| {
+                calls.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        let completed = execution(callback);
+        assert!(completed.complete(Err(PageBuilderAdminFacadeError::new("host failure"))));
+        assert!(!completed.complete(Err(PageBuilderAdminFacadeError::new("duplicate"))));
+        drop(completed);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let abandoned = execution(Callback::new({
+            let calls = Arc::clone(&calls);
+            move |_outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>| {
+                calls.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+        drop(abandoned);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 }
 
@@ -219,6 +282,14 @@ impl AdminEditorRuntime {
         }
     }
 
+    fn clear_error_or_reassert_peer_write_conflict(&self) {
+        if self.peer_write_conflicted() {
+            self.reject_peer_write_conflict();
+        } else {
+            self.last_error.set(None);
+        }
+    }
+
     pub fn reject_peer_write_conflict(&self) -> bool {
         if !self.peer_write_conflicted() {
             return false;
@@ -315,7 +386,7 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
-        self.last_error.set(None);
+        self.clear_error_or_reassert_peer_write_conflict();
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
     }
@@ -418,7 +489,7 @@ impl AdminEditorRuntime {
         };
         match result {
             Ok(effects) => {
-                self.last_error.set(None);
+                self.clear_error_or_reassert_peer_write_conflict();
                 for effect in effects {
                     self.apply_effect(effect);
                 }
@@ -441,7 +512,7 @@ impl AdminEditorRuntime {
             self.fail("Browser workspace response no longer matches the active document");
             return;
         }
-        self.last_error.set(None);
+        self.clear_error_or_reassert_peer_write_conflict();
         for effect in result.effects {
             match effect {
                 crate::BrowserIntentEffect::Announce { message } => {
@@ -610,6 +681,7 @@ impl AdminEditorRuntime {
                 request,
                 save_attempt,
                 on_complete,
+                completed: Arc::new(AtomicBool::new(false)),
             });
         } else {
             self.preview_in_progress.set(false);
@@ -678,7 +750,7 @@ impl AdminEditorRuntime {
                     return;
                 }
                 self.server_preview_html.set(Some(response.html));
-                self.last_error.set(None);
+                self.clear_error_or_reassert_peer_write_conflict();
                 self.announce("Server preview refreshed");
             }
             Ok(PageBuilderCapabilityResponse::Publish(response))
@@ -708,7 +780,7 @@ impl AdminEditorRuntime {
                 });
                 match result {
                     Some(Ok(())) => {
-                        self.last_error.set(None);
+                        self.clear_error_or_reassert_peer_write_conflict();
                         if let Some(expected_hash) = expected_hash {
                             self.broadcast_confirmed_write(&response.revision_id, expected_hash);
                         }
@@ -734,7 +806,10 @@ impl AdminEditorRuntime {
             }
             Err(error) => {
                 let completed = if capability == BuilderCapabilityKind::Publish
-                    && error.stable_code.as_deref() == Some("REVISION_CONFLICT")
+                    && matches!(
+                        error.stable_code.as_deref(),
+                        Some("REVISION_CONFLICT" | "SAVE_RECEIPT_EXPIRED")
+                    )
                 {
                     self.finish_conflicted_request(
                         capability,
@@ -745,7 +820,11 @@ impl AdminEditorRuntime {
                     self.finish_failed_request(capability, save_attempt.as_ref())
                 };
                 if completed {
-                    self.fail(error.to_string());
+                    if self.peer_write_conflicted() {
+                        self.reject_peer_write_conflict();
+                    } else {
+                        self.fail(error.to_string());
+                    }
                 }
             }
         }
