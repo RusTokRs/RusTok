@@ -491,6 +491,15 @@ pub async fn resolve_current_user_from_access_token(
             if !user.is_active() {
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
+            if auth_runtime
+                .runtime_ctx()
+                .settings()
+                .features
+                .email_verification
+                && !user.is_email_verified()
+            {
+                return Err((StatusCode::FORBIDDEN, "Email verification required"));
+            }
 
             if principal_kind == AuthPrincipalKind::DelegatedUser {
                 let issued_at =
