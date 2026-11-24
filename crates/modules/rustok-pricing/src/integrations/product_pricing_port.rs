@@ -192,11 +192,6 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             if !is_storefront_list_price_candidate(price) {
                 continue;
             }
-            if let Some(code) = currency_code
-                && !price.currency_code.eq_ignore_ascii_case(code)
-            {
-                continue;
-            }
             let Some(product_id) = variant_to_product.get(&price.variant_id) else {
                 continue;
             };
@@ -208,10 +203,8 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
 
         let mut result = HashMap::new();
         for (product_id, candidates) in candidates_by_product {
-            let selected = select_storefront_list_price_candidates(candidates, public_channel_slug);
-            if let Some(price) = selected
-                .into_iter()
-                .min_by(|left, right| left.amount.cmp(&right.amount))
+            if let Some(price) =
+                select_storefront_list_price(candidates, currency_code, public_channel_slug)
             {
                 let on_sale = price
                     .compare_at_amount
@@ -239,6 +232,42 @@ fn is_storefront_list_price_candidate(price: &price::Model) -> bool {
         && price.max_quantity.is_none()
 }
 
+fn select_storefront_list_price<'a>(
+    candidates: Vec<&'a price::Model>,
+    currency_code: Option<&str>,
+    public_channel_slug: Option<&str>,
+) -> Option<&'a price::Model> {
+    let candidates = candidates
+        .into_iter()
+        .filter(|price| {
+            currency_code
+                .is_none_or(|code| price.currency_code.eq_ignore_ascii_case(code))
+        })
+        .collect::<Vec<_>>();
+    let candidates =
+        select_storefront_list_price_candidates(candidates, public_channel_slug);
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Currency is a comparison dimension, not display metadata. Without an
+    // explicit currency, a single "from" price is meaningful only when every
+    // eligible row uses the same currency.
+    if currency_code.is_none() {
+        let currencies = candidates
+            .iter()
+            .map(|price| price.currency_code.to_ascii_uppercase())
+            .collect::<HashSet<_>>();
+        if currencies.len() != 1 {
+            return None;
+        }
+    }
+
+    candidates
+        .into_iter()
+        .min_by(|left, right| left.amount.cmp(&right.amount))
+}
+
 fn select_storefront_list_price_candidates<'a>(
     candidates: Vec<&'a price::Model>,
     public_channel_slug: Option<&str>,
@@ -259,23 +288,12 @@ fn select_storefront_list_price_candidates<'a>(
         }
     }
 
-    let channel_neutral = candidates
-        .iter()
-        .copied()
-        .filter(|price| price.channel_id.is_none() && price.channel_slug.is_none())
-        .collect::<Vec<_>>();
-    if !channel_neutral.is_empty() {
-        return channel_neutral;
-    }
-
-    // An explicit channel is a hard scope. If neither that channel nor a
-    // channel-neutral base price exists, prices from other channels are not
-    // valid substitutes for this storefront.
-    if public_channel_slug.is_some() {
-        return Vec::new();
-    }
-
+    // Channel-scoped rows are never global fallbacks. With or without a
+    // requested channel, only an exact channel match or an unscoped row applies.
     candidates
+        .into_iter()
+        .filter(|price| price.channel_id.is_none() && price.channel_slug.is_none())
+        .collect()
 }
 
 /// Creates an in-process adapter implementing `ProductPricingPort`.
@@ -416,6 +434,95 @@ mod tests {
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, neutral.id);
+    }
+
+    #[test]
+    fn channel_scoped_prices_are_not_selected_without_channel_context() {
+        let channel_only = candidate(
+            1,
+            Some(Uuid::from_u128(2)),
+            Some("web"),
+            None,
+            None,
+            None,
+            5,
+        );
+
+        let selected =
+            select_storefront_list_price_candidates(vec![&channel_only], None);
+
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn missing_channel_price_does_not_fall_back_to_another_channel() {
+        let other_channel = candidate(
+            1,
+            Some(Uuid::from_u128(3)),
+            Some("mobile"),
+            None,
+            None,
+            None,
+            5,
+        );
+        let channel_id_only = candidate(
+            2,
+            Some(Uuid::from_u128(4)),
+            None,
+            None,
+            None,
+            None,
+            6,
+        );
+
+        let selected = select_storefront_list_price_candidates(
+            vec![&other_channel, &channel_id_only],
+            Some("web"),
+        );
+
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn missing_channel_price_uses_only_a_channel_neutral_fallback() {
+        let other_channel = candidate(
+            1,
+            Some(Uuid::from_u128(3)),
+            Some("mobile"),
+            None,
+            None,
+            None,
+            5,
+        );
+        let neutral = candidate(2, None, None, None, None, None, 10);
+
+        let selected = select_storefront_list_price_candidates(
+            vec![&other_channel, &neutral],
+            Some("web"),
+        );
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, neutral.id);
+    }
+
+    #[test]
+    fn ambiguous_currency_is_not_compared_without_an_explicit_currency() {
+        let usd = candidate(1, None, None, None, None, None, 5);
+        let eur = price::Model {
+            currency_code: "EUR".to_owned(),
+            ..candidate(2, None, None, None, None, None, 4)
+        };
+
+        assert!(
+            select_storefront_list_price(vec![&usd, &eur], None, None).is_none(),
+            "different currencies must not be ordered by their numeric amount"
+        );
+        assert_eq!(
+            select_storefront_list_price(vec![&usd, &eur], Some("USD"), None)
+                .expect("requested currency")
+                .id,
+            usd.id
+        );
     }
 
     #[test]
