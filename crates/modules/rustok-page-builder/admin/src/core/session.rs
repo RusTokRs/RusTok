@@ -590,7 +590,11 @@ impl EditorSessionState {
                     expected_hash,
                     &attempt,
                 ) {
-                    self.fail(err);
+                    // A peer-write fence already carries the actionable conflict message.
+                    // Do not replace it with the less useful "inactive request" response.
+                    if !self.controller.ui().state.dirty.save_conflict {
+                        self.fail(err);
+                    }
                 }
             }
             EditorSessionAction::SaveFailed { attempt, message } => {
