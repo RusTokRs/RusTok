@@ -15130,6 +15130,7 @@ dependencies = [
  "rustok-forum",
  "rustok-outbox",
  "rustok-taxonomy",
+ "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
  "serde_json",

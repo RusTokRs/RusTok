@@ -137,7 +137,12 @@ adapter is registered in the server's shared runtime. Category and Tag service
 paths use the same provider in HTTP, GraphQL, Search and native Blog transports.
 The [Blog README](../crates/modules/rustok-blog/README.md) describes the
 embedded integration fixtures and the limits of custom hosts without a provider.
-Exact Translation owner registration and the standalone storage cutover remain open.
+The embedded host registers the Blog Translation owner for `taxonomy/term`.
+It checks enabled tenant Blog scope and the appropriate Category or Tag
+permission. Translation uses owner field limits and publishes Blog reindex
+evidence in the same transaction as the Taxonomy copy and journal. Category
+translation advances the Blog membership revision under the hierarchy lock.
+The standalone storage cutover remains open.
 
 ## Alternatives considered
 

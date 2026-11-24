@@ -149,6 +149,14 @@ The integration fixtures attach the embedded adapter and exercise the same
 owner port. Blog retains Taxonomy and orchestration as development dependencies
 for these fixtures.
 
+The embedded Translation integration uses the shared `taxonomy/term` target
+for Blog Categories and Tags. It checks that Blog is enabled for the tenant
+and requires the same Blog resource grants and field limits as the editor.
+An applied Category translation advances the Blog membership revision.
+Taxonomy copy, journal evidence, Blog revision and the Blog Search reindex
+event commit together. Tags expose name and slug and reuse the normal tag
+alias history when a localized slug changes.
+
 Custom hosts that omit the port still get `NoopBlogTaxonomyPort`. A standalone
 Blog with working Category and Tag lifecycle needs a real provider and a
 separate storage cutover for its tag foreign keys.

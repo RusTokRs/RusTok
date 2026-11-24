@@ -226,9 +226,11 @@ This is the active cross-cutting implementation plan. As of 2026-09-13:
   `taxonomy/term` provider exposes exact `name`, review-only `slug`, and optional
   `description`, applies target-locale resource/source/target CAS, uses the
   shared owner receipt ledger, and records an append-only owner change cursor.
-  Taxonomy does not claim a global owner-event contract. Blog Category copy
-  follows that canonical Taxonomy provider through the same-ID Blog-to-Taxonomy
-  Category binding. Forum Category copy also follows the canonical Taxonomy
+  Taxonomy does not claim a global owner-event contract. In the embedded host,
+  Blog Category and Tag copy uses this provider with Blog tenant enablement,
+  resource grants and field limits. Category apply advances the same-ID Blog
+  membership revision and records a reindex event in the owner transaction.
+  Forum Category copy also follows the canonical Taxonomy
   provider through the same-ID Forum-to-Taxonomy Category binding. The former
   `blog/category` provider, Blog change cursor/journal, and Blog-local Category
   translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum

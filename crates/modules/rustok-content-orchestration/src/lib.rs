@@ -21,7 +21,9 @@ pub mod runtime;
 #[cfg(feature = "mod-blog")]
 mod blog_taxonomy;
 #[cfg(feature = "mod-blog")]
-pub use blog_taxonomy::{blog_category_delete_cleanup, in_process_blog_taxonomy_port};
+pub use blog_taxonomy::{
+    blog_category_delete_cleanup, in_process_blog_taxonomy_port, register_blog_translation_owner,
+};
 
 #[cfg(all(
     feature = "mod-content",

@@ -140,3 +140,7 @@ Translation checkpoint with the database backup.
 
 Discovery, exact reads, progress and patch operations enforce the registered
 module owner's authorization. Discovery cursors refer to visible terms.
+Owners supply tenant enablement and field policy. The embedded Blog owner
+uses the Category and Tag editor limits and excludes Tag descriptions from
+translation. Sparse patches preserve stored descriptions when the request
+omits them.

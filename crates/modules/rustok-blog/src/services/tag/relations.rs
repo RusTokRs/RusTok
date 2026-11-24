@@ -100,7 +100,7 @@ pub(super) async fn bump_posts_for_tag_relation_removal_in_tx(
 }
 
 #[tracing::instrument(skip(txn))]
-pub(super) async fn publish_blog_reindex_in_tx(
+pub(crate) async fn publish_blog_reindex_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     actor_id: Option<Uuid>,

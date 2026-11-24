@@ -4,19 +4,19 @@ use std::{
 };
 
 use async_trait::async_trait;
-use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
+use rustok_api::{Action, Patch, PortContext, PortError, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::idempotency::{self, Admission};
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, MAX_TRANSLATION_RESOURCE_PAGE_SIZE, OpaqueCursor,
     OwnerSlug, ReadTranslationResourceRequest, ResourceId, ResourceKind,
     TranslationApplicationReceipt, TranslationDataClassification, TranslationFieldDescriptor,
-    TranslationFieldSnapshot, TranslationPatchRequest, TranslationPatchValidation,
-    TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
-    TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
-    TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationFieldSnapshot, TranslationPatchIssue, TranslationPatchIssueSeverity,
+    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
+    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
+    TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, decode_application_receipt, field_hash, merged_patch_values,
@@ -51,7 +51,6 @@ use crate::{
 
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 const REQUIRED_FIELD_COUNT: u64 = 2;
-const OPTIONAL_FIELD_COUNT: u64 = 1;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 const JOURNAL_CURSOR_PREFIX: &str = "position:";
 
@@ -79,9 +78,32 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     })
 }
 
+#[derive(Clone, Copy)]
+pub struct TaxonomyTermTranslationPolicy {
+    pub name_max: u32,
+    pub slug_max: u32,
+    pub description_max: Option<u32>,
+}
+
+impl Default for TaxonomyTermTranslationPolicy {
+    fn default() -> Self {
+        Self {
+            name_max: 120,
+            slug_max: 120,
+            description_max: Some(2_000),
+        }
+    }
+}
+
 #[async_trait]
 pub trait TaxonomyModuleTermTranslationOwner: Send + Sync {
     fn module_slug(&self) -> &str;
+
+    fn translation_policy(&self, _kind: TaxonomyTermKind) -> TaxonomyTermTranslationPolicy {
+        TaxonomyTermTranslationPolicy::default()
+    }
+
+    async fn is_enabled(&self, tenant_id: Uuid) -> Result<bool, PortError>;
 
     fn authorize(
         &self,
@@ -128,8 +150,8 @@ impl TaxonomyModuleTermTranslationOwnerRegistry {
         Ok(())
     }
 
-    fn get(&self, module_slug: &str) -> Option<Arc<dyn TaxonomyModuleTermTranslationOwner>> {
-        self.owners.get(module_slug).cloned()
+    fn get(&self, module_slug: &str) -> Option<&dyn TaxonomyModuleTermTranslationOwner> {
+        self.owners.get(module_slug).map(Arc::as_ref)
     }
 }
 
@@ -234,15 +256,15 @@ impl TaxonomyTranslationTargetProvider {
         Ok((terms, next_cursor))
     }
 
-    fn authorize_term(
+    async fn authorize_term(
         &self,
         context: &PortContext,
-        tenant_id: Uuid,
         term: &TermModel,
         action: Action,
-    ) -> Result<(), PortError> {
+        enabled_modules: &mut BTreeMap<String, bool>,
+    ) -> Result<Option<&dyn TaxonomyModuleTermTranslationOwner>, PortError> {
         if term.scope_type != crate::TaxonomyScopeType::Module {
-            return Ok(());
+            return Ok(None);
         }
         let module_slug = term.scope_value.trim();
         if module_slug.is_empty() {
@@ -257,7 +279,22 @@ impl TaxonomyTranslationTargetProvider {
                 "module-owned Taxonomy terms require owner authorization",
             )
         })?;
-        owner.authorize(context, tenant_id, term.kind, term.id, action)
+        owner.authorize(context, term.tenant_id, term.kind, term.id, action)?;
+        let enabled = match enabled_modules.get(module_slug) {
+            Some(enabled) => *enabled,
+            None => {
+                let enabled = owner.is_enabled(term.tenant_id).await?;
+                enabled_modules.insert(module_slug.to_owned(), enabled);
+                enabled
+            }
+        };
+        if !enabled {
+            return Err(PortError::forbidden(
+                "taxonomy.translation_owner_disabled",
+                "the Taxonomy term's owner is disabled for this tenant",
+            ));
+        }
+        Ok(Some(owner))
     }
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
@@ -266,29 +303,21 @@ impl TaxonomyTranslationTargetProvider {
 
     async fn load_snapshot(
         &self,
-        tenant_id: Uuid,
+        term: &TermModel,
+        owner: Option<&dyn TaxonomyModuleTermTranslationOwner>,
         request: &ReadTranslationResourceRequest,
     ) -> Result<TranslationResourceSnapshot, PortError> {
-        let term_id = parse_identity(&request.identity)?;
-        let term = TermEntity::find_by_id(term_id)
-            .filter(TermColumn::TenantId.eq(tenant_id))
-            .one(self.service.database())
-            .await
-            .map_err(taxonomy_database_error_to_port_error)?
-            .ok_or_else(|| {
-                PortError::not_found(
-                    "taxonomy.translation_resource_not_found",
-                    format!("taxonomy translation resource not found: {term_id}"),
-                )
-            })?;
         let translations = TranslationEntity::find()
-            .filter(TranslationColumn::TenantId.eq(tenant_id))
-            .filter(TranslationColumn::TermId.eq(term_id))
+            .filter(TranslationColumn::TenantId.eq(term.tenant_id))
+            .filter(TranslationColumn::TermId.eq(term.id))
             .order_by_asc(TranslationColumn::Locale)
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
-        snapshot_from_models(term, translations, request)
+        let policy = owner
+            .map(|owner| owner.translation_policy(term.kind))
+            .unwrap_or_default();
+        snapshot_from_models(term, translations, request, policy)
     }
 
     async fn fail_receipt(&self, lease: idempotency::Lease, error: &PortError) {
@@ -331,17 +360,27 @@ impl TaxonomyTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
-        let terms = terms
-            .into_iter()
-            .filter_map(
-                |term| match self.authorize_term(context, tenant_id, &term, Action::Read) {
-                    Ok(()) => Some(Ok(term)),
-                    Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
-                    Err(error) => Some(Err(error)),
-                },
-            )
-            .collect::<Result<Vec<_>, _>>()?;
-        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
+        let mut enabled_modules = BTreeMap::new();
+        let mut authorized_terms = Vec::new();
+        for term in terms {
+            match self
+                .authorize_term(context, &term, Action::Read, &mut enabled_modules)
+                .await
+            {
+                Ok(owner) => {
+                    let policy = owner
+                        .map(|owner| owner.translation_policy(term.kind))
+                        .unwrap_or_default();
+                    authorized_terms.push((term.id, policy.description_max.is_some()));
+                }
+                Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => {}
+                Err(error) => return Err(error),
+            }
+        }
+        let term_ids = authorized_terms
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
         let targets = if term_ids.is_empty() {
             Vec::new()
         } else {
@@ -357,7 +396,7 @@ impl TaxonomyTranslationTargetProvider {
             .into_iter()
             .map(|translation| (translation.term_id, translation))
             .collect::<BTreeMap<_, _>>();
-        let resources = u64::try_from(terms.len()).map_err(|_| {
+        let resources = u64::try_from(authorized_terms.len()).map_err(|_| {
             PortError::invariant_violation(
                 "taxonomy.translation_progress_overflow",
                 "taxonomy resource count exceeds the progress contract",
@@ -369,18 +408,13 @@ impl TaxonomyTranslationTargetProvider {
                 "taxonomy required progress count overflow",
             )
         })?;
-        let optional_units = resources.checked_mul(OPTIONAL_FIELD_COUNT).ok_or_else(|| {
-            PortError::invariant_violation(
-                "taxonomy.translation_progress_overflow",
-                "taxonomy optional progress count overflow",
-            )
-        })?;
-
+        let mut optional_units = 0_u64;
         let mut exact_required_units = 0_u64;
         let mut exact_optional_units = 0_u64;
         let mut complete_resources = 0_u64;
-        for term in terms {
-            let Some(target) = targets.get(&term.id) else {
+        for (term_id, has_description) in authorized_terms {
+            optional_units += u64::from(has_description);
+            let Some(target) = targets.get(&term_id) else {
                 continue;
             };
             let has_name = !target.name.trim().is_empty();
@@ -393,10 +427,11 @@ impl TaxonomyTranslationTargetProvider {
                         "taxonomy exact required progress count overflow",
                     )
                 })?;
-            if target
-                .description
-                .as_deref()
-                .is_some_and(|description| !description.trim().is_empty())
+            if has_description
+                && target
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| !description.trim().is_empty())
             {
                 exact_optional_units = exact_optional_units.checked_add(1).ok_or_else(|| {
                     PortError::invariant_violation(
@@ -446,6 +481,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let limit = usize::from(request.limit);
         let mut authorized_terms = Vec::with_capacity(limit + 1);
+        let mut enabled_modules = BTreeMap::new();
         let mut scan_cursor = request.cursor;
         loop {
             let (terms, next_scan_cursor) = self
@@ -457,8 +493,11 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 )
                 .await?;
             for term in terms {
-                match self.authorize_term(&context, tenant_id, &term, Action::Read) {
-                    Ok(()) => authorized_terms.push(term),
+                match self
+                    .authorize_term(&context, &term, Action::Read, &mut enabled_modules)
+                    .await
+                {
+                    Ok(_) => authorized_terms.push(term),
                     Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => continue,
                     Err(error) => return Err(error),
                 }
@@ -569,8 +608,10 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let term_id = parse_identity(&request.identity)?;
         let term = self.load_term(tenant_id, term_id).await?;
-        self.authorize_term(&context, tenant_id, &term, Action::Read)?;
-        self.load_snapshot(tenant_id, &request).await
+        let owner = self
+            .authorize_term(&context, &term, Action::Read, &mut BTreeMap::new())
+            .await?;
+        self.load_snapshot(&term, owner, &request).await
     }
 
     async fn validate_patch(
@@ -586,11 +627,13 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let term_id = parse_identity(&request.identity)?;
         let term = self.load_term(tenant_id, term_id).await?;
-        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
-        let snapshot = self
-            .load_snapshot(tenant_id, &read_request_from_patch(&request))
+        let owner = self
+            .authorize_term(&context, &term, Action::Update, &mut BTreeMap::new())
             .await?;
-        Ok(validate_patch_against_snapshot(&request, &snapshot))
+        let snapshot = self
+            .load_snapshot(&term, owner, &read_request_from_patch(&request))
+            .await?;
+        Ok(validate_exact_patch(&request, &snapshot))
     }
 
     async fn apply_patch(
@@ -606,7 +649,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let term_id = parse_identity(&request.identity)?;
         let term = self.load_term(tenant_id, term_id).await?;
-        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
+        let owner = self
+            .authorize_term(&context, &term, Action::Update, &mut BTreeMap::new())
+            .await?;
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let lease = match idempotency::admit(
             self.service.database(),
@@ -625,9 +670,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
 
         let result = async {
             let snapshot = self
-                .load_snapshot(tenant_id, &read_request_from_patch(&request))
+                .load_snapshot(&term, owner, &read_request_from_patch(&request))
                 .await?;
-            let validation = validate_patch_against_snapshot(&request, &snapshot);
+            let validation = validate_exact_patch(&request, &snapshot);
             if !validation.accepted {
                 return Err(validation_to_port_error(&validation));
             }
@@ -699,16 +744,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .await
             .map_err(taxonomy_error_to_port_error)?;
 
-            if term.scope_type == crate::TaxonomyScopeType::Module {
-                let owner = self
-                    .owner_registry
-                    .get(term.scope_value.trim())
-                    .ok_or_else(|| {
-                        PortError::forbidden(
-                            "taxonomy.translation_owner_permission_denied",
-                            "module-owned Taxonomy terms require owner authorization",
-                        )
-                    })?;
+            if let Some(owner) = owner {
                 owner
                     .on_translation_applied_in_tx(
                         &transaction,
@@ -943,9 +979,10 @@ fn summary_from_models(
 }
 
 fn snapshot_from_models(
-    term: TermModel,
+    term: &TermModel,
     translations: Vec<TranslationModel>,
     request: &ReadTranslationResourceRequest,
+    policy: TaxonomyTermTranslationPolicy,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let source = translations
         .iter()
@@ -962,7 +999,7 @@ fn snapshot_from_models(
     let target = translations
         .iter()
         .find(|translation| translation.locale == request.target_locale.as_str());
-    let summary = summary_from_models(&term, &translations, &request.source_locale)?;
+    let summary = summary_from_models(term, &translations, &request.source_locale)?;
     let snapshot = TranslationResourceSnapshot {
         summary,
         source_locale: request.source_locale.clone(),
@@ -972,7 +1009,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_positive_revision(translation.revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(source, target)?,
+        fields: translation_fields(source, target, policy)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("taxonomy.translation_snapshot_invalid", error.to_string())
@@ -992,6 +1029,7 @@ fn taxonomy_identity(term_id: Uuid) -> Result<TranslationResourceIdentity, PortE
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
+    policy: TaxonomyTermTranslationPolicy,
 ) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
@@ -1002,7 +1040,7 @@ fn translation_fields(
             TranslationStrategy::Translate,
             true,
             true,
-            Some(120),
+            Some(policy.name_max),
         ),
         (
             "slug",
@@ -1012,7 +1050,7 @@ fn translation_fields(
             TranslationStrategy::TransliterateWithReview,
             true,
             false,
-            Some(120),
+            Some(policy.slug_max),
         ),
         (
             "description",
@@ -1022,10 +1060,11 @@ fn translation_fields(
             TranslationStrategy::Translate,
             false,
             true,
-            Some(2_000),
+            policy.description_max,
         ),
     ]
     .into_iter()
+    .filter(|field| field.7.is_some())
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
             Ok(TranslationFieldSnapshot {
@@ -1052,7 +1091,7 @@ fn translation_fields(
 struct MergedTarget {
     name: String,
     slug: String,
-    description: Option<String>,
+    description: Patch<String>,
 }
 
 fn merged_target(
@@ -1062,15 +1101,82 @@ fn merged_target(
     let mut values = merged_patch_values(request, snapshot);
     let name = required_target_value(values.remove("name").flatten(), "name")?;
     let slug = required_target_value(values.remove("slug").flatten(), "slug")?;
-    let description = values
-        .remove("description")
-        .flatten()
-        .and_then(normalize_optional_target_value);
+    let description = match request
+        .fields
+        .iter()
+        .find(|field| field.key.as_str() == "description")
+    {
+        Some(field) => {
+            normalize_optional_target_value(field.value.clone()).map_or(Patch::Clear, Patch::Set)
+        }
+        None => Patch::Keep,
+    };
     Ok(MergedTarget {
         name,
         slug,
         description,
     })
+}
+
+fn validate_exact_patch(
+    request: &TranslationPatchRequest,
+    snapshot: &TranslationResourceSnapshot,
+) -> TranslationPatchValidation {
+    let mut validation = validate_patch_against_snapshot(request, snapshot);
+    for field in &snapshot.fields {
+        let descriptor = &field.descriptor;
+        let patch = request
+            .fields
+            .iter()
+            .find(|patch| patch.key == descriptor.key);
+        let issue = match patch {
+            None if descriptor.required
+                && field
+                    .exact_target_value
+                    .as_deref()
+                    .is_none_or(|value| value.trim().is_empty()) =>
+            {
+                Some((
+                    "required_field_missing",
+                    "An exact target value is required",
+                ))
+            }
+            Some(patch) if descriptor.required && patch.value.trim().is_empty() => Some((
+                "required_field_missing",
+                "An exact target value is required",
+            )),
+            Some(patch)
+                if descriptor
+                    .max_characters
+                    .is_some_and(|limit| patch.value.chars().count() > limit as usize) =>
+            {
+                Some((
+                    "field_too_long",
+                    "The translation exceeds the owner's field length limit",
+                ))
+            }
+            Some(patch)
+                if descriptor.profile == TranslationValueProfile::Slug
+                    && crate::services::normalize_non_empty_slug(&patch.value).is_err() =>
+            {
+                Some((
+                    "slug_invalid",
+                    "The translation does not yield a valid route slug",
+                ))
+            }
+            _ => None,
+        };
+        if let Some((code, message)) = issue {
+            validation.issues.push(TranslationPatchIssue {
+                field: Some(descriptor.key.clone()),
+                severity: TranslationPatchIssueSeverity::Error,
+                code: code.to_string(),
+                message: message.to_string(),
+            });
+        }
+    }
+    validation.accepted = validation.issues.is_empty();
+    validation
 }
 
 fn change_from_model(change: ChangeModel) -> Result<TranslationTargetChange, PortError> {

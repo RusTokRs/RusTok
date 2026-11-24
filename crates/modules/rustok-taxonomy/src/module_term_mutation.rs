@@ -82,37 +82,7 @@ pub async fn update_module_term_in_tx(
             )
             .await?;
 
-            taxonomy_term_alias::Entity::delete_many()
-                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-                .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
-                .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
-                .filter(taxonomy_term_alias::Column::Slug.eq(&slug))
-                .exec(txn)
-                .await?;
-
-            if existing.slug != slug {
-                let has_existing_alias = taxonomy_term_alias::Entity::find()
-                    .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-                    .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
-                    .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
-                    .filter(taxonomy_term_alias::Column::Slug.eq(&existing.slug))
-                    .one(txn)
-                    .await?
-                    .is_some();
-                if !has_existing_alias {
-                    taxonomy_term_alias::ActiveModel {
-                        id: Set(Uuid::new_v4()),
-                        term_id: Set(term_id),
-                        tenant_id: Set(tenant_id),
-                        locale: Set(locale.clone()),
-                        name: Set(existing.slug.clone()),
-                        slug: Set(existing.slug.clone()),
-                        created_at: Set(now.fixed_offset()),
-                    }
-                    .insert(txn)
-                    .await?;
-                }
-            }
+            sync_module_term_slug_history_in_tx(txn, &existing, &slug, now.fixed_offset()).await?;
 
             let revision = next_translation_revision(term_id, &locale, existing.revision)?;
             let updated = taxonomy_term_translation::Entity::update_many()
@@ -248,6 +218,50 @@ pub async fn lock_module_term_in_tx(
         .one(txn)
         .await?
         .ok_or(TaxonomyError::TermNotFound(term_id))?;
+    Ok(())
+}
+
+/// Update alias reservations while the owner holds the term writer lock.
+pub(crate) async fn sync_module_term_slug_history_in_tx(
+    txn: &DatabaseTransaction,
+    existing: &taxonomy_term_translation::Model,
+    slug: &str,
+    now: DateTime<chrono::FixedOffset>,
+) -> TaxonomyResult<()> {
+    let tenant_id = existing.tenant_id;
+    let term_id = existing.term_id;
+    let locale = &existing.locale;
+    taxonomy_term_alias::Entity::delete_many()
+        .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+        .filter(taxonomy_term_alias::Column::Locale.eq(locale))
+        .filter(taxonomy_term_alias::Column::Slug.eq(slug))
+        .exec(txn)
+        .await?;
+
+    if existing.slug != slug {
+        let has_existing_alias = taxonomy_term_alias::Entity::find()
+            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
+            .filter(taxonomy_term_alias::Column::Slug.eq(&existing.slug))
+            .one(txn)
+            .await?
+            .is_some();
+        if !has_existing_alias {
+            taxonomy_term_alias::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                term_id: Set(term_id),
+                tenant_id: Set(tenant_id),
+                locale: Set(locale.clone()),
+                name: Set(existing.slug.clone()),
+                slug: Set(existing.slug.clone()),
+                created_at: Set(now),
+            }
+            .insert(txn)
+            .await?;
+        }
+    }
     Ok(())
 }
 

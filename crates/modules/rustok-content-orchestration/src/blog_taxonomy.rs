@@ -2,18 +2,21 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::{Action, PortContext, PortError};
 use rustok_blog::ports::taxonomy::{
     BlogCategoryDeleteCleanupPort, BlogTaxonomyCategoryLocaleCopy, BlogTaxonomyCategorySnapshot,
     BlogTaxonomyConnection, BlogTaxonomyCreateTagInput, BlogTaxonomyCreatedTag,
     BlogTaxonomyPlacement, BlogTaxonomyPort, BlogTaxonomySyncCategoryInput,
     BlogTaxonomyTagSnapshot, BlogTaxonomyUpdateTagInput,
 };
-use rustok_blog::{BlogError, BlogResult};
+use rustok_blog::{BlogError, BlogPublicError, BlogResult, ports::BlogTaxonomyTranslationKind};
 use rustok_core::SecurityContext;
 use rustok_taxonomy::{
     ModuleTermCreateInput, ModuleTermUpdateInput, SyncModuleCategoryInput,
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyOwnerCategoryReader,
-    TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyModuleTermTranslationOwner,
+    TaxonomyModuleTermTranslationOwnerRegistry, TaxonomyOwnerCategoryReader, TaxonomyOwnerReader,
+    TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    TaxonomyTermTranslationPolicy,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
@@ -26,6 +29,93 @@ const BLOG_SCOPE: &str = "blog";
 /// Attach the canonical Taxonomy owner to Blog in a shared database runtime.
 pub fn in_process_blog_taxonomy_port(db: DatabaseConnection) -> Arc<dyn BlogTaxonomyPort> {
     Arc::new(BlogTaxonomyAdapter(TaxonomyService::new(db)))
+}
+
+pub fn register_blog_translation_owner(
+    registry: &mut TaxonomyModuleTermTranslationOwnerRegistry,
+    db: DatabaseConnection,
+) -> Result<(), TaxonomyError> {
+    registry.register(BlogTranslationOwner(db))
+}
+
+struct BlogTranslationOwner(DatabaseConnection);
+
+#[async_trait]
+impl TaxonomyModuleTermTranslationOwner for BlogTranslationOwner {
+    fn module_slug(&self) -> &str {
+        BLOG_SCOPE
+    }
+
+    fn translation_policy(&self, kind: TaxonomyTermKind) -> TaxonomyTermTranslationPolicy {
+        let (name_max, slug_max, description_max) = blog_translation_kind(kind).field_limits();
+        TaxonomyTermTranslationPolicy {
+            name_max,
+            slug_max,
+            description_max,
+        }
+    }
+
+    async fn is_enabled(&self, tenant_id: Uuid) -> Result<bool, PortError> {
+        rustok_api::is_tenant_module_enabled(&self.0, tenant_id, BLOG_SCOPE)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, %tenant_id, "Blog translation enablement lookup failed");
+                PortError::unavailable(
+                    "blog.translation_owner_unavailable",
+                    "Blog translation owner is unavailable",
+                )
+            })
+    }
+
+    fn authorize(
+        &self,
+        context: &PortContext,
+        _tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        _term_id: Uuid,
+        action: Action,
+    ) -> Result<(), PortError> {
+        blog_translation_kind(kind)
+            .authorize(&SecurityContext::try_from_port_context(context)?, action)
+            .map_err(blog_translation_error)
+    }
+
+    async fn on_translation_applied_in_tx(
+        &self,
+        transaction: &DatabaseTransaction,
+        context: &PortContext,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_id: Uuid,
+    ) -> Result<(), PortError> {
+        blog_translation_kind(kind)
+            .record_applied_in_tx(
+                transaction,
+                tenant_id,
+                term_id,
+                &SecurityContext::try_from_port_context(context)?,
+            )
+            .await
+            .map_err(blog_translation_error)
+    }
+}
+
+fn blog_translation_kind(kind: TaxonomyTermKind) -> BlogTaxonomyTranslationKind {
+    match kind {
+        TaxonomyTermKind::Category => BlogTaxonomyTranslationKind::Category,
+        TaxonomyTermKind::Tag => BlogTaxonomyTranslationKind::Tag,
+    }
+}
+
+fn blog_translation_error(error: BlogError) -> PortError {
+    let result = BlogPublicError::from(error);
+    match result.status {
+        400 | 422 => PortError::validation(result.code, result.message),
+        403 => PortError::forbidden(result.code, result.message),
+        404 => PortError::not_found(result.code, result.message),
+        409 => PortError::conflict(result.code, result.message),
+        _ => PortError::invariant_violation(result.code, result.message),
+    }
 }
 
 /// Give Blog's Category delete transaction access to the host's capability cleanup.

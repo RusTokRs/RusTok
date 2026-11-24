@@ -42,6 +42,10 @@ impl TaxonomyModuleTermTranslationOwner for TestModuleTranslationOwner {
         "blog"
     }
 
+    async fn is_enabled(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+        Ok(true)
+    }
+
     fn authorize(
         &self,
         _context: &PortContext,

@@ -79,7 +79,7 @@ pub use product_taxonomy_port::{
 pub use services::TaxonomyService;
 pub use translation_target::{
     TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
-    TaxonomyTranslationTargetProvider,
+    TaxonomyTermTranslationPolicy, TaxonomyTranslationTargetProvider,
 };
 
 #[cfg(test)]

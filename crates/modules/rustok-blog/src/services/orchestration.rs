@@ -5,6 +5,8 @@
 //! while keeping Blog persistence entities strictly crate-private.
 
 use chrono::{DateTime, Utc};
+use rustok_api::{Action, Resource};
+use rustok_core::SecurityContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder,
@@ -12,11 +14,62 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
+use super::{
+    category::{
+        CATEGORY_DESCRIPTION_MAX_CHARS, CATEGORY_NAME_MAX_CHARS, CATEGORY_SLUG_MAX_CHARS,
+        record_category_copy_change_in_tx,
+    },
+    post::MAX_TAG_NAME_CHARS,
+    rbac::enforce_scope,
+    tag::{TAG_SLUG_MAX_CHARS, publish_blog_reindex_in_tx},
+};
 use crate::entities::{
     blog_category, blog_comment_projection_delivery, blog_post, blog_post_channel_visibility,
     blog_post_tag, blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
+
+#[derive(Clone, Copy)]
+pub enum BlogTaxonomyTranslationKind {
+    Category,
+    Tag,
+}
+
+impl BlogTaxonomyTranslationKind {
+    pub fn authorize(self, security: &SecurityContext, action: Action) -> BlogResult<()> {
+        let resource = match self {
+            Self::Category => Resource::BlogCategories,
+            Self::Tag => Resource::Tags,
+        };
+        enforce_scope(security, resource, action)
+    }
+
+    pub fn field_limits(self) -> (u32, u32, Option<u32>) {
+        match self {
+            Self::Category => (
+                CATEGORY_NAME_MAX_CHARS,
+                CATEGORY_SLUG_MAX_CHARS,
+                Some(CATEGORY_DESCRIPTION_MAX_CHARS),
+            ),
+            Self::Tag => (MAX_TAG_NAME_CHARS as u32, TAG_SLUG_MAX_CHARS, None),
+        }
+    }
+
+    /// Records the Blog-owned effects of a Taxonomy translation in the same transaction.
+    pub async fn record_applied_in_tx(
+        self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        term_id: Uuid,
+        security: &SecurityContext,
+    ) -> BlogResult<()> {
+        self.authorize(security, Action::Update)?;
+        if matches!(self, Self::Category) {
+            record_category_copy_change_in_tx(txn, tenant_id, term_id).await?;
+        }
+        publish_blog_reindex_in_tx(txn, tenant_id, security.user_id).await
+    }
+}
 
 /// Verifies that a Blog category exists for the given tenant within an active transaction.
 pub async fn ensure_blog_category_exists_in_tx(
