@@ -412,11 +412,35 @@ fn request_facts_reject_malformed_and_ambiguous_channel_selectors() {
     );
 
     let mut nil_id = HeaderMap::new();
-    nil_id.insert("X-Channel-ID", Uuid::nil().to_string().parse().expect("header"));
+    nil_id.insert(
+        "X-Channel-ID",
+        Uuid::nil().to_string().parse().expect("header"),
+    );
     assert!(
         try_build_request_facts(
             tenant_id,
             &nil_id,
+            None,
+            None,
+            &settings,
+            &extensions,
+        )
+        .is_err()
+    );
+
+    let mut conflicting_ids = HeaderMap::new();
+    conflicting_ids.append(
+        "X-Channel-ID",
+        Uuid::new_v4().to_string().parse().expect("header"),
+    );
+    conflicting_ids.append(
+        "X-Channel-ID",
+        Uuid::new_v4().to_string().parse().expect("header"),
+    );
+    assert!(
+        try_build_request_facts(
+            tenant_id,
+            &conflicting_ids,
             None,
             None,
             &settings,
@@ -834,9 +858,8 @@ fn channel_slug_from_header_rejects_conflicting_duplicates() {
 
 #[test]
 fn channel_slug_from_query_rejects_conflicting_duplicates() {
-    assert_eq!(
-        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")).is_err(),
-        true
+    assert!(
+        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")).is_err()
     );
     assert_eq!(
         channel_slug_from_query(Some("channel=channel-a&channel=channel-a")),
