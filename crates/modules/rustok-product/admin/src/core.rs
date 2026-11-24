@@ -107,13 +107,19 @@ pub(crate) fn validate_editor_variant_draft(
         if price.currency_code.trim().is_empty() {
             return Err("Currency is required for a base price.".to_string());
         }
-        for value in
-            std::iter::once(price.amount.as_str()).chain(price.compare_at_amount.as_deref())
-        {
-            let amount = rust_decimal::Decimal::from_str_exact(value.trim())
+        let base_amount = rust_decimal::Decimal::from_str_exact(price.amount.trim())
+            .map_err(|_| "Prices must be exact decimal amounts.".to_string())?;
+        if base_amount.is_sign_negative() && !base_amount.is_zero() {
+            return Err("Prices must not be negative.".to_string());
+        }
+        if let Some(compare_at) = price.compare_at_amount.as_deref() {
+            let compare_at_amount = rust_decimal::Decimal::from_str_exact(compare_at.trim())
                 .map_err(|_| "Prices must be exact decimal amounts.".to_string())?;
-            if amount.is_sign_negative() && !amount.is_zero() {
+            if compare_at_amount.is_sign_negative() && !compare_at_amount.is_zero() {
                 return Err("Prices must not be negative.".to_string());
+            }
+            if compare_at_amount < base_amount {
+                return Err("Compare-at price cannot be lower than the base price.".to_string());
             }
         }
     }
@@ -2088,6 +2094,35 @@ pub fn build_variant_row_view_models(
         .collect()
 }
 
+/// Builds a sparse row-editor update from the exact target Variant snapshot.
+///
+/// The first price's currency is local to that Variant; the product-wide fallback
+/// is used only when the target has no base price yet. Existing compare-at and
+/// secondary-currency prices are retained by `VariantUpdateDraft::from_editor_state`.
+pub fn build_variant_row_update_draft(
+    original: &crate::model::ProductVariant,
+    sku: String,
+    amount: String,
+    inventory_quantity: i32,
+    fallback_currency: &str,
+) -> crate::model::VariantUpdateDraft {
+    let primary_price = original.prices.first();
+    crate::model::VariantUpdateDraft::from_editor_state(
+        original,
+        sku,
+        original.barcode.clone().unwrap_or_default(),
+        primary_price
+            .map(|price| price.currency_code.clone())
+            .unwrap_or_else(|| fallback_currency.to_owned()),
+        amount,
+        primary_price
+            .and_then(|price| price.compare_at_amount.clone())
+            .unwrap_or_default(),
+        inventory_quantity,
+        original.inventory_policy.clone(),
+    )
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductImageViewModel {
     pub id: String,
@@ -2976,6 +3011,20 @@ mod tests {
         draft.prices[0].amount = "1".to_string();
         draft.prices[0].currency_code.clear();
         assert!(validate_editor_variant_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn editor_variant_rejects_compare_at_below_base_price() {
+        let mut draft = editor_variant_fixture();
+        draft.prices = vec![crate::model::VariantPriceDraft {
+            currency_code: "USD".to_owned(),
+            amount: "12.00".to_owned(),
+            compare_at_amount: Some("11.99".to_owned()),
+        }];
+        assert!(validate_editor_variant_draft(&draft).is_err());
+
+        draft.prices[0].compare_at_amount = Some("12.00".to_owned());
+        assert!(validate_editor_variant_draft(&draft).is_ok());
     }
 
     #[test]
@@ -4092,6 +4141,82 @@ mod tests {
         assert_eq!(rows[1].options_summary, "color: Black · size: M");
         assert_eq!(rows[1].price, "120.00 USD");
         assert_eq!(rows[1].stock, "15");
+    }
+
+    #[test]
+    fn variant_row_update_preserves_target_currency_compare_at_and_secondary_prices() {
+        let mut product = product_detail();
+        product.variants[0].prices = vec![
+            crate::model::ProductPrice {
+                currency_code: "EUR".to_owned(),
+                amount: "12.00".to_owned(),
+                compare_at_amount: Some("15.00".to_owned()),
+                on_sale: true,
+            },
+            crate::model::ProductPrice {
+                currency_code: "USD".to_owned(),
+                amount: "10.00".to_owned(),
+                compare_at_amount: Some("12.00".to_owned()),
+                on_sale: true,
+            },
+        ];
+
+        let draft = build_variant_row_update_draft(
+            &product.variants[0],
+            "COAT-1".to_owned(),
+            "13.00".to_owned(),
+            product.variants[0].inventory_quantity,
+            "USD",
+        );
+
+        assert!(draft.has_changes());
+        assert!(draft.prices_changed);
+        assert_eq!(draft.prices.len(), 2);
+        assert_eq!(draft.prices[0].currency_code, "EUR");
+        assert_eq!(draft.prices[0].amount, "13.00");
+        assert_eq!(draft.prices[0].compare_at_amount.as_deref(), Some("15.00"));
+        assert_eq!(draft.prices[1].currency_code, "USD");
+        assert_eq!(draft.prices[1].amount, "10.00");
+        assert_eq!(draft.prices[1].compare_at_amount.as_deref(), Some("12.00"));
+        assert!(draft.inventory_quantity.is_none());
+    }
+
+    #[test]
+    fn variant_row_update_keeps_absent_sku_and_empty_price_as_keep() {
+        let mut product = product_detail();
+        product.variants[0].sku = None;
+        product.variants[0].prices.clear();
+
+        let draft = build_variant_row_update_draft(
+            &product.variants[0],
+            String::new(),
+            String::new(),
+            product.variants[0].inventory_quantity,
+            "EUR",
+        );
+
+        assert!(draft.sku.is_keep());
+        assert!(!draft.prices_changed);
+        assert!(draft.prices.is_empty());
+        assert!(!draft.has_changes());
+    }
+
+    #[test]
+    fn variant_row_sku_only_update_does_not_replay_price_or_inventory_snapshot() {
+        let product = product_detail();
+        let draft = build_variant_row_update_draft(
+            &product.variants[0],
+            "COAT-2".to_owned(),
+            "12.00".to_owned(),
+            product.variants[0].inventory_quantity,
+            "USD",
+        );
+
+        assert!(matches!(draft.sku, rustok_api::Patch::Set(value) if value == "COAT-2"));
+        assert!(!draft.prices_changed);
+        assert!(draft.prices.is_empty());
+        assert!(draft.inventory_quantity.is_none());
+        assert!(draft.has_changes());
     }
 
     #[test]

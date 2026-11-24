@@ -2,6 +2,7 @@
 
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, Condition, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::entities::price;
@@ -27,6 +28,68 @@ pub fn catalog_base_scope() -> Condition {
         .add(price::Column::MaxQuantity.is_null())
 }
 
+fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
+    if price.variant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom(
+            "variant_id must not be a nil UUID".into(),
+        ));
+    }
+    if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
+        return Err(sea_orm::DbErr::Custom(
+            "channel_id must not be a nil UUID".into(),
+        ));
+    }
+    if price.amount < Decimal::ZERO {
+        return Err(sea_orm::DbErr::Custom("amount must not be negative".into()));
+    }
+    if let Some(compare_at) = price.compare_at_amount {
+        if compare_at < Decimal::ZERO {
+            return Err(sea_orm::DbErr::Custom(
+                "compare_at_amount must not be negative".into(),
+            ));
+        }
+        if compare_at < price.amount {
+            return Err(sea_orm::DbErr::Custom(
+                "compare_at_amount cannot be lower than amount".into(),
+            ));
+        }
+    }
+    let trimmed_currency = price.currency_code.trim();
+    if trimmed_currency.len() != 3
+        || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
+    {
+        return Err(sea_orm::DbErr::Custom(
+            "currency_code must be a 3-letter ASCII alphabetic code".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_initial_prices(prices: &[InitialPrice]) -> Result<(), sea_orm::DbErr> {
+    let mut identities = HashSet::new();
+    for price in prices {
+        validate_initial_price(price)?;
+        let channel_slug = price
+            .channel_slug
+            .as_deref()
+            .map(str::trim)
+            .filter(|slug| !slug.is_empty())
+            .map(str::to_ascii_lowercase);
+        let identity = (
+            price.variant_id,
+            price.channel_id,
+            channel_slug,
+            price.currency_code.trim().to_ascii_uppercase(),
+        );
+        if !identities.insert(identity) {
+            return Err(sea_orm::DbErr::Custom(
+                "duplicate initial price for the same variant, channel and currency".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Pricing-owned transaction-aware operations required by Product lifecycle writes.
 pub struct BootstrapService;
 
@@ -43,36 +106,7 @@ impl BootstrapService {
             return Ok(());
         }
 
-        for price in &prices {
-            if price.variant_id.is_nil() {
-                return Err(sea_orm::DbErr::Custom(
-                    "variant_id must not be a nil UUID".into(),
-                ));
-            }
-            if price.channel_id == Some(Uuid::nil()) {
-                return Err(sea_orm::DbErr::Custom(
-                    "channel_id must not be a nil UUID".into(),
-                ));
-            }
-            if price.amount < Decimal::ZERO {
-                return Err(sea_orm::DbErr::Custom("amount must not be negative".into()));
-            }
-            if let Some(compare_at) = price.compare_at_amount
-                && compare_at < Decimal::ZERO
-            {
-                return Err(sea_orm::DbErr::Custom(
-                    "compare_at_amount must not be negative".into(),
-                ));
-            }
-            let trimmed_currency = price.currency_code.trim();
-            if trimmed_currency.len() != 3
-                || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
-            {
-                return Err(sea_orm::DbErr::Custom(
-                    "currency_code must be a 3-letter ASCII alphabetic code".into(),
-                ));
-            }
-        }
+        validate_initial_prices(&prices)?;
 
         let models = prices
             .into_iter()
@@ -164,21 +198,23 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
-        if variant_id.is_nil()
-            || prices.iter().any(|price| {
-                price.variant_id != variant_id
-                    || price.channel_id.is_some()
-                    || price.channel_slug.is_some()
-                    || price.amount < Decimal::ZERO
-                    || price
-                        .compare_at_amount
-                        .is_some_and(|amount| amount < Decimal::ZERO)
-            })
-        {
+        if variant_id.is_nil() {
             return Err(sea_orm::DbErr::Custom(
-                "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
+                "variant_id must not be a nil UUID".into(),
             ));
         }
+        for price in &prices {
+            if price.variant_id != variant_id
+                || price.channel_id.is_some()
+                || price.channel_slug.is_some()
+            {
+                return Err(sea_orm::DbErr::Custom(
+                    "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
+                ));
+            }
+        }
+        // Validate every replacement row before deleting the currently authoritative prices.
+        validate_initial_prices(&prices)?;
         price::Entity::delete_many()
             .filter(price::Column::VariantId.eq(variant_id))
             .filter(catalog_base_scope())
@@ -210,5 +246,52 @@ impl BootstrapService {
             .exec(conn)
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn initial_price(amount: Decimal, compare_at_amount: Option<Decimal>) -> InitialPrice {
+        InitialPrice {
+            variant_id: Uuid::from_u128(1),
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_owned(),
+            amount,
+            compare_at_amount,
+        }
+    }
+
+    #[test]
+    fn initial_prices_reject_duplicate_currency_for_same_variant_and_channel() {
+        let first = initial_price(Decimal::new(1000, 2), None);
+        let mut second = first.clone();
+        second.currency_code = "usd".to_owned();
+        assert!(validate_initial_prices(&[first, second]).is_err());
+    }
+
+    #[test]
+    fn initial_prices_normalize_channel_slug_before_duplicate_detection() {
+        let mut first = initial_price(Decimal::new(1000, 2), None);
+        first.channel_slug = Some("web".to_owned());
+        let mut second = first.clone();
+        second.channel_slug = Some(" WEB ".to_owned());
+        assert!(validate_initial_prices(&[first, second]).is_err());
+    }
+
+    #[test]
+    fn initial_price_rejects_compare_at_below_base_amount() {
+        let price = initial_price(Decimal::new(1200, 2), Some(Decimal::new(1199, 2)));
+        assert!(validate_initial_price(&price).is_err());
+    }
+
+    #[test]
+    fn initial_price_accepts_equal_or_higher_compare_at_amount() {
+        for compare_at in [Decimal::new(1200, 2), Decimal::new(1500, 2)] {
+            let price = initial_price(Decimal::new(1200, 2), Some(compare_at));
+            assert!(validate_initial_price(&price).is_ok());
+        }
     }
 }

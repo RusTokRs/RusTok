@@ -77,25 +77,29 @@ impl AsPricingConnection for crate::services::write_transaction::ProductWriteTra
 /// Transactional and projection port for variant prices.
 #[async_trait]
 pub trait ProductPricingPort: Send + Sync {
-    /// Authors initial variant prices in the active product write transaction.
+    /// Validates tenant-owned channel scopes and authors initial prices in the active
+    /// product write transaction.
     async fn create_initial_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), CommerceError>;
 
-    /// Replaces variant unscoped base prices in the active product write transaction.
+    /// Replaces tenant-owned variant unscoped base prices in the active product write transaction.
     async fn replace_catalog_base_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         variant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), CommerceError>;
 
-    /// Deletes all prices for the specified variants in the active product write transaction.
+    /// Deletes all prices for the specified tenant-owned variants in the active product write transaction.
     async fn delete_prices_for_variants_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<(), CommerceError>;
 

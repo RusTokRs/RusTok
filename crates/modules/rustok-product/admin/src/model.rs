@@ -508,6 +508,22 @@ impl VariantUpdateDraft {
         }
     }
 
+    /// Whether this draft contains an effective owner mutation.
+    ///
+    /// A non-empty `prices` buffer alone is not a replacement: callers must set
+    /// `prices_changed` so an untouched snapshot cannot be replayed accidentally.
+    pub fn has_changes(&self) -> bool {
+        self.sku.is_changed()
+            || self.barcode.is_changed()
+            || self.shipping_profile_slug.is_changed()
+            || self.weight.is_changed()
+            || self.weight_unit.is_changed()
+            || !self.axis_values.is_empty()
+            || self.prices_changed
+            || self.inventory_quantity.is_some()
+            || self.inventory_policy.is_some()
+    }
+
     fn edited_text_if_changed(
         value: String,
         current: Option<&str>,
@@ -972,6 +988,27 @@ mod variant_update_draft_tests {
         assert!(draft.inventory_policy.is_none());
         assert!(!draft.prices_changed);
         assert!(draft.prices.is_empty());
+    }
+
+    #[test]
+    fn effective_change_detection_ignores_unmarked_price_buffers_and_keeps_explicit_clears() {
+        let mut draft = VariantUpdateDraft::default();
+        draft.prices.push(super::VariantPriceDraft {
+            currency_code: "USD".to_owned(),
+            amount: "1.00".to_owned(),
+            compare_at_amount: None,
+        });
+        assert!(!draft.has_changes());
+
+        draft.prices_changed = true;
+        assert!(draft.has_changes());
+
+        draft.prices.clear();
+        assert!(draft.has_changes(), "an explicit empty replacement clears prices");
+
+        draft.prices_changed = false;
+        draft.sku = Patch::Clear;
+        assert!(draft.has_changes());
     }
 
     #[test]

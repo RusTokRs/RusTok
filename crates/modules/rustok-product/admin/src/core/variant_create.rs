@@ -103,10 +103,14 @@ pub(crate) fn valid_input(input: &VariantDraft) -> bool {
                     .bytes()
                     .all(|byte| byte.is_ascii_uppercase())
                 && valid_amount(&price.amount)
-                && price
-                    .compare_at_amount
-                    .as_ref()
-                    .is_none_or(|amount| valid_amount(amount))
+                && price.compare_at_amount.as_ref().is_none_or(|amount| {
+                    valid_amount(amount)
+                        && rust_decimal::Decimal::from_str_exact(amount)
+                            .is_ok_and(|compare_at| {
+                                rust_decimal::Decimal::from_str_exact(&price.amount)
+                                    .is_ok_and(|base| compare_at >= base)
+                            })
+                })
         })
 }
 
@@ -450,6 +454,17 @@ mod tests {
         draft.prices = vec![draft.prices[0].clone(); MAX_PRICE_ROWS + 1];
         assert!(!valid_input(&draft));
         assert!(initial_catalog::validate_amount("0.00000000000000000000000000001").is_err());
+    }
+
+    #[test]
+    fn frozen_variant_create_rejects_compare_at_below_base_price() {
+        let mut draft = input();
+        draft.prices[0].amount = "12".into();
+        draft.prices[0].compare_at_amount = Some("11".into());
+        assert!(!valid_input(&draft));
+
+        draft.prices[0].compare_at_amount = Some("12".into());
+        assert!(valid_input(&draft));
     }
 
     #[test]
