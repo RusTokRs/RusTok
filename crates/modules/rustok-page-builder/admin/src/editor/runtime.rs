@@ -660,7 +660,12 @@ impl AdminEditorRuntime {
                         }
                     }
                     Err(error) => {
-                        if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
+                        let completed = if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
+                            runtime.finish_conflicted_request(capability, save_attempt.as_ref())
+                        } else {
+                            runtime.finish_failed_request(capability, save_attempt.as_ref())
+                        };
+                        if completed {
                             runtime.fail(error.to_string());
                         }
                     }
@@ -682,6 +687,37 @@ impl AdminEditorRuntime {
             self.finish_failed_request(capability, save_attempt.as_ref());
             self.fail(self.facade_missing.clone());
         }
+    }
+
+    fn finish_conflicted_request(
+        &self,
+        capability: BuilderCapabilityKind,
+        attempt: Option<&SaveAttempt>,
+    ) -> bool {
+        if capability != BuilderCapabilityKind::Publish {
+            return false;
+        }
+        let Some(attempt) = attempt else {
+            return false;
+        };
+        let expected = self.controller.with_untracked(|controller| {
+            controller.revision_id().to_string()
+        });
+        self.controller
+            .try_update(|controller| {
+                let conflicted = controller.mark_save_conflict_for_attempt(
+                    attempt,
+                    expected,
+                    "newer server revision".to_string(),
+                )?;
+                if conflicted {
+                    controller.dispatch(UiIntent::SetEditableCapabilities(
+                        fly_ui::CapabilityState::read_only(),
+                    ))?;
+                }
+                Ok(conflicted)
+            })
+            .is_some_and(|result| result.unwrap_or(false))
     }
 
     /// False means the completion belongs to an obsolete attempt. In that
