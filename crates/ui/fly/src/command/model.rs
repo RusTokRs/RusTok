@@ -540,7 +540,10 @@ impl RevisionState {
             ));
         }
         let revision = revision.into();
-        if revision.trim().is_empty() || revision.len() > 256 {
+        if revision.trim().is_empty()
+            || revision.len() > 256
+            || revision.chars().any(char::is_control)
+        {
             return Err(FlyError::InvalidSaveState(
                 "save acknowledgement revision is empty or exceeds the size limit".to_string(),
             ));
