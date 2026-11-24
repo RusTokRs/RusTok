@@ -4,8 +4,9 @@ use crate::editor::{
 };
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{
-    DesignToken, EditorCommand, GrapesJsCodec, PageCommand, PageLocator, PageMetadata, PagePatch,
-    ProjectHash, StyleRuleCommand, StyleRuleScope, ThemeCommand, blank_page, normalize_slug,
+    ComponentPatch, DesignToken, EditorCommand, GrapesJsCodec, PageCommand, PageLocator,
+    PageMetadata, PagePatch, ProjectHash, StyleRuleCommand, StyleRuleScope, ThemeCommand,
+    blank_page, normalize_slug,
 };
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
 use fly_ui::{
@@ -112,6 +113,18 @@ fn dispatch_named_intent(
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
             let intent = controller
                 .ssr_drop_intent(request)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            let effects = controller.dispatch(intent)?;
+            controller.dispatch(UiIntent::CancelDrag)?;
+            effects
+        }
+        "patch_selected" => {
+            let patch = serde_json::from_value::<ComponentPatch>(
+                payload.get("patch").cloned().unwrap_or_else(|| payload.clone()),
+            )
+            .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_selected_style_patch_intent(patch)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }
@@ -560,6 +573,7 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
         || matches!(
             envelope.intent.as_str(),
             "patch_component_property"
+                | "patch_selected"
                 | "patch_page_metadata"
                 | "set_locale_policy"
                 | "clear_locale_policy"
