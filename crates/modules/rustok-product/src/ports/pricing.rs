@@ -111,6 +111,11 @@ pub trait ProductPricingPort: Send + Sync {
     ) -> Result<Vec<CatalogBasePriceSnapshot>, CommerceError>;
 
     /// Resolves storefront minimum "from" prices for a product listing.
+    ///
+    /// Channel-scoped rows are eligible only for an exact channel match; unscoped
+    /// rows are the only fallback. When no currency is requested, a price is
+    /// returned only if the eligible rows use one currency, because amounts in
+    /// different currencies are not comparable.
     async fn load_storefront_list_prices(
         &self,
         conn: PricingConnection<'_>,
