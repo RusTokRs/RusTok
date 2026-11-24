@@ -6,10 +6,10 @@ For full public interface and component definitions, see [CRATE_API.md](CRATE_AP
 element and accept `csp_nonce`. Under a nonce policy (`style-src 'self' {nonce}`) the browser drops
 that element unless it carries the request nonce, and the canvas renders unstyled.
 
-> **Status (2026-11-11): active parity snapshot.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with complete SSR intent and local command execution, design token mutation, contribution filtering, and typed error callbacks matching the `fly-leptos` workspace contract.
+> **Status (2026-11-24): host integration in source; runtime verification pending.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with typed intent and local command execution. The Page Builder Dioxus host now mounts the isolated iframe canvas, routes pointer/drag/drop/resize through the shared controller, correlates save responses with unique attempt IDs, and fences sibling-tab writes. No build, Rust test or Playwright run is claimed for this change.
 
 
-`fly-dioxus` is the Dioxus 0.7 component adapter foundation for Fly visual editors.
+`fly-dioxus` is the Dioxus 0.7 component adapter for Fly visual editors.
 
 ## Responsibilities
 
@@ -22,12 +22,13 @@ that element unless it carries the request nonce, and the canvas renders unstyle
 `FlyEditorWorkspace` is a working editor surface (palette/layers/preview/history) and accepts
 a host-owned canvas slot. `FlyCanvasIframe` provides the Dioxus iframe lifecycle: sandboxed
 `srcdoc`, exact source-window and origin checks, protocol/instance/sequence validation, and
-subscription replacement after reload. The host still owns message interpretation, geometry,
-drop policy and persistence. The Page Builder Dioxus host now supplies an isolated canvas slot, forwards geometry,
-hover/focus/keyboard messages, updates drag hit candidates, completes palette and selected-layer
-moves, and commits bounded resize patches through the shared editor controller. The reusable
-workspace remains host-neutral: it does not decide domain drop legality or persistence. Dioxus `web`/`desktop` renderers
-remain opt-in features.
+subscription replacement after reload. The Page Builder Dioxus host supplies the isolated canvas,
+forwards geometry and hover/focus/keyboard messages, updates drag hit candidates, completes
+palette and selected-layer moves, and commits bounded resize patches through the shared editor
+controller. The host also owns save-attempt correlation, persistence, and peer-write fencing.
+The reusable workspace remains host-neutral: it does not decide domain drop legality or merge
+concurrent documents. Cross-tab notifications are advisory; server revision checks remain
+authoritative. Dioxus `web`/`desktop` renderers remain opt-in features.
 
 ## Architecture
 
