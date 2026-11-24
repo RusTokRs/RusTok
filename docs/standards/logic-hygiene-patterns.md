@@ -1950,6 +1950,10 @@ let posts = PostService::new(db, event_bus).with_taxonomy_port(taxonomy_port);
 Trace the constructors from each entry point with
 `rg -n 'PostService::new\(|with_taxonomy_port\(' crates/modules/rustok-blog`.
 
+Commerce GraphQL cart addition needs the same selected Product runtime for the
+direct catalog read and the Pricing adapter's catalog reads. Select it once,
+clone its read port, and pass the runtime into the Pricing adapter.
+
 The Blog/Forum conversion bridge took a separate path to Taxonomy and then
 called a Blog relation writer without its port. Promotion could create Blog
 tags without the caller's permission, and the usage projection lost its

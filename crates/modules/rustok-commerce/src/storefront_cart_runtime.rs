@@ -15,7 +15,7 @@ use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_pricing::{PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest};
 use rustok_product::{
     ProductCatalogReadPort, ProductFulfillmentRequirement,
-    StorefrontVariantProductProjectionRequest,
+    StorefrontVariantProductProjectionRequest, dto::ProductResponse,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -242,10 +242,7 @@ impl StorefrontCartRuntime {
             )),
         };
         let (unit_price, pricing_adjustment) = cart_line_pricing_snapshot(command.quantity, &price);
-        let mut metadata = sanitized_line_metadata(command.metadata);
-        if let Some(seller_id) = product.seller_id.as_deref() {
-            metadata["seller"] = json!({ "id": seller_id });
-        }
+        let metadata = cart_line_metadata(command.metadata, &product);
         self.cart
             .add_storefront_line_item(
                 context,
@@ -531,7 +528,7 @@ fn verify_buyer_context(
     Ok(())
 }
 
-fn sanitized_line_metadata(metadata: Value) -> Value {
+fn cart_line_metadata(metadata: Value, product: &ProductResponse) -> Value {
     let mut object = metadata.as_object().cloned().unwrap_or_default();
     for key in [
         "customer_tax_exempt",
@@ -546,6 +543,12 @@ fn sanitized_line_metadata(metadata: Value) -> Value {
         "discounts",
     ] {
         object.remove(key);
+    }
+    if let Some(tax_class) = product.metadata.get("tax_class").and_then(Value::as_str) {
+        object.insert("tax_class".into(), Value::String(tax_class.to_owned()));
+    }
+    if let Some(seller_id) = product.seller_id.as_deref() {
+        object.insert("seller".into(), json!({ "id": seller_id }));
     }
     Value::Object(object)
 }
@@ -615,10 +618,36 @@ mod tests {
     }
 
     #[test]
-    fn buyer_metadata_cannot_supply_seller_or_pricing_authority() {
-        let metadata = sanitized_line_metadata(json!({ "seller": { "id": "forged" },
-            "pricing": { "amount": "0" }, "customer_tax_exempt": true, "note": "gift" }));
+    fn buyer_metadata_cannot_supply_seller_tax_or_pricing_authority() {
+        let (_, product) = crate::services::checkout_catalog::tests::fixture();
+        let metadata = cart_line_metadata(
+            json!({
+                "seller": { "id": "forged" },
+                "tax_class": "forged",
+                "pricing": { "amount": "0" },
+                "customer_tax_exempt": true,
+                "note": "gift"
+            }),
+            &product,
+        );
         assert_eq!(metadata, json!({ "note": "gift" }));
+    }
+
+    #[test]
+    fn cart_line_snapshots_tax_class_and_seller_from_product() {
+        let (_, mut product) = crate::services::checkout_catalog::tests::fixture();
+        product.metadata = json!({ "tax_class": "reduced", "other": "not copied" });
+        product.seller_id = Some("catalog-seller".into());
+
+        let metadata = cart_line_metadata(
+            json!({ "tax_class": "forged", "seller": { "id": "forged" }, "note": "gift" }),
+            &product,
+        );
+
+        assert_eq!(
+            metadata,
+            json!({ "tax_class": "reduced", "seller": { "id": "catalog-seller" }, "note": "gift" })
+        );
     }
 }
 
