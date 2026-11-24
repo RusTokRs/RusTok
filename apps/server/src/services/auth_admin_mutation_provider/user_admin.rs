@@ -1189,10 +1189,10 @@ mod tests {
 
     #[test]
     fn invite_ledger_expiration_matches_signed_jwt_second_precision() {
-        let config = AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4));
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4));
         let token = crate::auth::encode_invite_token(
             &config,
-            Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
             "invitee@example.test",
             UserRole::Customer,
             None,
