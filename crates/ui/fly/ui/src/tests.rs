@@ -337,12 +337,13 @@ fn drop_rechecks_edit_permission_even_with_a_restored_drag() {
 #[test]
 fn deserializing_ui_does_not_restore_orphaned_save_in_progress() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted).expect("begin");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("begin");
     let restored: FlyUiStateMachine =
         serde_json::from_value(serde_json::to_value(machine).expect("serialize"))
             .expect("restore");
     assert!(!restored.state.dirty.save_in_progress);
     assert!(restored.state.dirty.save_started_sequence.is_none());
+    assert!(restored.state.dirty.save_started_request_id.is_none());
     assert!(restored.state.dirty.save_started_hash.is_none());
 }
 
@@ -352,10 +353,11 @@ fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
     let snapshot_hash = fly::ProjectHash::from_document(&document);
     machine.state.dirty.project_hash = Some(snapshot_hash);
-    machine.dispatch(UiIntent::SaveStarted).expect("save started");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("save started");
     let wrong_hash = fly::ProjectHash::from_bytes(b"other snapshot");
     assert!(matches!(
         machine.dispatch(UiIntent::SaveSucceeded {
+            request_id: "wrong-request".into(),
             revision: "rev-2".to_string(),
             project_hash: wrong_hash,
         }),
@@ -364,12 +366,50 @@ fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
     assert!(machine.state.dirty.save_in_progress);
     assert_eq!(machine.state.dirty.save_started_hash, Some(snapshot_hash));
     machine.dispatch(UiIntent::SaveConflict {
+        request_id: Some("req-1".into()),
         expected: "rev-1".to_string(),
         actual: "rev-2".to_string(),
     }).expect("remote conflict");
-    assert!(machine.dispatch(UiIntent::SaveStarted).is_err());
+    assert!(machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).is_err());
     assert!(machine.state.dirty.save_conflict);
     assert!(!machine.state.dirty.save_in_progress);
+}
+
+#[test]
+fn stale_save_responses_cannot_acknowledge_or_fail_a_new_attempt() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted { request_id: "request-a".into() }).expect("first start");
+    machine.dispatch(UiIntent::SaveFailed { request_id: Some("request-a".into()) }).expect("first failure");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "request-b".into() }).expect("retry start");
+
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    let hash = fly::ProjectHash::from_document(&document);
+    assert!(machine.dispatch(UiIntent::SaveSucceeded {
+        request_id: "request-a".into(),
+        revision: "stale-revision".into(),
+        project_hash: hash,
+    }).is_err());
+    assert!(machine.dispatch(UiIntent::SaveFailed {
+        request_id: Some("request-a".into()),
+    }).is_err());
+    assert_eq!(machine.state.dirty.save_started_request_id.as_deref(), Some("request-b"));
+    assert!(machine.state.dirty.save_in_progress);
+
+    machine.dispatch(UiIntent::SaveSucceeded {
+        request_id: "request-b".into(),
+        revision: "current-revision".into(),
+        project_hash: hash,
+    }).expect("current response");
+    assert!(!machine.state.dirty.save_in_progress);
+}
+
+#[test]
+fn uncorrelated_failure_cannot_clear_an_active_save() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted { request_id: "request-a".into() }).expect("start");
+    assert!(machine.dispatch(UiIntent::SaveFailed { request_id: None }).is_err());
+    assert_eq!(machine.state.dirty.save_started_request_id.as_deref(), Some("request-a"));
+    assert!(machine.state.dirty.save_in_progress);
 }
 
 #[test]
@@ -383,7 +423,7 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
             patch: Default::default(),
         }))
         .expect("first edit");
-    machine.dispatch(UiIntent::SaveStarted).expect("save starts");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("save starts");
     assert!(machine.dispatch(UiIntent::RequestSave).is_err());
     machine
         .dispatch(UiIntent::execute(EditorCommand::Patch {
@@ -393,6 +433,7 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
         .expect("second edit");
     let effects = machine
         .dispatch(UiIntent::SaveSucceeded {
+            request_id: "req-1".into(),
             revision: "rev-2".to_string(),
             project_hash: saved_hash,
         })
@@ -405,9 +446,10 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
         effect,
         UiEffect::Announce(message) if message.contains("remain unsaved")
     )));
-    machine.dispatch(UiIntent::SaveStarted).expect("next save starts");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).expect("next save starts");
     machine
         .dispatch(UiIntent::SaveSucceeded {
+            request_id: "req-2".into(),
             revision: "rev-3".to_string(),
             project_hash: saved_hash,
         })
@@ -532,8 +574,8 @@ fn selection_remains_possible_without_edit_capability() {
 #[test]
 fn edit_after_failed_save_keeps_the_failure_signal() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted).expect("started");
-    machine.dispatch(UiIntent::SaveFailed).expect("failed");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("started");
+    machine.dispatch(UiIntent::SaveFailed { request_id: Some("req-1".into()) }).expect("failed");
     assert!(machine.state.dirty.save_failed);
 
     // The rejected changes are still unsaved: a further edit must not clear the signal.
@@ -547,16 +589,17 @@ fn edit_after_failed_save_keeps_the_failure_signal() {
     assert!(machine.state.dirty.save_failed);
 
     // The next save attempt does.
-    machine.dispatch(UiIntent::SaveStarted).expect("retry");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-2".into() }).expect("retry");
     assert!(!machine.state.dirty.save_failed);
 }
 
 #[test]
 fn save_conflict_is_a_distinct_lost_update_state() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
-    machine.dispatch(UiIntent::SaveStarted).expect("started");
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-1".into() }).expect("started");
     let effects = machine
         .dispatch(UiIntent::SaveConflict {
+            request_id: Some("req-1".into()),
             expected: "rev-1".to_string(),
             actual: "rev-2".to_string(),
         })
@@ -578,11 +621,12 @@ fn save_conflict_is_a_distinct_lost_update_state() {
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
     assert!(machine
         .dispatch(UiIntent::SaveSucceeded {
+            request_id: "req-1".into(),
             revision: "rev-3".to_string(),
             project_hash: fly::ProjectHash::from_document(&document),
         })
         .is_err());
     assert!(machine.state.dirty.save_conflict);
-    machine.dispatch(UiIntent::SaveFailed).expect("failed response");
+    machine.dispatch(UiIntent::SaveFailed { request_id: None }).expect("failed response");
     assert!(machine.state.dirty.save_conflict);
 }
