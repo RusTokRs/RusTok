@@ -1,12 +1,15 @@
 use chrono::Utc;
+use sea_orm::sea_query::{Expr, Func};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, SqlErr,
 };
+use std::collections::HashSet;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use rustok_api::normalize_locale_tag;
 use rustok_core::generate_id;
 use rustok_profiles::ProfilesReader;
 
@@ -44,6 +47,7 @@ impl CustomerService {
             .map_err(|error| CustomerError::Validation(error.to_string()))?;
 
         let email = input.email.clone();
+        let locale = normalize_and_validate_locale(input.locale)?;
         self.ensure_email_available(tenant_id, &email, None).await?;
         if let Some(user_id) = input.user_id {
             if user_id.is_nil() {
@@ -57,21 +61,26 @@ impl CustomerService {
         let customer_id = generate_id();
         let now = Utc::now();
 
-        entities::customer::ActiveModel {
+        if let Err(err) = (entities::customer::ActiveModel {
             id: Set(customer_id),
             tenant_id: Set(tenant_id),
             user_id: Set(input.user_id),
-            email: Set(email),
+            email: Set(email.clone()),
             first_name: Set(normalize_optional_text(input.first_name)),
             last_name: Set(normalize_optional_text(input.last_name)),
             phone: Set(normalize_optional_text(input.phone)),
-            locale: Set(normalize_optional_text(input.locale)),
+            locale: Set(locale),
             metadata: Set(input.metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
         .insert(&self.db)
-        .await?;
+        .await)
+        {
+            return Err(self
+                .map_write_db_error(tenant_id, Some(&email), input.user_id, None, err)
+                .await);
+        }
 
         self.get_customer(tenant_id, customer_id).await
     }
@@ -128,10 +137,11 @@ impl CustomerService {
             return Ok(Vec::new());
         }
 
+        let mut seen = HashSet::new();
         let valid_user_ids: Vec<Uuid> = user_ids
             .iter()
             .copied()
-            .filter(|id| !id.is_nil())
+            .filter(|id| !id.is_nil() && seen.insert(*id))
             .take(500)
             .collect();
         if valid_user_ids.is_empty() {
@@ -183,10 +193,9 @@ impl CustomerService {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let bounded_search = if search.len() > 256 {
-                &search[..256]
-            } else {
-                search
+            let bounded_search = match search.char_indices().nth(256) {
+                Some((idx, _)) => &search[..idx],
+                None => search,
             };
             query = query.filter(
                 Condition::any()
@@ -287,10 +296,14 @@ impl CustomerService {
             self.ensure_email_available(tenant_id, email, Some(customer_id))
                 .await?;
         }
+        let normalized_locale = match input.locale {
+            Some(locale) => Some(normalize_and_validate_locale(Some(locale))?),
+            None => None,
+        };
 
         let mut active: entities::customer::ActiveModel = customer.into();
-        if let Some(email) = normalized_email {
-            active.email = Set(email);
+        if let Some(email) = normalized_email.as_ref() {
+            active.email = Set(email.clone());
         }
         if let Some(first_name) = input.first_name {
             active.first_name = Set(normalize_text(first_name));
@@ -301,14 +314,24 @@ impl CustomerService {
         if let Some(phone) = input.phone {
             active.phone = Set(normalize_text(phone));
         }
-        if let Some(locale) = input.locale {
-            active.locale = Set(normalize_text(locale));
+        if let Some(locale) = normalized_locale {
+            active.locale = Set(locale);
         }
         if let Some(metadata) = input.metadata {
             active.metadata = Set(metadata);
         }
         active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
+        if let Err(err) = active.update(&self.db).await {
+            return Err(self
+                .map_write_db_error(
+                    tenant_id,
+                    normalized_email.as_deref(),
+                    None,
+                    Some(customer_id),
+                    err,
+                )
+                .await);
+        }
 
         self.get_customer(tenant_id, customer_id).await
     }
@@ -366,9 +389,14 @@ impl CustomerService {
         email: &str,
         except_customer_id: Option<Uuid>,
     ) -> CustomerResult<()> {
+        use sea_orm::sea_query::ExprTrait;
+
         let existing = entities::customer::Entity::find()
             .filter(entities::customer::Column::TenantId.eq(tenant_id))
-            .filter(entities::customer::Column::Email.eq(email))
+            .filter(
+                Expr::expr(Func::lower(Expr::col(entities::customer::Column::Email)))
+                    .eq(email.to_lowercase()),
+            )
             .one(&self.db)
             .await?;
         if let Some(existing) = existing
@@ -377,6 +405,45 @@ impl CustomerService {
             return Err(CustomerError::DuplicateEmail(email.to_string()));
         }
         Ok(())
+    }
+
+    async fn map_write_db_error(
+        &self,
+        tenant_id: Uuid,
+        email: Option<&str>,
+        user_id: Option<Uuid>,
+        except_customer_id: Option<Uuid>,
+        err: DbErr,
+    ) -> CustomerError {
+        if !matches!(err.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) {
+            return CustomerError::Database(err);
+        }
+        if let Some(email) = email
+            && let Err(mapped) = self
+                .ensure_email_available(tenant_id, email, except_customer_id)
+                .await
+        {
+            return mapped;
+        }
+        if let Some(user_id) = user_id
+            && let Err(mapped) = self
+                .ensure_user_available(tenant_id, user_id, except_customer_id)
+                .await
+        {
+            return mapped;
+        }
+        let message = err.to_string();
+        if let Some(email) = email
+            && (message.contains("email") || message.contains("ux_customers_tenant_email_canonical"))
+        {
+            return CustomerError::DuplicateEmail(email.to_string());
+        }
+        if let Some(user_id) = user_id
+            && (message.contains("user") || message.contains("idx_customers_tenant_user"))
+        {
+            return CustomerError::DuplicateUserLink(user_id);
+        }
+        CustomerError::Database(err)
     }
 
     async fn ensure_user_available(
@@ -401,6 +468,15 @@ impl CustomerService {
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     value.and_then(normalize_text)
+}
+
+fn normalize_and_validate_locale(value: Option<String>) -> CustomerResult<Option<String>> {
+    let Some(trimmed) = normalize_optional_text(value) else {
+        return Ok(None);
+    };
+    normalize_locale_tag(&trimmed)
+        .map(Some)
+        .ok_or_else(|| CustomerError::Validation("locale must be a valid BCP-47 tag".to_string()))
 }
 
 fn normalize_text(value: String) -> Option<String> {

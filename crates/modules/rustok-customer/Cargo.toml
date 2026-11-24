@@ -32,3 +32,6 @@ validator.workspace = true
 tokio.workspace = true
 rustok-test-utils.workspace = true
 rustok-outbox.workspace = true
+
+[lints]
+workspace = true
