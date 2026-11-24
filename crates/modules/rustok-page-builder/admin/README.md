@@ -25,6 +25,22 @@ A consumer provides `PageBuilderAdminHostContext` with an `AdminCanvasController
 canonical responses. The editor owns save-start, save-failure and acknowledgement state, including
 acknowledgement against the exact project hash that was dispatched.
 
+For Dioxus hosts, `DioxusPageBuilderAdminHostContext::on_reload_requested` may be
+provided with the consumer's authoritative refresh action. A peer-tab notice or
+server revision conflict makes the editor read-only and exposes the exact local
+project JSON for copying before reload. The callback must fetch the latest
+server-owned document and replace the controller; it must not silently discard
+the local draft. The editor does not perform an automatic three-way merge.
+Without the callback, the host's own page refresh action remains responsible for
+reloading the latest controller after the local JSON has been copied.
+
+When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
+keeps the draft read-only and offers an exact same-request retry. The Pages
+facade derives its receipt key from the same page revision and canonical project,
+so retrying without changing the payload replays the committed result rather
+than creating a second write. This in-memory retry state is not yet durable
+across a full remount; copy the exposed project JSON before navigating away.
+
 `frames[0].component` data into canonical `pages[].component`, keeps a synchronized frame snapshot
 for the existing JSON fallback, performs optimistic `updated_at` revision checks, and persists
 through the existing Pages transport facade.

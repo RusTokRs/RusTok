@@ -395,6 +395,7 @@ pub struct PageBodyResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PageListItem {
     pub id: Uuid,
+    pub version: i32,
     pub status: ContentStatus,
     pub template: String,
     pub title: Option<String>,

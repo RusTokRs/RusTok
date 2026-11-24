@@ -6,11 +6,63 @@ import { useRef, useState, useTransition } from 'react';
 
 import type { GqlOpts, PageStarterSummary } from '../api/pages';
 import { createPage, deletePage, instantiatePageStarter, listPageLayoutKeys, saveStarterFromPage, unpublishPage } from '../api/pages';
-import { createPageFromStarter, LayoutSelectionError } from '../model/create-page';
+import { createPageFromStarter } from '../model/create-page';
+
+async function createFingerprint(parts: readonly unknown[]): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle || typeof TextEncoder === 'undefined') {
+    throw new Error('Secure browser hashing is unavailable for this operation');
+  }
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(parts)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function createRandomOperationKey(): string {
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error('Secure browser randomness is unavailable for this operation');
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function loadOrCreateOperationKey(fingerprint: string, memory: Map<string, string>): string {
+  const storageKey = `rustok:pages:operation:${fingerprint}`;
+  let key = memory.get(fingerprint);
+  if (!key) {
+    try {
+      key = sessionStorage.getItem(storageKey) ?? undefined;
+    } catch {
+      // Storage can be unavailable in restricted browser contexts; the in-memory
+      // key still protects retries while this component remains mounted.
+    }
+  }
+  if (!key || !/^[A-Za-z0-9._:-]{1,128}$/.test(key)) {
+    key = createRandomOperationKey();
+  }
+  memory.set(fingerprint, key);
+  try {
+    sessionStorage.setItem(storageKey, key);
+  } catch {
+    // Keep the in-memory copy when session storage is unavailable.
+  }
+  return key;
+}
+
+function clearOperationKey(fingerprint: string, memory: Map<string, string>): void {
+  memory.delete(fingerprint);
+  try {
+    sessionStorage.removeItem(`rustok:pages:operation:${fingerprint}`);
+  } catch {
+    // The successful operation is still acknowledged in memory.
+  }
+}
 
 interface PageActionsProps {
   opts: GqlOpts;
   pageId?: string;
+  version?: number;
   status?: string;
   /** Locale used for newly created pages. */
   locale?: string;
@@ -29,6 +81,7 @@ interface PageActionsProps {
 export function PageActions({
   opts,
   pageId,
+  version,
   status,
   locale = 'en',
   starters = [],
@@ -41,6 +94,7 @@ export function PageActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
+  const pendingOperationKeys = useRef(new Map<string, string>());
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [starterKey, setStarterKey] = useState('blank');
@@ -64,6 +118,12 @@ export function PageActions({
         router.refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Request failed');
+        // Reconcile server state after ambiguous responses while retaining the pending key.
+        try {
+          router.refresh();
+        } catch {
+          // The operation key remains available for an explicit retry.
+        }
       } finally {
         inFlight.current = false;
       }
@@ -95,9 +155,27 @@ export function PageActions({
               current.opts.tenantSlug === chosenOpts.tenantSlug && current.opts.tenantId === chosenOpts.tenantId;
           };
           run(async () => {
-            try {
-              await createPageFromStarter(
-                { starter, locale: chosenLocale, title: value, layoutKey: selectedLayout, visibleLayoutKeys: layoutKeys },
+            const fingerprint = await createFingerprint([
+              'create',
+              chosenOpts.tenantId ?? null,
+              chosenOpts.tenantSlug ?? null,
+              chosenLocale,
+              value,
+              starter.key,
+              // Keep pending identity stable across catalog refreshes. The server hashes
+              // the instantiated document and rejects changed content under the same key.
+              selectedLayout
+            ]);
+            const idempotencyKey = loadOrCreateOperationKey(fingerprint, pendingOperationKeys.current);
+            await createPageFromStarter(
+                {
+                  starter,
+                  locale: chosenLocale,
+                  title: value,
+                  layoutKey: selectedLayout,
+                  visibleLayoutKeys: layoutKeys,
+                  idempotencyKey
+                },
                 {
                   instantiate: (item, pageLocale) => instantiatePageStarter(item, pageLocale, chosenOpts),
                   listLayouts: (pageLocale) => listPageLayoutKeys(pageLocale, chosenOpts),
@@ -105,11 +183,8 @@ export function PageActions({
                   contextMatches
                 },
                 { layout: t('layout.selectionError'), context: t('starter.contextError'), contextAfterCreate: t('layout.contextAfterCreate') }
-              );
-            } catch (cause) {
-              if (cause instanceof LayoutSelectionError) router.refresh();
-              throw cause;
-            }
+            );
+            clearOperationKey(fingerprint, pendingOperationKeys.current);
             setTitle('');
             setStarterKey('blank');
             setLayoutKey('default');
@@ -188,7 +263,21 @@ export function PageActions({
         <button
           type='button'
           disabled={pending}
-          onClick={() => run(() => unpublishPage(pageId, undefined, opts))}
+          onClick={() => {
+            const operationOpts = { ...opts };
+            run(async () => {
+              const fingerprint = await createFingerprint([
+                operationOpts.tenantId ?? null,
+                operationOpts.tenantSlug ?? null,
+                'unpublish',
+                pageId,
+                version ?? null
+              ]);
+              const idempotencyKey = loadOrCreateOperationKey(fingerprint, pendingOperationKeys.current);
+              await unpublishPage(pageId, version, operationOpts, idempotencyKey);
+              clearOperationKey(fingerprint, pendingOperationKeys.current);
+            });
+          }}
         >
           Unpublish
         </button>
@@ -198,7 +287,19 @@ export function PageActions({
         disabled={pending}
         onClick={() => {
           if (window.confirm('Delete this page permanently?')) {
-            run(() => deletePage(pageId, opts));
+            const operationOpts = { ...opts };
+            run(async () => {
+              const fingerprint = await createFingerprint([
+                operationOpts.tenantId ?? null,
+                operationOpts.tenantSlug ?? null,
+                'delete',
+                pageId,
+                version ?? null
+              ]);
+              const idempotencyKey = loadOrCreateOperationKey(fingerprint, pendingOperationKeys.current);
+              await deletePage(pageId, operationOpts, idempotencyKey, version);
+              clearOperationKey(fingerprint, pendingOperationKeys.current);
+            });
           }
         }}
       >

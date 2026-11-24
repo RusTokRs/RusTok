@@ -67,7 +67,7 @@ impl PageService {
             .and_then(|items| items.first().map(|item| item.locale.clone()))
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
 
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let locked = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_expected_version(Some(input.expected_version), locked.version)?;
         enforce_owned_scope(&security, Resource::Pages, Action::Update, locked.author_id)?;

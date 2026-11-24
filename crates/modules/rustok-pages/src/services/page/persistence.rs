@@ -25,10 +25,12 @@ pub const MAX_PAGE_BODY_REVISIONS_PER_BODY: usize = 50;
 impl PageService {
     /// Start a write transaction that serializes SQLite writers before their first read.
     ///
-    /// PostgreSQL/MySQL use their normal transaction mode and row-level `FOR UPDATE` lock;
-    /// SQLite has no row-level lock, so `BEGIN IMMEDIATE` acquires the write reservation
-    /// before the revision snapshot is read.
-    pub(super) async fn begin_page_write_transaction(
+    /// PostgreSQL/MySQL use their normal transaction mode; callers lock existing page rows
+    /// through `find_page_for_update`. SQLite has no row-level lock, so `BEGIN IMMEDIATE`
+    /// acquires the write reservation before the first aggregate read. Every page-aggregate
+    /// writer that reads before mutating must use this helper; plain `db.begin()` is not
+    /// equivalent on SQLite.
+    pub(crate) async fn begin_page_write_transaction(
         &self,
     ) -> PagesResult<DatabaseTransaction> {
         Ok(self

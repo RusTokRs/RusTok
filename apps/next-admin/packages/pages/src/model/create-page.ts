@@ -13,6 +13,7 @@ export async function createPageFromStarter(
     title: string;
     layoutKey: string;
     visibleLayoutKeys: string[];
+    idempotencyKey: string;
   },
   ports: {
     instantiate: (starter: PageStarterSummary, locale: string) => Promise<Record<string, unknown>>;
@@ -30,7 +31,13 @@ export async function createPageFromStarter(
   if (!ports.contextMatches()) throw new Error(messages.context);
   if (!latestKeys.includes(input.layoutKey)) throw new LayoutSelectionError(messages.layout);
   try {
-    await ports.create({ locale: input.locale, title: input.title, template: input.layoutKey, document });
+    await ports.create({
+      locale: input.locale,
+      title: input.title,
+      template: input.layoutKey,
+      document,
+      idempotencyKey: input.idempotencyKey
+    });
   } catch (error) {
     if (!ports.contextMatches()) throw new Error(messages.contextAfterCreate);
     throw error;

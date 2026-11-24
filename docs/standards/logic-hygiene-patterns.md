@@ -1210,6 +1210,11 @@ committing the first.
   2. Document the concurrency contract explicitly: `// INVARIANT: SQLite transaction uses BEGIN IMMEDIATE isolation`.
 * **Detection:** Doctor rule `P-SQLITE-UNLOCKED-RACE`: flags SQLite dialect arms that discard `.lock_exclusive()` without an invariant comment.
 
+  **Pages examples:** the shared admission helper lives in
+  [page persistence](../../crates/modules/rustok-pages/src/services/page/persistence.rs);
+  exact metadata translation and route-history import must use the same
+  immediate SQLite writer boundary before reading their revision/route ledgers.
+
 ---
 
 ### Pattern 38: Silent Domain Event Discard (`P-SILENT-EVENT-DISCARD`)
