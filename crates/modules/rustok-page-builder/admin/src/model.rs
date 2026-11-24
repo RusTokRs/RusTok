@@ -866,8 +866,13 @@ mod tests {
                 },
             }))
             .expect("add page");
-        controller.mark_save_started().expect("save started");
-        controller.acknowledge_save("rev-2").expect("acknowledge");
+        let submitted_hash = controller.editor().revision().project_hash;
+        let attempt = controller
+            .mark_save_started_with_id()
+            .expect("save started");
+        controller
+            .acknowledge_save_for_attempt(submitted_hash, &attempt, "rev-2")
+            .expect("acknowledge");
         controller
             .dispatch(UiIntent::ActivatePage {
                 page_id: Some("about".to_string()),
