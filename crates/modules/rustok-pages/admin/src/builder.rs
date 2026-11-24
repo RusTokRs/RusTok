@@ -697,16 +697,16 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                 return Err(PageBuilderServiceError::Runtime(error.to_string()));
             }
         };
-        let revision_id = persisted_revision(&saved_page)
+        let saved_revision = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         ensure_receipt_not_superseded(
-            revision_id.as_str(),
+            revision_id,
             &page_revision(&current_page),
-            revision_id.as_str(),
+            &saved_revision,
         )?;
         let result = PageBuilderProjectSaveResult {
             page_id: saved_page.id.clone(),
-            revision_id,
+            revision_id: saved_revision,
             published: saved_page.status.eq_ignore_ascii_case("published"),
         };
         (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
