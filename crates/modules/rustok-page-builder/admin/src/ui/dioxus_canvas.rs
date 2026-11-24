@@ -143,7 +143,7 @@ pub fn DioxusIsolatedCanvas(
     let on_message = EventHandler::new(message_handler);
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let on_iframe_load = {
+    let on_iframe_load = Some(EventHandler::new({
         let mut geometry = geometry;
         let mut geometry_limit = geometry_limit;
         let mut ready = ready;
@@ -167,7 +167,7 @@ pub fn DioxusIsolatedCanvas(
                 on_ui_intent.call(UiIntent::CancelDrag);
             }
         }
-    };
+    }));
     #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
     let on_iframe_load: Option<EventHandler<()>> = None;
 
