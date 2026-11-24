@@ -22,7 +22,6 @@ use fly_ui::{
     UiIntent,
 };
 use leptos::prelude::*;
-use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
