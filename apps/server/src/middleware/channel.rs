@@ -332,7 +332,7 @@ pub async fn resolve(
         peer_ip_from_extensions(req.extensions()),
         settings,
         req.extensions(),
-    );
+    )?;
     let cache = channel_cache(&ctx);
 
     let cached = if let Some(version) = cache.tenant_version(facts.tenant_id) {
@@ -393,13 +393,13 @@ fn build_request_facts(
     peer_ip: Option<std::net::IpAddr>,
     settings: &RustokSettings,
     extensions: &Extensions,
-) -> RequestFacts {
-    RequestFacts {
+) -> Result<RequestFacts, axum::http::StatusCode> {
+    Ok(RequestFacts {
         tenant_id,
         surface: TargetSurface::Http,
-        header_channel_id: channel_id_from_header(headers),
-        header_channel_slug: channel_slug_from_header(headers),
-        query_channel_slug: channel_slug_from_query(query),
+        header_channel_id: channel_id_from_header(headers)?,
+        header_channel_slug: channel_slug_from_header(headers)?,
+        query_channel_slug: channel_slug_from_query(query)?,
         host: extract_effective_host(headers, peer_ip, &settings.runtime.request_trust),
         oauth_app_id: extensions
             .get::<AuthContextExtension>()
@@ -407,7 +407,7 @@ fn build_request_facts(
         locale: extensions
             .get::<ResolvedRequestLocale>()
             .map(|resolved| resolved.effective_locale.clone()),
-    }
+    })
 }
 
 fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCacheKey {
@@ -491,60 +491,85 @@ fn map_trace_step(step: rustok_channel::ResolutionTraceStep) -> ChannelResolutio
     }
 }
 
-fn channel_id_from_header(headers: &axum::http::HeaderMap) -> Option<Uuid> {
+fn channel_id_from_header(
+    headers: &axum::http::HeaderMap,
+) -> Result<Option<Uuid>, axum::http::StatusCode> {
     let mut values = headers.get_all(CHANNEL_ID_HEADER).iter();
-    let first = values.next()?;
-    for duplicate in values {
-        if duplicate != first {
-            tracing::warn!(
-                header = CHANNEL_ID_HEADER,
-                "Conflicting duplicate channel ID headers detected; failing closed"
-            );
-            return None;
-        }
+    let Some(first) = values.next() else {
+        return Ok(None);
+    };
+    if values.any(|duplicate| duplicate != first) {
+        tracing::warn!(
+            header = CHANNEL_ID_HEADER,
+            error_code = "channel_selector_ambiguous",
+            "Conflicting duplicate channel ID headers rejected"
+        );
+        return Err(axum::http::StatusCode::BAD_REQUEST);
     }
-    first
+    let raw = first
         .to_str()
-        .ok()
-        .and_then(|value| Uuid::parse_str(value.trim()).ok())
-}
-
-fn channel_slug_from_header(headers: &axum::http::HeaderMap) -> Option<String> {
-    let mut values = headers.get_all(CHANNEL_SLUG_HEADER).iter();
-    let first = values.next()?;
-    for duplicate in values {
-        if duplicate != first {
-            tracing::warn!(
-                header = CHANNEL_SLUG_HEADER,
-                "Conflicting duplicate channel slug headers detected; failing closed"
-            );
-            return None;
-        }
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let channel_id = Uuid::parse_str(raw.trim())
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    if channel_id.is_nil() {
+        tracing::warn!(
+            header = CHANNEL_ID_HEADER,
+            error_code = "channel_selector_invalid",
+            "Nil channel ID selector rejected"
+        );
+        return Err(axum::http::StatusCode::BAD_REQUEST);
     }
-    first.to_str().ok().and_then(bounded_channel_selector)
+    Ok(Some(channel_id))
 }
 
-fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
-    let query = query?;
+fn channel_slug_from_header(
+    headers: &axum::http::HeaderMap,
+) -> Result<Option<String>, axum::http::StatusCode> {
+    let mut values = headers.get_all(CHANNEL_SLUG_HEADER).iter();
+    let Some(first) = values.next() else {
+        return Ok(None);
+    };
+    if values.any(|duplicate| duplicate != first) {
+        tracing::warn!(
+            header = CHANNEL_SLUG_HEADER,
+            error_code = "channel_selector_ambiguous",
+            "Conflicting duplicate channel slug headers rejected"
+        );
+        return Err(axum::http::StatusCode::BAD_REQUEST);
+    }
+    let raw = first
+        .to_str()
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let slug = bounded_channel_selector(raw)
+        .ok_or(axum::http::StatusCode::BAD_REQUEST)?;
+    Ok(Some(slug))
+}
+
+fn channel_slug_from_query(
+    query: Option<&str>,
+) -> Result<Option<String>, axum::http::StatusCode> {
+    let Some(query) = query else {
+        return Ok(None);
+    };
     let mut selected: Option<String> = None;
     for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         if key == "channel" {
-            let Some(parsed) = bounded_channel_selector(value.as_ref()) else {
-                continue;
-            };
+            let parsed = bounded_channel_selector(value.as_ref())
+                .ok_or(axum::http::StatusCode::BAD_REQUEST)?;
             if let Some(existing) = &selected {
                 if *existing != parsed {
                     tracing::warn!(
-                        "Conflicting duplicate channel query parameters detected; failing closed"
+                        error_code = "channel_selector_ambiguous",
+                        "Conflicting duplicate channel query parameters rejected"
                     );
-                    return None;
+                    return Err(axum::http::StatusCode::BAD_REQUEST);
                 }
             } else {
                 selected = Some(parsed);
             }
         }
     }
-    selected
+    Ok(selected)
 }
 
 pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
