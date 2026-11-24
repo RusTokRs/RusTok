@@ -20,8 +20,8 @@ use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
 };
 use serde_json::{Map, Value};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
 
@@ -113,7 +113,7 @@ pub struct PageBuilderCapabilityExecution {
 
 impl PageBuilderCapabilityExecution {
     /// Deliver the host result through the same validation and acknowledgement path as a facade.
-    /// Returns false when another clone has already completed this request.
+    /// Returns false when this request has already been completed.
     pub fn complete(
         &self,
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
