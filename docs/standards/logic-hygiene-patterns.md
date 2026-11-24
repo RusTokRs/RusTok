@@ -571,9 +571,8 @@ the affected database connection recovers depends on the driver and runtime.
 See [accounting](../../crates/modules/rustok-ai/src/accounting.rs).
 
 The AI admin [approval actions](../../crates/modules/rustok-ai/admin/src/ui/components/chat_session_panel.rs)
-discard the transport result and refresh the session for both approve and reject.
-When the operation fails, these handlers do not surface that failure to the
-operator. This conclusion is from the source path; the UI was not exercised.
+previously discarded the transport result and refreshed the session for both approve and reject.
+They now capture any transport error into an `action_error` reactive signal and display an error banner to the operator on failure.
 
 ---
 

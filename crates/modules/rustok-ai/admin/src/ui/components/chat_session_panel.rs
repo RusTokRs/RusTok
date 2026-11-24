@@ -25,6 +25,7 @@ pub fn AiChatSessionPanel(
 ) -> impl IntoView {
     let ui_locale_sessions = ui_locale.clone();
     let ui_locale_operator = ui_locale.clone();
+    let action_error = RwSignal::new(None::<String>);
 
     view! {
         <Card title=t(ui_locale_sessions.as_deref(), "ai.card.sessions", "Sessions")>
@@ -148,6 +149,11 @@ pub fn AiChatSessionPanel(
                                                         } else {
                                                             view! {
                                                                 <div class="space-y-3">
+                                                                    {move || action_error.get().map(|error| view! {
+                                                                        <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-xs font-medium text-red-900">
+                                                                            {error}
+                                                                        </div>
+                                                                    })}
                                                                     <div class="text-sm font-semibold">{t(ui_locale_approvals.as_deref(), "ai.session.pendingApprovals", "Pending approvals")}</div>
                                                                     {pending_approvals.into_iter().map(|approval| {
                                                                     let approve_id = approval.id.clone();
@@ -166,10 +172,16 @@ pub fn AiChatSessionPanel(
                                                                                     on:click=move |_| {
                                                                                         let approval_id = approve_id.clone();
                                                                                         spawn_local(async move {
-                                                                                            if let Err(error) = transport::resume_approval(approval_id, true, None).await {
-                                                                                                leptos::logging::error!("failed to resume approval: {error}");
+                                                                                            match transport::resume_approval(approval_id, true, None).await {
+                                                                                                Ok(_) => {
+                                                                                                    action_error.set(None);
+                                                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                                                }
+                                                                                                Err(error) => {
+                                                                                                    leptos::logging::error!("failed to resume approval: {error}");
+                                                                                                    action_error.set(Some(error.to_string()));
+                                                                                                }
                                                                                             }
-                                                                                            set_refresh_nonce.update(|value| *value += 1);
                                                                                         });
                                                                                     }
                                                                                 >
@@ -181,10 +193,16 @@ pub fn AiChatSessionPanel(
                                                                                         let approval_id = reject_id.clone();
                                                                                         let reject_reason = reject_reason.clone();
                                                                                         spawn_local(async move {
-                                                                                            if let Err(error) = transport::resume_approval(approval_id, false, Some(reject_reason)).await {
-                                                                                                leptos::logging::error!("failed to reject approval: {error}");
+                                                                                            match transport::resume_approval(approval_id, false, Some(reject_reason)).await {
+                                                                                                Ok(_) => {
+                                                                                                    action_error.set(None);
+                                                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                                                }
+                                                                                                Err(error) => {
+                                                                                                    leptos::logging::error!("failed to reject approval: {error}");
+                                                                                                    action_error.set(Some(error.to_string()));
+                                                                                                }
                                                                                             }
-                                                                                            set_refresh_nonce.update(|value| *value += 1);
                                                                                         });
                                                                                     }
                                                                                 >
