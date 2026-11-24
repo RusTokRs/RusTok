@@ -853,6 +853,20 @@ fn an_identical_retry_has_a_new_attempt_identity() {
 }
 
 #[test]
+fn invalid_acknowledgement_revision_keeps_the_active_save_attempt() {
+    let mut editor = editor();
+    let hash = editor.revision().project_hash;
+    let attempt = editor.revision_mut().begin_save_with_id().expect("save started");
+    assert!(matches!(
+        editor.revision_mut().acknowledge_submitted_attempt(hash, attempt, " "),
+        Err(FlyError::InvalidSaveState(_))
+    ));
+    assert_eq!(editor.revision().active_save_attempt_id(), Some(attempt));
+    assert!(editor.revision().save_in_progress);
+    assert_eq!(editor.revision().last_acknowledged_revision, None);
+}
+
+#[test]
 fn successful_save_of_an_earlier_snapshot_retains_newer_local_edits() {
     let mut editor = editor();
     editor.apply(EditorCommand::Patch {
