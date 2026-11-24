@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, SecondsFormat};
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    prelude::DateTimeWithTimeZone,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseTransaction, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, prelude::DateTimeWithTimeZone,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -70,7 +70,84 @@ impl PageService {
             (Vec::new(), Vec::new())
         };
         self.build_page_response(
+            &self.db,
             &security,
+            page,
+            translations,
+            bodies,
+            drafts,
+            include_drafts,
+            PageResponseParts {
+                channel_slugs,
+                locale,
+                fallback_locale,
+            },
+        )
+        .await
+    }
+
+
+    /// Return the accepted working copy before releasing the transaction's write lock.
+    ///
+    /// A post-commit GET can see a later writer and incorrectly acknowledge its
+    /// revision as the result of this save. Keep the response's working body and
+    /// site symbol catalog in the same snapshot as the CAS and journal append.
+    pub(super) async fn get_with_locale_fallback_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        page_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> PagesResult<PageResponse> {
+        enforce_scope(security, Resource::Pages, Action::Read)?;
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let page = page::Entity::find_by_id(page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| PagesError::page_not_found(page_id))?;
+        if !can_read_non_public_pages(security)
+            && storage_to_status(&page.status)? != ContentStatus::Published
+        {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
+        let channel_slugs = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::TenantId.eq(tenant_id))
+            .filter(page_channel_visibility::Column::PageId.eq(page_id))
+            .order_by_asc(page_channel_visibility::Column::ChannelSlug)
+            .all(txn)
+            .await?
+            .into_iter()
+            .map(|record| record.channel_slug)
+            .collect();
+        let translations = page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
+            .filter(page_translation::Column::PageId.eq(page_id))
+            .all(txn)
+            .await?;
+        let include_drafts = can_read_page_source(security, page.author_id);
+        let (bodies, drafts) = if include_drafts {
+            (
+                page_body::Entity::find()
+                    .filter(page_body::Column::TenantId.eq(tenant_id))
+                    .filter(page_body::Column::PageId.eq(page_id))
+                    .all(txn)
+                    .await?,
+                page_body_draft::Entity::find()
+                    .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+                    .filter(page_body_draft::Column::PageId.eq(page_id))
+                    .all(txn)
+                    .await?,
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        self.build_page_response(
+            txn,
+            security,
             page,
             translations,
             bodies,
@@ -129,6 +206,7 @@ impl PageService {
             Vec::new()
         };
         self.build_page_response(
+            &self.db,
             &security,
             page,
             translations,
@@ -481,8 +559,9 @@ impl PageService {
         Ok(merge_working_bodies(&bodies, &drafts))
     }
 
-    async fn build_page_response(
+    async fn build_page_response<C: ConnectionTrait>(
         &self,
+        conn: &C,
         security: &SecurityContext,
         page: page::Model,
         translations: Vec<page_translation::Model>,
@@ -521,7 +600,7 @@ impl PageService {
         // every read, so the working copy is shown with the definitions a save or a publish
         // would use. A body is present here only for a reader that may save or publish it.
         if include_drafts && let Some(response_body) = response_body.as_mut() {
-            let symbols = super::symbols::load_site_symbols_by_locale(&self.db, page.tenant_id)
+            let symbols = super::symbols::load_site_symbols_by_locale(conn, page.tenant_id)
                 .await?
                 .remove(&response_body.locale)
                 .unwrap_or_default();

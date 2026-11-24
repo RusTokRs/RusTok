@@ -15,8 +15,8 @@ mod editor;
 
 use dioxus::prelude::*;
 pub use editor::{
-    FlyCanvasPreview, FlyContributionSummary, FlyEditorWorkspace, FlyLayerTree, FlyPalette,
-    FlyThemeTokenEditor, FlyThemeTokens,
+    FlyCanvasIframe, FlyCanvasPreview, FlyContributionSummary, FlyEditorWorkspace, FlyLayerTree,
+    FlyPalette, FlyThemeTokenEditor, FlyThemeTokens,
 };
 pub use fly_web::{
     AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,

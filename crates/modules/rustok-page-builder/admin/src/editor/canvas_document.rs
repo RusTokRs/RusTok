@@ -4,7 +4,6 @@ use fly::{
     PageSelection, ProjectDocument, RenderPolicy, RenderedPage, render_page_with_runtime_context,
 };
 use fly_leptos::FLY_IFRAME_PROTOCOL;
-use rustok_ui_core::UiCspNonce;
 use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
@@ -20,7 +19,7 @@ pub fn render_canvas_srcdoc_with_context(
     document: &ProjectDocument,
     instance_id: &str,
     context: &Value,
-    csp_nonce: Option<&UiCspNonce>,
+    csp_nonce: Option<&str>,
 ) -> String {
     match render_page_with_runtime_context(
         document,
@@ -52,7 +51,7 @@ fn render_srcdoc(
     instance_id: &str,
     runtime_diagnostics: usize,
     repeated_nodes: usize,
-    csp_nonce: Option<&UiCspNonce>,
+    csp_nonce: Option<&str>,
 ) -> String {
     let (head, canvas, project_styles) = match rendered {
         Ok(rendered) => (rendered.head.render_html(), rendered.html, rendered.css),
@@ -79,7 +78,7 @@ fn render_srcdoc(
     // that names a nonce, the `'unsafe-inline'` of the `<meta>` policy below is not enough: the
     // browser drops the canvas stylesheet and the canvas runtime unless they carry that nonce.
     let nonce_attribute = csp_nonce
-        .map(|nonce| format!(" nonce=\"{}\"", nonce.as_str()))
+        .map(|nonce| format!(" nonce=\"{}\"", nonce))
         .unwrap_or_default();
 
     format!(
@@ -105,6 +104,7 @@ fn canvas_styles() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_ui_core::UiCspNonce;
     use fly::GrapesJsCodec;
     use serde_json::json;
 
@@ -238,7 +238,7 @@ mod tests {
         let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
 
         let html =
-            render_canvas_srcdoc_with_context(&document, "canvas-home", &json!({}), Some(&nonce));
+            render_canvas_srcdoc_with_context(&document, "canvas-home", &json!({}), Some(nonce.as_str()));
         assert!(html.contains("<style nonce=\"0f3a9c\">"));
         assert!(html.contains("<script nonce=\"0f3a9c\">"));
         assert_eq!(html.matches(" nonce=\"").count(), 2);

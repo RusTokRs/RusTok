@@ -1,3 +1,5 @@
+#[cfg(feature = "ssr")]
+use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use leptos::prelude::*;
@@ -12,6 +14,10 @@ use rustok_page_builder_admin::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
+#[cfg(feature = "ssr")]
+use sha2::{Digest, Sha256};
+#[cfg(feature = "ssr")]
+use rustok_graphql::GraphqlHttpError;
 
 #[cfg(feature = "ssr")]
 use async_trait::async_trait;
@@ -318,9 +324,17 @@ async fn dispatch_pages_page_builder_capability(
             format!("page-builder:{}:{}", input.page_id, input.revision_id),
         )
         .with_deadline(PAGE_BUILDER_PORT_DEADLINE)
-        .with_idempotency_key(format!(
-            "page-builder-save:{}:{}",
-            input.page_id, input.revision_id
+        // The port policy key must distinguish two different projects
+        // submitted against the same revision. A revision-only key silently
+        // conflates different attempted writes before Pages sees their
+        // canonical idempotency hashes.
+        .with_idempotency_key(document_save_attempt_key(
+            &tenant_slug,
+            &actor_id,
+            &input.page_id,
+            &input.revision_id,
+            &snapshot.default_locale,
+            &input.project_data,
         )),
         request => return Err(unsupported_request_error(request)),
     };
@@ -485,6 +499,12 @@ fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacad
     if message.contains(REVISION_CONFLICT) {
         return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
     }
+    if message.contains(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) {
+        return PageBuilderAdminFacadeError::with_stable_code(
+            message,
+            BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+        );
+    }
     PageBuilderAdminFacadeError::new(message)
 }
 
@@ -600,26 +620,62 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         // lost authority (for example a permission revoked during the session) as a
         // revision conflict, which invites a reload-and-retry that cannot succeed.
         ensure_document_readable(&current_page)?;
-        let current_revision = page_revision(&current_page);
-        if revision_id != current_revision {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "{REVISION_CONFLICT}: expected `{revision_id}`, current `{current_revision}`"
-            )));
-        }
-
+        // Never pre-empt the Pages receipt lookup with a stale-revision
+        // rejection. After a committed save loses its response, the persisted
+        // page revision has advanced but the original stable request ID must
+        // still recover its *original* acknowledgement. Pages enforces CAS for
+        // every genuinely new request inside its own write transaction.
         let project_data = canonicalize_builder_project(project_data)
             .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
         let locale = page_locale(&current_page, self.default_locale.clone());
-        let saved_page = transport::save_page_document(
+        let request_id = document_save_attempt_key(
+            &self.tenant_slug,
+            &self.actor_id,
+            page_id,
+            revision_id,
+            &locale,
+            &project_data,
+        );
+        // An HTTP timeout can happen *after* Pages committed the body and its
+        // receipt. Query that exact operation before reporting failure or
+        // allowing another edit. Do not probe deterministic GraphQL rejections,
+        // auth failures, or HTTP 4xx validation errors: those remain failures.
+        let saved_page = match transport::save_page_document_with_key(
             Some(self.token.clone()),
             Some(self.tenant_slug.clone()),
             page_id.to_string(),
-            current_revision,
+            revision_id.to_string(),
             locale,
             project_data.clone(),
+            Some(request_id.clone()),
         )
         .await
-        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        {
+            Ok(page) => page,
+            Err(error) if document_save_might_have_committed(&error) => {
+                match transport::fetch_page_document_save_receipt(
+                    Some(self.token.clone()),
+                    Some(self.tenant_slug.clone()),
+                    page_id.to_string(),
+                    request_id,
+                ).await {
+                    Ok(Some(receipt)) => receipt,
+                    Ok(None) => {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; the save receipt is not yet visible; preserve the draft and reconcile before a new save"
+                        )));
+                    }
+                    Err(probe_error) => {
+                        return Err(PageBuilderServiceError::Runtime(format!(
+                            "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
+                        )));
+                    }
+                }
+            }
+            Err(error) => {
+                return Err(PageBuilderServiceError::Runtime(error.to_string()));
+            }
+        };
         let revision_id = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         let result = PageBuilderProjectSaveResult {
@@ -678,6 +734,44 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
             )
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
     }
+}
+
+
+/// Whether the transport error might have happened after the server commit.
+/// GraphQL business rejections and authorization errors are final, not receipt
+/// recovery candidates; HTTP 408/429/5xx and network failures may be ambiguous.
+#[cfg(feature = "ssr")]
+fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
+    match error {
+        GraphqlHttpError::Network => true,
+        GraphqlHttpError::Http(status) => {
+            let code = status.split_whitespace().next().unwrap_or("");
+            matches!(code, "408" | "429")
+                || code.parse::<u16>().is_ok_and(|code| (500..=599).contains(&code))
+        }
+        GraphqlHttpError::Graphql(_) | GraphqlHttpError::Unauthorized => false,
+    }
+}
+
+/// Stable across retries of the same canonical save, but changes when the
+/// actor, page, observed revision or document changes. PageService still
+/// verifies the full normalized payload hash before accepting a replay.
+#[cfg(feature = "ssr")]
+fn document_save_attempt_key(
+    tenant_slug: &str,
+    actor_id: &str,
+    page_id: &str,
+    observed_revision: &str,
+    locale: &str,
+    project: &Value,
+) -> String {
+    let mut digest = Sha256::new();
+    for field in [tenant_slug, actor_id, page_id, observed_revision, locale] {
+        digest.update(field.as_bytes());
+        digest.update([0]);
+    }
+    digest.update(project.to_string().as_bytes());
+    format!("fly-save-v1:{:x}", digest.finalize())
 }
 
 #[cfg(feature = "ssr")]
@@ -837,5 +931,62 @@ mod document_gate_tests {
             page_revision(&page_without_body(false)),
             page_revision(&page_without_body(true))
         );
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod document_save_attempt_key_tests {
+    use super::{document_save_attempt_key, document_save_might_have_committed};
+    use rustok_graphql::GraphqlHttpError;
+    use serde_json::json;
+
+    #[test]
+    fn write_identity_separates_actor_revision_and_payload() {
+        let document = json!({"pages": [{"id": "home"}]});
+        let key = document_save_attempt_key(
+            "tenant", "actor", "page", "r1", "en", &document,
+        );
+        assert_eq!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor-other", "page", "r1", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r2", "en", &document),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "en", &json!({"pages": []})),
+        );
+        assert_ne!(
+            key,
+            document_save_attempt_key("tenant", "actor", "page", "r1", "fr", &document),
+        );
+        assert!(key.len() <= 128, "ID must fit the Pages receipt key limit");
+    }
+
+    #[test]
+    fn ambiguous_transport_errors_are_probed_but_deterministic_rejections_are_not() {
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Network));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "503 Service Unavailable".to_string(),
+        )));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "408 Request Timeout".to_string(),
+        )));
+        assert!(document_save_might_have_committed(&GraphqlHttpError::Http(
+            "429 Too Many Requests".to_string(),
+        )));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Http(
+            "400 Bad Request".to_string(),
+        )));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Unauthorized));
+        assert!(!document_save_might_have_committed(&GraphqlHttpError::Graphql(
+            "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT".to_string(),
+        )));
     }
 }

@@ -418,6 +418,7 @@ pub enum IframeBridgeMessage {
     FocusRequested {
         component_id: Option<String>,
     },
+    RequestSnapshot,
     Teardown,
 }
 

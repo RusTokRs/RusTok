@@ -7,7 +7,7 @@ use fly::{
     DesignToken, EditorCommand, FlyEditor, PageSelection, ProjectDocument, RegistrySet,
     RenderPolicy, ThemeCommand, render_page, validate_token_name, validate_token_value,
 };
-use fly_browser::BrowserIntentEnvelope;
+use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorMessages, PaletteBlockAccess,
     PaletteBlockItem, ThemeTokenItem, editor_layer_items_for_page, palette_block_items_with_access,
@@ -163,14 +163,19 @@ pub fn FlyLayerTree(
     selected: Option<String>,
     on_select: EventHandler<String>,
     messages: Option<EditorMessages>,
+    #[props(default)]
+    on_begin_move: Option<EventHandler<String>>,
 ) -> Element {
-    let layers_label = messages.unwrap_or_default().layers;
+    let messages = messages.unwrap_or_default();
+    let layers_label = messages.layers.clone();
+    let move_label = messages.drag_block.clone();
 
     rsx! {
         ol { class: "fly-layers", aria_label: "{layers_label}",
             for item in layers.into_iter() {
                 {
                     let item_id = item.id.clone();
+                    let move_id = item.id.clone();
                     let selectable = !item.opaque && !item.id.is_empty();
                     let browser_component_id = selectable.then(|| item.id.clone());
                     let browser_action = selectable.then_some("select-component");
@@ -192,6 +197,16 @@ pub fn FlyLayerTree(
                                 disabled: !selectable,
                                 onclick: move |_| on_select.call(item_id.clone()),
                                 "{item.label}"
+                            }
+                            if let Some(on_begin_move) = on_begin_move {
+                                button {
+                                    r#type: "button",
+                                    class: "fly-layers__move",
+                                    aria_label: format!("{} {}", move_label, move_id),
+                                    disabled: !selectable,
+                                    onclick: move |_| on_begin_move.call(move_id.clone()),
+                                    "{move_label}"
+                                }
                             }
                         }
                     }
@@ -325,6 +340,160 @@ pub fn FlyThemeTokenEditor(
     }
 }
 
+pub(crate) fn decode_fly_canvas_envelope(
+    payload: &str,
+    expected_instance: &str,
+    last_sequence: Option<u64>,
+) -> Option<(u64, String)> {
+    let envelope = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if envelope.get("protocol")?.as_str()? != fly_web::FLY_IFRAME_PROTOCOL
+        || envelope.get("instance_id")?.as_str()? != expected_instance
+    {
+        return None;
+    }
+    let sequence = envelope.get("sequence")?.as_u64()?;
+    if last_sequence.is_some_and(|last| sequence <= last) {
+        return None;
+    }
+    Some((sequence, payload.to_string()))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+fn subscribe_canvas_iframe(
+    iframe_id: &str,
+    expected_instance: &str,
+    expected_origin: &str,
+    mut subscription: Signal<Option<fly_web::IframeJsonSubscription>>,
+    mut message_port: Signal<Option<fly_web::IframeMessagePort>>,
+    on_message: EventHandler<String>,
+    on_error: Option<EventHandler<String>>,
+) {
+    use fly_web::{BrowserRuntimeError, IframeBridgeMessage};
+
+    subscription.set(None);
+    let instance = expected_instance.to_string();
+    match fly_web::IframeJsonSubscription::subscribe_by_element_id(
+        iframe_id,
+        expected_origin,
+        move |payload, last_sequence| {
+            decode_fly_canvas_envelope(payload, &instance, last_sequence)
+        },
+        move |payload| on_message.call(payload),
+    ) {
+        Ok(next) => {
+            subscription.set(Some(next));
+            let mut port = message_port.write();
+            if let Some(port) = port.as_mut()
+                && let Err(error) =
+                    port.post_by_element_id(iframe_id, IframeBridgeMessage::RequestSnapshot)
+                && let Some(handler) = on_error
+            {
+                handler.call(error.to_string());
+            }
+        }
+        Err(BrowserRuntimeError::MissingElement(_)
+            | BrowserRuntimeError::MissingContentWindow) => {}
+        Err(error) => {
+            if let Some(handler) = on_error {
+                handler.call(error.to_string());
+            }
+        }
+    }
+}
+
+/// Sandboxed `srcdoc` canvas with a source-, origin- and sequence-checked message subscription.
+ ///
+ /// The host owns the document renderer and interprets the raw JSON messages. The iframe
+ /// subscription is recreated after every load so a new document's sequence can start at one.
+ #[component]
+ pub fn FlyCanvasIframe(
+    id: String,
+    instance_id: String,
+    srcdoc: String,
+    expected_origin: String,
+    on_message: EventHandler<String>,
+    on_error: Option<EventHandler<String>>,
+    title: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    class: Option<String>,
+) -> Element {
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut subscription = use_signal(|| None::<fly_web::IframeJsonSubscription>);
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut message_port = use_signal(|| {
+        fly_web::IframeMessagePort::new(instance_id.clone(), expected_origin.clone()).ok()
+    });
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut subscription_initialized = use_signal(|| false);
+
+    let iframe_id = id.clone();
+    let expected_instance = instance_id.clone();
+    let expected_origin_for_load = expected_origin.clone();
+    let onload = {
+        #[cfg(all(target_arch = "wasm32", feature = "web"))]
+        {
+            move |_| {
+                subscribe_canvas_iframe(
+                    &iframe_id,
+                    &expected_instance,
+                    &expected_origin_for_load,
+                    subscription,
+                    message_port,
+                    on_message,
+                    on_error,
+                );
+            }
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
+        {
+            let _ = (&iframe_id, &expected_instance, &expected_origin_for_load);
+            let _ = (on_message, on_error);
+            move |_| {}
+        }
+    };
+
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    {
+        let effect_iframe_id = id.clone();
+        let effect_instance_id = instance_id.clone();
+        let effect_expected_origin = expected_origin.clone();
+        use_effect(move || {
+            if *subscription_initialized.read() {
+                return;
+            }
+            subscription_initialized.set(true);
+            subscribe_canvas_iframe(
+                &effect_iframe_id,
+                &effect_instance_id,
+                &effect_expected_origin,
+                subscription,
+                message_port,
+                on_message,
+                on_error,
+            );
+        });
+    }
+
+    let title = title.unwrap_or_else(|| "Fly editor canvas".to_string());
+    let width = width.unwrap_or(1280);
+    let height = height.unwrap_or(800);
+    let class = class.unwrap_or_else(|| "block border-0 bg-white".to_string());
+
+    rsx! {
+        iframe {
+            id: "{id}",
+            title: "{title}",
+            sandbox: "allow-scripts",
+            srcdoc: "{srcdoc}",
+            width: "{width}",
+            height: "{height}",
+            class: "{class}",
+            onload: onload,
+        }
+    }
+}
+
 /// Canvas preview container rendering SSR-generated markup and stylesheet.
 ///
 /// The stylesheet is an inline `style` element, so a host that serves the editor under a nonce
@@ -393,6 +562,9 @@ pub fn FlyEditorWorkspace(
     host_can_redo: Option<bool>,
     /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
     csp_nonce: Option<String>,
+    /// Optional host-owned isolated canvas. When absent, the inline preview is rendered.
+    #[props(default)]
+    canvas: Option<Element>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
@@ -432,6 +604,21 @@ pub fn FlyEditorWorkspace(
         }
     });
     let on_begin_drag = intent_mode.then_some(begin_palette_drag);
+    let begin_selected_move = use_callback({
+        let instance = intent_instance.clone();
+        move |component_id: String| {
+            if let Some(handler) = on_intent {
+                handler.call(BrowserIntentEnvelope::select(&instance, Some(&component_id)));
+                handler.call(BrowserIntentEnvelope::new(
+                    &instance,
+                    BrowserIntentKind::BeginSelectedMove,
+                    serde_json::json!({}),
+                ));
+            }
+        }
+    });
+    let can_drag_components = capabilities.is_none_or(|profile| profile.drag_drop);
+    let on_begin_move = (intent_mode && can_drag_components).then_some(begin_selected_move);
 
     let active_page_index = initial_page.unwrap_or(0);
     let page_selection = PageSelection::Index(active_page_index);
@@ -685,11 +872,16 @@ pub fn FlyEditorWorkspace(
                         }
                     },
                     messages: Some(messages),
+                    on_begin_move,
                 }
-                FlyCanvasPreview {
-                    rendered,
-                    preview_failed_label: Some(preview_failed_label),
-                    csp_nonce: workspace_csp_nonce.clone(),
+                if let Some(canvas) = canvas {
+                    {canvas}
+                } else {
+                    FlyCanvasPreview {
+                        rendered,
+                        preview_failed_label: Some(preview_failed_label),
+                        csp_nonce: workspace_csp_nonce.clone(),
+                    }
                 }
             }
             span { hidden: true, "data-fly-components": "{current_document.project.pages.len()}" }

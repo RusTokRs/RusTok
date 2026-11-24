@@ -219,6 +219,21 @@ pub(super) fn body_revision_timestamp(
         .into()
 }
 
+/// Choose a database-roundtrippable CAS timestamp that cannot repeat the prior
+/// working-copy revision, even after a clock rollback or rapid successive writes.
+pub(super) fn next_body_revision_timestamp(
+    now: chrono::DateTime<chrono::Utc>,
+    previous: Option<&sea_orm::prelude::DateTimeWithTimeZone>,
+) -> crate::error::PagesResult<sea_orm::prelude::DateTimeWithTimeZone> {
+    let candidate = body_revision_timestamp(now);
+    match previous {
+        Some(previous) if candidate <= *previous => previous
+            .checked_add_signed(chrono::Duration::microseconds(1))
+            .ok_or_else(|| crate::error::PagesError::validation("Page body revision clock exhausted")),
+        _ => Ok(candidate),
+    }
+}
+
 pub(super) fn collect_builder_sources(
     existing_bodies: &[WorkingBody],
     candidate: Option<&PreparedPageBody>,

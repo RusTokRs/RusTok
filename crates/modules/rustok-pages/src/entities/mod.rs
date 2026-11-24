@@ -6,6 +6,7 @@ pub mod page_artifact_rebuild_operation;
 pub mod page_body;
 pub mod page_body_draft;
 pub mod page_body_revision;
+pub mod page_document_save_receipt;
 pub mod page_builder_scenario_baseline;
 pub mod page_builder_scenario_baseline_revision;
 pub mod page_channel_visibility;
@@ -30,6 +31,7 @@ pub use page_artifact_binding_replacement_operation::Entity as PageArtifactBindi
 pub use page_artifact_rebuild_operation::Entity as PageArtifactRebuildOperation;
 pub use page_body_draft::Entity as PageBodyDraft;
 pub use page_body_revision::Entity as PageBodyRevision;
+pub use page_document_save_receipt::Entity as PageDocumentSaveReceipt;
 pub use page_builder_scenario_baseline::Entity as PageBuilderScenarioBaseline;
 pub use page_builder_scenario_baseline_revision::Entity as PageBuilderScenarioBaselineRevision;
 pub use page_channel_visibility::Entity as PageChannelVisibility;

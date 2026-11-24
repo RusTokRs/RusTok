@@ -1203,3 +1203,46 @@ Runtime publish-gate convergence (source only): Leptos and Dioxus adapter-genera
 requests now check the host runtime publish policy before reaching the facade, matching the
 standard toolbar. Framework-mounted gate parity and denied-save UX remain for final integration
 checks.
+
+2026-11-23 Pages durable save receipts follow-up (source only, not executed):
+- Pages accepts an optional stable save `idempotencyKey`, binds it to tenant,
+  page, authenticated actor, expected revision and canonical layout-stripped
+  body digest, and writes a replayable response snapshot atomically with the
+  working body, revision journal, site symbols and outbox update. A duplicate
+  exact request returns the original acknowledged result rather than failing
+  optimistic CAS after an already committed request.
+- GraphQL `pageDocumentSaveReceipt` looks up a committed result without
+  retrying a mutation; missing is an uncertain outcome, not proof the request
+  failed. Latest 64 snapshots remain replayable, with older permanent
+  key/hash tombstones failing closed instead of allowing duplicate execution.
+  PostgreSQL and SQLite migration, source test cases and ADR are authored but
+  have not been executed.
+- The Leptos SSR Page Builder save path derives a stable key from tenant,
+  actor, page, expected revision, locale and canonical project; the
+  Page Builder port-level idempotency key now also includes the project hash
+  rather than conflating two distinct commands at the same revision. Pages
+  performs the final CAS and authorization, not the stale client preflight.
+- **Still open**: true network-unknown reconciliation UI across remounts and
+  independent sessions, retention observability, restore/lifecycle idempotency
+  and direct Next editor parity, MySQL schema support, concurrent PostgreSQL/
+  SQLite transactions with real independent connections, mounted SSR/CSR/
+  Dioxus, CSP, rich-text, drag/drop/resize, and all maintainer verification.
+  Draft PR #4788 must not be merged until these checks are complete.
+
+2026-11-23 follow-up on ambiguous result and concurrent database access
+(source-only): the Leptos SSR Page Builder store now probes
+`pageDocumentSaveReceipt` after Network, HTTP 408, HTTP 429 or 5xx save
+transport errors, and accepts a saved result only if the authoritative
+Pages receipt resolves. The unknown status `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`
+returns a 503-level application problem and preserves the dirty draft;
+deterministic GraphQL/business and auth errors never use this recovery.
+Added two-pool SQLite race regressions (duplicate identity and competing
+distinct CAS), an opt-in two-session PostgreSQL race/receipt lookup
+harness, and scoped source tests for transport classification and
+unknown-outcome status. **All remain unexecuted.** The strict Pages SSR browser-intent path now persists operation IDs and exact
+requests across reloads, probes receipts without resending, blocks new edits
+while the result is unknown, and offers explicit same-request retry. Initial
+owner-bound draft sessions are created before the first edit. Still open:
+direct Next/other writer parity, restore/lifecycle operation IDs, MySQL schema,
+receipt expiry/observability, deployment verification and full Dioxus iframe,
+drag/drop and resize integration.
