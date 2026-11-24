@@ -177,6 +177,7 @@ pub fn FlyLayerTree(
                     let item_id = item.id.clone();
                     let move_id = item.id.clone();
                     let selectable = !item.opaque && !item.id.is_empty();
+                    let can_move = selectable && item.depth > 0 && !item.is_locked;
                     let browser_component_id = selectable.then(|| item.id.clone());
                     let browser_action = selectable.then_some("select-component");
                     let is_selected = selected.as_deref() == Some(&item_id);
@@ -203,7 +204,7 @@ pub fn FlyLayerTree(
                                     r#type: "button",
                                     class: "fly-layers__move",
                                     aria_label: format!("{} {}", move_label, move_id),
-                                    disabled: !selectable,
+                                    disabled: !can_move,
                                     onclick: move |_| on_begin_move.call(move_id.clone()),
                                     "{move_label}"
                                 }
@@ -413,6 +414,7 @@ fn subscribe_canvas_iframe(
     expected_origin: String,
     on_message: EventHandler<String>,
     on_error: Option<EventHandler<String>>,
+    on_load: Option<EventHandler<()>>,
     title: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
@@ -421,11 +423,7 @@ fn subscribe_canvas_iframe(
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     let mut subscription = use_signal(|| None::<fly_web::IframeJsonSubscription>);
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
-    let mut message_port = use_signal(|| {
-        fly_web::IframeMessagePort::new(instance_id.clone(), expected_origin.clone()).ok()
-    });
-    #[cfg(all(target_arch = "wasm32", feature = "web"))]
-    let mut subscription_initialized = use_signal(|| false);
+    let mut message_port = use_signal(|| None::<fly_web::IframeMessagePort>);
 
     let iframe_id = id.clone();
     let expected_instance = instance_id.clone();
@@ -434,6 +432,8 @@ fn subscribe_canvas_iframe(
         #[cfg(all(target_arch = "wasm32", feature = "web"))]
         {
             move |_| {
+                // Every iframe navigation resets the child sequence. Replacing the subscription
+                // resets the host sequence fence and the snapshot request repopulates geometry.
                 subscribe_canvas_iframe(
                     &iframe_id,
                     &expected_instance,
@@ -443,26 +443,42 @@ fn subscribe_canvas_iframe(
                     on_message,
                     on_error,
                 );
+                if let Some(handler) = on_load {
+                    handler.call(());
+                }
             }
         }
         #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
         {
             let _ = (&iframe_id, &expected_instance, &expected_origin_for_load);
             let _ = (on_message, on_error);
-            move |_| {}
+            move |_| {
+                if let Some(handler) = on_load {
+                    handler.call(());
+                }
+            }
         }
     };
 
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     {
+        let port_config = (instance_id.clone(), expected_origin.clone());
         let effect_iframe_id = id.clone();
-        let effect_instance_id = instance_id.clone();
-        let effect_expected_origin = expected_origin.clone();
-        use_effect(move || {
-            if *subscription_initialized.read() {
-                return;
+        use_effect(use_reactive!(|port_config| {
+            let (effect_instance_id, effect_expected_origin) = port_config.clone();
+            match fly_web::IframeMessagePort::new(
+                effect_instance_id.clone(),
+                effect_expected_origin.clone(),
+            ) {
+                Ok(port) => message_port.set(Some(port)),
+                Err(error) => {
+                    message_port.set(None);
+                    if let Some(handler) = on_error {
+                        handler.call(error.to_string());
+                    }
+                    return;
+                }
             }
-            subscription_initialized.set(true);
             subscribe_canvas_iframe(
                 &effect_iframe_id,
                 &effect_instance_id,
@@ -472,7 +488,7 @@ fn subscribe_canvas_iframe(
                 on_message,
                 on_error,
             );
-        });
+        }));
     }
 
     let title = title.unwrap_or_else(|| "Fly editor canvas".to_string());

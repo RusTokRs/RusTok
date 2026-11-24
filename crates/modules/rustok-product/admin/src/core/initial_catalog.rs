@@ -153,12 +153,19 @@ pub(crate) fn validate_selection(
                 return Err("Currency must use a three-letter code".into());
             }
             validate_amount(&price.amount)?;
+            let base_amount = rust_decimal::Decimal::from_str_exact(price.amount.trim())
+                .map_err(|_| "Invalid decimal price")?;
             if let Some(amount) = price
                 .compare_at_amount
                 .as_ref()
                 .filter(|amount| !amount.trim().is_empty())
             {
                 validate_amount(amount)?;
+                let compare_at_amount = rust_decimal::Decimal::from_str_exact(amount.trim())
+                    .map_err(|_| "Invalid compare-at price")?;
+                if compare_at_amount < base_amount {
+                    return Err("Compare-at price cannot be lower than the base price".into());
+                }
             }
         }
     }
@@ -382,21 +389,22 @@ pub(crate) fn normalize_standalone_variant(
             return Err("Use a three-letter ISO currency code".into());
         }
         validate_amount(&price.amount)?;
-        price.amount = price
+        let base_amount = price
             .amount
             .trim()
             .parse::<rust_decimal::Decimal>()
-            .map_err(|_| "Invalid decimal price")?
-            .normalize()
-            .to_string();
+            .map_err(|_| "Invalid decimal price")?;
+        price.amount = base_amount.normalize().to_string();
         if let Some(amount) = price.compare_at_amount.as_mut() {
             validate_amount(amount)?;
-            *amount = amount
+            let compare_at_amount = amount
                 .trim()
                 .parse::<rust_decimal::Decimal>()
-                .map_err(|_| "Invalid compare-at price")?
-                .normalize()
-                .to_string();
+                .map_err(|_| "Invalid compare-at price")?;
+            if compare_at_amount < base_amount {
+                return Err("Compare-at price cannot be lower than the base price".into());
+            }
+            *amount = compare_at_amount.normalize().to_string();
         }
     }
     if draft
@@ -657,6 +665,9 @@ mod optional_initial_price_tests {
         let orphan = build("", Some("1"));
         assert_eq!(orphan.prices.len(), 1);
         assert!(validate_selection(&[], &[orphan], None).is_err());
+
+        let inverted_compare_at = build("12", Some("11"));
+        assert!(validate_selection(&[], &[inverted_compare_at], None).is_err());
     }
 }
 

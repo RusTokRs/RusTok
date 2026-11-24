@@ -4,7 +4,6 @@ mod audit_panel;
 mod authoring;
 mod binding_panel;
 mod canvas_document;
-#[cfg(any(target_arch = "wasm32", test))]
 mod canvas_protocol;
 mod capability_controls;
 mod consumer_properties;
@@ -49,6 +48,7 @@ pub use authoring::{
 };
 pub(crate) use binding_panel::BindingPanel;
 pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
+pub(crate) use canvas_protocol::CanvasResourceLimit;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::CanvasBridgeMessage;
 #[cfg(target_arch = "wasm32")]

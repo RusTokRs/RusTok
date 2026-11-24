@@ -23,6 +23,9 @@ use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
+
 /// Host context for Dioxus Page Builder admin.
 #[derive(Clone)]
 pub struct DioxusPageBuilderAdminHostContext {
@@ -50,13 +53,12 @@ impl DioxusPageBuilderAdminHostContext {
             runtime_context: None,
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
-            adapter_workspace: false,
+            adapter_workspace: true,
         }
     }
 
-    /// Mounts the shared adapter workspace (`fly-dioxus`) instead of the canvas
-    /// placeholder. Off by default; hosts opt in while the admin migration
-    /// (P0-1) proceeds surface by surface.
+    /// Mounts the shared Fly adapter workspace. Enabled by default; hosts may
+    /// explicitly opt out when they need the minimal placeholder shell.
     pub fn with_adapter_workspace(mut self, enabled: bool) -> Self {
         self.adapter_workspace = enabled;
         self
@@ -92,11 +94,15 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
 /// Deliver the command effects the shared editor reducer emits. Previously the
 /// Dioxus toolbar and workspace discarded Publish/Preview effects, so Save
 /// visibly did nothing even when a consumer supplied a working facade.
-fn dispatch_facade_effects(
+fn dispatch_facade_effects<F>(
     mut session: Signal<EditorSessionState>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     effects: Vec<EditorSessionEffect>,
-) {
+    on_publish_confirmed: F,
+)
+where
+    F: Fn(String, String) + Clone + 'static,
+{
     for effect in effects {
         match effect {
             EditorSessionEffect::Announce(message) => {
@@ -174,6 +180,7 @@ fn dispatch_facade_effects(
                     state.runtime_context = context.clone();
                     state.runtime_context_configured = true;
                     state.active_runtime_scenario = scenario.clone();
+                    state.runtime_publish_gate_evaluation = None;
                     state.preview_request = Some((
                         state.controller.editor().revision().project_hash,
                         state.controller.active_page_index(),
@@ -182,8 +189,11 @@ fn dispatch_facade_effects(
                     ));
                     state.preview_in_progress = true;
                 }
+                let on_publish_confirmed = on_publish_confirmed.clone();
+                let submitted_hash = expected_hash.as_ref().map(|hash| hash.hex());
                 let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
+                    let mut confirmed_write = None;
                     let mut state = session.write();
                     match outcome {
                         Ok(PageBuilderCapabilityResponse::Publish(response))
@@ -195,13 +205,21 @@ fn dispatch_facade_effects(
                             if state.controller.active_save_attempt_id() != Some(attempt_id) {
                                 return;
                             }
-                            if let Err(error) = state.handle_publish_response_for_attempt(
+                            match state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
                                 attempt_id,
                             ) {
-                                state.handle_publish_error_for_attempt(attempt_id, error);
+                                Ok(()) => {
+                                    if let Some(project_hash) = submitted_hash {
+                                        confirmed_write =
+                                            Some((response.revision_id.clone(), project_hash));
+                                    }
+                                }
+                                Err(error) => {
+                                    state.handle_publish_error_for_attempt(attempt_id, error);
+                                }
                             }
                         }
                         Ok(PageBuilderCapabilityResponse::Preview(response))
@@ -234,6 +252,10 @@ fn dispatch_facade_effects(
                             }
                         }
                     }
+                    drop(state);
+                    if let Some((revision, project_hash)) = confirmed_write {
+                        on_publish_confirmed(revision, project_hash);
+                    }
                 });
             }
         }
@@ -259,6 +281,38 @@ fn controller_session_key(controller: &AdminCanvasController) -> String {
         controller.active_page_index(),
         selected.len(),
         selected,
+    )
+}
+
+fn canvas_instance_id(page_id: &str, revision_id: &str, project_hash: &str) -> String {
+    fn hex(value: &str) -> String {
+        let mut encoded = String::with_capacity(value.len() * 2);
+        for byte in value.as_bytes() {
+            encoded.push_str(&format!("{byte:02x}"));
+        }
+        encoded
+    }
+
+    format!("fly-canvas-{}-{}-{}", hex(page_id), hex(revision_id), project_hash)
+}
+
+fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
+    matches!(
+        intent,
+        UiIntent::BeginDrag(_)
+            | UiIntent::UpdateHitTest(_)
+            | UiIntent::ActivateDropCandidate(_)
+            | UiIntent::Drop
+            | UiIntent::CutSelection
+            | UiIntent::PasteClipboard
+            | UiIntent::Execute(_)
+            | UiIntent::Undo
+            | UiIntent::Redo
+            | UiIntent::RequestSave
+            | UiIntent::SaveStarted
+            | UiIntent::SaveSucceeded { .. }
+            | UiIntent::SaveFailed
+            | UiIntent::SaveConflict { .. }
     )
 }
 
@@ -331,7 +385,7 @@ pub struct PageBuilderAdminWithControllerProps {
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     #[props(default)]
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
-    #[props(default)]
+    #[props(default = true)]
     pub adapter_workspace: bool,
 }
 
@@ -386,7 +440,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             "Page Builder facade is missing",
             "Page saved successfully",
         );
-        if let Some(schemas) = props.trait_schemas {
+        if let Some(schemas) = props.trait_schemas.clone() {
             s = s.with_trait_schemas(schemas);
         }
         // The host's tenant/RBAC and provider-health policy narrows the
@@ -396,20 +450,140 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         ) {
             s.fail(format!("Cannot apply editor capabilities: {error}"));
         }
-        if let Some(evaluation) = props.editor_capability_evaluation {
+        if let Some(evaluation) = props.editor_capability_evaluation.clone() {
             s = s.with_editor_capability_evaluation(evaluation);
         }
-        if let Some(ctx) = props.runtime_context {
+        if let Some(ctx) = props.runtime_context.clone() {
             s = s.with_runtime_context(ctx);
         }
-        if let Some(scenarios) = props.runtime_scenarios {
+        if let Some(scenarios) = props.runtime_scenarios.clone() {
             s = s.with_runtime_scenarios(scenarios);
         }
-        if let Some(policy) = props.runtime_publish_gate_policy {
+        if let Some(policy) = props.runtime_publish_gate_policy.clone() {
             s = s.with_runtime_publish_gate_policy(policy);
         }
         s
     });
+
+    let mut peer_write_conflict = use_signal(|| false);
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
+
+    let session_configuration_key = format!(
+        "schemas:{}|evaluation:{}|context:{}|scenarios:{}|policy:{}|facade:{}",
+        props
+            .trait_schemas
+            .as_ref()
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
+        props
+            .editor_capability_evaluation
+            .as_ref()
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
+        serde_json::to_string(&props.runtime_context).unwrap_or_default(),
+        props
+            .runtime_scenarios
+            .as_ref()
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
+        props
+            .runtime_publish_gate_policy
+            .as_ref()
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
+        props.facade.is_some(),
+    );
+    let session_configuration = (
+        props.trait_schemas.clone(),
+        props.editor_capability_evaluation.clone(),
+        props.runtime_context.clone(),
+        props.runtime_scenarios.clone(),
+        props.runtime_publish_gate_policy.clone(),
+        props.facade.is_some(),
+    );
+    use_effect(use_reactive!(|_session_configuration_key| {
+        let (
+            trait_schemas,
+            editor_capability_evaluation,
+            runtime_context,
+            runtime_scenarios,
+            runtime_publish_gate_policy,
+            facade_available,
+        ) = session_configuration.clone();
+        session.write().update_host_configuration(
+            trait_schemas,
+            editor_capability_evaluation,
+            runtime_context,
+            runtime_scenarios,
+            runtime_publish_gate_policy,
+            facade_available,
+        );
+    }));
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    {
+        let initial_session = session;
+        let mut conflict_signal = peer_write_conflict;
+        use_effect(move || {
+            if peer_write_channel.peek().is_some() {
+                return;
+            }
+            let (page_id, revision_id, project_hash) = {
+                let current = initial_session.peek();
+                (
+                    current.controller.page_id().to_string(),
+                    current.controller.revision_id().to_string(),
+                    current.controller.editor().revision().project_hash.hex(),
+                )
+            };
+            let on_conflict = move |conflict: BrowserPeerWriteConflict| {
+                conflict_signal.set(true);
+                let mut state = initial_session.write();
+                if state.controller.ui().state.drag.is_some() {
+                    if let Err(error) = state.controller.dispatch(UiIntent::CancelDrag) {
+                        state.fail(format!(
+                            "Another tab saved this page at revision {}. The editor is now read-only; active drag cleanup also failed: {error}",
+                            conflict.revision
+                        ));
+                        return;
+                    }
+                }
+                state.fail(format!(
+                    "Another tab saved this page at revision {}. This editor is now read-only; reload to continue.",
+                    conflict.revision
+                ));
+            };
+            match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict) {
+                Ok(channel) => peer_write_channel.set(Some(channel)),
+                Err(error) => tracing::warn!(
+                    error = ?error,
+                    "Fly cross-tab notifications unavailable; server revision checks remain authoritative"
+                ),
+            }
+        });
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let on_publish_confirmed = {
+        let channel = peer_write_channel;
+        let conflict = peer_write_conflict;
+        move |revision: String, project_hash: String| {
+            if *conflict.peek() {
+                return;
+            }
+            if let Some(channel) = channel.peek().as_ref() {
+                if let Err(error) = channel.post_confirmed_write(&revision, &project_hash) {
+                    tracing::warn!(
+                        error = ?error,
+                        "Fly save succeeded but cross-tab notification could not be broadcast"
+                    );
+                }
+            }
+        }
+    };
+    #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
+    let on_publish_confirmed = |_revision: String, _project_hash: String| {};
 
     // A host may revoke or restore permissions without navigating or saving.
     // Dioxus preserves use_signal state across prop rerenders, so mirror any
@@ -440,15 +614,30 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let workspace_page_id = page_id.clone();
     let workspace_selected = current.controller.ui().state.selection.component_id.clone();
     let workspace_initial_page = current.controller.active_page_index();
+    let workspace_revision_id = current.controller.revision_id().to_string();
+    let workspace_project_hash = current.controller.editor().revision().project_hash.hex();
+    let workspace_canvas_instance_id = canvas_instance_id(
+        &workspace_page_id,
+        &workspace_revision_id,
+        &workspace_project_hash,
+    );
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
-    let capabilities = current.controller.ui().state.capabilities;
+    let peer_conflict_active = *peer_write_conflict.read();
+    let mut capabilities = current.controller.ui().state.capabilities;
+    if peer_conflict_active {
+        capabilities = CapabilityState::read_only();
+    }
     let can_undo = capabilities.history && current.controller.can_undo();
     let can_redo = capabilities.history && current.controller.can_redo();
     let can_save = capabilities.edit
+        && capabilities.publish
+        && props.facade.is_some()
+        && !peer_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
         && !current.controller.ui().state.dirty.save_conflict
         && !current.controller.ui().state.has_blocking_diagnostics();
+    drop(current);
 
     let route_locale = locale.clone();
     let workspace_messages: Option<EditorMessages> = props
@@ -461,19 +650,28 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let show_adapter_workspace = props.adapter_workspace;
     let workspace_facade = props.facade.clone();
     let toolbar_facade = props.facade.clone();
+    let toolbar_publish_confirmed = on_publish_confirmed.clone();
     #[cfg(feature = "dioxus-web")]
     let canvas_facade = props.facade.clone();
     let on_workspace_error = EventHandler::new(move |error: String| {
         session.write().fail(error);
     });
+    let workspace_publish_confirmed = on_publish_confirmed.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
+        if *peer_write_conflict.peek() && envelope.is_mutating() {
+            session.write().fail(
+                "Another tab saved this page. This editor is read-only; reload to continue.",
+            );
+            return;
+        }
         let effects = {
             let mut state = session.write();
+            let previous_hash = state.controller.editor().revision().project_hash;
             // The trusted Dioxus callback owns the current host snapshot;
             // typed Fly constructors do not know its revision.
             let mut envelope = envelope;
             envelope.revision = Some(state.controller.revision_id().to_string());
-            envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
+            envelope.project_hash = Some(previous_hash.hex());
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
                     // A command from a stale workspace must never dispatch its
@@ -487,6 +685,12 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     {
                         state.fail("Browser workspace response no longer matches the active document");
                         return;
+                    }
+                    if current_hash != previous_hash {
+                        state.runtime_publish_gate_evaluation = None;
+                        state.server_preview_html = None;
+                        state.preview_request = None;
+                        state.preview_in_progress = false;
                     }
                     let mut effects = Vec::new();
                     for effect in result.effects {
@@ -527,12 +731,30 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                 }
             }
         };
-        dispatch_facade_effects(session, workspace_facade.clone(), effects);
+        dispatch_facade_effects(
+            session,
+            workspace_facade.clone(),
+            effects,
+            workspace_publish_confirmed.clone(),
+        );
     });
     #[cfg(feature = "dioxus-web")]
+    let canvas_publish_confirmed = on_publish_confirmed.clone();
+    #[cfg(feature = "dioxus-web")]
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
+        if *peer_write_conflict.peek() && peer_conflict_blocks_ui_intent(&intent) {
+            session.write().fail(
+                "Another tab saved this page. This editor is read-only; reload to continue.",
+            );
+            return;
+        }
         let effects = session.write().dispatch(EditorSessionAction::DispatchIntent(intent));
-        dispatch_facade_effects(session, canvas_facade.clone(), effects);
+        dispatch_facade_effects(
+            session,
+            canvas_facade.clone(),
+            effects,
+            canvas_publish_confirmed.clone(),
+        );
     });
     #[cfg(feature = "dioxus-web")]
     let workspace_canvas: Option<Element> = {
@@ -550,30 +772,38 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     .and_then(UiCspNonce::new);
                 match render_canvas_srcdoc_with_context(
                     &canvas_document,
-                    &workspace_page_id,
+                    &workspace_canvas_instance_id,
                     &workspace_runtime_context,
                     canvas_nonce.as_ref(),
                 ) {
                     Ok(srcdoc) => Some(rsx! {
                         DioxusIsolatedCanvas {
                             srcdoc,
-                            instance_id: workspace_page_id.clone(),
+                            instance_id: workspace_canvas_instance_id.clone(),
+                            intent_instance_id: workspace_page_id.clone(),
+                            can_resize: capabilities.edit && capabilities.styles,
                             session,
                             on_intent: on_workspace_intent,
                             on_ui_intent: on_canvas_ui_intent,
                             on_error: Some(on_workspace_error),
                         }
                     }),
-                    Err(error) => {
-                        on_workspace_error.call(error.to_string());
-                        None
-                    }
+                    Err(error) => Some(rsx! {
+                        div {
+                            class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                            role: "alert",
+                            "Canvas rendering failed: {error}"
+                        }
+                    })
                 }
             }
-            None => {
-                on_workspace_error.call("The active page is unavailable for isolated canvas rendering".to_string());
-                None
-            }
+            None => Some(rsx! {
+                div {
+                    class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                    role: "alert",
+                    "The active page is unavailable for isolated canvas rendering."
+                }
+            })
         }
     };
     #[cfg(not(feature = "dioxus-web"))]
@@ -596,6 +826,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_undo,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Undo));
                         },
                         "Undo"
@@ -604,6 +837,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_redo,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Redo));
                         },
                         "Redo"
@@ -612,17 +848,31 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                         disabled: !can_save,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             let effects = session.write().dispatch(
                                 EditorSessionAction::DispatchIntent(UiIntent::RequestSave)
                             );
-                            dispatch_facade_effects(session, toolbar_facade.clone(), effects);
+                            dispatch_facade_effects(
+                                session,
+                                toolbar_facade.clone(),
+                                effects,
+                                toolbar_publish_confirmed.clone(),
+                            );
                         },
                         "Save"
                     }
                 }
             }
 
-            if let Some(err) = last_error {
+            if peer_conflict_active {
+                div {
+                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30",
+                    role: "alert",
+                    "Another tab saved this page. This editor is now read-only; reload to continue from the latest revision."
+                }
+            } else if let Some(err) = last_error {
                 div {
                     class: "p-3 bg-destructive/10 text-destructive text-sm border-b border-destructive/20",
                     role: "alert",
@@ -691,7 +941,7 @@ mod props_regression_tests {
         assert_eq!(original.controller.revision_id(), changed.controller.revision_id());
         assert!(original != changed, "draft edit must trigger prop update");
         let mut workspace = original.clone();
-        workspace.adapter_workspace = true;
+        workspace.adapter_workspace = false;
         assert!(original != workspace, "mount mode must trigger prop update");
     }
 
@@ -711,6 +961,23 @@ mod props_regression_tests {
         assert!(!controller.ui().state.capabilities.history);
         assert!(controller.dispatch(UiIntent::RequestSave).is_err());
         assert!(controller.dispatch(UiIntent::Undo).is_err());
+    }
+
+    #[test]
+    fn canvas_iframe_identity_tracks_document_revision_and_hash() {
+        let first = canvas_instance_id("home", "rev-1", "hash-1");
+        assert_ne!(first, canvas_instance_id("home", "rev-1", "hash-2"));
+        assert_ne!(first, canvas_instance_id("home", "rev-2", "hash-1"));
+        assert_ne!(first, canvas_instance_id("about", "rev-1", "hash-1"));
+        assert!(first.starts_with("fly-canvas-"));
+    }
+
+    #[test]
+    fn peer_write_fence_blocks_mutations_but_allows_selection_and_cancel() {
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Drop));
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Undo));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::Select(Some("hero".to_string()))));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::CancelDrag));
     }
 
     #[test]

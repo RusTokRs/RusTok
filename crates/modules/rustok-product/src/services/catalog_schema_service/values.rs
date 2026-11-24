@@ -217,7 +217,7 @@ impl ProductCatalogSchemaService {
                         SELECT 1
                         FROM product_attribute_value_translations pavt
                         WHERE pavt.value_id = pav.id
-                          AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
+                          AND NULLIF(TRIM(pavt.value_text), '') IS NOT NULL
                     ) AS has_localized_text
                 FROM product_attributes pa
                 LEFT JOIN product_attribute_values pav
@@ -671,7 +671,7 @@ where
                 WHERE pav.tenant_id = $1
                   AND pav.attribute_id IN ({placeholders})
                   AND pav.product_id = {product_placeholder}
-                  AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
+                  AND NULLIF(TRIM(pavt.value_text), '') IS NOT NULL
                 "#
         ),
         values,

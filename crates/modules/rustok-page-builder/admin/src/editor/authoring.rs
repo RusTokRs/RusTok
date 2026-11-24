@@ -81,11 +81,6 @@ impl AdminCanvasController {
         fly_ui::editor_layer_items_for_page(document, self.active_page_index())
             .into_iter()
             .map(|item| {
-                let is_locked = document
-                    .component(&item.id)
-                    .and_then(|c| c.attributes.get("data-fly-locked"))
-                    .and_then(Value::as_str)
-                    == Some("true");
                 LayerItemView {
                     id: item.id,
                     component_type: item.component_type,
@@ -93,7 +88,7 @@ impl AdminCanvasController {
                     parent_component_id: item.parent_id,
                     index: item.index,
                     child_count: item.child_count,
-                    is_locked,
+                    is_locked: item.is_locked,
                 }
             })
             .collect()

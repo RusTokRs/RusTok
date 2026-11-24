@@ -18,6 +18,7 @@ use crate::{
     PageBuilderArtifactService, PageCacheScope, PageService, PagesCacheReadRuntime, page_cache_key,
 };
 
+use super::map_pages_error;
 use super::runtime_data::PagesGraphqlRuntimeData;
 use super::types::*;
 
@@ -109,7 +110,7 @@ impl PagesQuery {
             )
             .await
             .map(|result| result.map(Into::into))
-            .map_err(|error| async_graphql::Error::new(error.to_string()))
+            .map_err(map_pages_error)
     }
 
     async fn page_by_slug(

@@ -13,12 +13,14 @@ use super::resolution::{self, ResolutionError};
 use super::types::normalize_channel_slug;
 use crate::entities;
 
-pub(crate) async fn validate_channel_scope_in_tx(
+/// Resolves an optional channel identity inside the caller transaction and verifies
+/// that every supplied identifier belongs to the supplied tenant.
+pub(crate) async fn resolve_channel_id_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     channel_id: Option<Uuid>,
     channel_slug: Option<&str>,
-) -> CommerceResult<()> {
+) -> CommerceResult<Option<Uuid>> {
     if tenant_id.is_nil() {
         return Err(CommerceError::Validation(
             "tenant_id must not be a nil UUID".to_string(),
@@ -31,6 +33,7 @@ pub(crate) async fn validate_channel_scope_in_tx(
             "channel_id must not be a nil UUID".to_string(),
         ));
     }
+
     let normalized_slug = normalize_channel_slug(channel_slug);
     match channel_id {
         Some(channel_id) => {
@@ -55,25 +58,38 @@ pub(crate) async fn validate_channel_scope_in_tx(
                         .to_string(),
                 ));
             }
+            Ok(Some(model.id))
         }
         None => {
             if let Some(slug) = normalized_slug {
-                let exists = channel::Entity::find()
+                let model = channel::Entity::find()
                     .filter(channel::Column::TenantId.eq(tenant_id))
-                    .filter(channel::Column::Slug.eq(slug.clone()))
+                    .filter(channel::Column::Slug.eq(slug))
                     .one(txn)
                     .await?
-                    .is_some();
-                if !exists {
-                    return Err(CommerceError::Validation(
-                        "channel_slug must reference a channel owned by the price-list tenant"
-                            .to_string(),
-                    ));
-                }
+                    .ok_or_else(|| {
+                        CommerceError::Validation(
+                            "channel_slug must reference a channel owned by the price-list tenant"
+                                .to_string(),
+                        )
+                    })?;
+                Ok(Some(model.id))
+            } else {
+                Ok(None)
             }
         }
     }
-    Ok(())
+}
+
+pub(crate) async fn validate_channel_scope_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+) -> CommerceResult<()> {
+    resolve_channel_id_in_tx(txn, tenant_id, channel_id, channel_slug)
+        .await
+        .map(|_| ())
 }
 
 pub(crate) async fn load_variant_for_update_in_tx(

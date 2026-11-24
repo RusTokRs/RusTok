@@ -417,34 +417,6 @@ pub struct VariantUpdateDraft {
 }
 
 impl VariantUpdateDraft {
-    pub(crate) fn from_inline_editor_state(
-        original: &ProductVariant,
-        sku: String,
-        amount: String,
-        inventory_quantity: i32,
-        fallback_currency: &str,
-    ) -> Self {
-        let price = original.prices.first();
-        let currency = price.map_or(fallback_currency, |price| price.currency_code.as_str());
-        let compare_at_amount = if amount.trim().is_empty() {
-            String::new()
-        } else {
-            price
-                .and_then(|price| price.compare_at_amount.clone())
-                .unwrap_or_default()
-        };
-        Self::from_editor_state(
-            original,
-            sku,
-            original.barcode.clone().unwrap_or_default(),
-            currency.to_owned(),
-            amount,
-            compare_at_amount,
-            inventory_quantity,
-            original.inventory_policy.clone(),
-        )
-    }
-
     /// Builds a sparse PATCH from the editor's original snapshot and current form values.
     /// Cross-owner Inventory/Pricing snapshots are omitted unless the operator changed them.
     pub fn from_editor_state(
@@ -538,6 +510,22 @@ impl VariantUpdateDraft {
                 .then_some(inventory_policy),
             ..Default::default()
         }
+    }
+
+    /// Whether this draft contains an effective owner mutation.
+    ///
+    /// A non-empty `prices` buffer alone is not a replacement: callers must set
+    /// `prices_changed` so an untouched snapshot cannot be replayed accidentally.
+    pub fn has_changes(&self) -> bool {
+        self.sku.is_changed()
+            || self.barcode.is_changed()
+            || self.shipping_profile_slug.is_changed()
+            || self.weight.is_changed()
+            || self.weight_unit.is_changed()
+            || !self.axis_values.is_empty()
+            || self.prices_changed
+            || self.inventory_quantity.is_some()
+            || self.inventory_policy.is_some()
     }
 
     fn edited_text_if_changed(value: String, current: Option<&str>) -> rustok_api::Patch<String> {
@@ -1003,6 +991,30 @@ mod variant_update_draft_tests {
     }
 
     #[test]
+    fn effective_change_detection_ignores_unmarked_price_buffers_and_keeps_explicit_clears() {
+        let mut draft = VariantUpdateDraft::default();
+        draft.prices.push(super::VariantPriceDraft {
+            currency_code: "USD".to_owned(),
+            amount: "1.00".to_owned(),
+            compare_at_amount: None,
+        });
+        assert!(!draft.has_changes());
+
+        draft.prices_changed = true;
+        assert!(draft.has_changes());
+
+        draft.prices.clear();
+        assert!(
+            draft.has_changes(),
+            "an explicit empty replacement clears prices"
+        );
+
+        draft.prices_changed = false;
+        draft.sku = Patch::Clear;
+        assert!(draft.has_changes());
+    }
+
+    #[test]
     fn primary_price_edit_preserves_other_currency_prices() {
         let original = original_variant();
         let draft = draft(&original, "SKU-1", "13.00", "USD");
@@ -1020,26 +1032,5 @@ mod variant_update_draft_tests {
         assert!(draft.prices_changed);
         assert_eq!(draft.prices.len(), 1);
         assert_eq!(draft.prices[0].currency_code, "EUR");
-    }
-
-    #[test]
-    fn inline_price_edit_preserves_existing_price_context_and_untouched_values() {
-        let mut original = original_variant();
-        original.barcode = Some("  legacy barcode  ".into());
-        original.prices[0].compare_at_amount = Some("15.00".into());
-        let draft = VariantUpdateDraft::from_inline_editor_state(
-            &original,
-            "SKU-1".into(),
-            "13.00".into(),
-            8,
-            "JPY",
-        );
-        assert!(matches!(draft.sku, Patch::Keep));
-        assert!(matches!(draft.barcode, Patch::Keep));
-        assert!(draft.inventory_quantity.is_none());
-        assert!(draft.prices_changed);
-        assert_eq!(draft.prices[0].currency_code, "USD");
-        assert_eq!(draft.prices[0].compare_at_amount.as_deref(), Some("15.00"));
-        assert_eq!(draft.prices[1].currency_code, "EUR");
     }
 }

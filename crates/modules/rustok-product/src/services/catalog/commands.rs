@@ -82,11 +82,33 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     for price in prices {
         let currency = price.currency_code.trim().to_ascii_uppercase();
-        if currency.len() != 3 {
+        if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
             return Err(CommerceError::Validation(format!(
-                "Currency code `{}` must be exactly 3 characters (ISO 4217)",
+                "Currency code `{}` must contain exactly 3 ASCII letters (ISO 4217)",
                 price.currency_code
             )));
+        }
+        if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
+            return Err(CommerceError::Validation(
+                "Price channel ID must not be nil".to_owned(),
+            ));
+        }
+        if price.amount < rust_decimal::Decimal::ZERO
+            || price
+                .compare_at_amount
+                .is_some_and(|amount| amount < rust_decimal::Decimal::ZERO)
+        {
+            return Err(CommerceError::Validation(
+                "Variant prices and compare-at amounts cannot be negative".to_owned(),
+            ));
+        }
+        if price
+            .compare_at_amount
+            .is_some_and(|compare_at| compare_at < price.amount)
+        {
+            return Err(CommerceError::Validation(
+                "Compare-at price cannot be lower than the base price".to_owned(),
+            ));
         }
         let channel_slug = normalize_public_channel_slug(price.channel_slug.as_deref());
         let key = (price.channel_id, channel_slug, currency);
@@ -526,7 +548,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
                 .await?;
         }
         debug!(
@@ -1265,6 +1287,12 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!(product_id = %product_id, "Deleting product");
 
+        // Pricing owns variant price rows. Without its transactional port Product cannot
+        // prove that deleting these variants will not leave orphaned authoritative prices.
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -1305,12 +1333,9 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
-        // Pricing is optional in Product-only composition. When attached, cleanup
-        // participates in this transaction; explicit price writes fail closed above.
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, tenant_id, &variant_ids)
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(
@@ -1572,7 +1597,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
                 .await?;
         }
 
@@ -1845,7 +1870,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
+                .replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)
                 .await?;
         }
 
@@ -1887,6 +1912,12 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!("Deleting product variant");
 
+        // Refuse when Pricing cannot participate in the same transaction; otherwise
+        // authoritative price-list/contextual rows could outlive their ProductVariant.
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -1911,12 +1942,9 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
-        // Pricing is optional in Product-only composition. When attached, cleanup
-        // participates in this transaction; explicit price writes fail closed above.
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, tenant_id, &[variant_id])
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
@@ -3257,6 +3285,82 @@ mod tests {
         let err = validate_variant_prices(&prices).unwrap_err();
         assert!(matches!(err, CommerceError::Validation(_)));
     }
+    #[test]
+    fn validate_variant_prices_rejects_nil_channel_identity() {
+        let prices = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: Some(Uuid::nil()),
+            channel_slug: None,
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }];
+        assert!(validate_variant_prices(&prices).is_err());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_compare_at_below_base_amount() {
+        let prices = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1200, 2),
+            compare_at_amount: Some(Decimal::new(1199, 2)),
+        }];
+        assert!(validate_variant_prices(&prices).is_err());
+
+        let equal_compare_at = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1200, 2),
+            compare_at_amount: Some(Decimal::new(1200, 2)),
+        }];
+        assert!(validate_variant_prices(&equal_compare_at).is_ok());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_negative_amounts_before_pricing_io() {
+        for (amount, compare_at_amount) in [
+            (Decimal::new(-1, 0), None),
+            (Decimal::ZERO, Some(Decimal::new(-1, 0))),
+        ] {
+            let prices = vec![PriceInput {
+                currency_code: "USD".to_owned(),
+                channel_id: None,
+                channel_slug: None,
+                amount,
+                compare_at_amount,
+            }];
+            assert!(validate_variant_prices(&prices).is_err());
+        }
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_non_ascii_or_non_alphabetic_currency_codes() {
+        for currency_code in ["1$!", "US1", "UŠD", ""] {
+            let prices = vec![PriceInput {
+                currency_code: currency_code.to_owned(),
+                channel_id: None,
+                channel_slug: None,
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            }];
+            assert!(
+                validate_variant_prices(&prices).is_err(),
+                "currency code {currency_code:?} must be rejected"
+            );
+        }
+
+        let prices = vec![PriceInput {
+            currency_code: " usd ".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }];
+        assert!(validate_variant_prices(&prices).is_ok());
+    }
+
     #[tokio::test]
     async fn sync_variant_auto_titles_seeds_missing_advances_auto_and_preserves_authored() {
         use sea_orm::TransactionTrait;

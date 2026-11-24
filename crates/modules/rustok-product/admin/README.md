@@ -90,12 +90,17 @@ provides `Save only this variant`; ordinary document Save respects the selected 
 acknowledgement updates only its confirmed local snapshot without a whole-editor refetch that
 would overwrite the other block's unsaved fields. Inputs are disabled while either of these commands runs.
 
+The compact `ProductVariantsPanel` row editor also targets the exact selected Variant snapshot.
+Its sparse update omits unchanged Inventory/Pricing state, uses that Variant's own primary currency,
+and preserves its compare-at and secondary-currency prices. Missing SKU/price values stay empty;
+display placeholders are never submitted as business data.
+
 Variant controls are snapshotted before bootstrap/IO. Empty base-price input leaves prices alone,
 not an implicit free USD row; zero and decimal precision remain valid. Invalid local scalars and
 unsupported SKU/barcode clears are refused before sending. Full nullable Variant patches and
 immutable pending-request recovery for existing-row updates remain separate gaps; those
-retained-key helpers are not durable snapshot recovery. Five added Rust tests are unrun without Cargo/rustc. Source
-guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
+retained-key helpers are not durable snapshot recovery. Source regression tests are authored but unrun
+without Cargo/rustc. Source guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
 atomicity is not claimed: Product document/category/EAV/publication remains the atomic Save scope.
 
 

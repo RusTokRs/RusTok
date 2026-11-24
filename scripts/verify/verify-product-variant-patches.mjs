@@ -42,7 +42,7 @@ export function run() {
   require(syncSku.includes('sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)'),
     'owner SKU: pass changed values to Inventory in the Product transaction');
   const rowEditor = section(read(`${owner}admin/src/ui/leptos.rs`), 'fn ProductVariantsPanel(', 'fn ProductMediaPanel(');
-  require(rowEditor.includes('VariantUpdateDraft::from_inline_editor_state('),
+  require(rowEditor.includes('build_variant_row_update_draft('),
     'inline editor: preserve sparse price and inventory intent');
   require(command.includes('if let Patch::Set(slug) = &input.shipping_profile_slug'), 'Shipping lookup must be Set-only');
   for (const field of ['sku', 'barcode', 'shipping_profile_slug', 'weight_unit']) {
@@ -63,7 +63,7 @@ export function run() {
     require(nextDto.includes(`${field}?: string | null;`), `Next ${field}: preserve nullable intent`);
     require(!new RegExp(`\\b${field}\\s*:`).test(nextInput), `Next action ${field}: forward intent without filtering`);
   }
-  for (const file of ['src/catalog_command_port.rs', 'admin/src/ui/product_editor.rs', 'admin/src/ui/leptos.rs']) {
+  for (const file of ['src/catalog_command_port.rs', 'admin/src/ui/product_editor.rs']) {
     const source = read(owner + file);
     require(file.startsWith('admin/') ? source.includes('VariantUpdateDraft') : source.includes('self.update_variant(tenant_id, actor_id, variant_id, input)'), `${file}: retain owner update path`);
   }
