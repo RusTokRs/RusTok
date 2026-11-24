@@ -620,6 +620,7 @@ function reportSaveFailure(adapter, failure, request) {
       // parked conflict instead of trapping the freshly loaded editor read-only.
       clearSaveFailure(adapter.pageId);
       delete adapter.root.dataset.flySaveFailed;
+      clearBrowserProblem(adapter);
       return;
     }
     fencePeerWriteConflict(adapter, {
