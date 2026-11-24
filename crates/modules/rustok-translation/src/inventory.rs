@@ -5,7 +5,7 @@ use rustok_api::{Action, PortContext, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
 use rustok_translation_targets::{
     ListTranslationResourcesRequest, OpaqueCursor, OwnerSlug, ResourceKind,
-    TranslationResourceLifecycle, TranslationResourceSummary, TranslationTargetCapability,
+    TranslationResourceLifecycle, TranslationTargetCapability, TranslationTargetChange,
     TranslationTargetChangesRequest, TranslationTargetRegistry,
 };
 use sea_orm::{
@@ -391,7 +391,7 @@ impl TranslationInventoryService {
             .await?
             .ok_or(TranslationError::CheckpointConflict)?;
 
-        let mut resources = BTreeMap::<(String, String), TranslationResourceSummary>::new();
+        let mut resources = BTreeMap::<(String, String), TranslationTargetChange>::new();
         let mut cursor = None;
         loop {
             let request = ListTranslationResourcesRequest {
@@ -400,8 +400,10 @@ impl TranslationInventoryService {
                 cursor: cursor.clone(),
                 limit: page_size,
             };
-            let page = provider.list_resources(context.clone(), request).await?;
-            if page.resources.len() > usize::from(page_size) {
+            let page = provider
+                .list_inventory_resources(context.clone(), request)
+                .await?;
+            if page.changes.len() > usize::from(page_size) {
                 return Err(TranslationError::FullRescanPageOverflow);
             }
             if page.next_cursor.as_ref().map(OpaqueCursor::as_str)
@@ -410,7 +412,7 @@ impl TranslationInventoryService {
             {
                 return Err(TranslationError::FullRescanCursorDidNotAdvance);
             }
-            for resource in page.resources {
+            for resource in page.changes {
                 if resource.identity.owner_slug != owner_slug
                     || resource.identity.resource_kind != resource_kind
                 {

@@ -9,6 +9,9 @@ machine-translation orchestration.
 ## Responsibilities
 
 - Maintain rebuildable tenant translation inventory and provider checkpoints.
+  Inventory maintenance calls the owner's content-free baseline and journal.
+  Owners such as Taxonomy can require stronger grants for this tenant-wide
+  operation than for editorial discovery.
 - Own a revisioned required-target-locale subset validated through the
   Tenant-owned locale-policy port.
 - Own tenant-scoped, locale-pair glossaries with hierarchical owner/resource/

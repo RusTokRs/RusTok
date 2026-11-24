@@ -8,14 +8,15 @@ use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::idempotency::{self, Admission};
 use rustok_translation_targets::{
-    FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OwnerSlug,
-    ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
-    TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
-    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
-    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
-    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
-    TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
+    FieldKey, ListTranslationResourcesRequest, MAX_TRANSLATION_RESOURCE_PAGE_SIZE, OpaqueCursor,
+    OwnerSlug, ReadTranslationResourceRequest, ResourceId, ResourceKind,
+    TranslationApplicationReceipt, TranslationDataClassification, TranslationFieldDescriptor,
+    TranslationFieldSnapshot, TranslationPatchRequest, TranslationPatchValidation,
+    TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
+    TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
+    TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, decode_application_receipt, field_hash, merged_patch_values,
@@ -189,6 +190,47 @@ impl TaxonomyTranslationTargetProvider {
                     format!("taxonomy translation resource not found: {term_id}"),
                 )
             })
+    }
+
+    async fn term_page(
+        &self,
+        tenant_id: Uuid,
+        after: Option<&OpaqueCursor>,
+        limit: u16,
+        source_locale: Option<&TenantLocale>,
+    ) -> Result<(Vec<TermModel>, Option<OpaqueCursor>), PortError> {
+        let mut query = TermEntity::find()
+            .filter(TermColumn::TenantId.eq(tenant_id))
+            .order_by_asc(TermColumn::Id);
+        if let Some(locale) = source_locale {
+            query = query
+                .inner_join(TranslationEntity)
+                .filter(TranslationColumn::TenantId.eq(tenant_id))
+                .filter(TranslationColumn::Locale.eq(locale.as_str()));
+        }
+        if let Some(after) = after {
+            let id = Uuid::parse_str(after.as_str()).map_err(|_| {
+                PortError::validation(
+                    "taxonomy.translation_cursor_invalid",
+                    "taxonomy translation cursor must be a term UUID",
+                )
+            })?;
+            query = query.filter(TermColumn::Id.gt(id));
+        }
+        let mut terms = query
+            .limit(u64::from(limit) + 1)
+            .all(self.service.database())
+            .await
+            .map_err(taxonomy_database_error_to_port_error)?;
+        let limit = usize::from(limit);
+        let has_more = terms.len() > limit;
+        terms.truncate(limit);
+        let next_cursor = terms
+            .last()
+            .filter(|_| has_more)
+            .map(|term| term_cursor(term.id))
+            .transpose()?;
+        Ok((terms, next_cursor))
     }
 
     fn authorize_term(
@@ -407,37 +449,45 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let after = request
-            .cursor
-            .as_ref()
-            .map(|cursor| {
-                Uuid::parse_str(cursor.as_str()).map_err(|_| {
-                    PortError::validation(
-                        "taxonomy.translation_cursor_invalid",
-                        "taxonomy translation cursor must be a term UUID",
-                    )
-                })
-            })
+        let limit = usize::from(request.limit);
+        let mut authorized_terms = Vec::with_capacity(limit + 1);
+        let mut scan_cursor = request.cursor;
+        loop {
+            let (terms, next_scan_cursor) = self
+                .term_page(
+                    tenant_id,
+                    scan_cursor.as_ref(),
+                    MAX_TRANSLATION_RESOURCE_PAGE_SIZE,
+                    Some(&request.source_locale),
+                )
+                .await?;
+            for term in terms {
+                match self.authorize_term(&context, tenant_id, &term, Action::Read) {
+                    Ok(()) => authorized_terms.push(term),
+                    Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => continue,
+                    Err(error) => return Err(error),
+                }
+                if authorized_terms.len() > limit {
+                    break;
+                }
+            }
+            if authorized_terms.len() > limit || next_scan_cursor.is_none() {
+                break;
+            }
+            scan_cursor = next_scan_cursor;
+        }
+        let has_more = authorized_terms.len() > limit;
+        authorized_terms.truncate(limit);
+        // The UUID in a public cursor must belong to a visible resource.
+        let next_cursor = authorized_terms
+            .last()
+            .filter(|_| has_more)
+            .map(|term| term_cursor(term.id))
             .transpose()?;
-        let mut query = TermEntity::find()
-            .inner_join(TranslationEntity)
-            .filter(TermColumn::TenantId.eq(tenant_id))
-            .filter(TranslationColumn::TenantId.eq(tenant_id))
-            .filter(TranslationColumn::Locale.eq(request.source_locale.as_str()))
-            .order_by_asc(TermColumn::Id);
-        if let Some(after) = after {
-            query = query.filter(TermColumn::Id.gt(after));
-        }
-        let mut terms = query
-            .limit(u64::from(request.limit) + 1)
-            .all(self.service.database())
-            .await
-            .map_err(taxonomy_database_error_to_port_error)?;
-        let has_more = terms.len() > usize::from(request.limit);
-        if has_more {
-            terms.truncate(usize::from(request.limit));
-        }
-        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
+        let term_ids = authorized_terms
+            .iter()
+            .map(|term| term.id)
+            .collect::<Vec<_>>();
         let translations = if term_ids.is_empty() {
             Vec::new()
         } else {
@@ -457,21 +507,11 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 .or_default()
                 .push(translation);
         }
-        let authorized_terms = terms
-            .iter()
-            .filter_map(
-                |term| match self.authorize_term(&context, tenant_id, term, Action::Read) {
-                    Ok(()) => Some(Ok(term)),
-                    Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
-                    Err(error) => Some(Err(error)),
-                },
-            )
-            .collect::<Result<Vec<_>, _>>()?;
         let resources = authorized_terms
             .into_iter()
             .map(|term| {
                 summary_from_models(
-                    term,
+                    &term,
                     translations_by_term
                         .get(&term.id)
                         .map(Vec::as_slice)
@@ -480,21 +520,40 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let next_cursor = has_more
-            .then(|| terms.last())
-            .flatten()
-            .map(|term| {
-                OpaqueCursor::new(term.id.to_string()).map_err(|error| {
-                    PortError::invariant_violation(
-                        "taxonomy.translation_resource_cursor_invalid",
-                        error.to_string(),
-                    )
-                })
-            })
-            .transpose()?;
-
         Ok(TranslationResourcePage {
             resources,
+            next_cursor,
+        })
+    }
+
+    async fn list_inventory_resources(
+        &self,
+        context: PortContext,
+        request: ListTranslationResourcesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        authorize_inventory(&context)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let (terms, next_cursor) = self
+            .term_page(tenant_id, request.cursor.as_ref(), request.limit, None)
+            .await?;
+        let changes = terms
+            .into_iter()
+            .map(|term| {
+                Ok(TranslationTargetChange {
+                    identity: taxonomy_identity(term.id)?,
+                    resource_revision: opaque_positive_revision(
+                        term.revision,
+                        "resource_revision",
+                    )?,
+                    lifecycle: TranslationResourceLifecycle::Active,
+                })
+            })
+            .collect::<Result<Vec<_>, PortError>>()?;
+        Ok(TranslationTargetChangePage {
+            changes,
             next_cursor,
         })
     }
@@ -720,8 +779,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         context: PortContext,
         request: TranslationTargetChangesRequest,
     ) -> Result<TranslationTargetChangePage, PortError> {
-        validate_translation_read_context(&context)?;
-        authorize(&context, Action::Read)?;
+        authorize_inventory(&context)?;
         request
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
@@ -772,6 +830,15 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
     }
 }
 
+fn term_cursor(term_id: Uuid) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(term_id.to_string()).map_err(|error| {
+        PortError::invariant_violation(
+            "taxonomy.translation_resource_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
@@ -787,6 +854,20 @@ fn authorize(context: &PortContext, action: Action) -> Result<(), PortError> {
         return Err(PortError::forbidden(
             "taxonomy.translation_permission_denied",
             format!("taxonomy:{action} permission is required"),
+        ));
+    }
+    Ok(())
+}
+
+fn authorize_inventory(context: &PortContext) -> Result<(), PortError> {
+    validate_translation_read_context(context)?;
+    let security = SecurityContext::try_from_port_context(context)?;
+    if security.get_scope(Resource::Taxonomy, Action::Manage) != PermissionScope::All
+        || security.get_scope(Resource::Translations, Action::Manage) != PermissionScope::All
+    {
+        return Err(PortError::forbidden(
+            "taxonomy.translation_inventory_permission_denied",
+            "tenant inventory maintenance requires taxonomy:manage and translations:manage",
         ));
     }
     Ok(())

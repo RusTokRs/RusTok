@@ -4,12 +4,9 @@
 term identity, localized route copy and scope rules while consumer modules retain their own entity-to-
 taxonomy relations and domain policy.
 
-The current runtime implementation is still Tag-only, but the accepted platform direction now adds a
-first-class Taxonomy-owned `Category` kind with shared hierarchy. The staged migration is documented
-in [`../../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md).
-Historical docs/guards that pin Blog/Forum/Product category hierarchy to consumer modules are
-transitional and must be replaced atomically with the Category implementation; they are not the target
-architecture.
+The runtime implements Tags and Categories. The
+[Category platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+tracks consumer cutovers to Taxonomy-owned hierarchy and localized copy.
 
 ## Purpose
 
@@ -119,3 +116,15 @@ The `taxonomy/term` target takes the Category hierarchy lock followed by
 the term row lock before checking translation revisions. It uses the same
 route history rules as regular Category editing. Applying an approved slug
 change keeps the previous localized URL as an alias.
+
+## Translation inventory maintenance
+
+The change journal and content-free inventory baseline cover all Taxonomy
+terms within the tenant, including terms whose localized copy belongs to a
+consumer module. Both require effective `taxonomy:manage` and
+`translations:manage` authority. The journal retains deletion evidence after
+the term is gone. The baseline includes active terms in every locale so a
+rebuild for one locale pair preserves other terms.
+
+Discovery, exact reads, progress and patch operations enforce the registered
+module owner's authorization. Discovery cursors refer to visible terms.

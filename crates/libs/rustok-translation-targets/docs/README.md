@@ -55,6 +55,13 @@ count exceeds its denominator. Fallback values and storage-only `und` values
 never increment exact coverage. Because cursors are opaque, consumers may test
 equality but must not invent a numeric cursor distance.
 
+The inventory checkpoint is shared by the tenant and provider. When owner
+policy filters discovery by actor or scope, the owner must implement
+`list_inventory_resources` with the same complete tenant scope and
+maintenance authorization as `read_changes`. The baseline returns only
+identities, revisions and lifecycle states. Editorial discovery and exact
+reads keep their own authorization.
+
 The executable reference provider in
 `tests/reference_provider_conformance.rs` demonstrates the minimum owner
 behavior without becoming a production fallback. It proves exact-locale

@@ -146,6 +146,204 @@ fn read_context(tenant_id: Uuid) -> PortContext {
     .with_deadline(Duration::from_secs(5))
 }
 
+#[tokio::test]
+async fn inventory_requires_maintenance_grants_and_preserves_owner_scope_and_tombstones() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let txn = database.begin().await.unwrap();
+    let mut ids = Vec::new();
+    for (tenant, name) in [
+        (tenant_id, "Blog Tag"),
+        (tenant_id, "Deleted Tag"),
+        (other_tenant_id, "Another Tenant"),
+    ] {
+        ids.push(
+            service
+                .create_module_term_in_tx(
+                    &txn,
+                    tenant,
+                    TaxonomyTermKind::Tag,
+                    "blog",
+                    ModuleTermCreateInput {
+                        locale: "de".into(),
+                        name: name.into(),
+                        slug: None,
+                        canonical_key: None,
+                    },
+                )
+                .await
+                .unwrap(),
+        );
+    }
+    crate::delete_module_term_in_tx(
+        &txn,
+        tenant_id,
+        ids[1],
+        &admin(),
+        TaxonomyTermKind::Tag,
+        "blog",
+    )
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+
+    let provider = TaxonomyTranslationTargetProvider::new(service);
+    let changes_request = TranslationTargetChangesRequest {
+        after: None,
+        limit: 10,
+    };
+    let baseline_request = ListTranslationResourcesRequest {
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("de").unwrap(),
+        cursor: None,
+        limit: 10,
+    };
+    let admin = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(Uuid::new_v4().to_string()),
+        "en",
+        "taxonomy-inventory",
+    )
+    .with_role("admin")
+    .with_deadline(Duration::from_secs(5));
+    for insufficient in [
+        admin
+            .clone()
+            .with_claim("taxonomy:read")
+            .with_claim("translations:manage"),
+        admin
+            .clone()
+            .with_claim("taxonomy:manage")
+            .with_claim("translations:update"),
+    ] {
+        let error = provider
+            .read_changes(insufficient.clone(), changes_request.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        let error = provider
+            .list_inventory_resources(insufficient, baseline_request.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+    }
+
+    let maintainer = admin
+        .with_claim("taxonomy:manage")
+        .with_claim("translations:manage");
+    let changes = provider
+        .read_changes(maintainer.clone(), changes_request)
+        .await
+        .unwrap();
+    assert_eq!(changes.changes.len(), 3);
+    let deleted = changes
+        .changes
+        .iter()
+        .find(|change| {
+            change.lifecycle == rustok_translation_targets::TranslationResourceLifecycle::Deleted
+        })
+        .unwrap();
+    assert_eq!(deleted.identity.resource_id.as_str(), ids[1].to_string());
+    let baseline = provider
+        .list_inventory_resources(maintainer.clone(), baseline_request.clone())
+        .await
+        .unwrap();
+    assert_eq!(baseline.changes.len(), 1);
+    assert_eq!(
+        baseline.changes[0].identity.resource_id.as_str(),
+        ids[0].to_string()
+    );
+    let discovery = provider
+        .list_resources(
+            maintainer,
+            ListTranslationResourcesRequest {
+                source_locale: baseline_request.target_locale,
+                target_locale: baseline_request.source_locale,
+                ..baseline_request
+            },
+        )
+        .await
+        .unwrap();
+    assert!(discovery.resources.is_empty());
+}
+
+#[tokio::test]
+async fn resource_pagination_does_not_expose_a_hidden_term_in_the_cursor() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let txn = database.begin().await.unwrap();
+    let ids = [Uuid::from_u128(1), Uuid::from_u128(2), Uuid::from_u128(3)];
+    for (id, scope, name) in [
+        (ids[0], "forum", "Hidden"),
+        (ids[1], "blog", "Visible"),
+        (ids[2], "blog", "More"),
+    ] {
+        crate::sync_module_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            crate::SyncModuleCategoryInput {
+                category_id: id,
+                module_scope: scope.into(),
+                canonical_key: name.into(),
+                locale: "en".into(),
+                name: name.into(),
+                slug: name.into(),
+                description: None,
+                parent_id: None,
+                position: 0,
+                aliases: Vec::new(),
+                icon_key: None,
+                color: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+    let mut owners = TaxonomyModuleTermTranslationOwnerRegistry::default();
+    owners
+        .register(TestModuleTranslationOwner {
+            authorize_calls: Arc::new(AtomicUsize::new(0)),
+            apply_calls: Arc::new(AtomicUsize::new(0)),
+        })
+        .unwrap();
+    let provider = TaxonomyTranslationTargetProvider::with_owner_registry(service, owners);
+    let request = ListTranslationResourcesRequest {
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("de").unwrap(),
+        cursor: None,
+        limit: 1,
+    };
+    let first_page = provider
+        .list_resources(read_context(tenant_id), request.clone())
+        .await
+        .unwrap();
+    assert_eq!(first_page.resources.len(), 1);
+    let cursor = first_page.next_cursor.unwrap();
+    assert_eq!(cursor.as_str(), ids[1].to_string());
+    assert_eq!(
+        first_page.resources[0].identity.resource_id.as_str(),
+        cursor.as_str()
+    );
+    let second_page = provider
+        .list_resources(
+            read_context(tenant_id),
+            ListTranslationResourcesRequest {
+                cursor: Some(cursor),
+                ..request
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_page.resources.len(), 1);
+    assert_eq!(
+        second_page.resources[0].identity.resource_id.as_str(),
+        ids[2].to_string()
+    );
+    assert!(second_page.next_cursor.is_none());
+}
+
 fn field_patch(
     snapshot: &rustok_translation_targets::TranslationResourceSnapshot,
     key: &str,

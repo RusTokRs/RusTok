@@ -69,7 +69,10 @@ This is the active cross-cutting implementation plan. As of 2026-09-13:
   bounded requests, batches existing-row lookup, and has integration evidence
   for tenant isolation, cursor replay, invalid bounds, and provider outage
   without partial persistence. Bounded full-rescan drains the owner cursor and
-  replaces provider inventory only under an unchanged checkpoint. File-backed
+  replaces provider inventory from an owner baseline under an unchanged
+  checkpoint. Taxonomy uses the same tenant-wide authorization for its
+  content-free baseline and journal, including module terms and deletion
+  evidence. File-backed
   Translation-side evidence verifies independent database pools converge on
   one checkpoint advance plus one typed conflict, and separate processes
   recover from provider outage through cursor sync and atomic full-rescan.

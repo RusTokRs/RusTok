@@ -661,6 +661,28 @@ flowchart TD
 
 ---
 
+### Shared checkpoint scope (`P-SHARED-CHECKPOINT-SCOPE`)
+
+**Category** — State transition integrity and authorization.
+
+**Failure mode** — Taxonomy's editorial discovery omits module terms the actor
+cannot read. Rebuilding the tenant's shared Translation inventory from that
+view discards other modules' records. Filtering the same journal by actor can
+also advance the shared checkpoint past unreadable changes.
+
+**Owner contract** — Authorize the whole metadata projection at its owner.
+Both the baseline and the journal must cover the same tenant and resource
+scope. Check editorial permissions separately when serving localized content.
+The inventory baseline stores only identity, revision and lifecycle.
+
+```rust
+// TranslationInventoryService rebuilds from the provider's maintenance view.
+let page = provider.list_inventory_resources(context, request).await?;
+```
+
+Find owner discovery filters and their maintenance entry points with
+`rg -n 'async fn (list_inventory_resources|read_changes)|authorize_term' crates/modules`.
+
 ### Pattern 5: Bounded Identifier Entropy (`P-ID-ENTROPY`)
 * **Category:** Calculation & Algorithmic Correctness
 * **Problem:** The probability of at least one collision among 10 million identifiers in one uniqueness namespace is about 16.3% at 48 bits and 0.000271% at 64 bits, assuming independent, uniform draws. Twelve hex characters encode at most 48 bits. A 12-character prefix of the simple form of UUIDv7 is its timestamp, as defined by [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7), so the uniform-random assumption does not apply.
