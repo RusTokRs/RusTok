@@ -325,7 +325,89 @@ pub fn FlyThemeTokenEditor(
     }
 }
 
-/// Canvas preview container rendering SSR-generated markup and stylesheet.
+/// Sandboxed `srcdoc` canvas with a source-, origin- and sequence-checked message subscription.
+ ///
+ /// The host owns the document renderer and interprets the raw JSON messages. The iframe
+ /// subscription is recreated after every load so a new document's sequence can start at one.
+ #[component]
+ pub fn FlyCanvasIframe(
+     id: String,
+     instance_id: String,
+     srcdoc: String,
+     expected_origin: String,
+     on_message: EventHandler<String>,
+     on_error: Option<EventHandler<String>>,
+     title: Option<String>,
+     width: Option<u32>,
+     height: Option<u32>,
+     class: Option<String>,
+ ) -> Element {
+     #[cfg(all(target_arch = "wasm32", feature = "web"))]
+     let mut subscription = use_signal(|| None::<fly_web::IframeJsonSubscription>);
+
+     let iframe_id = id.clone();
+     let expected_instance = instance_id.clone();
+     let expected_origin_for_load = expected_origin.clone();
+     let onload = {
+         #[cfg(all(target_arch = "wasm32", feature = "web"))]
+         {
+             move |_| {
+                 subscription.set(None);
+                 let instance = expected_instance.clone();
+                 let message_handler = on_message;
+                 let error_handler = on_error;
+                 match fly_web::IframeJsonSubscription::subscribe_by_element_id(
+                     iframe_id.clone(),
+                     expected_origin_for_load.clone(),
+                     move |payload, last_sequence| {
+                         let envelope = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+                         if envelope.get("protocol")?.as_str()? != fly_web::FLY_IFRAME_PROTOCOL
+                             || envelope.get("instance_id")?.as_str()? != instance
+                         {
+                             return None;
+                         }
+                         let sequence = envelope.get("sequence")?.as_u64()?;
+                         if last_sequence.is_some_and(|last| sequence <= last) {
+                             return None;
+                         }
+                         Some((sequence, payload.to_string()))
+                     },
+                     move |payload| message_handler.call(payload),
+                 ) {
+                     Ok(next) => subscription.set(Some(next)),
+                     Err(error) => {
+                         if let Some(handler) = error_handler {
+                             handler.call(error.to_string());
+                         }
+                     }
+                 }
+             }
+         }
+         #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
+         {
+             move |_| {}
+         }
+     };
+     let title = title.unwrap_or_else(|| "Fly editor canvas".to_string());
+     let width = width.unwrap_or(1280);
+     let height = height.unwrap_or(800);
+     let class = class.unwrap_or_else(|| "block border-0 bg-white".to_string());
+
+     rsx! {
+         iframe {
+             id: "{id}",
+             title: "{title}",
+             sandbox: "allow-scripts",
+             srcdoc: "{srcdoc}",
+             width: "{width}",
+             height: "{height}",
+             class: "{class}",
+             onload: onload,
+         }
+     }
+ }
+
+ /// Canvas preview container rendering SSR-generated markup and stylesheet.
 ///
 /// The stylesheet is an inline `style` element, so a host that serves the editor under a nonce
 /// policy drops it unless the element carries the nonce: the canvas then renders unstyled while
@@ -393,6 +475,9 @@ pub fn FlyEditorWorkspace(
     host_can_redo: Option<bool>,
     /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
     csp_nonce: Option<String>,
+    /// Optional host-owned isolated canvas. When absent, the inline preview is rendered.
+    #[props(default)]
+    canvas: Option<Element>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
@@ -686,10 +771,14 @@ pub fn FlyEditorWorkspace(
                     },
                     messages: Some(messages),
                 }
-                FlyCanvasPreview {
-                    rendered,
-                    preview_failed_label: Some(preview_failed_label),
-                    csp_nonce: workspace_csp_nonce.clone(),
+                if let Some(canvas) = canvas {
+                    {canvas}
+                } else {
+                    FlyCanvasPreview {
+                        rendered,
+                        preview_failed_label: Some(preview_failed_label),
+                        csp_nonce: workspace_csp_nonce.clone(),
+                    }
                 }
             }
             span { hidden: true, "data-fly-components": "{current_document.project.pages.len()}" }

@@ -19,16 +19,14 @@ that element unless it carries the request nonce, and the canvas renders unstyle
 
 ## Known Limitations / Pending Implementation
 
-`FlyEditorWorkspace` is a working editor surface (palette/layers/preview/history), but there
-is still no iframe orchestration, overlays, pointer capture, resize handles, or drop handling
-(the palette can begin a drag in intent mode; nothing in this crate resolves the drop);
-those layer on top via `fly-web`. The shell components render an accessible `<section>`
-wrapper and the host supplies the children. Dioxus-specific event hooks and
-coordinate translation helpers are **not** implemented — `key_stroke_from_event`-style conversions
-and pointer sessions live in `fly-web` behind `feature = "wasm-client"` and are consumed by the
-host directly. Dioxus `web`/`desktop` renderers remain opt-in features. The Page Builder admin
-Dioxus host consumes this workspace in its optional adapter mode, but full
-iframe/pointer/drop/resize parity is not yet implemented.
+`FlyEditorWorkspace` is a working editor surface (palette/layers/preview/history) and accepts
+a host-owned canvas slot. `FlyCanvasIframe` provides the Dioxus iframe lifecycle: sandboxed
+`srcdoc`, exact source-window and origin checks, protocol/instance/sequence validation, and
+subscription replacement after reload. The host still owns message interpretation, geometry,
+drop policy and persistence. Dioxus-specific pointer/resize gestures and the Page Builder
+iframe/drop/resize wiring are separate integration work; they must use `fly-web` geometry and
+`fly-ui` commands rather than duplicating editor policy. Dioxus `web`/`desktop` renderers
+remain opt-in features.
 
 ## Architecture
 
