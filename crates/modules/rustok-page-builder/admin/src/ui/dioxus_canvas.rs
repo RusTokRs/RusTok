@@ -753,7 +753,7 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::DropRequested { position } => {
             pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
-            if geometry_limit.read().is_some() {
+            if !*ready.read() || geometry.read().is_empty() || geometry_limit.read().is_some() {
                 if session_has_active_drag(session) {
                     on_ui_intent.call(UiIntent::CancelDrag);
                 }
