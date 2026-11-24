@@ -105,7 +105,10 @@ function getPeerWriteSenderId(root) {
       : `fly-root-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
     root.dataset.flyPeerWriteScopeId = scopeId;
   }
-  const senderId = `${documentId}:${scopeId}`;
+  // Rust Leptos/Dioxus channel owners share this document-scoped ID through
+  // globalThis.__flyPeerWriteDocumentId. Per-root IDs would make our own writes
+  // look like sibling-tab writes to another adapter in this same document.
+  const senderId = documentId;
   root.dataset.flyPeerWriteSenderId = senderId;
   return senderId;
 }
