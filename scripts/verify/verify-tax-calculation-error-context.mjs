@@ -67,11 +67,13 @@ const ownerMapper = between(
   'tax owner mapper',
 );
 
+requireText(
+  source,
+  'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};',
+  'typed port imports',
+);
+
 for (const [value, label] of [
-  [
-    'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};',
-    'typed port imports',
-  ],
   ['let owner_operation = "calculate_tax";', 'owner operation'],
   [
     'require_tax_calculation_policy(&context, owner_operation)?;',

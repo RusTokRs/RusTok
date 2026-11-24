@@ -48,6 +48,13 @@ impl TaxProvider for RegionTaxProvider {
                 ));
             }
         }
+        for amount in &input.taxable_amounts {
+            if amount.amount < Decimal::ZERO {
+                return Err(TaxError::Validation(
+                    "taxable amount must be zero or greater".to_string(),
+                ));
+            }
+        }
 
         let resolved_policy = resolve_effective_policy(&input.policy)?;
         if input.customer_tax_exempt {
