@@ -7,7 +7,7 @@ use fly::{
     DesignToken, EditorCommand, FlyEditor, PageSelection, ProjectDocument, RegistrySet,
     RenderPolicy, ThemeCommand, render_page, validate_token_name, validate_token_value,
 };
-use fly_browser::BrowserIntentEnvelope;
+use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorMessages, PaletteBlockAccess,
     PaletteBlockItem, ThemeTokenItem, editor_layer_items_for_page, palette_block_items_with_access,
@@ -163,6 +163,7 @@ pub fn FlyLayerTree(
     selected: Option<String>,
     on_select: EventHandler<String>,
     messages: Option<EditorMessages>,
+    #[props(default)]
     on_begin_move: Option<EventHandler<String>>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
