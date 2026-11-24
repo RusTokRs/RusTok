@@ -625,6 +625,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         && props.facade.is_some()
         && !peer_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
+        && current.controller.ui().state.dirty.save_started_request_id.is_none()
         && !current.controller.ui().state.dirty.save_conflict
         && !current.controller.ui().state.has_blocking_diagnostics();
     drop(current);
