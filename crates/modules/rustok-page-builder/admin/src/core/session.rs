@@ -382,6 +382,37 @@ impl EditorSessionState {
         }
     }
 
+    /// A server revision conflict retires only the matching attempt and fences edits until
+    /// the host reloads the newer persisted document.
+    pub fn handle_publish_conflict_for_attempt(
+        &mut self,
+        attempt: &SaveAttempt,
+        message: impl Into<String>,
+    ) -> bool {
+        let expected = self.controller.revision_id().to_string();
+        match self.controller.mark_save_conflict_for_attempt(
+            attempt,
+            expected,
+            "newer server revision".to_string(),
+        ) {
+            Ok(true) => {
+                if let Err(error) = self
+                    .controller
+                    .dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
+                {
+                    tracing::warn!(?error, "Failed to fence after Page Builder revision conflict");
+                }
+                self.fail(message);
+                true
+            }
+            Ok(false) => false,
+            Err(error) => {
+                tracing::warn!(?error, "Failed to mark Page Builder revision conflict");
+                false
+            }
+        }
+    }
+
     pub fn dispatch_intent(&mut self, intent: UiIntent) -> Result<Vec<AdminCanvasEffect>, String> {
         if matches!(
             &intent,
