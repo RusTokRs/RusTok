@@ -27,7 +27,12 @@ import { productNavItems } from './nav';
 import { parsePriceAmount } from './money';
 import type { CreateVariantInput } from './api/products';
 export { initialVariantInput } from './variant-draft';
-export { isVariantCreateInput } from './variant-create';
+export {
+  isVariantCreateInput,
+  isVariantId,
+  isVariantUpdateInput,
+  isVariantLifecycleRefusalCode
+} from './variant-create';
 
 registerAdminModule({
   id: 'product',
@@ -53,12 +58,17 @@ export { BrandCreateDialog } from './components/brands/brand-create-dialog';
 export * from './api/attributes';
 export * from './api/attribute-lifecycle';
 export * from './attribute-lifecycle';
-export { ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY } from './write-journal';
+export {
+  ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY,
+  PRODUCT_VARIANT_INTENT_QUERY_KEY
+} from './write-journal';
 export * from './api/products';
 export * from './api/write-outcome';
 export type {
   ProductAxesWriteRequest,
   ProductVariantCreateRequest,
+  ProductVariantUpdateRequest,
+  ProductVariantDeleteRequest,
   ProductSavePayload,
   ProductWriteOutcome,
   ProductWriteAcknowledgement,

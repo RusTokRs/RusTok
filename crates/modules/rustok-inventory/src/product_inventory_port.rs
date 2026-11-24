@@ -184,6 +184,21 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
         .map_err(map_quantity_write_error)
     }
 
+    async fn sync_variant_sku_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        sku: Option<String>,
+    ) -> Result<(), CommerceError> {
+        BootstrapService::sync_variant_sku_in_tx(
+            txn, tenant_id, actor_id, variant_id, sku,
+        )
+        .await
+        .map_err(map_quantity_write_error)
+    }
+
     async fn delete_records_for_variants_in_tx(
         &self,
         txn: &DatabaseTransaction,

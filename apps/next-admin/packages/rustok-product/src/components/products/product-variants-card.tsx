@@ -22,7 +22,10 @@ import {
   savedCombinationAxes,
   retainedCombinationLabels
 } from '../../combinations';
-import { validateAxisValues } from '../../variant-draft';
+import {
+  buildVariantUpdatePatch,
+  validateAxisValues
+} from '../../variant-draft';
 import type { VariantAxisConfig, VariantAxisValueInput } from '../../api/types';
 import { parsePriceAmount, salePercent, discountedPrice } from '../../money';
 import {
@@ -241,32 +244,67 @@ export function ProductVariantsCard({
     setFormPrices((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSaveDialog = async () => {
+  const handleQuickInventoryUpdate = async (
+    variantId: string,
+    inventoryQuantity: number
+  ) => {
+    if (disabled || isBusy || !onUpdateVariant) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      await onUpdateVariant(variantId, { inventoryQuantity });
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Failed to update stock.'
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDeleteVariant = async (variantId: string) => {
+    if (disabled || isBusy || !onDeleteVariant) return;
+    if (
+      !window.confirm(
+        'Delete this variant? Its inventory and base-price records will also be removed.'
+      )
+    )
+      return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      await onDeleteVariant(variantId);
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Failed to delete variant.'
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSaveDialog = async () =>
     if (disabled || isBusy) return;
-    // Bind the intended operation before validating or closing. A disappearing updater
-    // must never turn an edit into a create (or a missing writer into fake success).
-    const saveVariant = editingVariant
-      ? onUpdateVariant &&
-        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
-          onUpdateVariant(editingVariant.id, fields))
-      : onAddVariant &&
-        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
-          onAddVariant({ ...fields, axisValues: formAxisValues }));
-    if (!saveVariant) {
+    if (editingVariant ? !onUpdateVariant : !onAddVariant) {
       setError(combinationsCopy('writeUnavailable'));
       return;
     }
+
     const qty = Number(formStock);
+    const inventoryQuantityChanged =
+      !editingVariant || qty !== editingVariant.inventoryQuantity;
     if (
-      !/^\d+$/.test(formStock) ||
-      !Number.isInteger(qty) ||
-      qty > MAX_INVENTORY_QUANTITY
+      inventoryQuantityChanged &&
+      (!/^\d+$/.test(formStock) ||
+        !Number.isInteger(qty) ||
+        qty > MAX_INVENTORY_QUANTITY)
     ) {
       setError('Inventory must be a non-negative 32-bit integer.');
       return;
     }
 
-    let mappedPrices: ProductVariantPrice[];
+    let mappedPrices: ProductVariantPrice[] = [];
+    let updatePatch: UpdateVariantInput | null = null;
     try {
       // Scalar/price editing does not submit assignments. A stale dialog tuple
       // after an axis refresh must not block that unrelated edit.
@@ -278,14 +316,33 @@ export function ProductVariantsCard({
           })),
           formAxisValues
         );
+        mappedPrices = formPrices.map((price) => ({
+          currencyCode: price.currencyCode,
+          amount: parsePriceAmount(price.amount),
+          compareAtAmount: price.compareAtAmount.trim()
+            ? parsePriceAmount(price.compareAtAmount)
+            : null
+        }));
+      } else {
+        // Compare raw form values first. Parse only a changed price set so a
+        // SKU-only edit cannot accidentally replay or normalize stale prices.
+        updatePatch = buildVariantUpdatePatch(editingVariant, {
+          sku: formSku,
+          barcode: formBarcode,
+          inventoryQuantity: qty,
+          inventoryPolicy: formPolicy,
+          prices: formPrices
+        });
+        if (updatePatch.prices) {
+          updatePatch.prices = updatePatch.prices.map((price) => ({
+            ...price,
+            amount: parsePriceAmount(price.amount),
+            compareAtAmount: price.compareAtAmount?.trim()
+              ? parsePriceAmount(price.compareAtAmount)
+              : null
+          }));
+        }
       }
-      mappedPrices = formPrices.map((price) => ({
-        currencyCode: price.currencyCode,
-        amount: parsePriceAmount(price.amount),
-        compareAtAmount: price.compareAtAmount.trim()
-          ? parsePriceAmount(price.compareAtAmount)
-          : null
-      }));
       setError(null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Invalid price.');
@@ -294,16 +351,24 @@ export function ProductVariantsCard({
 
     setIsBusy(true);
     try {
-      await saveVariant({
-        sku: (editingVariant ? formSku.trim() : formSku) || null,
-        barcode: (editingVariant ? formBarcode.trim() : formBarcode) || null,
-        inventoryQuantity: qty,
-        inventoryPolicy: formPolicy,
-        prices: mappedPrices,
-        ...(!editingVariant
-          ? { shippingProfileSlug: formShippingProfile || null }
-          : {})
-      });
+      if (editingVariant) {
+        const patch = updatePatch ?? {};
+        if (Object.keys(patch).length === 0) {
+          setDialogOpen(false);
+          return;
+        }
+        await onUpdateVariant!(editingVariant.id, patch);
+      } else {
+        await onAddVariant!({
+          sku: formSku || null,
+          barcode: formBarcode || null,
+          inventoryQuantity: qty,
+          inventoryPolicy: formPolicy,
+          prices: mappedPrices,
+          shippingProfileSlug: formShippingProfile || null,
+          axisValues: formAxisValues
+        });
+      }
       setDialogOpen(false);
     } catch (failure) {
       setError(
@@ -351,6 +416,11 @@ export function ProductVariantsCard({
         </div>
       </CardHeader>
       <CardContent className='pt-4'>
+        {error && !dialogOpen ? (
+          <p role='alert' className='text-destructive mb-3 text-sm'>
+            {error}
+          </p>
+        ) : null}
         {variants.length === 0 ? (
           <div className='text-muted-foreground bg-muted/20 rounded-xl py-8 text-center text-xs italic'>
             No variants for this product yet. Click "Add Variant".
@@ -484,14 +554,12 @@ export function ProductVariantsCard({
                               <button
                                 type='button'
                                 onClick={() =>
-                                  onUpdateVariant(v.id, {
-                                    inventoryQuantity: Math.max(
-                                      0,
-                                      v.inventoryQuantity - 1
-                                    )
-                                  })
+                                  void handleQuickInventoryUpdate(
+                                    v.id,
+                                    Math.max(0, v.inventoryQuantity - 1)
+                                  )
                                 }
-                                disabled={disabled || v.inventoryQuantity <= 0}
+                                disabled={disabled || isBusy || v.inventoryQuantity <= 0}
                                 className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
                                 title='Decrease stock by 1'
                               >
@@ -500,11 +568,12 @@ export function ProductVariantsCard({
                               <button
                                 type='button'
                                 onClick={() =>
-                                  onUpdateVariant(v.id, {
-                                    inventoryQuantity: v.inventoryQuantity + 1
-                                  })
+                                  void handleQuickInventoryUpdate(
+                                    v.id,
+                                    v.inventoryQuantity + 1
+                                  )
                                 }
-                                disabled={disabled || v.inventoryQuantity >= MAX_INVENTORY_QUANTITY}
+                                disabled={disabled || isBusy || v.inventoryQuantity >= MAX_INVENTORY_QUANTITY}
                                 className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
                                 title='Increase stock by 1'
                               >
@@ -530,7 +599,7 @@ export function ProductVariantsCard({
                               size='icon'
                               onClick={() => openEditDialog(v)}
                               className='text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg'
-                              disabled={disabled}
+                              disabled={disabled || isBusy}
                               title='Edit variant and prices'
                             >
                               <Edit2 className='h-3.5 w-3.5' />
@@ -541,9 +610,9 @@ export function ProductVariantsCard({
                               type='button'
                               variant='ghost'
                               size='icon'
-                              onClick={() => onDeleteVariant(v.id)}
+                              onClick={() => void handleDeleteVariant(v.id)}
                               className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
-                              disabled={disabled}
+                              disabled={disabled || isBusy}
                               title='Delete variant'
                             >
                               <Trash2 className='h-3.5 w-3.5' />

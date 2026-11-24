@@ -3,7 +3,11 @@
  * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
  * See the LICENSE file in the project root for full license terms.
  */
-import { isVariantCreateRefusalCode, isVariantId } from './variant-create.ts';
+import {
+  isVariantCreateRefusalCode,
+  isVariantId,
+  isVariantLifecycleRefusalCode
+} from './variant-create.ts';
 import { isAxesDurableRefusalCode } from './axis-reconfiguration.ts';
 import {
   isAttributeDefinitionResult,
@@ -18,6 +22,7 @@ import type {
   ProductAttributeValuePatch,
   ProductTranslation
 } from './api/types';
+import type { UpdateVariantInput } from './api/products';
 
 export type ProductWriteScope = { tenantId: string; actorId: string };
 
@@ -76,6 +81,21 @@ export type ProductVariantCreateRequest = {
   input: import('./api/types').CreateVariantInput;
 };
 
+export type ProductVariantUpdateRequest = {
+  /** Owning Product ID; the journal is scoped to this resource. */
+  id: string;
+  variantId: string;
+  scope: ProductWriteScope;
+  input: UpdateVariantInput;
+};
+
+export type ProductVariantDeleteRequest = {
+  /** Owning Product ID; the journal is scoped to this resource. */
+  id: string;
+  variantId: string;
+  scope: ProductWriteScope;
+};
+
 export type ProductWriteRequests = {
   definition: AttributeDefinitionWriteRequest;
   variant: ProductVariantCreateRequest;
@@ -88,6 +108,8 @@ export type ProductWriteRequests = {
     scope: ProductWriteScope;
   };
   delete: { id: string; scope: ProductWriteScope };
+  variant_update: ProductVariantUpdateRequest;
+  variant_delete: ProductVariantDeleteRequest;
 };
 type Operation = keyof ProductWriteRequests;
 import type {
@@ -219,6 +241,14 @@ export class ProductWriteAttempt {
         return handlers.delete
           ? this.execute('delete', attempt.request, handlers.delete)
           : null;
+      case 'variant_update':
+        return handlers.variant_update
+          ? this.execute('variant_update', attempt.request, handlers.variant_update)
+          : null;
+      case 'variant_delete':
+        return handlers.variant_delete
+          ? this.execute('variant_delete', attempt.request, handlers.variant_delete)
+          : null;
     }
   }
 
@@ -294,7 +324,9 @@ export class ProductWriteAttempt {
             (operation === 'delete' ||
             operation === 'axes' ||
             operation === 'variant' ||
-            operation === 'definition'
+            operation === 'definition' ||
+            operation === 'variant_update' ||
+            operation === 'variant_delete'
               ? value.revision !== null
               : !Number.isInteger(value.revision) ||
                 value.revision === null ||
@@ -311,6 +343,8 @@ export class ProductWriteAttempt {
           (operation === 'axes' && !isAxesDurableRefusalCode(outcome.code)) ||
           (operation === 'variant' &&
             !isVariantCreateRefusalCode(outcome.code)) ||
+          ((operation === 'variant_update' || operation === 'variant_delete') &&
+            !isVariantLifecycleRefusalCode(outcome.code)) ||
           (operation !== 'definition' && outcome.definition !== undefined) ||
           (operation === 'definition' &&
             (!isAttributeDefinitionRefusalCode(outcome.code) ||

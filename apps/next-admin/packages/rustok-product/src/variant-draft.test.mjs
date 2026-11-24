@@ -13,7 +13,8 @@ const {
   normalizeInitialCatalog,
   suggestedInitialAxes,
   emptyInitialVariant,
-  initialVariantInput
+  initialVariantInput,
+  buildVariantUpdatePatch
 } = variantDraftCore;
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const attribute = (id, patch = {}) => ({
@@ -377,4 +378,108 @@ test('a picked full tuple can be appended when the unfiltered Cartesian space ex
   assert.deepEqual(clone(rows[0].axisValues), chosen);
   assert.equal(initialVariantInput(rows[0]).prices.length, 0);
   assert.equal(configured[0].allowedOptionIds.length, 256);
+});
+
+
+test('variant edits emit only explicitly changed fields, not stale Inventory or Pricing snapshots', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+  };
+  const unchangedPrices = [
+    { currencyCode: 'USD', amount: '12.50', compareAtAmount: null }
+  ];
+  assert.deepEqual(
+    clone(
+      buildVariantUpdatePatch(current, {
+        sku: 'SKU-2',
+        barcode: 'BAR-1',
+        inventoryQuantity: 8,
+        inventoryPolicy: 'deny',
+        prices: unchangedPrices
+      })
+    ),
+    { sku: 'SKU-2' }
+  );
+});
+
+test('unchanged variant forms produce no write and preserve owner snapshots', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+  };
+  assert.deepEqual(
+    clone(
+      buildVariantUpdatePatch(current, {
+        sku: 'SKU-1',
+        barcode: 'BAR-1',
+        inventoryQuantity: 8,
+        inventoryPolicy: 'deny',
+        prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+      })
+    ),
+    {}
+  );
+});
+
+test('explicit price clearing remains an empty replacement and quantity is patched independently', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+  };
+  assert.deepEqual(
+    clone(
+      buildVariantUpdatePatch(current, {
+        sku: 'SKU-1',
+        barcode: 'BAR-1',
+        inventoryQuantity: 9,
+        inventoryPolicy: 'deny',
+        prices: []
+      })
+    ),
+    { inventoryQuantity: 9, prices: [] }
+  );
+});
+
+
+test('changing one currency price preserves every other currency in the replacement set', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [
+      { currencyCode: 'USD', amount: '12.50', compareAtAmount: null },
+      { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+    ]
+  };
+  assert.deepEqual(
+    clone(
+      buildVariantUpdatePatch(current, {
+        sku: 'SKU-1',
+        barcode: 'BAR-1',
+        inventoryQuantity: 8,
+        inventoryPolicy: 'deny',
+        prices: [
+          { currencyCode: 'USD', amount: '13.00', compareAtAmount: null },
+          { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+        ]
+      })
+    ),
+    {
+      prices: [
+        { currencyCode: 'USD', amount: '13.00', compareAtAmount: null },
+        { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
+      ]
+    }
+  );
 });

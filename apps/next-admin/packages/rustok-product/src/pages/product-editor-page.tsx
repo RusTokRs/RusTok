@@ -15,14 +15,18 @@ import * as React from 'react';
 import { useTranslations } from '@rustok/next-fluent/client';
 import {
   ProductWriteAttempt,
+  UNKNOWN_PRODUCT_WRITE,
   type ProductAxesWriteRequest,
   type ProductVariantCreateRequest,
+  type ProductVariantUpdateRequest,
+  type ProductVariantDeleteRequest,
   type ProductSavePayload,
   type ProductWriteOutcome,
   type ProductWriteScope
 } from '../write-attempt';
 import {
   browserProductWriteJournal,
+  browserProductVariantWriteJournal,
   PRODUCT_RECOVERY_UNAVAILABLE,
   type ProductJournalRecord,
   type ProductWriteOperation
@@ -85,6 +89,8 @@ export interface ProductEditorPageProps {
   writeScope: ProductWriteScope;
   resourceId: string;
   recoveryOnly?: boolean;
+  /** The Product is gone; only a separately journaled variant attempt can be recovered. */
+  variantRecoveryOnly?: boolean;
   initialProduct?: ProductDetail | null;
   categories: CatalogCategorySummary[];
   /** Brand directory for the brand picker; resolved by id against product brands. */
@@ -113,8 +119,14 @@ export interface ProductEditorPageProps {
     request: ProductVariantCreateRequest,
     idempotencyKey: string
   ) => Promise<ProductWriteOutcome>;
-  onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
-  onDeleteVariant?: (id: string) => Promise<void>;
+  onUpdateVariant?: (
+    request: ProductVariantUpdateRequest,
+    idempotencyKey: string
+  ) => Promise<ProductWriteOutcome>;
+  onDeleteVariant?: (
+    request: ProductVariantDeleteRequest,
+    idempotencyKey: string
+  ) => Promise<ProductWriteOutcome>;
   onFetchPriceLists?: (
     channelId?: string,
     channelSlug?: string
@@ -197,6 +209,7 @@ export function ProductEditorPage({
   writeScope,
   resourceId,
   recoveryOnly = false,
+  variantRecoveryOnly = false,
   initialProduct,
   categories,
   brands = [],
@@ -244,6 +257,15 @@ export function ProductEditorPage({
   const [activeLocale, setActiveLocale] = React.useState('en');
   const [isSaving, setIsSaving] = React.useState(false);
   const writeAttempt = React.useRef<ProductWriteAttempt | null>(null);
+  const variantWriteAttempt = React.useRef<ProductWriteAttempt | null>(null);
+  const [variantRecoveryReady, setVariantRecoveryReady] = React.useState(false);
+  const [variantRecoveryError, setVariantRecoveryError] = React.useState<string | null>(null);
+  const [pendingVariantOperation, setPendingVariantOperation] = React.useState<
+    Extract<ProductWriteOperation, 'variant_update' | 'variant_delete'> | null
+  >(null);
+  const [pendingVariantRequest, setPendingVariantRequest] = React.useState<
+    ProductVariantUpdateRequest | ProductVariantDeleteRequest | null
+  >(null);
   const [recoveryReady, setRecoveryReady] = React.useState(false);
   const [recoveryError, setRecoveryError] = React.useState<string | null>(null);
   const [settledWrite, setSettledWrite] = React.useState<Extract<
@@ -264,6 +286,15 @@ export function ProductEditorPage({
     React.useState<ProductAxesWriteRequest | null>(null);
   const initializeRecovery = React.useCallback(() => {
     try {
+      if (variantRecoveryOnly) {
+        setPendingOperation(null);
+        setSettledWrite(null);
+        setPendingAxesInput(null);
+        setPendingVariantInput(null);
+        setRecoveryError(null);
+        setRecoveryReady(true);
+        return;
+      }
       if (!writeAttempt.current) {
         writeAttempt.current = new ProductWriteAttempt(
           browserProductWriteJournal(writeScope, resourceId)
@@ -290,7 +321,72 @@ export function ProductEditorPage({
       setRecoveryError(PRODUCT_RECOVERY_UNAVAILABLE);
       setRecoveryReady(false);
     }
-  }, [writeScope, resourceId, recoveryOnly]);
+  }, [writeScope, resourceId, recoveryOnly, variantRecoveryOnly]);
+
+  const initializeVariantRecovery = React.useCallback(() => {
+    try {
+      if (isNew) {
+        variantWriteAttempt.current = null;
+        setPendingVariantOperation(null);
+        setPendingVariantRequest(null);
+        setVariantRecoveryError(null);
+        setVariantRecoveryReady(true);
+        return;
+      }
+      let writer =
+        variantWriteAttempt.current ??
+        new ProductWriteAttempt(
+          browserProductVariantWriteJournal(writeScope, resourceId)
+        );
+      let record = writer.restore();
+      if (variantRecoveryOnly) {
+        if (record?.phase !== 'pending') {
+          router.replace('/dashboard/product');
+          return;
+        }
+      } else if (record?.phase === 'settled') {
+        writer = new ProductWriteAttempt(
+          browserProductVariantWriteJournal(writeScope, resourceId, true)
+        );
+        record = writer.restore();
+      }
+      variantWriteAttempt.current = writer;
+      setPendingVariantOperation(
+        record?.phase === 'pending'
+          ? (record.attempt.operation as Extract<
+              ProductWriteOperation,
+              'variant_update' | 'variant_delete'
+            >)
+          : null
+      );
+      setPendingVariantRequest(
+        record?.phase === 'pending'
+          ? (record.attempt.request as
+              | ProductVariantUpdateRequest
+              | ProductVariantDeleteRequest)
+          : null
+      );
+      setVariantRecoveryError(null);
+      setVariantRecoveryReady(true);
+    } catch {
+      setVariantRecoveryError(PRODUCT_RECOVERY_UNAVAILABLE);
+      setVariantRecoveryReady(false);
+    }
+  }, [writeScope, resourceId, isNew, variantRecoveryOnly, router]);
+
+  React.useEffect(() => {
+    initializeVariantRecovery();
+    const changed = (event: StorageEvent) => {
+      if (
+        event.key === null ||
+        event.key === variantWriteAttempt.current?.storageKey
+      ) {
+        initializeVariantRecovery();
+      }
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [initializeVariantRecovery]);
 
   React.useEffect(() => {
     initializeRecovery();
@@ -395,6 +491,9 @@ export function ProductEditorPage({
   const [variants, setVariants] = React.useState<ProductVariant[]>(
     initialProduct?.variants || []
   );
+  React.useEffect(() => {
+    setVariants(initialProduct?.variants ?? []);
+  }, [initialProduct?.id, initialProduct?.variants]);
   const [initialAxes, setInitialAxes] = React.useState<VariantAxisDraftInput[]>(
     []
   );
@@ -535,6 +634,27 @@ export function ProductEditorPage({
     setDirtyAttributeIds((prev) => new Set(prev).add(attributeId));
   };
 
+  const syncVariantRecoveryState = () => {
+    const writer = variantWriteAttempt.current;
+    const record = writer?.recovery;
+    setPendingVariantOperation(
+      record?.phase === 'pending'
+        ? (record.attempt.operation as Extract<
+            ProductWriteOperation,
+            'variant_update' | 'variant_delete'
+          >)
+        : null
+    );
+    setPendingVariantRequest(
+      record?.phase === 'pending'
+        ? (record.attempt.request as
+            | ProductVariantUpdateRequest
+            | ProductVariantDeleteRequest)
+        : null
+    );
+    setVariantRecoveryError(writer?.recoveryError ?? null);
+  };
+
   const syncRecoveryState = () => {
     const writer = writeAttempt.current;
     setPendingOperation(writer?.pendingOperation ?? null);
@@ -551,6 +671,36 @@ export function ProductEditorPage({
         : null
     );
     setRecoveryError(writer?.recoveryError ?? null);
+  };
+
+  const handleResumeVariant = async () => {
+    const writer = variantWriteAttempt.current;
+    if (!writer || !variantRecoveryReady || writer.isBusy || isSaving) return;
+    setErrorMessage(null);
+    setIsSaving(true);
+    try {
+      const unavailable = async (): Promise<ProductWriteOutcome> => ({
+        status: 'unknown',
+        message: PRODUCT_RECOVERY_UNAVAILABLE
+      });
+      const result = await writer.resume({
+        variant_update: onUpdateVariant ?? unavailable,
+        variant_delete: onDeleteVariant ?? unavailable
+      });
+      if (result?.outcome.status === 'confirmed') {
+        if (variantRecoveryOnly) router.push('/dashboard/product');
+        else router.refresh();
+      } else if (result?.outcome.status === 'rejected') {
+        setErrorMessage(result.outcome.message);
+        if (variantRecoveryOnly) router.push('/dashboard/product');
+      }
+    } catch {
+      setVariantRecoveryError(PRODUCT_RECOVERY_UNAVAILABLE);
+      setVariantRecoveryReady(false);
+    } finally {
+      syncVariantRecoveryState();
+      setIsSaving(false);
+    }
   };
 
   // Resume the stored command, not the current form. Recovery also works when
@@ -708,10 +858,100 @@ export function ProductEditorPage({
     }
   };
 
+  const prepareVariantWriteAttempt = () => {
+    let writer = variantWriteAttempt.current;
+    if (!writer || !variantRecoveryReady || variantRecoveryError)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const record = writer.restore();
+    if (record?.phase === 'pending')
+      throw new Error(UNKNOWN_PRODUCT_WRITE);
+    if (record?.phase === 'settled') {
+      writer = new ProductWriteAttempt(
+        browserProductVariantWriteJournal(writeScope, resourceId, true)
+      );
+      writer.restore();
+      variantWriteAttempt.current = writer;
+    }
+    return writer;
+  };
+
+  const handleUpdateVariant = async (
+    variantId: string,
+    input: UpdateVariantInput
+  ) => {
+    assertEditorialWriteResolved();
+    if (!initialProduct?.id || !onUpdateVariant || isNew)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const writer = prepareVariantWriteAttempt();
+    const request: ProductVariantUpdateRequest = {
+      id: initialProduct.id,
+      variantId,
+      scope: writeScope,
+      input: structuredClone(input)
+    };
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const result = await writer.execute(
+        'variant_update',
+        request,
+        onUpdateVariant
+      );
+      if (!result || result.outcome.status !== 'confirmed') {
+        const message =
+          result?.outcome.status === 'rejected'
+            ? result.outcome.message
+            : result?.outcome.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
+        setErrorMessage(message);
+        throw new Error(message);
+      }
+      router.refresh();
+    } finally {
+      syncVariantRecoveryState();
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteVariant = async (variantId: string) => {
+    assertEditorialWriteResolved();
+    if (!initialProduct?.id || !onDeleteVariant || isNew)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const writer = prepareVariantWriteAttempt();
+    const request: ProductVariantDeleteRequest = {
+      id: initialProduct.id,
+      variantId,
+      scope: writeScope
+    };
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const result = await writer.execute(
+        'variant_delete',
+        request,
+        onDeleteVariant
+      );
+      if (!result || result.outcome.status !== 'confirmed') {
+        const message =
+          result?.outcome.status === 'rejected'
+            ? result.outcome.message
+            : result?.outcome.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
+        setErrorMessage(message);
+        throw new Error(message);
+      }
+      router.refresh();
+    } finally {
+      syncVariantRecoveryState();
+      setIsSaving(false);
+    }
+  };
+
   // Main Save Handler
   const handleSave = async () => {
     if (
       !recoveryReady ||
+      !variantRecoveryReady ||
+      !!variantRecoveryError ||
+      pendingVariantOperation !== null ||
       !writeAttempt.current ||
       (isLoadingForm && !writeAttempt.current.pendingOperation) ||
       isSaving ||
@@ -830,6 +1070,9 @@ export function ProductEditorPage({
   const handleStatusChange = async (newStatus: string) => {
     if (
       !recoveryReady ||
+      !variantRecoveryReady ||
+      !!variantRecoveryError ||
+      pendingVariantOperation !== null ||
       !writeAttempt.current ||
       isSaving ||
       writeAttempt.current.isBusy ||
@@ -879,6 +1122,9 @@ export function ProductEditorPage({
   const handleDelete = async () => {
     if (
       !recoveryReady ||
+      !variantRecoveryReady ||
+      !!variantRecoveryError ||
+      pendingVariantOperation !== null ||
       !writeAttempt.current ||
       isSaving ||
       writeAttempt.current.isBusy ||
@@ -917,13 +1163,20 @@ export function ProductEditorPage({
     // including stale closures opened before the editorial request began.
     const writer = writeAttempt.current;
     writer?.restore();
+    const variantWriter = variantWriteAttempt.current;
+    variantWriter?.restore();
     if (
       !recoveryReady ||
+      !variantRecoveryReady ||
+      !!variantRecoveryError ||
       !writer ||
       writer.pendingOperation ||
       writer.isBusy ||
       writer.recoveryError ||
       writer.recovery?.phase === 'settled' ||
+      variantWriter?.pendingOperation ||
+      variantWriter?.isBusy ||
+      variantWriter?.recoveryError ||
       deletedProduct.current
     ) {
       throw new Error(
@@ -945,6 +1198,44 @@ export function ProductEditorPage({
               onClick={initializeRecovery}
             >
               Retry recovery
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {variantRecoveryError && (
+        <Alert variant='destructive'>
+          <AlertDescription>
+            {variantRecoveryError}
+            <button
+              type='button'
+              className='ml-3 underline'
+              disabled={isSaving}
+              onClick={initializeVariantRecovery}
+            >
+              Retry variant recovery
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {pendingVariantOperation && (
+        <Alert>
+          <AlertDescription>
+            The previous variant {pendingVariantOperation === 'variant_update' ? 'update' : 'deletion'} has an unconfirmed outcome. Its exact request and idempotency key are saved in this browser.
+            {pendingVariantRequest ? (
+              <details className='mt-2 text-xs'>
+                <summary>Saved variant request</summary>
+                <pre className='max-h-64 overflow-auto whitespace-pre-wrap'>
+                  {JSON.stringify(pendingVariantRequest, null, 2)}
+                </pre>
+              </details>
+            ) : null}
+            <button
+              type='button'
+              className='ml-3 underline'
+              disabled={isSaving || !variantRecoveryReady}
+              onClick={handleResumeVariant}
+            >
+              Retry exact variant operation
             </button>
           </AlertDescription>
         </Alert>
@@ -1093,7 +1384,10 @@ export function ProductEditorPage({
             disabled={
               !recoveryReady ||
               !!recoveryError ||
+              !variantRecoveryReady ||
+              !!variantRecoveryError ||
               !!pendingOperation ||
+              pendingVariantOperation !== null ||
               !!settledWrite
             }
             onSave={handleSave}
@@ -1110,7 +1404,10 @@ export function ProductEditorPage({
               isSaving ||
               !recoveryReady ||
               !!recoveryError ||
+              !variantRecoveryReady ||
+              !!variantRecoveryError ||
               !!pendingOperation ||
+              pendingVariantOperation !== null ||
               !!settledWrite
             }
             className='contents'
@@ -1270,28 +1567,19 @@ export function ProductEditorPage({
                         : undefined
                     }
                     onUpdateVariant={
-                      onUpdateVariant
-                        ? async (id, patch) => {
-                            assertEditorialWriteResolved();
-                            await onUpdateVariant(id, patch);
-                            router.refresh();
-                          }
-                        : undefined
+                      onUpdateVariant ? handleUpdateVariant : undefined
                     }
                     onDeleteVariant={
-                      onDeleteVariant
-                        ? async (id) => {
-                            assertEditorialWriteResolved();
-                            await onDeleteVariant(id);
-                            router.refresh();
-                          }
-                        : undefined
+                      onDeleteVariant ? handleDeleteVariant : undefined
                     }
                     disabled={
                       !recoveryReady ||
                       !!recoveryError ||
+                      !variantRecoveryReady ||
+                      !!variantRecoveryError ||
                       isSaving ||
                       pendingOperation !== null ||
+                      pendingVariantOperation !== null ||
                       settledWrite !== null
                     }
                   />

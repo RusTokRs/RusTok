@@ -164,9 +164,9 @@ The Product host save action forwards typed locale/value batches in the existing
 input. It must not issue a subsequent value-save request or compensate create with deletion.
 Publication, document/category changes, values and the success receipt belong to one Product owner
 transaction. Source cutover is covered by `verify:product:atomic-save`; browser/backend execution
-remains pending in the Product owner plan. Save/status/delete retain a durable browser-local
-immutable request and key through unknown outcomes;
-Variant/Image/Relation/Bundle callbacks do not yet have that retry lifecycle.
+remains pending in the Product owner plan. Save/status/delete and variant update/delete retain durable browser-local
+immutable requests and caller keys through unknown outcomes. Image/Relation/Bundle callbacks
+do not yet have that retry lifecycle.
 
 ### Product write acknowledgement and Apollo
 
@@ -184,8 +184,8 @@ confirmed write; router prop refreshes do not silently rebase dirty fields. Chil
 are guarded while an editorial attempt is unresolved. Initial money/GraphQL Int admission happens
 before retaining the command, leaving invalid scalar drafts editable.
 
-Recovery uses the module-owned `editor_intent` URL UUID, localStorage journal and exclusive Web
-Locks in a secure context. Requests persist before IO; explicit retry dispatches the original
+Recovery uses module-owned `editor_intent`, `attribute_recovery` and `variant_intent` URL UUIDs,
+separate localStorage journals and exclusive Web Locks in a secure context. Requests persist before IO; explicit retry dispatches the original
 operation without validating current fields. Duplicated URLs share an intent and reread its record
 under the lock. Pending requests have no automatic expiry; terminal outcomes retain body-free
 tombstones and cannot silently become new creates. Storage/lock/identity errors fail closed.
@@ -198,7 +198,7 @@ intent; a refused draft can explicitly rotate intent without sending or rebasing
 This is an origin-local plaintext Product draft projection, never token storage or owner authority.
 Browser clearing/eviction, cross-device recovery and owner receipt retention are not guaranteed;
 never clear storage to resolve an uncertain operation. Actual browser/real-backend execution and
-retained identities for child mutations remain open. See the Product write boundary and owner plan.
+durable identities for Image/Relation/Bundle child mutations remain open. See the Product write boundary and owner plan.
 
 ### Shared HTTP retry advice
 

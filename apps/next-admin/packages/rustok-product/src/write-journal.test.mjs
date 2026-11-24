@@ -9,7 +9,9 @@ import { ProductWriteAttempt } from './write-attempt.ts';
 import {
   ProductWriteJournal,
   browserProductWriteJournal,
+  browserProductVariantWriteJournal,
   PRODUCT_EDITOR_INTENT_QUERY_KEY,
+  PRODUCT_VARIANT_INTENT_QUERY_KEY,
   isProductEditorIntent
 } from './write-journal.ts';
 import { memoryJournal, testScope, testIntent } from './write-test-support.mjs';
@@ -617,4 +619,44 @@ test('missing pending storage cannot mint a new caller key on a reloaded browser
     /recovery is unavailable/
   );
   assert.equal(writer.recovery.attempt.key, key);
+});
+
+
+test('the variant lifecycle journal has its own URL intent and retains exact pending mutations', async (t) => {
+  const { win, records } = browser(t);
+  const variantId = '00000000-0000-4000-8000-000000000123';
+  const productId = '00000000-0000-4000-8000-000000000001';
+  const request = {
+    id: productId,
+    variantId,
+    scope: testScope,
+    input: { sku: 'SKU-NEW' }
+  };
+  const journal = browserProductVariantWriteJournal(testScope, productId);
+  const url = new URL(win.location.href);
+  assert.equal(
+    url.searchParams.get(PRODUCT_VARIANT_INTENT_QUERY_KEY),
+    journal.intent
+  );
+  assert.equal(
+    browserProductVariantWriteJournal(testScope, productId).storageKey,
+    journal.storageKey
+  );
+  const writer = new ProductWriteAttempt(journal);
+  await writer.execute('variant_update', request, async () => unknown);
+  assert.equal(JSON.parse(records.get(journal.storageKey)).record.phase, 'pending');
+  const reloaded = new ProductWriteAttempt(
+    browserProductVariantWriteJournal(testScope, productId)
+  );
+  const result = await reloaded.resume({
+    variant_update: async (snapshot, key) => {
+      assert.deepEqual(snapshot, request);
+      assert.equal(key, writer.recovery.attempt.key);
+      return { status: 'confirmed', value: { id: productId, revision: null } };
+    }
+  });
+  assert.equal(result.outcome.status, 'confirmed');
+  const next = browserProductVariantWriteJournal(testScope, productId, true);
+  assert.notEqual(next.storageKey, journal.storageKey);
+  assert.equal(next.read(), null);
 });

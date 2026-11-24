@@ -622,9 +622,7 @@ pub(crate) async fn update_product_variant(
         &actor_id,
     );
 
-    let prices = if draft.prices.is_empty() {
-        None
-    } else {
+    let prices = if draft.prices_changed {
         Some(
             draft
                 .prices
@@ -636,6 +634,8 @@ pub(crate) async fn update_product_variant(
                 })
                 .collect(),
         )
+    } else {
+        None
     };
 
     let input = UpdateVariantInput {

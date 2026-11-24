@@ -27,21 +27,31 @@ import {
 import {
   isVariantCreateInput,
   isVariantCreateRefusalCode,
-  isVariantId
+  isVariantId,
+  isVariantLifecycleRefusalCode,
+  isVariantUpdateInput
 } from './variant-create.ts';
 
 export const PRODUCT_EDITOR_INTENT_QUERY_KEY = 'editor_intent' as const;
 export const ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY =
   'attribute_recovery' as const;
-type CatalogJournalKind = 'product' | 'attribute_definition';
+export const PRODUCT_VARIANT_INTENT_QUERY_KEY = 'variant_intent' as const;
+type CatalogJournalKind =
+  | 'product'
+  | 'attribute_definition'
+  | 'product_variant';
 const journalPrefix = (kind: CatalogJournalKind) =>
   kind === 'product'
     ? 'rustok.product.editor_attempt'
-    : 'rustok.product.attribute_definition_attempt';
+    : kind === 'attribute_definition'
+      ? 'rustok.product.attribute_definition_attempt'
+      : 'rustok.product.variant_attempt';
 const intentQuery = (kind: CatalogJournalKind) =>
   kind === 'product'
     ? PRODUCT_EDITOR_INTENT_QUERY_KEY
-    : ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY;
+    : kind === 'attribute_definition'
+      ? ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY
+      : PRODUCT_VARIANT_INTENT_QUERY_KEY;
 export const PRODUCT_RECOVERY_UNAVAILABLE =
   'Product recovery is unavailable. No new operation will be sent. Restore browser storage and retry recovery; do not discard an unresolved attempt.';
 export type ProductWriteOperation = keyof ProductWriteRequests;
@@ -160,7 +170,29 @@ export class ProductWriteJournal {
         value.id === this.resource
       );
     }
-    if (operation === 'definition') return false;
+    if (this.resourceKind === 'product_variant') {
+      if (
+        this.resource === 'new' ||
+        value.id !== this.resource ||
+        !isVariantId(value.id)
+      )
+        return false;
+      if (operation === 'variant_update') {
+        return (
+          only(value, ['id', 'variantId', 'scope', 'input']) &&
+          isVariantId(value.variantId) &&
+          isVariantUpdateInput(value.input)
+        );
+      }
+      if (operation === 'variant_delete') {
+        return (
+          only(value, ['id', 'variantId', 'scope']) &&
+          isVariantId(value.variantId)
+        );
+      }
+      return false;
+    }
+    if (operation === 'definition' || operation === 'variant_update' || operation === 'variant_delete') return false;
     if (operation === 'variant') {
       return (
         this.resource !== 'new' &&
@@ -393,6 +425,12 @@ export class ProductWriteJournal {
     )
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     const record = raw.record;
+    const allowedOperations =
+      this.resourceKind === 'product'
+        ? ['save', 'status', 'delete', 'axes', 'variant']
+        : this.resourceKind === 'attribute_definition'
+          ? ['definition']
+          : ['variant_update', 'variant_delete'];
     // An explicit empty baseline differs from missing browser storage after reload.
     if (record === null) return null;
     if (record.phase === 'pending') {
@@ -401,10 +439,7 @@ export class ProductWriteJournal {
         only(record, ['phase', 'attempt']) &&
         object(attempt) &&
         only(attempt, ['operation', 'key', 'request']) &&
-        (this.resourceKind === 'product'
-          ? ['save', 'status', 'delete', 'axes', 'variant']
-          : ['definition']
-        ).includes(attempt.operation as string) &&
+        allowedOperations.includes(attempt.operation as string) &&
         typeof attempt.key === 'string' &&
         uuid.test(attempt.key) &&
         this.requestValid(
@@ -421,10 +456,7 @@ export class ProductWriteJournal {
           ? ['phase', 'operation', 'key', 'request', 'outcome']
           : ['phase', 'operation', 'key', 'outcome']
       ) &&
-      (this.resourceKind === 'product'
-        ? ['save', 'status', 'delete', 'axes', 'variant']
-        : ['definition']
-      ).includes(record.operation as string) &&
+      allowedOperations.includes(record.operation as string) &&
       (this.resource !== 'new' || record.operation === 'save') &&
       typeof record.key === 'string' &&
       uuid.test(record.key) &&
@@ -450,6 +482,9 @@ export class ProductWriteJournal {
           isAxesDurableRefusalCode(outcome.code)) &&
         (record.operation !== 'variant' ||
           isVariantCreateRefusalCode(outcome.code)) &&
+        ((record.operation !== 'variant_update' &&
+          record.operation !== 'variant_delete') ||
+          isVariantLifecycleRefusalCode(outcome.code)) &&
         (record.operation !== 'definition' ||
           (isAttributeDefinitionRefusalCode(outcome.code) &&
             (outcome.code === 'PRODUCT_VALIDATION'
@@ -495,7 +530,9 @@ export class ProductWriteJournal {
         (record.operation === 'delete' ||
         record.operation === 'axes' ||
         record.operation === 'variant' ||
-        record.operation === 'definition'
+        record.operation === 'definition' ||
+        record.operation === 'variant_update' ||
+        record.operation === 'variant_delete'
           ? outcome.value.revision === null
           : outcome.value.revision !== null && revision(outcome.value.revision))
       )
@@ -586,6 +623,13 @@ export function browserAttributeDefinitionJournal(
     'attribute_definition',
     optionId
   );
+}
+export function browserProductVariantWriteJournal(
+  scope: ProductWriteScope,
+  resource: string,
+  newIntent = false
+): ProductWriteJournal {
+  return browserCatalogWriteJournal(scope, resource, newIntent, 'product_variant');
 }
 function attributeDocumentOption(
   url: URL,

@@ -5,6 +5,7 @@
  */
 
 import type { CreateVariantInput } from './api/types';
+import type { UpdateVariantInput } from './api/products';
 import { MAX_INVENTORY_QUANTITY } from './limits';
 import { parsePriceAmount } from './money.ts';
 
@@ -151,6 +152,106 @@ const refusals = new Set([
   'PRODUCT_VARIANT_NOT_FOUND',
   'PRODUCT_DEPENDENCY_NOT_FOUND'
 ]);
+
+const lifecycleRefusals = new Set([
+  ...refusals,
+  'NO_VARIANTS',
+  'CANNOT_DELETE_ONLY_VARIANT',
+  'PRODUCT_INVENTORY_DELETION_INVALID',
+  'PRODUCT_INVENTORY_DELETION_LIMIT',
+  'PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT',
+  'PRODUCT_INVENTORY_DELETION_STOCK_PRESENT',
+  'PRODUCT_INVENTORY_DELETION_CHANGED',
+  'PRODUCT_INVENTORY_QUANTITY_INVALID',
+  'PRODUCT_INVENTORY_QUANTITY_LIMIT',
+  'PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE',
+  'PRODUCT_INVENTORY_QUANTITY_UNREPRESENTABLE',
+  'PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT',
+  'PRODUCT_INVENTORY_QUANTITY_CHANGED',
+  'PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT'
+]);
+
+/** Only owner-finalized Product decisions may release a persisted variant attempt. */
+export const isVariantLifecycleRefusalCode = (
+  value: unknown
+): value is string =>
+  typeof value === 'string' && lifecycleRefusals.has(value);
+
+/** Strict, bounded wire validation for a sparse update request frozen in the journal. */
+export function isVariantUpdateInput(
+  value: unknown
+): value is UpdateVariantInput {
+  if (
+    !object(value) ||
+    !only(value, [
+      'axisValues',
+      'sku',
+      'barcode',
+      'shippingProfileSlug',
+      'weight',
+      'weightUnit',
+      'prices',
+      'inventoryQuantity',
+      'inventoryPolicy'
+    ]) ||
+    Object.keys(value).length === 0
+  )
+    return false;
+
+  const optionalShortText = (item: unknown) =>
+    item === undefined || shortText(item);
+  if (
+    !optionalShortText(value.sku) ||
+    !optionalShortText(value.barcode) ||
+    !optionalShortText(value.shippingProfileSlug) ||
+    !optionalShortText(value.weight) ||
+    !optionalShortText(value.weightUnit) ||
+    (value.inventoryQuantity !== undefined &&
+      (!Number.isInteger(value.inventoryQuantity) ||
+        (value.inventoryQuantity as number) < 0 ||
+        (value.inventoryQuantity as number) > MAX_INVENTORY_QUANTITY)) ||
+    (value.inventoryPolicy !== undefined &&
+      (typeof value.inventoryPolicy !== 'string' ||
+        !['deny', 'continue'].includes(value.inventoryPolicy.toLowerCase())))
+  )
+    return false;
+
+  if (value.axisValues !== undefined) {
+    if (!Array.isArray(value.axisValues) || value.axisValues.length > 32)
+      return false;
+    const attributes = new Set<string>();
+    for (const entry of value.axisValues) {
+      if (
+        !object(entry) ||
+        !only(entry, ['attributeId', 'optionId']) ||
+        !isVariantId(entry.attributeId) ||
+        !isVariantId(entry.optionId) ||
+        attributes.has(entry.attributeId)
+      )
+        return false;
+      attributes.add(entry.attributeId);
+    }
+  }
+
+  if (value.prices !== undefined) {
+    if (!Array.isArray(value.prices) || value.prices.length > 64)
+      return false;
+    for (const price of value.prices) {
+      if (
+        !object(price) ||
+        !only(price, ['currencyCode', 'amount', 'compareAtAmount']) ||
+        typeof price.currencyCode !== 'string' ||
+        !/^[A-Z]{3}$/.test(price.currencyCode) ||
+        !amount(price.amount) ||
+        (price.compareAtAmount !== undefined &&
+          price.compareAtAmount !== null &&
+          !amount(price.compareAtAmount))
+      )
+        return false;
+    }
+  }
+  return true;
+}
 export const isVariantCreateRefusalCode = (value: unknown): value is string =>
   typeof value === 'string' && refusals.has(value);
 

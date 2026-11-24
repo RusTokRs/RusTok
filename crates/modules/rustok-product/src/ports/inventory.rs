@@ -258,6 +258,21 @@ pub trait ProductInventoryPort: Send + Sync {
         quantity: i32,
     ) -> Result<(), CommerceError>;
 
+    /// Synchronizes the Inventory-owned SKU snapshot for a Product variant.
+    /// This metadata-only operation does not alter stock or append quantity history.
+    async fn sync_variant_sku_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _variant_id: Uuid,
+        _sku: Option<String>,
+    ) -> Result<(), CommerceError> {
+        Err(CommerceError::InventoryQuantityBlocked(
+            ProductInventoryQuantityBlocker::IdentityUnavailable,
+        ))
+    }
+
     /// Deletes inventory records for specified variants in transaction.
     async fn delete_records_for_variants_in_tx(
         &self,
@@ -321,6 +336,23 @@ impl ProductInventoryPort for NoopProductInventoryPort {
                 ProductInventoryQuantityBlocker::LocationUnavailable,
             ));
         }
+        Ok(())
+    }
+
+    async fn sync_variant_sku_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        _sku: Option<String>,
+    ) -> Result<(), CommerceError> {
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() {
+            return Err(CommerceError::InventoryQuantityBlocked(
+                ProductInventoryQuantityBlocker::InvalidRequest,
+            ));
+        }
+        // No Inventory provider means this Product profile has no Inventory SKU row.
         Ok(())
     }
 
