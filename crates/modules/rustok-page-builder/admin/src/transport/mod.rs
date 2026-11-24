@@ -73,9 +73,22 @@ pub struct PageBuilderAdminFacadeError {
 
 impl PageBuilderAdminFacadeError {
     pub fn new(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let stable_code = [
+            "REVISION_CONFLICT",
+            "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN",
+        ]
+        .into_iter()
+        .find(|code| message.ends_with(&format!(" ({code})")))
+        .map(str::to_string);
+        let message = stable_code
+            .as_deref()
+            .and_then(|code| message.strip_suffix(&format!(" ({code})")))
+            .unwrap_or(&message)
+            .to_string();
         Self {
-            message: message.into(),
-            stable_code: None,
+            message,
+            stable_code,
         }
     }
 
@@ -93,6 +106,32 @@ impl std::fmt::Display for PageBuilderAdminFacadeError {
             Some(code) => write!(formatter, "{} ({code})", self.message),
             None => formatter.write_str(&self.message),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_function_error_round_trip_preserves_stable_save_codes() {
+        for code in ["REVISION_CONFLICT", "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"] {
+            let server_error = PageBuilderAdminFacadeError::with_stable_code(
+                "Page Builder save failed",
+                code,
+            )
+            .to_string();
+            let client_error = PageBuilderAdminFacadeError::new(server_error);
+            assert_eq!(client_error.stable_code.as_deref(), Some(code));
+            assert_eq!(client_error.message, "Page Builder save failed");
+        }
+    }
+
+    #[test]
+    fn unknown_parenthesized_messages_are_not_misclassified() {
+        let error = PageBuilderAdminFacadeError::new("provider returned (CUSTOM_CODE)");
+        assert_eq!(error.stable_code, None);
+        assert_eq!(error.message, "provider returned (CUSTOM_CODE)");
     }
 }
 
