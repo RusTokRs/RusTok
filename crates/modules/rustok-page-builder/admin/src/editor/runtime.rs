@@ -63,6 +63,14 @@ fn make_peer_write_channel(
     }
 }
 
+/// A host callback receives the exact local attempt identity alongside its request.
+/// This keeps callback-backed adapters as safe as the built-in facade path.
+#[derive(Clone)]
+pub struct PageBuilderCapabilityExecution {
+    pub request: PageBuilderCapabilityRequest,
+    pub save_attempt: Option<SaveAttempt>,
+}
+
 #[derive(Clone)]
 pub struct AdminEditorRuntime {
     pub controller: RwSignal<AdminCanvasController>,
@@ -80,7 +88,7 @@ pub struct AdminEditorRuntime {
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
     preview_request: RwSignal<Option<(ProjectHash, usize, Value, Option<String>)>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
-    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     facade_missing: String,
     save_succeeded: String,
     /// The Rust Leptos workspace dispatches saves outside the classic fly-browser JS adapter.
@@ -95,7 +103,7 @@ impl AdminEditorRuntime {
     pub fn new(
         controller: AdminCanvasController,
         facade: Option<Arc<dyn PageBuilderAdminFacade>>,
-        on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+        on_request: Option<Callback<PageBuilderCapabilityExecution>>,
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
@@ -639,7 +647,10 @@ impl AdminEditorRuntime {
         } else if let Some(callback) = self.on_request.as_ref() {
             self.preview_in_progress.set(false);
             self.preview_request.set(None);
-            callback.run(request);
+            callback.run(PageBuilderCapabilityExecution {
+                request,
+                save_attempt,
+            });
         } else {
             self.preview_in_progress.set(false);
             self.preview_request.set(None);
