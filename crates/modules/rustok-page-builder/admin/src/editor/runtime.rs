@@ -91,8 +91,18 @@ pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
     pub save_attempt: Option<SaveAttempt>,
     /// Complete this exact request after the host finishes its asynchronous work.
-    /// Stale save completions are ignored by the request identity captured here.
+    /// Call once; stale save completions are ignored by the captured request identity.
     pub on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
+}
+
+impl PageBuilderCapabilityExecution {
+    /// Deliver the host result through the same validation and acknowledgement path as a facade.
+    pub fn complete(
+        &self,
+        outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
+    ) {
+        self.on_complete.run(outcome);
+    }
 }
 
 #[derive(Clone)]
