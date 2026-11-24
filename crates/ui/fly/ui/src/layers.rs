@@ -373,7 +373,9 @@ mod tests {
                     "type": "wrapper",
                     "components": [
                         { "id": "a", "type": "section" },
-                        { "id": "b", "type": "section", "components": [
+                        { "id": "b", "type": "section", "attributes": {
+                            "data-fly-locked": "true"
+                        }, "components": [
                             { "id": "b1", "type": "text" }
                         ]}
                     ]
@@ -389,6 +391,8 @@ mod tests {
         assert_eq!(ids, ["root", "a", "b", "b1"]);
         assert_eq!(items[2].parent_id.as_deref(), Some("root"));
         assert_eq!(items[2].index, 1);
+        assert!(items[2].is_locked);
+        assert!(!items[1].is_locked);
         assert_eq!(items[3].parent_id.as_deref(), Some("b"));
         assert!(editor_layer_items_for_page(&document, 9).is_empty());
     }
