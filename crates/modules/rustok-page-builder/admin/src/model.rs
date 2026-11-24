@@ -732,6 +732,18 @@ mod tests {
     }
 
     #[test]
+    fn peer_write_conflict_fences_an_idle_controller_too() {
+        let mut controller = controller();
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
+        assert!(controller.active_save_attempt().is_none());
+        assert!(controller.ui().state.dirty.save_conflict);
+        assert!(controller.ui().state.dirty.dirty);
+        assert_eq!(controller.revision_id(), "rev-1");
+    }
+
+    #[test]
     fn peer_write_conflict_retires_active_attempt_and_rejects_its_late_success() {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
