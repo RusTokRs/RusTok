@@ -195,7 +195,9 @@ The controller now creates a `SaveAttempt` containing both a local revision sequ
 fresh UUID request ID. Acknowledgement, failure and conflict require the exact active attempt;
 the hash-only acknowledgement path has been removed. The active request ID is transient and
 is **not** a server idempotency key. A restored controller cannot accept a response from an
-attempt that existed before serialization.
+attempt that existed before serialization. Known `REVISION_CONFLICT` and
+`PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos server-function error boundary;
+a stale-revision response retires only its matching attempt and fences the editor read-only.
 
 The Leptos facade runtime and callback transport now carry the same `SaveAttempt`. The public
 `PageBuilderCapabilityExecution` callback receives the request and its optional attempt together,
