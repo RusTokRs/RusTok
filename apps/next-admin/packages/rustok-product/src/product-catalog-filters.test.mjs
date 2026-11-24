@@ -51,7 +51,7 @@ test('the server page loads category options, attribute options, and facets', ()
 
 test('server page uses the host effective-locale header and cookie contract', () => {
   assert.match(page, /getLocale\(\{[\s\S]*headerName: EFFECTIVE_LOCALE_HEADER/);
-  assert.match(page, /cookieName: LOCALE_COOKIE/);
+  assert.match(page, /cookieNames: \[LOCALE_COOKIE\]/);
   assert.match(page, /locales,[\s\S]*defaultLocale/);
 });
 

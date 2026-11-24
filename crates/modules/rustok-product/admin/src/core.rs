@@ -4215,7 +4215,7 @@ mod tests {
             "USD",
         );
 
-        assert!(matches!(draft.sku, rustok_api::Patch::Set(value) if value == "COAT-2"));
+        assert!(matches!(&draft.sku, rustok_api::Patch::Set(value) if value == "COAT-2"));
         assert!(!draft.prices_changed);
         assert!(draft.prices.is_empty());
         assert!(draft.inventory_quantity.is_none());

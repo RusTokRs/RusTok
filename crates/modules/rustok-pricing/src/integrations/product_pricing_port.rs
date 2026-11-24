@@ -4,6 +4,8 @@
 //! exposing private Pricing persistence entities or table structures to Product.
 
 use async_trait::async_trait;
+use rustok_commerce_foundation::CommerceError as PricingError;
+use rustok_product::CommerceError as ProductError;
 use rustok_product::StorefrontProductListPrice;
 use rustok_product::ports::pricing::{
     CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
@@ -15,6 +17,15 @@ use uuid::Uuid;
 
 use crate::entities::price;
 use crate::services::bootstrap::{BootstrapService, catalog_base_scope};
+
+fn map_catalog_scope_error(error: PricingError) -> ProductError {
+    match error {
+        PricingError::Database(error) => ProductError::Database(error),
+        PricingError::VariantNotFound(id) => ProductError::VariantNotFound(id),
+        PricingError::Validation(message) => ProductError::Validation(message),
+        error => ProductError::Core(error.into()),
+    }
+}
 
 /// Adapter providing ProductPricingPort backed by the native Pricing database.
 pub struct PricingProductPricingPortAdapter {
@@ -45,7 +56,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                     price.variant_id,
                 )
                 .await
-                .map_err(rustok_product::CommerceError::from)?;
+                .map_err(map_catalog_scope_error)?;
             }
             let channel_id = crate::services::pricing::scope::resolve_channel_id_in_tx(
                 txn,
@@ -54,7 +65,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                 price.channel_slug.as_deref(),
             )
             .await
-            .map_err(rustok_product::CommerceError::from)?;
+            .map_err(map_catalog_scope_error)?;
             let identity = (
                 price.variant_id,
                 channel_id,
@@ -82,7 +93,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
     ) -> Result<(), rustok_product::CommerceError> {
         crate::services::pricing::scope::load_variant_for_update_in_tx(txn, tenant_id, variant_id)
             .await
-            .map_err(rustok_product::CommerceError::from)?;
+            .map_err(map_catalog_scope_error)?;
         BootstrapService::replace_catalog_base_prices_in_tx(txn, variant_id, prices)
             .await
             .map_err(rustok_product::CommerceError::from)
@@ -103,7 +114,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                     *variant_id,
                 )
                 .await
-                .map_err(rustok_product::CommerceError::from)?;
+                .map_err(map_catalog_scope_error)?;
             }
         }
         BootstrapService::delete_prices_for_variants_in_tx(txn, variant_ids)

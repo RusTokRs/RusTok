@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
+import { MAX_INVENTORY_QUANTITY } from './limits.ts';
 import { parsePriceAmount } from './money.ts';
 import { variantDraftCore } from './variant-draft-test-support.mjs';
 
@@ -33,6 +34,8 @@ function loadSave(rows, overrides = {}) {
     isBusy: state.busy,
     combinationsCopy: (key) => key,
     parsePriceAmount,
+    MAX_INVENTORY_QUANTITY,
+    buildVariantUpdatePatch: variantDraftCore.buildVariantUpdatePatch,
     axes: [],
     formAxisValues: [],
     validateAxisValues: variantDraftCore.validateAxisValues,
@@ -42,7 +45,13 @@ function loadSave(rows, overrides = {}) {
     formBarcode: '',
     formShippingProfile: '',
     formPolicy: 'deny',
-    editingVariant: { id: 'variant' },
+    editingVariant: {
+      id: 'variant',
+      sku: 'OLD-SKU',
+      inventoryQuantity: 2,
+      inventoryPolicy: 'deny',
+      prices: []
+    },
     onUpdateVariant: async (...args) => {
       state.writes.push(JSON.parse(JSON.stringify(args)));
     },
@@ -103,7 +112,16 @@ test('invalid amounts cannot turn into a zero-price write or close the editor', 
 test('empty catalog prices remain empty, and explicit zero remains a decimal string', async () => {
   const empty = loadSave([]);
   await empty.save();
-  assert.deepEqual(empty.state.writes[0][1].prices, []);
+  assert.equal(Object.hasOwn(empty.state.writes[0][1], 'prices'), false);
+  const cleared = loadSave([], {
+    editingVariant: {
+      id: 'variant',
+      inventoryQuantity: 2,
+      prices: [{ currencyCode: 'JPY', amount: '1', compareAtAmount: null }]
+    }
+  });
+  await cleared.save();
+  assert.deepEqual(cleared.state.writes[0][1].prices, []);
   const zero = loadSave([
     { currencyCode: 'JPY', amount: '0', compareAtAmount: '' }
   ]);
@@ -132,6 +150,13 @@ test('inventory is not silently truncated or clamped while saving prices', async
     assert.equal(state.writes.length, 0);
     assert.ok(state.error);
   }
+  const blankZero = loadSave([], {
+    editingVariant: { id: 'variant', inventoryQuantity: 0, prices: [] },
+    formStock: ''
+  });
+  await blankZero.save();
+  assert.equal(blankZero.state.writes.length, 0);
+  assert.ok(blankZero.state.error);
 });
 
 test('scalar/price edits do not validate or resubmit a stale dialog assignment tuple', async () => {

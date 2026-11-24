@@ -291,10 +291,10 @@ export function ProductVariantsCard({
     }
 
     const qty = Number(formStock);
-    const inventoryQuantityChanged =
-      !editingVariant || qty !== editingVariant.inventoryQuantity;
+    const inventoryInputChanged =
+      !editingVariant || formStock !== String(editingVariant.inventoryQuantity);
     if (
-      inventoryQuantityChanged &&
+      inventoryInputChanged &&
       (!/^\d+$/.test(formStock) ||
         !Number.isInteger(qty) ||
         qty > MAX_INVENTORY_QUANTITY)

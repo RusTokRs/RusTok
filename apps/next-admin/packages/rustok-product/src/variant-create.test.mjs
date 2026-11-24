@@ -110,7 +110,7 @@ test('Next SKU controls and Product owner share one bounded variant capacity', (
   );
   assert.match(
     productVariantsCardSource,
-    /disabled=\{disabled \|\| v\.inventoryQuantity >= MAX_INVENTORY_QUANTITY\}/
+    /disabled=\{disabled \|\| isBusy \|\| v\.inventoryQuantity >= MAX_INVENTORY_QUANTITY\}/
   );
   assert.match(productVariantsCardSource, /qty > MAX_INVENTORY_QUANTITY/);
   assert.match(
