@@ -275,8 +275,17 @@ fn session_cookie_is_secure(
         headers,
         peer_ip,
         settings,
-        crate::common::is_production_environment(),
+        force_secure_session_cookie(
+            crate::common::is_production_environment(),
+            cfg!(debug_assertions),
+        ),
     )
+}
+
+fn force_secure_session_cookie(is_production_environment: bool, debug_assertions: bool) -> bool {
+    // Keep cookie transport security aligned with the startup secret policy:
+    // release binaries are treated as production even when RUSTOK_ENV is absent.
+    is_production_environment || !debug_assertions
 }
 
 fn session_cookie_is_secure_for_environment(
@@ -1080,6 +1089,13 @@ mod tests {
                 "{path} must not be cacheable by HTTP/1.0 intermediaries"
             );
         }
+    }
+
+    #[test]
+    fn release_builds_force_secure_refresh_cookies_even_without_production_env() {
+        assert!(super::force_secure_session_cookie(false, false));
+        assert!(super::force_secure_session_cookie(true, true));
+        assert!(!super::force_secure_session_cookie(false, true));
     }
 
     #[test]
