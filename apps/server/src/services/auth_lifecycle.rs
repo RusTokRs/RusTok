@@ -576,7 +576,7 @@ impl AuthLifecycleService {
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
                 let dummy_hash =
-                    crate::auth::dummy_password_hash().map_err(AuthLifecycleError::from)?;
+                    crate::auth::dummy_password_hash_async().await.map_err(AuthLifecycleError::from)?;
                 verify_password_async(password.to_string(), dummy_hash)
                     .await
                     .map_err(AuthLifecycleError::from)?;
