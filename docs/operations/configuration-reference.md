@@ -13,6 +13,10 @@ Configuration values are resolved in strict priority order (highest to lowest):
 3. **Deployment YAML Configuration** (`apps/server/config/{environment}.yaml`).
 4. **Compiled Domain Defaults** (built into crates and services).
 
+### Release security posture
+
+Every non-debug `apps/server` binary enforces production-grade host security gates even when `RUSTOK_ENV` explicitly names `staging` or `development`. An environment label cannot relax database, HTTPS/HSTS, JWT, tenant-isolation, session-cookie, CORS, WebSocket, observability, or installer-authentication checks. Debug builds may use non-production profiles; environment-label-specific feature behavior remains distinct from these security gates.
+
 ---
 
 ## 2. Server & Network Configuration
