@@ -221,9 +221,10 @@ impl AdminCanvasController {
 
     /// Uncorrelated failures may update an idle controller, but can never retire an active save.
     pub fn mark_save_failed(&mut self) -> Result<(), AdminCanvasError> {
-        if let Some(attempt) = self.active_save_attempt() {
-            self.mark_save_failed_for_attempt(&attempt)?;
-            return Ok(());
+        if self.active_save_attempt().is_some() {
+            return Err(AdminCanvasError::Authoring(
+                "an active save failure must identify its request".to_string(),
+            ));
         }
         let before = self.clone();
         self.editor.revision_mut().fail_save();
