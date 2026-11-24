@@ -82,7 +82,7 @@ pub async fn run() -> Result<()> {
 
     let database_url = std::env::var("DATABASE_URL").ok();
     let database_uri = resolve_database_uri(database_url.as_deref(), &config.database.uri);
-    let production = is_production_environment();
+    let production = crate::common::is_production_security_mode();
     validate_database_deployment(&database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
 
@@ -446,10 +446,6 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
             < 16
 }
 
-fn is_production_environment() -> bool {
-    crate::common::settings::is_production_environment()
-}
-
 fn application_router(
     host_mode: crate::common::settings::RuntimeHostMode,
     settings: &crate::common::settings::RustokSettings,
@@ -535,18 +531,25 @@ async fn load_config() -> Result<HostConfig> {
     let environment =
         crate::common::settings::resolve_environment_name().map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
+    let configured_config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()
-        .map(|s| PathBuf::from(s.trim()))
-        .filter(|path| !path.as_os_str().is_empty())
-        .or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|executable| executable.parent().map(PathBuf::from))
-                .map(|parent| parent.join("config"))
-                .filter(|path| path.is_dir())
-        })
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"));
+        .map(|value| PathBuf::from(value.trim()))
+        .filter(|path| !path.as_os_str().is_empty());
+    let config_dir = if let Some(path) = configured_config_dir {
+        path
+    } else {
+        let executable_config_dir = std::env::current_exe()
+            .ok()
+            .and_then(|executable| executable.parent().map(PathBuf::from))
+            .map(|parent| parent.join("config"));
+        match executable_config_dir {
+            Some(path) => match tokio::fs::metadata(&path).await {
+                Ok(metadata) if metadata.is_dir() => path,
+                _ => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"),
+            },
+            None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"),
+        }
+    };
     let path = config_dir.join(format!("{environment}.yaml"));
     let raw = tokio::fs::read_to_string(&path).await.map_err(|error| {
         Error::Message(format!(

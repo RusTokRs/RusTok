@@ -246,6 +246,8 @@ pub fn hash_refresh_token(token: &str) -> String {
     rustok_auth::hash_refresh_token(token)
 }
 
+const DUMMY_PASSWORD_VALUE: &str = "rustok-timing-equalization-dummy";
+
 static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> =
     once_cell::sync::OnceCell::new();
 
@@ -256,7 +258,7 @@ static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> =
 pub fn dummy_password_hash() -> Result<String> {
     DUMMY_PASSWORD_HASH
         .get_or_try_init(|| {
-            rustok_auth::hash_password("rustok-timing-equalization-dummy").map_err(auth_err)
+            rustok_auth::hash_password(DUMMY_PASSWORD_VALUE).map_err(auth_err)
         })
         .cloned()
 }
@@ -271,6 +273,15 @@ pub async fn dummy_password_hash_async() -> Result<String> {
     tokio::task::spawn_blocking(dummy_password_hash)
         .await
         .map_err(|error| Error::Message(format!("dummy_password_hash_async spawn_blocking: {error}")))?
+}
+
+/// Perform a fixed-cost password verification on public account-lookup
+/// paths so an unknown address does not return materially faster than a
+/// known address. The dummy hash is prewarmed during host initialization.
+pub async fn mask_auth_lookup_timing() -> Result<()> {
+    let dummy_hash = dummy_password_hash_async().await?;
+    verify_password_async(DUMMY_PASSWORD_VALUE.to_string(), dummy_hash).await?;
+    Ok(())
 }
 
 // ─── Error conversion ────────────────────────────────────────────────
@@ -306,6 +317,16 @@ mod tests {
 
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
+    }
+
+    #[tokio::test]
+    async fn public_lookup_timing_mask_reuses_the_dummy_password_hash() {
+        let first = dummy_password_hash_async().await.expect("dummy hash");
+        let second = dummy_password_hash_async().await.expect("cached dummy hash");
+        assert_eq!(first, second);
+        mask_auth_lookup_timing()
+            .await
+            .expect("dummy verification should complete");
     }
 
     #[test]
