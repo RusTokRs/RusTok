@@ -71,6 +71,38 @@ impl FlexAttachedValuesService {
         .await
     }
 
+    /// Prepare a user custom-field update against the caller's transaction.
+    ///
+    /// The user row must already be locked by the caller so localized values are
+    /// read after the mutation fence, preventing concurrent patches from
+    /// overwriting one another with stale locale snapshots.
+    pub async fn prepare_user_update<C>(
+        db: &C,
+        tenant_id: Uuid,
+        entity_id: Uuid,
+        locale: &str,
+        existing_metadata: &Value,
+        payload: Option<Value>,
+    ) -> Result<PreparedAttachedValuesWrite, FlexError>
+    where
+        C: ConnectionTrait,
+    {
+        let schema = UserFieldService::get_schema(db, tenant_id).await?;
+        prepare_attached_values_update(
+            db,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type: USER_ENTITY_TYPE,
+                entity_id,
+            },
+            schema,
+            locale,
+            existing_metadata,
+            payload,
+        )
+        .await
+    }
+
     pub async fn resolve_merged_payload(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -113,14 +145,16 @@ impl FlexAttachedValuesService {
         match entity_type {
             USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let schema = load_schema(db, tenant_id, entity_type)
+                let user = crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
+                    &txn,
+                    tenant_id,
+                    entity_id,
+                )
+                .await?
+                .ok_or(Error::NotFound)?;
+                let schema = UserFieldService::get_schema(&txn, tenant_id)
                     .await
                     .map_err(map_flex_host_error)?;
-                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
-                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
                 let entity = attached_ref(tenant_id, entity_type, entity_id);
                 let prepared = prepare_attached_values_update(
                     &txn,
