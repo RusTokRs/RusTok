@@ -17,6 +17,9 @@ pub struct EditorLayerItem {
     pub depth: usize,
     pub child_count: usize,
     pub opaque: bool,
+    /// Locked layout nodes remain selectable, but cannot be moved or resized.
+    #[serde(default)]
+    pub is_locked: bool,
     /// Parent component id, for hosts that render move/reparent affordances per row.
     pub parent_id: Option<String>,
     /// Index within the parent's child list (0 for page roots).
@@ -194,6 +197,11 @@ fn collect_layer_items(
                     depth,
                     child_count: children.len(),
                     opaque: false,
+                    is_locked: component
+                        .attributes
+                        .get("data-fly-locked")
+                        .and_then(Value::as_str)
+                        == Some("true"),
                     parent_id: parent_id.clone(),
                     index,
                 });
