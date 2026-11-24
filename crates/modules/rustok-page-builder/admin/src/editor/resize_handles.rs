@@ -2,15 +2,15 @@ use crate::editor::AdminEditorRuntime;
 use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-use fly::EditorCommand;
+use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
 use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
 #[cfg(target_arch = "wasm32")]
-use fly_ui::{ResizePolicy, ResizeResult, UiIntent};
+use fly_ui::{ResizePolicy, ResizeResult, ResizeSession};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
-use web_sys::{Element, EventTarget, PointerEvent};
+use web_sys::{Element, Event, EventTarget, KeyboardEvent, PointerEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg(any(target_arch = "wasm32", test))]
@@ -35,7 +35,8 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let captured_element = StoredValue::new_local(None::<Element>);
     let preview = RwSignal::new(None::<ResizeResult>);
 
-    install_resize_listeners(runtime.clone(), session, captured_element, preview);
+    let listeners_ready =
+        install_resize_listeners(runtime.clone(), session, captured_element, preview);
 
     let handles = [
         ResizeHandle::North,
@@ -62,10 +63,12 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
             aria-hidden="false"
             class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
             class:hidden=move || frame_runtime.controller.with(|controller| {
-                controller
-                    .selected_component_view()
-                    .is_none_or(|selected| selected.is_root)
-                    || controller.ui().state.overlays.selected.is_none()
+                controller.selected_component_view().is_none_or(|selected| {
+                    selected.is_root
+                        || selected.is_locked
+                        || !controller.ui().state.capabilities.edit
+                        || !controller.ui().state.capabilities.styles
+                }) || controller.ui().state.overlays.selected.is_none()
             })
         >
             <rect
@@ -102,14 +105,67 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                         cx=move || position.get().map(|value| value.x).unwrap_or_default()
                         cy=move || position.get().map(|value| value.y).unwrap_or_default()
                         r="6"
+                        on:keydown={
+                            let runtime = runtime.clone();
+                            move |event: KeyboardEvent| {
+                                let Some((component_id, rect)) = runtime.controller.with(|controller| {
+                                    let selected = controller.selected_component_view()?;
+                                    if selected.is_root
+                                        || selected.is_locked
+                                        || !controller.ui().state.capabilities.edit
+                                        || !controller.ui().state.capabilities.styles
+                                    {
+                                        return None;
+                                    }
+                                    Some((
+                                        selected.id,
+                                        controller.ui().state.overlays.selected?,
+                                    ))
+                                }) else {
+                                    return;
+                                };
+                                let resize = ResizeSession {
+                                    component_id: component_id.clone(),
+                                    handle,
+                                    start_rect: rect,
+                                    start_x: 0.0,
+                                    start_y: 0.0,
+                                    policy: ResizePolicy {
+                                        grid_size: Some(4.0),
+                                        ..ResizePolicy::default()
+                                    },
+                                };
+                                let Some(result) =
+                                    resize.update_by_arrow_key(&event.key(), event.shift_key())
+                                else {
+                                    return;
+                                };
+                                if !result.width_changed && !result.height_changed {
+                                    return;
+                                }
+                                event.prevent_default();
+                                apply_resize_patch(
+                                    &runtime,
+                                    &component_id,
+                                    resize.component_patch(result),
+                                );
+                            }
+                        }
                         on:pointerdown={
                             let runtime = runtime.clone();
                             move |event: PointerEvent| {
                                 event.prevent_default();
                                 event.stop_propagation();
+                                if !listeners_ready || event.button() != 0 || !event.is_primary() {
+                                    return;
+                                }
                                 let Some((component_id, rect, zoom)) = runtime.controller.with(|controller| {
                                     let selected = controller.selected_component_view()?;
-                                    if selected.is_root {
+                                    if selected.is_root
+                                        || selected.is_locked
+                                        || !controller.ui().state.capabilities.edit
+                                        || !controller.ui().state.capabilities.styles
+                                    {
                                         return None;
                                     }
                                     Some((
@@ -131,18 +187,20 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     },
                                     f64::from(zoom),
                                 );
-                                if let Some(element) = event
+                                let Some(element) = event
                                     .current_target()
                                     .and_then(|target| target.dyn_into::<Element>().ok())
+                                else {
+                                    runtime.fail("resize handle has no pointer-capture target");
+                                    return;
+                                };
+                                if let Err(error) =
+                                    fly_leptos::set_pointer_capture(&element, event.pointer_id())
                                 {
-                                    if let Err(error) = fly_leptos::set_pointer_capture(
-                                        &element,
-                                        event.pointer_id(),
-                                    ) {
-                                        runtime.fail(error.to_string());
-                                    }
-                                    captured_element.set_value(Some(element));
+                                    runtime.fail(error.to_string());
+                                    return;
                                 }
+                                captured_element.set_value(Some(element));
                                 session.set_value(Some(resize));
                                 preview.set(None);
                             }
@@ -160,10 +218,10 @@ fn install_resize_listeners(
     session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
     captured_element: StoredValue<Option<Element>, LocalStorage>,
     preview: RwSignal<Option<ResizeResult>>,
-) {
+) -> bool {
     let Some(window) = web_sys::window() else {
         runtime.fail("browser window is unavailable for resize handles");
-        return;
+        return false;
     };
     let target: EventTarget = window.unchecked_into();
 
@@ -193,15 +251,16 @@ fn install_resize_listeners(
                 return;
             }
             let result = active.update(&event).or_else(|| preview.get_untracked());
-            if let Some(result) = result {
-                up_runtime.dispatch(UiIntent::execute(EditorCommand::Patch {
-                    component_id: active.resize.component_id.clone(),
-                    patch: active.resize.component_patch(result),
-                }));
+            if let Some(result) = result.filter(|result| result.width_changed || result.height_changed) {
+                apply_resize_patch(
+                    &up_runtime,
+                    &active.resize.component_id,
+                    active.resize.component_patch(result),
+                );
             }
             if let Some(element) = up_element.get_value() {
-                if let Err(err) = fly_leptos::release_pointer_capture(&element, event.pointer_id()) {
-                    tracing::trace!(error = ?err, "Failed to release pointer capture");
+                if let Err(error) = fly_leptos::release_pointer_capture(&element, active.pointer_id) {
+                    up_runtime.fail(error.to_string());
                 }
             }
             up_element.set_value(None);
@@ -209,12 +268,127 @@ fn install_resize_listeners(
             preview.set(None);
         });
 
-    match (move_listener, up_listener) {
-        (Ok(move_listener), Ok(up_listener)) => {
-            let _listeners = StoredValue::new_local((move_listener, up_listener));
+    let cancel_runtime = runtime.clone();
+    let cancel_session = session;
+    let cancel_element = captured_element;
+    let cancel_preview = preview;
+    let cancel_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
+        &target,
+        "pointercancel",
+        move |event| {
+            cancel_active_resize(
+                &cancel_runtime,
+                cancel_session,
+                cancel_element,
+                cancel_preview,
+                Some(event.pointer_id()),
+                true,
+            );
+        },
+    );
+
+    let lost_runtime = runtime.clone();
+    let lost_session = session;
+    let lost_element = captured_element;
+    let lost_preview = preview;
+    let lost_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
+        &target,
+        "lostpointercapture",
+        move |event| {
+            cancel_active_resize(
+                &lost_runtime,
+                lost_session,
+                lost_element,
+                lost_preview,
+                Some(event.pointer_id()),
+                false,
+            );
+        },
+    );
+
+    let blur_runtime = runtime.clone();
+    let blur_session = session;
+    let blur_element = captured_element;
+    let blur_preview = preview;
+    let blur_listener = fly_leptos::EventListenerHandle::new::<Event>(
+        &target,
+        "blur",
+        move |_| {
+            cancel_active_resize(
+                &blur_runtime,
+                blur_session,
+                blur_element,
+                blur_preview,
+                None,
+                true,
+            );
+        },
+    );
+
+    match (move_listener, up_listener, cancel_listener, lost_listener, blur_listener) {
+        (Ok(move_listener), Ok(up_listener), Ok(cancel_listener), Ok(lost_listener), Ok(blur_listener)) => {
+            let _listeners = StoredValue::new_local((
+                move_listener,
+                up_listener,
+                cancel_listener,
+                lost_listener,
+                blur_listener,
+            ));
+            true
         }
-        (Err(error), _) | (_, Err(error)) => runtime.fail(error.to_string()),
+        (move_result, up_result, cancel_result, lost_result, blur_result) => {
+            let error = move_result
+                .err()
+                .or_else(|| up_result.err())
+                .or_else(|| cancel_result.err())
+                .or_else(|| lost_result.err())
+                .or_else(|| blur_result.err());
+            if let Some(error) = error {
+                runtime.fail(error.to_string());
+            }
+            false
+        }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn apply_resize_patch(runtime: &AdminEditorRuntime, component_id: &str, patch: ComponentPatch) {
+    let intent = runtime.controller.with(|controller| {
+        controller.ssr_selected_style_patch_intent(Some(component_id), patch)
+    });
+    match intent {
+        Ok(intent) => runtime.dispatch(intent),
+        Err(error) => runtime.fail(error),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn cancel_active_resize(
+    runtime: &AdminEditorRuntime,
+    session: StoredValue<Option<fly_leptos::BrowserResizeSession>, LocalStorage>,
+    captured_element: StoredValue<Option<Element>, LocalStorage>,
+    preview: RwSignal<Option<ResizeResult>>,
+    pointer_id: Option<i32>,
+    release_capture: bool,
+) {
+    let Some(active) = session.get_value() else {
+        return;
+    };
+    if pointer_id.is_some_and(|pointer_id| pointer_id != active.pointer_id) {
+        return;
+    }
+    if release_capture {
+        if let Some(element) = captured_element.get_value() {
+            if let Err(error) =
+                fly_leptos::release_pointer_capture(&element, active.pointer_id)
+            {
+                runtime.fail(error.to_string());
+            }
+        }
+    }
+    captured_element.set_value(None);
+    session.set_value(None);
+    preview.set(None);
 }
 
 #[cfg(any(target_arch = "wasm32", test))]

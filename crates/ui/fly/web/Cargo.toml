@@ -30,6 +30,7 @@ serde_json.workspace = true
 js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
+  "BroadcastChannel",
   "Document",
   "DomRectReadOnly",
   "Element",

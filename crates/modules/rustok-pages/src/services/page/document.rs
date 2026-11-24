@@ -97,7 +97,6 @@ impl PageService {
         let response_locale = body.locale.clone();
         let txn = self.db.begin().await?;
         let locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
-        Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,
@@ -117,6 +116,10 @@ impl PageService {
                 return Ok(result);
             }
         }
+
+        // Replaying a committed receipt is read-only and must remain available
+        // even if the tenant disables new Page Builder writes after the commit.
+        Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
 
         let translation_exists = page_translation::Entity::find()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
@@ -624,7 +627,6 @@ async fn expire_old_document_save_receipts_in_tx(
         .order_by_desc(page_document_save_receipt::Column::CreatedAt)
         .order_by_desc(page_document_save_receipt::Column::Id)
         .offset(MAX_REPLAYABLE_SAVE_RECEIPTS_PER_PAGE)
-        .limit(MAX_REPLAYABLE_SAVE_RECEIPTS_PER_PAGE)
         .all(txn)
         .await?;
     for old in to_expire {

@@ -392,7 +392,7 @@ fn create_publish_bypass_error() -> async_graphql::Error {
     })
 }
 
-fn map_pages_error(error: PagesError) -> async_graphql::Error {
+pub(super) fn map_pages_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
         PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
         PagesError::PageNotFound(_) => "PAGE_NOT_FOUND",

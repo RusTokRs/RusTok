@@ -185,6 +185,22 @@ impl ResizeSession {
         }
     }
 
+    /// Produces a keyboard resize step using the same snapping and bounds as pointer input.
+    ///
+    /// Arrow keys move the active handle by 4 CSS pixels; holding Shift moves it by 16.
+    /// Non-arrow keys return None so callers can leave normal keyboard behavior untouched.
+    pub fn update_by_arrow_key(&self, key: &str, shift: bool) -> Option<ResizeResult> {
+        let step = if shift { 16.0 } else { 4.0 };
+        let (dx, dy) = match key {
+            "ArrowLeft" => (-step, 0.0),
+            "ArrowRight" => (step, 0.0),
+            "ArrowUp" => (0.0, -step),
+            "ArrowDown" => (0.0, step),
+            _ => return None,
+        };
+        Some(self.update(self.start_x + dx, self.start_y + dy))
+    }
+
     pub fn component_patch(&self, result: ResizeResult) -> ComponentPatch {
         let mut style = Map::new();
         if result.width_changed {
@@ -276,6 +292,42 @@ mod tests {
             let patch = session.component_patch(result);
             assert_eq!(patch.style, Some(Value::Object(Map::new())));
         }
+    }
+
+    #[test]
+    fn keyboard_resize_uses_the_same_snap_grid_and_shift_multiplier() {
+        let mut resize = session(ResizeHandle::East);
+        resize.policy.grid_size = Some(4.0);
+
+        let normal = resize
+            .update_by_arrow_key("ArrowRight", false)
+            .expect("arrow key should resize");
+        let accelerated = resize
+            .update_by_arrow_key("ArrowRight", true)
+            .expect("shift+arrow should resize");
+
+        assert_eq!(normal.rect.width, 204.0);
+        assert_eq!(accelerated.rect.width, 216.0);
+        assert!(resize.update_by_arrow_key("Enter", false).is_none());
+    }
+
+    #[test]
+    fn keyboard_resize_respects_west_and_north_handle_directions() {
+        let mut west = session(ResizeHandle::West);
+        west.policy.grid_size = Some(4.0);
+        let west_result = west
+            .update_by_arrow_key("ArrowRight", false)
+            .expect("arrow key should resize");
+        assert_eq!(west_result.rect.x, 14.0);
+        assert_eq!(west_result.rect.width, 196.0);
+
+        let mut north = session(ResizeHandle::North);
+        north.policy.grid_size = Some(4.0);
+        let north_result = north
+            .update_by_arrow_key("ArrowDown", false)
+            .expect("arrow key should resize");
+        assert_eq!(north_result.rect.y, 24.0);
+        assert_eq!(north_result.rect.height, 96.0);
     }
 
     #[test]

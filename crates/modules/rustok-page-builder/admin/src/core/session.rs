@@ -12,6 +12,14 @@ use rustok_page_builder::{
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
+fn optional_arc_changed<T>(current: &Option<Arc<T>>, next: &Option<Arc<T>>) -> bool {
+    match (current, next) {
+        (None, None) => false,
+        (Some(current), Some(next)) => !Arc::ptr_eq(current, next),
+        _ => true,
+    }
+}
+
 /// Framework-agnostic mutable state of an editor session.
 ///
 /// Contains zero framework-specific reactive primitives (no Leptos Signals, no Dioxus Signals).
@@ -103,6 +111,55 @@ impl EditorSessionState {
         self.runtime_publish_gate_policy = Some(policy);
         self.runtime_publish_gate_evaluation = None;
         self
+    }
+
+    /// Reconciles host-owned configuration when a long-lived UI component receives new props.
+    ///
+    /// Dioxus preserves hook state across prop rerenders, so constructor-only configuration
+    /// silently becomes stale unless the host explicitly refreshes the session.
+    pub fn update_host_configuration(
+        &mut self,
+        trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+        editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
+        runtime_context: Option<Value>,
+        runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+        runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+        facade_available: bool,
+    ) {
+        let runtime_context_configured = runtime_context.is_some();
+        let runtime_context = runtime_context.unwrap_or_else(|| Value::Object(Map::new()));
+        let runtime_scenarios = runtime_scenarios.unwrap_or_else(|| Arc::new(Vec::new()));
+        let runtime_inputs_changed = self.runtime_context != runtime_context
+            || self.runtime_context_configured != runtime_context_configured
+            || optional_arc_changed(&self.trait_schemas, &trait_schemas)
+            || optional_arc_changed(
+                &self.editor_capability_evaluation,
+                &editor_capability_evaluation,
+            )
+            || optional_arc_changed(&self.runtime_scenarios, &runtime_scenarios)
+            || optional_arc_changed(
+                &self.runtime_publish_gate_policy,
+                &runtime_publish_gate_policy,
+            );
+
+        self.trait_schemas =
+            trait_schemas.unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
+        self.editor_capability_evaluation = editor_capability_evaluation;
+        self.runtime_context = runtime_context;
+        self.runtime_context_configured = runtime_context_configured;
+        self.runtime_scenarios = runtime_scenarios;
+        self.runtime_publish_gate_policy = runtime_publish_gate_policy;
+
+        if runtime_inputs_changed {
+            self.active_runtime_scenario = None;
+            self.runtime_publish_gate_evaluation = None;
+            self.server_preview_html = None;
+            self.preview_request = None;
+            self.preview_in_progress = false;
+        }
+        if facade_available && self.last_error.as_deref() == Some(self.facade_missing.as_str()) {
+            self.last_error = None;
+        }
     }
 
     pub fn apply_runtime_scenario(&mut self, scenario_id: &str) -> bool {
@@ -638,6 +695,41 @@ mod tests {
 
         session.dispatch(EditorSessionAction::ClearError);
         assert!(session.last_error.is_none());
+    }
+
+    #[test]
+    fn host_configuration_updates_runtime_inputs_and_retires_stale_preview() {
+        let mut state = EditorSessionState::new(sample_controller(), "facade missing", "saved");
+        state.runtime_context = serde_json::json!({ "tenant": "old" });
+        state.runtime_context_configured = true;
+        state.active_runtime_scenario = Some("old-scenario".to_string());
+        state.server_preview_html = Some("<main>old</main>".to_string());
+        state.preview_request = Some((
+            state.controller.editor().revision().project_hash,
+            0,
+            serde_json::json!({ "tenant": "old" }),
+            Some("old-scenario".to_string()),
+        ));
+        state.preview_in_progress = true;
+        state.fail("facade missing");
+
+        state.update_host_configuration(
+            None,
+            None,
+            Some(serde_json::json!({ "tenant": "new" })),
+            None,
+            None,
+            true,
+        );
+
+        assert_eq!(state.runtime_context, serde_json::json!({ "tenant": "new" }));
+        assert!(state.runtime_context_configured);
+        assert!(state.active_runtime_scenario.is_none());
+        assert!(state.runtime_publish_gate_evaluation.is_none());
+        assert!(state.server_preview_html.is_none());
+        assert!(state.preview_request.is_none());
+        assert!(!state.preview_in_progress);
+        assert!(state.last_error.is_none());
     }
 
     #[test]
