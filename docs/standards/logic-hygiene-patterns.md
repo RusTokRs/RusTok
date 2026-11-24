@@ -1739,6 +1739,11 @@ Inspect exact snapshot writers used by copy or translation mutations with
   check, break the source once and see the check fail. A check that no workflow runs
   is not evidence; wire it or delete it.
 
+The shared FFA lint used to accept adapter files next to `transport.rs` even
+though ordinary Rust child declarations resolve under `transport/`. The layout
+fixtures now exercise both forms of the facade, a misplaced child, and ambiguous
+entry points where both Rust module files exist.
+
 ```js
 // One struct, not the rest of the file.
 const start = model.indexOf("pub struct PageMetadataPatch {");

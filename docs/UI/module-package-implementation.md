@@ -57,6 +57,10 @@ admin/                            (or storefront/)
         └── leptos.rs             ← #[component], view!, signals — nothing else
 ```
 
+Rust also accepts `src/transport.rs` as the facade entry point. Its declared
+child adapters still live in `src/transport/`. Use a single facade entry point
+and one file or directory entry point for each adapter.
+
 ### Cargo.toml dependencies
 
 **IMPORTANT:** Each module UI package must **explicitly declare** all its dependencies, even if the host already depends on them.

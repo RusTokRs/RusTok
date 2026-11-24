@@ -468,10 +468,12 @@ pub fn ProductEditorPage(
         }
     };
 
-    let variant_bootstrap = Resource::new(
+    let variant_bootstrap_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(tok, ten)| async move { catalog_transport::fetch_bootstrap(tok, ten).await },
     );
+    let variant_bootstrap =
+        Signal::derive(move || variant_bootstrap_resource.get().and_then(Result::ok));
     let variant_reload_locale = locale.clone();
     let refresh_variant_projection = Callback::new(move |product_id: String| {
         let tok = token.get_untracked();

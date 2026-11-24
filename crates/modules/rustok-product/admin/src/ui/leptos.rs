@@ -277,6 +277,7 @@ fn ProductCatalogReference() -> impl IntoView {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
+    let panel_bootstrap = Signal::derive(move || bootstrap.get().and_then(Result::ok));
 
     let products = loaded_resource(
         move || {
@@ -1226,7 +1227,7 @@ fn ProductCatalogReference() -> impl IntoView {
                             product=selected.get()
                             token=token
                             tenant=tenant
-                            bootstrap=bootstrap
+                            bootstrap=panel_bootstrap
                             busy=busy
                             set_busy=set_busy
                             set_error=set_error
@@ -1237,7 +1238,7 @@ fn ProductCatalogReference() -> impl IntoView {
                             product=selected.get()
                             token=token
                             tenant=tenant
-                            bootstrap=bootstrap
+                            bootstrap=panel_bootstrap
                             busy=busy
                             set_busy=set_busy
                             set_error=set_error
@@ -1699,7 +1700,7 @@ pub(super) fn ProductVariantsPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Signal<Option<ProductAdminBootstrap>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -1864,7 +1865,7 @@ pub(super) fn ProductVariantsPanel(
                                 let on_save_edit = move |_| {
                                     if busy.get_untracked() || blocked.get_untracked() { return; }
                                     if !edit_stock_valid.get_untracked() { set_error.set(Some("Inventory must be a non-negative 32-bit integer".into())); return; }
-                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                    let Some(bootstrap) = bootstrap.get_untracked() else {
                                         set_error.set(Some("Product session data is unavailable. Reload it before changing an SKU.".into()));
                                         return;
                                     };
@@ -1976,7 +1977,7 @@ fn ProductMediaPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Signal<Option<ProductAdminBootstrap>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -2006,7 +2007,7 @@ fn ProductMediaPanel(
         let locale_for_add = locale.clone();
         move |ev: SubmitEvent| {
             ev.prevent_default();
-            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+            let Some(bootstrap) = bootstrap.get_untracked() else {
                 return;
             };
             let token_val = token.get_untracked();
@@ -2163,7 +2164,7 @@ fn ProductMediaPanel(
                                     let id = image_id.clone();
                                     let p_id = product_id_for_update.clone();
                                     move |_| {
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();
@@ -2201,7 +2202,7 @@ fn ProductMediaPanel(
                                 };
 
                                 let on_remove = move |_| {
-                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                    let Some(bootstrap) = bootstrap.get_untracked() else {
                                         return;
                                     };
                                     let token_val = token.get_untracked();
@@ -2232,7 +2233,7 @@ fn ProductMediaPanel(
                                     let prod_id = product_id_for_reorder.clone();
                                     move |_| {
                                         if idx == 0 { return; }
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();
@@ -2265,7 +2266,7 @@ fn ProductMediaPanel(
                                     let prod_id = product_id_for_reorder.clone();
                                     move |_| {
                                         if idx + 1 >= current_ids.len() { return; }
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();

@@ -265,6 +265,16 @@ and live Next.js package/route wiring. Embedded native providers use
 `npm run verify:module-source-layout` remains a separate reference-profile
 gate for enrolled modules such as Blog.
 
+#### Reference modules
+
+Use [Blog](../../crates/modules/rustok-blog/README.md) for the enrolled native
+source layout and owner-command examples. Use the
+[Product admin catalog](../../crates/modules/rustok-product/admin/README.md)
+for mounted FFA pagination, route state and its transport boundary. Both use
+the same native and FFA rules. The
+[Product reference plan](../../crates/modules/rustok-product/docs/reference-hardening-current.md)
+tracks the remaining source and execution gates.
+
 ### 3. Data and Migrations Follow the Common Storage Contract
 
 You cannot invent your own storage schema for text, locale and identity.
