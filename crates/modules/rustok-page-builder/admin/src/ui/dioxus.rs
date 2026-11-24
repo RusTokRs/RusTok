@@ -588,15 +588,30 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let workspace_page_id = page_id.clone();
     let workspace_selected = current.controller.ui().state.selection.component_id.clone();
     let workspace_initial_page = current.controller.active_page_index();
+    let workspace_revision_id = current.controller.revision_id().to_string();
+    let workspace_project_hash = current.controller.editor().revision().project_hash.hex();
+    let workspace_canvas_instance_id = canvas_instance_id(
+        &workspace_page_id,
+        &workspace_revision_id,
+        &workspace_project_hash,
+    );
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
-    let capabilities = current.controller.ui().state.capabilities;
+    let peer_conflict_active = *peer_write_conflict.read();
+    let mut capabilities = current.controller.ui().state.capabilities;
+    if peer_conflict_active {
+        capabilities = CapabilityState::read_only();
+    }
     let can_undo = capabilities.history && current.controller.can_undo();
     let can_redo = capabilities.history && current.controller.can_redo();
     let can_save = capabilities.edit
+        && capabilities.publish
+        && props.facade.is_some()
+        && !peer_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
         && !current.controller.ui().state.dirty.save_conflict
         && !current.controller.ui().state.has_blocking_diagnostics();
+    drop(current);
 
     let route_locale = locale.clone();
     let workspace_messages: Option<EditorMessages> = props
@@ -614,14 +629,22 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let on_workspace_error = EventHandler::new(move |error: String| {
         session.write().fail(error);
     });
+    let workspace_publish_confirmed = on_publish_confirmed.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
+        if *peer_write_conflict.peek() && envelope.is_mutating() {
+            session.write().fail(
+                "Another tab saved this page. This editor is read-only; reload to continue.",
+            );
+            return;
+        }
         let effects = {
             let mut state = session.write();
+            let previous_hash = state.controller.editor().revision().project_hash;
             // The trusted Dioxus callback owns the current host snapshot;
             // typed Fly constructors do not know its revision.
             let mut envelope = envelope;
             envelope.revision = Some(state.controller.revision_id().to_string());
-            envelope.project_hash = Some(state.controller.editor().revision().project_hash.hex());
+            envelope.project_hash = Some(previous_hash.hex());
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
                     // A command from a stale workspace must never dispatch its
@@ -635,6 +658,12 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     {
                         state.fail("Browser workspace response no longer matches the active document");
                         return;
+                    }
+                    if current_hash != previous_hash {
+                        state.runtime_publish_gate_evaluation = None;
+                        state.server_preview_html = None;
+                        state.preview_request = None;
+                        state.preview_in_progress = false;
                     }
                     let mut effects = Vec::new();
                     for effect in result.effects {
@@ -675,12 +704,30 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                 }
             }
         };
-        dispatch_facade_effects(session, workspace_facade.clone(), effects);
+        dispatch_facade_effects(
+            session,
+            workspace_facade.clone(),
+            effects,
+            workspace_publish_confirmed.clone(),
+        );
     });
     #[cfg(feature = "dioxus-web")]
+    let canvas_publish_confirmed = on_publish_confirmed.clone();
+    #[cfg(feature = "dioxus-web")]
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
+        if *peer_write_conflict.peek() && peer_conflict_blocks_ui_intent(&intent) {
+            session.write().fail(
+                "Another tab saved this page. This editor is read-only; reload to continue.",
+            );
+            return;
+        }
         let effects = session.write().dispatch(EditorSessionAction::DispatchIntent(intent));
-        dispatch_facade_effects(session, canvas_facade.clone(), effects);
+        dispatch_facade_effects(
+            session,
+            canvas_facade.clone(),
+            effects,
+            canvas_publish_confirmed.clone(),
+        );
     });
     #[cfg(feature = "dioxus-web")]
     let workspace_canvas: Option<Element> = {
