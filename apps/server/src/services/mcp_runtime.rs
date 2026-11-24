@@ -211,7 +211,7 @@ impl McpAuditSink for DbBackedMcpRuntimeBridge {
     async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> McpRuntimeResult<()> {
         let Some(tenant_id) = parse_uuid(event.tenant_id.as_deref()) else {
             tracing::warn!(
-                tool = %event.tool_name,
+                tool_name_len = event.tool_name.len(),
                 "Skipping MCP tool audit persistence because tenant_id is missing"
             );
             return Ok(());
