@@ -430,6 +430,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let current = session.read();
     let page_id = current.controller.page_id().to_string();
     let workspace_document = current.controller.editor().document().clone();
+    #[cfg(feature = "dioxus-web")]
     let workspace_runtime_context = current.runtime_context.clone();
     let workspace_registries = current.controller.editor().registries().clone();
     let workspace_page_id = page_id.clone();

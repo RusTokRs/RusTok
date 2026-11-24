@@ -400,6 +400,8 @@ pub fn FlyThemeTokenEditor(
          }
          #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
          {
+             let _ = (&iframe_id, &expected_instance, &expected_origin_for_load);
+             let _ = (on_message, on_error);
              move |_| {}
          }
      };
