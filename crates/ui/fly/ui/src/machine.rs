@@ -43,8 +43,8 @@ pub enum UiIntent {
     SaveFailed {
         request_id: Option<String>,
     },
-    /// The server rejected the save because the document changed elsewhere. Carries the
-    /// expected and actual revision/hash labels for the user-facing explanation.
+    /// The server or a peer-tab notification indicates that the document changed elsewhere.
+    /// Carries expected and actual revision labels for the user-facing explanation.
     SaveConflict {
         request_id: Option<String>,
         expected: String,
