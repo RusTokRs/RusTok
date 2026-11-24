@@ -615,17 +615,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .as_deref()
             .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
         let custom_fields_updated = command.custom_fields.is_some();
-        let prepared = FlexAttachedValuesService::prepare_update(
-            &self.db,
-            context.tenant_id,
-            "user",
-            initial_user.id,
-            locale,
-            &initial_user.metadata,
-            command.custom_fields,
-        )
-        .await
-        .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
         // Validate and hash a replacement password before locking the user
         // row: Argon2 is deliberately expensive and must not run while the
@@ -656,6 +645,16 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &locked_user.metadata,
             custom_fields_updated,
         )?;
+        let prepared = FlexAttachedValuesService::prepare_user_update(
+            &tx,
+            context.tenant_id,
+            locked_user.id,
+            locale,
+            &locked_user.metadata,
+            command.custom_fields,
+        )
+        .await
+        .map_err(map_custom_field_error)?;
         let user_id = locked_user.id;
         let target_status = locked_user.status.clone();
         let status_changed = status_change_requested(&target_status, requested_status.as_ref());
