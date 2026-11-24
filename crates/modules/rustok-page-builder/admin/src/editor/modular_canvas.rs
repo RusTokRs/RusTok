@@ -76,10 +76,12 @@ pub fn AdminCanvas(
     let consumer_property_assembly = contribution_assembly.clone();
     let contribution_property_assembly = contribution_assembly.clone();
     let contribution_preview_assembly = contribution_assembly.clone();
+    let peer_write_sender_id = use_id();
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,
         on_request,
+        Some(peer_write_sender_id.clone()),
         facade_missing,
         save_succeeded,
     );
@@ -209,6 +211,7 @@ pub fn AdminCanvas(
             class="rustok-page-builder-admin__workspace space-y-3"
             data-fly-browser-root="true"
             data-fly-runtime="ssr"
+            data-fly-peer-write-sender-id=peer_write_sender_id
             data-fly-page-id=browser_page_id
             data-fly-revision=browser_revision
             data-fly-project-hash=browser_project_hash
