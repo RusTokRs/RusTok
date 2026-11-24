@@ -238,7 +238,7 @@ pub fn secure_cookie_required(
         headers,
         peer_ip,
         settings,
-        super::settings::is_production_environment() || !cfg!(debug_assertions),
+        super::settings::is_production_security_mode(),
     )
 }
 
@@ -307,11 +307,9 @@ mod tests {
         let headers = HeaderMap::new();
         let peer = Some(IpAddr::from([192, 0, 2, 4]));
         let settings = RequestTrustSettings::default();
-        let release_is_production = !cfg!(debug_assertions);
-
         assert_eq!(
             secure_cookie_required(&headers, peer, &settings),
-            super::settings::is_production_environment() || release_is_production,
+            super::settings::is_production_security_mode(),
         );
     }
 
