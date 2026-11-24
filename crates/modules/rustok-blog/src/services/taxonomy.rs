@@ -473,7 +473,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
                     id,
                     tenant_id,
                     canonical_key: canonical_key.clone(),
-                    name: format!("tag-{id}"),
+                    name: canonical_key.clone(),
                     slug: canonical_key,
                     scope_type: "module".to_string(),
                     scope_value: Some("blog".to_string()),

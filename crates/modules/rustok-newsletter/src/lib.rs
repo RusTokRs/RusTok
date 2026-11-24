@@ -42,6 +42,9 @@ pub mod services;
 #[cfg(feature = "server")]
 pub mod graphql;
 
+#[cfg(feature = "server")]
+use rustok_email as _;
+
 #[cfg(all(test, feature = "server"))]
 mod contract_tests;
 
