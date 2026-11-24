@@ -171,6 +171,7 @@ impl AdminCanvasController {
 
     pub fn ssr_selected_style_patch_intent(
         &self,
+        expected_component_id: Option<&str>,
         patch: ComponentPatch,
     ) -> Result<UiIntent, String> {
         let component_id = self
@@ -180,6 +181,9 @@ impl AdminCanvasController {
             .component_id
             .as_deref()
             .ok_or_else(|| "resize requires a selected component".to_string())?;
+        if expected_component_id.is_some_and(|expected| expected != component_id) {
+            return Err("selection changed before the resize was committed".to_string());
+        }
         let location = self
             .editor()
             .document()
@@ -646,7 +650,7 @@ mod selected_resize_tests {
             "width": "320px",
             "height": "180px"
         }));
-        let intent = controller.ssr_selected_style_patch_intent(patch).expect("resize intent");
+        let intent = controller.ssr_selected_style_patch_intent(None, patch).expect("resize intent");
         controller.dispatch(intent).expect("resize");
         let style = controller.editor().document().component("hero")
             .and_then(|component| component.style.as_ref())
@@ -661,6 +665,7 @@ mod selected_resize_tests {
         controller.dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select");
         assert!(controller.ssr_selected_style_patch_intent(
+            None,
             ComponentPatch::default().set_attribute("aria-label", json!("not a resize"))
         ).is_err());
         assert!(controller.ssr_selected_style_patch_intent(

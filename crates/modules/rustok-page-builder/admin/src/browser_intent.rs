@@ -123,8 +123,11 @@ fn dispatch_named_intent(
                 payload.get("patch").cloned().unwrap_or_else(|| payload.clone()),
             )
             .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let expected_component_id = payload
+                .get("component_id")
+                .and_then(Value::as_str);
             let intent = controller
-                .ssr_selected_style_patch_intent(patch)
+                .ssr_selected_style_patch_intent(expected_component_id, patch)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }

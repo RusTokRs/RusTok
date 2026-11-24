@@ -255,6 +255,7 @@ pub fn DioxusIsolatedCanvas(
                             resize_instance_id.clone(),
                             BrowserIntentKind::PatchSelected,
                             serde_json::json!({
+                                "component_id": active.resize.component_id,
                                 "patch": active.resize.component_patch(result),
                             }),
                         ));
