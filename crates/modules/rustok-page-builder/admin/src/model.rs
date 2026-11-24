@@ -696,14 +696,14 @@ mod tests {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
         let first = controller.mark_save_started_with_id().expect("first save");
-        assert!(controller.mark_save_failed_for_attempt(first).expect("failed"));
+        assert!(controller.mark_save_failed_for_attempt(&first).expect("failed"));
         let retry = controller.mark_save_started_with_id().expect("retry");
         assert_ne!(first, retry);
-        assert!(!controller.mark_save_failed_for_attempt(first).expect("stale failure"));
-        assert!(controller.acknowledge_save_for_attempt(hash, first, "stale").is_err());
-        assert_eq!(controller.active_save_attempt_id(), Some(retry));
+        assert!(!controller.mark_save_failed_for_attempt(&first).expect("stale failure"));
+        assert!(controller.acknowledge_save_for_attempt(hash, &first, "stale").is_err());
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&retry));
         assert_eq!(controller.revision_id(), "rev-1");
-        controller.acknowledge_save_for_attempt(hash, retry, "rev-2")
+        controller.acknowledge_save_for_attempt(hash, &retry, "rev-2")
             .expect("current response");
         assert_eq!(controller.revision_id(), "rev-2");
     }
@@ -718,12 +718,12 @@ mod tests {
         });
         controller.dispatch(patch("first")).expect("first edit");
         let submitted_hash = controller.editor().revision().project_hash;
-        controller.mark_save_started().expect("begin");
+        let first_attempt = controller.mark_save_started_with_id().expect("begin");
         assert!(controller.mark_save_started().is_err());
         controller.dispatch(patch("second")).expect("edit in flight");
         let working_hash = controller.editor().revision().project_hash;
         assert_ne!(submitted_hash, working_hash);
-        controller.acknowledge_save_for_hash(submitted_hash, "rev-2")
+        controller.acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-2")
             .expect("persisted earlier snapshot");
         assert!(controller.editor().revision().dirty);
         assert!(controller.ui().state.dirty.dirty);
@@ -731,18 +731,46 @@ mod tests {
         assert_eq!(controller.editor().revision().project_hash, working_hash);
         assert!(!controller.editor().revision().save_conflict);
         assert!(controller
-            .acknowledge_save_for_hash(submitted_hash, "rev-3")
+            .acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-3")
             .is_err());
-        controller.mark_save_started().expect("save newest");
-        controller.acknowledge_save_for_hash(working_hash, "rev-3")
+        let latest_attempt = controller.mark_save_started_with_id().expect("save newest");
+        controller.acknowledge_save_for_attempt(working_hash, &latest_attempt, "rev-3")
             .expect("persisted current snapshot");
         assert!(!controller.ui().state.dirty.dirty);
     }
 
     #[test]
+    fn controller_request_identity_survives_attempt_sequence_reuse_after_rehydration() {
+        let mut original = controller();
+        let hash = original.editor().revision().project_hash;
+        let old_attempt = original.mark_save_started_with_id().expect("old save");
+
+        let serialized = serde_json::to_value(&original).expect("serialize active save");
+        let mut restored: AdminCanvasController =
+            serde_json::from_value(serialized).expect("restore controller");
+        let new_attempt = restored.mark_save_started_with_id().expect("new save");
+        assert_eq!(old_attempt.sequence, new_attempt.sequence);
+        assert_ne!(old_attempt.request_id, new_attempt.request_id);
+        assert!(restored
+            .acknowledge_save_for_attempt(hash, &old_attempt, "stale-revision")
+            .is_err());
+        assert_eq!(restored.active_save_attempt().as_ref(), Some(&new_attempt));
+        restored
+            .acknowledge_save_for_attempt(hash, &new_attempt, "current-revision")
+            .expect("current request remains acknowledgeable");
+    }
+
+    #[test]
     fn controller_failed_commands_do_not_leave_partial_save_state() {
         let mut controller = controller();
-        assert!(controller.acknowledge_save("rev-2").is_err());
+        let hash = controller.editor().revision().project_hash;
+        let stale_attempt = SaveAttempt {
+            sequence: 1,
+            request_id: "stale-request".to_string(),
+        };
+        assert!(controller
+            .acknowledge_save_for_attempt(hash, &stale_attempt, "rev-2")
+            .is_err());
         assert_eq!(controller.revision_id(), "rev-1");
         controller.mark_save_conflict("rev-1".into(), "rev-2".into())
             .expect("conflict");
