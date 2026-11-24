@@ -690,6 +690,11 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                         )));
                     }
                     Err(probe_error) => {
+                        if let Some(code) = save_receipt_probe_error_code(&probe_error) {
+                            return Err(PageBuilderServiceError::Runtime(format!(
+                                "{code}: {probe_error}; preserve the draft and reload the latest document"
+                            )));
+                        }
                         return Err(PageBuilderServiceError::Runtime(format!(
                             "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: {error}; save receipt lookup also failed: {probe_error}; preserve the draft"
                         )));
@@ -702,17 +707,30 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         };
         let saved_revision = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
-        ensure_receipt_not_superseded(
-            revision_id,
-            &page_revision(&current_page),
-            &saved_revision,
-        )?;
+
+        // Re-read after the receipt lookup. A peer can commit between the preflight read
+        // and our replayed receipt; acknowledging that older revision would rebase the
+        // surrounding Pages host onto a document that is already stale.
+        let latest_page = transport::fetch_page(
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
+            page_id.to_string(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
+        .ok_or_else(|| {
+            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
+        })?;
+        ensure_document_readable(&latest_page)?;
+        let latest_revision = page_revision(&latest_page);
+        ensure_receipt_not_superseded(revision_id, &latest_revision, &saved_revision)?;
+
         let result = PageBuilderProjectSaveResult {
-            page_id: saved_page.id.clone(),
+            page_id: latest_page.id.clone(),
             revision_id: saved_revision,
-            published: saved_page.status.eq_ignore_ascii_case("published"),
+            published: latest_page.status.eq_ignore_ascii_case("published"),
         };
-        (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
+        (self.on_saved)(PageMutationResult::from(&latest_page), project_data);
         Ok(result)
     }
 }
@@ -833,6 +851,19 @@ fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
     }
 }
 
+#[cfg(feature = "ssr")]
+fn save_receipt_probe_error_code(error: &GraphqlHttpError) -> Option<&'static str> {
+    let GraphqlHttpError::Graphql(message) = error else {
+        return None;
+    };
+    [
+        "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT",
+        "PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED",
+    ]
+    .into_iter()
+    .find(|code| message.contains(code))
+}
+
 /// Stable across retries of the same canonical save, but changes when the
 /// actor, page, observed revision or document changes. PageService still
 /// verifies the full normalized payload hash before accepting a replay.
@@ -851,7 +882,7 @@ fn document_save_attempt_key(
         digest.update([0]);
     }
     digest.update(project.to_string().as_bytes());
-    format!("fly-save-v1:{:x}", digest.finalize())
+    format!("fly-save:{:x}", digest.finalize())
 }
 
 #[cfg(feature = "ssr")]
