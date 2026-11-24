@@ -93,8 +93,10 @@ The command service is registered only when both command variables are set:
 `RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN` and
 `RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID` (a non-nil UUID).
 The command credential must differ from the read credential. Product and SKU
-deletion fail with `product.inventory_deletion_state_unverified` when Inventory
-is not wired, including in this standalone profile.
+deletion fail closed unless both Inventory and Pricing transactional collaborators
+are wired. Inventory must prove stock/history cleanup; Pricing must remove every
+authoritative price row in the same owner transaction. The standalone profile
+does not currently expose these deletion operations without those collaborators.
 Catalog reads that must resolve stored tag relations report an unavailable
 dependency when Taxonomy is not wired.
 
@@ -366,7 +368,12 @@ tenant/locale data before retrying a refused migration.
 - Owns Product DTOs, ORM entities, errors, tables, and migration history without
   a `rustok-commerce-foundation` or `rustok-index` dependency.
 - Uses `ProductPricingPort` for decoupled pricing projections and
-  atomic price lifecycle operations without direct persistence coupling.
+  atomic price lifecycle operations without direct persistence coupling. Initial channel-scoped
+  prices are validated by Pricing against the current tenant's Channel and Variant identities
+  inside the same write transaction; duplicate canonical variant/channel/currency seeds are refused.
+- Storefront list-price projections include only prices without price-list, region, or quantity-tier
+  scope. A channel-scoped row is eligible only for its matching public channel slug; channel-ID-only
+  rows are never treated as channel-neutral fallback prices.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
   operations.
 - Depends on `flex` for attached-field validation, locale resolution and the
