@@ -271,21 +271,25 @@ fn session_cookie_is_secure(
     peer_ip: std::net::IpAddr,
     settings: &RustokSettings,
 ) -> bool {
-    session_cookie_is_secure_for_environment(
+    crate::common::secure_cookie_required(
         headers,
-        peer_ip,
-        settings,
-        force_secure_session_cookie(
-            crate::common::is_production_environment(),
-            cfg!(debug_assertions),
-        ),
+        Some(peer_ip),
+        &settings.runtime.request_trust,
     )
 }
 
-fn force_secure_session_cookie(is_production_environment: bool, debug_assertions: bool) -> bool {
-    // Keep cookie transport security aligned with the startup secret policy:
-    // release binaries are treated as production even when RUSTOK_ENV is absent.
-    is_production_environment || !debug_assertions
+fn session_cookie_is_secure_for_environment(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+    production_mode: bool,
+) -> bool {
+    crate::common::secure_cookie_required_for_environment(
+        headers,
+        Some(peer_ip),
+        &settings.runtime.request_trust,
+        production_mode,
+    )
 }
 
 fn session_cookie_is_secure_for_environment(
@@ -1093,9 +1097,22 @@ mod tests {
 
     #[test]
     fn release_builds_force_secure_refresh_cookies_even_without_production_env() {
-        assert!(super::force_secure_session_cookie(false, false));
-        assert!(super::force_secure_session_cookie(true, true));
-        assert!(!super::force_secure_session_cookie(false, true));
+        let settings = RustokSettings::default();
+        let headers = axum::http::HeaderMap::new();
+        let peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert!(crate::common::secure_cookie_required_for_environment(
+            &headers,
+            Some(peer),
+            &settings.runtime.request_trust,
+            true,
+        ));
+        assert!(!crate::common::secure_cookie_required_for_environment(
+            &headers,
+            Some(peer),
+            &settings.runtime.request_trust,
+            false,
+        ));
     }
 
     #[test]
