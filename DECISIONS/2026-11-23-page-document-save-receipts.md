@@ -58,6 +58,12 @@ post-commit result drift but does not give cross-session replay.
 9. The Leptos SSR store performs one read-only receipt lookup after an
    ambiguous network/HTTP 408/429/5xx response; a known completed receipt
    is the only evidence that can turn it into a success acknowledgement.
+   A replay is not treated as the current page if a later session has already
+   advanced the document: the SSR store compares the observed page revision
+   with the receipt revision, and the browser host compares the refreshed page
+   revision before updating its surrounding Pages state. A superseded receipt
+   is surfaced as `REVISION_CONFLICT` so the stale editor is fenced rather
+   than being presented as current.
    GraphQL business rejections, authorization errors and ordinary HTTP 4xx
    remain definite errors. An absent or unreadable receipt is reported as
    `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` (an application-level 503)
