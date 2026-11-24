@@ -171,7 +171,7 @@ fn parse_env_flag(value: &str) -> bool {
 }
 
 fn plaintext_websocket_allowed() -> bool {
-    !crate::common::is_production_environment()
+    !crate::common::is_production_security_mode()
 }
 
 fn is_api_surface(path: &str) -> bool {
