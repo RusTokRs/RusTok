@@ -1,4 +1,4 @@
-use crate::model::{AdminCanvasController, AdminCanvasEffect};
+use crate::model::{AdminCanvasController, AdminCanvasEffect, SaveAttempt};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry, ValidationSeverity};
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
@@ -313,52 +313,10 @@ impl EditorSessionState {
         page_id: &str,
         revision_id: &str,
         expected_hash: Option<ProjectHash>,
+        attempt: &SaveAttempt,
     ) -> Result<(), String> {
-        if page_id != self.controller.page_id() {
-            let msg = format!(
-                "Page Builder facade returned page `{}` for `{}`",
-                page_id,
-                self.controller.page_id()
-            );
-            self.mark_save_failed();
-            self.fail(&msg);
-            return Err(msg);
-        }
-        let hash = expected_hash.ok_or_else(|| {
-            let msg = "Publish acknowledgement has no submitted project hash".to_string();
-            self.fail(&msg);
-            msg
-        })?;
-        match self
-            .controller
-            .acknowledge_save_for_hash(hash, revision_id.to_string())
-        {
-            Ok(()) => {
-                self.last_error = None;
-                self.announce(self.save_succeeded.clone());
-                Ok(())
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                self.mark_save_failed();
-                self.fail(&msg);
-                Err(msg)
-            }
-        }
-    }
-
-    /// Response-bound completion for framework adapters that own asynchronous
-    /// facade requests. The attempt identity prevents a delayed response
-    /// from completing an identical retry.
-    pub fn handle_publish_response_for_attempt(
-        &mut self,
-        page_id: &str,
-        revision_id: &str,
-        expected_hash: Option<ProjectHash>,
-        attempt_id: u64,
-    ) -> Result<(), String> {
-        if self.controller.active_save_attempt_id() != Some(attempt_id) {
-            return Err("stale publish response belongs to an inactive save attempt".to_string());
+        if self.controller.active_save_attempt().as_ref() != Some(attempt) {
+            return Err("stale publish response belongs to an inactive save request".to_string());
         }
         if page_id != self.controller.page_id() {
             let msg = format!(
@@ -366,16 +324,18 @@ impl EditorSessionState {
                 page_id,
                 self.controller.page_id()
             );
-            self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+            self.handle_publish_error_for_attempt(attempt, msg.clone());
             return Err(msg);
         }
         let Some(hash) = expected_hash else {
             let msg = "Publish acknowledgement has no submitted project hash".to_string();
-            self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+            self.handle_publish_error_for_attempt(attempt, msg.clone());
             return Err(msg);
         };
         match self.controller.acknowledge_save_for_attempt(
-            hash, attempt_id, revision_id.to_string(),
+            hash,
+            attempt,
+            revision_id.to_string(),
         ) {
             Ok(()) => {
                 self.last_error = None;
@@ -384,19 +344,32 @@ impl EditorSessionState {
             }
             Err(error) => {
                 let msg = error.to_string();
-                self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+                self.handle_publish_error_for_attempt(attempt, msg.clone());
                 Err(msg)
             }
         }
     }
 
+    /// Response-bound completion for framework adapters that own asynchronous facade requests.
+    /// The request UUID prevents a delayed response from completing an identical retry after
+    /// the controller has been replaced or restored.
+    pub fn handle_publish_response_for_attempt(
+        &mut self,
+        page_id: &str,
+        revision_id: &str,
+        expected_hash: Option<ProjectHash>,
+        attempt: &SaveAttempt,
+    ) -> Result<(), String> {
+        self.handle_publish_response(page_id, revision_id, expected_hash, attempt)
+    }
+
     /// Returns false for a stale failure; the active newer request is untouched.
     pub fn handle_publish_error_for_attempt(
         &mut self,
-        attempt_id: u64,
+        attempt: &SaveAttempt,
         message: impl Into<String>,
     ) -> bool {
-        match self.controller.mark_save_failed_for_attempt(attempt_id) {
+        match self.controller.mark_save_failed_for_attempt(attempt) {
             Ok(true) => {
                 self.fail(message);
                 true
@@ -416,18 +389,6 @@ impl EditorSessionState {
         ) {
             self.runtime_publish_gate_evaluation = None;
             self.server_preview_html = None;
-        }
-        if matches!(&intent, UiIntent::RequestSave) {
-            let evaluation = self.evaluate_runtime_publish_gate();
-            if let Some(evaluation) = evaluation {
-                let allowed = evaluation.allowed;
-                let message = gate_error_message(&evaluation);
-                self.runtime_publish_gate_evaluation = Some(evaluation);
-                if !allowed {
-                    self.fail(&message);
-                    return Err(message);
-                }
-            }
         }
         match self.controller.dispatch(intent) {
             Ok(effects) => {
@@ -451,15 +412,34 @@ impl EditorSessionState {
         self.mark_save_started_with_id().map(|_| ())
     }
 
-    pub fn mark_save_started_with_id(&mut self) -> Result<u64, String> {
+    pub fn mark_save_started_with_id(&mut self) -> Result<SaveAttempt, String> {
         self.controller
             .mark_save_started_with_id()
-            .map_err(|e| e.to_string())
+            .map_err(|error| error.to_string())
     }
 
+    pub fn mark_save_failed_for_attempt(
+        &mut self,
+        attempt: &SaveAttempt,
+        message: impl Into<String>,
+    ) -> bool {
+        match self.controller.mark_save_failed_for_attempt(attempt) {
+            Ok(true) => {
+                self.fail(message);
+                true
+            }
+            Ok(false) => false,
+            Err(error) => {
+                tracing::warn!(?error, "Failed to mark correlated save attempt failed");
+                false
+            }
+        }
+    }
+
+    /// Uncorrelated failure notifications are only valid when no save is active.
     pub fn mark_save_failed(&mut self) {
-        if let Err(err) = self.controller.mark_save_failed() {
-            tracing::warn!(error = ?err, "Failed to mark save failed in controller");
+        if let Err(error) = self.controller.mark_save_failed() {
+            tracing::warn!(?error, "Failed to mark save failed in controller");
         }
     }
 
@@ -518,23 +498,27 @@ impl EditorSessionState {
                     }
                 }
             }
-            EditorSessionAction::SaveStarted => {
-                if let Err(err) = self.mark_save_started() {
-                    tracing::warn!(error = ?err, "Failed to mark save started");
-                }
-            }
+            EditorSessionAction::SaveStarted => match self.mark_save_started_with_id() {
+                Ok(attempt) => effects.push(EditorSessionEffect::SaveAttemptStarted(attempt)),
+                Err(error) => tracing::warn!(error = ?error, "Failed to mark save started"),
+            },
             EditorSessionAction::SaveAcknowledged {
                 page_id,
                 revision_id,
                 expected_hash,
+                attempt,
             } => {
-                if let Err(err) = self.handle_publish_response(&page_id, &revision_id, expected_hash) {
+                if let Err(err) = self.handle_publish_response(
+                    &page_id,
+                    &revision_id,
+                    expected_hash,
+                    &attempt,
+                ) {
                     self.fail(err);
                 }
             }
-            EditorSessionAction::SaveFailed(err) => {
-                self.mark_save_failed();
-                self.fail(err);
+            EditorSessionAction::SaveFailed { attempt, message } => {
+                self.mark_save_failed_for_attempt(&attempt, message);
             }
             EditorSessionAction::PreviewAcknowledged(response) => {
                 if let Err(err) = self.handle_preview_response(&response) {
@@ -571,8 +555,12 @@ pub enum EditorSessionAction {
         page_id: String,
         revision_id: String,
         expected_hash: Option<ProjectHash>,
+        attempt: SaveAttempt,
     },
-    SaveFailed(String),
+    SaveFailed {
+        attempt: SaveAttempt,
+        message: String,
+    },
     PreviewAcknowledged(Box<PreviewPageBuilderResult>),
     PreviewFailed(String),
     Announce(String),
@@ -583,6 +571,7 @@ pub enum EditorSessionAction {
 #[derive(Clone, Debug)]
 pub enum EditorSessionEffect {
     Announce(String),
+    SaveAttemptStarted(SaveAttempt),
     ExecuteRequest {
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
