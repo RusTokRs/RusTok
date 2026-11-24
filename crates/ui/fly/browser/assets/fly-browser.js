@@ -1626,8 +1626,8 @@ export class FlyBrowserAdapter {
     if (!revision || !hash || revision.length > 256 || hash.length > 256 ||
         this.peerWriteConflict) return;
     if (nonEmptyString(message.senderId) === this.peerWriteSenderId) {
-      // The Leptos/Rust and classic JS adapters may each own a channel in this
-      // document. Their own confirmed writes advance the shared baseline.
+      // The Leptos/Rust and classic JS adapters may each own a channel for this
+      // editor root. Their own confirmed writes advance the shared baseline.
       this.root.dataset.flyRevision = revision;
       this.root.dataset.flyProjectHash = hash;
       return;
