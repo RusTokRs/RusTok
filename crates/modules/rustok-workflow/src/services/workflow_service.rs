@@ -906,7 +906,6 @@ impl WorkflowService {
         if workflow_id.is_nil() {
             return Ok(());
         }
-        use sea_orm::sea_query::Expr;
 
         workflow::Entity::update_many()
             .col_expr(workflow::Column::FailureCount, Expr::value(0i32))

@@ -1,7 +1,7 @@
 # Workflow cron: durable fire identity, cross-replica admission and fail-closed recovery
 
 - Date: 2026-11-23
-- Decision status: Proposed (maintainer review required)
+- Decision status: Proposed
 - Implementation status: In progress
 - Owners: rustok-workflow; host composition in apps/server
 - Extends: 2026-11-12-durable-side-effect-recovery.md
@@ -71,15 +71,21 @@ decision, including its explicit reconciliation requirement.
    before any automatic restart of ambiguous steps can be enabled. No
    generic exactly-once guarantee is claimed.
 
-## Invariants and data ownership
+## Sources of truth and ownership
+
+- `rustok-workflow` is the canonical owner of workflow definitions, cron cursors,
+  firings, execution journals, and reconciliation decisions.
+- The durable firing row (`workflow_cron_firings`) is the canonical admission and attempt state.
+- `workflow_executions` and step execution journals record execution facts.
+- REST/GraphQL transports and UI dashboards are projections, not ownership authorities.
+- The host composition layer in `apps/server` owns process lifecycle and shutdown signals.
+
+## Invariants
 
 - Workflow tenant ID and workflow ID scope all firings; schedule revision and
   UTC scheduled instant define the stable occurrence.
 - Cursor CAS and new firing rows share one transaction; a partially committed
   schedule page is impossible.
-- The durable firing row is the canonical admission/attempt state; the
-  `workflow_executions` row and individual step journal remain the execution
-  facts. REST/GraphQL projections are not the ownership authority.
 - No lease expiry alone permits an expired `running` attempt to be replayed.
 - A per-firing attempt token fences stale completion writes, including races
   with recovery/record changes. A stolen lease must never authorize effects.
@@ -96,9 +102,6 @@ decision, including its explicit reconciliation requirement.
 - Non-idempotent external steps with ambiguous outcomes require manual
   reconciliation. Existing `running` records must be preserved through
   migration and flagged for review, not reset.
-
-## Additional owner-side admission and deletion guards
-
 - A cron definition must be parseable by the runtime scheduler before a
   workflow enters `active`, is modified while active, or is restored while
   active. Incomplete draft definitions remain editable. Validate the
@@ -130,7 +133,33 @@ decision, including its explicit reconciliation requirement.
   definition timestamp, new cursor seeding is capped at current UTC rather
   than deferring firing until that future timestamp.
 
-## Failure and operational semantics
+## Non-goals
+
+- Automatic retry of arbitrary ambiguous external effects without idempotency guarantees.
+- Distributed transactions across third-party webhooks or external HTTP endpoints.
+- Indefinite retention of historical cron firing records beyond platform retention policies.
+- Elimination of human operator reconciliation for crashed workers executing non-idempotent steps.
+
+## Data, transaction, and concurrency boundary
+
+- The persistence layer uses database transactions and row-level CAS locking.
+- Cursor update and firing row enqueuing occur in a single atomic database transaction.
+- Claiming a firing (`pending -> running`) uses conditional CAS on status and attempt token.
+- Reconciliation decisions, audit trails, and execution status updates share an atomic transaction.
+- Concurrency across replicas is coordinated via database CAS invariants, not in-memory or Redis locks.
+
+## Context dimensions
+
+- All cron entities are multi-tenant and explicitly scoped by `tenant_id` and `workflow_id`.
+- Reconciliations require authenticated human actor identification (`actor_id`).
+- Audit trails record causation, attempt tokens, and evidence digests for compliance.
+
+## Events and projections
+
+- Terminal execution outcomes and reconciliation decisions produce domain/audit records within the owning transaction.
+- Read projections (GraphQL/REST endpoints and admin dashboards) query read replicas or committed tables and cannot drive state transitions.
+
+## Failure semantics
 
 A provider failure before a known durable receipt is ambiguous even when the
 provider returned a timeout. A DB failure after sending may leave the same
@@ -139,7 +168,7 @@ Unique keys protect admission and records only. A multi-replica deployment may
 have more than one process active; a DB CAS is the authority, not a process
 mutex or timer.
 
-## Migration and rollout
+## Migration and cutover
 
 Add additive owner migrations, indexes, and bounded query APIs. Existing
 `workflow_executions.running` records are not changed by migration. Apply
@@ -150,7 +179,16 @@ reconciliation-required counts. Operator reconciliation remains a gated
 follow-up until its authenticated command, evidence and audit/outbox path are
 approved.
 
-## Verification required before acceptance
+## Alternatives considered
+
+- **Plain one-second polling:** loses downtime and duplicates across processes.
+- **A lease-expiry replay queue:** cannot fence an already-issued external effect.
+- **A process mutex or Redis lock without a durable receipt:** cannot prove
+  external completion or atomicity with the database.
+- **Re-running the Workflow engine from step zero after a crash:** reissues
+  nontransactional HTTP/notification effects without reconciliation evidence.
+
+## Verification
 
 - SQLite and PostgreSQL migration tests, atomic cursor/enqueue rollback tests.
 - Two-replica concurrent claim tests and safe restart of queued firings.
@@ -163,11 +201,9 @@ approved.
 - Operator-facing conflict/uncertainty classification and authorized review.
 - Scoped Rust checks/tests on server and Workflow owner (maintainer-owned).
 
-## Alternatives rejected
+## Consequences
 
-- Plain one-second polling: loses downtime and duplicates across processes.
-- A lease-expiry replay queue: cannot fence an already-issued external effect.
-- A process mutex or Redis lock without a durable receipt: cannot prove
-  external completion or atomicity with the database.
-- Re-running the Workflow engine from step zero after a crash: reissues
-  nontransactional HTTP/notification effects without reconciliation evidence.
+- Prevents duplicate cron executions across multiple replicas.
+- Eliminates silent loss of scheduled occurrences across restart/downtime periods.
+- Enforces fail-closed safety for ambiguous step executions by requiring explicit operator reconciliation.
+- Requires additive migrations `m20261123_000009_add_durable_cron.rs` and bounded scheduler tick budgets.

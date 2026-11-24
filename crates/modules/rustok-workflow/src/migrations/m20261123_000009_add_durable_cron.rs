@@ -124,20 +124,20 @@ enum Workflows { Table, Id }
 
 #[derive(DeriveIden)]
 enum Cursors {
-    #[iden = "workflow_cron_cursors"]
+    #[sea_orm(iden = "workflow_cron_cursors")]
     Table, WorkflowId, TenantId, ScheduleRevision, LastEnqueuedAt, Generation, UpdatedAt
 }
 
 #[derive(DeriveIden)]
 enum Firings {
-    #[iden = "workflow_cron_firings"]
+    #[sea_orm(iden = "workflow_cron_firings")]
     Table, Id, WorkflowId, TenantId, ScheduleRevision, ScheduledAt, Status,
     AttemptToken, ClaimedAt, ExecutionId, Reason, CreatedAt, CompletedAt
 }
 
 #[derive(DeriveIden)]
 enum Reviews {
-    #[iden = "workflow_cron_reconciliation_decisions"]
+    #[sea_orm(iden = "workflow_cron_reconciliation_decisions")]
     Table, Id, FiringId, TenantId, ActorId, Decision, Evidence,
     PreviousAttemptToken, CreatedAt,
 }

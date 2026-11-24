@@ -7,6 +7,7 @@ use sea_orm::{
     QuerySelect, Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
@@ -36,7 +37,7 @@ pub(super) fn schedule_revision(workflow: &Workflow, expression: &str) -> String
     digest.update(workflow.id.as_bytes());
     digest.update(workflow.updated_at.timestamp_micros().to_be_bytes());
     digest.update(expression.as_bytes());
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 fn seed_cursor(workflow: &Workflow, now: DateTime<Utc>) -> DateTime<Utc> {
@@ -331,6 +332,7 @@ async fn reserve_execution_for_claim(
 /// A firing can only advance when its schedule is still active. Claims
 /// from old revisions become skipped rather than being executed under
 /// changed workflow definition or a paused/archived workflow.
+#[instrument(skip_all, fields(workflow_id = %item.workflow_id, firing_id = %item.id))]
 pub(super) async fn execute_claim(
     db: &DatabaseConnection,
     engine: &WorkflowEngine,
@@ -572,6 +574,7 @@ pub enum CronReconciliationDecision {
 /// `prior_worker_fenced` must only be attested after the operator verified the
 /// previous runtime instance can no longer issue effects (e.g. terminated
 /// replica + confirmed DB rollback). A timestamp alone is not sufficient.
+#[instrument(skip(db, evidence), fields(tenant_id = %tenant_id, firing_id = %firing_id, actor_id = %actor_id))]
 pub async fn reconcile_firing(
     db: &DatabaseConnection,
     tenant_id: Uuid,
