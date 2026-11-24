@@ -48,7 +48,6 @@ fn field_policy(name: &str) -> ForumOperationPolicy {
             | "deleteForumTopic"
             | "updateForumTopicWithQuotes"
             | "setForumTopicQuotes"
-            | "setForumTopicQuotes"
             | "markForumTopicSolution"
             | "clearForumTopicSolution"
     );
