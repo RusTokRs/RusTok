@@ -56,13 +56,14 @@ async fn bootstrap_remote_session(
         .plaintext_token
         .or_else(|| bearer_token_from_headers(&headers))
         .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
+    let correlation_id = normalize_remote_correlation_id(input.correlation_id)?;
     let transport = input
         .transport
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "http".to_string());
 
     tracing::debug!(
-        transport = %transport,
+        transport_len = transport.len(),
         has_token = true,
         "Handling MCP bootstrap remote session request"
     );
@@ -77,12 +78,7 @@ async fn bootstrap_remote_session(
                 .with_transport(transport)
                 .with_plaintext_token(plaintext_token)
                 .with_metadata(input.metadata)
-                .with_correlation_id(
-                    input
-                        .correlation_id
-                        .clone()
-                        .unwrap_or_else(|| Uuid::new_v4().to_string()),
-                ),
+                .with_correlation_id(correlation_id),
         )
         .await?;
 
@@ -96,8 +92,11 @@ async fn call_remote_tool(
     Json(input): Json<McpRemoteToolCallRequest>,
 ) -> Result<Json<McpRemoteToolCallResponse>> {
     tracing::debug!(
-        tool_name = %input.tool_name,
-        correlation_id = ?input.correlation_id,
+        tool_name_len = input.tool_name.len(),
+        correlation_id_present = input
+            .correlation_id
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty()),
         "Handling MCP remote tool call request"
     );
     let response = execute_remote_tool_call(&ctx, registry, headers, input, "http-json").await?;
@@ -113,8 +112,11 @@ async fn stream_remote_tool(
     Sse<impl futures_util::Stream<Item = std::result::Result<Event, std::convert::Infallible>>>,
 > {
     tracing::debug!(
-        tool_name = %input.tool_name,
-        correlation_id = ?input.correlation_id,
+        tool_name_len = input.tool_name.len(),
+        correlation_id_present = input
+            .correlation_id
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty()),
         "Handling MCP stream remote tool request"
     );
     let response = execute_remote_tool_call(&ctx, registry, headers, input, "sse").await?;
@@ -129,6 +131,21 @@ async fn stream_remote_tool(
     Ok(Sse::new(once(Ok(event))).keep_alive(KeepAlive::default()))
 }
 
+fn normalize_remote_correlation_id(value: Option<String>) -> Result<String> {
+    let Some(value) = value.filter(|value| !value.trim().is_empty()) else {
+        return Ok(Uuid::new_v4().to_string());
+    };
+
+    let value = value.trim();
+    if value.len() > 128 || !value.bytes().all(|byte| byte.is_ascii_graphic()) {
+        return Err(crate::error::Error::BadRequest(
+            "MCP correlation_id must contain 1-128 printable ASCII characters".to_string(),
+        ));
+    }
+
+    Ok(value.to_string())
+}
+
 async fn execute_remote_tool_call(
     ctx: &ServerRuntimeContext,
     registry: ModuleRegistry,
@@ -140,10 +157,7 @@ async fn execute_remote_tool_call(
         .plaintext_token
         .or_else(|| bearer_token_from_headers(&headers))
         .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
-    let correlation_id = input
-        .correlation_id
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let correlation_id = normalize_remote_correlation_id(input.correlation_id)?;
 
     let bridge = ctx
         .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
@@ -710,8 +724,8 @@ async fn create_client(
 ) -> Result<Json<CreateMcpClientResponse>> {
     tracing::debug!(
         tenant_id = %tenant.id,
-        slug = %input.slug,
-        actor_type = %input.actor_type,
+        slug_len = input.slug.len(),
+        actor_type = ?input.actor_type,
         "Handling create MCP client request"
     );
     McpManagementAuthorityService::validate_create_client(
@@ -941,8 +955,8 @@ async fn stage_scaffold_draft(
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
     tracing::debug!(
         tenant_id = %tenant.id,
-        slug = %input.slug,
-        name = %input.name,
+        slug_len = input.slug.len(),
+        name_len = input.name.len(),
         "Handling stage MCP scaffold draft request"
     );
     let draft = McpManagementService::stage_scaffold_draft(
@@ -1257,6 +1271,30 @@ mod tests {
         };
 
         assert!(remote_alloy_authoring_identity(&binding).is_err());
+    }
+
+    #[test]
+    fn remote_correlation_ids_are_safe_for_sse_and_audit() {
+        assert_eq!(
+            normalize_remote_correlation_id(Some("  trace-id:123  ".to_string())).unwrap(),
+            "trace-id:123"
+        );
+
+        let generated = normalize_remote_correlation_id(Some("  ".to_string())).unwrap();
+        assert!(Uuid::parse_str(&generated).is_ok());
+        let safe_event_id =
+            normalize_remote_correlation_id(Some("trace-id:123".to_string())).unwrap();
+        let _ = Event::default().id(safe_event_id);
+
+        for invalid in [
+            "line1\nline2".to_string(),
+            "line1\rline2".to_string(),
+            "nul\0value".to_string(),
+            "x".repeat(129),
+            "non-ascii-☃".to_string(),
+        ] {
+            assert!(normalize_remote_correlation_id(Some(invalid)).is_err());
+        }
     }
 
     #[test]

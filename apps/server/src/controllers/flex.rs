@@ -106,7 +106,7 @@ async fn create_schema(
 ) -> Result<Json<FlexSchemaResponse>> {
     tracing::debug!(
         tenant_id = %tenant.id,
-        slug = %input.slug,
+        slug_len = input.slug.len(),
         "Handling create Flex schema request"
     );
     flex::rest::ensure_module_enabled(ctx.db(), tenant.id)

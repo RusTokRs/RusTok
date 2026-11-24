@@ -24,7 +24,11 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
 
     if matches!(
         normalized,
-        "/metrics" | "/api/openapi.json" | "/api/openapi.yaml"
+        "/metrics"
+            | "/api/openapi.json"
+            | "/api/openapi.yaml"
+            | "/.well-known/openid-configuration"
+            | "/.well-known/oauth-authorization-server"
     ) || normalized == "/api/graphql/schema.graphql"
         || path_is_or_descendant(normalized, "/api/install")
         || path_is_or_descendant(normalized, "/catalog")
@@ -53,6 +57,14 @@ mod tests {
     fn route_policy_distinguishes_global_and_self_resolving_surfaces() {
         assert_eq!(
             tenant_route_scope("/metrics"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/.well-known/openid-configuration"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/.well-known/oauth-authorization-server"),
             TenantRouteScope::GlobalOperator
         );
         assert_eq!(

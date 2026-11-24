@@ -177,7 +177,11 @@ async fn catalog_module(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response<Body>, Error> {
-    tracing::debug!(%slug, locale = %resolved_locale.effective_locale, "Handling marketplace catalog module detail request");
+    tracing::debug!(
+        slug_len = slug.len(),
+        locale = %resolved_locale.effective_locale,
+        "Handling marketplace catalog module detail request"
+    );
     let module = first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str())
         .await?
         .into_iter()
@@ -229,7 +233,12 @@ async fn publish(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.module.slug, version = %request.module.version, dry_run = request.dry_run, "Handling marketplace registry publish request");
+    tracing::debug!(
+        slug_len = request.module.slug.len(),
+        version_len = request.module.version.len(),
+        dry_run = request.dry_run,
+        "Handling marketplace registry publish request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
@@ -1146,7 +1155,11 @@ async fn report_validation_stage(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryValidationStageReportRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(%request_id, stage = %request.stage, "Handling marketplace registry stage report request");
+    tracing::debug!(
+        %request_id,
+        stage_len = request.stage.len(),
+        "Handling marketplace registry stage report request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_validation_stage_report_request(&request)?;
@@ -2214,7 +2227,11 @@ async fn yank(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryYankRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry yank request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        version_len = request.version.len(),
+        "Handling marketplace registry yank request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_yank_request(&request)?;
@@ -2340,7 +2357,11 @@ async fn unyank(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryUnyankRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry un-yank request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        version_len = request.version.len(),
+        "Handling marketplace registry un-yank request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_unyank_request(&request)?;
@@ -2466,7 +2487,10 @@ async fn transfer_owner(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryOwnerTransferRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, "Handling marketplace registry owner transfer request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        "Handling marketplace registry owner transfer request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_owner_transfer_request(&request)?;

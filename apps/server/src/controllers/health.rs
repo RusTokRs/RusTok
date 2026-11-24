@@ -642,6 +642,46 @@ fn resolve_modules_health_status(any_unhealthy: bool, any_degraded: bool) -> &'s
 }
 
 #[cfg(feature = "mod-media")]
+#[derive(Clone)]
+struct StorageHealthProbeState {
+    object_id: uuid::Uuid,
+    created_at: chrono::DateTime<Utc>,
+    operation_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+#[cfg(feature = "mod-media")]
+impl StorageHealthProbeState {
+    fn new() -> Self {
+        Self {
+            object_id: uuid::Uuid::new_v4(),
+            created_at: Utc::now(),
+            operation_lock: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
+}
+
+#[cfg(feature = "mod-media")]
+fn storage_health_probe_state(ctx: &ServerRuntimeContext) -> StorageHealthProbeState {
+    ctx.shared_get_or_insert_with(StorageHealthProbeState::new)
+}
+
+#[cfg(feature = "mod-media")]
+fn storage_health_probe_key(
+    state: &StorageHealthProbeState,
+) -> std::result::Result<object_store::path::Path, String> {
+    rustok_storage::ObjectKey::chronological(
+        "platform-health",
+        rustok_storage::ObjectZone::Staging,
+        rustok_storage::ObjectScope::Platform,
+        state.created_at.clone(),
+        state.object_id,
+        "probe",
+    )
+    .map(rustok_storage::ObjectKey::into_path)
+    .map_err(|_| "storage health probe could not be constructed".to_string())
+}
+
+#[cfg(feature = "mod-media")]
 async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use object_store::ObjectStoreExt;
     use rustok_storage::StorageRuntime;
@@ -650,23 +690,27 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
         return Err("storage runtime is not configured".to_string());
     };
 
-    let probe = rustok_storage::ObjectKey::chronological(
-        "platform-health",
-        rustok_storage::ObjectZone::Staging,
-        rustok_storage::ObjectScope::Platform,
-        chrono::Utc::now(),
-        uuid::Uuid::nil(),
-        "probe",
-    )
-    .map_err(|_| "storage health probe could not be constructed".to_string())?
-    .into_path();
+    // Keep one non-nil probe identity per runtime and serialize its use. A
+    // stable key lets the next probe overwrite and clean up after a timed-out
+    // attempt; a per-runtime UUID prevents replicas from deleting each other's
+    // in-flight health probes.
+    let probe_state = storage_health_probe_state(ctx);
+    let _probe_guard = probe_state.operation_lock.lock().await;
+    let probe = storage_health_probe_key(&probe_state)?;
     let data = bytes::Bytes::from_static(b"ok");
     let result = async {
-        storage
+        if storage
             .objects
             .put_opts(&probe, data.into(), storage.put_options("text/plain"))
             .await
-            .map_err(|_| "storage health probe write failed".to_string())?;
+            .is_err()
+        {
+            // A backend may report an ambiguous write failure after creating
+            // the object. Cleanup is best-effort; the next probe reuses this
+            // runtime-scoped key and retries cleanup.
+            let _ = storage.objects.delete(&probe).await;
+            return Err("storage health probe write failed".to_string());
+        }
         storage
             .objects
             .delete(&probe)
@@ -1379,6 +1423,35 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
+
+    #[cfg(feature = "mod-media")]
+    #[test]
+    fn storage_health_probe_identity_is_unique_per_runtime() {
+        let first_context = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let first = storage_health_probe_state(&first_context);
+        let first_clone = storage_health_probe_state(&first_context.clone());
+
+        assert!(!first.object_id.is_nil());
+        assert_eq!(first.object_id, first_clone.object_id);
+        assert!(std::sync::Arc::ptr_eq(
+            &first.operation_lock,
+            &first_clone.operation_lock
+        ));
+
+        let second_context = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let second = storage_health_probe_state(&second_context);
+        assert_ne!(first.object_id, second.object_id);
+        assert_ne!(
+            storage_health_probe_key(&first).expect("first probe key is valid"),
+            storage_health_probe_key(&second).expect("second probe key is valid")
+        );
+    }
 
     #[tokio::test]
     async fn registry_only_readiness_rejects_shutdown_without_background_workers() {

@@ -116,7 +116,7 @@ async fn grant_artifact_permission(
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key = %input.permission_key, "Handling grant artifact permission request");
+    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key_len = input.permission_key.len(), "Handling grant artifact permission request");
     ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, true).await
 }
@@ -145,7 +145,7 @@ async fn revoke_artifact_permission(
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
-    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key = %input.permission_key, "Handling revoke artifact permission request");
+    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key_len = input.permission_key.len(), "Handling revoke artifact permission request");
     ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, false).await
 }

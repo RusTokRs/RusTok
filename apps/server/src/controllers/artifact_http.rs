@@ -42,7 +42,12 @@ async fn dispatch_http(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response> {
-    tracing::debug!(%installation_id, path = %wildcard_path, %method, "Handling artifact HTTP dispatch request");
+    tracing::debug!(
+        %installation_id,
+        path_len = wildcard_path.len(),
+        %method,
+        "Handling artifact HTTP dispatch request"
+    );
     if !(body.is_empty() && (method == Method::GET || method == Method::DELETE)) {
         ensure_json_content_type(&headers)?;
     }
@@ -81,7 +86,11 @@ async fn dispatch_command(
     headers: HeaderMap,
     Json(input): Json<serde_json::Value>,
 ) -> Result<Response> {
-    tracing::debug!(%installation_id, %binding_id, "Handling artifact command dispatch request");
+    tracing::debug!(
+        %installation_id,
+        binding_id_len = binding_id.len(),
+        "Handling artifact command dispatch request"
+    );
     ensure_json_content_type(&headers)?;
     let installation = resolve_artifact_installation(&ctx, installation_id, tenant.id).await?;
     let binding = find_artifact_command_binding(&installation.descriptor.bindings, &binding_id)
@@ -111,7 +120,11 @@ async fn dispatch_ui_action(
     headers: HeaderMap,
     Json(input): Json<serde_json::Value>,
 ) -> Result<Response> {
-    tracing::debug!(%installation_id, %contribution_id, "Handling artifact UI action dispatch request");
+    tracing::debug!(
+        %installation_id,
+        contribution_id_len = contribution_id.len(),
+        "Handling artifact UI action dispatch request"
+    );
     ensure_json_content_type(&headers)?;
     let output = execute_artifact_ui_action(
         &ctx,
@@ -157,7 +170,11 @@ async fn list_ui_action_audit(
     current: CurrentUser,
     Path((installation_id, contribution_id)): Path<(Uuid, String)>,
 ) -> Result<Response> {
-    tracing::debug!(%installation_id, %contribution_id, "Handling artifact UI action audit list request");
+    tracing::debug!(
+        %installation_id,
+        contribution_id_len = contribution_id.len(),
+        "Handling artifact UI action audit list request"
+    );
     let evidence = list_authorized_artifact_ui_action_audit(
         &ctx,
         tenant.id,
