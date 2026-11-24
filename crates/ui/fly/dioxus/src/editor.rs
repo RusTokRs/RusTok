@@ -177,6 +177,7 @@ pub fn FlyLayerTree(
                     let item_id = item.id.clone();
                     let move_id = item.id.clone();
                     let selectable = !item.opaque && !item.id.is_empty();
+                    let can_move = selectable && item.depth > 0 && !item.is_locked;
                     let browser_component_id = selectable.then(|| item.id.clone());
                     let browser_action = selectable.then_some("select-component");
                     let is_selected = selected.as_deref() == Some(&item_id);
@@ -203,7 +204,7 @@ pub fn FlyLayerTree(
                                     r#type: "button",
                                     class: "fly-layers__move",
                                     aria_label: format!("{} {}", move_label, move_id),
-                                    disabled: !selectable,
+                                    disabled: !can_move,
                                     onclick: move |_| on_begin_move.call(move_id.clone()),
                                     "{move_label}"
                                 }
