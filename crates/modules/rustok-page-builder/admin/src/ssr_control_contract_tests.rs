@@ -532,6 +532,7 @@ fn endpoint_admits(intent: &str, capabilities: CapabilityState) -> bool {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         };
         validate_browser_capability_access(&envelope, capabilities).is_ok()
     };

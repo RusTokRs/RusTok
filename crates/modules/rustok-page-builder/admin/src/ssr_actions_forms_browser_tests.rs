@@ -41,6 +41,7 @@ fn intent(controller: &AdminCanvasController, name: &str, payload: Value) -> Bro
         project_hash: Some(controller.editor().revision().project_hash.hex()),
         draft_token: None,
         draft_generation: None,
+        operation_id: None,
     }
 }
 
