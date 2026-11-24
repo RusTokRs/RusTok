@@ -23,7 +23,7 @@ pub use rustok_auth::{
 use std::net::SocketAddr;
 use uuid::Uuid;
 
-use crate::common::{RustokSettings, extract_effective_proto};
+use crate::common::RustokSettings;
 use crate::context::TenantContext;
 use crate::extractors::auth::{CurrentUser, resolve_current_user_from_access_token};
 use crate::services::oauth_app::OAuthAppService;
