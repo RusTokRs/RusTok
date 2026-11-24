@@ -26,7 +26,8 @@ use crate::core::{
     build_product_detached_attribute_value_view_models, build_product_image_view_models,
     build_product_media_panel_copy, build_product_variants_panel_copy, build_save_command,
     build_selected_product_summary_view_model, build_status_command,
-    build_status_result_view_model, build_variant_row_view_models,
+    build_status_result_view_model, build_variant_row_update_draft, build_variant_row_view_models,
+    validate_editor_variant_draft,
     empty_product_admin_editor_form_state, parse_product_admin_quantity_input,
     pricing_preview_request_from_product, pricing_preview_state_from_result,
     product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
@@ -39,7 +40,7 @@ use crate::model::{
     CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary, ProductDetail, ProductEffectiveForm,
     ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
-    SetCategorySchemaModeDraft, UpdateProductImageDraft, VariantPriceDraft,
+    SetCategorySchemaModeDraft, UpdateProductImageDraft,
 };
 use crate::transport;
 
@@ -1719,12 +1720,12 @@ pub(super) fn ProductVariantsPanel(
     };
 
     let product_id = product.id.clone();
+    let product_variants = product.variants.clone();
     let variant_rows = build_variant_row_view_models(&product, locale.as_deref());
-    let default_currency = product
-        .variants
+    let default_currency = product_variants
         .first()
-        .and_then(|v| v.prices.first())
-        .map(|p| p.currency_code.clone())
+        .and_then(|variant| variant.prices.first())
+        .map(|price| price.currency_code.clone())
         .unwrap_or_else(|| "USD".to_string());
     view! {
         <fieldset disabled=move || busy.get() || blocked.get()>
@@ -1768,6 +1769,7 @@ pub(super) fn ProductVariantsPanel(
 
                 let cell_renderer = {
                     let product_id_for_edit = product_id.clone();
+                    let variants_for_edit = product_variants.clone();
                     let default_curr = default_currency.clone();
                     let on_mutated_edit = on_variant_mutated;
 
@@ -1847,23 +1849,51 @@ pub(super) fn ProductVariantsPanel(
                             }.into_any(),
                             "actions" => {
                                 let v_id = variant_id.clone();
-                                let s = row.sku.clone();
-                                let p = row.price.clone();
-                                let stock_for_edit = row.stock.parse::<i32>().unwrap_or_default();
+                                let original_variant = variants_for_edit
+                                    .iter()
+                                    .find(|variant| variant.id == v_id)
+                                    .cloned();
+                                let original_for_start = original_variant.clone();
                                 let on_start_edit = move |_| {
-                                    set_edit_sku.set(s.clone());
-                                    set_edit_price.set(p.split_whitespace().next().unwrap_or("").to_string());
-                                    set_edit_stock.set(stock_for_edit);
+                                    let Some(original) = original_for_start.as_ref() else {
+                                        set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
+                                        return;
+                                    };
+                                    set_edit_sku.set(original.sku.clone().unwrap_or_default());
+                                    set_edit_price.set(
+                                        original.prices.first().map(|price| price.amount.clone()).unwrap_or_default()
+                                    );
+                                    set_edit_stock.set(original.inventory_quantity);
                                     edit_stock_valid.set(true);
                                     set_editing_variant_id.set(Some(v_id.clone()));
                                 };
 
                                 let v_id_save = variant_id.clone();
                                 let p_id_save = product_id_for_edit.clone();
+                                let original_for_save = original_variant.clone();
                                 let default_curr_save = default_curr.clone();
                                 let on_save_edit = move |_| {
                                     if busy.get_untracked() || blocked.get_untracked() { return; }
                                     if !edit_stock_valid.get_untracked() { set_error.set(Some("Inventory must be a non-negative 32-bit integer".into())); return; }
+                                    let Some(original) = original_for_save.clone() else {
+                                        set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
+                                        return;
+                                    };
+                                    let draft = build_variant_row_update_draft(
+                                        &original,
+                                        edit_sku.get_untracked(),
+                                        edit_price.get_untracked(),
+                                        edit_stock.get_untracked(),
+                                        &default_curr_save,
+                                    );
+                                    if !draft.has_changes() {
+                                        set_editing_variant_id.set(None);
+                                        return;
+                                    }
+                                    if let Err(message) = validate_editor_variant_draft(&draft) {
+                                        set_error.set(Some(message));
+                                        return;
+                                    }
                                     let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
                                         set_error.set(Some("Product session data is unavailable. Reload it before changing an SKU.".into()));
                                         return;
@@ -1872,19 +1902,6 @@ pub(super) fn ProductVariantsPanel(
                                     let tenant_val = tenant.get_untracked();
                                     let var_id = v_id_save.clone();
                                     let prod_id = p_id_save.clone();
-
-                                    let draft = crate::model::VariantUpdateDraft {
-                                        sku: crate::model::VariantUpdateDraft::edited_text(edit_sku.get_untracked()),
-                                        axis_values: Vec::new(),
-                                        prices: vec![VariantPriceDraft {
-                                            currency_code: default_curr_save.clone(),
-                                            amount: edit_price.get_untracked(),
-                                            compare_at_amount: None,
-                                        }],
-                                        inventory_quantity: Some(edit_stock.get_untracked()),
-                                        inventory_policy: None,
-                                        ..Default::default()
-                                    };
 
                                     set_busy.set(true);
                                     set_error.set(None);
