@@ -81,8 +81,9 @@ operation and must not be blocked by a release-readiness policy when the actor h
 ## Consequences
 
 - `UiIntent` save transitions and the public host callback context carry request identity.
-- Consumers that handle Page Builder callbacks must retain the `SaveAttempt` and pass it back
-  when acknowledging or failing a save.
+- Callback-backed hosts must call `PageBuilderCapabilityExecution::complete` once with the
+  result of the exact asynchronous request; the runtime validates and applies the captured
+  `SaveAttempt` before acknowledging or failing it.
 - Leptos Rust and JS adapters can share one logical editor identity without self-conflicting;
   independent tabs and editor roots remain isolated.
 - Dioxus and Leptos hosts now use the same local correlation and advisory peer-write semantics.
