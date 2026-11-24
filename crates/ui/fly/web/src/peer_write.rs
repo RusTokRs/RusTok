@@ -379,6 +379,27 @@ mod tests {
     }
 
     #[test]
+    fn another_editor_root_in_the_same_document_is_still_a_peer() {
+        let mut base = PeerWriteBase::new(
+            "page-1".to_string(),
+            "revision-1".to_string(),
+            "hash-1".to_string(),
+            "document-a:root-1".to_string(),
+        )
+        .expect("valid base");
+        let conflict = base
+            .observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: "revision-2".to_string(),
+                hash: "hash-2".to_string(),
+                sender_id: "document-a:root-2".to_string(),
+            })
+            .expect("different editor root must be fenced");
+        assert_eq!(conflict.revision, "revision-2");
+    }
+
+    #[test]
     fn fences_once_when_another_tab_confirms_a_new_revision_or_hash() {
         let mut base = base();
         let conflict = base
