@@ -24,6 +24,7 @@ fn make_peer_write_channel(
     controller: RwSignal<AdminCanvasController>,
     peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
     last_error: RwSignal<Option<String>>,
+    sender_id: Option<String>,
 ) -> Option<BrowserPeerWriteChannel> {
     let (page_id, revision_id, project_hash) = controller.with_untracked(|controller| {
         (
@@ -32,7 +33,7 @@ fn make_peer_write_channel(
             controller.editor().revision().project_hash.hex(),
         )
     });
-    match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, move |conflict| {
+    let on_conflict = move |conflict| {
         let has_active_save =
             controller.with_untracked(|controller| controller.active_save_attempt().is_some());
         if !has_active_save {
@@ -53,7 +54,23 @@ fn make_peer_write_channel(
             "Another tab saved this page at revision {}. Preserve your local changes and reload before editing again.",
             conflict.revision
         )));
-    }) {
+    };
+    let channel = match sender_id {
+        Some(sender_id) => BrowserPeerWriteChannel::new_with_sender_id(
+            page_id,
+            revision_id,
+            project_hash,
+            sender_id,
+            on_conflict,
+        ),
+        None => BrowserPeerWriteChannel::new(
+            page_id,
+            revision_id,
+            project_hash,
+            on_conflict,
+        ),
+    };
+    match channel {
         Ok(channel) => Some(channel),
         Err(error) => {
             tracing::warn!(?error, "Cross-tab write notifications are unavailable; server revision checks remain authoritative");
@@ -103,6 +120,7 @@ impl AdminEditorRuntime {
         controller: AdminCanvasController,
         facade: Option<Arc<dyn PageBuilderAdminFacade>>,
         on_request: Option<Callback<PageBuilderCapabilityExecution>>,
+        peer_write_sender_id: Option<String>,
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
@@ -115,6 +133,7 @@ impl AdminEditorRuntime {
             controller.clone(),
             peer_write_conflict.clone(),
             last_error.clone(),
+            peer_write_sender_id,
         ));
 
         Self {
