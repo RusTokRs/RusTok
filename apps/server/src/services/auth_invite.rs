@@ -107,6 +107,10 @@ pub struct AcceptedInvite {
     pub role: rustok_core::UserRole,
 }
 
+pub(crate) fn invite_token_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.trim().as_bytes()))
+}
+
 fn invite_ledger_matches_claims(
     issued: &auth_invites::Model,
     email: &str,
@@ -144,6 +148,10 @@ impl AuthLifecycleService {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
+        // The JWT decoder accepts surrounding whitespace. Hash the same
+        // canonical token representation so copy/pasted tokens remain
+        // consistent with the issuance ledger lookup.
+        let token = token.trim();
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
         // INVARIANT: In-memory verification ensuring the decoded invite token belongs to the target tenant.
@@ -175,7 +183,7 @@ impl AuthLifecycleService {
         let role = claims.role;
         let custom_role_slug = claims.custom_role_slug.clone();
         let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
-        let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+        let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
         let consumed_at = Utc::now();
 
@@ -668,5 +676,6 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert_ne!(digest, token);
         assert_eq!(digest, hex::encode(Sha256::digest(token.as_bytes())));
+        assert_eq!(invite_token_hash(&format!("  {token}  ")), digest);
     }
 }
