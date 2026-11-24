@@ -1,11 +1,11 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::capability_access::intent_allowed;
 use crate::core::gate_error_message;
-use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
+use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade, SaveAttempt};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
-use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
+use fly_ui::{CapabilityState, EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
@@ -17,6 +17,51 @@ use rustok_page_builder::{
 };
 use serde_json::{Map, Value};
 use std::sync::Arc;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+fn make_peer_write_channel(
+    controller: RwSignal<AdminCanvasController>,
+    peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
+    last_error: RwSignal<Option<String>>,
+) -> Option<BrowserPeerWriteChannel> {
+    let (page_id, revision_id, project_hash) = controller.with_untracked(|controller| {
+        (
+            controller.page_id().to_string(),
+            controller.revision_id().to_string(),
+            controller.editor().revision().project_hash.hex(),
+        )
+    });
+    match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, move |conflict| {
+        let has_active_save =
+            controller.with_untracked(|controller| controller.active_save_attempt().is_some());
+        if !has_active_save {
+            let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
+            if let Some(Err(error)) = controller.try_update(|controller| {
+                controller.mark_save_conflict(expected, conflict.revision.clone())
+            }) {
+                tracing::warn!(?error, "Failed to mark peer-tab save conflict");
+            }
+        }
+        if let Some(Err(error)) = controller.try_update(|controller| {
+            controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
+        }) {
+            tracing::warn!(?error, "Failed to fence Page Builder after peer-tab write");
+        }
+        peer_write_conflict.set(Some(conflict.clone()));
+        last_error.set(Some(format!(
+            "Another tab saved this page at revision {}. Preserve your local changes and reload before editing again.",
+            conflict.revision
+        )));
+    }) {
+        Ok(channel) => Some(channel),
+        Err(error) => {
+            tracing::warn!(?error, "Cross-tab write notifications are unavailable; server revision checks remain authoritative");
+            None
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AdminEditorRuntime {
@@ -38,6 +83,12 @@ pub struct AdminEditorRuntime {
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
     save_succeeded: String,
+    /// The Rust Leptos workspace dispatches saves outside the classic fly-browser JS adapter.
+    /// Share its confirmed writes through the same advisory channel so sibling tabs are fenced.
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+    peer_write_channel: RwSignal<Option<BrowserPeerWriteChannel>>,
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+    peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
 }
 
 impl AdminEditorRuntime {
@@ -48,9 +99,20 @@ impl AdminEditorRuntime {
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
+        let controller = RwSignal::new(controller);
+        let last_error = RwSignal::new(None);
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        let peer_write_conflict = RwSignal::new(None);
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        let peer_write_channel = RwSignal::new(make_peer_write_channel(
+            controller,
+            peer_write_conflict,
+            last_error,
+        ));
+
         Self {
-            controller: RwSignal::new(controller),
-            last_error: RwSignal::new(None),
+            controller,
+            last_error,
             last_announcement: RwSignal::new(None),
             server_preview_html: RwSignal::new(None),
             preview_in_progress: RwSignal::new(false),
@@ -67,6 +129,10 @@ impl AdminEditorRuntime {
             on_request,
             facade_missing: facade_missing.into(),
             save_succeeded: save_succeeded.into(),
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            peer_write_channel,
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            peer_write_conflict,
         }
     }
 
@@ -81,6 +147,49 @@ impl AdminEditorRuntime {
     ) -> Self {
         self.editor_capability_evaluation = Some(evaluation);
         self
+    }
+
+    /// Whether another tab has committed a newer version of this page.
+    pub fn peer_write_conflicted(&self) -> bool {
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        {
+            self.peer_write_conflict.get_untracked().is_some()
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        {
+            false
+        }
+    }
+
+    pub fn reject_peer_write_conflict(&self) -> bool {
+        if !self.peer_write_conflicted() {
+            return false;
+        }
+        self.fail(
+            "Another tab saved this page. Preserve your unsaved changes, then reload the latest version before editing again.",
+        );
+        true
+    }
+
+    fn broadcast_confirmed_write(&self, revision_id: &str, project_hash: ProjectHash) {
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        {
+            if self.peer_write_conflicted() {
+                return;
+            }
+            let hash = project_hash.hex();
+            if let Some(Err(error)) = self.peer_write_channel.with_untracked(|channel| {
+                channel
+                    .as_ref()
+                    .map(|channel| channel.post_confirmed_write(revision_id, &hash))
+            }) {
+                tracing::warn!(?error, "Failed to broadcast confirmed Page Builder save");
+            }
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        {
+            let _ = (revision_id, project_hash);
+        }
     }
 
     pub fn capability_enabled(&self, capability: EditorCapability) -> bool {
