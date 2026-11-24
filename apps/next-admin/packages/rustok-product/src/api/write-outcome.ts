@@ -38,6 +38,31 @@ const definitiveRefusals: Record<string, string> = {
   DUPLICATE_HANDLE: 'This product handle is already in use.',
   DUPLICATE_SKU: 'This SKU is already in use.',
   NO_VARIANTS: 'Product requires at least one variant.',
+  CANNOT_DELETE_ONLY_VARIANT: 'Product must have at least one variant.',
+  PRODUCT_INVENTORY_DELETION_INVALID:
+    'The Inventory deletion request is invalid. Review the variant before retrying.',
+  PRODUCT_INVENTORY_DELETION_LIMIT:
+    'The Inventory deletion request exceeds the supported limit.',
+  PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT:
+    'This variant has inventory history and cannot be deleted.',
+  PRODUCT_INVENTORY_DELETION_STOCK_PRESENT:
+    'Remove the remaining stock before deleting this variant.',
+  PRODUCT_INVENTORY_DELETION_CHANGED:
+    'Inventory changed while deleting this variant. Reload and review the current state.',
+  PRODUCT_INVENTORY_QUANTITY_INVALID:
+    'The requested inventory quantity is invalid.',
+  PRODUCT_INVENTORY_QUANTITY_LIMIT:
+    'The requested inventory quantity exceeds the supported limit.',
+  PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE:
+    'No eligible stock location is available for this variant.',
+  PRODUCT_INVENTORY_QUANTITY_UNREPRESENTABLE:
+    'Inventory cannot represent the requested quantity.',
+  PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT:
+    'There is not enough stock for the requested quantity change.',
+  PRODUCT_INVENTORY_QUANTITY_CHANGED:
+    'Inventory changed concurrently. Reload the variant and try again.',
+  PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT:
+    'Inventory history prevents this quantity operation.',
   CANNOT_DELETE_PUBLISHED: 'Archive the published product before deleting it.',
   PRODUCT_OPERATION_FAILED:
     'The operation could not be completed safely. Review the request and try again.',

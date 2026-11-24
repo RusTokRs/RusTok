@@ -72,6 +72,7 @@ mod composition {
     mod m20261118_000001_add_sys_event_consumer_retention;
     mod m20261118_000002_add_installer_attempt_fencing;
     mod m20261121_000001_add_sys_events_tenant_projection;
+    mod m20261124_000001_quarantine_stale_installer_http_jobs;
 
     #[cfg(test)]
     mod contract_tests;
@@ -507,6 +508,9 @@ mod composition {
         ));
         all.push(Box::new(
             m20261121_000001_add_sys_events_tenant_projection::Migration,
+        ));
+        all.push(Box::new(
+            m20261124_000001_quarantine_stale_installer_http_jobs::Migration,
         ));
         all
     }

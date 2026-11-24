@@ -120,9 +120,9 @@ mod tests {
             );
         }
 
-        // Any state can transition to Failed
-        assert!(InstallState::Draft.can_transition_to(InstallState::Failed));
-        assert!(InstallState::Deploying.can_transition_to(InstallState::Failed));
+        // Failed remains readable for legacy rows but is not a new transition.
+        assert!(!InstallState::Draft.can_transition_to(InstallState::Failed));
+        assert!(!InstallState::Deploying.can_transition_to(InstallState::Failed));
 
         // Invalid transitions return StateTransitionError
         let err = InstallState::Draft

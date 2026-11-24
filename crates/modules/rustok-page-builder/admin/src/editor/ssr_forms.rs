@@ -169,6 +169,82 @@ impl AdminCanvasController {
         Ok(Some(intent))
     }
 
+    pub fn ssr_selected_style_patch_intent(
+        &self,
+        expected_component_id: Option<&str>,
+        patch: ComponentPatch,
+    ) -> Result<UiIntent, String> {
+        let component_id = self
+            .ui()
+            .state
+            .selection
+            .component_id
+            .as_deref()
+            .ok_or_else(|| "resize requires a selected component".to_string())?;
+        if expected_component_id.is_some_and(|expected| expected != component_id) {
+            return Err("selection changed before the resize was committed".to_string());
+        }
+        let location = self
+            .editor()
+            .document()
+            .component_location(component_id)
+            .ok_or_else(|| "selected component no longer exists".to_string())?;
+        if location.page_index != self.active_page_index() {
+            return Err("selected component is outside the active page".to_string());
+        }
+        if self
+            .selected_component_view()
+            .is_none_or(|selected| selected.is_root)
+        {
+            return Err("the root component cannot be resized".to_string());
+        }
+        ensure_component_editable(self, component_id)?;
+
+        // Browser resize is intentionally narrower than a general ComponentPatch:
+        // it may atomically update width/height only, never attributes, fields,
+        // component identity, or structural content.
+        if !patch.attributes.is_empty()
+            || !patch.remove_attributes.is_empty()
+            || !patch.fields.is_empty()
+            || !patch.remove_fields.is_empty()
+            || patch.replace_style
+            || patch.clear_style
+            || !patch.remove_style_properties.is_empty()
+        {
+            return Err("selected-component patch may only resize width and height".to_string());
+        }
+        let style = patch
+            .style
+            .as_ref()
+            .and_then(Value::as_object)
+            .ok_or_else(|| "resize patch requires a style object".to_string())?;
+        if style.is_empty() || style.len() > 2 {
+            return Err("resize patch must contain width and/or height".to_string());
+        }
+
+        let mut normalized = Map::new();
+        for (property, value) in style {
+            let property = normalize_css_property(property)?;
+            let minimum = match property.as_str() {
+                "width" => 24.0,
+                "height" => 20.0,
+                _ => return Err("resize patch may only change width and height".to_string()),
+            };
+            let value = value
+                .as_str()
+                .and_then(|value| value.strip_suffix("px"))
+                .and_then(|value| value.parse::<f64>().ok())
+                .filter(|value| value.is_finite() && *value >= minimum && *value <= 100_000.0)
+                .ok_or_else(|| format!("resize property {property} must be a bounded pixel value"))?;
+            normalized.insert(property, Value::String(format!("{}px", (value * 100.0).round() / 100.0)));
+        }
+
+        Ok(UiIntent::execute(EditorCommand::Patch {
+            component_id: component_id.to_string(),
+            patch: ComponentPatch::default().merge_style(Value::Object(normalized)),
+        }))
+    }
+
     pub fn ssr_component_property_intent(
         &self,
         request: SsrComponentPropertyRequest,
@@ -541,4 +617,72 @@ fn normalize_css_property(value: &str) -> Result<String, String> {
         return Err("style property must contain only letters, digits, and hyphens".to_string());
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod selected_resize_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn controller() -> AdminCanvasController {
+        AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{ "id": "hero", "type": "section" }]
+                    }
+                }]
+            }),
+        ).expect("controller")
+    }
+
+    #[test]
+    fn selected_resize_applies_width_and_height_atomically() {
+        let mut controller = controller();
+        controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select");
+        let patch = ComponentPatch::default().merge_style(json!({
+            "width": "320px",
+            "height": "180px"
+        }));
+        let intent = controller.ssr_selected_style_patch_intent(None, patch).expect("resize intent");
+        controller.dispatch(intent).expect("resize");
+        let style = controller.editor().document().component("hero")
+            .and_then(|component| component.style.as_ref())
+            .expect("style");
+        assert_eq!(style["width"], "320px");
+        assert_eq!(style["height"], "180px");
+    }
+
+    #[test]
+    fn selected_resize_rejects_general_or_unbounded_component_patches() {
+        let mut controller = controller();
+        controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select");
+        assert!(controller.ssr_selected_style_patch_intent(
+            None,
+            ComponentPatch::default().set_attribute("aria-label", json!("not a resize"))
+        ).is_err());
+        assert!(controller.ssr_selected_style_patch_intent(
+            None,
+            ComponentPatch::default().merge_style(json!({"width": "calc(100% - 1px)"}))
+        ).is_err());
+        assert!(controller.ssr_selected_style_patch_intent(
+            None,
+            ComponentPatch::default().merge_style(json!({"position": "absolute"}))
+        ).is_err());
+        assert!(controller.ssr_selected_style_patch_intent(
+            None,
+            ComponentPatch::default().merge_style(json!({"height": "1000000px"}))
+        ).is_err());
+        assert!(controller.ssr_selected_style_patch_intent(
+            Some("footer"),
+            ComponentPatch::default().merge_style(json!({"width": "320px"}))
+        ).is_err());
+    }
 }

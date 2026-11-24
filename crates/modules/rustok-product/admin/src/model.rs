@@ -407,6 +407,9 @@ pub struct VariantUpdateDraft {
     pub axis_values: Vec<VariantAxisValueDraft>,
     #[serde(default)]
     pub prices: Vec<VariantPriceDraft>,
+    /// Distinguishes an explicit empty replacement (clear all prices) from an untouched price set.
+    #[serde(default)]
+    pub prices_changed: bool,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: Option<i32>,
     #[serde(rename = "inventoryPolicy")]
@@ -414,6 +417,141 @@ pub struct VariantUpdateDraft {
 }
 
 impl VariantUpdateDraft {
+    pub(crate) fn from_inline_editor_state(
+        original: &ProductVariant,
+        sku: String,
+        amount: String,
+        inventory_quantity: i32,
+        fallback_currency: &str,
+    ) -> Self {
+        let price = original.prices.first();
+        let currency = price.map_or(fallback_currency, |price| price.currency_code.as_str());
+        let compare_at_amount = if amount.trim().is_empty() {
+            String::new()
+        } else {
+            price
+                .and_then(|price| price.compare_at_amount.clone())
+                .unwrap_or_default()
+        };
+        Self::from_editor_state(
+            original,
+            sku,
+            original.barcode.clone().unwrap_or_default(),
+            currency.to_owned(),
+            amount,
+            compare_at_amount,
+            inventory_quantity,
+            original.inventory_policy.clone(),
+        )
+    }
+
+    /// Builds a sparse PATCH from the editor's original snapshot and current form values.
+    /// Cross-owner Inventory/Pricing snapshots are omitted unless the operator changed them.
+    pub fn from_editor_state(
+        original: &ProductVariant,
+        sku: String,
+        barcode: String,
+        currency_code: String,
+        amount: String,
+        compare_at_amount: String,
+        inventory_quantity: i32,
+        inventory_policy: String,
+    ) -> Self {
+        let sku = Self::edited_text_if_changed(sku, original.sku.as_deref());
+        let barcode = Self::edited_text_if_changed(barcode, original.barcode.as_deref());
+
+        let original_prices = original
+            .prices
+            .iter()
+            .map(|price| VariantPriceDraft {
+                currency_code: price.currency_code.clone(),
+                amount: price.amount.clone(),
+                compare_at_amount: price.compare_at_amount.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut next_prices = original_prices.clone();
+        let primary_currency = next_prices.first().map(|price| price.currency_code.clone());
+        let currency_code = currency_code.trim().to_ascii_uppercase();
+        let amount = amount.trim().to_owned();
+        let compare_at_amount = rustok_ui_core::normalize_ui_text(&compare_at_amount);
+
+        if amount.is_empty() {
+            if let Some(primary_currency) = primary_currency {
+                next_prices.retain(|price| price.currency_code != primary_currency);
+            }
+        } else {
+            let updated_price = VariantPriceDraft {
+                currency_code: currency_code.clone(),
+                amount,
+                compare_at_amount,
+            };
+            if let Some(primary_currency) = primary_currency {
+                if currency_code == primary_currency {
+                    if let Some(index) = next_prices
+                        .iter()
+                        .position(|price| price.currency_code == primary_currency)
+                    {
+                        next_prices[index] = updated_price;
+                    }
+                } else if next_prices
+                    .iter()
+                    .any(|price| price.currency_code == currency_code)
+                {
+                    next_prices.retain(|price| price.currency_code != primary_currency);
+                    if let Some(index) = next_prices
+                        .iter()
+                        .position(|price| price.currency_code == currency_code)
+                    {
+                        next_prices[index] = updated_price;
+                    }
+                } else if let Some(index) = next_prices
+                    .iter()
+                    .position(|price| price.currency_code == primary_currency)
+                {
+                    next_prices[index] = updated_price;
+                } else {
+                    next_prices.push(updated_price);
+                }
+            } else if let Some(index) = next_prices
+                .iter()
+                .position(|price| price.currency_code == currency_code)
+            {
+                next_prices[index] = updated_price;
+            } else {
+                next_prices.push(updated_price);
+            }
+        }
+
+        let prices_changed = next_prices != original_prices;
+        Self {
+            sku,
+            barcode,
+            prices: if prices_changed {
+                next_prices
+            } else {
+                Vec::new()
+            },
+            prices_changed,
+            inventory_quantity: (inventory_quantity != original.inventory_quantity)
+                .then_some(inventory_quantity),
+            inventory_policy: (inventory_policy != original.inventory_policy)
+                .then_some(inventory_policy),
+            ..Default::default()
+        }
+    }
+
+    fn edited_text_if_changed(value: String, current: Option<&str>) -> rustok_api::Patch<String> {
+        let normalized = rustok_ui_core::normalize_ui_text(&value);
+        if Some(value.as_str()) == current || normalized.as_deref() == current {
+            rustok_api::Patch::Keep
+        } else {
+            match normalized {
+                Some(value) => rustok_api::Patch::Set(value),
+                None => rustok_api::Patch::Clear,
+            }
+        }
+    }
+
     /// Only call for a field actually edited by the form; untouched fields remain Keep.
     pub fn edited_text(value: String) -> rustok_api::Patch<String> {
         match rustok_ui_core::normalize_ui_text(&value) {
@@ -787,4 +925,121 @@ pub struct BindCategoryAttributeDraft {
 pub struct ProductAttributeValueBatchDraft {
     pub locale: String,
     pub patches: Vec<ProductAttributeValuePatchDraft>,
+}
+
+#[cfg(test)]
+mod variant_update_draft_tests {
+    use super::{ProductPrice, ProductVariant, VariantUpdateDraft};
+    use rustok_api::Patch;
+
+    fn original_variant() -> ProductVariant {
+        ProductVariant {
+            id: "variant-1".to_owned(),
+            sku: Some("SKU-1".to_owned()),
+            barcode: Some("BAR-1".to_owned()),
+            shipping_profile_slug: None,
+            title: "Variant".to_owned(),
+            combination_identity: None,
+            axis_values: Vec::new(),
+            prices: vec![
+                ProductPrice {
+                    currency_code: "USD".to_owned(),
+                    amount: "12.50".to_owned(),
+                    compare_at_amount: None,
+                    on_sale: false,
+                },
+                ProductPrice {
+                    currency_code: "EUR".to_owned(),
+                    amount: "11.50".to_owned(),
+                    compare_at_amount: None,
+                    on_sale: false,
+                },
+            ],
+            inventory_quantity: 8,
+            inventory_policy: "deny".to_owned(),
+            in_stock: true,
+        }
+    }
+
+    fn draft(
+        original: &ProductVariant,
+        sku: &str,
+        amount: &str,
+        currency: &str,
+    ) -> VariantUpdateDraft {
+        VariantUpdateDraft::from_editor_state(
+            original,
+            sku.to_owned(),
+            "BAR-1".to_owned(),
+            currency.to_owned(),
+            amount.to_owned(),
+            String::new(),
+            8,
+            "deny".to_owned(),
+        )
+    }
+
+    #[test]
+    fn unchanged_form_values_do_not_replay_inventory_or_pricing_snapshots() {
+        let original = original_variant();
+        let draft = draft(&original, "SKU-1", "12.50", "USD");
+        assert!(matches!(draft.sku, Patch::Keep));
+        assert!(matches!(draft.barcode, Patch::Keep));
+        assert!(draft.inventory_quantity.is_none());
+        assert!(draft.inventory_policy.is_none());
+        assert!(!draft.prices_changed);
+        assert!(draft.prices.is_empty());
+    }
+
+    #[test]
+    fn sku_only_edit_does_not_submit_stale_inventory_or_price_values() {
+        let original = original_variant();
+        let draft = draft(&original, "SKU-2", "12.50", "USD");
+        assert!(matches!(draft.sku, Patch::Set(value) if value == "SKU-2"));
+        assert!(draft.inventory_quantity.is_none());
+        assert!(draft.inventory_policy.is_none());
+        assert!(!draft.prices_changed);
+        assert!(draft.prices.is_empty());
+    }
+
+    #[test]
+    fn primary_price_edit_preserves_other_currency_prices() {
+        let original = original_variant();
+        let draft = draft(&original, "SKU-1", "13.00", "USD");
+        assert!(draft.prices_changed);
+        assert_eq!(draft.prices.len(), 2);
+        assert_eq!(draft.prices[0].amount, "13.00");
+        assert_eq!(draft.prices[1].currency_code, "EUR");
+        assert_eq!(draft.prices[1].amount, "11.50");
+    }
+
+    #[test]
+    fn clearing_primary_price_preserves_other_currency_prices() {
+        let original = original_variant();
+        let draft = draft(&original, "SKU-1", "", "USD");
+        assert!(draft.prices_changed);
+        assert_eq!(draft.prices.len(), 1);
+        assert_eq!(draft.prices[0].currency_code, "EUR");
+    }
+
+    #[test]
+    fn inline_price_edit_preserves_existing_price_context_and_untouched_values() {
+        let mut original = original_variant();
+        original.barcode = Some("  legacy barcode  ".into());
+        original.prices[0].compare_at_amount = Some("15.00".into());
+        let draft = VariantUpdateDraft::from_inline_editor_state(
+            &original,
+            "SKU-1".into(),
+            "13.00".into(),
+            8,
+            "JPY",
+        );
+        assert!(matches!(draft.sku, Patch::Keep));
+        assert!(matches!(draft.barcode, Patch::Keep));
+        assert!(draft.inventory_quantity.is_none());
+        assert!(draft.prices_changed);
+        assert_eq!(draft.prices[0].currency_code, "USD");
+        assert_eq!(draft.prices[0].compare_at_amount.as_deref(), Some("15.00"));
+        assert_eq!(draft.prices[1].currency_code, "EUR");
+    }
 }

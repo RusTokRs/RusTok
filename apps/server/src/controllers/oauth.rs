@@ -1,6 +1,6 @@
 //! OAuth2 REST endpoints (RFC 6749)
 //!
-//! `POST /oauth/token` — Token endpoint (client_credentials flow)
+//! OAuth authorization, token, revocation, and UserInfo endpoints.
 
 use axum::{
     Json,

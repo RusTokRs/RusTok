@@ -18868,6 +18868,7 @@ dependencies = [
  "axum",
  "chrono",
  "cron",
+ "hex",
  "reqwest 0.13.5",
  "rustok-api",
  "rustok-core",

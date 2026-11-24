@@ -14,6 +14,8 @@ import {
   isVariantCreateInput,
   prepareVariantCreateInput,
   isVariantCreateRefusalCode,
+  isVariantUpdateInput,
+  isVariantLifecycleRefusalCode,
   MAX_INVENTORY_QUANTITY,
   MAX_PRODUCT_VARIANTS
 } from './variant-create.ts';
@@ -455,4 +457,68 @@ test('the actual server action binds scope/key and does not rewrite the body or 
     'unknown'
   );
   assert.equal(calls.length, 1);
+});
+
+
+test('sparse variant update journal input accepts only bounded owner fields', () => {
+  const valid = {
+    sku: 'SKU-NEW',
+    inventoryQuantity: 0,
+    prices: [
+      { currencyCode: 'USD', amount: '0', compareAtAmount: null }
+    ]
+  };
+  assert.equal(isVariantUpdateInput(valid), true);
+  assert.equal(isVariantUpdateInput({}), false);
+  for (const invalid of [
+    { sku: 'SKU-NEW', unexpected: true },
+    { inventoryQuantity: -1 },
+    { inventoryQuantity: 2147483648 },
+    { inventoryPolicy: 'backorder' },
+    { axisValues: [{ attributeId: 'bad', optionId: id(3) }] },
+    { axisValues: [{ attributeId: id(2), optionId: id(3) }, { attributeId: id(2), optionId: id(4) }] },
+    { prices: [{ currencyCode: 'US', amount: '1' }] },
+    { prices: [{ currencyCode: 'USD', amount: 'not-money' }] }
+  ]) {
+    assert.equal(isVariantUpdateInput(invalid), false);
+  }
+  assert.equal(isVariantLifecycleRefusalCode('DUPLICATE_SKU'), true);
+  assert.equal(isVariantLifecycleRefusalCode('NO_VARIANTS'), true);
+  assert.equal(isVariantLifecycleRefusalCode('IDEMPOTENCY_KEY_CONFLICT'), false);
+  assert.equal(isVariantLifecycleRefusalCode('UNAUTHORIZED'), false);
+});
+
+
+test('variant lifecycle refusal allowlist mirrors only terminal Product owner decisions', () => {
+  for (const code of [
+    'CANNOT_DELETE_ONLY_VARIANT',
+    'PRODUCT_INVENTORY_DELETION_INVALID',
+    'PRODUCT_INVENTORY_DELETION_LIMIT',
+    'PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT',
+    'PRODUCT_INVENTORY_DELETION_STOCK_PRESENT',
+    'PRODUCT_INVENTORY_DELETION_CHANGED',
+    'PRODUCT_INVENTORY_QUANTITY_INVALID',
+    'PRODUCT_INVENTORY_QUANTITY_LIMIT',
+    'PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE',
+    'PRODUCT_INVENTORY_QUANTITY_UNREPRESENTABLE',
+    'PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT',
+    'PRODUCT_INVENTORY_QUANTITY_CHANGED',
+    'PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT'
+  ]) {
+    assert.equal(isVariantLifecycleRefusalCode(code), true, code);
+  }
+  for (const code of [
+    'PRODUCT_INVENTORY_DELETION_IDENTITY_UNAVAILABLE',
+    'PRODUCT_INVENTORY_DELETION_STATE_UNVERIFIED',
+    'PRODUCT_INVENTORY_DELETION_ISOLATION_UNSUPPORTED',
+    'PRODUCT_INVENTORY_QUANTITY_IDENTITY_UNAVAILABLE',
+    'PRODUCT_INVENTORY_QUANTITY_STATE_UNVERIFIED',
+    'PRODUCT_INVENTORY_QUANTITY_ISOLATION_UNSUPPORTED',
+    'PRODUCT_INVENTORY_QUANTITY_EVENT_UNREPRESENTABLE',
+    'PRODUCT_INVENTORY_QUANTITY_PUBLICATION_UNVERIFIED',
+    'PRODUCT_OPERATION_FAILED',
+    'IDEMPOTENCY_KEY_CONFLICT'
+  ]) {
+    assert.equal(isVariantLifecycleRefusalCode(code), false, code);
+  }
 });

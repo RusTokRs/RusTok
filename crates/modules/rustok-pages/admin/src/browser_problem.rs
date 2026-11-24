@@ -3,7 +3,7 @@ use crate::contribution_browser_intent::PagesBrowserIntentAccessError;
 use fly_ui::EditorCapability;
 use rustok_page_builder_admin::{
     BROWSER_CAPABILITY_DENIAL_CODE, BrowserCapabilityAccessError, BrowserIntentDispatchError,
-    PageBuilderAdminFacadeError, SsrDraftSessionError,
+    MAX_DRAFT_OPERATION_RECEIPT_BYTES, PageBuilderAdminFacadeError, SsrDraftSessionError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,17 @@ pub const BROWSER_DRAFT_UNAVAILABLE_CODE: &str = "DRAFT_UNAVAILABLE";
 pub const BROWSER_DOCUMENT_UNAVAILABLE_CODE: &str = "DOCUMENT_UNAVAILABLE";
 /// Code of a rejected save that carries no more specific stable code.
 pub const BROWSER_SAVE_FAILED_CODE: &str = "SAVE_FAILED";
+/// The write may have committed but neither its response nor its receipt could
+/// be observed. It is a temporary, *unknown* outcome, never validation failure.
+pub const BROWSER_SAVE_OUTCOME_UNKNOWN_CODE: &str = "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN";
+pub const BROWSER_OPERATION_ID_CONFLICT_CODE: &str = "OPERATION_ID_CONFLICT";
+pub const BROWSER_OPERATION_RECEIPT_CAPACITY_CODE: &str = "OPERATION_RECEIPT_CAPACITY";
+pub const BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE: &str = "OPERATION_RECEIPTS_UNSUPPORTED";
+pub const BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE: &str = "OPERATION_RECEIPT_SESSION_REQUIRED";
+pub const BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE: &str = "OPERATION_RECEIPT_TOO_LARGE";
+pub const BROWSER_OPERATION_ID_INVALID_CODE: &str = "OPERATION_ID_INVALID";
+pub const BROWSER_OPERATION_HASH_INVALID_CODE: &str = "OPERATION_HASH_INVALID";
+pub const BROWSER_OPERATION_FINGERPRINT_FAILED_CODE: &str = "OPERATION_FINGERPRINT_FAILED";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PagesBrowserIntentProblem {
@@ -75,16 +86,12 @@ impl PagesBrowserIntentProblem {
     /// failure without a stable code is reported as
     /// [`BROWSER_SAVE_FAILED_CODE`].
     pub fn from_save_failure(error: &PageBuilderAdminFacadeError) -> Self {
-        let conflict = error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE);
-        Self::save_problem(
-            if conflict {
-                HTTP_CONFLICT
-            } else {
-                HTTP_UNPROCESSABLE_ENTITY
-            },
-            error.stable_code.as_deref(),
-            error.to_string(),
-        )
+        let status = match error.stable_code.as_deref() {
+            Some(BROWSER_REVISION_CONFLICT_CODE) => HTTP_CONFLICT,
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) => HTTP_SERVICE_UNAVAILABLE,
+            _ => HTTP_UNPROCESSABLE_ENTITY,
+        };
+        Self::save_problem(status, error.stable_code.as_deref(), error.to_string())
     }
 
     /// Problem describing an autosave that could not be requested at all —
@@ -130,7 +137,8 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable) => {
             HTTP_CONFLICT
         }
-        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageMismatch { .. }) => {
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageMismatch { .. })
+        | PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::OperationFingerprint(_)) => {
             HTTP_BAD_REQUEST
         }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(error)) => {
@@ -138,16 +146,29 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::GenerationConflict { .. }
-            | SsrDraftSessionError::PageMismatch { .. },
+            | SsrDraftSessionError::PageMismatch { .. }
+            | SsrDraftSessionError::OperationReceiptConflict
+            | SsrDraftSessionError::OperationReceiptRequiresSession
+            | SsrDraftSessionError::DraftUnavailable,
         )) => HTTP_CONFLICT,
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::InvalidOperationId
+            | SsrDraftSessionError::InvalidOperationHash,
+        )) => HTTP_BAD_REQUEST,
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OperationReceiptTooLarge { .. }
+            | SsrDraftSessionError::RecordTooLarge { .. },
+        )) => HTTP_PAYLOAD_TOO_LARGE,
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OperationReceiptCapacity { .. }
+            | SsrDraftSessionError::OperationReceiptsUnsupported
+            | SsrDraftSessionError::GenerationExhausted,
+        )) => HTTP_SERVICE_UNAVAILABLE,
         // The draft session belongs to another user/tenant: never leak which
         // one (audit §2.5).
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::OwnerMismatch,
         )) => HTTP_FORBIDDEN,
-        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
-            SsrDraftSessionError::RecordTooLarge { .. },
-        )) => HTTP_PAYLOAD_TOO_LARGE,
         // Draft storage that is busy or unusable (for example a session
         // directory the server could not secure) is the server's condition,
         // not a request the client could correct.
@@ -163,6 +184,11 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) =>
         {
             HTTP_CONFLICT
+        }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
+            if error.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) =>
+        {
+            HTTP_SERVICE_UNAVAILABLE
         }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Transport(_)) => {
             HTTP_BAD_GATEWAY
@@ -197,6 +223,20 @@ fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> 
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable) => {
             Some(BROWSER_DRAFT_UNAVAILABLE_CODE)
         }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::OperationFingerprint(_)) => {
+            Some(BROWSER_OPERATION_FINGERPRINT_FAILED_CODE)
+        }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(error)) => match error {
+            SsrDraftSessionError::OperationReceiptConflict => Some(BROWSER_OPERATION_ID_CONFLICT_CODE),
+            SsrDraftSessionError::OperationReceiptCapacity { .. } => Some(BROWSER_OPERATION_RECEIPT_CAPACITY_CODE),
+            SsrDraftSessionError::OperationReceiptsUnsupported => Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
+            SsrDraftSessionError::OperationReceiptRequiresSession => Some(BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE),
+            SsrDraftSessionError::OperationReceiptTooLarge { .. } => Some(BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE),
+            SsrDraftSessionError::InvalidOperationId => Some(BROWSER_OPERATION_ID_INVALID_CODE),
+            SsrDraftSessionError::InvalidOperationHash => Some(BROWSER_OPERATION_HASH_INVALID_CODE),
+            SsrDraftSessionError::DraftUnavailable => Some(BROWSER_DRAFT_UNAVAILABLE_CODE),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -215,6 +255,27 @@ mod tests {
     use fly_browser::BrowserIntentKind;
     use rustok_page_builder_admin::{BrowserCapabilityDenial, PageBuilderAdminFacadeError};
     use serde_json::json;
+
+    #[test]
+    fn save_outcome_unknown_is_retryable_server_status_not_validation_failure() {
+        let error = PageBuilderAdminFacadeError::with_stable_code(
+            "Network failure: original commit status is not known",
+            BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+        );
+        let as_save_failure = PagesBrowserIntentProblem::from_save_failure(&error);
+        assert_eq!(as_save_failure.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(
+            as_save_failure.code.as_deref(),
+            Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)
+        );
+        assert_eq!(as_save_failure.intent.as_deref(), Some("save"));
+        let as_http_error = PagesBrowserIntentProblem::from_error(
+            &PagesBrowserIntentAccessError::Pages(
+                PagesBrowserIntentError::Facade(error),
+            )
+        );
+        assert_eq!(as_http_error.status, HTTP_SERVICE_UNAVAILABLE);
+    }
 
     #[test]
     fn capability_denial_has_stable_problem_contract() {
@@ -308,6 +369,39 @@ mod tests {
         assert_eq!(
             problem.code.as_deref(),
             Some(BROWSER_REVISION_CONFLICT_CODE)
+        );
+    }
+
+    #[test]
+    fn operation_receipt_errors_have_stable_conflict_and_server_statuses() {
+        let conflict = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptConflict),
+        );
+        let problem = PagesBrowserIntentProblem::from(&conflict);
+        assert_eq!(problem.status, HTTP_CONFLICT);
+        assert_eq!(problem.code.as_deref(), Some(BROWSER_OPERATION_ID_CONFLICT_CODE));
+
+        let unsupported = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptsUnsupported),
+        );
+        let problem = PagesBrowserIntentProblem::from(&unsupported);
+        assert_eq!(problem.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
+        );
+
+        let too_large = PagesBrowserIntentAccessError::Pages(
+            PagesBrowserIntentError::Draft(SsrDraftSessionError::OperationReceiptTooLarge {
+                bytes: MAX_DRAFT_OPERATION_RECEIPT_BYTES + 1,
+                maximum: MAX_DRAFT_OPERATION_RECEIPT_BYTES,
+            }),
+        );
+        let problem = PagesBrowserIntentProblem::from(&too_large);
+        assert_eq!(problem.status, HTTP_PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_OPERATION_RECEIPT_TOO_LARGE_CODE),
         );
     }
 

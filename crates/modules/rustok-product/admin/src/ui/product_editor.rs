@@ -808,27 +808,20 @@ pub fn ProductEditorPage(
         if is_busy.get_untracked() || product_write_blocked() || !is_editing {
             return;
         }
-        if !inventory_quantity_valid.get_untracked() {
-            set_error_msg.set(Some(
-                "Inventory must be a non-negative 32-bit integer.".to_string(),
-            ));
-            return;
-        }
         let Some(target_id) = variant_target_id.get_untracked() else {
             return;
         };
-        let target_exists = loaded_product.get_untracked().is_some_and(|product| {
+        let Some(target_variant) = loaded_product.get_untracked().and_then(|product| {
             product
                 .variants
-                .iter()
-                .any(|variant| variant.id == target_id)
-        });
-        if !target_exists {
+                .into_iter()
+                .find(|variant| variant.id == target_id)
+        }) else {
             set_error_msg.set(Some(
                 "The displayed variant is no longer available. Reload the editor.".to_string(),
             ));
             return;
-        }
+        };
         let variant_amount = amount.get_untracked();
         let variant_compare = compare_at_amount.get_untracked();
         if variant_amount.trim().is_empty() && !variant_compare.trim().is_empty() {
@@ -837,24 +830,22 @@ pub fn ProductEditorPage(
             ));
             return;
         }
-        let draft = crate::model::VariantUpdateDraft {
-            sku: crate::model::VariantUpdateDraft::edited_text(sku.get_untracked()),
-            barcode: crate::model::VariantUpdateDraft::edited_text(barcode.get_untracked()),
-            axis_values: Vec::new(),
-            prices: if variant_amount.trim().is_empty() {
-                Vec::new()
-            } else {
-                vec![crate::model::VariantPriceDraft {
-                    currency_code: currency_code.get_untracked(),
-                    amount: variant_amount,
-                    compare_at_amount: Some(variant_compare)
-                        .filter(|value| !value.trim().is_empty()),
-                }]
-            },
-            inventory_quantity: Some(inventory_quantity.get_untracked()),
-            inventory_policy: Some(inventory_policy.get_untracked()),
-            ..Default::default()
-        };
+        let draft = crate::model::VariantUpdateDraft::from_editor_state(
+            &target_variant,
+            sku.get_untracked(),
+            barcode.get_untracked(),
+            currency_code.get_untracked(),
+            variant_amount,
+            variant_compare,
+            inventory_quantity.get_untracked(),
+            inventory_policy.get_untracked(),
+        );
+        if draft.inventory_quantity.is_some() && !inventory_quantity_valid.get_untracked() {
+            set_error_msg.set(Some(
+                "Inventory must be a non-negative 32-bit integer.".to_string(),
+            ));
+            return;
+        }
         if let Err(message) = validate_editor_variant_draft(&draft) {
             set_error_msg.set(Some(message));
             return;

@@ -28,7 +28,10 @@ channel visibility and deterministic published artifacts.
   Builder format server-side; callers do not submit a body format or a parallel
   serialized-content field;
 - deterministic publish/build/integrity and storefront artifact delivery;
-- typed permission, feature-gate, revision and artifact-integrity failures.
+- typed permission, feature-gate, revision and artifact-integrity failures;
+- optional, immutable save-operation identities and explicit recovery of
+  committed acknowledgements, as specified by
+  [the Pages save receipt ADR](../../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
 
 ## Current-only rules
 

@@ -15,6 +15,7 @@ use rustok_installer::{
 };
 use rustok_installer_persistence::{
     InstallHttpJobModel, InstallStepReceiptItem, InstallerPersistenceService,
+    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE,
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,8 @@ const INSTALLER_HTTP_JOB_CREATE_MAX_ATTEMPTS: u32 = 3;
 const INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS: u32 = 5;
 const INSTALLER_HTTP_JOB_RETRY_BASE_DELAY_MS: u64 = 100;
 const INSTALLER_HTTP_JOB_RETRY_MAX_DELAY_MS: u64 = 1_000;
+const INSTALLER_HTTP_JOB_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const INSTALLER_HTTP_JOB_STALE_AFTER_SECS: i64 = 300;
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -58,12 +61,13 @@ pub struct InstallApplyRequest {
     pub pg_admin_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallJobState {
     Running,
     Succeeded,
     Failed,
+    RecoveryRequired,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,51 +107,107 @@ pub struct InstallStatusResponse {
     pub lock_owner: Option<String>,
     pub lock_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub job_id: Option<Uuid>,
+    pub job_status: Option<InstallJobState>,
 }
 
 async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
     tracing::debug!("Handling installer status request");
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
+
+    let latest_job = match persistence.latest_http_job().await {
+        Ok(job) => job,
+        Err(error) if installer_http_job_schema_missing(&error) => None,
+        Err(error) => return Err(installer_storage_failure("status.latest_job", error)),
+    };
     let completed = match persistence.has_completed_session().await {
         Ok(completed) => completed,
         Err(error) if installer_schema_missing(&error) => {
-            return Ok(Json(InstallStatusResponse {
-                status: "not_initialized".to_string(),
-                initialized: false,
-                completed: false,
-                session_id: None,
-                tenant_id: None,
-                lock_owner: None,
-                lock_expires_at: None,
-                completed_at: None,
-            }));
+            return match latest_job.as_ref() {
+                Some(job) => Ok(Json(install_status_from_job(job, false)?)),
+                None => Ok(Json(InstallStatusResponse {
+                    status: "not_initialized".to_string(),
+                    initialized: false,
+                    completed: false,
+                    session_id: None,
+                    tenant_id: None,
+                    lock_owner: None,
+                    lock_expires_at: None,
+                    completed_at: None,
+                    job_id: None,
+                    job_status: None,
+                })),
+            };
         }
         Err(error) => return Err(installer_storage_failure("status.completion", error)),
     };
+    let latest_session = persistence
+        .latest_session()
+        .await
+        .map_err(|error| installer_storage_failure("status.latest_session", error))?;
 
-    match persistence.latest_session().await {
-        Ok(Some(session)) => Ok(Json(InstallStatusResponse {
+    if let Some(job) = latest_job.as_ref() {
+        if !latest_session
+            .as_ref()
+            .is_some_and(|session| job.session_id == Some(session.id))
+        {
+            return Ok(Json(install_status_from_job(job, latest_session.is_some())?));
+        }
+    }
+
+    match latest_session {
+        Some(session) => Ok(Json(InstallStatusResponse {
             status: session.status,
             initialized: true,
-            completed,
+            completed: completed
+                || latest_job
+                    .as_ref()
+                    .is_some_and(|job| job.status == "succeeded"),
             session_id: Some(session.id),
             tenant_id: session.tenant_id,
             lock_owner: session.lock_owner,
             lock_expires_at: session.lock_expires_at,
             completed_at: session.completed_at,
+            job_id: latest_job.as_ref().map(|job| job.id),
+            job_status: latest_job
+                .as_ref()
+                .map(|job| install_job_state(&job.status))
+                .transpose()?,
         })),
-        Ok(None) => Ok(Json(InstallStatusResponse {
-            status: "not_started".to_string(),
-            initialized: true,
-            completed,
-            session_id: None,
-            tenant_id: None,
-            lock_owner: None,
-            lock_expires_at: None,
-            completed_at: None,
-        })),
-        Err(error) => Err(installer_storage_failure("status.latest_session", error)),
+        None => match latest_job.as_ref() {
+            Some(job) => Ok(Json(install_status_from_job(job, true)?)),
+            None => Ok(Json(InstallStatusResponse {
+                status: "not_started".to_string(),
+                initialized: true,
+                completed,
+                session_id: None,
+                tenant_id: None,
+                lock_owner: None,
+                lock_expires_at: None,
+                completed_at: None,
+                job_id: None,
+                job_status: None,
+            })),
+        },
     }
+}
+
+fn install_status_from_job(
+    job: &InstallHttpJobModel,
+    initialized: bool,
+) -> Result<InstallStatusResponse> {
+    Ok(InstallStatusResponse {
+        status: job.status.clone(),
+        initialized,
+        completed: job.status == "succeeded",
+        session_id: job.session_id,
+        tenant_id: job.tenant_id,
+        lock_owner: None,
+        lock_expires_at: None,
+        completed_at: job.finished_at.clone(),
+        job_id: Some(job.id),
+        job_status: Some(install_job_state(&job.status)?),
+    })
 }
 
 async fn plan(
@@ -295,6 +355,36 @@ async fn finish_http_job_succeeded_with_retry(
     }))
 }
 
+async fn finish_http_job_recovery_required_with_retry(
+    persistence: &InstallerPersistenceService,
+    job_id: Uuid,
+) -> std::result::Result<(), sea_orm::DbErr> {
+    let mut last_error = None;
+    for attempt in 1..=INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+        match persistence.finish_http_job_recovery_required(job_id).await {
+            Ok(_) => return Ok(()),
+            Err(error) => match persistence.get_http_job(job_id).await {
+                Ok(Some(job)) if job.status == "recovery_required" => return Ok(()),
+                Ok(Some(job)) if job.status == "running" => last_error = Some(error),
+                // A concurrent terminal success/failure is authoritative; never overwrite it.
+                Ok(Some(job)) if job.status == "succeeded" => return Ok(()),
+                Ok(Some(_)) | Ok(None) => return Err(error),
+                Err(read_error) => last_error = Some(read_error),
+            },
+        }
+
+        if attempt < INSTALLER_HTTP_JOB_FINALIZE_MAX_ATTEMPTS {
+            tokio::time::sleep(installer_http_job_retry_delay(attempt)).await;
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        sea_orm::DbErr::Custom(
+            "installer HTTP job recovery finalization exhausted its retry budget".to_string(),
+        )
+    }))
+}
+
 async fn finish_http_job_failed_with_retry(
     persistence: &InstallerPersistenceService,
     job_id: Uuid,
@@ -389,6 +479,52 @@ async fn settle_unstarted_http_job_after_creation_failure(
 /// The request may be cancelled after admission. The runtime JoinSet owns the
 /// claim-to-execution task and the shutdown drain joins it before the event
 /// forwarder is stopped.
+async fn await_installer_job_with_heartbeat<F>(
+    persistence: InstallerPersistenceService,
+    job_id: Uuid,
+    execute: F,
+) where
+    F: Future<Output = ()>,
+{
+    let heartbeat_persistence = persistence;
+    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel();
+    let heartbeat = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INSTALLER_HTTP_JOB_HEARTBEAT_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        interval.tick().await;
+
+        loop {
+            tokio::select! {
+                _ = &mut stop_rx => break,
+                _ = interval.tick() => {
+                    match heartbeat_persistence.heartbeat_http_job(job_id).await {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            tracing::warn!(
+                                %job_id,
+                                "Installer HTTP job heartbeat lost its running-state fence; execution remains quarantined"
+                            );
+                            break;
+                        }
+                        Err(_error) => {
+                            tracing::warn!(
+                                %job_id,
+                                "Installer HTTP job heartbeat failed; durable stale-job reconciliation remains fail-closed"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    execute.await;
+    let _ = stop_tx.send(());
+    if heartbeat.await.is_err() {
+        tracing::error!(%job_id, "Installer HTTP job heartbeat task panicked");
+    }
+}
+
 fn spawn_persisted_installer_job<F>(
     ctx: ServerRuntimeContext,
     persistence: InstallerPersistenceService,
@@ -457,7 +593,7 @@ where
             }
 
             executor_started_in_task.store(true, Ordering::Release);
-            execute.await;
+            await_installer_job_with_heartbeat(persistence.clone(), job_id, execute).await;
         })
         .catch_unwind()
         .await;
@@ -477,6 +613,14 @@ where
                         "Failed to persist the interrupted pre-execution installer job state"
                     );
                 }
+            } else if let Err(_error) =
+                finish_http_job_recovery_required_with_retry(&persistence_for_recovery, job_id)
+                    .await
+            {
+                tracing::error!(
+                    %job_id,
+                    "Failed to quarantine an installer job after an unexpected task panic"
+                );
             }
         }
     };
@@ -534,7 +678,8 @@ async fn apply(
     }
 
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    require_no_running_http_install_job(persistence.has_running_http_job().await)?;
+    reconcile_stale_installer_jobs(&persistence).await?;
+    require_no_unresolved_http_install_job(persistence.has_unresolved_http_job().await)?;
 
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
@@ -592,27 +737,35 @@ async fn apply(
                     finish_http_job_succeeded_with_retry(&persistence, job_id, &output).await
                 {
                     tracing::error!(job_id = %job_id, "Failed to finalize durable installer HTTP job after bounded retries");
+                    if let Err(_recovery_error) =
+                        finish_http_job_recovery_required_with_retry(&persistence, job_id).await
+                    {
+                        tracing::error!(%job_id, "Failed to quarantine installer job after ambiguous success finalization");
+                    }
                 }
             }
-            Ok(Err(_error)) => {
+            Ok(Err(error)) => {
                 tracing::error!(%job_id, "Installer apply job failed; error details redacted");
-                if let Err(_update_error) =
+                let finalized = if error.requires_recovery() {
+                    finish_http_job_recovery_required_with_retry(&persistence, job_id).await
+                } else {
                     finish_http_job_failed_with_retry(&persistence, job_id).await
-                {
+                };
+                if let Err(_update_error) = finalized {
                     tracing::error!(
                         %job_id,
-                        "Failed to persist installer HTTP job failure state after bounded retries"
+                        "Failed to persist installer HTTP job terminal state after bounded retries"
                     );
                 }
             }
             Err(_panic) => {
                 tracing::error!(%job_id, "Installer apply job panicked unexpectedly");
                 if let Err(_update_error) =
-                    finish_http_job_failed_with_retry(&persistence, job_id).await
+                    finish_http_job_recovery_required_with_retry(&persistence, job_id).await
                 {
                     tracing::error!(
                         %job_id,
-                        "Failed to persist installer HTTP job panic failure state after bounded retries"
+                        "Failed to persist installer HTTP job recovery state after bounded retries"
                     );
                 }
             }
@@ -666,7 +819,7 @@ async fn apply(
 
 /// Setup is a destructive control-plane operation: an unavailable job ledger
 /// cannot be interpreted as absence of an active installation.
-fn require_no_running_http_install_job(
+fn require_no_unresolved_http_install_job(
     existing_job: std::result::Result<bool, sea_orm::DbErr>,
 ) -> Result<()> {
     match existing_job {
@@ -674,14 +827,34 @@ fn require_no_running_http_install_job(
         Ok(true) => Err(http_error(HttpError::new(
             StatusCode::CONFLICT,
             "installer_running",
-            "An installation job is already running",
+            "An installation job is running or requires operator reconciliation",
         ))),
         Err(_error) => {
             tracing::error!("Unable to inspect durable installer job admission; database details redacted");
             Err(internal_error(
-                "Unable to verify whether an installer job is already running",
+                "Unable to verify whether an installer job is unresolved",
             ))
         }
+    }
+}
+
+async fn reconcile_stale_installer_jobs(
+    persistence: &InstallerPersistenceService,
+) -> Result<()> {
+    let stale_before =
+        Utc::now() - chrono::Duration::seconds(INSTALLER_HTTP_JOB_STALE_AFTER_SECS);
+    match persistence.reconcile_stale_http_jobs(stale_before).await {
+        Ok(quarantined) => {
+            if quarantined > 0 {
+                tracing::warn!(
+                    quarantined_jobs = quarantined,
+                    "Stale installer HTTP jobs were quarantined for operator reconciliation"
+                );
+            }
+            Ok(())
+        }
+        Err(error) if installer_http_job_schema_missing(&error) => Ok(()),
+        Err(error) => Err(installer_storage_failure("job.reconcile_stale", error)),
     }
 }
 
@@ -824,6 +997,7 @@ async fn job_status(
     tracing::debug!(%job_id, "Handling installer job status request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    reconcile_stale_installer_jobs(&persistence).await?;
     let Some(job) = persistence.get_http_job(job_id).await.map_err(|_error| {
         tracing::error!(%job_id, "Failed to read durable installer HTTP job; database details redacted");
         internal_error("failed to read installer job")
@@ -835,18 +1009,21 @@ async fn job_status(
     Ok(Json(install_job_status_response(job)?))
 }
 
+fn install_job_state(value: &str) -> Result<InstallJobState> {
+    match value {
+        "running" => Ok(InstallJobState::Running),
+        "succeeded" => Ok(InstallJobState::Succeeded),
+        "failed" => Ok(InstallJobState::Failed),
+        "recovery_required" => Ok(InstallJobState::RecoveryRequired),
+        _ => Err(internal_error("installer job has an invalid persisted state")),
+    }
+}
+
 fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobStatusResponse> {
-    let status = match job.status.as_str() {
-        "running" => InstallJobState::Running,
-        "succeeded" => InstallJobState::Succeeded,
-        "failed" => InstallJobState::Failed,
-        _ => {
-            tracing::error!(%job.id, status = %job.status, "Durable installer HTTP job has an unknown status");
-            return Err(internal_error(
-                "installer job has an invalid persisted state",
-            ));
-        }
-    };
+    let status = install_job_state(&job.status).map_err(|error| {
+        tracing::error!(%job.id, status = %job.status, "Durable installer HTTP job has an unknown status");
+        error
+    })?;
 
     let output = match job.output {
         Some(value) => match serde_json::from_value::<InstallApplyOutput>(value) {
@@ -868,9 +1045,11 @@ fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobSta
         session_id: job.session_id,
         tenant_id: job.tenant_id,
         output,
-        error: job
-            .error_message
-            .map(|_| INSTALLER_JOB_FAILURE_MESSAGE.to_string()),
+        error: match job.status.as_str() {
+            "failed" => Some(INSTALLER_JOB_FAILURE_MESSAGE.to_string()),
+            "recovery_required" => Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string()),
+            _ => None,
+        },
     })
 }
 
@@ -882,6 +1061,27 @@ async fn receipts(
     tracing::debug!(%session_id, "Handling installer receipts request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    let session = match persistence.get_session(session_id).await {
+        Ok(session) => session,
+        Err(error) if installer_schema_missing(&error) => None,
+        Err(error) => return Err(installer_storage_failure("session.lookup", error)),
+    };
+    if session.is_none() {
+        let job = match persistence.get_http_job(session_id).await {
+            Ok(job) => job,
+            Err(error) if installer_http_job_schema_missing(&error) => None,
+            Err(error) => return Err(installer_storage_failure("session.job_lookup", error)),
+        };
+        if job.is_some() {
+            return Err(http_error(HttpError::new(
+                StatusCode::CONFLICT,
+                "installer_target_session_unavailable",
+                "This install session belongs to the target database and is not available through the server runtime database; reconcile the target session and receipts directly before retrying",
+            )));
+        }
+        return Err(not_found_error("installer session not found"));
+    }
+
     let receipts = persistence
         .list_receipts(session_id)
         .await
@@ -974,6 +1174,16 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
 fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     message.contains("install_sessions")
+        && (message.contains("does not exist")
+            || message.contains("no such table")
+            || message.contains("not found")
+            || message.contains("doesn't exist")
+            || message.contains("unknown table"))
+}
+
+fn installer_http_job_schema_missing(error: &sea_orm::DbErr) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("install_http_jobs")
         && (message.contains("does not exist")
             || message.contains("no such table")
             || message.contains("not found")
@@ -1321,18 +1531,18 @@ mod tests {
 
     #[test]
     fn installer_job_admission_fails_closed_on_database_error() {
-        assert!(require_no_running_http_install_job(Ok(false)).is_ok());
+        assert!(require_no_unresolved_http_install_job(Ok(false)).is_ok());
 
-        let running = require_no_running_http_install_job(Ok(true)).unwrap_err();
+        let unresolved = require_no_unresolved_http_install_job(Ok(true)).unwrap_err();
         assert!(matches!(
-            running,
+            unresolved,
             Error::Http(ref response) if response.status == StatusCode::CONFLICT
         ));
 
         let db_error = sea_orm::DbErr::Custom(
             "connection failed: postgres://root:secret@database/internal".to_string(),
         );
-        let unavailable = require_no_running_http_install_job(Err(db_error)).unwrap_err();
+        let unavailable = require_no_unresolved_http_install_job(Err(db_error)).unwrap_err();
         match unavailable {
             Error::Http(response) => {
                 assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
@@ -1359,6 +1569,11 @@ mod tests {
 
         let other_error = sea_orm::DbErr::Custom("connection refused".to_string());
         assert!(!installer_schema_missing(&other_error));
+
+        let postgres_job_missing =
+            sea_orm::DbErr::Custom("relation \"install_http_jobs\" does not exist".to_string());
+        assert!(installer_http_job_schema_missing(&postgres_job_missing));
+        assert!(!installer_http_job_schema_missing(&other_error));
     }
 
     fn sample_http_job_model(
@@ -1421,6 +1636,46 @@ mod tests {
         assert!(matches!(response.status, InstallJobState::Failed));
         assert_eq!(response.error.as_deref(), Some(INSTALLER_JOB_FAILURE_MESSAGE));
         assert!(!response.error.as_deref().unwrap().contains("sensitive-password"));
+    }
+
+    #[test]
+    fn install_job_status_response_maps_recovery_required_without_exposing_executor_details() {
+        let model = sample_http_job_model(
+            "recovery_required",
+            None,
+            Some(Uuid::new_v4()),
+            None,
+            None,
+            Some("private target connection and executor details".to_string()),
+        );
+        let response =
+            install_job_status_response(model).expect("maps recovery-required status");
+        assert_eq!(response.status, InstallJobState::RecoveryRequired);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE)
+        );
+        assert!(!response.error.as_deref().unwrap().contains("private target"));
+        assert!(response.finished_at.is_none());
+    }
+
+    #[test]
+    fn install_status_projection_uses_the_host_job_when_target_session_is_remote() {
+        let model = sample_http_job_model(
+            "recovery_required",
+            None,
+            Some(Uuid::new_v4()),
+            Some(Uuid::new_v4()),
+            None,
+            Some("private executor details".to_string()),
+        );
+        let response = install_status_from_job(&model, false)
+            .expect("host job is visible without a runtime-database session");
+        assert_eq!(response.status, "recovery_required");
+        assert_eq!(response.job_status, Some(InstallJobState::RecoveryRequired));
+        assert!(!response.initialized);
+        assert!(!response.completed);
+        assert_eq!(response.job_id, Some(model.id));
     }
 
     #[test]
@@ -1567,6 +1822,41 @@ mod tests {
         assert_eq!(
             recovered.submitted_at.timestamp_micros(),
             submitted_at.timestamp_micros()
+        );
+    }
+
+    #[tokio::test]
+    async fn installer_http_job_recovery_finalization_accepts_an_already_committed_state() {
+        let db = installer_job_test_db().await;
+        let persistence = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+
+        persistence
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("durable claim");
+        persistence
+            .finish_http_job_recovery_required(job_id)
+            .await
+            .expect("first recovery transition");
+
+        finish_http_job_recovery_required_with_retry(&persistence, job_id)
+            .await
+            .expect("already committed recovery state is idempotent");
+
+        let stored = persistence
+            .get_http_job(job_id)
+            .await
+            .expect("read recovery job")
+            .expect("job exists");
+        assert_eq!(stored.status, "recovery_required");
+        assert!(
+            persistence
+                .has_unresolved_http_job()
+                .await
+                .expect("admission state"),
+            "recovery-required jobs must keep HTTP admission closed"
         );
     }
 

@@ -145,6 +145,27 @@
     send('ready');
   };
 
+  // The parent requests a fresh snapshot after subscribing. This also covers hydration
+  // where the iframe's initial load/announce can precede the parent's message listener.
+  let lastParentSequence = 0;
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || typeof event.data !== 'string') return;
+    let envelope;
+    try {
+      envelope = JSON.parse(event.data);
+    } catch (_) {
+      return;
+    }
+    if (
+      envelope?.protocol !== protocol ||
+      envelope?.instance_id !== instanceId ||
+      !Number.isSafeInteger(envelope?.sequence) ||
+      envelope.sequence <= lastParentSequence
+    ) return;
+    lastParentSequence = envelope.sequence;
+    if (envelope.message?.type === 'request_snapshot') announce();
+  });
+
   // The canvas previews author content and must never navigate. Following an authored link or
   // submitting an authored form replaces the `srcdoc` document with a foreign page: the bridge
   // goes with it, the parent resets `lastSequence`/geometry on the iframe `load`, and the operator

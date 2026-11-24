@@ -4,7 +4,7 @@ use crate::editor::{AdminEditorRuntime, ResizeHandles, render_canvas_srcdoc_with
 #[cfg(target_arch = "wasm32")]
 use crate::editor::{CanvasBridgeMessage, CanvasComponentGeometry, dispatch_shortcut};
 #[cfg(target_arch = "wasm32")]
-use fly_leptos::BrowserPoint;
+use fly_web::BrowserPoint;
 use fly_ui::{CanvasRect, ViewportState};
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{UiIntent, resolve_editor_shortcut};
@@ -59,7 +59,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     &active_document,
                     &instance_id,
                     &context,
-                    csp_nonce.as_ref(),
+                    csp_nonce.as_ref().map(|nonce| nonce.as_str()),
                 )
             })
         }
@@ -360,7 +360,7 @@ fn synchronize_overlays(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn canvas_rect(rect: fly_leptos::BrowserRect) -> CanvasRect {
+fn canvas_rect(rect: fly_web::BrowserRect) -> CanvasRect {
     CanvasRect {
         x: rect.left,
         y: rect.top,

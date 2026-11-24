@@ -18,7 +18,11 @@ import {
   productWriteOutcome,
   type ProductAxesWriteRequest,
   type ProductVariantCreateRequest,
+  type ProductVariantUpdateRequest,
+  type ProductVariantDeleteRequest,
   isVariantCreateInput,
+  isVariantId,
+  isVariantUpdateInput,
   type ProductSavePayload,
   type ProductWriteOutcome,
   type ProductWriteScope,
@@ -50,9 +54,7 @@ import {
   deleteBundle,
   addBundleItem,
   removeBundleItem,
-  type ProductVariant,
   type UpdateProductInput,
-  type UpdateVariantInput,
   type ProductRelationType,
   type AddProductRelationInput,
   type UpsertVariantPriceInput,
@@ -290,33 +292,61 @@ export async function addVariantAction(
 }
 
 export async function updateVariantAction(
-  id: string,
-  variant: UpdateVariantInput
-): Promise<ProductVariant> {
-  const opts = await getAuthOpts();
-  const input: UpdateVariantInput = {
-    axisValues: variant.axisValues,
-    sku: variant.sku,
-    barcode: variant.barcode,
-    shippingProfileSlug: variant.shippingProfileSlug,
-    weight: variant.weight,
-    weightUnit: variant.weightUnit,
-    inventoryQuantity: variant.inventoryQuantity,
-    inventoryPolicy: variant.inventoryPolicy,
-    prices: variant.prices?.map((p) => ({
-      currencyCode: p.currencyCode,
-      amount: p.amount,
-      compareAtAmount: p.compareAtAmount
-    }))
-  };
-
-  const updated = await updateVariant(opts, id, input);
-  return updated;
+  request: ProductVariantUpdateRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    if (
+      !isVariantId(request.id) ||
+      !isVariantId(request.variantId) ||
+      !isVariantUpdateInput(request.input)
+    )
+      throw new Error('The saved Product variant update is invalid.');
+    const input = {
+      ...request.input,
+      axisValues: request.input.axisValues?.map((value) => ({
+        attributeId: value.attributeId,
+        optionId: value.optionId
+      })),
+      prices: request.input.prices?.map((price) => ({
+        currencyCode: price.currencyCode,
+        amount: price.amount,
+        compareAtAmount: price.compareAtAmount
+      }))
+    };
+    const updated = await updateVariant(
+      opts,
+      request.variantId,
+      input,
+      idempotencyKey
+    );
+    if (updated.id !== request.variantId)
+      throw new Error('The Product owner returned a different variant identity.');
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
-export async function deleteVariantAction(id: string): Promise<boolean> {
-  const opts = await getAuthOpts();
-  return deleteVariant(opts, id);
+export async function deleteVariantAction(
+  request: ProductVariantDeleteRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    if (!isVariantId(request.id) || !isVariantId(request.variantId))
+      throw new Error('The saved Product variant deletion is invalid.');
+    const deleted = await deleteVariant(
+      opts,
+      request.variantId,
+      idempotencyKey
+    );
+    if (!deleted) throw new Error('Product variant deletion was not acknowledged.');
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function previewVariantAxesAction(

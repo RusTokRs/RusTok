@@ -183,6 +183,8 @@ pub struct PatchGqlPageMetadataInput {
 pub struct SaveGqlPageDocumentInput {
     pub expected_revision: String,
     pub body: GqlPageBodyInput,
+    /// Stable caller-generated identity, reused for retries of one request.
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(InputObject)]

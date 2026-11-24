@@ -31,6 +31,7 @@ csr = ["leptos/csr", "wasm-client", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "wasm-client", "rustok-grid-leptos/hydrate"]
 ssr = ["leptos/ssr", "fly-leptos/ssr", "rustok-grid-leptos/ssr"]
 dioxus-ui = ["dep:dioxus", "dep:fly-dioxus"]
+dioxus-web = ["dioxus-ui", "fly-dioxus/web", "browser-js"]
 
 [dependencies]
 fly = { path = "../../../ui/fly" }
@@ -62,6 +63,7 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
   "Element",
+  "Document",
   "Event",
   "EventTarget",
   "File",

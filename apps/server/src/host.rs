@@ -67,50 +67,110 @@ struct JwtConfig {
 
 /// Starts the HTTP-only Axum host.
 pub async fn run() -> Result<()> {
-    let config = load_config().await?;
+    // Poll this future before the first asynchronous startup operation so
+    // SIGTERM/CTRL-C is handled during config loading, DB connection, and
+    // migrations—not only after the HTTP listener is ready.
+    let mut shutdown_signal = Box::pin(wait_for_shutdown_signal());
+    let config = tokio::select! {
+        biased;
+        _ = &mut shutdown_signal => {
+            tracing::info!("Shutdown signal received before server startup");
+            return Ok(());
+        }
+        result = load_config() => result?,
+    };
+
     let database_url = std::env::var("DATABASE_URL").ok();
     let database_uri = resolve_database_uri(database_url.as_deref(), &config.database.uri);
     let production = is_production_environment();
     validate_database_deployment(&database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
-    let db = connect_database(&config.database, &database_uri).await?;
-    migrate_database_if_enabled(&db, config.database.auto_migrate).await?;
+
+    // Validate all settings-derived policy before connecting to the database or
+    // applying migrations, so a bad issuer/secret cannot mutate persistent state.
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-    let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
         config.auth.jwt.secret.clone(),
         config.auth.jwt.expiration,
         Some(&config.settings),
     )?;
     validate_auth_deployment(&auth_config, production)?;
+    validate_oauth_metadata_issuer(
+        &auth_config,
+        crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
+    )?;
+
+    let db = tokio::select! {
+        biased;
+        _ = &mut shutdown_signal => {
+            tracing::info!("Shutdown signal received before database connection");
+            return Ok(());
+        }
+        result = connect_database(&config.database, &database_uri) => result?,
+    };
+    // Do not cancel a migration halfway through. If shutdown arrives during
+    // migration, let the current migration finish and then exit before starting
+    // workers or opening the HTTP listener.
+    let migration = migrate_database_if_enabled(&db, config.database.auto_migrate);
+    tokio::pin!(migration);
+    let shutdown_during_migration = tokio::select! {
+        biased;
+        result = &mut migration => {
+            result?;
+            false
+        }
+        _ = &mut shutdown_signal => {
+            tracing::info!("Shutdown signal received during database migration; waiting for migration to finish");
+            migration.await?;
+            true
+        }
+    };
+    if shutdown_during_migration {
+        return Ok(());
+    }
+
+    let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
 
     let result = with_runtime_shutdown(&runtime_ctx, async {
-        initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
+        let startup = async {
+            initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri)
+                .await?;
 
-        let router =
-            application_router(rustok_settings.runtime.host_mode, &rustok_settings).with_state(
-                ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()),
-            );
-        let router = bootstrap_application_router(
-            router,
-            runtime_ctx.clone(),
-            auth_config,
-            config.settings,
-            rustok_settings,
-        )
-        .await?;
+            let router =
+                application_router(rustok_settings.runtime.host_mode, &rustok_settings).with_state(
+                    ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()),
+                );
+            let router = bootstrap_application_router(
+                router,
+                runtime_ctx.clone(),
+                auth_config,
+                config.settings,
+                rustok_settings,
+            )
+            .await?;
 
-        let (binding, port) = resolve_server_endpoint(&config.server)?;
-        let listener = tokio::net::TcpListener::bind((binding.as_str(), port)).await?;
-        let address = listener.local_addr()?;
-        tracing::info!(%address, "RusTok Axum host listening");
+            let (binding, port) = resolve_server_endpoint(&config.server)?;
+            let listener = tokio::net::TcpListener::bind((binding.as_str(), port)).await?;
+            let address = listener.local_addr()?;
+            tracing::info!(%address, "RusTok Axum host listening");
+            Ok::<_, Error>((listener, router))
+        };
+
+        let (listener, router) = tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => {
+                tracing::info!("Shutdown signal received during server bootstrap");
+                return Ok(());
+            }
+            result = startup => result?,
+        };
 
         axum::serve(
             listener,
             router.into_make_service_with_connect_info::<SocketAddr>(),
         )
-        .with_graceful_shutdown(wait_for_shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal)
         .await
         .map_err(Error::Io)
     })
@@ -198,6 +258,44 @@ fn validate_https_deployment(production: bool, https_declared: bool) -> Result<(
     if production && !https_declared {
         return Err(Error::BadRequest(
             "RUSTOK_HTTPS must be set to true for production deployments so HSTS is emitted"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_oauth_metadata_issuer(
+    config: &crate::auth::AuthConfig,
+    oauth_surface_enabled: bool,
+) -> Result<()> {
+    if !oauth_surface_enabled {
+        return Ok(());
+    }
+
+    let issuer = url::Url::parse(&config.issuer).map_err(|_| {
+        Error::BadRequest(
+            "OAuth discovery requires an explicit absolute issuer URL that matches JWT issuer claims"
+                .to_string(),
+        )
+    })?;
+    let is_local_http = issuer.scheme() == "http"
+        && matches!(issuer.host_str(), Some("localhost") | Some("127.0.0.1"));
+    let supported_scheme = issuer.scheme() == "https" || is_local_http;
+    let root_path = issuer.path().is_empty() || issuer.path() == "/";
+
+    if !supported_scheme
+        || issuer.host_str().is_none()
+        || config.issuer.contains('@')
+        || !issuer.username().is_empty()
+        || issuer.password().is_some()
+        || !root_path
+        || issuer.query().is_some()
+        || issuer.fragment().is_some()
+        || config.issuer.chars().any(char::is_whitespace)
+    {
+        return Err(Error::BadRequest(
+            "OAuth discovery issuer must be an absolute HTTPS URL (or http://localhost/127.0.0.1 for development), with no userinfo, path, query, or fragment, so the discovery issuer exactly matches JWT issuer claims"
                 .to_string(),
         ));
     }
@@ -753,6 +851,68 @@ mod tests {
         );
         validate_auth_deployment(&config, false)
             .expect("development may use the framework claim defaults");
+    }
+
+    #[test]
+    fn oauth_metadata_requires_an_explicit_issuer_when_enabled() {
+        let config = crate::auth::AuthConfig::new(
+            "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
+        );
+
+        let error = validate_oauth_metadata_issuer(&config, true)
+            .expect_err("OAuth discovery must not publish an issuer different from JWT issuer claims");
+        assert!(error.to_string().contains("absolute issuer URL"));
+    }
+
+    #[test]
+    fn oauth_metadata_accepts_https_root_and_localhost_http_issuers() {
+        for issuer in [
+            "https://api.example.com",
+            "https://api.example.com/",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ] {
+            let config = crate::auth::AuthConfig::new(
+                "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
+            )
+            .with_issuer(issuer);
+            validate_oauth_metadata_issuer(&config, true)
+                .unwrap_or_else(|error| panic!("supported issuer must be accepted ({issuer}): {error}"));
+        }
+    }
+
+    #[test]
+    fn oauth_metadata_rejects_unsupported_issuer_forms_when_enabled() {
+        for issuer in [
+            "rustok",
+            "http://api.example.com",
+            "https://api.example.com/issuer",
+            "https://api.example.com?tenant=one",
+            "https://api.example.com#tenant-one",
+            "https://user:password@api.example.com",
+            "https://@api.example.com",
+            "https://api.example.com ",
+        ] {
+            let config = crate::auth::AuthConfig::new(
+                "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
+            )
+            .with_issuer(issuer);
+            assert!(
+                validate_oauth_metadata_issuer(&config, true).is_err(),
+                "unsupported issuer must be rejected: {issuer}"
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_metadata_issuer_validation_is_skipped_when_oauth_is_disabled() {
+        let config = crate::auth::AuthConfig::new(
+            "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
+        )
+        .with_issuer("https://api.example.com/issuer");
+
+        validate_oauth_metadata_issuer(&config, false)
+            .expect("JWT-only deployments do not publish OAuth discovery metadata");
     }
 
     #[test]

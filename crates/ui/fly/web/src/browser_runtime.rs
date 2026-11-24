@@ -290,6 +290,25 @@ impl IframeMessagePort {
         })
     }
 
+    pub fn post_by_element_id(
+        &mut self,
+        element_id: impl Into<String>,
+        message: IframeBridgeMessage,
+    ) -> Result<u64, BrowserRuntimeError> {
+        let element_id = element_id.into();
+        let window = web_sys::window().ok_or(BrowserRuntimeError::MissingWindow)?;
+        let document = window
+            .document()
+            .ok_or(BrowserRuntimeError::MissingDocument)?;
+        let element = document
+            .get_element_by_id(&element_id)
+            .ok_or_else(|| BrowserRuntimeError::MissingElement(element_id.clone()))?;
+        let iframe = element
+            .dyn_into::<HtmlIFrameElement>()
+            .map_err(|_| BrowserRuntimeError::InvalidElementType(element_id))?;
+        self.post(&iframe, message)
+    }
+
     pub fn post(
         &mut self,
         iframe: &HtmlIFrameElement,

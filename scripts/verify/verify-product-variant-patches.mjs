@@ -24,11 +24,26 @@ export function run() {
     require(new RegExp(`skip_serializing_if = "Patch::is_keep"\\)\\]\\s*#\\[schema[^\\n]*\\]\\s*pub ${field}:`).test(dto), `owner ${field}: Keep must serialize as omission`);
     require(new RegExp(`pub ${field}: MaybeUndefined<String>`).test(gql), `GraphQL ${field}: omission/null must differ`);
     require(conversion.includes(`graphql_patch(input.${field})`), `GraphQL ${field}: preserve patch intent`);
-    require(new RegExp(`match &?input\\.${field} \\{[\\s\\S]*?Patch::Keep => \\{\\},?[\\s\\S]*?Patch::Clear => active\\.${field} = Set\\(None\\)`).test(command), `owner ${field}: Keep must not assign, Clear must write NULL`);
+    if (field !== 'sku') {
+      require(new RegExp(`match &?input\\.${field} \\{[\\s\\S]*?Patch::Keep => \\{\\},?[\\s\\S]*?Patch::Clear => active\\.${field} = Set\\(None\\)`).test(command), `owner ${field}: Keep must not assign, Clear must write NULL`);
+    }
     require(new RegExp(`skip_serializing_if = "rustok_api::Patch::is_keep"[\\s\\S]*?pub ${field}: rustok_api::Patch<String>`).test(model), `draft ${field}: preserve absent/null/value`);
     require(new RegExp(`skip_serializing_if = "rustok_api::Patch::is_keep"[\\s\\S]*?${field}: rustok_api::Patch<String>`).test(wire), `wire ${field}: never serialize Keep as null`);
     require(transport.includes(`${field}: draft.${field},`), `transport ${field}: do not collapse update intent`);
   }
+  const skuPatch = section(command, 'let requested_sku = match &input.sku', 'match input.barcode');
+  require(skuPatch.includes('Patch::Keep => None') &&
+    skuPatch.includes('Patch::Clear => Some(None)') &&
+    skuPatch.includes('normalize_variant_sku') &&
+    skuPatch.includes('if let Some(sku) = &requested_sku') &&
+    skuPatch.includes('active.sku = Set(sku.clone())'),
+  'owner SKU: preserve Keep/Clear/Set while normalizing stored values');
+  const syncSku = section(command, 'if let Some(sku) = requested_sku', 'if let Some(ref axis_values)');
+  require(syncSku.includes('sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)'),
+    'owner SKU: pass changed values to Inventory in the Product transaction');
+  const rowEditor = section(read(`${owner}admin/src/ui/leptos.rs`), 'fn ProductVariantsPanel(', 'fn ProductMediaPanel(');
+  require(rowEditor.includes('VariantUpdateDraft::from_inline_editor_state('),
+    'inline editor: preserve sparse price and inventory intent');
   require(command.includes('if let Patch::Set(slug) = &input.shipping_profile_slug'), 'Shipping lookup must be Set-only');
   for (const field of ['sku', 'barcode', 'shipping_profile_slug', 'weight_unit']) {
     const validation = command.indexOf(`validate_patch_text_length(&input.${field},`);
@@ -42,9 +57,11 @@ export function run() {
   const next = read('apps/next-admin/packages/rustok-product/src/api/products.ts');
   const nextDto = section(next, 'export type UpdateVariantInput = {', '\n};');
   const nextAction = section(read('apps/next-admin/src/app/dashboard/product/actions.ts'), 'export async function updateVariantAction(', '\nexport async function ');
+  const nextInput = section(nextAction, 'const input = {', 'const updated = await updateVariant(');
+  require(nextInput.includes('...request.input,') && nextAction.includes('isVariantUpdateInput(request.input)'), 'Next action: validate and forward the original sparse patch');
   for (const field of ['sku', 'barcode', 'shippingProfileSlug', 'weight', 'weightUnit']) {
     require(nextDto.includes(`${field}?: string | null;`), `Next ${field}: preserve nullable intent`);
-    require(nextAction.includes(`${field}: variant.${field},`), `Next action ${field}: forward intent without filtering`);
+    require(!new RegExp(`\\b${field}\\s*:`).test(nextInput), `Next action ${field}: forward intent without filtering`);
   }
   for (const file of ['src/catalog_command_port.rs', 'admin/src/ui/product_editor.rs', 'admin/src/ui/leptos.rs']) {
     const source = read(owner + file);

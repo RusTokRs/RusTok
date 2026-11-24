@@ -526,13 +526,16 @@ export async function createVariant(
 export async function updateVariant(
   opts: GqlOpts,
   id: string,
-  input: UpdateVariantInput
+  input: UpdateVariantInput,
+  idempotencyKey: string
 ): Promise<ProductVariant> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage variants.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+    throw new Error('A stable Product variant attempt identity is required.');
+  }
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; id: string; input: UpdateVariantInput },
@@ -549,13 +552,16 @@ export async function updateVariant(
 
 export async function deleteVariant(
   opts: GqlOpts,
-  id: string
+  id: string,
+  idempotencyKey: string
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage variants.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+    throw new Error('A stable Product variant attempt identity is required.');
+  }
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; id: string },

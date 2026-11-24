@@ -179,6 +179,36 @@ pub async fn save_page_document(
     .await
 }
 
+/// Same save as `save_page_document`, but retryable by an explicit
+/// persisted operation identity (never generate the key inside transport).
+pub async fn save_page_document_with_key(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    locale: String,
+    project_data: Value,
+    idempotency_key: Option<String>,
+) -> Result<PageDetail, TransportError> {
+    graphql_adapter::save_page_document_with_key(
+        token, tenant_slug, id, expected_revision, locale, project_data, idempotency_key,
+    )
+    .await
+}
+
+/// A read-only reconciliation probe for uncertain document saves.
+pub async fn fetch_page_document_save_receipt(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    idempotency_key: String,
+) -> Result<Option<PageDetail>, TransportError> {
+    graphql_adapter::fetch_page_document_save_receipt(
+        token, tenant_slug, id, idempotency_key,
+    )
+    .await
+}
+
 pub async fn fetch_page_body_revision_history(
     token: Option<String>,
     tenant_slug: Option<String>,

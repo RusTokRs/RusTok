@@ -1,4 +1,8 @@
 use crate::core::session::{EditorSessionAction, EditorSessionEffect, EditorSessionState};
+#[cfg(feature = "dioxus-web")]
+use super::dioxus_canvas::DioxusIsolatedCanvas;
+#[cfg(feature = "dioxus-web")]
+use crate::editor::render_canvas_srcdoc_with_context;
 use crate::i18n::t;
 use crate::model::AdminCanvasController;
 use crate::BrowserIntentEffect;
@@ -178,7 +182,7 @@ fn dispatch_facade_effects(
                     ));
                     state.preview_in_progress = true;
                 }
-                spawn(async move {
+                let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
                     let mut state = session.write();
                     match outcome {
@@ -191,17 +195,21 @@ fn dispatch_facade_effects(
                             if state.controller.active_save_attempt_id() != Some(attempt_id) {
                                 return;
                             }
-                            let _ = state.handle_publish_response_for_attempt(
+                            if let Err(error) = state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
                                 attempt_id,
-                            );
+                            ) {
+                                state.handle_publish_error_for_attempt(attempt_id, error);
+                            }
                         }
                         Ok(PageBuilderCapabilityResponse::Preview(response))
                             if capability == BuilderCapabilityKind::Preview =>
                         {
-                            let _ = state.handle_preview_response(&response);
+                            if let Err(error) = state.handle_preview_response(&response) {
+                                state.fail(error);
+                            }
                         }
                         Ok(other) => {
                             let error = format!(
@@ -426,6 +434,8 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let current = session.read();
     let page_id = current.controller.page_id().to_string();
     let workspace_document = current.controller.editor().document().clone();
+    #[cfg(feature = "dioxus-web")]
+    let workspace_runtime_context = current.runtime_context.clone();
     let workspace_registries = current.controller.editor().registries().clone();
     let workspace_page_id = page_id.clone();
     let workspace_selected = current.controller.ui().state.selection.component_id.clone();
@@ -451,6 +461,8 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let show_adapter_workspace = props.adapter_workspace;
     let workspace_facade = props.facade.clone();
     let toolbar_facade = props.facade.clone();
+    #[cfg(feature = "dioxus-web")]
+    let canvas_facade = props.facade.clone();
     let on_workspace_error = EventHandler::new(move |error: String| {
         session.write().fail(error);
     });
@@ -517,6 +529,55 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         };
         dispatch_facade_effects(session, workspace_facade.clone(), effects);
     });
+    #[cfg(feature = "dioxus-web")]
+    let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
+        let effects = session.write().dispatch(EditorSessionAction::DispatchIntent(intent));
+        dispatch_facade_effects(session, canvas_facade.clone(), effects);
+    });
+    #[cfg(feature = "dioxus-web")]
+    let workspace_canvas: Option<Element> = {
+        let mut canvas_document = workspace_document.clone();
+        let active_page = canvas_document
+            .project
+            .pages
+            .get(workspace_initial_page)
+            .cloned();
+        match active_page {
+            Some(active_page) => {
+                canvas_document.project.pages = vec![active_page];
+                let canvas_nonce = workspace_csp_nonce
+                    .as_deref()
+                    .and_then(UiCspNonce::new);
+                match render_canvas_srcdoc_with_context(
+                    &canvas_document,
+                    &workspace_page_id,
+                    &workspace_runtime_context,
+                    canvas_nonce.as_ref(),
+                ) {
+                    Ok(srcdoc) => Some(rsx! {
+                        DioxusIsolatedCanvas {
+                            srcdoc,
+                            instance_id: workspace_page_id.clone(),
+                            session,
+                            on_intent: on_workspace_intent,
+                            on_ui_intent: on_canvas_ui_intent,
+                            on_error: Some(on_workspace_error),
+                        }
+                    }),
+                    Err(error) => {
+                        on_workspace_error.call(error.to_string());
+                        None
+                    }
+                }
+            }
+            None => {
+                on_workspace_error.call("The active page is unavailable for isolated canvas rendering".to_string());
+                None
+            }
+        }
+    };
+    #[cfg(not(feature = "dioxus-web"))]
+    let workspace_canvas: Option<Element> = None;
 
     rsx! {
         FlyFullEditor {
@@ -588,6 +649,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             host_can_undo: Some(can_undo),
                             host_can_redo: Some(can_redo),
                             csp_nonce: workspace_csp_nonce.clone(),
+                            canvas: workspace_canvas,
                         }
                     },
                     false => rsx! {

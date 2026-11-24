@@ -143,6 +143,7 @@ impl WorkflowEngine {
     /// The Workflow cron owner inserts a trigger journal and checks its firing
     /// attempt inside one DB transaction before calling this method. Never
     /// insert another execution row or bypass that reservation here.
+    #[instrument(skip(self, steps, initial_context), fields(execution_id = %execution_id, firing_id = %firing_id))]
     pub(crate) async fn execute_preclaimed_cron(
         &self,
         execution_id: Uuid,

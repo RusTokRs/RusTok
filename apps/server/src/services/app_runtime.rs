@@ -14,6 +14,8 @@ use crate::middleware::rate_limit::{
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
+#[cfg(feature = "mod-workflow")]
+use crate::services::app_lifecycle::WorkflowCronSchedulerRequirement;
 use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
@@ -135,7 +137,6 @@ pub async fn bootstrap_app_runtime(
         runtime_ctx.shared_insert(event_runtime.transport.clone());
         runtime_ctx.shared_insert(transactional_event_bus_from_context(&runtime_ctx));
         spawn_module_event_dispatcher(&runtime_ctx, &registry, runtime_extensions.clone())?;
-        runtime_ctx.shared_insert(Arc::new(event_runtime));
         runtime_ctx.shared_insert(crate::services::build_control::ServerBuildControl::shared(
             runtime_ctx.clone(),
         ));
@@ -166,14 +167,22 @@ pub async fn bootstrap_app_runtime(
         ));
 
         #[cfg(feature = "mod-workflow")]
-        if workflow_cron_enabled(&settings) {
-            init_workflow_runtime(&runtime_ctx).await?;
-        } else {
-            tracing::info!(
-                host_mode = ?settings.runtime.host_mode,
-                configured = settings.runtime.background_workers.workflow_cron_enabled,
-                "Workflow cron scheduler disabled for the current runtime profile"
-            );
+        {
+            let workflow_module_installed = manifest.modules.contains_key("workflow");
+            let workflow_cron_required =
+                workflow_cron_enabled(&settings, workflow_module_installed);
+            runtime_ctx.shared_insert(WorkflowCronSchedulerRequirement(workflow_cron_required));
+
+            if workflow_cron_required {
+                init_workflow_runtime(&runtime_ctx).await?;
+            } else {
+                tracing::info!(
+                    host_mode = ?settings.runtime.host_mode,
+                    configured = settings.runtime.background_workers.workflow_cron_enabled,
+                    module_installed = workflow_module_installed,
+                    "Workflow cron scheduler disabled for the current runtime profile or module composition"
+                );
+            }
         }
 
         init_alloy_runtime(&runtime_ctx, &manifest).await?;
@@ -403,8 +412,12 @@ async fn init_alloy_runtime(
 }
 
 #[cfg(feature = "mod-workflow")]
-fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
-    settings.runtime.runs_background_workers()
+fn workflow_cron_enabled(
+    settings: &RustokSettings,
+    workflow_module_installed: bool,
+) -> bool {
+    workflow_module_installed
+        && settings.runtime.runs_background_workers()
         && settings.runtime.background_workers.workflow_cron_enabled
 }
 
@@ -1039,7 +1052,7 @@ mod tests {
 
     #[cfg(feature = "mod-workflow")]
     #[test]
-    fn workflow_cron_requires_a_background_worker_runtime_profile() {
+    fn workflow_cron_requires_an_installed_module_and_background_worker_profile() {
         for host_mode in [
             RuntimeHostMode::Api,
             RuntimeHostMode::AdminSsr,
@@ -1053,7 +1066,7 @@ mod tests {
                 ..RustokSettings::default()
             };
             assert!(
-                !super::workflow_cron_enabled(&settings),
+                !super::workflow_cron_enabled(&settings, true),
                 "workflow cron must stay disabled for {host_mode:?}"
             );
         }
@@ -1069,7 +1082,11 @@ mod tests {
             },
             ..RustokSettings::default()
         };
-        assert!(super::workflow_cron_enabled(&settings));
+        assert!(super::workflow_cron_enabled(&settings, true));
+        assert!(
+            !super::workflow_cron_enabled(&settings, false),
+            "workflow cron must stay disabled when the workflow module is absent from the active manifest"
+        );
     }
 
     #[cfg(feature = "mod-workflow")]

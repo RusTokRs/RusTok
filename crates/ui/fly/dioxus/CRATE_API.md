@@ -39,3 +39,12 @@ SSR and Web/Desktop Dioxus 0.7 adapter foundation and component shells for Fly v
 ## 5. Contract Tests & Verification
 - Unit test suite verifying accessibility and re-exported web runtime type contracts.
 - `src/contract_tests.rs`: Direct verification of package metadata, re-exported geometric contracts, origin normalization, and accessibility roles.
+
+## Isolated canvas
+
+- `FlyCanvasIframe`: sandboxed `srcdoc` iframe that emits raw bridge messages only after exact
+  source-window, expected-origin, protocol, instance and monotonic-sequence validation. The
+  subscription is recreated after iframe reload; the host interprets messages and owns geometry,
+  hit-testing, drop legality and mutations.
+- `FlyEditorWorkspace.canvas`: optional host-owned canvas slot. When absent, the workspace keeps
+  rendering `FlyCanvasPreview`.

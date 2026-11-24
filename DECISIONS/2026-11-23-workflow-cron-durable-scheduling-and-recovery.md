@@ -73,9 +73,12 @@ decision, including its explicit reconciliation requirement.
 
 ## Sources of truth and ownership
 
-Workflow owns the schedule definition, durable cursor, firing, execution
-journal and recovery decision. The host supplies the stop signal. Operator
-surfaces present Workflow's persisted state.
+- `rustok-workflow` owns workflow definitions, cron cursors, firings, execution
+  journals, and reconciliation decisions.
+- `workflow_cron_firings` records admission and attempt state.
+  `workflow_executions` and step execution journals record execution outcomes.
+- The host composition layer in `apps/server` supplies the shutdown signal.
+  Operator surfaces present Workflow's persisted state.
 
 ## Invariants
 
@@ -83,9 +86,6 @@ surfaces present Workflow's persisted state.
   UTC scheduled instant define the stable occurrence.
 - Cursor CAS and new firing rows share one transaction; a partially committed
   schedule page is impossible.
-- The durable firing row is the canonical admission/attempt state; the
-  `workflow_executions` row and individual step journal remain the execution
-  facts. REST/GraphQL projections are not the ownership authority.
 - No lease expiry alone permits an expired `running` attempt to be replayed.
 - A per-firing attempt token fences stale completion writes, including races
   with recovery/record changes. A stolen lease must never authorize effects.
@@ -102,9 +102,6 @@ surfaces present Workflow's persisted state.
 - Non-idempotent external steps with ambiguous outcomes require manual
   reconciliation. Existing `running` records must be preserved through
   migration and flagged for review, not reset.
-
-## Additional owner-side admission and deletion guards
-
 - A cron definition must be parseable by the runtime scheduler before a
   workflow enters `active`, is modified while active, or is restored while
   active. Incomplete draft definitions remain editable. Validate the
@@ -138,21 +135,23 @@ surfaces present Workflow's persisted state.
 
 ## Non-goals
 
-Automatic replay of ambiguous external steps and provider-wide exactly-once
-delivery are outside this proposal.
+- Automatic replay of ambiguous external effects without idempotency guarantees.
+- Distributed transactions or exactly-once delivery across external providers.
+- Indefinite retention of historical cron firing records.
 
 ## Data, transaction, and concurrency boundary
 
-The cursor and its newly expanded firing rows commit together. The engine
-verifies the firing token and schedule revision when it inserts the first
-execution record. An authorized reconciliation commits its decision, firing
-transition and reconciled execution state in one transaction.
+The cursor and its newly expanded firing rows commit together using a database
+compare-and-set. Claiming a pending firing records the attempt token. The
+engine verifies that token and the schedule revision when it inserts the
+first execution record. An authorized reconciliation commits its decision,
+firing transition and reconciled execution state in one transaction.
 
 ## Context dimensions
 
 The tenant and workflow identify the owning definition. Its revision and the
 UTC scheduled instant identify the firing. Recovery decisions record the
-authorized operator and their evidence.
+authorized human operator, evidence, and previous attempt token.
 
 ## Events and projections
 
@@ -179,6 +178,15 @@ reconciliation-required counts. Operator reconciliation remains a gated
 follow-up until its authenticated command, evidence and audit/outbox path are
 approved.
 
+## Alternatives considered
+
+- **Plain one-second polling:** loses downtime and duplicates across processes.
+- **A lease-expiry replay queue:** cannot fence an already-issued external effect.
+- **A process mutex or Redis lock without a durable receipt:** cannot prove
+  external completion or atomicity with the database.
+- **Re-running the Workflow engine from step zero after a crash:** reissues
+  nontransactional HTTP/notification effects without reconciliation evidence.
+
 ## Verification
 
 Maintainer review is required before acceptance.
@@ -194,17 +202,9 @@ Maintainer review is required before acceptance.
 - Operator-facing conflict/uncertainty classification and authorized review.
 - Scoped Rust checks/tests on server and Workflow owner (maintainer-owned).
 
-## Alternatives considered
-
-- Plain one-second polling: loses downtime and duplicates across processes.
-- A lease-expiry replay queue: cannot fence an already-issued external effect.
-- A process mutex or Redis lock without a durable receipt: cannot prove
-  external completion or atomicity with the database.
-- Re-running the Workflow engine from step zero after a crash: reissues
-  nontransactional HTTP/notification effects without reconciliation evidence.
-
 ## Consequences
 
 Durable firings retain pending work across restarts and arbitrate admission
 across replicas. Ambiguous external outcomes require operator reconciliation
-before work may resume.
+before work may resume. Hosts apply `m20261123_000009_add_durable_cron.rs` and
+expand missed occurrences within the scheduler's configured catch-up horizon.

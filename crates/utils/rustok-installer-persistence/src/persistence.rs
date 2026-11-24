@@ -15,6 +15,10 @@ const MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES: usize = 256 * 1024;
 const HTTP_INSTALL_JOB_RUNNING_STATUS: &str = "running";
 const HTTP_INSTALL_JOB_SUCCEEDED_STATUS: &str = "succeeded";
 const HTTP_INSTALL_JOB_FAILED_STATUS: &str = "failed";
+const HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS: &str = "recovery_required";
+
+pub const HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE: &str =
+    "installer apply requires operator reconciliation; inspect the target database session and receipts before retrying";
 
 #[derive(Clone)]
 pub struct InstallerPersistenceService {
@@ -62,12 +66,107 @@ impl InstallerPersistenceService {
             .await
     }
 
+    pub async fn latest_http_job(
+        &self,
+    ) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
+        install_http_job::Entity::find()
+            .order_by_desc(install_http_job::Column::SubmittedAt)
+            .order_by_desc(install_http_job::Column::Id)
+            .one(&self.db)
+            .await
+    }
+
     pub async fn has_running_http_job(&self) -> Result<bool, sea_orm::DbErr> {
         install_http_job::Entity::find()
             .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
             .one(&self.db)
             .await
             .map(|job| job.is_some())
+    }
+
+    pub async fn has_unresolved_http_job(&self) -> Result<bool, sea_orm::DbErr> {
+        install_http_job::Entity::find()
+            .filter(
+                sea_orm::Condition::any()
+                    .add(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+                    .add(
+                        install_http_job::Column::Status
+                            .eq(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS),
+                    ),
+            )
+            .one(&self.db)
+            .await
+            .map(|job| job.is_some())
+    }
+
+    /// Refresh the durable liveness timestamp only while the job still owns
+    /// the running state. A false result means another actor already settled
+    /// or quarantined this job; it must never be revived by a late heartbeat.
+    pub async fn heartbeat_http_job(&self, job_id: Uuid) -> Result<bool, sea_orm::DbErr> {
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected == 1)
+    }
+
+    /// Quarantine abandoned jobs without ever treating lease expiry as proof
+    /// that target-side effects did not happen. The observed heartbeat cutoff
+    /// is part of the UPDATE predicate, so a concurrent heartbeat wins.
+    pub async fn reconcile_stale_http_jobs(
+        &self,
+        stale_before: chrono::DateTime<Utc>,
+    ) -> Result<u64, sea_orm::DbErr> {
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .filter(install_http_job::Column::UpdatedAt.lte(stale_before))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS.to_string()),
+                finished_at: Set(None),
+                output: Set(None),
+                error_message: Set(Some(
+                    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string(),
+                )),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    pub async fn finish_http_job_recovery_required(
+        &self,
+        job_id: Uuid,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_STATUS.to_string()),
+                finished_at: Set(None),
+                output: Set(None),
+                error_message: Set(Some(
+                    HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE.to_string(),
+                )),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+
+        ensure_http_job_transition_applied(job_id, result.rows_affected)?;
+        self.get_http_job(job_id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
     }
 
     pub async fn finish_http_job_succeeded(
@@ -848,6 +947,105 @@ mod tests {
         assert_eq!(stored.session_id, Some(output.session_id));
         assert_eq!(stored.tenant_id, output.tenant_id);
         assert!(stored.output.is_some());
+    }
+
+    #[tokio::test]
+    async fn heartbeat_only_refreshes_a_running_job_and_cannot_revive_quarantine() {
+        let db = setup_http_jobs_table().await;
+        let service = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now() - chrono::Duration::minutes(10);
+
+        service
+            .create_http_job(job_id, job_id, submitted_at)
+            .await
+            .expect("create stale job");
+        let before = service
+            .get_http_job(job_id)
+            .await
+            .expect("read before heartbeat")
+            .expect("job exists");
+        assert!(service.heartbeat_http_job(job_id).await.expect("heartbeat"));
+        let after = service
+            .get_http_job(job_id)
+            .await
+            .expect("read after heartbeat")
+            .expect("job exists");
+        assert!(after.updated_at > before.updated_at);
+
+        service
+            .finish_http_job_recovery_required(job_id)
+            .await
+            .expect("quarantine job");
+        assert!(
+            !service.heartbeat_http_job(job_id).await.expect("late heartbeat"),
+            "a recovery-required job must not be revived"
+        );
+        assert!(
+            service
+                .finish_http_job_failed(job_id, "late failure")
+                .await
+                .is_err(),
+            "a late worker must not overwrite recovery_required"
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_http_jobs_are_quarantined_without_claiming_they_finished() {
+        let db = setup_http_jobs_table().await;
+        let service = InstallerPersistenceService::new(db);
+        let stale_id = Uuid::new_v4();
+        let fresh_id = Uuid::new_v4();
+        let stale_submitted = Utc::now() - chrono::Duration::minutes(10);
+        let fresh_submitted = Utc::now();
+
+        service
+            .create_http_job(stale_id, stale_id, stale_submitted)
+            .await
+            .expect("create stale job");
+        service
+            .create_http_job(fresh_id, fresh_id, fresh_submitted)
+            .await
+            .expect("create fresh job");
+
+        let changed = service
+            .reconcile_stale_http_jobs(Utc::now() - chrono::Duration::minutes(5))
+            .await
+            .expect("reconcile stale jobs");
+        assert_eq!(changed, 1);
+
+        let stale = service
+            .get_http_job(stale_id)
+            .await
+            .expect("read stale job")
+            .expect("stale job exists");
+        assert_eq!(stale.status, "recovery_required");
+        assert!(stale.finished_at.is_none());
+        assert_eq!(
+            stale.error_message.as_deref(),
+            Some(HTTP_INSTALL_JOB_RECOVERY_REQUIRED_MESSAGE)
+        );
+        assert!(
+            service
+                .has_unresolved_http_job()
+                .await
+                .expect("unresolved admission"),
+            "recovery-required jobs must continue blocking admission"
+        );
+
+        let fresh = service
+            .get_http_job(fresh_id)
+            .await
+            .expect("read fresh job")
+            .expect("fresh job exists");
+        assert_eq!(fresh.status, "running");
+        assert_eq!(
+            service
+                .reconcile_stale_http_jobs(Utc::now() - chrono::Duration::minutes(5))
+                .await
+                .expect("repeat reconciliation"),
+            0
+        );
     }
 
     #[tokio::test]

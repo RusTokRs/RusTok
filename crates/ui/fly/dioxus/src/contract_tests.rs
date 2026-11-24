@@ -53,3 +53,38 @@ fn test_cleanup_registry_contract() {
     cleanup.cleanup();
     assert!(cleanup.is_empty());
 }
+
+#[test]
+fn test_fly_canvas_envelope_binds_protocol_instance_and_monotonic_sequence() {
+    let payload = serde_json::json!({
+        "protocol": FLY_IFRAME_PROTOCOL,
+        "instance_id": "page-home",
+        "sequence": 7,
+        "message": { "type": "ready" }
+    });
+    let encoded = serde_json::to_string(&payload).expect("serialize");
+    let decoded = crate::editor::decode_fly_canvas_envelope(&encoded, "page-home", Some(6))
+        .expect("valid next message");
+    assert_eq!(decoded.0, 7);
+    assert_eq!(decoded.1, encoded);
+
+    assert!(
+        crate::editor::decode_fly_canvas_envelope(&encoded, "another-page", Some(6)).is_none()
+    );
+    assert!(
+        crate::editor::decode_fly_canvas_envelope(&encoded, "page-home", Some(7)).is_none()
+    );
+    let wrong_protocol = serde_json::json!({
+        "protocol": "other",
+        "instance_id": "page-home",
+        "sequence": 8,
+        "message": { "type": "ready" }
+    });
+    assert!(
+        crate::editor::decode_fly_canvas_envelope(
+            &serde_json::to_string(&wrong_protocol).expect("serialize"),
+            "page-home",
+            Some(7),
+        ).is_none()
+    );
+}

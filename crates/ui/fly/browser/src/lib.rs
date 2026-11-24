@@ -388,6 +388,9 @@ pub struct BrowserIntentEnvelope {
     pub draft_token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub draft_generation: Option<u64>,
+    /// Stable idempotency identity for one mutating browser operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
 }
 
 impl BrowserIntentEnvelope {
@@ -399,6 +402,15 @@ impl BrowserIntentEnvelope {
         self.revision = normalize_optional(self.revision);
         self.project_hash = normalize_optional(self.project_hash);
         self.draft_token = normalize_optional(self.draft_token);
+        self.operation_id = normalize_optional(self.operation_id);
+        if self.operation_id.as_deref().is_some_and(|id| {
+            !(1..=128).contains(&id.len())
+                || !id.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+                })
+        }) {
+            return Err(BrowserIntentError::InvalidOperationId);
+        }
         if self.protocol != FLY_BROWSER_PROTOCOL {
             return Err(BrowserIntentError::Protocol(self.protocol));
         }
@@ -434,6 +446,7 @@ impl BrowserIntentEnvelope {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
     }
 
@@ -764,6 +777,7 @@ pub enum BrowserIntentError {
     Protocol(String),
     MissingInstanceId,
     MissingIntent,
+    InvalidOperationId,
 }
 
 impl std::fmt::Display for BrowserIntentError {
@@ -775,6 +789,7 @@ impl std::fmt::Display for BrowserIntentError {
             ),
             Self::MissingInstanceId => formatter.write_str("Fly browser instance id is required"),
             Self::MissingIntent => formatter.write_str("Fly browser intent is required"),
+            Self::InvalidOperationId => formatter.write_str("Fly browser operation id is invalid"),
         }
     }
 }
@@ -1076,6 +1091,7 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
         .normalized()
         .expect_err("protocol mismatch");
@@ -1095,11 +1111,34 @@ mod tests {
             project_hash: Some("abc".to_string()),
             draft_token: Some("  token  ".to_string()),
             draft_generation: Some(4),
+            operation_id: Some("  op-123  ".to_string()),
         }
         .normalized()
         .expect("normalized");
         assert_eq!(request.draft_token.as_deref(), Some("token"));
         assert_eq!(request.draft_generation, Some(4));
+        assert_eq!(request.operation_id.as_deref(), Some("op-123"));
+    }
+
+    #[test]
+    fn operation_id_rejects_unbounded_or_non_token_values() {
+        let invalid = BrowserIntentEnvelope {
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
+            instance_id: "canvas-a".to_string(),
+            intent: "save".to_string(),
+            payload: json!({}),
+            sequence: None,
+            page_id: Some("home".to_string()),
+            revision: Some("rev-1".to_string()),
+            project_hash: Some("hash".to_string()),
+            draft_token: Some("draft-token".to_string()),
+            draft_generation: Some(2),
+            operation_id: Some("bad/id".to_string()),
+        };
+        assert!(matches!(
+            invalid.normalized(),
+            Err(BrowserIntentError::InvalidOperationId)
+        ));
     }
 
     #[test]
@@ -1350,6 +1389,7 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+            operation_id: None,
         }
         .normalized()
         .expect("known intent");

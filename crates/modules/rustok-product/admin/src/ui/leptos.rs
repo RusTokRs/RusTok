@@ -39,7 +39,7 @@ use crate::model::{
     CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary, ProductDetail, ProductEffectiveForm,
     ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
-    SetCategorySchemaModeDraft, UpdateProductImageDraft, VariantPriceDraft,
+    SetCategorySchemaModeDraft, UpdateProductImageDraft,
 };
 use crate::transport;
 
@@ -1771,6 +1771,7 @@ pub(super) fn ProductVariantsPanel(
                     let product_id_for_edit = product_id.clone();
                     let default_curr = default_currency.clone();
                     let on_mutated_edit = on_variant_mutated;
+                    let variants = product.variants;
 
                     Callback::new(move |(row, col_id): (VariantRowViewModel, String)| {
                         let variant_id = row.id.clone();
@@ -1847,13 +1848,16 @@ pub(super) fn ProductVariantsPanel(
                                 </span>
                             }.into_any(),
                             "actions" => {
+                                let Some(variant) = variants.iter().find(|variant| variant.id == variant_id) else {
+                                    return ().into_any();
+                                };
                                 let v_id = variant_id.clone();
-                                let s = row.sku.clone();
-                                let p = row.price.clone();
-                                let stock_for_edit = row.stock.parse::<i32>().unwrap_or_default();
+                                let s = variant.sku.clone().unwrap_or_default();
+                                let p = variant.prices.first().map(|price| price.amount.clone()).unwrap_or_default();
+                                let stock_for_edit = variant.inventory_quantity;
                                 let on_start_edit = move |_| {
                                     set_edit_sku.set(s.clone());
-                                    set_edit_price.set(p.split_whitespace().next().unwrap_or("").to_string());
+                                    set_edit_price.set(p.clone());
                                     set_edit_stock.set(stock_for_edit);
                                     edit_stock_valid.set(true);
                                     set_editing_variant_id.set(Some(v_id.clone()));
@@ -1862,6 +1866,7 @@ pub(super) fn ProductVariantsPanel(
                                 let v_id_save = variant_id.clone();
                                 let p_id_save = product_id_for_edit.clone();
                                 let default_curr_save = default_curr.clone();
+                                let variant = variant.clone();
                                 let on_save_edit = move |_| {
                                     if busy.get_untracked() || blocked.get_untracked() { return; }
                                     if !edit_stock_valid.get_untracked() { set_error.set(Some("Inventory must be a non-negative 32-bit integer".into())); return; }
@@ -1874,18 +1879,17 @@ pub(super) fn ProductVariantsPanel(
                                     let var_id = v_id_save.clone();
                                     let prod_id = p_id_save.clone();
 
-                                    let draft = crate::model::VariantUpdateDraft {
-                                        sku: crate::model::VariantUpdateDraft::edited_text(edit_sku.get_untracked()),
-                                        axis_values: Vec::new(),
-                                        prices: vec![VariantPriceDraft {
-                                            currency_code: default_curr_save.clone(),
-                                            amount: edit_price.get_untracked(),
-                                            compare_at_amount: None,
-                                        }],
-                                        inventory_quantity: Some(edit_stock.get_untracked()),
-                                        inventory_policy: None,
-                                        ..Default::default()
-                                    };
+                                    let draft = crate::model::VariantUpdateDraft::from_inline_editor_state(
+                                        &variant,
+                                        edit_sku.get_untracked(),
+                                        edit_price.get_untracked(),
+                                        edit_stock.get_untracked(),
+                                        &default_curr_save,
+                                    );
+                                    if let Err(message) = crate::core::validate_editor_variant_draft(&draft) {
+                                        set_error.set(Some(message));
+                                        return;
+                                    }
 
                                     set_busy.set(true);
                                     set_error.set(None);
@@ -2020,8 +2024,7 @@ fn ProductMediaPanel(
                 return;
             }
 
-            let position_val = match parse_product_admin_quantity_input(&position.get_untracked())
-            {
+            let position_val = match parse_product_admin_quantity_input(&position.get_untracked()) {
                 Ok(value) => Some(value),
                 Err(message) => {
                     set_error.set(Some(message));

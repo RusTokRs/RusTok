@@ -9,15 +9,16 @@ use rustok_core::error::Error as CoreError;
 use rustok_events::{DomainEvent, ValidateEvent};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, EntityTrait,
-    FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Select, Statement, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, DbErr,
+    EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Select, Set, Statement,
+    sea_query::Expr,
 };
 use uuid::Uuid;
 
 use super::bootstrap::BootstrapService;
 use super::inventory::inventory_item_write_query;
 use super::policy::inventory_policy_allows_backorder;
-use crate::entities::{inventory_level, stock_location};
+use crate::entities::{inventory_item, inventory_level, stock_location};
 
 const MAX_QUANTITY_LEVELS: usize = 4096;
 
@@ -228,6 +229,73 @@ pub(super) async fn write_quantity(
     require_current_snapshot(txn).await?;
     let plan = QuantityPlan::load(txn, tenant_id, actor_id, variant_id, change).await?;
     plan.apply(txn, low_stock_threshold).await
+}
+
+/// Synchronizes the denormalized Inventory SKU after Product has locked the owning
+/// Product and ProductVariant rows. The row lock order matches quantity writes:
+/// tenant-scoped variant, parent proof, then the tenant-less Inventory item.
+pub(super) async fn sync_variant_sku(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    variant_id: Uuid,
+    sku: Option<String>,
+) -> WriteResult<()> {
+    validate_request(tenant_id, actor_id, variant_id)?;
+    require_current_snapshot(txn).await?;
+
+    let (saved_variant_id, product_id) = current_read(
+        txn,
+        product_variant::Entity::find_by_id(variant_id)
+            .select_only()
+            .column(product_variant::Column::Id)
+            .column(product_variant::Column::ProductId)
+            .filter(product_variant::Column::TenantId.eq(tenant_id)),
+    )
+    .into_tuple::<(Uuid, Uuid)>()
+    .one(txn)
+    .await?
+    .ok_or(QuantityWriteError::VariantNotFound(variant_id))?;
+    if saved_variant_id.is_nil() || product_id.is_nil() {
+        return Err(QuantityWriteBlocker::IdentityUnavailable.into());
+    }
+
+    // INVARIANT: prove the parent tenant before touching tenant-less inventory_items.
+    let parent_id = product::Entity::find_by_id(product_id)
+        .select_only()
+        .column(product::Column::Id)
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .into_tuple::<Uuid>()
+        .one(txn)
+        .await?;
+    if parent_id != Some(product_id) {
+        return Err(QuantityWriteBlocker::IdentityUnavailable.into());
+    }
+
+    let items = inventory_item_write_query(txn, variant_id)
+        .limit(2)
+        .all(txn)
+        .await?;
+    if items.len() != 1 || items[0].id.is_nil() || items[0].variant_id != variant_id {
+        return Err(QuantityWriteBlocker::IdentityUnavailable.into());
+    }
+
+    let sku = sku
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let item = items
+        .into_iter()
+        .next()
+        .ok_or(QuantityWriteBlocker::IdentityUnavailable)?;
+    if item.sku == sku {
+        return Ok(());
+    }
+
+    let mut active: inventory_item::ActiveModel = item.into();
+    active.sku = Set(sku);
+    active.updated_at = Set(Utc::now().into());
+    active.update(txn).await?;
+    Ok(())
 }
 
 pub(super) fn validate_request(
@@ -624,3 +692,147 @@ fn validate_event_quantities(before: i32, after: i32) -> WriteResult<()> {
 
 #[cfg(test)]
 mod tests;
+
+
+#[cfg(test)]
+mod sku_sync_tests {
+    use super::{sync_variant_sku, QuantityWriteBlocker, QuantityWriteError};
+    use chrono::Utc;
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, EntityTrait, Statement, TransactionTrait,
+    };
+    use uuid::Uuid;
+
+    async fn setup_schema(db: &sea_orm::DatabaseConnection) {
+        for sql in [
+            "CREATE TABLE products (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL)",
+            "CREATE TABLE inventory_items (id TEXT PRIMARY KEY NOT NULL, variant_id TEXT NOT NULL, sku TEXT NULL, requires_shipping BOOLEAN NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        ] {
+            db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql.to_owned()))
+                .await
+                .expect("create SKU sync fixture table");
+        }
+    }
+
+    async fn insert_owner_identity(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        variant_id: Uuid,
+        item_id: Option<Uuid>,
+    ) {
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO products (id, tenant_id) VALUES (?, ?)",
+            [product_id.into(), tenant_id.into()],
+        ))
+        .await
+        .expect("insert Product identity");
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+            [variant_id.into(), tenant_id.into(), product_id.into()],
+        ))
+        .await
+        .expect("insert ProductVariant identity");
+        if let Some(item_id) = item_id {
+            let now = Utc::now().to_rfc3339();
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO inventory_items (id, variant_id, sku, requires_shipping, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    item_id.into(),
+                    variant_id.into(),
+                    Some("OLD-SKU".to_owned()).into(),
+                    true.into(),
+                    "{}".to_owned().into(),
+                    now.clone().into(),
+                    now.into(),
+                ],
+            ))
+            .await
+            .expect("insert Inventory item");
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_variant_sku_updates_and_canonicalizes_the_inventory_snapshot() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect SQLite fixture");
+        setup_schema(&db).await;
+        let txn = db.begin().await.expect("begin transaction");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let variant_id = Uuid::new_v4();
+        let item_id = Uuid::new_v4();
+        insert_owner_identity(&txn, tenant_id, product_id, variant_id, Some(item_id)).await;
+
+        sync_variant_sku(
+            &txn,
+            tenant_id,
+            actor_id,
+            variant_id,
+            Some("  SKU-123  ".to_owned()),
+        )
+        .await
+        .expect("sync trimmed SKU");
+
+        let item = crate::entities::inventory_item::Entity::find_by_id(item_id)
+            .one(&txn)
+            .await
+            .expect("load Inventory item")
+            .expect("Inventory item exists");
+        assert_eq!(item.sku.as_deref(), Some("SKU-123"));
+
+        sync_variant_sku(
+            &txn,
+            tenant_id,
+            actor_id,
+            variant_id,
+            Some("   ".to_owned()),
+        )
+        .await
+        .expect("blank SKU clears the Inventory snapshot");
+        let item = crate::entities::inventory_item::Entity::find_by_id(item_id)
+            .one(&txn)
+            .await
+            .expect("reload Inventory item")
+            .expect("Inventory item exists");
+        assert_eq!(item.sku, None);
+
+        txn.rollback().await.expect("rollback fixture transaction");
+    }
+
+    #[tokio::test]
+    async fn sync_variant_sku_fails_closed_when_the_inventory_identity_is_missing() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect SQLite fixture");
+        setup_schema(&db).await;
+        let txn = db.begin().await.expect("begin transaction");
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let variant_id = Uuid::new_v4();
+        insert_owner_identity(&txn, tenant_id, product_id, variant_id, None).await;
+
+        let error = sync_variant_sku(
+            &txn,
+            tenant_id,
+            actor_id,
+            variant_id,
+            Some("SKU-123".to_owned()),
+        )
+        .await
+        .expect_err("missing Inventory identity must not be silently ignored");
+        assert!(matches!(
+            error,
+            QuantityWriteError::Rejected(QuantityWriteBlocker::IdentityUnavailable)
+        ));
+
+        txn.rollback().await.expect("rollback fixture transaction");
+    }
+}
