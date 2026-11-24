@@ -43,12 +43,12 @@ providers use the same service endpoint and separate credentials. See the
 |---|---|
 | Product projection, variant-to-product projection, basic published list | Implemented by the three gRPC RPCs. |
 | Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
-| Filtered storefront list, facets and storefront detail by Product ID or handle | RPCs exist on the catalog read port. Some mounted REST, GraphQL and native paths still use local owner services. |
+| Storefront lists and detail | gRPC serves filtered lists, facets, detail by Product ID or handle, and the existing REST and GraphQL list projections. Tagged list results require Taxonomy term names. The standalone owner returns a retryable unavailable error when it needs Taxonomy. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
 | Index replay and serving | Product and ProductVariant replay support gRPC to the owner. Channel convergence can run with separate databases. Absence watermarks and query admission still require the shared PostgreSQL profile. |
 | Flex attached values | Locale-aware reads and receipted update/delete use dedicated credentials on the selected read and command providers. |
 | Flex schema reads | The host injects the embedded Flex schema-read port for Product and variant catalog projections. The standalone service can instead use a local, versioned projection of Flex definitions for catalog reads, commands and attached values. |
-| Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
+| Schema reads and Index tag hydration | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |
 | Product commands | Fifteen RPCs delegate to the same owner service when explicitly enabled. Separate-process write parity and recovery are still open. |
 | Product/Pricing/Inventory transactions and external capabilities | Inventory still requires local Product identity in shared transactions. The standalone owner lacks the embedded Pricing, Shipping Profile and Media bindings. |

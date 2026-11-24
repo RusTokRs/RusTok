@@ -91,6 +91,9 @@ pub use runtime::{
     ProductCatalogCommandProfile, ProductCatalogCommandRuntime, ProductCatalogReadProfile,
     ProductCatalogReadRuntime,
 };
+pub use rustok_product_ports::{
+    LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
+};
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, AdminProductListQueryExt,
     CatalogService, MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS,
@@ -134,9 +137,6 @@ pub use services::{
     product_attribute_text_term,
 };
 pub use shipping_profile::ProductShippingProfilePort;
-pub use storefront_http_read_port::{
-    LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
-};
 pub use storefront_tag_read_port::{
     ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem,
     ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,

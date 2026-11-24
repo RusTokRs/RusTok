@@ -68,7 +68,7 @@ impl ProductCatalogReadRuntime {
 mod storefront_http_read_port;
 mod storefront_tag_read_port;
 pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
-pub use storefront_http_read_port::{
+pub use rustok_product_ports::{
     LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
 };
 pub use storefront_tag_read_port::{
@@ -79,12 +79,11 @@ pub use storefront_tag_read_port::{
   write(
     root,
     "crates/modules/rustok-product/src/storefront_http_read_port.rs",
-    `pub trait ProductStorefrontHttpReadPort {}
-impl ProductStorefrontHttpReadPort for CatalogService {}
+    `impl ProductStorefrontHttpReadPort for CatalogService {}
 const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
 fn load(context: &PortContext, products: &[Product]) {
     context.require_policy(PortCallPolicy::read())?;
-    crate::services::catalog::helpers::is_metadata_visible_for_public_channel(
+    crate::services::catalog::helpers::product_channel_visibility_condition(
         context,
         metadata,
         channel,
@@ -104,6 +103,23 @@ fn hydrate(&self) {
 }
 `,
   );
+  write(
+    root,
+    "crates/modules/rustok-product/ports/src/ports.rs",
+    "pub trait ProductStorefrontHttpReadPort { /* LegacyStorefrontHttpProductsRequest */ }",
+  );
+  write(
+    root,
+    "crates/modules/rustok-product/ports/proto/rustok/product/product_catalog.proto",
+    "rpc ListLegacyStorefrontHttpProducts() rpc ListLegacyStorefrontProducts()",
+  );
+  const grpcBinding = ".with_storefront_http_read_port(provider.clone())";
+  write(
+    root,
+    "apps/server/src/services/product_catalog_deployment.rs",
+    options.omitGrpcHttpBinding ? "" : grpcBinding,
+  );
+  write(root, "crates/modules/rustok-product/src/bin/service.rs", grpcBinding);
   const directMarketplace = options.directMarketplace
     ? "let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new("
     : "";
@@ -187,6 +203,10 @@ test("runtime composition guard accepts canonical source fixture", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("runtime composition guard rejects a missing gRPC REST owner binding", () => {
+  reject({ omitGrpcHttpBinding: true }, /host-selected gRPC Storefront HTTP capability/);
 });
 
 test("runtime composition guard rejects missing external profile", () => {

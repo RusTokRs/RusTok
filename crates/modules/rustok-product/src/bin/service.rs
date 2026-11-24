@@ -298,7 +298,8 @@ async fn run() -> Result<()> {
     });
     let command_provider = provider.clone();
     let mut service = ProductCatalogGrpcService::new(provider.clone())
-        .with_variant_identity_read_port(provider.clone());
+        .with_variant_identity_read_port(provider.clone())
+        .with_storefront_http_read_port(provider.clone());
     let mut interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
         config.bearer_token.expose(),
         PortActor::service(config.trusted_service_actor.clone()),

@@ -168,6 +168,17 @@ by readiness. The existing stop-before-start and restart-after-drain
 regressions cover this no-op; the terminated-task regressions also check
 that retained handles are not acknowledged after stop. Tests are unexecuted.
 
+## Server audit continuation — locked login credential-oracle closure (2026-11-25)
+
+Login now checks an active lockout before verifying the user's stored password
+hash. It performs the same dummy-hash verification used for unknown accounts
+and returns the generic `InvalidCredentials` result for every password while
+the account is locked. The transactional post-verification check applies the
+same generic result if another request activates the lockout after the initial
+lookup. This prevents the lockout window from becoming an unlimited online
+password oracle while preserving atomic failed-attempt accounting. Regression
+coverage is authored but unexecuted.
+
 ## Server audit continuation — scheduler startup liveness (2026-11-23)
 
 The module-work and Workflow cron scheduler initializers previously treated a stored
@@ -528,7 +539,13 @@ timeouts.
 
 OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
-do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`
+do not diverge. Cookie-authenticated browser authorization GETs never issue a
+code, even for first-party apps or previously consented third-party apps; they
+always render a short-lived HMAC-CSRF confirmation form. For cookie-backed flows, the code is issued
+only after the confirmation POST, and consent is written only when the app
+requires it and the current grant does not cover the requested scopes. The
+non-ambient explicit Authorization-header path retains its pre-authorized fast
+path. OAuth protocol `server_error` and `temporarily_unavailable`
 are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
 OAuth client database lookup failures also become sanitized HTTP 500 errors, not
 misleading `invalid_client` / HTTP 401 responses.

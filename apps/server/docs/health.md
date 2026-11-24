@@ -29,8 +29,9 @@ This document describes the behavior of health endpoints in `apps/server/src/con
 - Configure `RUSTOK_OBSERVABILITY_BEARER_TOKEN` and send its raw value in
   `X-RusTok-Observability-Token`. The legacy
   `RUSTOK_METRICS_BEARER_TOKEN` environment variable remains a fallback, and
-  `Authorization: Bearer ...` remains a compatibility header. If both header
-  transports are supplied, the request is rejected as ambiguous.
+  `Authorization: Bearer ...` remains a compatibility header. When the
+  observability bearer gate is configured, supplying both header transports
+  (or duplicate values) is rejected as ambiguous.
 - In release/production-security mode, the observability bearer must be
   configured; otherwise the protected endpoints fail closed. In non-release
   mode it is optional only when neither token environment variable is set.

@@ -584,16 +584,27 @@ impl AuthLifecycleService {
             }
         };
 
+        // A locked account must not expose whether a submitted password is
+        // correct. Failed attempts are no longer counted during the lockout,
+        // so verifying the real hash here would create an unlimited password
+        // oracle (InvalidCredentials vs AccountLocked). Match the unknown-user
+        // path with the same dummy hash and generic failure.
+        if Self::is_login_locked(&user) {
+            let dummy_hash = crate::auth::dummy_password_hash_async()
+                .await
+                .map_err(AuthLifecycleError::from)?;
+            verify_password_async(password.to_string(), dummy_hash)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidCredentials);
+        }
+
         if !verify_password_async(password.to_string(), user.password_hash.clone())
             .await
             .map_err(AuthLifecycleError::from)?
         {
             Self::register_failed_login_attempt(db, tenant_id, &user).await?;
             return Err(AuthLifecycleError::InvalidCredentials);
-        }
-
-        if Self::is_login_locked(&user) {
-            return Err(AuthLifecycleError::AccountLocked);
         }
 
         if !user.is_active() {
@@ -629,7 +640,9 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
         if Self::is_login_locked(&locked_user) {
-            return Err(AuthLifecycleError::AccountLocked);
+            // The lock may have been activated after the initial user lookup.
+            // Keep the result identical to the wrong-password path.
+            return Err(AuthLifecycleError::InvalidCredentials);
         }
         if !locked_user.is_active() {
             AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.fetch_add(1, Ordering::Relaxed);
@@ -1719,6 +1732,57 @@ mod tests {
             result,
             Err(AuthLifecycleError::InvalidCredentials)
         ));
+    }
+
+    #[tokio::test]
+    async fn locked_login_does_not_disclose_password_validity() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "locked-login-oracle")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let password = "CorrectPassword123!";
+        let password_hash = crate::auth::hash_password_async(password.to_string())
+            .await
+            .expect("password hash");
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "locked-login@example.com",
+            password_hash,
+        )
+        .insert(&db)
+        .await
+        .expect("user");
+        let mut locked: users::ActiveModel = user.into();
+        locked.locked_until = Set(Some((Utc::now() + Duration::minutes(10)).into()));
+        let locked_user = locked.update(&db).await.expect("lock user");
+        let config = test_auth_config("locked-login-oracle", 3600, 86400);
+
+        for candidate in [password, "WrongPassword123!"] {
+            let result = AuthLifecycleService::login_with_config(
+                &db,
+                &config,
+                tenant.id,
+                "locked-login@example.com",
+                candidate,
+                None,
+                None,
+                false,
+            )
+            .await;
+            assert!(matches!(
+                result,
+                Err(AuthLifecycleError::InvalidCredentials)
+            ));
+        }
+
+        let unchanged = users::Entity::find_by_id(locked_user.id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("locked user");
+        assert!(AuthLifecycleService::is_login_locked(&unchanged));
+        assert_eq!(unchanged.failed_login_count, locked_user.failed_login_count);
     }
 
     #[tokio::test]

@@ -80,7 +80,8 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                 provider.clone() as Arc<dyn rustok_product_ports::ProductLocaleReplayPort>
             );
             let mut runtime = ProductCatalogReadRuntime::external(provider.clone())
-                .with_variant_identity_read_port(provider.clone());
+                .with_variant_identity_read_port(provider.clone())
+                .with_storefront_http_read_port(provider.clone());
             if attached_values_enabled {
                 runtime = runtime.with_attached_values_read_port(provider);
             }

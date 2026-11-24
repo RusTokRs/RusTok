@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, locale_tags_match};
+use rustok_product_ports::{LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
@@ -10,32 +11,6 @@ use crate::{CatalogService, CommerceError};
 
 const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
 const LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION: &str = "list_legacy_storefront_http_products";
-
-/// Optional Product-owned compatibility boundary for the mounted legacy storefront REST list.
-///
-/// This capability is intentionally separate from the legacy GraphQL list projection because the
-/// mounted REST contract allows up to 100 rows, paginates after public-channel visibility, emits an
-/// empty title when no translation exists, and derives the shipping profile from metadata only.
-#[async_trait]
-pub trait ProductStorefrontHttpReadPort: Send + Sync {
-    async fn list_legacy_storefront_http_products(
-        &self,
-        context: PortContext,
-        request: LegacyStorefrontHttpProductsRequest,
-    ) -> Result<LegacyStorefrontProductList, PortError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LegacyStorefrontHttpProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub search: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
-}
 
 #[async_trait]
 impl ProductStorefrontHttpReadPort for CatalogService {

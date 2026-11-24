@@ -13,8 +13,12 @@ use rustok_product::{
     },
 };
 use rustok_product_ports::{
-    ProductAttachedValuesWritePort,
-    grpc::{GrpcProductCatalogCommandProvider, ProductCatalogGrpcBearerToken},
+    LegacyStorefrontHttpProductsRequest, LegacyStorefrontProductsRequest,
+    ProductAttachedValuesWritePort, ProductCatalogReadPort, ProductStorefrontHttpReadPort,
+    grpc::{
+        GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider,
+        ProductCatalogGrpcBearerToken,
+    },
 };
 use rustok_test_utils::{
     MockEventTransport, connect_postgres, create_postgres_database,
@@ -369,6 +373,10 @@ async fn verify_standalone_refresh(
         )
         .env("RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID", actor.to_string())
         .env(
+            "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN",
+            "catalog-attached-read-fixture",
+        )
+        .env(
             "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN",
             attached_token,
         )
@@ -406,6 +414,7 @@ async fn verify_standalone_refresh(
     );
 
     let catalog_endpoint = tonic::transport::Endpoint::from_shared(format!("http://{bind}"))?;
+    verify_standalone_storefront_lists(target, &embedded, catalog_endpoint.clone(), tenant).await?;
     let auth = ProductCatalogGrpcBearerToken::new(attached_token)?;
     let remote = GrpcProductCatalogCommandProvider::connect(catalog_endpoint.clone())
         .await?
@@ -458,6 +467,165 @@ async fn verify_standalone_refresh(
     .await??;
     child.kill().await?;
     assert_written_once_and_dispatched(target, tenant, [embedded_product, remote_product]).await?;
+    Ok(())
+}
+
+async fn verify_standalone_storefront_lists(
+    db: &DatabaseConnection,
+    embedded: &rustok_product::CatalogService,
+    endpoint: tonic::transport::Endpoint,
+    tenant: Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use rustok_product::entities::{product, product_tag, product_translation};
+    use sea_orm::{ActiveModelTrait, Schema, Set};
+
+    SchemaManager::new(db)
+        .create_table(
+            Schema::new(db.get_database_backend()).create_table_from_entity(product_tag::Entity),
+        )
+        .await?;
+
+    let now = chrono::Utc::now();
+    let mut visible = Vec::new();
+    for (owner, channel, minutes_ago) in [
+        (tenant, "web", 2),
+        (tenant, "web", 1),
+        (tenant, "retail", 0),
+        (Uuid::new_v4(), "web", 0),
+    ] {
+        let id = Uuid::new_v4();
+        product::ActiveModel {
+            id: Set(id),
+            tenant_id: Set(owner),
+            status: Set(product::ProductStatus::Active),
+            vendor: Set(Some("Catalog fixture".into())),
+            product_type: Set(Some("digital".into())),
+            shipping_profile_slug: Set(Some("typed-profile".into())),
+            metadata: Set(serde_json::json!({
+                "channel_visibility": { "allowed_channel_slugs": [channel] },
+                "shipping_profile_slug": "metadata-profile",
+            })),
+            revision: Set(1),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            published_at: Set(Some((now - chrono::Duration::minutes(minutes_ago)).into())),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+        product_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(owner),
+            product_id: Set(id),
+            locale: Set("en".into()),
+            title: Set("Published fixture".into()),
+            handle: Set(id.to_string()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+        if owner == tenant && channel == "web" {
+            visible.push(id);
+        }
+    }
+
+    let context = context(tenant).with_channel("web");
+    let http_request = LegacyStorefrontHttpProductsRequest {
+        locale: Some("de".into()),
+        fallback_locale: Some("en".into()),
+        public_channel_slug: Some("web".into()),
+        vendor: Some("Catalog fixture".into()),
+        product_type: Some("digital".into()),
+        search: Some("Published".into()),
+        page: 2,
+        per_page: 1,
+    };
+    let graphql_request = LegacyStorefrontProductsRequest {
+        locale: http_request.locale.clone(),
+        fallback_locale: http_request.fallback_locale.clone(),
+        public_channel_slug: http_request.public_channel_slug.clone(),
+        vendor: http_request.vendor.clone(),
+        product_type: http_request.product_type.clone(),
+        search: http_request.search.clone(),
+        page: http_request.page,
+        per_page: http_request.per_page,
+    };
+    let remote = GrpcProductCatalogReadProvider::connect(endpoint.clone())
+        .await?
+        .with_bearer_token("catalog-fixture")?;
+    let http = remote
+        .list_legacy_storefront_http_products(context.clone(), http_request.clone())
+        .await?;
+    let graphql = remote
+        .list_legacy_storefront_products(context.clone(), graphql_request.clone())
+        .await?;
+    assert_eq!(
+        http.items,
+        embedded
+            .list_legacy_storefront_http_products(context.clone(), http_request.clone())
+            .await?
+            .items,
+    );
+    assert_eq!(
+        graphql.items,
+        embedded
+            .list_legacy_storefront_products(context.clone(), graphql_request)
+            .await?
+            .items,
+    );
+    for list in [&http, &graphql] {
+        assert_eq!(
+            (list.total, list.page, list.per_page, list.has_next),
+            (2, 2, 1, false)
+        );
+        assert_eq!(list.items.len(), 1);
+        assert_eq!(list.items[0].id, visible[0]);
+        assert_eq!(list.items[0].title, "Published fixture");
+    }
+    assert_eq!(http.items[0].shipping_profile_slug, "metadata-profile");
+    assert_eq!(graphql.items[0].shipping_profile_slug, "typed-profile");
+
+    let denied = GrpcProductCatalogReadProvider::connect(endpoint)
+        .await?
+        .with_bearer_token("catalog-attached-read-fixture")?
+        .list_legacy_storefront_http_products(context.clone(), http_request.clone())
+        .await
+        .expect_err("attached-value credential must not grant catalog lists");
+    assert_eq!(denied.kind, PortErrorKind::Forbidden);
+    let invalid = remote
+        .list_legacy_storefront_http_products(
+            context.clone(),
+            LegacyStorefrontHttpProductsRequest {
+                per_page: 101,
+                ..http_request.clone()
+            },
+        )
+        .await
+        .expect_err("remote list must enforce the owner limit");
+    assert_eq!(invalid.code, "product.per_page_invalid");
+    let mut missing_deadline = context.clone();
+    missing_deadline.deadline_ms = None;
+    let timeout = remote
+        .list_legacy_storefront_http_products(missing_deadline, http_request.clone())
+        .await
+        .expect_err("the storefront RPC requires a caller deadline");
+    assert_eq!(timeout.kind, PortErrorKind::Timeout);
+    assert_eq!(timeout.code, "port.deadline_required");
+
+    product_tag::ActiveModel {
+        tenant_id: Set(tenant),
+        product_id: Set(visible[0]),
+        term_id: Set(Uuid::new_v4()),
+        created_at: Set(now.into()),
+    }
+    .insert(db)
+    .await?;
+    let unavailable = remote
+        .list_legacy_storefront_http_products(context, http_request)
+        .await
+        .expect_err("missing Taxonomy must not return an incomplete tagged Product");
+    assert_eq!(unavailable.kind, PortErrorKind::Unavailable);
+    assert!(unavailable.retryable);
     Ok(())
 }
 
