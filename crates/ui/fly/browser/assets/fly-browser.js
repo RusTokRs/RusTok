@@ -2033,8 +2033,7 @@ export class FlyBrowserAdapter {
         if (
           authoritative &&
           acknowledgedAuthoritativeResult &&
-          this.pageId &&
-          !this.peerWriteConflict
+          this.pageId
         ) {
           try {
             this.peerWriteChannel?.postMessage({
