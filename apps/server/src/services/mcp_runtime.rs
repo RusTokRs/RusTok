@@ -361,10 +361,10 @@ fn filter_active_module_permissions(
     granted_permissions: &[String],
     availability: Option<&PermissionAvailability>,
 ) -> Vec<String> {
-    let Some(availability) = availability else {
-        return granted_permissions.to_vec();
-    };
-
+    // Always parse and canonicalize persisted grants. When no module registry
+    // is composed, module filtering is intentionally skipped, but returning
+    // raw strings would make whitespace/alias handling differ by runtime
+    // profile because McpAccessContext compares canonical permission strings.
     let mut permissions = Vec::with_capacity(granted_permissions.len());
     for value in granted_permissions {
         match value.parse::<Permission>() {
@@ -377,13 +377,41 @@ fn filter_active_module_permissions(
             }
         }
     }
-    let mut active = availability.active_permissions(&permissions);
+
+    let mut active = match availability {
+        Some(availability) => availability.active_permissions(&permissions),
+        None => permissions,
+    };
     active.sort_by_cached_key(ToString::to_string);
     active.dedup();
     active
         .into_iter()
         .map(|permission| permission.to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod permission_filter_tests {
+    use super::filter_active_module_permissions;
+    use rustok_api::Permission;
+
+    #[test]
+    fn granted_permissions_are_canonicalized_without_a_module_registry() {
+        let padded = format!(" {} ", Permission::MODULES_READ);
+        let filtered = filter_active_module_permissions(&[padded], None);
+
+        assert_eq!(filtered, vec![Permission::MODULES_READ.to_string()]);
+    }
+
+    #[test]
+    fn invalid_grants_are_ignored_without_a_module_registry() {
+        let filtered = filter_active_module_permissions(
+            &["not:a:permission".to_string()],
+            None,
+        );
+
+        assert!(filtered.is_empty());
+    }
 }
 
 fn access_context_for_client(
