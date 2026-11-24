@@ -107,13 +107,19 @@ pub(crate) fn validate_editor_variant_draft(
         if price.currency_code.trim().is_empty() {
             return Err("Currency is required for a base price.".to_string());
         }
-        for value in
-            std::iter::once(price.amount.as_str()).chain(price.compare_at_amount.as_deref())
-        {
-            let amount = rust_decimal::Decimal::from_str_exact(value.trim())
+        let base_amount = rust_decimal::Decimal::from_str_exact(price.amount.trim())
+            .map_err(|_| "Prices must be exact decimal amounts.".to_string())?;
+        if base_amount.is_sign_negative() && !base_amount.is_zero() {
+            return Err("Prices must not be negative.".to_string());
+        }
+        if let Some(compare_at) = price.compare_at_amount.as_deref() {
+            let compare_at_amount = rust_decimal::Decimal::from_str_exact(compare_at.trim())
                 .map_err(|_| "Prices must be exact decimal amounts.".to_string())?;
-            if amount.is_sign_negative() && !amount.is_zero() {
+            if compare_at_amount.is_sign_negative() && !compare_at_amount.is_zero() {
                 return Err("Prices must not be negative.".to_string());
+            }
+            if compare_at_amount < base_amount {
+                return Err("Compare-at price cannot be lower than the base price.".to_string());
             }
         }
     }
@@ -3005,6 +3011,20 @@ mod tests {
         draft.prices[0].amount = "1".to_string();
         draft.prices[0].currency_code.clear();
         assert!(validate_editor_variant_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn editor_variant_rejects_compare_at_below_base_price() {
+        let mut draft = editor_variant_fixture();
+        draft.prices = vec![crate::model::VariantPriceDraft {
+            currency_code: "USD".to_owned(),
+            amount: "12.00".to_owned(),
+            compare_at_amount: Some("11.99".to_owned()),
+        }];
+        assert!(validate_editor_variant_draft(&draft).is_err());
+
+        draft.prices[0].compare_at_amount = Some("12.00".to_owned());
+        assert!(validate_editor_variant_draft(&draft).is_ok());
     }
 
     #[test]
