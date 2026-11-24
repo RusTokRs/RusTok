@@ -75,6 +75,13 @@ test('confirmed peer write fences stale tab without losing its local view or sen
   const otherTab = await context.newPage();
   await mountEditor(page, 'same-page', source);
   await mountEditor(otherTab, 'same-page', source);
+  const [firstSender, secondSender] = await Promise.all([
+    page.locator('#fly-root').getAttribute('data-fly-peer-write-sender-id'),
+    otherTab.locator('#fly-root').getAttribute('data-fly-peer-write-sender-id'),
+  ]);
+  expect(firstSender).toBeTruthy();
+  expect(secondSender).toBeTruthy();
+  expect(firstSender).not.toBe(secondSender);
 
   await page.evaluate(async () => {
     await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
