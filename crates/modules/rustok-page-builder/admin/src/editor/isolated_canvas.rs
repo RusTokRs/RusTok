@@ -334,7 +334,21 @@ fn handle_canvas_message(
                 .with(|controller| controller.ui().state.drag.is_some())
             {
                 update_drag_candidates(runtime, geometry, position);
-                runtime.dispatch(UiIntent::Drop);
+                let has_legal_candidate = runtime.controller.with(|controller| {
+                    controller
+                        .ui()
+                        .state
+                        .drag
+                        .as_ref()
+                        .and_then(|drag| drag.active_candidate())
+                        .is_some_and(|candidate| candidate.legal)
+                });
+                if has_legal_candidate {
+                    runtime.dispatch(UiIntent::Drop);
+                } else {
+                    // Pointer-up is terminal; do not leave an active drag with no pointer.
+                    runtime.dispatch(UiIntent::CancelDrag);
+                }
             }
         }
         CanvasBridgeMessage::KeyStroke { stroke } => {
