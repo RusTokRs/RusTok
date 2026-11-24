@@ -12,7 +12,7 @@ rendering, with zero UI-framework coupling.
 |---|---|---|---|
 | `fly` | `.` | **Stable** | Project model, lossless GrapesJS codec, commands, history, registries, validation, SSR renderer, dynamic/binding/context runtime |
 | `fly-ui` | `ui/` | **Stable** | `FlyUiStateMachine`, intents/effects, keymaps, capability policy, contribution model |
-| `fly-web` | `web/` | **Stable** | Geometry, hit-testing, iframe origin validation, real-DOM inline grants, cleanup registry, cross-tab confirmed-write fencing with editor-scoped sender IDs |
+| `fly-web` | `web/` | **Stable** | Geometry, hit-testing, iframe origin validation, real-DOM inline grants, cleanup registry, cross-tab confirmed-write fencing with document-scoped sender IDs |
 | `fly-browser` | `browser/` | **Stable** | SSR JS bridge (`assets/fly-browser.js`, `assets/fly-actions.js`), CSRF derivation, `BrowserIntentEnvelope` contract |
 | `fly-leptos` | `leptos/` | **Stable** | `FlyEditorWorkspace`, full authoring panels (`FlyPalette`, `FlyLayerTree`, `FlyCanvasPreview`, `FlyPageProperties`, `FlyComponentProperties`, `FlyStyleRules`, `FlyAssets`, `FlyThemeTokens`), dual runtime support (`ssr + browser-js` default, opt-in `wasm-client`) |
 | `fly-dioxus` | `dioxus/` | **Active** | Dioxus 0.7 workspace plus Page Builder host integration for an isolated iframe canvas, pointer/hover/focus/keyboard messages, palette and layer drag/drop, bounded resize and cross-tab write fencing; mounted browser verification remains pending. |
