@@ -52,3 +52,8 @@ The Dioxus layer panel is scoped to the same active page index as its preview, t
 the canonical `editor_layer_items_for_page` projection. It does not show components from
 other pages as if they were selectable in the active canvas; an out-of-range page yields
 no layer rows, not an accidental fallback to the first page.
+
+The reusable workspace also accepts `canvas_interactive`. It defaults to `true` only when a
+host canvas slot is supplied; set it to `false` when rendering an inline/read-only preview or
+when isolated-canvas setup failed. Palette drag and layer-move controls are hidden unless the
+host can report geometry and complete a drop.
