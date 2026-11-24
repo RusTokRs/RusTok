@@ -729,7 +729,6 @@ fn handle_canvas_message(
                 // A truncated snapshot is not a safe basis for hit testing: a missing
                 // component could otherwise leave a stale/incorrect drop candidate active.
                 geometry.set(BTreeMap::new());
-                on_ui_intent.call(UiIntent::UpdateHitTest(Vec::new()));
                 on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
                 on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
                 if session_has_active_drag(session) {
