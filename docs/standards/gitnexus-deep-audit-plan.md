@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-navigation`](../../crates/modules/rustok-navigation)
+- **Next Pending Component:** [`crates/modules/rustok-brand`](../../crates/modules/rustok-brand)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -238,7 +238,7 @@ flowchart TD
 | `rustok-product-bundles` | `crates/modules/rustok-product-bundles` | [x] | [x] | [x] | [x] |
 | `rustok-product-relations` | `crates/modules/rustok-product-relations` | [x] | [x] | [x] | [x] |
 | `rustok-taxonomy` | `crates/modules/rustok-taxonomy` | [x] | [x] | [x] | [x] |
-| `rustok-navigation` | `crates/modules/rustok-navigation` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-navigation` | `crates/modules/rustok-navigation` | [x] | [x] | [x] | [x] |
 | `rustok-brand` | `crates/modules/rustok-brand` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-content` | `crates/modules/rustok-content` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-content-orchestration` | `crates/modules/rustok-content-orchestration` | [ ] | [ ] | [ ] | [ ] |
