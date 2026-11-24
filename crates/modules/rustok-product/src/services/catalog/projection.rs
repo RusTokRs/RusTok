@@ -783,6 +783,10 @@ impl CatalogService {
                 product_id,
                 tag_locale,
                 fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
+                match schema {
+                    ProductProjectionSchema::CatalogRead(context) => Some(context),
+                    ProductProjectionSchema::Connection | ProductProjectionSchema::Pinned(_) => None,
+                },
             ),
             async {
                 let fallback = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);

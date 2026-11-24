@@ -40,6 +40,7 @@ impl ProductStorefrontHttpReadPort for CatalogService {
             request.search.as_deref(),
             request.page,
             request.per_page,
+            &context,
         )
         .await
         .map_err(|error| map_product_error(&context, error))
@@ -135,6 +136,7 @@ async fn list_legacy_storefront_http_products(
     search: Option<&str>,
     page: u64,
     per_page: u64,
+    context: &PortContext,
 ) -> Result<LegacyStorefrontProductList, CommerceError> {
     let fallback_locale = fallback_locale.unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
     let offset = page
@@ -183,7 +185,7 @@ async fn list_legacy_storefront_http_products(
             .push(translation);
     }
     let product_tags = service
-        .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+        .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), Some(context))
         .await?;
 
     let items = products

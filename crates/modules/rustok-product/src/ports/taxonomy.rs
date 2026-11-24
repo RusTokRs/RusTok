@@ -14,9 +14,11 @@
 //! resolution, tag creation, category synchronization, and category tree reading.
 //! No Taxonomy tables, SeaORM entities, or foreign types are imported here.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
+use rustok_api::{PortContext, PortError};
+use rustok_taxonomy_ports::{ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -95,11 +97,11 @@ impl AsTaxonomyConnection for crate::services::write_transaction::ProductWriteTr
 
 /// Transactional and projection port for product taxonomy (tags & categories).
 #[async_trait]
-pub trait ProductTaxonomyPort: Send + Sync {
-    /// Resolves human-readable tag names for term UUIDs.
-    async fn resolve_term_names(
+pub trait ProductTaxonomyPort: TaxonomyTermNamesReadPort {
+    /// Resolves tag names inside an aggregate transaction that may have uncommitted writes.
+    async fn resolve_term_names_in_tx(
         &self,
-        conn: TaxonomyConnection<'_>,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         term_ids: &[Uuid],
         locale: &str,
@@ -134,16 +136,32 @@ pub trait ProductTaxonomyPort: Send + Sync {
     ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError>;
 }
 
-/// Default no-op taxonomy implementation used when running Product in standalone microservice mode
-/// or in tests without a taxonomy service attached.
+/// Refuses Taxonomy-dependent operations when Product has no provider.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopProductTaxonomyPort;
 
 #[async_trait]
-impl ProductTaxonomyPort for NoopProductTaxonomyPort {
-    async fn resolve_term_names(
+impl TaxonomyTermNamesReadPort for NoopProductTaxonomyPort {
+    async fn read_term_names(
         &self,
-        _conn: TaxonomyConnection<'_>,
+        _context: PortContext,
+        request: ReadTaxonomyTermNamesRequest,
+    ) -> Result<BTreeMap<Uuid, String>, PortError> {
+        if request.term_ids.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        Err(PortError::unavailable(
+            "taxonomy.term_names_unavailable",
+            "Taxonomy term names are temporarily unavailable",
+        ))
+    }
+}
+
+#[async_trait]
+impl ProductTaxonomyPort for NoopProductTaxonomyPort {
+    async fn resolve_term_names_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
         _tenant_id: Uuid,
         term_ids: &[Uuid],
         _locale: &str,
@@ -198,31 +216,23 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::Database;
-
     use super::*;
 
     #[tokio::test]
     async fn missing_taxonomy_does_not_hide_stored_tag_relations() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        let tenant_id = Uuid::new_v4();
-        let port = NoopProductTaxonomyPort;
-        let error = port
-            .resolve_term_names((&db).into(), tenant_id, &[Uuid::new_v4()], "en", None)
-            .await
-            .unwrap_err();
-        let CommerceError::Core(error) = error else {
-            panic!("expected unavailable Taxonomy dependency");
-        };
-        assert_eq!(
-            crate::error::core_port_error(&error).kind,
-            rustok_api::PortErrorKind::Unavailable
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            rustok_api::PortActor::service("product"),
+            "en",
+            "tag-names-test",
         );
-        assert!(
-            port.resolve_term_names((&db).into(), tenant_id, &[], "en", None)
-                .await
-                .unwrap()
-                .is_empty()
-        );
+        let result = NoopProductTaxonomyPort.read_term_names(
+            context,
+            ReadTaxonomyTermNamesRequest {
+                term_ids: vec![Uuid::new_v4()],
+                fallback_locale: None,
+            },
+        ).await;
+        assert_eq!(result.unwrap_err().kind, rustok_api::PortErrorKind::Unavailable);
     }
 }

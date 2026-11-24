@@ -25,6 +25,7 @@ pub mod product_taxonomy_port;
 mod route_key_registry;
 pub mod seo_targets;
 pub mod services;
+mod term_names;
 mod translation_evidence;
 pub mod translation_target;
 

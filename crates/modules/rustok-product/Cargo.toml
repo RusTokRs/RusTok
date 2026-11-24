@@ -31,6 +31,7 @@ workspace = true
 [dependencies]
 rustok-channel-ports.workspace = true
 rustok-product-ports.workspace = true
+rustok-taxonomy-ports.workspace = true
 rustok-telemetry = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true, features = ["tls-ring"] }
 anyhow.workspace = true

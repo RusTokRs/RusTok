@@ -31,10 +31,10 @@ for (const [name, key, before, after] of [
   ['pool product projection', 'projection', '.one(conn)', '.one(&self.db)'],
   ['pool tag relations', 'tags', '.all(conn)', '.all(&self.db)'],
   [
-    'pool taxonomy names',
+    'transaction-bound Taxonomy names',
     'tags',
-    'let names = self\n            .taxonomy()\n            .resolve_term_names(',
-    'let names = self\n            .taxonomy()\n            .resolve_term_names_broken('
+    '.resolve_term_names_in_tx(txn,',
+    '.read_term_names(txn,'
   ],
   [
     'pool taxonomy translations',

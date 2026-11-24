@@ -282,6 +282,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             search.as_deref(),
             page,
             per_page,
+            &context,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))

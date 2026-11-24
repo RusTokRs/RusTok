@@ -215,7 +215,7 @@ impl CatalogService {
                 .push(translation);
         }
         let product_tags = self
-            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), None)
             .await?;
         let media_summaries = self
             .load_storefront_product_list_media(product_ids.as_slice(), locale, fallback_locale)
@@ -292,7 +292,7 @@ impl CatalogService {
         })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub(crate) async fn list_legacy_storefront_products_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -304,6 +304,7 @@ impl CatalogService {
         search: Option<&str>,
         page: u64,
         per_page: u64,
+        context: &rustok_api::PortContext,
     ) -> CommerceResult<crate::LegacyStorefrontProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         if page == 0 || per_page == 0 || per_page > 48 {
@@ -372,7 +373,7 @@ impl CatalogService {
                 .push(translation);
         }
         let product_tags = self
-            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), Some(context))
             .await?;
 
         let items = products

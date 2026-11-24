@@ -13,10 +13,12 @@
 //! Provides term name resolution, tag registration, category translation synchronization,
 //! and category snapshot reading without exposing private Taxonomy entities or table structures to Product.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::{PortContext, PortError};
+use rustok_taxonomy_ports::{ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort};
 use rustok_product::CommerceError;
 use rustok_product::ports::{
     ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort,
@@ -98,27 +100,30 @@ fn taxonomy_projection_error(message: &'static str) -> CommerceError {
 }
 
 #[async_trait]
-impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
-    async fn resolve_term_names(
+impl TaxonomyTermNamesReadPort for TaxonomyProductTaxonomyPortAdapter {
+    async fn read_term_names(
         &self,
-        conn: TaxonomyConnection<'_>,
+        context: PortContext,
+        request: ReadTaxonomyTermNamesRequest,
+    ) -> Result<BTreeMap<Uuid, String>, PortError> {
+        self.service.read_term_names(context, request).await
+    }
+}
+
+#[async_trait]
+impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
+    async fn resolve_term_names_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         term_ids: &[Uuid],
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> Result<HashMap<Uuid, String>, CommerceError> {
-        match conn {
-            TaxonomyConnection::Connection(c) => self
-                .service
-                .resolve_term_names_in(c, tenant_id, term_ids, locale, fallback_locale)
-                .await
-                .map_err(map_taxonomy_read_error),
-            TaxonomyConnection::Transaction(tx) => self
-                .service
-                .resolve_term_names_in(tx, tenant_id, term_ids, locale, fallback_locale)
-                .await
-                .map_err(map_taxonomy_read_error),
-        }
+        self.service
+            .resolve_term_names_in(txn, tenant_id, term_ids, locale, fallback_locale)
+            .await
+            .map_err(map_taxonomy_read_error)
     }
 
     async fn ensure_product_tags_in_tx(

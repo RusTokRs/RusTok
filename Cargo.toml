@@ -34,6 +34,7 @@ members = [
     "crates/modules/rustok-commerce/admin",
     "crates/modules/rustok-commerce/storefront",
     "crates/modules/rustok-cart/ports",
+    "crates/modules/rustok-taxonomy/ports",
     "crates/modules/rustok-cart/storefront",
     "crates/modules/rustok-payment/storefront",
     "crates/modules/rustok-fulfillment/admin",
@@ -390,6 +391,7 @@ rustok-messenger = { path = "crates/modules/rustok-messenger" }
 rustok-navigation = { path = "crates/modules/rustok-navigation" }
 rustok-page-builder = { path = "crates/modules/rustok-page-builder" }
 rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }
+rustok-taxonomy-ports = { path = "crates/modules/rustok-taxonomy/ports" }
 rustok-index = { path = "crates/modules/rustok-index" }
 rustok-search = { path = "crates/modules/rustok-search" }
 rustok-seo = { path = "crates/modules/rustok-seo" }

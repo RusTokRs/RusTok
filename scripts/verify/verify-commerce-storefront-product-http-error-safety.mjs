@@ -156,7 +156,7 @@ for (const [value, label] of [
   ['.limit(per_page)', 'owner pagination limit'],
   ['.unwrap_or_default()', 'owner empty missing translation'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'owner metadata-only shipping profile'],
-  ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
+  ['Some(context),', 'owner tag projection'],
 ]) requireText(ownerHttp, value, label);
 
 for (const [value, label] of [

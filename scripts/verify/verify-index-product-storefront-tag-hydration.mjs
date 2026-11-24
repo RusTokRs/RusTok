@@ -54,12 +54,11 @@ const ownerTags = requireMarkers(ownerTagsPath, [
   'pub(crate) async fn load_product_tag_map(',
   'product_tag::Column::TenantId.eq(tenant_id)',
   'product_tag::Column::ProductId.is_in(product_ids.clone())',
-  // Term hydration goes through the injected ProductTaxonomyPort; the caller
-  // passes the connection so in-transaction hydration reuses the caller's tx.
-  '.taxonomy()',
-  '.resolve_term_names(',
+  // Only transaction-bound reads use the native connection seam.
+  '.read_taxonomy_term_names(',
+  'port.read_term_names(',
   'conn.as_taxonomy_connection()',
-  '(&self.db).into()',
+  '.resolve_term_names_in_tx(txn,',
   'pub(crate) async fn load_product_tags_in<',
   'pub(crate) async fn sync_product_tags_in_tx(',
 ]);

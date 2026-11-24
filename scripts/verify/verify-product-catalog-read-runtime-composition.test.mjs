@@ -88,7 +88,7 @@ fn load(context: &PortContext, products: &[Product]) {
         metadata,
         channel,
     );
-    self.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale));
+    self.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), Some(context),);
 }
 `,
   );

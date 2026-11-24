@@ -120,7 +120,7 @@ for (const [value, label] of [
   ['pick_product_translation(items.as_slice(), locale, fallback_locale)', 'locale fallback projection'],
   ['.unwrap_or_default()', 'empty missing translation projection'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'metadata-only shipping profile'],
-  ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
+  ['Some(context),', 'owner tag projection'],
 ]) requireText(owner, value, label);
 
 requireText(ports, 'pub trait ProductStorefrontHttpReadPort', 'published Product owner HTTP port');

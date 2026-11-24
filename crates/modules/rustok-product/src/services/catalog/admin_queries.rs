@@ -147,7 +147,7 @@ impl CatalogService {
                 .push(translation);
         }
         let product_tags = self
-            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale), None)
             .await?;
 
         let items = products

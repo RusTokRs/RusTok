@@ -90,6 +90,7 @@ impl ProductStorefrontTagReadPort for CatalogService {
                 &products,
                 context.locale.as_str(),
                 Some(request.fallback_locale.as_str()),
+                Some(&context),
             )
             .await
             .map_err(|error| tag_error_to_port_error(&context, owner_operation, error))?;

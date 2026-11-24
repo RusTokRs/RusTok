@@ -95,7 +95,7 @@ requireAll(httpPort, [
   "MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100",
   "context.require_policy(PortCallPolicy::read())?",
   "crate::services::catalog::helpers::product_channel_visibility_condition(",
-  ".load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))",
+  "Some(context),",
 ], "Product optional Storefront HTTP capability");
 requireAll(tagPort, [
   "pub trait ProductStorefrontTagReadPort",

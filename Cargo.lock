@@ -17375,6 +17375,7 @@ dependencies = [
  "rustok-product-ports",
  "rustok-seo-targets",
  "rustok-taxonomy",
+ "rustok-taxonomy-ports",
  "rustok-telemetry",
  "rustok-test-utils",
  "rustok-translation-targets",
@@ -18559,6 +18560,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-product",
  "rustok-seo-targets",
+ "rustok-taxonomy-ports",
  "rustok-test-utils",
  "rustok-translation-targets",
  "sea-orm",
@@ -18569,6 +18571,16 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-taxonomy-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "serde",
  "uuid",
 ]
 

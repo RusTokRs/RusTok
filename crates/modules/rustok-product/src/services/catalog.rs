@@ -151,6 +151,7 @@ pub struct CatalogService {
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
     pub(crate) inventory_port: Option<std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
     pub(crate) taxonomy_port: Option<std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>>,
+    taxonomy_term_names_port: Option<std::sync::Arc<dyn rustok_taxonomy_ports::TaxonomyTermNamesReadPort>>,
     flex_schema_read_port: Option<std::sync::Arc<dyn flex_ports::FlexAttachedSchemaReadPort>>,
     flex_schema_source: ProductFlexSchemaSource,
 }
@@ -165,6 +166,7 @@ impl CatalogService {
             pricing_port: None,
             inventory_port: None,
             taxonomy_port: None,
+            taxonomy_term_names_port: None,
             flex_schema_read_port: None,
             flex_schema_source: ProductFlexSchemaSource::Shared,
         }
@@ -209,6 +211,14 @@ impl CatalogService {
         port: std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>,
     ) -> Self {
         self.taxonomy_port = Some(port);
+        self
+    }
+
+    pub fn with_taxonomy_term_names_port(
+        mut self,
+        port: std::sync::Arc<dyn rustok_taxonomy_ports::TaxonomyTermNamesReadPort>,
+    ) -> Self {
+        self.taxonomy_term_names_port = Some(port);
         self
     }
 
