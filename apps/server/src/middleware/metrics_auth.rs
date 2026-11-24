@@ -18,9 +18,10 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 ///
 /// Basic liveness (`/health`, `/health/live`) remains public. Public readiness
 /// exposes only the aggregate status and translates `unhealthy` into HTTP 503.
-/// A valid observability bearer token receives the full dependency diagnostic
-/// body. Production is fail-closed for metrics/runtime/module diagnostics when
-/// no host token is configured.
+/// A valid observability bearer token passes this independent monitoring
+/// gate. HostAuthorityContext remains a separate requirement for operator-only
+/// diagnostics. Release builds fail closed when no observability bearer is
+/// configured.
 pub async fn require_bearer(mut request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
     tracing::debug!(
