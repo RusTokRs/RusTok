@@ -102,6 +102,14 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 "Variant prices and compare-at amounts cannot be negative".to_owned(),
             ));
         }
+        if price
+            .compare_at_amount
+            .is_some_and(|compare_at| compare_at < price.amount)
+        {
+            return Err(CommerceError::Validation(
+                "Compare-at price cannot be lower than the base price".to_owned(),
+            ));
+        }
         let channel_slug = normalize_public_channel_slug(price.channel_slug.as_deref());
         let key = (price.channel_id, channel_slug, currency);
         if !seen.insert(key) {
@@ -3287,6 +3295,27 @@ mod tests {
             compare_at_amount: None,
         }];
         assert!(validate_variant_prices(&prices).is_err());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_compare_at_below_base_amount() {
+        let prices = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1200, 2),
+            compare_at_amount: Some(Decimal::new(1199, 2)),
+        }];
+        assert!(validate_variant_prices(&prices).is_err());
+
+        let equal_compare_at = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1200, 2),
+            compare_at_amount: Some(Decimal::new(1200, 2)),
+        }];
+        assert!(validate_variant_prices(&equal_compare_at).is_ok());
     }
 
     #[test]
