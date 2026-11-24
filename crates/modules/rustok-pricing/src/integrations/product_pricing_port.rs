@@ -35,8 +35,18 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         tenant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
+        let mut validated_variants = HashSet::new();
         let mut identities = HashSet::new();
         for price in &prices {
+            if validated_variants.insert(price.variant_id) {
+                crate::services::pricing::scope::load_variant_for_update_in_tx(
+                    txn,
+                    tenant_id,
+                    price.variant_id,
+                )
+                .await
+                .map_err(rustok_product::CommerceError::from)?;
+            }
             let channel_id = crate::services::pricing::scope::resolve_channel_id_in_tx(
                 txn,
                 tenant_id,
@@ -66,9 +76,13 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
     async fn replace_catalog_base_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         variant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
+        crate::services::pricing::scope::load_variant_for_update_in_tx(txn, tenant_id, variant_id)
+            .await
+            .map_err(rustok_product::CommerceError::from)?;
         BootstrapService::replace_catalog_base_prices_in_tx(txn, variant_id, prices)
             .await
             .map_err(rustok_product::CommerceError::from)
@@ -77,8 +91,21 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
     async fn delete_prices_for_variants_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<(), rustok_product::CommerceError> {
+        let mut validated_variants = HashSet::new();
+        for variant_id in variant_ids {
+            if validated_variants.insert(*variant_id) {
+                crate::services::pricing::scope::load_variant_for_update_in_tx(
+                    txn,
+                    tenant_id,
+                    *variant_id,
+                )
+                .await
+                .map_err(rustok_product::CommerceError::from)?;
+            }
+        }
         BootstrapService::delete_prices_for_variants_in_tx(txn, variant_ids)
             .await
             .map_err(rustok_product::CommerceError::from)
