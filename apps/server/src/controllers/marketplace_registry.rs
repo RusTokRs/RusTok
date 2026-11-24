@@ -177,7 +177,11 @@ async fn catalog_module(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response<Body>, Error> {
-    tracing::debug!(%slug, locale = %resolved_locale.effective_locale, "Handling marketplace catalog module detail request");
+    tracing::debug!(
+        slug_len = slug.len(),
+        locale = %resolved_locale.effective_locale,
+        "Handling marketplace catalog module detail request"
+    );
     let module = first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str())
         .await?
         .into_iter()
@@ -229,7 +233,12 @@ async fn publish(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.module.slug, version = %request.module.version, dry_run = request.dry_run, "Handling marketplace registry publish request");
+    tracing::debug!(
+        slug_len = request.module.slug.len(),
+        version_len = request.module.version.len(),
+        dry_run = request.dry_run,
+        "Handling marketplace registry publish request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
@@ -1146,7 +1155,11 @@ async fn report_validation_stage(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryValidationStageReportRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(%request_id, stage = %request.stage, "Handling marketplace registry stage report request");
+    tracing::debug!(
+        %request_id,
+        stage_len = request.stage.len(),
+        "Handling marketplace registry stage report request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_validation_stage_report_request(&request)?;
@@ -1951,7 +1964,7 @@ async fn claim_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(runner_id = %request.runner_id, "Handling remote runner stage claim request");
+    tracing::debug!(runner_id_len = request.runner_id.len(), "Handling remote runner stage claim request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2014,7 +2027,8 @@ async fn heartbeat_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerHeartbeatRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(%claim_id, "Handling remote runner lease heartbeat request");
+    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner lease heartbeat request");
+    let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2078,7 +2092,8 @@ async fn complete_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(%claim_id, "Handling remote runner stage completion request");
+    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner stage completion request");
+    let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2145,7 +2160,8 @@ async fn fail_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(%claim_id, "Handling remote runner stage failure request");
+    tracing::debug!(claim_id_len = claim_id.len(), "Handling remote runner stage failure request");
+    let claim_id = validate_remote_claim_id(&claim_id)?;
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2214,7 +2230,11 @@ async fn yank(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryYankRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry yank request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        version_len = request.version.len(),
+        "Handling marketplace registry yank request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_yank_request(&request)?;
@@ -2340,7 +2360,11 @@ async fn unyank(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryUnyankRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry un-yank request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        version_len = request.version.len(),
+        "Handling marketplace registry un-yank request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_unyank_request(&request)?;
@@ -2466,7 +2490,10 @@ async fn transfer_owner(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryOwnerTransferRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(slug = %request.slug, "Handling marketplace registry owner transfer request");
+    tracing::debug!(
+        slug_len = request.slug.len(),
+        "Handling marketplace registry owner transfer request"
+    );
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_owner_transfer_request(&request)?;
@@ -3307,12 +3334,28 @@ fn require_remote_executor_access(
 
 fn validate_runner_id(runner_id: &str) -> Result<String, Error> {
     let runner_id = runner_id.trim();
-    if runner_id.is_empty() {
+    if runner_id.is_empty()
+        || runner_id.len() > 128
+        || !runner_id.bytes().all(|byte| byte.is_ascii_graphic())
+    {
         return Err(Error::BadRequest(
-            "Registry remote runner request must include a non-empty runner_id".to_string(),
+            "Registry remote runner ID must contain 1-128 printable ASCII characters".to_string(),
         ));
     }
     Ok(runner_id.to_string())
+}
+
+fn validate_remote_claim_id(claim_id: &str) -> Result<String, Error> {
+    if claim_id.is_empty()
+        || claim_id.len() > 64
+        || claim_id.trim() != claim_id
+        || !claim_id.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+        return Err(Error::BadRequest(
+            "Registry remote claim ID must contain 1-64 printable ASCII characters".to_string(),
+        ));
+    }
+    Ok(claim_id.to_string())
 }
 
 fn validate_supported_runner_stages(stages: &[String]) -> Result<(), Error> {
@@ -3724,6 +3767,26 @@ mod marketplace_registry_tests {
             HeaderValue::from_static("00000000-0000-0000-0000-000000000002"),
         );
         assert!(super::required_non_nil_idempotency_key(&dup_headers).is_err());
+    }
+
+    #[test]
+    fn remote_runner_and_claim_identifiers_are_bounded_and_printable() {
+        assert_eq!(
+            super::validate_runner_id(" runner-01 ").expect("trimmed runner ID"),
+            "runner-01"
+        );
+        assert!(super::validate_runner_id("").is_err());
+        assert!(super::validate_runner_id(&"r".repeat(129)).is_err());
+        assert!(super::validate_runner_id("runner\n01").is_err());
+        assert!(super::validate_runner_id("runner id").is_err());
+
+        assert_eq!(
+            super::validate_remote_claim_id("rvc_0123456789").expect("claim ID"),
+            "rvc_0123456789"
+        );
+        assert!(super::validate_remote_claim_id("").is_err());
+        assert!(super::validate_remote_claim_id(&"c".repeat(65)).is_err());
+        assert!(super::validate_remote_claim_id("claim\r\n").is_err());
     }
 
     #[test]

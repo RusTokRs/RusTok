@@ -434,6 +434,8 @@ mod tests {
             "/health/ready",
             "/catalog/modules",
             "/v2/catalog/publish",
+            "/.well-known/openid-configuration",
+            "/.well-known/oauth-authorization-server",
             "/api/graphql/ws",
         ] {
             assert!(auth_can_resolve_without_tenant_context(path), "{path}");

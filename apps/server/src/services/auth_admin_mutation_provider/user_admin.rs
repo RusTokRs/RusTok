@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rustok_api::Permission;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
@@ -18,17 +18,15 @@ use rustok_rbac::{
     validate_persisted_role_grant_on,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
-use crate::auth::hash_password_async;
-use sha2::{Digest, Sha256};
-
+use crate::auth::{AuthConfig, hash_password_async};
 use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
-use crate::services::auth_invite::{InviteLookup, lock_invite_for_mutation};
+use crate::services::auth_invite::{InviteLookup, invite_token_hash, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -43,6 +41,21 @@ use super::{
 /// Invite tokens stay valid for a week: long enough for out-of-band
 /// delivery by an administrator, short enough to bound exposure.
 const INVITE_TOKEN_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn invite_expiration_from_token(
+    config: &AuthConfig,
+    token: &str,
+) -> Result<DateTime<Utc>, AuthAdminMutationError> {
+    let claims =
+        crate::auth::decode_invite_token(config, token).map_err(super::internal_admin_error)?;
+    let timestamp = i64::try_from(claims.exp).map_err(|_| {
+        AuthAdminMutationError::Internal("invite token expiration is out of range".to_string())
+    })?;
+
+    DateTime::<Utc>::from_timestamp(timestamp, 0).ok_or_else(|| {
+        AuthAdminMutationError::Internal("invite token expiration is invalid".to_string())
+    })
+}
 
 fn invite_record(invite: auth_invites::Model) -> UserInviteRecord {
     UserInviteRecord {
@@ -129,6 +142,22 @@ fn ensure_custom_field_snapshot_is_current(
         ));
     }
     Ok(())
+}
+
+fn user_row_update_requested(
+    email_requested: bool,
+    name_requested: bool,
+    status_changed: bool,
+    password_requested: bool,
+    prepared_metadata: bool,
+    prepared_localized_values: bool,
+) -> bool {
+    email_requested
+        || name_requested
+        || status_changed
+        || password_requested
+        || prepared_metadata
+        || prepared_localized_values
 }
 
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
@@ -287,42 +316,12 @@ async fn lock_user_for_mutation<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
-
-    let user = match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => query()
-            .lock_exclusive()
-            .one(db)
-            .await
-            .map_err(super::internal_admin_error)?,
-        DbBackend::Sqlite => {
-            // The user id is known. Reserve SQLite's writer before reading so
-            // a concurrent status/role/password mutation cannot race a
-            // deferred read-to-write lock upgrade.
-            let result = users::Entity::update_many()
-                .col_expr(
-                    users::Column::UpdatedAt,
-                    Expr::col(users::Column::UpdatedAt),
-                )
-                .filter(users::Column::Id.eq(user_id))
-                .filter(users::Column::TenantId.eq(tenant_id))
-                .exec(db)
-                .await
-                .map_err(super::internal_admin_error)?;
-            if result.rows_affected != 1 {
-                return Err(AuthAdminMutationError::NotFound("user".to_string()));
-            }
-            query().one(db).await.map_err(super::internal_admin_error)?
-        }
-        _ => {
-            return Err(AuthAdminMutationError::Internal(
-                "unsupported SeaORM database backend".to_string(),
-            ));
-        }
-    };
-
-    user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
+    AuthLifecycleService::lock_user_for_mutation(db, tenant_id, user_id)
+        .await
+        .map_err(super::internal_admin_error)?
+        .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }
+
 
 async fn revoke_active_sessions<C>(
     db: &C,
@@ -616,17 +615,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .as_deref()
             .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
         let custom_fields_updated = command.custom_fields.is_some();
-        let prepared = FlexAttachedValuesService::prepare_update(
-            &self.db,
-            context.tenant_id,
-            "user",
-            initial_user.id,
-            locale,
-            &initial_user.metadata,
-            command.custom_fields,
-        )
-        .await
-        .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
         // Validate and hash a replacement password before locking the user
         // row: Argon2 is deliberately expensive and must not run while the
@@ -657,6 +645,16 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &locked_user.metadata,
             custom_fields_updated,
         )?;
+        let prepared = FlexAttachedValuesService::prepare_user_update(
+            &tx,
+            context.tenant_id,
+            locked_user.id,
+            locale,
+            &locked_user.metadata,
+            command.custom_fields,
+        )
+        .await
+        .map_err(map_custom_field_error)?;
         let user_id = locked_user.id;
         let target_status = locked_user.status.clone();
         let status_changed = status_change_requested(&target_status, requested_status.as_ref());
@@ -728,12 +726,18 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 None
             };
 
-        let user_row_update_requested = command.email.is_some()
-            || command.name.is_some()
-            || status_changed
-            || command.password.is_some()
-            || prepared.metadata.is_some();
+        let user_row_update_requested = user_row_update_requested(
+            command.email.is_some(),
+            command.name.is_some(),
+            status_changed,
+            password_changed,
+            prepared.metadata.is_some(),
+            prepared.localized_values.is_some(),
+        );
         let mut active: users::ActiveModel = locked_user.clone().into();
+        if user_row_update_requested {
+            active.updated_at = Set(Utc::now().into());
+        }
         if let Some(email) = normalized_email {
             if email != locked_user.email {
                 // A different address has not proven mailbox control; never
@@ -1021,6 +1025,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             INVITE_TOKEN_TTL_SECS,
         )
         .map_err(super::internal_admin_error)?;
+        // JWT expiration is serialized at whole-second precision. Persist that
+        // exact signed deadline so ledger validation cannot reject an invite
+        // because a second clock read added a fractional second.
+        let expires_at = invite_expiration_from_token(&self.auth_config, &token)?;
 
         let now = Utc::now();
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
@@ -1069,11 +1077,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let invite = auth_invites::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(context.tenant_id),
-            token_hash: Set(hex::encode(Sha256::digest(token.as_bytes()))),
+            token_hash: Set(invite_token_hash(&token)),
             email: Set(email),
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
-            expires_at: Set((now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into()),
+            expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
         }
@@ -1190,12 +1198,35 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_custom_field_snapshot_is_current, map_role_mutation_policy_error, parse_user_role,
-        parse_user_status, status_change_requested,
+        ensure_custom_field_snapshot_is_current, invite_expiration_from_token,
+        map_role_mutation_policy_error, parse_user_role, parse_user_status,
+        status_change_requested, INVITE_TOKEN_TTL_SECS,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
     use rustok_rbac::RbacRoleMutationPolicyError;
+
+    #[test]
+    fn invite_ledger_expiration_matches_signed_jwt_second_precision() {
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4));
+        let token = crate::auth::encode_invite_token(
+            &config,
+            uuid::Uuid::new_v4(),
+            "invitee@example.test",
+            UserRole::Customer,
+            None,
+            INVITE_TOKEN_TTL_SECS,
+        )
+        .expect("encode invite token");
+        let claims =
+            crate::auth::decode_invite_token(&config, &token).expect("decode issued invite token");
+
+        let ledger_expiry =
+            invite_expiration_from_token(&config, &token).expect("resolve signed expiry");
+
+        assert_eq!(ledger_expiry.timestamp(), claims.exp as i64);
+        assert_eq!(ledger_expiry.timestamp_subsec_nanos(), 0);
+    }
 
     #[test]
     fn parses_admin_user_enums_case_insensitively() {
@@ -1214,6 +1245,19 @@ mod tests {
         assert!(matches!(
             map_role_mutation_policy_error(RbacRoleMutationPolicyError::LastActiveSuperAdmin),
             AuthAdminMutationError::Conflict(_)
+        ));
+    }
+
+    #[test]
+    fn localized_custom_field_only_updates_emit_user_mutation() {
+        assert!(super::user_row_update_requested(
+            false, false, false, false, false, true
+        ));
+        assert!(super::user_row_update_requested(
+            false, false, false, false, true, false
+        ));
+        assert!(!super::user_row_update_requested(
+            false, false, false, false, false, false
         ));
     }
 

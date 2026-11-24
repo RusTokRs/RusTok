@@ -32,10 +32,13 @@ impl UserFieldService {
     ///
     /// The returned [`CustomFieldsSchema`] can be used directly with
     /// `validate()`, `apply_defaults()`, and `strip_unknown()`.
-    pub async fn get_schema(
-        db: &DatabaseConnection,
+    pub async fn get_schema<C>(
+        db: &C,
         tenant_id: Uuid,
-    ) -> Result<CustomFieldsSchema, FlexError> {
+    ) -> Result<CustomFieldsSchema, FlexError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
         let rows = Entity::find_active_by_tenant(db, tenant_id)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;

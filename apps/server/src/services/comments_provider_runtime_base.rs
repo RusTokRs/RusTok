@@ -581,12 +581,17 @@ fn comments_tcp_service_actor_from_environment() -> std::result::Result<PortActo
 
 fn parse_comments_tcp_service_actor_id(value: &str) -> std::result::Result<PortActor, String> {
     let actor_id = value.trim();
-    if actor_id != value || Uuid::parse_str(actor_id).is_err() {
+    let parsed = Uuid::parse_str(actor_id).map_err(|_| {
+        format!(
+            "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} must be a canonical UUID without surrounding whitespace"
+        )
+    })?;
+    if actor_id != value || parsed.to_string() != actor_id {
         return Err(format!(
             "{COMMENTS_TCP_SERVICE_ACTOR_ID_ENV} must be a canonical UUID without surrounding whitespace"
         ));
     }
-    Ok(PortActor::service(actor_id.to_string()))
+    Ok(PortActor::service(parsed.to_string()))
 }
 
 fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
@@ -956,6 +961,11 @@ mod tests {
         );
         assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
+        let non_canonical_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        assert!(parse_comments_tcp_service_actor_id(&non_canonical_uuid.to_uppercase()).is_err());
+        assert!(
+            parse_comments_tcp_service_actor_id(&non_canonical_uuid.replace('-', "")).is_err()
+        );
     }
 
     #[tokio::test]

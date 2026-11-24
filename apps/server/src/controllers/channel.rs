@@ -101,7 +101,7 @@ async fn create_channel(
     tracing::debug!(
         tenant_id = %tenant.id,
         user_id = %current.user.id,
-        slug = %input.slug,
+        slug_len = input.slug.len(),
         "Handling create channel request"
     );
 
@@ -136,7 +136,7 @@ async fn create_target(
         tenant_id = %tenant.id,
         user_id = %current.user.id,
         channel_id = %channel_id,
-        target_type = %input.target_type,
+        target_type_len = input.target_type.len(),
         "Handling create channel target request"
     );
 
@@ -261,7 +261,7 @@ async fn bind_module(
         tenant_id = %tenant.id,
         user_id = %current.user.id,
         channel_id = %channel_id,
-        module_slug = %input.module_slug,
+        module_slug_len = input.module_slug.len(),
         "Handling bind module to channel request"
     );
 
@@ -377,7 +377,7 @@ async fn create_resolution_policy_set(
     tracing::debug!(
         tenant_id = %tenant.id,
         user_id = %current.user.id,
-        slug = %input.slug,
+        slug_len = input.slug.len(),
         "Handling create resolution policy set request"
     );
 

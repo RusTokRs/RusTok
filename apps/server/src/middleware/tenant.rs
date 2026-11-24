@@ -761,11 +761,15 @@ pub(crate) async fn load_tenant_context(
                 {
                     Ok(projection) => projection,
                     Err(error) if error.kind == PortErrorKind::NotFound => {
-                        if let Err(cache_error) = infra_clone
+                        if infra_clone
                             .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
                             .await
+                            .is_err()
                         {
-                            tracing::warn!(%cache_error, "Tenant not-found negative cache write failed");
+                            tracing::warn!(
+                                error_code = "tenant_not_found_negative_cache_write_failed",
+                                "Tenant not-found negative cache write failed"
+                            );
                         }
                         return Err(CoreError::NotFound(error.message));
                     }
@@ -775,20 +779,28 @@ pub(crate) async fn load_tenant_context(
                 match tenant_context_from_projection(projection) {
                     Ok(context) => Ok(context),
                     Err(CachedTenantMiss::Disabled) => {
-                        if let Err(cache_error) = infra_clone
+                        if infra_clone
                             .set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)
                             .await
+                            .is_err()
                         {
-                            tracing::warn!(%cache_error, "Disabled-tenant negative cache write failed");
+                            tracing::warn!(
+                                error_code = "tenant_disabled_negative_cache_write_failed",
+                                "Disabled-tenant negative cache write failed"
+                            );
                         }
                         Err(CoreError::Forbidden("tenant disabled".to_string()))
                     }
                     Err(CachedTenantMiss::NotFound) => {
-                        if let Err(cache_error) = infra_clone
+                        if infra_clone
                             .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
                             .await
+                            .is_err()
                         {
-                            tracing::warn!(%cache_error, "Tenant projection negative cache write failed");
+                            tracing::warn!(
+                                error_code = "tenant_projection_negative_cache_write_failed",
+                                "Tenant projection negative cache write failed"
+                            );
                         }
                         Err(CoreError::NotFound("tenant not found".to_string()))
                     }

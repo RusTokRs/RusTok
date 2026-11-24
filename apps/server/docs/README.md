@@ -502,6 +502,15 @@ refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
 is not extended when a session is rotated, and unrepresentable persisted
 timestamps fail closed rather than panicking.
 
+When `settings.rustok.features.email_verification` is enabled, an unverified
+user cannot use a previously issued direct or delegated access token. The
+authentication boundary rechecks the persisted user verification state for
+every access-token resolution; OAuth authorization-code exchange and refresh
+also recheck it while holding the subject mutation fence. Service
+client-credentials tokens are unaffected. Registration may return an initial
+token bundle, but those user credentials remain unusable until the address is
+verified; after verification, a still-live registration session can be used.
+
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
@@ -860,6 +869,9 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - `settings.rustok.features.oauth_enabled` is a real composition gate. When it is false the host does
   not mount `/api/oauth/*` or the OAuth discovery metadata, and OpenAPI prunes the OAuth paths. The
   default is fail-closed; deployments that expose an authorization server must opt in explicitly.
+- OAuth discovery is served at the exact root paths `/.well-known/openid-configuration` and
+  `/.well-known/oauth-authorization-server`. These host-wide metadata endpoints are public and
+  intentionally bypass tenant resolution; tenant-scoped OAuth operations remain under `/api/oauth/*`.
 - Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
   token families, so a used code remains available as the replay anchor for the delegated lineage it
   issued while still bounding storage. Session, invite, token, and code cleanup now share one
@@ -1184,7 +1196,9 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   request context, and accept only an exact admitted installation, registered
   permission key, and idempotency key. The routes never write static
   `role_permissions` and do not auto-grant anything at installation time.
-- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, published-release import, and source-free deleted-evidence retention tools. Script authoring, published-release import, and retention authority resolve the durable binding, require their declared permissions, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL where applicable. Source-bearing authoring and published-release import metadata is redacted before audit persistence; retention remains source-free. Generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, published-release import, and source-free deleted-evidence retention tools. Script authoring, published-release import, and retention authority resolve the durable binding, require their declared permissions, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL where applicable. Source-bearing authoring and published-release import metadata is redacted before audit persistence; retention remains source-free. Generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime. Remote correlation IDs are normalized:
+blank values receive a generated UUID, while supplied values must be 1–128 printable ASCII
+characters before they are persisted or used as SSE event IDs.
 - The hybrid product installer is introduced through `rustok-installer` and
   `rustok-installer-persistence`. The latter owns the shared SeaORM database,
   durable-state, and bootstrap-writer adapter. `/api/install/*` delegates plan,
