@@ -1,6 +1,6 @@
 use fly::{
-    EditorCommand, FlyEditor, GrapesJsCodec, PageLocator, PageSummary, ProjectFragment,
-    ProjectHash, RegistrySet, ValidationReport,
+    ContentDigest, EditorCommand, FlyEditor, GrapesJsCodec, PageLocator, PageSummary,
+    ProjectFragment, ProjectHash, ProjectSnapshot, RegistrySet, ValidationReport,
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PublishPageBuilderInput};
@@ -142,6 +142,27 @@ impl AdminCanvasController {
             .and_then(|page| page.component.as_ref())
             .and_then(|root| root.id())
             .map(ToString::to_string)
+    }
+
+    /// Apply a locally recovered document as one validated, undoable Fly command.
+    /// The server revision is deliberately unchanged; the next save still uses its CAS token.
+    pub fn apply_recovered_merge(
+        &mut self,
+        project_data: Value,
+    ) -> Result<(), AdminCanvasError> {
+        let document = GrapesJsCodec::decode_value(project_data.clone())?;
+        let snapshot = ProjectSnapshot {
+            id: format!("local-recovery-{}", Uuid::new_v4()),
+            label: "Recovered local draft".to_string(),
+            project_hash: document.hash().hex(),
+            content_digest: Some(ContentDigest::from_json(&project_data)?),
+            project_data,
+            metadata: Default::default(),
+        };
+        let report = self.editor.restore_snapshot(&snapshot)?;
+        self.clipboard = None;
+        self.synchronize(report);
+        Ok(())
     }
 
     pub fn dispatch(
@@ -729,6 +750,34 @@ mod tests {
         controller.acknowledge_save_for_attempt(hash, &retry, "rev-2")
             .expect("current response");
         assert_eq!(controller.revision_id(), "rev-2");
+    }
+
+    #[test]
+    fn recovered_merge_is_validated_dirty_and_undoable() {
+        let mut controller = controller();
+        let original_hash = controller.editor().revision().project_hash;
+        let mut recovered =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
+        recovered["pages"][0]["component"]["components"][0]["components"][0]["content"] =
+            serde_json::json!("Recovered offline edit");
+
+        controller
+            .apply_recovered_merge(recovered)
+            .expect("apply recovered document");
+
+        assert!(controller.editor().revision().dirty);
+        assert_ne!(controller.editor().revision().project_hash, original_hash);
+        let recovered_snapshot =
+            GrapesJsCodec::encode_value(controller.editor().document()).expect("encode merged");
+        assert_eq!(
+            recovered_snapshot["pages"][0]["component"]["components"][0]["components"][0]
+                ["content"],
+            "Recovered offline edit"
+        );
+        assert_eq!(controller.revision_id(), "rev-1");
+
+        controller.dispatch(UiIntent::Undo).expect("undo recovery");
+        assert_eq!(controller.editor().revision().project_hash, original_hash);
     }
 
     #[test]

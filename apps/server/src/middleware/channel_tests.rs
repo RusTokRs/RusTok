@@ -1,6 +1,7 @@
 use super::{
     CachedChannelResolution, ChannelResolutionCache, ChannelResolutionOutcome,
-    ChannelResolutionStage, bounded_cache_component, build_request_facts,
+    ChannelResolutionStage, bounded_cache_component,
+    build_request_facts as try_build_request_facts,
     channel_cache_entry_weight, channel_cache_key_from_facts, channel_id_from_header,
     channel_slug_from_header, channel_slug_from_query, resolved_detail_source_and_trace,
 };
@@ -14,7 +15,7 @@ use rustok_api::{
 use rustok_channel::{
     ChannelResolutionRuleDefinition, ChannelResolver, ChannelService, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ResolutionAction, ResolutionPredicate, migrations,
+    CreateChannelTargetInput, RequestFacts, ResolutionAction, ResolutionPredicate, migrations,
 };
 use rustok_test_utils::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -187,6 +188,18 @@ fn empty_extensions() -> Extensions {
     Extensions::new()
 }
 
+fn build_request_facts(
+    tenant_id: Uuid,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    peer_ip: Option<std::net::IpAddr>,
+    settings: &RustokSettings,
+    extensions: &Extensions,
+) -> RequestFacts {
+    try_build_request_facts(tenant_id, headers, query, peer_ip, settings, extensions)
+        .expect("test request selectors must be valid")
+}
+
 fn sample_context(extra_bytes: usize) -> ChannelContext {
     ChannelContext {
         id: Uuid::new_v4(),
@@ -302,7 +315,7 @@ fn parses_channel_id_header() {
         channel_id.to_string().parse().expect("header"),
     );
 
-    assert_eq!(channel_id_from_header(&headers), Some(channel_id));
+    assert_eq!(channel_id_from_header(&headers), Ok(Some(channel_id)));
 }
 
 #[test]
@@ -311,11 +324,13 @@ fn parses_channel_slug_from_header_and_query() {
     headers.insert("X-Channel-Slug", "mobile-app".parse().expect("header"));
 
     assert_eq!(
-        channel_slug_from_header(&headers).as_deref(),
+        channel_slug_from_header(&headers).expect("valid channel slug").as_deref(),
         Some("mobile-app")
     );
     assert_eq!(
-        channel_slug_from_query(Some("locale=ru&channel=web-store")).as_deref(),
+        channel_slug_from_query(Some("locale=ru&channel=web-store"))
+            .expect("valid query channel slug")
+            .as_deref(),
         Some("web-store")
     );
 }
@@ -327,21 +342,22 @@ fn rejects_oversized_channel_selectors_before_resolution() {
     let mut headers = HeaderMap::new();
     headers.insert("X-Channel-Slug", oversized.parse().expect("header"));
 
-    assert_eq!(channel_slug_from_header(&headers), None);
-    assert_eq!(
-        channel_slug_from_query(Some(&format!("channel={oversized}"))),
-        None
-    );
+    assert!(channel_slug_from_header(&headers).is_err());
+    assert!(channel_slug_from_query(Some(&format!("channel={oversized}"))).is_err());
 }
 
 #[test]
 fn decodes_percent_encoded_query_channel_slug() {
     assert_eq!(
-        channel_slug_from_query(Some("channel=web%2Dstore")).as_deref(),
+        channel_slug_from_query(Some("channel=web%2Dstore"))
+            .expect("valid encoded query channel")
+            .as_deref(),
         Some("web-store")
     );
     assert_eq!(
-        channel_slug_from_query(Some("channel=mobile+app")).as_deref(),
+        channel_slug_from_query(Some("channel=mobile+app"))
+            .expect("valid plus-encoded query channel")
+            .as_deref(),
         Some("mobile app")
     );
 }
@@ -372,6 +388,77 @@ fn cache_key_canonicalizes_equivalent_hosts() {
     assert_eq!(
         channel_cache_key_from_facts(&with_port_and_dot, 1),
         canonical_key
+    );
+}
+
+#[test]
+fn request_facts_reject_malformed_and_ambiguous_channel_selectors() {
+    let tenant_id = Uuid::new_v4();
+    let settings = test_settings();
+    let extensions = empty_extensions();
+
+    let mut malformed_id = HeaderMap::new();
+    malformed_id.insert("X-Channel-ID", "not-a-uuid".parse().expect("header"));
+    assert!(
+        try_build_request_facts(
+            tenant_id,
+            &malformed_id,
+            None,
+            None,
+            &settings,
+            &extensions,
+        )
+        .is_err()
+    );
+
+    let mut nil_id = HeaderMap::new();
+    nil_id.insert(
+        "X-Channel-ID",
+        Uuid::nil().to_string().parse().expect("header"),
+    );
+    assert!(
+        try_build_request_facts(
+            tenant_id,
+            &nil_id,
+            None,
+            None,
+            &settings,
+            &extensions,
+        )
+        .is_err()
+    );
+
+    let mut conflicting_ids = HeaderMap::new();
+    conflicting_ids.append(
+        "X-Channel-ID",
+        Uuid::new_v4().to_string().parse().expect("header"),
+    );
+    conflicting_ids.append(
+        "X-Channel-ID",
+        Uuid::new_v4().to_string().parse().expect("header"),
+    );
+    assert!(
+        try_build_request_facts(
+            tenant_id,
+            &conflicting_ids,
+            None,
+            None,
+            &settings,
+            &extensions,
+        )
+        .is_err()
+    );
+
+    assert!(
+        try_build_request_facts(
+            tenant_id,
+            &HeaderMap::new(),
+            Some("channel=&channel=valid"),
+            None,
+            &settings,
+            &extensions,
+        )
+        .is_err()
     );
 }
 
@@ -739,7 +826,7 @@ fn channel_id_from_header_rejects_conflicting_duplicates() {
         "X-Channel-ID",
         id2.to_string().parse().expect("valid header"),
     );
-    assert_eq!(channel_id_from_header(&headers), None);
+    assert!(channel_id_from_header(&headers).is_err());
 
     let mut headers_matching = HeaderMap::new();
     headers_matching.append(
@@ -750,7 +837,7 @@ fn channel_id_from_header_rejects_conflicting_duplicates() {
         "X-Channel-ID",
         id1.to_string().parse().expect("valid header"),
     );
-    assert_eq!(channel_id_from_header(&headers_matching), Some(id1));
+    assert_eq!(channel_id_from_header(&headers_matching), Ok(Some(id1)));
 }
 
 #[test]
@@ -758,29 +845,28 @@ fn channel_slug_from_header_rejects_conflicting_duplicates() {
     let mut headers = HeaderMap::new();
     headers.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
     headers.append("X-Channel-Slug", "channel-b".parse().expect("valid header"));
-    assert_eq!(channel_slug_from_header(&headers), None);
+    assert!(channel_slug_from_header(&headers).is_err());
 
     let mut headers_matching = HeaderMap::new();
     headers_matching.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
     headers_matching.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
     assert_eq!(
         channel_slug_from_header(&headers_matching),
-        Some("channel-a".to_string())
+        Ok(Some("channel-a".to_string()))
     );
 }
 
 #[test]
 fn channel_slug_from_query_rejects_conflicting_duplicates() {
-    assert_eq!(
-        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")),
-        None
+    assert!(
+        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")).is_err()
     );
     assert_eq!(
         channel_slug_from_query(Some("channel=channel-a&channel=channel-a")),
-        Some("channel-a".to_string())
+        Ok(Some("channel-a".to_string()))
     );
     assert_eq!(
         channel_slug_from_query(Some("channel=channel-a")),
-        Some("channel-a".to_string())
+        Ok(Some("channel-a".to_string()))
     );
 }

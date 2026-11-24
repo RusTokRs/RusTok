@@ -298,9 +298,8 @@ pub fn DioxusIsolatedCanvas(
                 "pointerup",
                 move |event| {
                     let Some(active) = resize_session.peek().clone() else {
-                        if session_has_active_drag(session) {
-                            on_ui_intent.call(UiIntent::CancelDrag);
-                        }
+                        // Palette/layer HTML5 drag completion is owned by the drag source's
+                        // dragend event. Parent pointer events are not a cross-iframe drop result.
                         return;
                     };
                     if !active.accepts(&event) {
@@ -343,9 +342,8 @@ pub fn DioxusIsolatedCanvas(
                 "pointercancel",
                 move |event| {
                     let Some(active) = resize_session.peek().clone() else {
-                        if session_has_active_drag(session) {
-                            on_ui_intent.call(UiIntent::CancelDrag);
-                        }
+                        // Palette/layer HTML5 drag completion is owned by the drag source's
+                        // dragend event. Parent pointer events are not a cross-iframe drop result.
                         return;
                     };
                     if active.accepts(&event) {
