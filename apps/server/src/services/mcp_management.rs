@@ -1097,6 +1097,33 @@ mod tests {
     // Concurrency-sensitive rotation/deactivation paths lock the client row
     // inside their transaction before touching child tokens.
     #[test]
+    fn scaffold_apply_revalidates_host_workspace_before_claiming_or_writing() {
+        let source = include_str!("mcp_management.rs");
+        let start = source
+            .find("pub async fn apply_scaffold_draft(")
+            .expect("apply_scaffold_draft implementation exists");
+        let end = source[start..]
+            .find("async fn claim_scaffold_draft_for_apply(")
+            .map(|offset| start + offset)
+            .expect("claim helper follows apply_scaffold_draft");
+        let method = &source[start..end];
+
+        let authorize = method
+            .find("authorize_mcp_scaffold_workspace")
+            .expect("service-level workspace authorization exists");
+        let claim = method
+            .find("claim_scaffold_draft_for_apply")
+            .expect("draft claim exists");
+        let apply = method
+            .find("apply_staged_scaffold")
+            .expect("staged filesystem apply exists");
+
+        assert!(authorize < claim, "workspace must be authorized before draft claim");
+        assert!(claim < apply, "draft must be claimed before filesystem apply");
+        assert!(method.contains("apply_staged_scaffold(&staged_draft, &workspace_root)"));
+    }
+
+    #[test]
     fn token_preview_does_not_leak_full_secret() {
         let preview = token_preview("mcp_super_secret_token_value");
         assert!(preview.starts_with("mcp_super_se"));
