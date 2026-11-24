@@ -112,9 +112,9 @@ impl AdminEditorRuntime {
         let peer_write_conflict = RwSignal::new(None);
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
         let peer_write_channel = RwSignal::new(make_peer_write_channel(
-            controller,
-            peer_write_conflict,
-            last_error,
+            controller.clone(),
+            peer_write_conflict.clone(),
+            last_error.clone(),
         ));
 
         Self {
