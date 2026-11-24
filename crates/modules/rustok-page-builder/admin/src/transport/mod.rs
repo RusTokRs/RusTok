@@ -72,24 +72,25 @@ pub struct PageBuilderAdminFacadeError {
 }
 
 impl PageBuilderAdminFacadeError {
-    /// Rehydrates the known stable save codes appended by a server-function error boundary.
+    /// Rehydrates stable save codes from server-function suffixes and GraphQL business errors.
     pub fn new(message: impl Into<String>) -> Self {
         let message = message.into();
-        let stable_code = [
-            "REVISION_CONFLICT",
-            "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN",
-        ]
-        .into_iter()
-        .find(|code| message.ends_with(&format!(" ({code})")))
-        .map(str::to_string);
+        let stable_code = if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
+            Some("REVISION_CONFLICT")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") {
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        } else if message.ends_with(" (REVISION_CONFLICT)") {
+            Some("REVISION_CONFLICT")
+        } else {
+            None
+        };
         let message = stable_code
-            .as_deref()
             .and_then(|code| message.strip_suffix(&format!(" ({code})")))
             .unwrap_or(&message)
             .to_string();
         Self {
             message,
-            stable_code,
+            stable_code: stable_code.map(str::to_string),
         }
     }
 
@@ -131,6 +132,25 @@ mod tests {
                 "Server function error: Page Builder save failed"
             );
         }
+    }
+
+    #[test]
+    fn graphql_revision_conflict_code_is_normalized_for_both_hosts() {
+        let error = PageBuilderAdminFacadeError::new(
+            "GraphQL error: Page document changed concurrently (PAGE_DOCUMENT_REVISION_CONFLICT): stale revision",
+        );
+        assert_eq!(error.stable_code.as_deref(), Some("REVISION_CONFLICT"));
+    }
+
+    #[test]
+    fn unknown_save_outcome_code_survives_graphql_and_server_function_wrappers() {
+        let error = PageBuilderAdminFacadeError::new(
+            "GraphQL error: PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN: preserve the draft",
+        );
+        assert_eq!(
+            error.stable_code.as_deref(),
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        );
     }
 
     #[test]
