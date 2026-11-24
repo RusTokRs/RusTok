@@ -961,12 +961,10 @@ mod tests {
         );
         assert!(parse_comments_tcp_service_actor_id("not-a-uuid").is_err());
         assert!(parse_comments_tcp_service_actor_id(&format!(" {actor_id}")).is_err());
-        assert!(parse_comments_tcp_service_actor_id(&actor_id.to_uppercase()).is_err());
+        let non_canonical_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        assert!(parse_comments_tcp_service_actor_id(&non_canonical_uuid.to_uppercase()).is_err());
         assert!(
-            parse_comments_tcp_service_actor_id(
-                &actor_id.replace('-', "")
-            )
-            .is_err()
+            parse_comments_tcp_service_actor_id(&non_canonical_uuid.replace('-', "")).is_err()
         );
     }
 
