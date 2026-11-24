@@ -548,7 +548,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
                 .await?;
         }
         debug!(
@@ -1597,7 +1597,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .create_initial_prices_in_tx(&txn, initial_prices)
+                .create_initial_prices_in_tx(&txn, tenant_id, initial_prices)
                 .await?;
         }
 
