@@ -1334,7 +1334,7 @@ impl CatalogService {
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
         pricing_port
-            .delete_prices_for_variants_in_tx(&txn, &variant_ids)
+            .delete_prices_for_variants_in_tx(&txn, tenant_id, &variant_ids)
             .await?;
 
         entities::variant_translation::Entity::delete_many()
@@ -1870,7 +1870,7 @@ impl CatalogService {
             self.pricing_port
                 .as_ref()
                 .ok_or_else(pricing_port_unavailable)?
-                .replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
+                .replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)
                 .await?;
         }
 
@@ -1943,7 +1943,7 @@ impl CatalogService {
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
         pricing_port
-            .delete_prices_for_variants_in_tx(&txn, &[variant_id])
+            .delete_prices_for_variants_in_tx(&txn, tenant_id, &[variant_id])
             .await?;
 
         entities::variant_translation::Entity::delete_many()
