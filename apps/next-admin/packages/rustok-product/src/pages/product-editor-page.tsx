@@ -897,11 +897,9 @@ export function ProductEditorPage({
         request,
         onUpdateVariant
       );
-      if (!result || result.outcome.status !== 'confirmed') {
-        const message =
-          result?.outcome.status === 'rejected'
-            ? result.outcome.message
-            : result?.outcome.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
+      const outcome = result?.outcome;
+      if (outcome?.status !== 'confirmed') {
+        const message = outcome?.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
         setErrorMessage(message);
         throw new Error(message);
       }
@@ -930,11 +928,9 @@ export function ProductEditorPage({
         request,
         onDeleteVariant
       );
-      if (!result || result.outcome.status !== 'confirmed') {
-        const message =
-          result?.outcome.status === 'rejected'
-            ? result.outcome.message
-            : result?.outcome.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
+      const outcome = result?.outcome;
+      if (outcome?.status !== 'confirmed') {
+        const message = outcome?.message ?? PRODUCT_RECOVERY_UNAVAILABLE;
         setErrorMessage(message);
         throw new Error(message);
       }

@@ -105,9 +105,9 @@ requireMarkers("crates/utils/rustok-migrations/tests/support/backfill_fixtures.r
   "assertion must return boolean column `passed`",
   "schema_version must be 1",
   "fixtures must be an array",
-  "fixtures[{index}].migration duplicates",
+  "fixtures[{index}].id duplicates",
   "fixture_document_requires_assertion_sql",
-  "fixture_document_rejects_duplicate_migrations",
+  "fixture_document_accepts_multiple_cases_with_unique_ids",
 ]);
 
 const smokeScript = "scripts/verify/verify-migration-smoke.sh";

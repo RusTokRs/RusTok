@@ -3,9 +3,9 @@ use std::sync::Arc;
 use rustok_blog::{
     BlogError, BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, UpdateTagInput,
 };
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::{SysEvents, SysEventsMigration, TransactionalEventBus};
+use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
     entities::{taxonomy_term, taxonomy_term_translation},
@@ -32,12 +32,7 @@ async fn setup_blog_test_db() -> DatabaseConnection {
         .expect("failed to connect blog sqlite database")
 }
 
-async fn setup() -> (
-    DatabaseConnection,
-    TransactionalEventBus,
-    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
-    Uuid,
-) {
+async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     let db = setup_blog_test_db().await;
     let schema = SchemaManager::new(&db);
     SysEventsMigration
@@ -57,10 +52,8 @@ async fn setup() -> (
             .expect("blog migration should apply");
     }
 
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    (db, event_bus, receiver, Uuid::new_v4())
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    (db, event_bus, Uuid::new_v4())
 }
 
 fn admin() -> SecurityContext {
@@ -69,9 +62,13 @@ fn admin() -> SecurityContext {
 
 #[tokio::test]
 async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db.clone());
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
+    let tag_service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     let post_id = post_service
@@ -142,9 +139,13 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
 
 #[tokio::test]
 async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_module_terms() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db.clone());
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
+    let tag_service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     tag_service
@@ -249,8 +250,10 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
 
 #[tokio::test]
 async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let taxonomy_service = TaxonomyService::new(db.clone());
     let security = admin();
 
@@ -299,6 +302,9 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
         .expect("post should be created");
 
     let (visible_tags, _) = TagService::new(db.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+            db.clone(),
+        ))
         .list_tags(
             tenant_id,
             admin(),
@@ -329,7 +335,7 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
 
 #[tokio::test]
 async fn shared_global_tags_are_readable_but_not_mutable_through_blog() {
-    let (db, _event_bus, _events, tenant_id) = setup().await;
+    let (db, _event_bus, tenant_id) = setup().await;
     let taxonomy_service = TaxonomyService::new(db.clone());
     let global_tag_id = taxonomy_service
         .create_term(
@@ -350,7 +356,9 @@ async fn shared_global_tags_are_readable_but_not_mutable_through_blog() {
         .await
         .expect("global tag should be created");
 
-    let service = TagService::new(db.clone());
+    let service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let update_error = service
         .update_tag(
             tenant_id,
@@ -384,8 +392,10 @@ async fn shared_global_tags_are_readable_but_not_mutable_through_blog() {
 
 #[tokio::test]
 async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     let post_id = post_service
@@ -430,9 +440,13 @@ async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed(
 
 #[tokio::test]
 async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db.clone());
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
+    let tag_service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     let post_id = post_service
@@ -517,9 +531,13 @@ async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
 
 #[tokio::test]
 async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db.clone());
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
+    let tag_service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     let _post_id = post_service
@@ -605,9 +623,13 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
 
 #[tokio::test]
 async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
-    let post_service = PostService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db.clone());
+    let (db, event_bus, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
+    let tag_service = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let security = admin();
 
     let post_id = post_service
@@ -669,6 +691,10 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         db.execute_raw(forged_usage).await.is_err(),
         "a projection row cannot reference another tenant's Taxonomy Tag",
     );
+    let previous_events = SysEvents::find()
+        .all(&db)
+        .await
+        .expect("existing outbox events should load");
 
     tag_service
         .delete_tag(tenant_id, tag_id, security)
@@ -706,12 +732,23 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
             .expect("count must be an integer");
         assert_eq!(count, 0, "{table} must not retain a deleted taxonomy term");
     }
-    assert_eq!(
-        SysEvents::find()
-            .all(&db)
-            .await
-            .expect("outbox lookup should work")
-            .len(),
-        1
-    );
+    let events = SysEvents::find()
+        .filter(
+            rustok_outbox::entity::Column::Id
+                .is_not_in(previous_events.into_iter().map(|event| event.id)),
+        )
+        .all(&db)
+        .await
+        .expect("new outbox events should load");
+    let [event] = events.as_slice() else {
+        panic!("tag delete must append exactly one new outbox event");
+    };
+    let envelope: EventEnvelope = serde_json::from_value(event.payload.clone())
+        .expect("outbox payload should decode as canonical event envelope");
+    assert_eq!(envelope.tenant_id, tenant_id);
+    assert!(matches!(
+        envelope.event,
+        DomainEvent::ReindexRequested { ref target_type, target_id: None }
+            if target_type == "blog"
+    ));
 }

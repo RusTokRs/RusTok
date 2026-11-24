@@ -49,7 +49,7 @@ impl ContentOrchestrationBridge for MockBridge {
         &self,
         _txn: &sea_orm::DatabaseTransaction,
         _tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        _security: &SecurityContext,
         input: &PromoteTopicToPostInput,
     ) -> ContentResult<PromoteTopicToPostOutput> {
         self.promote_calls.fetch_add(1, Ordering::Relaxed);

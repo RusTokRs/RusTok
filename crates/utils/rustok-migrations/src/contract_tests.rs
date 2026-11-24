@@ -106,13 +106,15 @@ fn deterministic_digests_and_dry_run_receipt_generation() {
             columns: vec![],
             is_temporary: false,
         }],
-    );
+    )
+    .expect("serialize plan");
     assert!(plan_digest.starts_with("sha256:"));
 
     let schema_digest = compute_schema_state_digest(
         &["tenants".to_string()],
         &["tenants.id".to_string(), "tenants.slug".to_string()],
-    );
+    )
+    .expect("serialize schema");
     assert!(schema_digest.starts_with("sha256:"));
 
     let receipt = generate_migration_dry_run_receipt(
@@ -123,7 +125,8 @@ fn deterministic_digests_and_dry_run_receipt_generation() {
             columns: vec![],
             is_temporary: false,
         }],
-    );
+    )
+    .expect("serialize dry-run receipt");
     assert!(receipt.classification.is_additive_safe());
     assert_eq!(
         receipt.classification,

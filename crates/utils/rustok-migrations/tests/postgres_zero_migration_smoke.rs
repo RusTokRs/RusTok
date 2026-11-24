@@ -1,10 +1,14 @@
 mod support;
 
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
-use rustok_migrations::{Migrator, execution::StepRunner};
+use rustok_migrations::{
+    Migrator, apply_installer_owner_schema, apply_installer_remaining_schema,
+    execution::{ExecutionError, ExecutionPhase, StepRunner},
+    verification::{DatabaseSnapshot, compare, observe_database, validate_journal},
+};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
     ProductCatalogReadPort, ProductCatalogReadRuntime, ProductProjectionRequest,
@@ -26,8 +30,8 @@ use sea_orm_migration::{
 };
 use support::backfill_fixtures::{
     BackfillFixture, apply_setup as apply_backfill_setup,
-    assert_results as assert_backfill_results, load_from_environment as load_backfill_fixtures,
-    validate_pending as validate_backfill_targets,
+    assert_results as assert_backfill_results, load_contract_fixtures,
+    load_from_environment as load_backfill_fixtures, validate_pending as validate_backfill_targets,
 };
 
 #[tokio::test]
@@ -40,6 +44,226 @@ async fn postgres_zero_migration_smoke_applies_from_empty_database() {
 
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+async fn postgres_installer_schema_preserves_the_owner_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
+    const FENCING: &str = "m20261118_000002_add_installer_attempt_fencing";
+    let admin_url = smoke_admin_url()?;
+    let name = unique_postgres_database_name("rustok_installer_schema");
+    let url = database_url_from_admin_url(&admin_url, &name);
+    let admin = connect_postgres(&admin_url).await?;
+    create_database(&admin, &name).await?;
+    let result = async {
+        let db = connect_postgres(&url).await?;
+        let owner_plan = [
+            "m20250101_000001_create_tenants",
+            "m20260403_000061_create_registry_publish_tables",
+            "m20260426_000001_create_install_sessions",
+            "m20260722_000034_static_promotions",
+            FENCING,
+        ]
+        .map(str::to_owned);
+        for _ in 0..2 {
+            apply_installer_owner_schema(&db).await?;
+            assert_migration_journal(&db, &owner_plan).await?;
+        }
+        let manager = SchemaManager::new(&db);
+        if !manager
+            .has_table("module_static_distribution_release_state")
+            .await?
+            || !manager
+                .has_column("install_sessions", "attempt_generation")
+                .await?
+            || !manager
+                .has_column("install_step_receipts", "attempt_generation")
+                .await?
+        {
+            return Err("installer import prerequisites are missing".into());
+        }
+        assert_table_missing(&db, "users").await?;
+        assert_table_missing(&db, "blog_posts").await?;
+
+        apply_installer_remaining_schema(&db).await?;
+        let complete_plan = Migrator::inventory()?;
+        assert_migration_journal(&db, complete_plan.migrations()).await?;
+        if !manager.has_table("blog_posts").await? {
+            return Err("remaining installer schema did not include Blog".into());
+        }
+
+        let runner = StepRunner::connect(&url, Migrator::migrations()).await?;
+        let blocked = apply_installer_owner_schema(&db).await;
+        runner.close().await?;
+        if !blocked.is_err_and(|error| error.to_string().contains("migration writer")) {
+            return Err("installer bootstrap must respect the shared migration lock".into());
+        }
+
+        // Exercise the production rollback for fencing while retaining the other
+        // compiled journal entries that an existing database already applied.
+        let transaction = db.begin().await?;
+        let fencing = Migrator::migrations()
+            .into_iter()
+            .find(|migration| migration.name() == FENCING)
+            .ok_or("fencing migration missing")?;
+        fencing.down(&SchemaManager::new(&transaction)).await?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM seaql_migrations WHERE version = $1",
+                [FENCING.into()],
+            ))
+            .await?;
+        transaction.commit().await?;
+
+        db.execute_unprepared(
+            "ALTER TABLE install_step_receipts ADD COLUMN attempt_generation bigint",
+        )
+        .await?;
+        if apply_installer_owner_schema(&db).await.is_ok()
+            || manager
+                .has_column("install_sessions", "attempt_generation")
+                .await?
+        {
+            return Err(
+                "failed attempt fencing must roll back both installer schema changes".into(),
+            );
+        }
+        db.execute_unprepared("ALTER TABLE install_step_receipts DROP COLUMN attempt_generation")
+            .await?;
+        apply_installer_owner_schema(&db).await?;
+        assert_migration_journal(&db, complete_plan.migrations()).await?;
+        if !manager
+            .has_column("install_sessions", "attempt_generation")
+            .await?
+            || !manager
+                .has_column("install_step_receipts", "attempt_generation")
+                .await?
+        {
+            return Err("installer retry did not restore fencing columns".into());
+        }
+        db.execute_unprepared(
+            "INSERT INTO seaql_migrations VALUES ('unknown_installer_fixture', 0)",
+        )
+        .await?;
+        if !apply_installer_owner_schema(&db)
+            .await
+            .is_err_and(|error| error.to_string().contains("unknown_installer_fixture"))
+        {
+            return Err("a complete bootstrap must still reject unknown journal identities".into());
+        }
+        db.close().await?;
+        Ok(())
+    }
+    .await;
+    finish_fixture(&admin, &name, result).await
+}
+
+async fn assert_migration_journal(
+    db: &DatabaseConnection,
+    plan: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let versions = Migrator::get_migration_models(db)
+        .await?
+        .into_iter()
+        .map(|row| row.version)
+        .collect::<Vec<_>>();
+    Ok(validate_journal(&versions, plan)?)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+async fn postgres_blog_rollback_preserves_translation_data()
+-> Result<(), Box<dyn std::error::Error>> {
+    const WIDTH: &str = "m20261030_000001_widen_blog_translation_columns";
+    const INDEXES: &str = "m20261030_000002_add_blog_list_indexes";
+    let inventory = Migrator::inventory()?;
+    let migrations = inventory.migrations();
+    let width = migrations
+        .iter()
+        .position(|name| name == WIDTH)
+        .ok_or("Blog width step missing")?;
+    if migrations.get(width + 1).map(String::as_str) != Some(INDEXES) {
+        return Err("expected the Blog index step after the width step".into());
+    }
+
+    let admin_url = smoke_admin_url()?;
+    let name = unique_postgres_database_name("rustok_blog_rollback");
+    let url = database_url_from_admin_url(&admin_url, &name);
+    let admin = connect_postgres(&admin_url).await?;
+    create_database(&admin, &name).await?;
+    let result = async {
+        let prefix = ExecutionPhase {
+            expected_prefix: Vec::new(),
+            steps: migrations[..width + 2].to_vec(),
+        };
+        apply_verified_phase_steps(&url, &prefix, &prefix.steps, &[]).await?;
+        let db = connect_postgres(&url).await?;
+        db.execute_unprepared(
+            "INSERT INTO tenants (id, name, slug) VALUES \
+                ('ce020000-0000-0000-0000-000000000001', 'Blog rollback fixture', 'blog-rollback-fixture'); \
+             INSERT INTO blog_posts (id, tenant_id, author_id, slug) VALUES \
+                ('ce020000-0000-0000-0000-000000000002', 'ce020000-0000-0000-0000-000000000001', \
+                 'ce020000-0000-0000-0000-000000000003', 'rollback-fixture'); \
+             INSERT INTO blog_post_translations (id, post_id, locale, title, seo_description, body) VALUES \
+                ('ce020000-0000-0000-0000-000000000004', 'ce020000-0000-0000-0000-000000000002', \
+                 'zh-Hant-TW-variant1', repeat('T', 512), repeat('D', 1000), 'fixture body')",
+        ).await?;
+
+        Migrator::down(&db, Some(1)).await?;
+        assert_migration_journal(&db, &migrations[..width + 1]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|512|1000|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        if Migrator::down(&db, Some(1)).await.is_ok() {
+            return Err("Blog rollback accepted a title wider than the old column".into());
+        }
+        assert_migration_journal(&db, &migrations[..width + 1]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|512|1000|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        db.execute_unprepared(
+            "UPDATE blog_post_translations SET title = repeat('T', 255), seo_description = repeat('D', 500) \
+             WHERE id = 'ce020000-0000-0000-0000-000000000004'",
+        ).await?;
+        Migrator::down(&db, Some(1)).await?;
+        assert_migration_journal(&db, &migrations[..width]).await?;
+        assert_blog_rollback_state(&db, "32,500,255|255|500|zh-Hant-TW-variant1|fixture body|false|true").await?;
+
+        let phase = ExecutionPhase {
+            expected_prefix: migrations[..width].to_vec(),
+            steps: migrations[width..width + 2].to_vec(),
+        };
+        apply_verified_phase_steps(&url, &phase, &phase.steps, &[]).await?;
+        assert_migration_journal(&db, &migrations[..width + 2]).await?;
+        assert_blog_rollback_state(&db, "32,1000,512|255|500|zh-Hant-TW-variant1|fixture body|true|false").await?;
+        Ok(db.close().await?)
+    }
+    .await;
+    finish_fixture(&admin, &name, result).await
+}
+
+async fn assert_blog_rollback_state(
+    db: &DatabaseConnection,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = db.query_one_raw(Statement::from_string(
+        DbBackend::Postgres,
+        "SELECT concat_ws('|', \
+            (SELECT string_agg(character_maximum_length::text, ',' ORDER BY column_name) \
+             FROM information_schema.columns WHERE table_schema = 'public' \
+               AND table_name = 'blog_post_translations' AND column_name IN ('locale', 'seo_description', 'title')), \
+            char_length(title), char_length(seo_description), locale, body, \
+            (to_regclass('public.idx_blog_posts_public_keyset') IS NOT NULL)::text, \
+            (to_regclass('public.idx_blog_preview_tokens_token') IS NOT NULL)::text) AS state \
+         FROM blog_post_translations WHERE id = 'ce020000-0000-0000-0000-000000000004'",
+    )).await?.ok_or("missing Blog rollback translation")?;
+    let actual: String = row.try_get("", "state")?;
+    if actual != expected {
+        return Err(
+            format!("Blog rollback state differs: expected {expected}, got {actual}").into(),
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
 async fn postgres_backfill_assertion_stops_at_its_boundary()
 -> Result<(), Box<dyn std::error::Error>> {
     let admin_url = smoke_admin_url()?;
@@ -48,29 +272,30 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
     let admin = connect_postgres(&admin_url).await?;
     create_database(&admin, &name).await?;
     let result = async {
-        // Exercise one real owner fixture against its explicitly retained draft
-        // boundary. This is not evidence for a released-predecessor upgrade.
-        let contracts: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../docs/migrations/backfill-contracts.json"
-        ))?;
         let target = "m20260726_000001_enforce_tenant_locale_policy";
-        let contract = contracts["contracts"]
-            .as_array()
-            .ok_or("missing contracts")?
-            .iter()
-            .find(|contract| contract["migration"].as_str() == Some(target))
-            .ok_or("missing tenant locale backfill contract")?;
-        let field = |name: &str| {
-            contract[name]
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("missing fixture field {name}"))
-        };
-        let fixture = BackfillFixture {
-            id: field("id")?,
+        let fixture = load_contract_fixtures(&[target])?
+            .pop()
+            .ok_or("missing tenant locale backfill fixture")?;
+        let existing_locales = BackfillFixture {
+            id: "tenant-existing-locales".into(),
             migration: target.into(),
-            setup_sql: field("setup_sql")?,
-            assertion_sql: field("assertion_sql")?,
+            setup_sql: r#"
+                INSERT INTO tenants (id, name, slug, default_locale)
+                VALUES ('33000000-0000-0000-0000-000000000002', 'Localized tenant', 'localized-tenant-fixture', 'fr');
+                INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale)
+                VALUES
+                    ('33000000-0000-0000-0000-000000000011', '33000000-0000-0000-0000-000000000002', 'fr', 'French', 'Francais', true, true, NULL),
+                    ('33000000-0000-0000-0000-000000000012', '33000000-0000-0000-0000-000000000002', 'fr-CA', 'Canadian French', 'Francais canadien', false, false, 'fr');
+            "#.into(),
+            assertion_sql: r#"
+                SELECT (COUNT(*) = 2 AND COUNT(*) FILTER (WHERE policy_revision = 0) = 2
+                    AND COUNT(*) FILTER (WHERE id = '33000000-0000-0000-0000-000000000011'
+                        AND locale = 'fr' AND is_default AND is_enabled AND fallback_locale IS NULL) = 1
+                    AND COUNT(*) FILTER (WHERE id = '33000000-0000-0000-0000-000000000012'
+                        AND locale = 'fr-CA' AND NOT is_default AND NOT is_enabled AND fallback_locale = 'fr') = 1
+                ) AS passed
+                FROM tenant_locales WHERE tenant_id = '33000000-0000-0000-0000-000000000002';
+            "#.into(),
         };
         let plan = Migrator::migrations();
         let index = plan
@@ -95,18 +320,19 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
         runner.close().await?;
         prefix?;
 
-        let mut rejected = fixture.clone();
+        let mut rejected = existing_locales.clone();
         rejected.assertion_sql = "SELECT false AS passed".into();
-        let error = apply_migrations_and_assert_schema(&url, true, false, &[rejected])
+        let error = apply_migrations_and_assert_schema(&url, true, false, &[fixture.clone(), rejected])
             .await
             .err()
-            .ok_or("a failing boundary assertion was accepted")?;
+            .ok_or("a failing second boundary assertion was accepted")?;
         if !error
             .to_string()
-            .contains(&format!("failed after migration {target}"))
+            .contains(&format!("{} failed after migration {target}", existing_locales.id))
         {
             return Err(format!("unexpected boundary failure: {error}").into());
         }
+        let fixtures = [fixture, existing_locales];
         let db = connect_postgres(&url).await?;
         let check = async {
             if !migration_is_applied(&db, target).await?
@@ -114,16 +340,16 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
             {
                 return Err("executor advanced beyond the failing fixture boundary".into());
             }
-            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            assert_backfill_results(&db, &fixtures).await?;
             // A completed target cannot silently count as pending fixture coverage.
-            if apply_migrations_and_assert_schema(&url, true, false, std::slice::from_ref(&fixture))
+            if apply_migrations_and_assert_schema(&url, true, false, &fixtures)
                 .await
                 .is_ok()
             {
                 return Err("already-applied fixture target was accepted".into());
             }
             apply_migrations_and_assert_schema(&url, true, false, &[]).await?;
-            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            assert_backfill_results(&db, &fixtures).await?;
             Ok::<_, Box<dyn std::error::Error>>(())
         }
         .await;
@@ -132,6 +358,213 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
     }
     .await;
     finish_fixture(&admin, &name, result).await
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL, RUSTOK_MIGRATION_SMOKE_ADMIN_URL and RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP"]
+async fn postgres_seeded_module_phase_matches_after_recovery()
+-> Result<(), Box<dyn std::error::Error>> {
+    let admin_url = smoke_admin_url()?;
+    let pg_dump = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP")?;
+    let pg_dump = Path::new(&pg_dump);
+    let steps = [
+        "m20261027_000081_transition_intervention_required_state",
+        "m20261027_000082_gc_candidate_claims",
+        "m20261027_000083_artifact_permission_registration_status",
+        "m20261027_000084_module_operation_result_snapshot",
+        ARTIFACT_UI_BACKFILL,
+    ];
+    let fixtures = load_contract_fixtures(&[steps[0], steps[2], steps[4]])?;
+    let plan = Migrator::inventory()?;
+    let start = plan
+        .migrations()
+        .iter()
+        .position(|name| name == steps[0])
+        .ok_or("missing first module phase migration")?;
+    let phase = ExecutionPhase {
+        expected_prefix: plan.migrations()[..start].to_vec(),
+        steps: steps.map(str::to_owned).to_vec(),
+    };
+    let completed: Vec<_> = phase
+        .expected_prefix
+        .iter()
+        .chain(&phase.steps)
+        .cloned()
+        .collect();
+    let admin = connect_postgres(&admin_url).await?;
+    let predecessor = unique_postgres_database_name("rustok_module_phase_predecessor");
+    let reference = unique_postgres_database_name("rustok_module_phase_reference");
+    let resumed = unique_postgres_database_name("rustok_module_phase_resumed");
+    let mut created = Vec::new();
+
+    let result = async {
+        create_database(&admin, &predecessor).await?;
+        created.push(predecessor.as_str());
+        let predecessor_url = database_url_from_admin_url(&admin_url, &predecessor);
+        let prefix = ExecutionPhase {
+            expected_prefix: Vec::new(),
+            steps: phase.expected_prefix.clone(),
+        };
+        apply_verified_phase_steps(&predecessor_url, &prefix, &prefix.steps, &[]).await?;
+        let db = connect_postgres(&predecessor_url).await?;
+        let seeded = apply_backfill_setup(&db, &fixtures).await;
+        db.close().await?;
+        seeded?;
+
+        // Copy the same committed rows, clocks, sequences and journal into both
+        // fixtures after closing every connection to the predecessor.
+        for name in [&reference, &resumed] {
+            assert_valid_database_name(name);
+            admin
+                .execute_unprepared(&format!(
+                    "CREATE DATABASE \"{name}\" TEMPLATE \"{predecessor}\""
+                ))
+                .await?;
+            created.push(name.as_str());
+        }
+        let reference_url = database_url_from_admin_url(&admin_url, &reference);
+        let resumed_url = database_url_from_admin_url(&admin_url, &resumed);
+        apply_verified_phase_steps(&reference_url, &phase, &phase.steps, &fixtures).await?;
+        let (final_step, preceding_steps) = phase.steps.split_last().ok_or("empty phase")?;
+        for step in preceding_steps {
+            apply_verified_phase_steps(&resumed_url, &phase, std::slice::from_ref(step), &fixtures)
+                .await?;
+        }
+
+        assert_failed_ui_backfill_rolls_back(
+            &resumed_url,
+            pg_dump,
+            &phase,
+            &completed[..completed.len() - 1],
+        )
+        .await?;
+        apply_verified_phase_steps(
+            &resumed_url,
+            &phase,
+            std::slice::from_ref(final_step),
+            &fixtures,
+        )
+        .await?;
+
+        let original = observe_backfill_fixture(&reference_url, pg_dump).await?;
+        let recovered = observe_backfill_fixture(&resumed_url, pg_dump).await?;
+        let comparison = compare(&original, &recovered, &completed, &completed)?;
+        if !comparison.equivalent || comparison.reference_digest != comparison.candidate_digest {
+            return Err(format!(
+                "module phase recovery diverged: {:?}",
+                comparison.differences
+            )
+            .into());
+        }
+        Ok(())
+    }
+    .await;
+
+    let mut result = result;
+    for name in created.into_iter().rev() {
+        result = finish_fixture(&admin, name, result).await;
+    }
+    result
+}
+
+const ARTIFACT_UI_BACKFILL: &str = "m20261027_000085_artifact_ui_resources";
+
+async fn assert_failed_ui_backfill_rolls_back(
+    url: &str,
+    pg_dump: &Path,
+    phase: &ExecutionPhase,
+    applied_prefix: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Fail the journal INSERT after the real migration creates and populates the
+    // projection, without changing the migration or its input data.
+    let db = connect_postgres(url).await?;
+    db.execute_unprepared(&format!(
+        "ALTER TABLE seaql_migrations ADD CONSTRAINT fixture_reject_ui_backfill \
+         CHECK (version <> '{ARTIFACT_UI_BACKFILL}')"
+    ))
+    .await?;
+    let before = observe_database(&db, url, pg_dump).await?;
+    validate_journal(&before.migration_versions, applied_prefix)?;
+
+    let mut runner =
+        StepRunner::connect_phase(url, Migrator::inventory()?.into_migrations(), phase.clone())
+            .await?;
+    let result = runner.apply_next().await;
+    let retry = runner.apply_next().await;
+    runner.close().await?;
+    match result {
+        Err(ExecutionError::Migration { name, source })
+            if name == ARTIFACT_UI_BACKFILL
+                && source.to_string().contains("fixture_reject_ui_backfill") => {}
+        result => {
+            return Err(format!(
+                "expected journal rejection for {ARTIFACT_UI_BACKFILL}, got {result:?}"
+            )
+            .into());
+        }
+    }
+    if !matches!(retry, Err(ExecutionError::Interrupted)) {
+        return Err(format!("failed runner allowed another step: {retry:?}").into());
+    }
+
+    assert_table_missing(&db, "module_artifact_ui_resources").await?;
+    let after = observe_database(&db, url, pg_dump).await?;
+    let rollback = compare(&before, &after, applied_prefix, applied_prefix)?;
+    if !rollback.equivalent || rollback.reference_digest != rollback.candidate_digest {
+        return Err(format!(
+            "failed UI backfill changed the predecessor: {:?}",
+            rollback.differences
+        )
+        .into());
+    }
+    db.execute_unprepared(
+        "ALTER TABLE seaql_migrations DROP CONSTRAINT fixture_reject_ui_backfill",
+    )
+    .await?;
+    Ok(db.close().await?)
+}
+
+async fn apply_verified_phase_steps(
+    url: &str,
+    phase: &ExecutionPhase,
+    steps: &[String],
+    fixtures: &[BackfillFixture],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut runner =
+        StepRunner::connect_phase(url, Migrator::inventory()?.into_migrations(), phase.clone())
+            .await?;
+    let result = async {
+        for expected in steps {
+            let applied = runner.apply_next().await?;
+            if applied.as_deref() != Some(expected) {
+                return Err(format!("expected phase step {expected}, applied {applied:?}").into());
+            }
+            for fixture in fixtures
+                .iter()
+                .filter(|fixture| &fixture.migration == expected)
+            {
+                assert_backfill_results(runner.database(), std::slice::from_ref(fixture)).await?;
+            }
+        }
+        if steps.last() == phase.steps.last() && runner.apply_next().await?.is_some() {
+            return Err("execution advanced past the requested phase".into());
+        }
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }
+    .await;
+    let close = runner.close().await;
+    result?;
+    Ok(close?)
+}
+
+async fn observe_backfill_fixture(
+    url: &str,
+    pg_dump: &Path,
+) -> Result<DatabaseSnapshot, Box<dyn std::error::Error>> {
+    let db = connect_postgres(url).await?;
+    let snapshot = observe_database(&db, url, pg_dump).await;
+    db.close().await?;
+    Ok(snapshot?)
 }
 
 struct ProductMigrator;

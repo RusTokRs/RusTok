@@ -14306,6 +14306,7 @@ dependencies = [
  "rustok-channel",
  "rustok-comments",
  "rustok-content",
+ "rustok-content-orchestration",
  "rustok-core",
  "rustok-events",
  "rustok-migrations",
@@ -15129,6 +15130,7 @@ dependencies = [
  "rustok-forum",
  "rustok-outbox",
  "rustok-taxonomy",
+ "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
  "serde_json",
@@ -16007,7 +16009,11 @@ name = "rustok-installer-persistence"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "chrono",
+ "ed25519-dalek",
+ "hex",
+ "rustok-api",
  "rustok-auth",
  "rustok-core",
  "rustok-installer",
@@ -17848,6 +17854,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tracing",
  "uuid",
 ]
 
@@ -23536,6 +23543,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "diff",
+ "flate2",
  "glob",
  "hex",
  "postgres",
@@ -23550,6 +23558,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "syn 3.0.10",
+ "tar",
  "toml 1.1.6+spec-1.1.0",
  "toml_edit",
  "url",

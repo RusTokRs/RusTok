@@ -1,7 +1,5 @@
 //! Contract and domain invariant tests for rustok-content-orchestration.
 
-use uuid::Uuid;
-
 #[test]
 fn crate_api_defines_minimal_contract_sections() {
     let api = include_str!("../CRATE_API.md");
@@ -29,7 +27,6 @@ fn crate_api_defines_minimal_contract_sections() {
     feature = "mod-comments"
 ))]
 mod full_contract_tests {
-    use super::*;
     use crate::bridge::helpers::{locales_from_strs, normalize_slug};
     use crate::bridge::merge::unique_source_ids;
     use crate::graphql::{
@@ -42,6 +39,7 @@ mod full_contract_tests {
     };
     use rustok_content::{CanonicalRouteResolver, OrchestrationResult};
     use sea_orm::Database;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn shared_service_implements_debug_and_clone() {

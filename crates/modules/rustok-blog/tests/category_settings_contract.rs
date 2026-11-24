@@ -3,8 +3,8 @@ use std::sync::Arc;
 use rustok_blog::BlogModule;
 use rustok_blog::dto::CreateCategoryInput;
 use rustok_blog::services::CategoryService;
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -53,10 +53,11 @@ fn input(name: &str) -> CreateCategoryInput {
 }
 
 async fn create_category(db: &DatabaseConnection) -> Uuid {
-    let transport = Arc::new(MemoryTransport::new());
-    let _receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(transport);
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     CategoryService::new(db.clone(), event_bus)
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+            db.clone(),
+        ))
         .create(Uuid::new_v4(), admin(), input("Settings contract"))
         .await
         .expect("category should be created")

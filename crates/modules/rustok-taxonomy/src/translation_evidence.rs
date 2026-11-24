@@ -1,10 +1,10 @@
 use chrono::Utc;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, DatabaseTransaction, Set};
+use sea_orm::{DatabaseTransaction, EntityTrait, NotSet, Set};
 use uuid::Uuid;
 
 use crate::{
-    TaxonomyResult, entities::translation_change::ActiveModel as TranslationChangeActiveModel,
+    TaxonomyResult, entities::translation_change,
     route_key_registry::reconcile_route_keys_for_locale_in_tx,
 };
 
@@ -48,7 +48,7 @@ pub(crate) async fn record_translation_change_in_tx(
         "active"
     };
 
-    TranslationChangeActiveModel {
+    translation_change::Entity::insert(translation_change::ActiveModel {
         id: Set(generate_id()),
         tenant_id: Set(evidence.tenant_id),
         term_id: Set(evidence.term_id),
@@ -58,8 +58,9 @@ pub(crate) async fn record_translation_change_in_tx(
         operation: Set(evidence.operation.to_string()),
         lifecycle: Set(lifecycle.to_string()),
         created_at: Set(Utc::now().fixed_offset()),
-    }
-    .insert(transaction)
+        position: NotSet,
+    })
+    .exec_without_returning(transaction)
     .await?;
 
     Ok(())

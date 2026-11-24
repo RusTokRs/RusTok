@@ -321,5 +321,7 @@ native/GraphQL adapters. Future `ui/dioxus.rs` must share the same
 framework-independent core/model and transport facade, keeping Leptos intact.
 Any Next.js product features must be built in their Next host packages.
 
-Blog remains the production reference for these boundaries; its existing
-Leptos adapters are not modified by scaffold changes.
+Blog and Product use the same [native module standard](../modules/module-authoring.md#reference-modules).
+Blog illustrates the full source layout. Product's mounted catalog illustrates
+the owner UI and transport boundary. Use each module's implementation plan to
+check the scope of its verification.

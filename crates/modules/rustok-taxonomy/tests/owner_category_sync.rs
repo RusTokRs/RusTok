@@ -1,8 +1,11 @@
 use rustok_core::MigrationSource;
+use rustok_product::CommerceError;
+use rustok_product::ports::ProductTaxonomyCategoryTranslationInput;
 use rustok_taxonomy::{
     SyncModuleCategoryInput, TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind,
     entities::{taxonomy_category_presentation, taxonomy_term_alias, translation_change},
-    sync_module_category_in_tx,
+    in_process_product_taxonomy_port, sync_module_category_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
@@ -21,6 +24,100 @@ async fn setup() -> sea_orm::DatabaseConnection {
             .expect("failed to run taxonomy migration");
     }
     db
+}
+
+#[tokio::test]
+async fn product_category_copy_preserves_taxonomy_presentation_and_routes() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let canonical_key = format!("product-category-{category_id}");
+    let mut initial = snapshot(
+        category_id,
+        &canonical_key,
+        "en",
+        "Shoes",
+        "shoes",
+        &["boots"],
+        None,
+        0,
+        Some("headphones"),
+        Some("#123456"),
+    );
+    initial.module_scope = "product".into();
+    let txn = db.begin().await.unwrap();
+    sync_module_category_in_tx(&txn, tenant_id, initial)
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    let presentation = taxonomy_category_presentation::Entity::find_by_id((tenant_id, category_id));
+    let before = presentation.clone().one(&db).await.unwrap().unwrap();
+    let port = in_process_product_taxonomy_port(db.clone());
+    let input = ProductTaxonomyCategoryTranslationInput {
+        category_id,
+        module_scope: "product".into(),
+        canonical_key,
+        locale: "en".into(),
+        name: "Footwear".into(),
+        slug: "footwear".into(),
+        aliases: vec![],
+        description: None,
+        parent_id: None,
+        position: 0,
+    };
+    let txn = db.begin().await.unwrap();
+    port.sync_category_translation_in_tx(&txn, tenant_id, input.clone())
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    let txn = db.begin().await.unwrap();
+    let reclaim = port
+        .sync_category_translation_in_tx(
+            &txn,
+            tenant_id,
+            ProductTaxonomyCategoryTranslationInput {
+                slug: "shoes".into(),
+                ..input
+            },
+        )
+        .await;
+    assert!(matches!(reclaim, Err(CommerceError::Conflict(_))));
+    txn.rollback().await.unwrap();
+
+    assert_eq!(presentation.one(&db).await.unwrap(), Some(before));
+    let service = TaxonomyService::new(db.clone());
+    for (slug, is_alias) in [("boots", true), ("footwear", false), ("shoes", true)] {
+        let route = service
+            .resolve_term_route_for_module(
+                tenant_id,
+                TaxonomyTermKind::Category,
+                "product",
+                "en",
+                None,
+                slug,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(route.term_id, category_id);
+        assert_eq!(route.alias_id.is_some(), is_alias);
+    }
+    let categories = TaxonomyOwnerCategoryReader::new(db)
+        .load_scoped_categories(
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some("product"),
+            Some(&[category_id]),
+            "en",
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(categories.len(), 1);
+    assert_eq!(categories[0].slug, "footwear");
+    assert_eq!(categories[0].name, "Footwear");
 }
 
 fn snapshot(

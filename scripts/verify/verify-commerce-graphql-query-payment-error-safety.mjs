@@ -17,6 +17,7 @@ const paths = {
   paymentShim:
     'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs',
   graphqlRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  hostComposition: 'apps/server/src/services/commerce_provider_runtime.rs',
   paymentRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime/payment_reads.rs',
   paymentLib: 'crates/modules/rustok-payment/src/lib.rs',
   adminRead: 'crates/modules/rustok-payment/src/admin_read.rs',
@@ -149,15 +150,17 @@ for (const marker of [
   'payment_read_runtime: CommercePaymentReadRuntime',
   'pub fn payment_read_runtime(&self) -> CommercePaymentReadRuntime',
   '.shared_get::<CommercePaymentReadRuntime>()',
-  '.shared_get::<rustok_payment::PaymentAdminReadRuntime>()',
-  '.shared_get::<rustok_payment::PaymentOrderReadRuntime>()',
-  '.shared_get::<rustok_payment::PaymentCartReadRuntime>()',
-  'PaymentAdminReadRuntime::in_process(inputs.db_clone())',
-  'PaymentOrderReadRuntime::in_process(inputs.db_clone())',
-  'PaymentCartReadRuntime::in_process(inputs.db_clone())',
+  'MissingHostDependency("CommercePaymentReadRuntime")',
   'pub(crate) fn payment_read_call_context_for_current_graphql_scope(',
   '-> (PortActor, Option<String>, Option<String>)',
 ]) requireText(sources.graphqlRuntime, marker, `${paths.graphqlRuntime}: host/runtime bridge`);
+
+for (const marker of [
+  'require_shared::<rustok_payment::PaymentAdminReadRuntime>(',
+  'require_shared::<rustok_payment::PaymentOrderReadRuntime>(',
+  'require_shared::<rustok_payment::PaymentCartReadRuntime>(',
+  'rustok_commerce::graphql_runtime::CommercePaymentReadRuntime::new(',
+]) requireText(sources.hostComposition, marker, `${paths.hostComposition}: Payment read runtime composition`);
 
 for (const marker of [
   'mod cart_read;',

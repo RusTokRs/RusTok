@@ -105,9 +105,9 @@ export default async function ProductDetailPage({
   }
 
   // Load the brand directory for the product's brand picker
-  let brands: Awaited<ReturnType<typeof listBrands>> = [];
+  let brands: Awaited<ReturnType<typeof listBrands>>['items'] = [];
   try {
-    brands = await listBrands(opts);
+    brands = (await listBrands(opts)).items;
   } catch (err) {
     console.error('Failed to load brands for product editor:', err);
   }

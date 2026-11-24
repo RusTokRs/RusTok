@@ -202,7 +202,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
 
   const locale = await getLocale({
     headerName: EFFECTIVE_LOCALE_HEADER,
-    cookieName: LOCALE_COOKIE,
+    cookieNames: [LOCALE_COOKIE],
     locales,
     defaultLocale
   });

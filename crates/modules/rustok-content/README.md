@@ -42,6 +42,8 @@ the [central implementation plan](../../../docs/modules/rich-text-implementation
   `AuthContext.permissions`, persists idempotency/audit state, and publishes
   orchestration events. Runtime adapters for domain conversions live outside the
   shared helper layer and implement `ContentOrchestrationBridge`.
+  Promotion passes the caller's effective `SecurityContext` to the bridge so
+  the destination owner can authorize creation of new tags.
 - `rustok-content-orchestration` owns the runtime bridge implementation and its
   live GraphQL mutations for `topic ↔ post`, `split_topic`, and `merge_topics`.
 - `apps/server` only composes the owner-provided GraphQL roots and dashboard

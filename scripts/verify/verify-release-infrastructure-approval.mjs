@@ -26,6 +26,9 @@ const PROTECTED_PATHS = [
   "scripts/build/build-pages-inline-edit-deployment.sh",
   "scripts/build/build-pages-inline-edit-server.sh",
   "scripts/release/verify-release-contract.mjs",
+  "scripts/release/resolve-release-history.mjs",
+  "scripts/release/migration-bootstrap.json",
+  "scripts/release/verify-release-manifests.mjs",
   "scripts/release/verify-release-collisions.mjs",
   "scripts/release/generate-spdx-sbom.mjs",
   "scripts/release/finalize-release-artifacts.mjs",
@@ -146,6 +149,9 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes("docs/release/RELEASE_READINESS_CHECKLIST.md"));
   assert(PROTECTED_PATHS.includes("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md"));
   assert(PROTECTED_PATHS.includes("scripts/release/verify-release-collisions.mjs"));
+  assert(PROTECTED_PATHS.includes("scripts/release/resolve-release-history.mjs"));
+  assert(PROTECTED_PATHS.includes("scripts/release/migration-bootstrap.json"));
+  assert(PROTECTED_PATHS.includes("scripts/release/verify-release-manifests.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/release/generate-spdx-sbom.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-release-runtime-image-contract.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-release-readiness-contract.mjs"));

@@ -100,7 +100,7 @@ assertContains(lib, "mod transport;", `${libPath}: crate root must wire transpor
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(
   lib,
-  /pub use ui::(?:leptos|catalog_admin|root)::ProductAdmin;/,
+  "pub use ui::ProductAdmin;",
   `${libPath}: crate root must re-export ProductAdmin`,
 );
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
@@ -143,6 +143,7 @@ assertContains(ui, "shipping_profiles_load_view_from_result", `${uiPath}: UI mus
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "ProductService", "PricingService"] ) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
 }
+assertNotContains(ui, /\brustok_graphql\s*::/, `${uiPath}: raw GraphQL types belong in the transport layer`);
 for (const marker of ["product.summary.title", "Selected product"]) {
   assertNotContains(ui, marker, `${uiPath}: selected-summary panel copy must stay in core (${marker})`);
 }

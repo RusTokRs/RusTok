@@ -79,6 +79,7 @@ pub async fn render_rss_feed(
         .ok_or("Blog event runtime is unavailable")?;
     let channel_slug = request_context.and_then(|context| context.channel_slug.as_deref());
     let page = PostService::new(runtime.db_clone(), event_bus)
+        .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(runtime))
         .list_public_visible_keyset(
             tenant_id,
             PublicPostsPageQuery {

@@ -1,10 +1,14 @@
 use std::{env, error::Error as StdError, io, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
-use rustok_core::{SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::SysEventsMigration;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    TaxonomyTranslationTargetProvider,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind, TaxonomyTranslationTargetProvider,
+};
+use rustok_test_utils::db::{
+    create_postgres_database, drop_postgres_database_if_exists, unique_postgres_database_name,
 };
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, ReadTranslationResourceRequest,
@@ -14,7 +18,9 @@ use rustok_translation_targets::{
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    TransactionTrait,
 };
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
@@ -236,11 +242,6 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
         .expect("source creation must publish a Taxonomy resume cursor");
     drop(initial_provider);
 
-    // Taxonomy change IDs are ULID-backed UUIDs. Keep retained sequential writes
-    // in distinct milliseconds so this recovery fixture remains deterministic;
-    // it does not claim arbitrary concurrent transaction commit ordering.
-    tokio::time::sleep(Duration::from_millis(2)).await;
-
     let apply_provider = provider(test_db.isolated_connection().await?);
     let snapshot = apply_provider
         .read_resource(
@@ -340,6 +341,83 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
     assert_eq!(progress.owner_change_cursor, Some(deleted_cursor));
 
     Ok(())
+}
+
+#[tokio::test]
+async fn change_cursor_keeps_a_write_that_commits_after_a_later_insert() -> TestResult<()> {
+    let Some(url) = postgres_database_url() else {
+        eprintln!("{DATABASE_ENV} is required for PostgreSQL commit-order evidence");
+        return Ok(());
+    };
+    let control = connect(&url).await?;
+    let database_name = unique_postgres_database_name("taxonomy_change_order");
+    create_postgres_database(&control, &database_name).await?;
+    let url = rustok_test_utils::db::postgres_database_url(&url, &database_name);
+    let scenario = tokio::spawn(async move {
+        let db = connect(&url).await?;
+        let manager = SchemaManager::new(&db);
+        SysEventsMigration.up(&manager).await?;
+        for migration in TaxonomyModule.migrations() {
+            migration.up(&manager).await?;
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let slow = db.begin().await?;
+        let slow_id = TaxonomyService::new(db.clone())
+            .create_module_term_in_tx(
+                &slow,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                "blog",
+                ModuleTermCreateInput {
+                    locale: "en".into(),
+                    name: "Slow commit".into(),
+                    slug: None,
+                    canonical_key: None,
+                },
+            )
+            .await?;
+        let independent = connect(&url).await?;
+        let fast_id = create_source_term(&independent, tenant_id, "Fast commit", "fast").await?;
+        let provider = provider(independent);
+        let context = read_context(tenant_id, "taxonomy-journal-commit-order");
+        let first = provider
+            .read_changes(
+                context.clone(),
+                TranslationTargetChangesRequest {
+                    after: None,
+                    limit: 1,
+                },
+            )
+            .await?;
+        assert_eq!(first.changes.len(), 1);
+        assert_eq!(
+            first.changes[0].identity.resource_id.as_str(),
+            fast_id.to_string()
+        );
+        assert_eq!(first.next_cursor.as_ref().unwrap().as_str(), "position:1");
+
+        slow.commit().await?;
+        let second = provider
+            .read_changes(
+                context,
+                TranslationTargetChangesRequest {
+                    after: first.next_cursor,
+                    limit: 1,
+                },
+            )
+            .await?;
+        assert_eq!(second.changes.len(), 1);
+        assert_eq!(
+            second.changes[0].identity.resource_id.as_str(),
+            slow_id.to_string()
+        );
+        assert_eq!(second.next_cursor.unwrap().as_str(), "position:2");
+        Ok::<_, Box<dyn StdError + Send + Sync>>(())
+    })
+    .await;
+    drop_postgres_database_if_exists(&control, &database_name).await?;
+    scenario?
 }
 
 async fn create_source_term(

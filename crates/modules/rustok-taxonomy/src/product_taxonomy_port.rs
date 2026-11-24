@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 use crate::error::TaxonomyError;
 use crate::owner_category_read::TaxonomyOwnerCategoryReader;
-use crate::owner_category_sync::{SyncModuleCategoryInput, sync_module_category_in_tx};
+use crate::owner_category_sync::{SyncModuleCategoryInput, sync_module_category_copy_in_tx};
 use crate::services::TaxonomyService;
 use crate::{TaxonomyScopeType, TaxonomyTermKind};
 
@@ -162,7 +162,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
             color: None,
         };
 
-        sync_module_category_in_tx(txn, tenant_id, sync_input)
+        sync_module_category_copy_in_tx(txn, tenant_id, sync_input)
             .await
             .map_err(map_taxonomy_sync_error)?;
         Ok(())

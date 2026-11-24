@@ -12,12 +12,13 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::SysEventsMigration;
 use rustok_test_utils::db::setup_test_db;
 use rustok_translation_targets::{
-    FieldKey, ListTranslationResourcesRequest, ReadTranslationResourceRequest,
-    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
-    TranslationTargetProgressRequest, TranslationTargetProvider,
+    FieldKey, ListTranslationResourcesRequest, OpaqueCursor, ReadTranslationResourceRequest,
+    TranslationFieldPatch, TranslationPatchRequest, TranslationResourceLifecycle,
+    TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -39,6 +40,10 @@ struct TestModuleTranslationOwner {
 impl TaxonomyModuleTermTranslationOwner for TestModuleTranslationOwner {
     fn module_slug(&self) -> &str {
         "blog"
+    }
+
+    async fn is_enabled(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+        Ok(true)
     }
 
     fn authorize(
@@ -84,13 +89,13 @@ async fn setup() -> (DatabaseConnection, Arc<TaxonomyService>) {
 }
 
 #[tokio::test]
-async fn translation_target_schema_supports_up_down_up() {
+async fn journal_migration_preserves_history_and_replays_legacy_checkpoints() {
     let database = setup_test_db().await;
     let manager = SchemaManager::new(&database);
     let mut migrations = TaxonomyModule.migrations();
-    let translation_target_migration = migrations
+    let journal_migration = migrations
         .pop()
-        .expect("Taxonomy translation target migration should be registered");
+        .expect("Taxonomy journal ordering migration should be registered");
 
     for migration in migrations {
         migration
@@ -98,23 +103,50 @@ async fn translation_target_schema_supports_up_down_up() {
             .await
             .expect("base Taxonomy migration should apply");
     }
-    translation_target_migration
+    let tenant_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+    let legacy_checkpoint = Uuid::from_u128(2);
+    // Old IDs sort the deletion before creation, even with the same timestamp.
+    for (id, revision, operation, lifecycle) in [
+        (legacy_checkpoint, 1_i64, "upsert", "active"),
+        (Uuid::from_u128(1), 2_i64, "delete", "deleted"),
+    ] {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO taxonomy_translation_changes
+                    (id, tenant_id, term_id, locale, resource_revision, target_revision,
+                     operation, lifecycle, created_at)
+                 VALUES (?, ?, ?, 'en', ?, 1, ?, ?, '2026-11-24T00:00:00Z')",
+                [
+                    id.into(),
+                    tenant_id.into(),
+                    term_id.into(),
+                    revision.into(),
+                    operation.into(),
+                    lifecycle.into(),
+                ],
+            ))
+            .await
+            .unwrap();
+    }
+    journal_migration
         .up(&manager)
         .await
-        .expect("Taxonomy translation target migration should apply");
-    translation_target_migration
+        .expect("Taxonomy journal ordering migration should apply");
+    journal_migration
         .down(&manager)
         .await
-        .expect("Taxonomy translation target migration should roll back");
-    translation_target_migration
+        .expect("Taxonomy journal ordering migration should roll back");
+    journal_migration
         .up(&manager)
         .await
-        .expect("Taxonomy translation target migration should reapply");
+        .expect("Taxonomy journal ordering migration should reapply");
 
-    let service = TaxonomyService::new(database);
+    let service = Arc::new(TaxonomyService::new(database));
     service
         .create_term(
-            Uuid::new_v4(),
+            tenant_id,
             admin(),
             CreateTaxonomyTermInput {
                 kind: TaxonomyTermKind::Tag,
@@ -130,6 +162,36 @@ async fn translation_target_schema_supports_up_down_up() {
         )
         .await
         .expect("reapplied translation target schema should accept revisioned terms");
+
+    let provider = TaxonomyTranslationTargetProvider::new(service);
+    let page = provider
+        .read_changes(
+            read_context(tenant_id),
+            TranslationTargetChangesRequest {
+                after: Some(OpaqueCursor::new(legacy_checkpoint.to_string()).unwrap()),
+                limit: 3,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.changes.len(), 3);
+    assert_eq!(
+        page.changes[0].identity.resource_id.as_str(),
+        term_id.to_string()
+    );
+    assert_eq!(
+        page.changes[0].lifecycle,
+        TranslationResourceLifecycle::Active
+    );
+    assert_eq!(
+        page.changes[1].identity.resource_id,
+        page.changes[0].identity.resource_id
+    );
+    assert_eq!(
+        page.changes[1].lifecycle,
+        TranslationResourceLifecycle::Deleted
+    );
+    assert_eq!(page.next_cursor.unwrap().as_str(), "position:3");
 }
 
 fn admin() -> SecurityContext {
@@ -144,6 +206,200 @@ fn read_context(tenant_id: Uuid) -> PortContext {
         "taxonomy-translation-read",
     )
     .with_deadline(Duration::from_secs(5))
+}
+
+#[tokio::test]
+async fn inventory_requires_maintenance_grants_and_preserves_owner_scope_and_tombstones() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let txn = database.begin().await.unwrap();
+    let mut ids = Vec::new();
+    for (tenant, name) in [
+        (tenant_id, "Blog Tag"),
+        (tenant_id, "Deleted Tag"),
+        (other_tenant_id, "Another Tenant"),
+    ] {
+        ids.push(
+            service
+                .create_module_term_in_tx(
+                    &txn,
+                    tenant,
+                    TaxonomyTermKind::Tag,
+                    "blog",
+                    ModuleTermCreateInput {
+                        locale: "de".into(),
+                        name: name.into(),
+                        slug: None,
+                        canonical_key: None,
+                    },
+                )
+                .await
+                .unwrap(),
+        );
+    }
+    crate::delete_module_term_in_tx(
+        &txn,
+        tenant_id,
+        ids[1],
+        &admin(),
+        TaxonomyTermKind::Tag,
+        "blog",
+    )
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+
+    let provider = TaxonomyTranslationTargetProvider::new(service);
+    let changes_request = TranslationTargetChangesRequest {
+        after: None,
+        limit: 10,
+    };
+    let baseline_request = ListTranslationResourcesRequest {
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("de").unwrap(),
+        cursor: None,
+        limit: 10,
+    };
+    let admin = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(Uuid::new_v4().to_string()),
+        "en",
+        "taxonomy-inventory",
+    )
+    .with_role("admin")
+    .with_deadline(Duration::from_secs(5));
+    for insufficient in [
+        admin
+            .clone()
+            .with_claim("taxonomy:read")
+            .with_claim("translations:manage"),
+        admin
+            .clone()
+            .with_claim("taxonomy:manage")
+            .with_claim("translations:update"),
+    ] {
+        let error = provider
+            .read_changes(insufficient.clone(), changes_request.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        let error = provider
+            .list_inventory_resources(insufficient, baseline_request.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+    }
+
+    let maintainer = admin
+        .with_claim("taxonomy:manage")
+        .with_claim("translations:manage");
+    let changes = provider
+        .read_changes(maintainer.clone(), changes_request)
+        .await
+        .unwrap();
+    assert_eq!(changes.changes.len(), 3);
+    let deleted = &changes.changes[2];
+    assert_eq!(deleted.lifecycle, TranslationResourceLifecycle::Deleted);
+    assert_eq!(deleted.identity.resource_id.as_str(), ids[1].to_string());
+    assert_eq!(changes.next_cursor.unwrap().as_str(), "position:3");
+    let baseline = provider
+        .list_inventory_resources(maintainer.clone(), baseline_request.clone())
+        .await
+        .unwrap();
+    assert_eq!(baseline.changes.len(), 1);
+    assert_eq!(
+        baseline.changes[0].identity.resource_id.as_str(),
+        ids[0].to_string()
+    );
+    let discovery = provider
+        .list_resources(
+            maintainer,
+            ListTranslationResourcesRequest {
+                source_locale: baseline_request.target_locale,
+                target_locale: baseline_request.source_locale,
+                ..baseline_request
+            },
+        )
+        .await
+        .unwrap();
+    assert!(discovery.resources.is_empty());
+}
+
+#[tokio::test]
+async fn resource_pagination_does_not_expose_a_hidden_term_in_the_cursor() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let txn = database.begin().await.unwrap();
+    let ids = [Uuid::from_u128(1), Uuid::from_u128(2), Uuid::from_u128(3)];
+    for (id, scope, name) in [
+        (ids[0], "forum", "Hidden"),
+        (ids[1], "blog", "Visible"),
+        (ids[2], "blog", "More"),
+    ] {
+        crate::sync_module_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            crate::SyncModuleCategoryInput {
+                category_id: id,
+                module_scope: scope.into(),
+                canonical_key: name.into(),
+                locale: "en".into(),
+                name: name.into(),
+                slug: name.into(),
+                description: None,
+                parent_id: None,
+                position: 0,
+                aliases: Vec::new(),
+                icon_key: None,
+                color: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+    let mut owners = TaxonomyModuleTermTranslationOwnerRegistry::default();
+    owners
+        .register(TestModuleTranslationOwner {
+            authorize_calls: Arc::new(AtomicUsize::new(0)),
+            apply_calls: Arc::new(AtomicUsize::new(0)),
+        })
+        .unwrap();
+    let provider = TaxonomyTranslationTargetProvider::with_owner_registry(service, owners);
+    let request = ListTranslationResourcesRequest {
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("de").unwrap(),
+        cursor: None,
+        limit: 1,
+    };
+    let first_page = provider
+        .list_resources(read_context(tenant_id), request.clone())
+        .await
+        .unwrap();
+    assert_eq!(first_page.resources.len(), 1);
+    let cursor = first_page.next_cursor.unwrap();
+    assert_eq!(cursor.as_str(), ids[1].to_string());
+    assert_eq!(
+        first_page.resources[0].identity.resource_id.as_str(),
+        cursor.as_str()
+    );
+    let second_page = provider
+        .list_resources(
+            read_context(tenant_id),
+            ListTranslationResourcesRequest {
+                cursor: Some(cursor),
+                ..request
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_page.resources.len(), 1);
+    assert_eq!(
+        second_page.resources[0].identity.resource_id.as_str(),
+        ids[2].to_string()
+    );
+    assert!(second_page.next_cursor.is_none());
 }
 
 fn field_patch(
@@ -669,4 +925,101 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
         outbox_events.is_empty(),
         "module-owned Taxonomy changes must not over-invalidate the tenant Search scope"
     );
+}
+
+#[tokio::test]
+async fn exact_category_translation_retains_and_reserves_the_previous_route() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let txn = db.begin().await.unwrap();
+    for (locale, name, slug) in [("en", "Notes", "notes"), ("fr", "Carnets", "carnets")] {
+        crate::sync_module_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            crate::SyncModuleCategoryInput {
+                category_id,
+                module_scope: "blog".into(),
+                canonical_key: format!("blog-category-{category_id}"),
+                locale: locale.into(),
+                name: name.into(),
+                slug: slug.into(),
+                aliases: Vec::new(),
+                description: None,
+                parent_id: None,
+                position: 0,
+                icon_key: None,
+                color: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+
+    let mut owners = TaxonomyModuleTermTranslationOwnerRegistry::default();
+    owners
+        .register(TestModuleTranslationOwner {
+            authorize_calls: Arc::default(),
+            apply_calls: Arc::default(),
+        })
+        .unwrap();
+    let provider = TaxonomyTranslationTargetProvider::with_owner_registry(service.clone(), owners);
+    let request = ReadTranslationResourceRequest {
+        identity: rustok_translation_targets::TranslationResourceIdentity {
+            owner_slug: rustok_translation_targets::OwnerSlug::new("taxonomy").unwrap(),
+            resource_kind: rustok_translation_targets::ResourceKind::new("term").unwrap(),
+            resource_id: rustok_translation_targets::ResourceId::new(category_id.to_string())
+                .unwrap(),
+            subresource_id: None,
+        },
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("fr").unwrap(),
+    };
+    for (slug, is_reserved) in [("journal", false), ("carnets", true)] {
+        let snapshot = provider
+            .read_resource(read_context(tenant_id), request.clone())
+            .await
+            .unwrap();
+        let patch = TranslationPatchRequest {
+            identity: snapshot.summary.identity.clone(),
+            source_locale: snapshot.source_locale.clone(),
+            target_locale: snapshot.target_locale.clone(),
+            expected_resource_revision: snapshot.summary.resource_revision.clone(),
+            expected_source_revision: snapshot.source_revision.clone(),
+            expected_target_revision: snapshot.target_revision.clone(),
+            fields: vec![field_patch(&snapshot, "slug", slug)],
+            proposal_id: format!("category-slug-{slug}"),
+            approval_receipt_id: format!("category-slug-approved-{slug}"),
+        };
+        let result = provider
+            .apply_patch(
+                read_context(tenant_id).with_idempotency_key(format!("category-slug-{slug}")),
+                patch,
+            )
+            .await;
+        if is_reserved {
+            assert_eq!(result.unwrap_err().kind, PortErrorKind::Conflict);
+        } else {
+            result.unwrap();
+        }
+    }
+
+    for (slug, is_alias) in [("journal", false), ("carnets", true)] {
+        let route = service
+            .resolve_term_route_for_module(
+                tenant_id,
+                TaxonomyTermKind::Category,
+                "blog",
+                "fr",
+                None,
+                slug,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(route.term_id, category_id);
+        assert_eq!(route.matched_locale, "fr");
+        assert_eq!(route.alias_id.is_some(), is_alias);
+    }
 }

@@ -65,6 +65,8 @@ pub(super) struct BuildInputs {
     host_target: String,
     root_package: String,
     packages: BTreeMap<String, ResolvedPackage>,
+    #[serde(skip)]
+    package_ids: BTreeMap<String, String>,
     coverage: Coverage,
 }
 
@@ -83,6 +85,8 @@ struct ResolvedPackage {
     features: BTreeSet<String>,
     targets: BTreeSet<ResolvedTarget>,
     dependencies: BTreeSet<ResolvedDependency>,
+    #[serde(skip)]
+    external_manifest: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -105,6 +109,38 @@ struct ResolvedDependency {
     name: String,
     package: String,
     kinds: BTreeSet<DependencyKind>,
+}
+
+impl BuildInputs {
+    pub(super) fn package_identity(&self, cargo_id: &str) -> Result<&str> {
+        self.package_ids
+            .get(cargo_id)
+            .map(String::as_str)
+            .with_context(|| {
+                format!("Cargo build output belongs to an unresolved package: {cargo_id}")
+            })
+    }
+
+    pub(super) fn verify_registry(
+        &self,
+        source: &Path,
+        cache: &Path,
+    ) -> Result<source_inputs::RegistryVerification> {
+        let lock = read_source(&source.join("Cargo.lock"))?;
+        let packages = self.packages.iter().filter_map(|(id, package)| {
+            let PackageSource::External { identity } = &package.source else {
+                return None;
+            };
+            Some(source_inputs::ExternalPackage {
+                id,
+                name: &package.name,
+                version: &package.version,
+                identity,
+                manifest: package.external_manifest.as_deref(),
+            })
+        });
+        source_inputs::verify_registry_cache(&lock, &self.lockfile_sha256, cache, packages)
+    }
 }
 
 pub(super) fn native_target(rustc_version: &str) -> Result<String> {
@@ -374,6 +410,10 @@ fn project(
                 features: node.features.iter().cloned().collect(),
                 targets,
                 dependencies,
+                external_manifest: package
+                    .source
+                    .as_ref()
+                    .map(|_| package.manifest_path.clone()),
             },
         );
     }
@@ -398,12 +438,13 @@ fn project(
         host_target: host.to_owned(),
         root_package: identities[root_id].clone(),
         packages: resolved,
+        package_ids: identities.into_iter().map(|(id, identity)| (id.to_owned(), identity)).collect(),
         coverage: Coverage {
             resolution: "native normal/build dependency closure from filtered workspace metadata",
             feature_precision: "workspace resolution may include features from unbuilt workspace/dev consumers; not an exact compilation unit graph",
             unverified: [
                 "external package bytes",
-                "generated inputs",
+                "generated inputs outside recorded Cargo OUT_DIR files and exact compiler consumption",
                 "build-script and proc-macro effects",
                 "ambient native/toolchain inputs",
                 "per-migration source attribution",
@@ -719,6 +760,219 @@ mod tests {
         )?;
         assert_eq!(inputs.packages.len(), 1);
         assert_eq!(inputs.source_sha256, fixture.snapshot.sha256);
+        Ok(())
+    }
+
+    #[test]
+    fn verifies_generated_outputs_from_a_cargo_build_script() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let package = fixture
+            .root
+            .join(ROOT_MANIFEST)
+            .parent()
+            .context("fixture manifest directory")?
+            .to_owned();
+        fs::write(
+            package.join("build.rs"),
+            r#"
+            fn main() {
+                let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+                std::fs::create_dir(out.join("schema")).unwrap();
+                std::fs::write(out.join("schema/generated.rs"), "pub const SCHEMA: u64 = 42;\n").unwrap();
+                std::fs::write(out.join("unused.txt"), "unused output\n").unwrap();
+            }
+        "#,
+        )?;
+        fs::write(
+            package.join("src/lib.rs"),
+            r#"include!(concat!(env!("OUT_DIR"), "/schema/generated.rs"));"#,
+        )?;
+        fs::create_dir(package.join("src/bin"))?;
+        for binary in BINARIES {
+            fs::write(
+                package.join("src/bin").join(format!("{binary}.rs")),
+                r#"fn main() { assert_eq!(rustok_migrations::SCHEMA, 42); }"#,
+            )?;
+        }
+        let mut files = Vec::new();
+        collect_snapshot_files(&fixture.root, &fixture.root, &mut files)?;
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let expected = snapshot(files)?;
+        let mut rustc = build_command("rustc", &fixture.root)?;
+        rustc.arg("-Vv");
+        let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
+        let target = fixture.directory.join("target with spaces");
+        let resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let mut build = build_command("cargo", &fixture.root)?;
+        build
+            .args([
+                "build",
+                "--locked",
+                "--offline",
+                "-p",
+                "rustok-migrations",
+                "--target",
+                &host,
+                "--message-format=json",
+            ])
+            .env("CARGO_TARGET_DIR", &target);
+        let messages = run_process(&mut build, 120, 64 * 1024)?;
+        let mut generated = build_outputs::GeneratedOutputs::new(&target)?;
+        let mut executables = Vec::new();
+        let mut out_dir = None;
+        for line in std::str::from_utf8(&messages)?.lines() {
+            let message: Value = serde_json::from_str(line)?;
+            if message["reason"] == "build-script-executed" {
+                generated.record(&message, &resolution)?;
+                out_dir = message["out_dir"].as_str().map(PathBuf::from);
+
+                let mut outside = message;
+                outside["out_dir"] = json!(fixture.root);
+                let error = generated.record(&outside, &resolution).unwrap_err();
+                assert!(error.to_string().contains("OUT_DIR escaped build output"));
+            } else if let Some(path) = message["executable"].as_str() {
+                if message["reason"] == "compiler-artifact"
+                    && message["target"]["kind"] == json!(["bin"])
+                {
+                    executables.push(PathBuf::from(path).canonicalize()?);
+                }
+            }
+        }
+        let out_dir =
+            out_dir.context("fixture build script did not report its output directory")?;
+        generated.capture()?;
+        generated.verify_unchanged()?;
+        let record = serde_json::to_value(&generated)?;
+        let directories = record["directories"]
+            .as_object()
+            .context("missing output directories")?;
+        assert_eq!(directories.len(), 1);
+        let directory = directories
+            .values()
+            .next()
+            .context("missing fixture output")?;
+        assert_eq!(directory["package"], resolution.root_package);
+        assert_eq!(directory["files"][0]["path"], "schema/generated.rs");
+        assert_eq!(directory["files"][1]["path"], "unused.txt");
+        assert_eq!(
+            directory["files"][0]["sha256"],
+            digest(b"pub const SCHEMA: u64 = 42;\n")
+        );
+
+        assert_eq!(executables.len(), BINARIES.len());
+        for binary in &executables {
+            let dep_info = read_source(&binary.with_extension("d"))?;
+            let dependencies = serde_json::to_value(generated.dependencies(binary, &dep_info)?)?;
+            let paths = dependencies["out_dir_files"]
+                .as_array()
+                .context("missing matched paths")?;
+            assert_eq!(paths.len(), 1);
+            assert!(paths[0].as_str().unwrap().ends_with("/schema/generated.rs"));
+            assert_eq!(dependencies["uncaptured_target_paths"], json!([]));
+        }
+        let dep_info = read_source(&executables[0].with_extension("d"))?;
+        assert!(generated.dependencies(&executables[1], &dep_info).is_err());
+
+        let file = out_dir.join("schema/generated.rs");
+        fs::write(&file, "pub const SCHEMA: u64 = 99;\n")?;
+        assert!(generated.verify_unchanged().is_err());
+        fs::write(&file, "pub const SCHEMA: u64 = 42;\n")?;
+        fs::write(out_dir.join("extra"), "added after build")?;
+        assert!(generated.verify_unchanged().is_err());
+        fs::remove_file(out_dir.join("extra"))?;
+        fs::remove_file(file)?;
+        assert!(generated.verify_unchanged().is_err());
+        generated.capture()?;
+        let error = generated
+            .dependencies(&executables[0], &dep_info)
+            .err()
+            .context("missing generated dependency accepted")?;
+        assert!(error
+            .to_string()
+            .contains("absent from the captured outputs"));
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a Cargo cache with hex 0.4.3 and compiles a small offline fixture"]
+    fn actual_cargo_build_keeps_verified_registry_sources() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let manifest = fixture.root.join(ROOT_MANIFEST);
+        let mut manifest_text = fs::read_to_string(&manifest)?;
+        manifest_text.push_str("\n[dependencies]\nhex = \"=0.4.3\"\n");
+        fs::write(&manifest, manifest_text)?;
+        fs::write(
+            fixture
+                .root
+                .join("crates/utils/rustok-migrations/src/lib.rs"),
+            "pub fn observed() -> String { hex::encode([0xff]) }\n",
+        )?;
+        let mut lock = build_command("cargo", &fixture.root)?;
+        lock.args(["generate-lockfile", "--offline"]);
+        run_process(&mut lock, 60, 4096)?;
+        let mut files = Vec::new();
+        collect_snapshot_files(&fixture.root, &fixture.root, &mut files)?;
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let expected = snapshot(files)?;
+        let mut rustc = build_command("rustc", &fixture.root)?;
+        rustc.arg("-Vv");
+        let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
+        let target = fixture.directory.join("target");
+        let before_resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let hex = before_resolution
+            .packages
+            .values()
+            .find(|package| package.name == "hex")
+            .context("hex must be resolved")?;
+        let extraction = hex
+            .external_manifest
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .context("hex has no Cargo registry source root")?;
+        let cache = extraction
+            .parent()
+            .and_then(Path::parent)
+            .context("registry directory missing")?
+            .join("cache")
+            .join(extraction.file_name().context("registry bucket missing")?);
+        let before = before_resolution.verify_registry(&fixture.root, &cache)?;
+
+        let mut build = build_command("cargo", &fixture.root)?;
+        build
+            .args([
+                "build",
+                "--locked",
+                "--offline",
+                "-p",
+                "rustok-migrations",
+                "--target",
+                &host,
+            ])
+            .env("CARGO_TARGET_DIR", &target);
+        run_process(&mut build, 120, 8192)?;
+        let after_resolution = collect(&fixture.root, &expected, &target, &host)?;
+        let after = after_resolution.verify_registry(&fixture.root, &cache)?;
+        assert!(before == after);
+        let observed = serde_json::to_value(after)?;
+        assert_eq!(observed["crates_io_packages"].as_object().unwrap().len(), 1);
+        assert_eq!(observed["unverified_external_packages"], json!([]));
+        Ok(())
+    }
+
+    #[cfg(all(windows, target_env = "msvc"))]
+    #[test]
+    fn isolated_build_can_find_the_msvc_linker() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let source = fixture.root.join("linker_probe.rs");
+        fs::write(&source, "fn main() {}\n")?;
+        let mut compiler = build_command("rustc", &fixture.root)?;
+        compiler
+            .args(["--crate-name", "migration_linker_probe"])
+            .arg(source)
+            .arg("-o")
+            .arg(fixture.root.join("migration_linker_probe.exe"));
+        run_process(&mut compiler, 30, 4096)?;
         Ok(())
     }
 

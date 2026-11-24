@@ -1,5 +1,5 @@
 import "./core";
-import "../../packages/rustok-product/src";
+import "@rustok/product-frontend";
 import "../../packages/rustok-cart/src";
 import "../../packages/rustok-blog/src";
 import "../../packages/rustok-forum/src";

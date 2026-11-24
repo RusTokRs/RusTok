@@ -51,6 +51,7 @@ tower = { workspace = true, features = ["util"] }
 proptest.workspace = true
 rustok-auth.workspace = true
 rustok-comments = { workspace = true, features = ["server"] }
+rustok-content-orchestration = { workspace = true, features = ["mod-blog"] }
 rustok-migrations = { workspace = true, default-features = false }
 rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true

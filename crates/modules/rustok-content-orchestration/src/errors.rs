@@ -1,6 +1,6 @@
 //! Error conversion helpers for content orchestration cross-module boundaries.
 
-#[cfg(all(feature = "mod-content", feature = "mod-blog"))]
+#[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
 pub(crate) fn blog_error_to_content_error(
     error: rustok_blog::BlogError,
 ) -> rustok_content::ContentError {

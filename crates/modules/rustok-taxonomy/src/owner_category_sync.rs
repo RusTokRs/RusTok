@@ -16,6 +16,7 @@ use crate::{
     },
     lock_category_hierarchy_writer_in_tx, normalize_taxonomy_category_color,
     normalize_taxonomy_category_icon_key, normalize_term_locale, normalize_term_route_key,
+    owner_category_route_sync::include_owned_category_aliases_in_tx,
     route_key_registry::{ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx},
     translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx},
 };
@@ -36,7 +37,8 @@ pub struct SyncModuleCategoryInput {
     pub locale: String,
     pub name: String,
     pub slug: String,
-    /// Complete append-only historical route set for this locale.
+    /// Complete historical routes for exact sync, or additive routes when Taxonomy
+    /// owns the alias history.
     pub aliases: Vec<String>,
     pub description: Option<String>,
     pub parent_id: Option<Uuid>,
@@ -68,6 +70,36 @@ pub async fn sync_module_category_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     input: SyncModuleCategoryInput,
+) -> TaxonomyResult<SyncModuleCategoryResult> {
+    sync_module_category(txn, tenant_id, input, CategoryPresentationSync::Replace).await
+}
+
+/// Synchronize localized copy and hierarchy while Taxonomy retains its presentation
+/// and extends its route history.
+pub async fn sync_module_category_copy_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    input: SyncModuleCategoryInput,
+) -> TaxonomyResult<SyncModuleCategoryResult> {
+    if input.icon_key.is_some() || input.color.is_some() {
+        return Err(TaxonomyError::validation(
+            "Category copy synchronization requires empty icon and color inputs",
+        ));
+    }
+    let input = include_owned_category_aliases_in_tx(txn, tenant_id, input).await?;
+    sync_module_category(txn, tenant_id, input, CategoryPresentationSync::Keep).await
+}
+
+enum CategoryPresentationSync {
+    Replace,
+    Keep,
+}
+
+async fn sync_module_category(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    input: SyncModuleCategoryInput,
+    presentation: CategoryPresentationSync,
 ) -> TaxonomyResult<SyncModuleCategoryResult> {
     if input.category_id.is_nil() {
         return Err(TaxonomyError::validation(
@@ -285,8 +317,17 @@ pub async fn sync_module_category_in_tx(
         input.position,
     )
     .await?;
-    let presentation_revision =
-        sync_category_presentation(txn, tenant_id, input.category_id, icon_key, color).await?;
+    let presentation_revision = match presentation {
+        CategoryPresentationSync::Replace => {
+            sync_category_presentation(txn, tenant_id, input.category_id, icon_key, color).await?
+        }
+        CategoryPresentationSync::Keep => {
+            taxonomy_category_presentation::Entity::find_by_id((tenant_id, input.category_id))
+                .one(txn)
+                .await?
+                .map_or(0, |row| row.revision)
+        }
+    };
 
     Ok(SyncModuleCategoryResult {
         category_id: input.category_id,
@@ -379,7 +420,7 @@ async fn ensure_parent_identity(
     Ok(())
 }
 
-async fn sync_append_only_aliases(
+pub(crate) async fn sync_append_only_aliases(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,

@@ -12,7 +12,7 @@ use crate::catalog_transport;
 /// Non-mounted composition of the catalog-controls query shell and the
 /// reference screen from `super::leptos`.
 ///
-/// The host mounts `ui::root::ProductAdmin`. This thin wrapper (query parsing,
+/// The host mounts `ui::ProductAdmin`. This thin wrapper (query parsing,
 /// catalog-controls context, search options) is retained as the reference
 /// implementation of the catalog-controls contract pinned by
 /// `verify-product-catalog-controls-plan-sync` and

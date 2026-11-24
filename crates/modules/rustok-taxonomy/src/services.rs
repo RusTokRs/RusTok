@@ -9,7 +9,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -26,8 +26,10 @@ use crate::entities::{
     taxonomy_term, taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
 };
 use crate::error::{TaxonomyError, TaxonomyResult};
-use crate::module_term_mutation::ModuleTermCreateInput;
+use crate::module_term_mutation::{ModuleTermCreateInput, sync_module_term_slug_history_in_tx};
 use crate::normalization::{TAXONOMY_ROUTE_KEY_MAX_CHARS, TAXONOMY_SCOPE_VALUE_MAX_CHARS};
+use crate::owner_category_route_sync::category_alias_history_for_slug_in_tx;
+use crate::owner_category_sync::sync_append_only_aliases;
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -1075,10 +1077,22 @@ impl TaxonomyService {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        term_id: Uuid,
+        authorized_term: &taxonomy_term::Model,
         input: ApplyExactTaxonomyTranslationInput,
     ) -> TaxonomyResult<TaxonomyTranslationApplyResult> {
-        let term = self.find_term_in_tx(txn, tenant_id, term_id).await?;
+        let term_id = authorized_term.id;
+        if authorized_term.kind == TaxonomyTermKind::Category {
+            crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
+        }
+        let term = taxonomy_term::Entity::find_by_id(term_id)
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(authorized_term.kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(authorized_term.scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(&authorized_term.scope_value))
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(TaxonomyError::TermNotFound(term_id))?;
         if term.revision != input.expected_resource_revision {
             return Err(TaxonomyError::conflict(
                 "taxonomy term resource revision does not match the translation proposal",
@@ -1100,8 +1114,6 @@ impl TaxonomyService {
 
         validate_term_name(&input.name)?;
         let slug = normalize_non_empty_slug(&input.slug)?;
-        let description = normalize_optional_text(input.description.as_deref());
-        validate_optional_description(description.as_deref())?;
         ensure_route_key_available_in_tx(
             txn,
             tenant_id,
@@ -1120,6 +1132,31 @@ impl TaxonomyService {
             .filter(taxonomy_term_translation::Column::Locale.eq(input.target_locale.as_str()))
             .one(txn)
             .await?;
+        let description = match input.description {
+            Patch::Keep => existing_target
+                .as_ref()
+                .and_then(|target| target.description.clone()),
+            Patch::Clear => None,
+            Patch::Set(description) => {
+                validate_optional_description(Some(&description))?;
+                normalize_optional_text(Some(&description))
+            }
+        };
+        let category_aliases = if term.kind == TaxonomyTermKind::Category {
+            Some(
+                category_alias_history_for_slug_in_tx(
+                    txn,
+                    tenant_id,
+                    term_id,
+                    input.target_locale.as_str(),
+                    existing_target.as_ref().map(|copy| copy.slug.as_str()),
+                    &slug,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let now = Utc::now().fixed_offset();
         let target_revision = match existing_target {
             Some(target) => {
@@ -1133,6 +1170,11 @@ impl TaxonomyService {
                     input.target_locale.as_str(),
                     target.revision,
                 )?;
+                if term.kind == TaxonomyTermKind::Tag
+                    && term.scope_type == TaxonomyScopeType::Module
+                {
+                    sync_module_term_slug_history_in_tx(txn, &target, &slug, now).await?;
+                }
                 let updated = taxonomy_term_translation::Entity::update_many()
                     .col_expr(
                         taxonomy_term_translation::Column::Name,
@@ -1197,6 +1239,17 @@ impl TaxonomyService {
             }
         };
 
+        if let Some(aliases) = category_aliases {
+            let aliases = aliases.into_iter().collect::<Vec<_>>();
+            sync_append_only_aliases(
+                txn,
+                tenant_id,
+                term_id,
+                input.target_locale.as_str(),
+                &aliases,
+            )
+            .await?;
+        }
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
@@ -1233,19 +1286,6 @@ impl TaxonomyService {
         .map_err(|_| {
             TaxonomyError::internal("failed to enqueue Search reindex after global Tag mutation")
         })
-    }
-
-    async fn find_term_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        term_id: Uuid,
-    ) -> TaxonomyResult<taxonomy_term::Model> {
-        taxonomy_term::Entity::find_by_id(term_id)
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await?
-            .ok_or(TaxonomyError::TermNotFound(term_id))
     }
 
     async fn update_term_revision_in_tx(
@@ -1428,7 +1468,7 @@ fn decode_scope_value(scope_type: TaxonomyScopeType, scope_value: &str) -> Optio
     }
 }
 
-fn normalize_non_empty_slug(value: &str) -> TaxonomyResult<String> {
+pub(crate) fn normalize_non_empty_slug(value: &str) -> TaxonomyResult<String> {
     let slug = slug::slugify(value);
     if slug.is_empty() {
         return Err(TaxonomyError::validation(

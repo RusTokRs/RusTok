@@ -255,6 +255,10 @@ read-only and disposable-fixture verification can proceed earlier.
   reason it is absent, its negative behavior test, runtime preconditions and
   evidence status. A new blueprint input/schema requires an owning contract
   decision before implementation; this plan does not invent a parallel registry.
+  The shared FFA layout check now resolves adapters under `transport/` for
+  both facade entry points. Generated Blog-style directories and the Product
+  admin facade use the same rule. Fixtures cover misplaced and ambiguous
+  module declarations.
 - [ ] Prove transfer with one second real module/use case. Require zero Blog
   names/permissions/schema assumptions and the same applicable invariant gates.
   Generated code and test bodies must follow the actual owner operation.

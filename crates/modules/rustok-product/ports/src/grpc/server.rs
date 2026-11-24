@@ -1117,8 +1117,9 @@ fn port_error_to_status(error: PortError) -> Status {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProductCatalogGrpcBearerAuthenticator, ProductCatalogGrpcBearerInterceptor,
-        ProductCatalogGrpcOperation, TrustedProductCatalogAuthority, port_error_to_status,
+        LOCALE_REPLAY_JSON_LIMIT, ProductCatalogGrpcBearerAuthenticator,
+        ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation,
+        TrustedProductCatalogAuthority, locale_replay_page_response, port_error_to_status,
         trusted_context,
     };
     use rustok_api::{PortActor, PortContext, PortError};
@@ -1128,6 +1129,84 @@ mod tests {
     use uuid::Uuid;
 
     use crate::grpc::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
+
+    fn locale_replay_entry(id: u128, description: String) -> crate::ProductLocaleReplayEntry {
+        serde_json::from_value(serde_json::json!({
+            "tenant_id": Uuid::from_u128(1),
+            "product_id": Uuid::from_u128(id),
+            "source_version": 1,
+            "product_source_version": 1,
+            "locale": "en",
+            "state": {"live": {
+                "status": "draft", "title": "Product", "handle": "product",
+                "description": description, "seller_id": null, "vendor": null,
+                "product_type": null, "primary_category_id": null, "tag_ids": [],
+                "created_at": "2026-11-22T00:00:00Z", "published_at": null,
+                "attribute_terms": [], "variant_ids": [], "sales_channel_ids": []
+            }}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn locale_replay_page_preserves_continuation_when_shortened_by_encoded_size() {
+        let entries: Vec<_> = (1..=10)
+            .map(|id| locale_replay_entry(id, "\"\\\n".repeat(128 * 1024)))
+            .collect();
+        let response = locale_replay_page_response(crate::ProductLocaleReplayPage {
+            entries: entries.clone(),
+            next: None,
+        })
+        .unwrap()
+        .into_inner();
+        assert!(response.output_json.len() <= LOCALE_REPLAY_JSON_LIMIT);
+        let page: crate::ProductLocaleReplayPage =
+            serde_json::from_slice(&response.output_json).unwrap();
+        assert!(!page.entries.is_empty());
+        assert!(page.entries.len() < entries.len());
+        assert_eq!(page.next, page.entries.last().map(|entry| entry.key()));
+        assert_eq!(
+            serde_json::to_value(&page.entries).unwrap(),
+            serde_json::to_value(&entries[..page.entries.len()]).unwrap()
+        );
+    }
+
+    #[test]
+    fn locale_replay_page_preserves_owner_continuation_and_empty_terminal_page() {
+        let entry = locale_replay_entry(1, "описание".to_owned());
+        let next = Some(entry.key());
+        let response = locale_replay_page_response(crate::ProductLocaleReplayPage {
+            entries: vec![entry],
+            next: next.clone(),
+        })
+        .unwrap()
+        .into_inner();
+        let page: crate::ProductLocaleReplayPage =
+            serde_json::from_slice(&response.output_json).unwrap();
+        assert_eq!(page.next, next);
+        let response = locale_replay_page_response(crate::ProductLocaleReplayPage {
+            entries: Vec::new(),
+            next: None,
+        })
+        .unwrap()
+        .into_inner();
+        let page: crate::ProductLocaleReplayPage =
+            serde_json::from_slice(&response.output_json).unwrap();
+        assert!(page.entries.is_empty());
+        assert!(page.next.is_none());
+    }
+
+    #[test]
+    fn locale_replay_page_refuses_an_oversized_single_entry_without_retry() {
+        let status = locale_replay_page_response(crate::ProductLocaleReplayPage {
+            entries: vec![locale_replay_entry(1, "x".repeat(LOCALE_REPLAY_JSON_LIMIT))],
+            next: None,
+        })
+        .unwrap_err();
+        let error: PortError = serde_json::from_slice(status.details()).unwrap();
+        assert_eq!(error.code, "product.locale_replay_entry_too_large");
+        assert!(!error.retryable);
+    }
 
     #[test]
     fn owner_error_is_preserved_in_status_details() {

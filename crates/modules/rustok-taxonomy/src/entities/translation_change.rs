@@ -14,6 +14,7 @@ pub struct Model {
     pub operation: String,
     pub lifecycle: String,
     pub created_at: DateTimeWithTimeZone,
+    pub position: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

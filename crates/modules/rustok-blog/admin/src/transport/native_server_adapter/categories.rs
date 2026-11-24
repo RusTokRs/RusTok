@@ -49,11 +49,11 @@ async fn blog_admin_category_details_native(
 ) -> Result<Vec<crate::model::BlogCategoryDetail>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CategoryService, ListCategoriesFilter};
+        use rustok_blog::ListCategoriesFilter;
 
         let context = native_context().await?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
-        let service = CategoryService::new(context.db, context.event_bus);
+        let service = context.category_service();
         let mut items = Vec::new();
         for page in 1.. {
             let (rows, total) = service
@@ -95,7 +95,7 @@ async fn blog_admin_create_category_native(
 ) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CategoryService, CreateCategoryInput};
+        use rustok_blog::CreateCategoryInput;
 
         let context = native_context().await?;
         require_category_permission(
@@ -106,7 +106,8 @@ async fn blog_admin_create_category_native(
             Some(raw) => Some(parse_uuid(raw, "parent_id")?),
             None => None,
         };
-        let category_id = CategoryService::new(context.db, context.event_bus)
+        let category_id = context
+            .category_service()
             .create(
                 context.tenant.id,
                 security_context(&context.auth),
@@ -140,7 +141,7 @@ async fn blog_admin_update_category_native(
 ) -> Result<crate::model::BlogCategoryDetail, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CategoryService, UpdateCategoryInput};
+        use rustok_blog::UpdateCategoryInput;
 
         let context = native_context().await?;
         require_category_permission(
@@ -148,7 +149,8 @@ async fn blog_admin_update_category_native(
             rustok_api::Permission::BLOG_CATEGORIES_UPDATE,
         )?;
         let category_id = parse_uuid(&id, "category_id")?;
-        let response = CategoryService::new(context.db, context.event_bus)
+        let response = context
+            .category_service()
             .update(
                 context.tenant.id,
                 category_id,
@@ -189,19 +191,14 @@ async fn blog_admin_update_category_native(
 async fn blog_admin_delete_category_native(id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::CategoryService;
-
         let context = native_context().await?;
         require_category_permission(
             &context.auth,
             rustok_api::Permission::BLOG_CATEGORIES_DELETE,
         )?;
         let category_id = parse_uuid(&id, "category_id")?;
-        let mut service = CategoryService::new(context.db, context.event_bus);
-        if let Some(cleanup) = context.category_delete_cleanup.clone() {
-            service = service.with_category_delete_cleanup(cleanup);
-        }
-        service
+        context
+            .category_service()
             .delete(
                 context.tenant.id,
                 category_id,

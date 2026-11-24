@@ -1,6 +1,7 @@
 pub(crate) mod attribute_lifecycle;
 pub(crate) mod combinations;
 pub(crate) mod initial_catalog;
+pub(crate) mod route;
 pub(crate) mod variant_axes;
 pub(crate) mod variant_create;
 pub(crate) mod write_journal;
@@ -2107,6 +2108,10 @@ pub fn build_variant_row_update_draft(
     fallback_currency: &str,
 ) -> crate::model::VariantUpdateDraft {
     let primary_price = original.prices.first();
+    let compare_at_amount = primary_price
+        .filter(|_| !amount.trim().is_empty())
+        .and_then(|price| price.compare_at_amount.clone())
+        .unwrap_or_default();
     crate::model::VariantUpdateDraft::from_editor_state(
         original,
         sku,
@@ -2115,9 +2120,7 @@ pub fn build_variant_row_update_draft(
             .map(|price| price.currency_code.clone())
             .unwrap_or_else(|| fallback_currency.to_owned()),
         amount,
-        primary_price
-            .and_then(|price| price.compare_at_amount.clone())
-            .unwrap_or_default(),
+        compare_at_amount,
         inventory_quantity,
         original.inventory_policy.clone(),
     )

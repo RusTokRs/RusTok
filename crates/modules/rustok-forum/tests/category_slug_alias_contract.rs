@@ -1,5 +1,6 @@
 const ROUTE: &str = include_str!("../src/services/category_route.rs");
 const CATEGORY_OWNER: &str = include_str!("../src/services/category_owner.rs");
+const TAXONOMY_PORT: &str = include_str!("../src/ports/taxonomy.rs");
 const CATEGORY_TAXONOMY_SYNC: &str = include_str!("../src/services/category_taxonomy_sync.rs");
 const TAXONOMY_ROUTE_SYNC: &str = include_str!("../../rustok-taxonomy/src/module_term_lookup.rs");
 const MIGRATION: &str =
@@ -24,10 +25,10 @@ fn legacy_alias_migration_remains_available_for_upgrade_compatibility() {
 #[test]
 fn forum_route_reads_are_taxonomy_owned() {
     for marker in [
-        "TaxonomyOwnerCategoryReader",
-        "resolve_term_route_for_module(",
+        "Arc<dyn ForumTaxonomyPort>",
+        ".load_scoped_categories(",
+        ".resolve_category_route(",
         "pub alias_id: Option<Uuid>",
-        "TaxonomyScopeType::Module",
         "ensure_active_category",
     ] {
         assert!(ROUTE.contains(marker), "missing route marker {marker}");
@@ -44,12 +45,14 @@ fn forum_route_reads_are_taxonomy_owned() {
             "Forum route reader still depends on legacy alias state: {forbidden}"
         );
     }
+    assert!(TAXONOMY_PORT.contains("async fn resolve_category_route("));
 }
 
 #[test]
 fn forum_category_writes_delegate_alias_history_to_taxonomy() {
-    assert!(CATEGORY_TAXONOMY_SYNC.contains("sync_module_category_with_owned_aliases_in_tx("));
-    assert!(CATEGORY_TAXONOMY_SYNC.contains("aliases: Vec::new()"));
+    assert!(CATEGORY_TAXONOMY_SYNC.contains("port.sync_category_copy_in_tx("));
+    assert!(CATEGORY_TAXONOMY_SYNC.contains("ForumTaxonomySyncCategoryInput {"));
+    assert!(TAXONOMY_PORT.contains("async fn sync_category_copy_in_tx("));
 
     for forbidden in [
         "forum_category_route_aliases",
@@ -57,6 +60,7 @@ fn forum_category_writes_delegate_alias_history_to_taxonomy() {
         "record_slug_rename_alias_in_tx(",
         "prepare_slug_rename_in_tx(",
         "ensure_current_route_key_available_in_tx(",
+        "rustok_taxonomy::",
     ] {
         assert!(
             !CATEGORY_OWNER.contains(forbidden) && !CATEGORY_TAXONOMY_SYNC.contains(forbidden),

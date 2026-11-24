@@ -41,7 +41,6 @@ without evidence of a failure is recorded separately below.
 | `P-TENANT-ERROR-INPUT-REFLECTION` | Tenant resolution mapped typed errors to public HTTP messages through Display, interpolating raw Host, slug, header names and validator details. Public messages now use fixed bounded text while keeping HTTP status and machine code; a response-level regression is authored but not run. | [Tenant error mapping](../../apps/server/src/middleware/tenant_resolution.rs), [Tenant middleware](../../apps/server/src/middleware/tenant.rs) |
 | `P-HTTP-UNBOUNDED-TRACE-CONTEXT` | The outer HTTP span still logged raw client-supplied request/correlation IDs, traceparent and extension methods after URI path bounding. Root-span diagnostics now validate fixed-size UUID/trace IDs and W3C version-00 traceparent, redact other input and bucket nonstandard methods; headers are unchanged. Regression authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Server docs](../../apps/server/docs/README.md) |
 | `P-HTTP-RAW-PATH-TRACE` | Edge tracing and metrics-auth/rate-limit debug diagnostics emitted user-controlled URI path segments even though HTTP metrics were already route-template bounded. The root HTTP trace, metrics-auth, rate-limit, tenant, auth-context, channel, locale, security-header and registry authorization middleware now use one fixed `trace_path_family` vocabulary; request dispatch and policy matching retain the original URI. Registry method diagnostics also use a fixed method family. Regression is authored but unrun. | [HTTP edge](../../apps/server/src/middleware/http_stack.rs), [Metrics auth](../../apps/server/src/middleware/metrics_auth.rs), [Rate limit](../../apps/server/src/middleware/rate_limit.rs) |
-| `P-HTTP-BOUNDED-CONTROLLER-FACTS` | HTTP controller diagnostics emitted raw request-controlled paths, slugs, names, permission keys, tool names and stage/correlation values before validation, enabling log injection and unbounded log volume. Controllers now log bounded lengths/presence instead; MCP correlation IDs are restricted to 1–128 printable ASCII characters before audit and SSE event-ID construction, preventing Axum's invalid-ID panic. The correlation-ID regression is authored but unrun. | [Artifact HTTP](../../apps/server/src/controllers/artifact_http.rs), [Marketplace registry](../../apps/server/src/controllers/marketplace_registry.rs), [MCP](../../apps/server/src/controllers/mcp.rs), [MCP runtime](../../apps/server/src/services/mcp_runtime.rs), [Channel](../../apps/server/src/controllers/channel.rs), [Flex](../../apps/server/src/controllers/flex.rs), [Artifact permissions](../../apps/server/src/controllers/artifact_permissions.rs) |
 | `P-QUERYRESULT-DECODE-ORDER` | The poison receipt claim-failure fallback shadowed its raw SQL `QueryResult` with a decoded neutral receipt and then passed the decoded type to an expiry helper requiring the SQL row. Read the derived SQL-only expiry before decoding, retain a narrow source-order regression guard; compile verification remains maintainer-run. | [Receipt store](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Source guard](../../scripts/verify/verify-iggy-consumer-poison-receipts.mjs) |
 | `P-DLQ-OBSERVER-SINGLE-OWNER` | Physical Event DLQ duplicate-alert scanner and telemetry companion could overwrite each other's shutdown-visible lifecycle independently of stop. They now share a registration mutex acquired by shutdown before snapshot; exited tasks emit a stable diagnostic instead of silently returning and are retained for join accounting. No-task modes keep their existing semantics; source tests are authored but unrun. | [Scanner](../../apps/server/src/services/event_dlq_duplicate_alert_observer.rs), [Telemetry companion](../../apps/server/src/services/event_dlq_duplicate_alert_observability.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
 | `P-OBSERVER-LIFECYCLE-OWNERSHIP` | Social Graph position/poison observers used a check-then-spawn registry check, allowing duplicate tasks to overwrite a shutdown handle; retained finished handles also produced false idempotent success. Both observers now reserve startup atomically, reject exited handles and reject stop-time admission; shutdown also waits on their shared registration lock before taking handles. Regression tests are authored but unrun. | [Poison observer](../../apps/server/src/services/social_graph_index_poison_observer.rs), [position observer](../../apps/server/src/services/social_graph_index_position_observer.rs), [runtime reservation](../../apps/server/src/services/server_runtime_context.rs) |
@@ -59,8 +58,12 @@ without evidence of a failure is recorded separately below.
 | `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
 | `P-OWNER-READ-BOUNDARY` | Distribution queried private Product and Channel tables. Change `8cc68c8fa2` moved the read contracts to their owners while retaining one PostgreSQL snapshot for admission. | [Decision](../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md), [Product projection](../../crates/modules/rustok-product/src/index_projection.rs), [Channel projection](../../crates/modules/rustok-channel/src/index_projection.rs) |
 | `P-FIXTURE-OWNERSHIP` | A migration verifier could attempt cleanup after creation failed because a fixture name already existed. Change `8b407a1bb3` tracks successful acquisition before cleanup. | [Verifier](../../crates/utils/rustok-migrations/src/bin/verify_migrations.rs), [bootstrap](../../crates/utils/rustok-migrations/src/verification/bootstrap.rs) |
+| `P-MIGRATION-DIALECT-DRIFT` | Product's two commit-ordering migrations require PostgreSQL but entered the portable SQLite plan and stopped schema setup. The shared SQLite projection excludes both identities. | [Product migration declarations](../../crates/modules/rustok-product/src/migrations/mod.rs), [SQLite plan and schema test](../../crates/utils/rustok-migrations/src/lib.rs) |
+| `P-DUPLICATE-LEDGER-INSERT` | Signed bootstrap duplicated the release ledger's idempotency insert and omitted the expression for `correlation_id`. PostgreSQL rejected every valid import before it wrote the release. Bootstrap, admission and revocation now use the same insert. | [Release ledger](../../crates/modules/rustok-modules/src/distribution_release.rs), [PostgreSQL test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs) |
+| `P-DB-INTEGER-WIDTH` | The build lookup and worker claim decoded the attempt counter as `i64`. PostgreSQL returned `INT4` and rejected the decode. Both readers now use the same backend-aware counter decoder. | [Build and claim reads](../../crates/modules/rustok-modules/src/distribution.rs), [PostgreSQL test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs) |
 | `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
 | `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
+| `P-ANTI-SWALLOW` | A migration composition error could become an empty plan, and failed serialization could become an empty receipt value or the same digest for unrelated inputs. Database entrypoints now check the composed inventory, and receipt and digest builders propagate serialization errors. | [Migration entrypoints](../../crates/utils/rustok-migrations/src/lib.rs), [Schema digests](../../crates/utils/rustok-migrations/src/schema_diff.rs), [Receipt persistence](../../crates/utils/rustok-installer-persistence/src/persistence.rs) |
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
 | `P-COPY-DRIFT-MOUNT` | Commerce's mounted storefront checkout runtime carried a 611-line hand-inlined copy of `storefront_checkout_runtime.rs` inside `mod legacy`; the copy was rustfmt-reformatted, so a textual diff against the original showed only line-wrapping noise while the two bodies drifted as independent sources. The same mounted-copy drift was removed from `checkout_compensation_error_safe.rs` (734-line legacy copy), `rustok-payment`'s `checkout_execution.rs` (eight sibling `mod` mounts replaced by the contracted flat-include composition), and `graphql/mutations/safe_checkout.rs` (753-line byte-identical resolver copy under boundary/shim modules replaced by `include!("checkout.rs");`). | [Mounted facade](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs), [Compensation facade](../../crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs), [Payment execution](../../crates/modules/rustok-payment/src/checkout_execution.rs), [GraphQL checkout facade](../../crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
 | `P-BOUNDED-OWNER-FACTS` | Cart's promotion guard logged raw request payloads (`scope = ?request.scope`) and Order's checkout recovery adapter logged a raw `checkout_operation_id = %request.checkout_operation_id` UUID at owner boundaries. Both now log bounded facts (`scope_kind = request_facts.scope_kind`, `checkout_operation_id_non_nil = !request.checkout_operation_id.is_nil()`), matching the bounded shape already used by the sibling diagnostics in the same files. The same raw-UUID shape was later removed from Order's compensation and settlement owner entries (`checkout_operation_id`/`cart_id`/`order_id` → `_non_nil` facts in `checkout_owner_context.rs` and `checkout_compensation.rs`). | [Promotion guard](../../crates/modules/rustok-cart/src/promotion_guard.rs), [Checkout recovery](../../crates/modules/rustok-order/src/checkout_order_recovery.rs), [Owner context](../../crates/modules/rustok-order/src/checkout_owner_context.rs), [Audit](../../maintainer-conflicts-2026-11-17.md) |
@@ -75,6 +78,129 @@ without evidence of a failure is recorded separately below.
 - **Canonical correction:** Use `id.is_nil()` or `!id.is_nil()`. Where a missing
   identifier represents absence, prefer `Option<Uuid>` over a Nil UUID sentinel.
 - **Verification:** Scoped compilation and Doctor hygiene scan.
+
+### P-MIGRATION-OMITTED-LOCAL-SOURCE — migration source coverage
+
+- **Category** — Source provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
+- **Failure mode** — A valid digest over a declared list can omit a file
+  that supplies executable migration logic. The Blog baseline loads the
+  nested `schema/tables/translations.rs`; Forum soft-delete revisions load
+  their SQLite counters through a literal `#[path]`. Omitting either from
+  the declaration still gives a digest when only the supplied list is hashed.
+- **Implementation** — Starting with the reviewed migration entrypoint,
+  inspect the actual Git blobs and require each supported Rust module and
+  literal include target in the migration's declaration. Report this as
+  local source coverage. Build-time expansion and imported or generated
+  inputs require separate evidence.
+
+```json
+{
+  "migration": "step",
+  "entrypoints": ["src/migrations/step.rs"],
+  "files": ["src/migrations/step.rs", "src/migrations/step/schema.rs"]
+}
+```
+
+Find likely edges with `rg -n '\bmod\s+\w+\s*;|#\[path\s*=|\binclude(_str|_bytes)?!' crates/modules -g '*.rs'`.
+
+### P-CARGO-EXTRACTION-DRIFT — packaged source integrity
+
+- **Category** — Dependency provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
+- **Failure mode** — A locked `.crate` can keep the correct SHA-256 while
+  a file under Cargo's extracted `registry/src` tree changes or a new file
+  appears. In the registry verification regression, changing `src/lib.rs`
+  leaves the archive digest intact.
+- **Implementation** — Compare the committed lockfile checksum with the
+  archive bytes, then verify the packaged relative paths and file bytes in
+  the corresponding extracted tree. Reject unlisted files other than
+  Cargo's own cache marker. Record whether this is an inspection of the
+  current cache or evidence collected during the build.
+
+```sh
+cargo test --locked -p xtask --bin xtask verifies_extracted_cache_against_the_locked_archive
+```
+
+### P-GIT-OBJECT-REPLACEMENT — immutable Git evidence
+
+- **Category** — Source provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
+- **Failure mode** — Default `git ls-tree` and `git cat-file` reads in the
+  migration snapshot tooling let a local `refs/replace` redirect a pinned
+  object ID. A regression replaces an SQL blob and observes different source
+  bytes from a normal Git read of the original object ID.
+- **Implementation** — Route all source object reads through the same Git
+  command constructor and disable replace refs before resolving, listing or
+  reading the objects.
+
+```rust
+let mut command = Command::new("git");
+command.current_dir(root).arg("--no-replace-objects");
+```
+
+Check call sites with `rg -n 'Command::new\("git"\)|ls-tree|cat-file' xtask/src/migrations.rs`.
+
+### P-MIGRATION-DIALECT-DRIFT — portable migration selection
+
+Database compatibility covers preconditions and branch completeness. A migration
+that installs PostgreSQL triggers on an existing PostgreSQL-only table also
+requires exclusion from the portable SQLite composition. In Product, both new
+commit-ordering migrations reached their dialect guard during SQLite setup.
+
+Keep the production migration and dialect guard intact. Record the exact
+migration identity in the shared `SQLITE_INCOMPATIBLE_MIGRATIONS` selection and
+use the same predicate in narrower SQLite fixtures.
+
+```rust
+let portable = migrations
+    .into_iter()
+    .filter(|migration| sqlite_test_migration_is_compatible(migration.name()));
+```
+
+Detect new drift with the portable schema test and verify the full production
+composition on PostgreSQL.
+
+```sh
+cargo test --locked -p rustok-migrations --lib sqlite_test_migrator
+```
+
+### P-DUPLICATE-LEDGER-INSERT — share the operation reservation
+
+Persistence owns the effect of reserving the idempotency key. Copying the
+release reservation into the bootstrap path left its columns and bound values
+out of sync, which aborted the import before it could record a release.
+
+Share the insert in the ledger owner. Keep the interpretation of a previously
+reserved key in the calling operation, where admission, revocation and signed
+import can validate their own replay state.
+
+```rust
+let reserved = try_reserve_release_idempotency_key(txn, kind, context, digest).await?;
+```
+
+Detect copies of the reservation SQL with `rg 'INSERT INTO module_static_distribution_release_idempotency_keys' crates/modules/rustok-modules/src`
+and exercise valid import and replay against PostgreSQL.
+
+### P-DB-INTEGER-WIDTH — decode the stored SQL width
+
+Database projection preconditions include the SQL type of each value. The
+distribution build counter decoded as `i64` on SQLite and failed with the same
+decoder on PostgreSQL `INTEGER` (`INT4`). The failure affected build resolution
+and worker claims.
+
+Decode the physical type at the store boundary, then perform the checked
+conversion to the domain counter. Reuse the decoder for the same column.
+
+```rust
+let count = match backend {
+    SupportedBackend::Postgres => row.try_get::<i32>("", "attempt_count").map(i64::from),
+    SupportedBackend::Sqlite => row.try_get::<i64>("", "attempt_count"),
+}
+.map_err(store_error)?;
+u32::try_from(count).map_err(|_| ModuleStaticDistributionError::AttemptOverflow)
+```
+
+Use `rg 'attempt_count (INTEGER|BIGINT)|try_get.*attempt_count' crates/modules/rustok-modules/src`
+to compare the schema and readers. Run the owner path on PostgreSQL to verify
+the driver mapping.
 
 ### P-FLY-CROSS-DOCUMENT-INTENT — check document ownership as well as revision
 
@@ -499,6 +625,10 @@ flowchart TD
 ### Pattern 3: Lock-Before-Check Concurrency (`P-LOCK-ORDER`)
 * **Category:** Order of Operations & TOCTOU Elimination
 * **Problem:** Checking invariants (such as rate limits, inventory availability, balance thresholds, or slug uniqueness) *before* acquiring the transactional or advisory lock introduces a Time-Of-Check to Time-Of-Use (TOCTOU) race condition.
+  Concurrent Blog tag removals both counted a relation the other transaction
+  had yet to commit deleting. The usage row serialized the upserts only after
+  they had already computed stale counts. Blog enters its tenant tag lock
+  before changing any relation or acquiring a post or term write lock.
 * **Pattern Solution:**
   Always acquire the mutex or advisory lock first, and verify preconditions *inside* the protected critical section:
   ```rust
@@ -541,6 +671,52 @@ flowchart TD
 * **Verification:** Exercise a missing-scope caller against an otherwise public resource and verify the final outcome. The scanner flags explicit success branches for review.
 
 ---
+
+### Shared checkpoint scope (`P-SHARED-CHECKPOINT-SCOPE`)
+
+**Category** — State transition integrity and authorization.
+
+**Failure mode** — Taxonomy's editorial discovery omits module terms the actor
+cannot read. Rebuilding the tenant's shared Translation inventory from that
+view discards other modules' records. Filtering the same journal by actor can
+also advance the shared checkpoint past unreadable changes.
+
+**Owner contract** — Authorize the whole metadata projection at its owner.
+Both the baseline and the journal must cover the same tenant and resource
+scope. Check editorial permissions separately when serving localized content.
+The inventory baseline stores only identity, revision and lifecycle.
+
+```rust
+// TranslationInventoryService rebuilds from the provider's maintenance view.
+let page = provider.list_inventory_resources(context, request).await?;
+```
+
+Find owner discovery filters and their maintenance entry points with
+`rg -n 'async fn (list_inventory_resources|read_changes)|authorize_term' crates/modules`.
+
+### Commit-ordered journal cursor (`P-JOURNAL-COMMIT-ORDER`)
+
+**Category** — Order of operations and concurrency.
+
+**Failure mode** — Taxonomy formerly used the change UUID as its checkpoint.
+An earlier insert can commit after a later insert and fall behind an already
+stored checkpoint. Same-millisecond IDs can also sort a term's deletion ahead
+of its creation.
+
+**Owner contract** — Give each entry a publication position that can only
+become visible after all earlier positions in that scope. Taxonomy increments
+its tenant journal head during PostgreSQL commit and inside SQLite's serialized
+write transaction. Reads seek on the position and leave the UUID as identity.
+
+```rust
+query
+    .filter(ChangeColumn::Position.gt(after))
+    .order_by_asc(ChangeColumn::Position)
+```
+
+Find candidate journals with `rg -n 'ChangeColumn::Id\.(gt|lt)|order_by_asc\(ChangeColumn::Id' crates/modules`.
+Test by holding one write open, committing a second, checkpointing and then
+committing the first.
 
 ### Pattern 5: Bounded Identifier Entropy (`P-ID-ENTROPY`)
 * **Category:** Calculation & Algorithmic Correctness
@@ -1530,6 +1706,26 @@ Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the si
 for each, follow the value back and read every branch of its reader for one that
 returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).
 
+## P-OWNER-COPY-PRESERVATION — Preserve owner state during a partial write
+
+**Category:** Module boundaries. **Logic dimension:** Side-effect completeness.
+
+Product sent empty icon and color values to Taxonomy's exact category snapshot
+writer during a translation sync. The writer interpreted the empty values as
+clears and advanced the presentation revision.
+
+Use the owner operation that matches the fields the caller can set. A copy
+write preserves presentation and lets Taxonomy extend its own route history.
+It retains historical slugs as aliases and rejects a request to reuse one
+as the canonical route.
+
+```rust
+sync_module_category_copy_in_tx(txn, tenant_id, localized_snapshot).await?;
+```
+
+Inspect exact snapshot writers used by copy or translation mutations with
+`rg -n 'sync_module_category_in_tx\(' crates/modules`.
+
 ## P-CHECK-FOLLOWS-SOURCE — A source-pinning check changes with the source it pins
 
 - **Category:** Verification integrity.
@@ -1553,6 +1749,11 @@ returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct for
   a table row into cells, compare strings without their quote form. After changing a
   check, break the source once and see the check fail. A check that no workflow runs
   is not evidence; wire it or delete it.
+
+The shared FFA lint used to accept adapter files next to `transport.rs` even
+though ordinary Rust child declarations resolve under `transport/`. The layout
+fixtures now exercise both forms of the facade, a misplaced child, and ambiguous
+entry points where both Rust module files exist.
 
 ```js
 // One struct, not the rest of the file.
@@ -1721,6 +1922,31 @@ Detection: for a crate with default features, list the consumers that set
 use. For an optional property or context value, search for a writer. `scripts/verify/
 verify-fly-ssr-first.mjs` fails on a manifest feature that enables the editor's `ssr`
 without `browser-js` and on a missing nonce hand-off.
+
+## P-RUNTIME-PORT-PROPAGATION — Pass the selected port to nested services
+
+**Category:** Runtime composition. **Logic dimension:** Branch completeness.
+
+Blog's primary transports selected the host's Taxonomy port. Widget previews,
+draft previews and RSS constructed services with the standalone default, so the
+same post could lose Taxonomy data on those paths.
+
+Pass the selected port whenever a transport or an owner service constructs
+another service that reads or mutates owner data:
+
+```rust
+let posts = PostService::new(db, event_bus).with_taxonomy_port(taxonomy_port);
+```
+
+Trace the constructors from each entry point with
+`rg -n 'PostService::new\(|with_taxonomy_port\(' crates/modules/rustok-blog`.
+
+The Blog/Forum conversion bridge took a separate path to Taxonomy and then
+called a Blog relation writer without its port. Promotion could create Blog
+tags without the caller's permission, and the usage projection lost its
+canonical tag key or retained unused global tags. Both conversion directions
+now use the Blog port and owner commands. Exercise a promotion with and
+without the creation grant, then verify tag usage after demotion.
 
 ## P-ORPHAN-SPAWN — Supervise background tasks and retain JoinHandles
 

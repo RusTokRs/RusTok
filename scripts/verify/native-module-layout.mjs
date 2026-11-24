@@ -484,8 +484,14 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     diagnostics.push(relative(root, core) + ": FFA core cannot be an empty facade");
   }
 
-  const transport = hasSource(join(src, "transport.rs")) ? join(src, "transport.rs") :
-    join(src, "transport", "mod.rs");
+  const transportDir = join(src, "transport");
+  const flatTransport = join(src, "transport.rs");
+  const directoryTransport = join(transportDir, "mod.rs");
+  if (hasSource(flatTransport) && hasSource(directoryTransport)) {
+    diagnostics.push(relative(root, src) +
+      ": transport facade has both transport.rs and transport/mod.rs");
+  }
+  const transport = hasSource(flatTransport) ? flatTransport : directoryTransport;
   const transportSource = readRequired(root, transport, diagnostics);
   const transportCode = maskRustNonCode(transportSource);
   const adapterNames = ["native_server_adapter", "graphql_adapter"].filter((adapter) =>
@@ -521,15 +527,20 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
       ": every declared native/GraphQL adapter must be reached by an owner operation in the transport facade");
   }
 
-  const transportDir = join(src, "transport");
-  const adapterRoot = hasSource(join(src, "transport.rs")) ? src : transportDir;
   for (const adapter of adapterNames) {
     const candidates = [
-      join(adapterRoot, adapter + ".rs"),
-      join(adapterRoot, adapter, "mod.rs"),
+      join(transportDir, adapter + ".rs"),
+      join(transportDir, adapter, "mod.rs"),
     ];
-    const adapterPath = candidates.find(hasSource) || candidates[0];
+    const existing = candidates.filter(hasSource);
+    if (existing.length > 1) {
+      diagnostics.push(relative(root, transportDir) +
+        ": declared transport adapter " + adapter + " has both a file and a directory entrypoint");
+      continue;
+    }
+    const adapterPath = existing[0] ?? candidates[0];
     const adapterSource = readRequired(root, adapterPath, diagnostics);
+    if (existing.length === 0) continue;
     const adapterCode = maskRustNonCode(adapterSource);
     if (!/\bpub(?:\([^)]*\))?\s+(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(adapterCode)) {
       diagnostics.push(relative(root, adapterPath) +

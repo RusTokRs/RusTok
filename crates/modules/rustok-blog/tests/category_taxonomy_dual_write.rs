@@ -4,21 +4,24 @@ use rustok_blog::{
     BlogError, BlogModule, CategoryService, CreateCategoryInput, ListCategoriesFilter,
     UpdateCategoryInput,
 };
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_events::EventEnvelope;
-use rustok_outbox::TransactionalEventBus;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{
     SyncModuleCategoryInput, TaxonomyModule,
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     sync_module_category_with_owned_aliases_in_tx,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -34,16 +37,14 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn service(
-    db: &DatabaseConnection,
-) -> (
-    CategoryService,
-    tokio::sync::broadcast::Receiver<EventEnvelope>,
-) {
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
-    (service, receiver)
+fn service(db: &DatabaseConnection) -> CategoryService {
+    use rustok_content_orchestration::in_process_blog_taxonomy_port;
+
+    CategoryService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+    )
+    .with_taxonomy_port(in_process_blog_taxonomy_port(db.clone()))
 }
 
 fn admin() -> SecurityContext {
@@ -81,7 +82,7 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
         "Blog Category Translation change journal must be retired"
     );
 
-    let (service, _events) = service(&db);
+    let service = service(&db);
     let tenant_id = Uuid::new_v4();
 
     let category_id = service
@@ -203,7 +204,7 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
 #[tokio::test]
 async fn taxonomy_route_conflict_rolls_back_blog_create() {
     let db = setup().await;
-    let (service, _events) = service(&db);
+    let service = service(&db);
     let tenant_id = Uuid::new_v4();
     let taxonomy_owner_id = Uuid::new_v4();
 

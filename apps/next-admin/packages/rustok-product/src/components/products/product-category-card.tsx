@@ -23,6 +23,13 @@ import { Label } from '@/shared/ui/shadcn/label';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
 import { Switch } from '@/shared/ui/shadcn/switch';
 import { Badge } from '@/shared/ui/shadcn/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/shared/ui/shadcn/select';
 import { Loader2, FolderTree, AlertCircle, Layers } from 'lucide-react';
 import { SearchableCategorySelect } from '../categories/searchable-category-select';
 import type {

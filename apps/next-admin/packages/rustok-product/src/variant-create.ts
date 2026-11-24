@@ -6,10 +6,10 @@
 
 import type { CreateVariantInput } from './api/types';
 import type { UpdateVariantInput } from './api/products';
-import { MAX_INVENTORY_QUANTITY } from './limits';
+import { MAX_INVENTORY_QUANTITY } from './limits.ts';
 import { parsePriceAmount } from './money.ts';
 
-export { MAX_INVENTORY_QUANTITY, MAX_PRODUCT_VARIANTS } from './limits';
+export { MAX_INVENTORY_QUANTITY, MAX_PRODUCT_VARIANTS } from './limits.ts';
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);

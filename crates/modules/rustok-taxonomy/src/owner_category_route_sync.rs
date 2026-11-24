@@ -117,37 +117,70 @@ pub async fn sync_module_category_structure_with_owned_copy_in_tx(
 pub async fn sync_module_category_with_owned_aliases_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    mut input: SyncModuleCategoryInput,
+    input: SyncModuleCategoryInput,
 ) -> TaxonomyResult<SyncModuleCategoryResult> {
+    let input = include_owned_category_aliases_in_tx(txn, tenant_id, input).await?;
+    sync_module_category_in_tx(txn, tenant_id, input).await
+}
+
+pub(crate) async fn include_owned_category_aliases_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    mut input: SyncModuleCategoryInput,
+) -> TaxonomyResult<SyncModuleCategoryInput> {
     crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
     let locale = normalize_term_locale(&input.locale)
         .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty or invalid"))?;
     let next_slug = normalize_term_route_key(&input.slug)
         .ok_or_else(|| TaxonomyError::validation("Category localized slug cannot be empty"))?;
+    let existing = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::TermId.eq(input.category_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq(&locale))
+        .one(txn)
+        .await?;
+    let mut aliases = category_alias_history_for_slug_in_tx(
+        txn,
+        tenant_id,
+        input.category_id,
+        &locale,
+        existing.as_ref().map(|copy| copy.slug.as_str()),
+        &next_slug,
+    )
+    .await?;
+    aliases.extend(std::mem::take(&mut input.aliases));
+    aliases.remove(&next_slug);
 
+    input.aliases = aliases.into_iter().collect();
+    Ok(input)
+}
+
+/// Build the append-only history for a Category copy change under the hierarchy writer lock.
+pub(crate) async fn category_alias_history_for_slug_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+    previous_slug: Option<&str>,
+    next_slug: &str,
+) -> TaxonomyResult<BTreeSet<String>> {
     let mut aliases = taxonomy_term_alias::Entity::find()
         .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_alias::Column::TermId.eq(input.category_id))
-        .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
+        .filter(taxonomy_term_alias::Column::TermId.eq(category_id))
+        .filter(taxonomy_term_alias::Column::Locale.eq(locale))
         .all(txn)
         .await?
         .into_iter()
         .map(|alias| alias.slug)
         .collect::<BTreeSet<_>>();
-    aliases.extend(std::mem::take(&mut input.aliases));
-    aliases.remove(&next_slug);
+    if aliases.contains(next_slug) {
+        return Err(TaxonomyError::DuplicateAlias(next_slug.to_owned()));
+    }
 
-    if let Some(existing) = taxonomy_term_translation::Entity::find()
-        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_translation::Column::TermId.eq(input.category_id))
-        .filter(taxonomy_term_translation::Column::Locale.eq(&locale))
-        .one(txn)
-        .await?
-    {
-        let previous_slug = normalize_term_route_key(&existing.slug).ok_or_else(|| {
+    if let Some(previous_slug) = previous_slug {
+        let previous_slug = normalize_term_route_key(previous_slug).ok_or_else(|| {
             TaxonomyError::conflict(format!(
-                "Category {} has an invalid stored localized route key for locale {locale}",
-                input.category_id
+                "Category {category_id} has an invalid stored localized route key for locale {locale}",
             ))
         })?;
         if previous_slug != next_slug {
@@ -155,8 +188,7 @@ pub async fn sync_module_category_with_owned_aliases_in_tx(
         }
     }
 
-    input.aliases = aliases.into_iter().collect();
-    sync_module_category_in_tx(txn, tenant_id, input).await
+    Ok(aliases)
 }
 
 fn normalize_module_scope(value: &str) -> TaxonomyResult<String> {

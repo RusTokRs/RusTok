@@ -76,8 +76,8 @@ test("owner tenant proof cannot disappear behind item locks", () => {
     replace(
       root,
       "inventory",
-      "load_tenant_variant(&context, ADOPT_OPERATION, &txn, tenant_id, *variant_id).await?;",
-      "load_unscoped_variant(&context, ADOPT_OPERATION, &txn, *variant_id).await?;",
+      "load_tenant_variants(&context, ADOPT_OPERATION, &txn, tenant_id, &variant_ids_vec).await?;",
+      "load_unscoped_variants(&context, ADOPT_OPERATION, &txn, &variant_ids_vec).await?;",
     );
     rejected(root, "tenant proof before item locks");
   });

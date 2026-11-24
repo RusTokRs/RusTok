@@ -12,7 +12,7 @@ import type {
 import type { UpdateVariantInput } from './api/products';
 import type { CombinationAxis } from './combinations';
 import { chooseCombination, CombinationError } from './combinations.ts';
-import { MAX_INVENTORY_QUANTITY } from './limits';
+import { MAX_INVENTORY_QUANTITY } from './limits.ts';
 import { parsePriceAmount } from './money';
 import { isEligibleAxis } from './schema-policy';
 

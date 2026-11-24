@@ -13,8 +13,7 @@ use crate::services::checkout_execution_admission_port;
 ///
 /// Commerce composes the existing collection create/reuse, collection lifecycle, and refund
 /// capabilities but does not own Payment persistence, provider journals, or provider execution.
-/// Hosts may inject each owner runtime independently; missing capabilities use Payment-owned
-/// in-process adapters with the deployment-selected provider registry where applicable.
+/// The host supplies the owner runtimes. Explicitly embedded callers can use `in_process`.
 #[derive(Clone)]
 pub struct CommercePaymentCommandRuntime {
     collection_create_or_reuse: PaymentCollectionRuntime,
@@ -44,38 +43,6 @@ impl CommercePaymentCommandRuntime {
                 checkout_execution_admission_port(db.clone()),
             ),
             PaymentAdminRefundCommandRuntime::in_process(db, provider_registry),
-        )
-    }
-
-    /// Host-selected composition: each owner runtime is preferred from the host's shared
-    /// inputs, with the Payment-owned in-process adapter as the fallback.
-    pub(crate) fn from_graphql_inputs(
-        inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-    ) -> Self {
-        let provider_registry = inputs
-            .shared_get::<PaymentProviderRegistry>()
-            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
-        Self::new(
-            inputs
-                .shared_get::<PaymentCollectionRuntime>()
-                .unwrap_or_else(|| PaymentCollectionRuntime::in_process(inputs.db_clone())),
-            inputs
-                .shared_get::<PaymentAdminCollectionCommandRuntime>()
-                .unwrap_or_else(|| {
-                    PaymentAdminCollectionCommandRuntime::in_process(
-                        inputs.db_clone(),
-                        provider_registry.clone(),
-                        checkout_execution_admission_port(inputs.db_clone()),
-                    )
-                }),
-            inputs
-                .shared_get::<PaymentAdminRefundCommandRuntime>()
-                .unwrap_or_else(|| {
-                    PaymentAdminRefundCommandRuntime::in_process(
-                        inputs.db_clone(),
-                        provider_registry,
-                    )
-                }),
         )
     }
 

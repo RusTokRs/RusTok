@@ -153,4 +153,4 @@ pub mod module;
 pub use module::{ProductModule, ProductRuntimeSelected};
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

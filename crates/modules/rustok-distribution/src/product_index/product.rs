@@ -7,10 +7,10 @@ use rustok_index::{
     DomainError, EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexLink,
     IndexLinkValue, IndexMutation, IndexRecord, IndexSchema, IndexSource, IndexSourceCursor,
     IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
-    IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName, LinkedEntityKey,
-    LocaleKey, LocaleMode, ModuleName, PostgresIndexSourceFactory, IndexSourceRegistrationError,
-    SchemaRef, SchemaVersion, derive_index_schema_source_event_id, register_index_schema_source, register_index_source,
-    register_postgres_index_source_factory,
+    IndexSourceRegistrationError, IndexSourceScanRequest, IndexValue, IndexValueType,
+    LinkCardinality, LinkName, LinkedEntityKey, LocaleKey, LocaleMode, ModuleName,
+    PostgresIndexSourceFactory, SchemaRef, SchemaVersion, derive_index_schema_source_event_id,
+    register_index_schema_source, register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -562,6 +562,57 @@ fn permanent(code: &'static str) -> IndexSourceFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ShortLocaleReplayPage;
+
+    #[async_trait]
+    impl ProductLocaleReplayPort for ShortLocaleReplayPage {
+        async fn scan_locale_replay(
+            &self,
+            context: PortContext,
+            _request: ProductLocaleReplayScan,
+        ) -> Result<rustok_product::ProductLocaleReplayPage, PortError> {
+            let entry = ProductLocaleReplayEntry {
+                tenant_id: Uuid::parse_str(&context.tenant_id).unwrap(),
+                product_id: Uuid::from_u128(2),
+                source_version: 1,
+                product_source_version: std::num::NonZeroU64::new(1).unwrap(),
+                locale: "en".to_owned(),
+                state: ProductLocaleReplayState::Deleted,
+            };
+            Ok(rustok_product::ProductLocaleReplayPage {
+                next: Some(entry.key()),
+                entries: vec![entry],
+            })
+        }
+
+        async fn load_locale_replay(
+            &self,
+            _context: PortContext,
+            _keys: Vec<ProductLocaleReplayKey>,
+        ) -> Result<Vec<ProductLocaleReplayEntry>, PortError> {
+            panic!("the scan must not load exact keys");
+        }
+    }
+
+    #[tokio::test]
+    async fn localized_source_accepts_a_short_transport_page_with_continuation() {
+        let source = ProductPostgresIndexSource {
+            port: Arc::new(ShortLocaleReplayPage),
+        };
+        let request = IndexSourceScanRequest::new(
+            Uuid::from_u128(1),
+            product_schema_ref().unwrap(),
+            None,
+            1000,
+        )
+        .unwrap();
+        let page = source.scan(request).await.unwrap();
+        assert_eq!(page.mutations().len(), 1);
+        let cursor = ProductCursor::decode(page.next_cursor().unwrap()).unwrap();
+        assert_eq!(cursor.product_id, Uuid::from_u128(2));
+        assert_eq!(cursor.locale, "en");
+    }
 
     #[test]
     fn canonical_product_schema_contains_only_current_storefront_graph_contract() {

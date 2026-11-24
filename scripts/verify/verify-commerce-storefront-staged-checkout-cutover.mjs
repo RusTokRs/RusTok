@@ -45,8 +45,13 @@ for (const [source, value, label] of [
   ],
   [
     mountedRuntime,
-    'include!("storefront_checkout_runtime.rs")',
-    "private legacy compatibility include",
+    '#[path = "storefront_checkout_runtime.rs"]',
+    "private legacy compatibility module path",
+  ],
+  [
+    mountedRuntime,
+    'mod legacy;',
+    "private legacy compatibility module declaration",
   ],
   [
     mountedRuntime,

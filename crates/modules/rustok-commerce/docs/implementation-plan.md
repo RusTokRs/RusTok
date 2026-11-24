@@ -2249,3 +2249,51 @@ and [source packet](../../rustok-inventory/contracts/evidence/source-index-consu
       restart/deployment and older-baseline cutover. No historical facts or checkpoint reset inferred.
 - [ ] Admit full downstream Product step-8 evidence. Source/worker registration and initial pending
       enqueue are authored only; no test/build/runtime/readiness evidence is claimed here.
+
+## Commerce extraction boundary review (2026-11-22)
+
+The mounted storefront checkout obtains its Product read port from the host-selected
+`ProductCatalogReadRuntime`. It runs a staged process with durable operation identities,
+leases, checkpoints, compensation and transactional operation events. See
+[`storefront_staged_checkout_runtime.rs`](../src/storefront_staged_checkout_runtime.rs),
+[`staged_checkout.rs`](../src/services/staged_checkout.rs), and
+[`checkout_operation.rs`](../src/services/checkout_operation.rs).
+
+Mounted GraphQL schema attachment requires the selected Commerce Payment read and command
+runtimes. Mounted HTTP composition requires its Payment provider registry, admin reads, and
+admin collection/refund commands. The server already publishes these dependencies through
+its Commerce host composition. Embedded adapters remain available for direct composition.
+
+Commerce GraphQL reads Product-owned brand links from the selected Product catalog projection.
+Brand records and the historical association fallback still run through Brand-owned services.
+The legacy manual fulfillment facade reads Order and line-item snapshots through `OrderReadPort`.
+It rejects a mismatched tenant, order or line-item owner before it creates a fulfillment.
+Mounted admin fulfillment creation already delegates through its owner ports.
+
+The mounted storefront wrapper still constructs local Cart, Inventory, Region and Customer
+providers. Cart preparation uses a native atomic handle with a pricing callback. Commerce must
+define how preparation, retries and compensation work across independent storage before
+switching that stage to RPC. The checkout journal verifies new Cart bindings through
+`CartCheckoutPort`. A retained operation replays by key and request hash before consulting
+the Cart owner. The mounted runtime supplies the current in-process Cart provider. Order
+and Payment checkpoint checks still read the shared database, and the journal has foreign
+keys into all three owner tables. Remote participation requires a storage migration and
+tenant-scoped owner evidence that retains the write-once Payment binding. The paid-order
+label sweep still queries Order and Fulfillment storage together.
+The embedded checkout composes local owner services. The consumer registry continues to
+record `remote_profile = not_enabled`.
+
+Static call-graph totals require classification by production path, contract use and storage
+ownership. Synchronous owner commands remain appropriate when the next stage needs their
+result. Outbox publishes committed facts. Recovery must retain operation identities and
+reconcile unknown outcomes across network failures.
+
+The staged checkout, Fulfillment boundary and Inventory adoption source verifiers now follow
+the current source layout and Inventory tenant-proof ordering. The Payment route guards verify
+that mounted composition requires the selected providers.
+
+The checkout service integration suite passed 23 of 34 scenarios in the working tree.
+The same 11 cases failed on clean `ed99a87e77` with the same Product, Inventory, Tax
+and Fulfillment setup or error expectations. The focused owner-boundary tests are the
+runtime evidence for this change. A full remote checkout profile still needs its own
+runtime validation.

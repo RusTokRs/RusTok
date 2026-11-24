@@ -5,5 +5,6 @@
 //! private persistence entities.
 
 pub use crate::services::orchestration::*;
+pub use crate::services::tag::lock_tag_attachments_writer_in_tx;
 pub use crate::services::taxonomy;
 pub use crate::services::taxonomy::*;

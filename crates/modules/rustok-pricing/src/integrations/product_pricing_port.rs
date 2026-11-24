@@ -264,7 +264,7 @@ fn select_storefront_list_price_candidates<'a>(
 pub fn in_process_product_pricing_port(db: DatabaseConnection) -> Arc<dyn ProductPricingPort> {
     Arc::new(PricingProductPricingPortAdapter::new(db))
 }
- 
+
 #[cfg(test)]
 mod tests {
     use super::*;

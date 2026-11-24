@@ -90,6 +90,19 @@ and mutation identity are shared between embedded and remote deployment.
 The standalone service uses its Channel identity provider to confirm the live
 witness before handing rows to Index.
 
-The gRPC transport uses unary responses and its normal message-size limit.
-Large localized replay pages still need transport verification.
+`ScanLocaleReplay` uses unary responses bounded by the default 4 MiB gRPC receive limit.
+The adapter can return a shorter prefix than the requested entry limit, with `next` naming
+the last returned Product/locale key. Continue until `next` is absent. The Index source
+accepts these shorter pages. Entries keep their full contents and owner revisions.
+An individual entry that cannot fit returns the nonretryable
+`product.locale_replay_entry_too_large` error.
+
+The transport tests cover JSON escaping, continuation preservation, terminal empty pages and
+oversized individual entries. `LoadLocaleReplay` remains an exact-key operation with its
+existing unary message-size constraint.
+
+On 2026-11-22 the separate-process PostgreSQL fixture in
+[`channel_convergence_service_postgres.rs`](../tests/channel_convergence_service_postgres.rs)
+passed with eleven localized entries carrying 512 KiB descriptions, verifying pagination
+across the gRPC size boundary and two locales of the same Product without missing or duplicate keys.
 

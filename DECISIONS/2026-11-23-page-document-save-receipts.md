@@ -2,9 +2,11 @@
 
 - Date: 2026-11-23
 - Decision status: Accepted
-- Implementation status: In progress (source changes only; not verified)
-- Owner: `rustok-pages`
+- Implementation status: In progress
+- Owners: rustok-pages
 - Extends: [Page body working copies](./2026-10-09-page-body-draft-and-revision-history.md)
+- Supersedes: None
+- Superseded by: None
 - Related: [Shared owner-operation receipts](./2026-08-03-owner-operation-receipts.md)
 
 ## Context
@@ -65,7 +67,10 @@ post-commit result drift but does not give cross-session replay.
     duplicate-key replay, competing distinct CAS writers, and an opt-in
     PostgreSQL two-session test. No database test has been executed.
 
-## Relation to the shared owner receipt primitive
+## Sources of truth and ownership
+
+Pages owns document save receipts and the committed document revision.
+The owner-bound Fly draft session records browser intent acknowledgements.
 
 The accepted [shared Outbox owner receipt](./2026-08-03-owner-operation-receipts.md)
 is canonical for leased, potentially independent owner-port commands. The
@@ -78,20 +83,7 @@ explicitly Pages-owned record rather than a general-purpose second receipt
 service. Any future consolidation must preserve the lock order, original
 acknowledgement identity and no-reexecution tombstones.
 
-## Migration and verification
-
-The additive table migration currently supports PostgreSQL and SQLite;
-MySQL fails closed until its schema and concurrent behavior are implemented.
-Deploy the server and schema before clients send `idempotencyKey`. Older
-clients remain supported but have no durable replay guarantee.
-
-PostgreSQL/MySQL page locking and SQLite busy/locked behavior still require
-multi-connection integration evidence. The current migration does not
-implement MySQL despite the existing Pages service having MySQL branches.
-Restore, publish/lifecycle save correlation, Next direct-write clients,
-provider-host edge cases, and Dioxus gesture parity are separate follow-ups.
-No Rust compilation, tests, formatting, linting, Playwright or runtime
-verification were executed for this change; PR must remain Draft.
+### Pages SSR browser intents
 
 11. The strict Pages SSR browser-intent path now gives each mutating envelope a
     random, validated `operation_id`. The server fingerprints the normalized
@@ -124,3 +116,62 @@ verification were executed for this change; PR must remain Draft.
     restore/lifecycle workflow or Dioxus host. PageService's content/revision
     save receipt remains a separate, lower-level safeguard for the actual
     document write.
+
+## Invariants
+
+A tenant, page, and key identify at most one save. The authenticated actor
+and request digest must match on replay. An expired snapshot leaves a
+tombstone that prevents reexecution.
+
+## Non-goals
+
+Restore, publish and lifecycle save correlation, Next direct-write clients,
+provider-host edge cases, and Dioxus gesture parity remain separate work.
+
+## Data, transaction, and concurrency boundary
+
+Pages resolves receipt replay under the page write lock before checking the
+expected revision. The document, revision journal, catalog updates, outbox
+event and save receipt commit together. The Fly draft store separately commits
+the browser intent receipt with its snapshot and generation.
+
+## Context dimensions
+
+The write and lookup use the authorized tenant, page, and actor. The
+document request digest also binds the locale and observed revision.
+
+## Events and projections
+
+The committed receipt stores the authorized save response. A replay returns
+the snapshot without appending a revision or publishing another event.
+
+## Failure semantics
+
+A missing receipt leaves the save outcome unknown. A different actor or
+payload conflicts, and a retained tombstone reports expiry. The browser
+preserves its pending request until the operator resolves uncertainty.
+
+## Migration and cutover
+
+Apply the additive `page_document_save_receipts` migration to PostgreSQL or
+SQLite before the client sends `idempotencyKey`. MySQL fails closed pending a
+supported migration. Requests without a key retain the existing revision CAS.
+
+## Alternatives considered
+
+An editor-local attempt ID cannot recover a save after a session change.
+Reexecuting on a stale revision cannot distinguish a lost response from a
+competing write. The shared leased receipt service has different retention
+and does not provide perpetual tombstones for this aggregate.
+
+## Verification
+
+Multi-connection evidence is still required for PostgreSQL locking and SQLite
+busy handling. MySQL is outside the implemented migration scope. The
+implementation evidence recorded in this decision is source-only.
+
+## Consequences
+
+Clients can recover the acknowledged revision across sessions. Pages keeps
+the newest 64 response snapshots per page and retains older key tombstones
+until page deletion.

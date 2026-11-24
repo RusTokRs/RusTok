@@ -24,7 +24,7 @@ pub struct ProductAdminBootstrap {
     pub me: CurrentUser,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ProductList {
     pub items: Vec<ProductListItem>,
     pub total: u64,
@@ -498,7 +498,11 @@ impl VariantUpdateDraft {
         Self {
             sku,
             barcode,
-            prices: if prices_changed { next_prices } else { Vec::new() },
+            prices: if prices_changed {
+                next_prices
+            } else {
+                Vec::new()
+            },
             prices_changed,
             inventory_quantity: (inventory_quantity != original.inventory_quantity)
                 .then_some(inventory_quantity),
@@ -524,12 +528,9 @@ impl VariantUpdateDraft {
             || self.inventory_policy.is_some()
     }
 
-    fn edited_text_if_changed(
-        value: String,
-        current: Option<&str>,
-    ) -> rustok_api::Patch<String> {
+    fn edited_text_if_changed(value: String, current: Option<&str>) -> rustok_api::Patch<String> {
         let normalized = rustok_ui_core::normalize_ui_text(&value);
-        if normalized.as_deref() == current {
+        if Some(value.as_str()) == current || normalized.as_deref() == current {
             rustok_api::Patch::Keep
         } else {
             match normalized {
@@ -914,7 +915,6 @@ pub struct ProductAttributeValueBatchDraft {
     pub patches: Vec<ProductAttributeValuePatchDraft>,
 }
 
-
 #[cfg(test)]
 mod variant_update_draft_tests {
     use super::{ProductPrice, ProductVariant, VariantUpdateDraft};
@@ -1004,7 +1004,10 @@ mod variant_update_draft_tests {
         assert!(draft.has_changes());
 
         draft.prices.clear();
-        assert!(draft.has_changes(), "an explicit empty replacement clears prices");
+        assert!(
+            draft.has_changes(),
+            "an explicit empty replacement clears prices"
+        );
 
         draft.prices_changed = false;
         draft.sku = Patch::Clear;

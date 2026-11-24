@@ -283,7 +283,7 @@ export function ProductVariantsCard({
     }
   };
 
-  const handleSaveDialog = async () =>
+  const handleSaveDialog = async () => {
     if (disabled || isBusy) return;
     if (editingVariant ? !onUpdateVariant : !onAddVariant) {
       setError(combinationsCopy('writeUnavailable'));

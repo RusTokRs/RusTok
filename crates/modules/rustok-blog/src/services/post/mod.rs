@@ -42,7 +42,8 @@ use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
 use crate::services::tag::{
-    load_post_tags_map, remove_post_tag_links_in_tx, resolve_tag_id_for_posts, sync_post_tags_in_tx,
+    load_post_tags_map, lock_tag_attachments_writer_in_tx, remove_post_tag_links_with_port_in_tx,
+    resolve_tag_id_for_posts, sync_post_tags_in_tx,
 };
 use crate::state_machine::BlogPostStatus;
 
@@ -288,7 +289,7 @@ fn validate_optional_title(title: Option<&str>) -> BlogResult<()> {
     Ok(())
 }
 
-fn validate_tags(tags: &[String]) -> BlogResult<()> {
+pub(super) fn validate_tags(tags: &[String]) -> BlogResult<()> {
     if tags.len() > 20 {
         return Err(BlogError::validation("Cannot have more than 20 tags"));
     }

@@ -95,6 +95,17 @@ revisions, source hashes, semantic value profiles, constraints, data
 classification, permission floors, bounded cursoring, validation, and atomic
 apply.
 
+Inventory checkpoints belong to the tenant and provider. A provider with
+actor-filtered discovery authorizes maintenance at that full scope and exposes
+the same resource population in its content-free baseline and change journal.
+Editorial reads still observe owner permissions. The checkpoint cannot be
+advanced or rebuilt from a partial editorial view.
+
+An owner change cursor must advance only over a prefix that is complete at
+the time of observation. For a paged journal, a later commit must never add an
+entry behind the consumer's checkpoint. Journal identity and publication
+position serve separate purposes.
+
 Structured data is translated only through owner segmentation and reassembly.
 Raw HTML, secrets, identifiers, URLs, code, arbitrary JSON, and immutable
 transaction history are excluded.

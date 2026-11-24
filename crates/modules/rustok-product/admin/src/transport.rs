@@ -35,9 +35,9 @@ use crate::model::{
     CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
     ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, ProductCatalogSearchOption, ProductCatalogSearchOptions,
-    ProductDetail, ProductDraft, ProductEffectiveForm, ProductList, ProductPricingDetail,
-    SetCategorySchemaModeDraft, ShippingProfileList,
+    ProductAttributeValuePatchDraft, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
+    ProductEffectiveForm, ProductList, ProductPricingDetail, SetCategorySchemaModeDraft,
+    ShippingProfileList,
 };
 use crate::schema_retry_identity::{
     ProductAdminSchemaOperation, run_keyed_schema_write, schema_intent, schema_slot,

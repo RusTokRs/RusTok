@@ -1,6 +1,6 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::normalize_locale_code;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -49,17 +49,39 @@ impl TaxonomyService {
         fallback_locale: Option<&str>,
         slug_or_alias: &str,
     ) -> TaxonomyResult<Option<Uuid>> {
-        Ok(self
-            .resolve_route_key_for_module(
-                tenant_id,
-                kind,
-                module_slug,
-                locale,
-                fallback_locale,
-                slug_or_alias,
-            )
-            .await?
-            .map(|route| route.term_id))
+        Self::resolve_term_id_for_module_in(
+            self.database(),
+            tenant_id,
+            kind,
+            module_slug,
+            locale,
+            fallback_locale,
+            slug_or_alias,
+        )
+        .await
+    }
+
+    /// Resolve the term in the caller's transaction or connection.
+    pub async fn resolve_term_id_for_module_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        slug_or_alias: &str,
+    ) -> TaxonomyResult<Option<Uuid>> {
+        Ok(Self::resolve_route_key_for_module(
+            conn,
+            tenant_id,
+            kind,
+            module_slug,
+            locale,
+            fallback_locale,
+            slug_or_alias,
+        )
+        .await?
+        .map(|route| route.term_id))
     }
 
     /// Resolves the exact Taxonomy-owned route match for a module consumer.
@@ -79,16 +101,16 @@ impl TaxonomyService {
         fallback_locale: Option<&str>,
         slug_or_alias: &str,
     ) -> TaxonomyResult<Option<TaxonomyModuleRouteMatch>> {
-        let Some(route) = self
-            .resolve_route_key_for_module(
-                tenant_id,
-                kind,
-                module_slug,
-                locale,
-                fallback_locale,
-                slug_or_alias,
-            )
-            .await?
+        let Some(route) = Self::resolve_route_key_for_module(
+            self.database(),
+            tenant_id,
+            kind,
+            module_slug,
+            locale,
+            fallback_locale,
+            slug_or_alias,
+        )
+        .await?
         else {
             return Ok(None);
         };
@@ -105,8 +127,8 @@ impl TaxonomyService {
         }))
     }
 
-    async fn resolve_route_key_for_module(
-        &self,
+    async fn resolve_route_key_for_module<C: ConnectionTrait>(
+        conn: &C,
         tenant_id: Uuid,
         kind: TaxonomyTermKind,
         module_slug: &str,
@@ -135,7 +157,7 @@ impl TaxonomyService {
                     .filter(taxonomy_term_route_key::Column::ScopeValue.eq(scope_value))
                     .filter(taxonomy_term_route_key::Column::Locale.eq(candidate_locale))
                     .filter(taxonomy_term_route_key::Column::RouteKey.eq(&route_key))
-                    .one(self.database())
+                    .one(conn)
                     .await?
                 {
                     return Ok(Some(route));

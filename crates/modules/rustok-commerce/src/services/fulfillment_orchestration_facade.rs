@@ -1,6 +1,7 @@
 use rustok_api::PortContext;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_fulfillment::{FulfillmentAdminCommandPort, FulfillmentService, ShipmentStockPort};
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use tracing::instrument;
@@ -30,11 +31,16 @@ pub struct FulfillmentOrchestrationService {
 impl FulfillmentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
         let registry = FulfillmentProviderRegistry::with_manual_provider();
-        let (legacy, create_label_registry_error) =
-            legacy_with_journaled_labels(db.clone(), registry.clone());
+        let order_reads = rustok_order::in_process_order_read_port(
+            db.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+        );
+        let (legacy_registry, create_label_registry_error) =
+            journaled_label_registry(db.clone(), registry.clone());
         Self {
             db: db.clone(),
-            legacy,
+            legacy: LegacyFulfillmentOrchestrationService::new(db.clone(), order_reads)
+                .with_provider_registry(legacy_registry),
             journaled: JournaledFulfillmentOrchestrationService::new(db)
                 .with_provider_registry(registry),
             create_label_registry_error,
@@ -45,9 +51,9 @@ impl FulfillmentOrchestrationService {
         mut self,
         fulfillment_provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
-        let (legacy, create_label_registry_error) =
-            legacy_with_journaled_labels(self.db.clone(), fulfillment_provider_registry.clone());
-        self.legacy = legacy;
+        let (legacy_registry, create_label_registry_error) =
+            journaled_label_registry(self.db.clone(), fulfillment_provider_registry.clone());
+        self.legacy = self.legacy.with_provider_registry(legacy_registry);
         self.journaled = self
             .journaled
             .with_provider_registry(fulfillment_provider_registry);
@@ -86,7 +92,8 @@ impl FulfillmentOrchestrationService {
         self.journaled = self.journaled.with_shipment_stock_port(port);
         self
     }
-    pub fn with_order_read_port(self, port: Arc<dyn rustok_order::OrderReadPort>) -> Self {
+    pub fn with_order_read_port(mut self, port: Arc<dyn rustok_order::OrderReadPort>) -> Self {
+        self.legacy = self.legacy.with_order_read_port(port.clone());
         let stock = super::shipment_stock::inventory_shipment_stock_port(self.db.clone(), port);
         self.with_shipment_stock_port(stock)
     }
@@ -168,19 +175,13 @@ impl FulfillmentOrchestrationService {
     }
 }
 
-fn legacy_with_journaled_labels(
+fn journaled_label_registry(
     db: DatabaseConnection,
     registry: FulfillmentProviderRegistry,
-) -> (LegacyFulfillmentOrchestrationService, Option<String>) {
-    match wrap_create_label_providers(db.clone(), registry.clone()) {
-        Ok(wrapped) => (
-            LegacyFulfillmentOrchestrationService::new(db).with_provider_registry(wrapped),
-            None,
-        ),
-        Err(error) => (
-            LegacyFulfillmentOrchestrationService::new(db).with_provider_registry(registry),
-            Some(error.to_string()),
-        ),
+) -> (FulfillmentProviderRegistry, Option<String>) {
+    match wrap_create_label_providers(db, registry.clone()) {
+        Ok(wrapped) => (wrapped, None),
+        Err(error) => (registry, Some(error.to_string())),
     }
 }
 

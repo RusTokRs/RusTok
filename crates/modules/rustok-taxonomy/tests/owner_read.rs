@@ -225,7 +225,7 @@ async fn transaction_owner_reader_preserves_mixed_scope_and_rejects_foreign_tena
 }
 
 #[tokio::test]
-async fn localized_names_resolve_uncommitted_terms_on_the_caller_transaction() {
+async fn owner_reads_resolve_uncommitted_terms_on_the_caller_transaction() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let txn = db.begin().await.unwrap();
@@ -253,6 +253,40 @@ async fn localized_names_resolve_uncommitted_terms_on_the_caller_transaction() {
         .await
         .unwrap();
     assert!(foreign.is_empty());
+
+    let scoped = TaxonomyOwnerReader::load_scoped_terms_in(
+        &txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        TaxonomyScopeType::Module,
+        Some("product"),
+        Some(&ids),
+        "fr",
+        Some("en"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(scoped.len(), 1);
+    assert_eq!(scoped[0].id, ids[0]);
+    assert_eq!(scoped[0].requested_locale, "fr");
+    assert_eq!(scoped[0].effective_locale, "en");
+
+    for (scope, expected) in [("product", Some(ids[0])), ("blog", None)] {
+        assert_eq!(
+            TaxonomyService::resolve_term_id_for_module_in(
+                &txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                scope,
+                "fr",
+                Some("en"),
+                "uncommitted-tag",
+            )
+            .await
+            .unwrap(),
+            expected,
+        );
+    }
     txn.rollback().await.unwrap();
     let after = service
         .resolve_term_names(tenant_id, &ids, "en", None)

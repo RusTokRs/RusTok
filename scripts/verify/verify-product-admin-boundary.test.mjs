@@ -23,7 +23,7 @@ mod model;
 mod transport;
 mod ui;
 
-pub use ui::leptos::ProductAdmin;
+pub use ui::ProductAdmin;
 `;
 }
 
@@ -56,6 +56,7 @@ pub(crate) fn build_save_command() -> ProductAdminSaveCommand { ProductAdminSave
 
 function uiSource({
   rawApiCall = false,
+  rawGraphqlError = false,
   rawServiceCall = false,
   directSummaryCopy = false,
   uiShippingProfilePolicy = false,
@@ -80,6 +81,7 @@ pub fn ProductAdmin() {
     command.draft.attribute_values = vec![ProductAttributeValueBatchDraft { patches: attribute_patches, }];
     let _clear_detached_values = transport::clear_detached_product_attribute_values;
     ${rawApiCall ? "let _raw = api::fetch_products;" : ""}
+    ${rawGraphqlError ? "let _error: Option<rustok_graphql::GraphqlHttpError> = None;" : ""}
     ${rawServiceCall ? "let _service = ProductService::new;" : ""}
     ${directSummaryCopy ? 'let _copy = "Selected product";' : ""}
     ${uiShippingProfilePolicy ? "let item_shipping_profile_label = Some(String::new()); let _show = item_shipping_profile_label.is_some();" : ""}
@@ -382,6 +384,17 @@ test("product admin boundary verifier rejects raw api calls from UI", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
     assert.match(result.stderr, /UI adapter must not call raw transport or services/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects a GraphQL error type in the UI", () => {
+  const root = withFixture({ rawGraphqlError: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /raw GraphQL types belong in the transport layer/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

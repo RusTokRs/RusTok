@@ -304,10 +304,10 @@ impl InstallerPersistenceService {
             id: Set(session_id),
             tenant_id: Set(tenant_id),
             status: Set(install_state_value(InstallState::Draft).to_string()),
-            profile: Set(serde_name(plan.profile)),
-            environment: Set(serde_name(plan.environment)),
-            database_engine: Set(serde_name(plan.database.engine)),
-            seed_profile: Set(serde_name(plan.seed_profile)),
+            profile: Set(serde_name(plan.profile)?),
+            environment: Set(serde_name(plan.environment)?),
+            database_engine: Set(serde_name(plan.database.engine)?),
+            seed_profile: Set(serde_name(plan.seed_profile)?),
             plan_snapshot: Set(redact_install_plan(plan)),
             attempt_generation: Set(0),
             lock_owner: Set(None),
@@ -327,13 +327,15 @@ impl InstallerPersistenceService {
         session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<install_step_receipt::Model, sea_orm::DbErr> {
-        let owner = require_attempt_fence(session)?;
+        require_attempt_fence(session)?;
         let receipt_session_id = parse_session_uuid(&receipt.session_id)?;
         if receipt_session_id != session.id {
             return Err(sea_orm::DbErr::Custom(
                 "installer receipt session does not match its attempt fence".to_string(),
             ));
         }
+        let step = serde_name(receipt.step)?;
+        let outcome = serde_name(receipt.outcome)?;
         let now = Utc::now();
         let txn = self.db.begin().await?;
         let current = lock_session_for_attempt(&txn, session, now).await?;
@@ -360,8 +362,8 @@ impl InstallerPersistenceService {
             id: Set(rustok_core::generate_id()),
             session_id: Set(session.id),
             attempt_generation: Set(session.attempt_generation),
-            step: Set(serde_name(receipt.step)),
-            outcome: Set(serde_name(receipt.outcome)),
+            step: Set(step),
+            outcome: Set(outcome),
             input_checksum: Set(receipt.input_checksum.clone()),
             diagnostics: Set(receipt.diagnostics.clone()),
             installer_version: Set(receipt.installer_version.clone()),
@@ -787,10 +789,13 @@ fn admission_released_state_values() -> Vec<&'static str> {
     ]
 }
 
-fn serde_name<T: serde::Serialize>(value: T) -> String {
-    let json = serde_json::to_value(value).ok();
-    json.and_then(|val| val.as_str().map(|s| s.to_string()))
-        .unwrap_or_default()
+fn serde_name<T: serde::Serialize>(value: T) -> Result<String, sea_orm::DbErr> {
+    match serde_json::to_value(value).map_err(|error| sea_orm::DbErr::Json(error.to_string()))? {
+        serde_json::Value::String(name) => Ok(name),
+        _ => Err(sea_orm::DbErr::Json(
+            "installer enum must serialize to a string".into(),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -803,6 +808,11 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database};
 
     use super::*;
+
+    #[test]
+    fn installer_wire_names_reject_non_string_serialization() {
+        assert!(matches!(serde_name(42), Err(sea_orm::DbErr::Json(_))));
+    }
 
     async fn setup_http_jobs_table() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")

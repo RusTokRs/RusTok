@@ -304,6 +304,18 @@ pub enum InstallSurface {
     Registry,
 }
 
+impl InstallSurface {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "api",
+            Self::Admin => "admin",
+            Self::Storefront => "storefront",
+            Self::Worker => "worker",
+            Self::Registry => "registry",
+        }
+    }
+}
+
 impl InstallRole {
     /// Returns whether a process role may own a selected runtime surface.
     ///
@@ -493,8 +505,8 @@ impl InstallTopology {
                 if !assignment.role.supports_surface(*surface) {
                     return Err(format!(
                         "install role `{}` may not own surface `{}`",
-                        serde_name(assignment.role),
-                        serde_name(*surface),
+                        assignment.role.as_str(),
+                        surface.as_str(),
                     ));
                 }
             }
@@ -539,13 +551,6 @@ fn valid_sha256_digest(value: &str) -> bool {
         && value[7..]
             .chars()
             .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-}
-
-fn serde_name<T: Serialize>(value: T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|val| val.as_str().map(|s| s.to_string()))
-        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

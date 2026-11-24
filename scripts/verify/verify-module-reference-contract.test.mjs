@@ -216,6 +216,27 @@ const regressions = [
     diagnostic: /forbidden reference-module pattern pub use crate::entities/,
   },
   {
+    name: "Blog Category reads import the foreign Taxonomy implementation",
+    path: `${blog}/src/services/category_name_projection.rs`,
+    before: "use crate::ports::taxonomy::BlogTaxonomyPort;",
+    after: "use crate::ports::taxonomy::BlogTaxonomyPort;\nuse rustok_taxonomy::TaxonomyOwnerCategoryReader;",
+    diagnostic: /Blog must use its Taxonomy port instead of Taxonomy implementation or entities/,
+  },
+  {
+    name: "Category update drops its writer lock while create retains it",
+    path: `${blog}/src/services/category.rs`,
+    before: "snapshot from this update transaction.\n        self.taxonomy_port\n            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)",
+    after: "snapshot from this update transaction.\n        self.taxonomy_port\n            .skip_hierarchy_writer_in_tx(&txn, tenant_id)",
+    diagnostic: /category\.rs: missing ordered invariant marker \.lock_category_hierarchy_writer_in_tx/,
+  },
+  {
+    name: "Tag sync replaces caller create permission with an unconditional grant",
+    path: `${blog}/src/services/tag/relations.rs`,
+    before: "&normalized_names,\n            allow_create,",
+    after: "&normalized_names,\n            true,",
+    diagnostic: /tag\.rs: missing reference invariant marker .*ensure_module_tags_in_tx/,
+  },
+  {
     name: "module no longer composes the actual projection handler",
     path: `${blog}/src/module.rs`,
     before: "BlogCommentProjectionHandler::new",

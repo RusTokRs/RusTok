@@ -12,7 +12,6 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const product = read('crates/modules/rustok-product/src/fulfillment.rs');
 const productDto = read('crates/modules/rustok-product/ports/src/dto/product.rs');
 const cart = read('crates/modules/rustok-cart/src/dto/cart.rs');
 const cartEntity = read(
@@ -62,7 +61,7 @@ for (const marker of [
   'pub enum ProductFulfillmentRequirement',
   'from_product_type',
 ])
-  requireText(product, marker, 'Product fulfillment authority');
+  requireText(productDto, marker, 'Product fulfillment authority');
 requireText(
   productDto,
   'pub fulfillment_requirement: ProductFulfillmentRequirement',
@@ -211,27 +210,18 @@ forbidText(
   'GraphQL cart shipping must use owner port',
 );
 
-for (const marker of [
-  'Payment is mandatory for the Commerce module and is therefore required from host composition.',
-  'requires PaymentProviderRegistry in host composition',
-  'requires CommercePaymentReadRuntime in host composition',
-  'requires CommercePaymentCommandRuntime in host composition',
-])
-  requireText(
-    graphqlRuntime,
-    marker,
-    'Mounted Commerce GraphQL must fail closed when mandatory Payment composition is missing',
+for (const runtime of [
+  'PaymentProviderRegistry',
+  'CommercePaymentReadRuntime',
+  'CommercePaymentCommandRuntime',
+]) {
+  const required = new RegExp(
+    `inputs\\s*\\.shared_get::<${runtime}>\\(\\)\\s*\\.ok_or\\(\\s*CommerceGraphqlRuntimeError::MissingHostDependency\\(\\s*"${runtime}"\\s*,?\\s*\\)\\s*,?\\s*\\)\\?`,
   );
-forbidText(
-  graphqlRuntime,
-  'shared_get::<CommercePaymentReadRuntime>()\\n        .unwrap_or_else',
-  'Mounted GraphQL must not synthesize Payment read runtime',
-);
-forbidText(
-  graphqlRuntime,
-  'shared_get::<CommercePaymentCommandRuntime>()\\n        .unwrap_or_else',
-  'Mounted GraphQL must not synthesize Payment command runtime',
-);
+  if (!required.test(graphqlRuntime)) {
+    failures.push(`Mounted Commerce GraphQL must require ${runtime} from host composition`);
+  }
+}
 
 const serverCommerceRuntime = read(
   'apps/server/src/services/commerce_provider_runtime.rs',

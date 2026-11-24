@@ -162,7 +162,7 @@ pub struct ApplyExactTaxonomyTranslationInput {
     pub target_locale: TenantLocale,
     pub name: String,
     pub slug: String,
-    pub description: Option<String>,
+    pub description: rustok_api::Patch<String>,
     pub expected_resource_revision: i64,
     pub expected_source_revision: i64,
     pub expected_target_revision: Option<i64>,

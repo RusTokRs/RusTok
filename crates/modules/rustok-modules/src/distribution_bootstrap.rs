@@ -25,7 +25,7 @@ use crate::{
     distribution_release::{
         ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseInsert,
         advance_release_state_optional, insert_admission, insert_release, load_release_state,
-        validate_admission,
+        try_reserve_release_idempotency_key, validate_admission,
     },
     promotion::{
         normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference,
@@ -313,7 +313,16 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
         crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(store_error)?;
-        reserve_bootstrap_import_operation(&transaction, &command.context, &request_digest).await?;
+        if !try_reserve_release_idempotency_key(
+            &transaction,
+            "bootstrap_import",
+            &command.context,
+            &request_digest,
+        )
+        .await?
+        {
+            return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
+        }
         let distribution_state = load_distribution_state(&transaction, true)
             .await
             .map_err(distribution_error)?;
@@ -599,42 +608,6 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
         receipt_digest: receipt_digest.to_owned(),
         created: false,
     }))
-}
-
-async fn reserve_bootstrap_import_operation(
-    transaction: &DatabaseTransaction,
-    context: &ModuleCommandContext,
-    request_digest: &str,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
-    let inserted = transaction
-        .execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!(
-                "INSERT INTO module_static_distribution_release_idempotency_keys
-                 (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
-                 VALUES ({}, 'bootstrap_import', {}, {}, {}, {})
-                 ON CONFLICT (idempotency_key) DO NOTHING",
-                backend.placeholder(1),
-                backend.placeholder(2),
-                backend.placeholder(3),
-                backend.placeholder(4),
-                backend.now_sql(),
-            ),
-            vec![
-                backend.uuid_value(context.idempotency_key),
-                request_digest.to_owned().into(),
-                backend.uuid_value(context.actor_id),
-                context.trace_id.clone().into(),
-                backend.uuid_value(context.correlation_id),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    if inserted.rows_affected() != 1 {
-        return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
-    }
-    Ok(())
 }
 
 fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistributionReleaseError> {

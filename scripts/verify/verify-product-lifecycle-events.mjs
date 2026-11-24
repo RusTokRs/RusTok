@@ -232,7 +232,7 @@ need(
 need(
   update,
   `        } else if will_archive {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductArchived { product_id },

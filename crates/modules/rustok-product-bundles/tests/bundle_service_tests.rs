@@ -6,7 +6,7 @@ use rustok_product_bundles::error::BundleError;
 use rustok_product_bundles::ports::BundlePort;
 use rustok_product_bundles::services::BundleService;
 use sea_orm::prelude::Decimal;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 async fn setup_test_db() -> DatabaseConnection {
@@ -22,17 +22,6 @@ async fn setup_test_db() -> DatabaseConnection {
 CREATE TABLE products (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draft',
-    seller_id TEXT,
-    vendor TEXT,
-    product_type TEXT,
-    shipping_profile_slug TEXT,
-    primary_category_id TEXT,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    published_at TEXT,
-    revision INTEGER NOT NULL DEFAULT 1,
     UNIQUE (tenant_id, id)
 );
 
@@ -40,20 +29,6 @@ CREATE TABLE product_variants (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL,
-    sku TEXT,
-    barcode TEXT,
-    shipping_profile_slug TEXT,
-    ean TEXT,
-    upc TEXT,
-    inventory_policy TEXT NOT NULL DEFAULT 'deny',
-    inventory_management TEXT NOT NULL DEFAULT 'manual',
-    inventory_quantity INTEGER NOT NULL DEFAULT 0,
-    weight REAL,
-    weight_unit TEXT,
-    combination_identity TEXT,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
     UNIQUE (tenant_id, id),
     UNIQUE (tenant_id, product_id, id),
     FOREIGN KEY (tenant_id, product_id)
@@ -134,22 +109,13 @@ CREATE TABLE product_bundle_items (
 }
 
 async fn insert_test_product(db: &DatabaseConnection, tenant_id: Uuid, product_id: Uuid) {
-    use rustok_product::entities::product;
-    use sea_orm::{ActiveModelTrait, Set};
-
-    let prod = product::ActiveModel {
-        id: Set(product_id),
-        tenant_id: Set(tenant_id),
-        status: Set(product::ProductStatus::Active),
-        metadata: Set(serde_json::json!({})),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-        revision: Set(1),
-        ..Default::default()
-    };
-    prod.insert(db)
-        .await
-        .expect("Failed to insert test product");
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO products (tenant_id, id) VALUES (?1, ?2)",
+        [tenant_id.into(), product_id.into()],
+    ))
+    .await
+    .expect("Failed to insert test product");
 }
 
 async fn insert_test_variant(
@@ -158,25 +124,13 @@ async fn insert_test_variant(
     product_id: Uuid,
     variant_id: Uuid,
 ) {
-    use rustok_product::entities::product_variant;
-    use sea_orm::{ActiveModelTrait, Set};
-
-    let variant = product_variant::ActiveModel {
-        id: Set(variant_id),
-        product_id: Set(product_id),
-        tenant_id: Set(tenant_id),
-        inventory_policy: Set("deny".to_string()),
-        inventory_management: Set("manual".to_string()),
-        inventory_quantity: Set(0),
-        position: Set(0),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-        ..Default::default()
-    };
-    variant
-        .insert(db)
-        .await
-        .expect("Failed to insert test variant");
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO product_variants (tenant_id, product_id, id) VALUES (?1, ?2, ?3)",
+        [tenant_id.into(), product_id.into(), variant_id.into()],
+    ))
+    .await
+    .expect("Failed to insert test variant");
 }
 
 #[tokio::test]

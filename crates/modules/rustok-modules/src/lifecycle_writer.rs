@@ -2002,6 +2002,7 @@ fn map_artifact_settings_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::TransactionTrait;
 
     struct SettingsTestModule;
 

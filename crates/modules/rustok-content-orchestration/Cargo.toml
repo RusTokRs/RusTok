@@ -31,6 +31,7 @@ serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-translation-targets.workspace = true
 tokio.workspace = true
 sea-orm-migration.workspace = true
 

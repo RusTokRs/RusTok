@@ -82,6 +82,9 @@ impl PostService {
         // outbox write below uses this transaction. An error must roll them all
         // back. External Search/cache/provider IO belongs after durable delivery,
         // never between an owner mutation and its outbox publication.
+        if !tags.is_empty() {
+            lock_tag_attachments_writer_in_tx(txn, tenant_id).await?;
+        }
         self.ensure_slug_unique_in_tx(txn, tenant_id, &slug, None)
             .await?;
         if let Some(category_id) = category_id {

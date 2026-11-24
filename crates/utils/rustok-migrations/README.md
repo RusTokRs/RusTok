@@ -117,6 +117,27 @@ Implementation must reuse the real `Migrator`, installer bootstrap entrypoints,
 The current composed exporter covers the crate's compiled module set. Separate
 distribution/profile selection needs executable wiring and its own evidence.
 
+### Installer schema boundary
+
+`apply_installer_owner_schema` selects the tenant, installer session and attempt
+generation, registry publication, and static-distribution migrations from the
+composed plan. It checks that the selection contains its declared prerequisites
+and supports transactional execution. It validates the shared journal against the
+complete composition and applies pending steps from the selection in one
+transaction. On PostgreSQL it takes the stepwise runner's writer lock for that
+transaction. Previously applied platform and module steps can coexist with an
+older installer schema. Unknown journal identities reject the bootstrap.
+
+`apply_installer_remaining_schema` applies the rest of the composition after the
+installer's base-distribution import or revalidation has succeeded.
+
+With `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` set to an isolated PostgreSQL instance,
+exercise the two schema stages and installer retry with:
+
+```shell
+cargo test --locked -p rustok-migrations --test postgres_zero_migration_smoke postgres_installer_schema_preserves_the_owner_boundary -- --ignored --exact
+```
+
 ### Verification tool
 
 `export-migration-plan --output FILE` exports the same validated composition
@@ -131,12 +152,21 @@ only the narrow `MigrationSource` port. The operational inventory does not store
 full module lifecycle/runtime-extension vtables. This does not remove the
 composition's Cargo dependency tree; binary-size effects remain unmeasured.
 
+The [plan comparator](../../../scripts/verify/verify-migration-plan-compatibility.mjs)
+uses both projections in its `--protected-prefix` mode to verify declared
+owner, dependency, safety and transaction immutability against a supplied
+nonempty prefix. The guide describes the remaining release authentication and
+source verification requirements.
+
 Composition rejects duplicate identities/owners, foreign or absent declaration
 subjects, duplicate safety/dependency declarations and edges, missing dependency
 targets, and cycles. Cross-owner dependency targets remain supported. Missing
 safety metadata is explicit `null`, never additive-safe evidence. The exporter
 and operations CLI propagate typed composition errors before database work.
-SeaORM's infallible factory retains its static compiled-composition assertion.
+The SeaORM database entrypoints validate the composition before creating the
+journal or reading migration status. Read-only status keeps the database intact.
+Consumers that need the executable list and its errors use `Migrator::inventory`
+and receive the same inventory used by database execution.
 Ownership identifies the contributing migration source; it does not infer
 table ownership, confine SQL effects, or confer module authority.
 
@@ -242,6 +272,22 @@ by each migration. The installer's sparse bootstrap entrypoints remain separate.
 
 ### Verification evidence
 
+The seeded Modules phase test compares one uninterrupted run with a fresh
+migration session at each committed boundary. Both databases start as copies
+of the same PostgreSQL predecessor containing the declared backfill fixtures.
+Fixture setup runs in one transaction. Setup SQL must leave transaction
+control to the runner so that a failed setup rolls back earlier fixture writes.
+The resumed run also rejects the final migration's journal insert after the
+UI projection is populated. It checks the exact pre-step snapshot after
+rollback and completes the same phase in a new session after removing the
+injected constraint.
+Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL 16 instance
+and `RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP` to its `pg_dump` executable.
+
+```sh
+cargo test --locked -p rustok-migrations --test postgres_zero_migration_smoke postgres_seeded_module_phase_matches_after_recovery -- --ignored --exact
+```
+
 The bounded-phase implementation has scoped execution evidence on PostgreSQL
 16.13: `stepwise_recovery` passed all four tests with `--include-ignored`.
 The fixture exercises exact terminal stops, committed-prefix restart, completed
@@ -285,7 +331,14 @@ Recreating the login with a new password also discards original role settings
 before the candidate runs. Migration children
 receive their fixture URL and a bounded OS environment. `compare --quiescent`
 compares two already prepared fixture endpoints without creating or deleting
-databases. The `fresh` cleanup drops only successfully created fixture resources.
+databases. Use `--reference-through MIGRATION` and `--candidate-through MIGRATION`
+together to compare intermediate checkpoints using the original plan exports.
+Each named migration is included in its side's expected journal. The observation
+must match that journal exactly, so any missing or later step fails verification.
+The report records both checkpoint names, prefix lengths and full plan file
+digests. Omitting the flags compares the complete plans.
+
+The `fresh` cleanup drops only successfully created fixture resources.
 Run `verify-migrations --help` for explicit arguments. Reports contain
 digests and difference categories rather than fixture row values. A successful
 comparison is scoped evidence; `replacement_admission` always remains blocked.
@@ -298,6 +351,13 @@ a pending migration. Its assertion runs in a read-only, repeatable-read
 transaction immediately after that migration and again at the end of the range.
 Missing, NULL, nonboolean or multiple assertion results fail verification.
 This is not yet complete owner-assertion or crash-recovery coverage of the chain.
+
+For a local run, set `RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES` to a version 1
+fixture JSON file and use `RUSTOK_MIGRATION_SMOKE_REUSE_DB=1` with a disposable
+predecessor. The file's `fixtures` array can target one migration multiple
+times with distinct fixture IDs. Use compatible setup statements for the shared
+predecessor. The smoke test removes the database unless
+`RUSTOK_MIGRATION_SMOKE_KEEP_DB=1`.
 
 The smoke script and direct tests require `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to
 point to an isolated PostgreSQL instance. Fresh runs create a new database and fail

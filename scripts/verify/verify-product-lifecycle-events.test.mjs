@@ -133,7 +133,7 @@ pub async fn update_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
             )
             .await?;
         } else if will_archive {
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductArchived { product_id },

@@ -4,12 +4,9 @@
 term identity, localized route copy and scope rules while consumer modules retain their own entity-to-
 taxonomy relations and domain policy.
 
-The current runtime implementation is still Tag-only, but the accepted platform direction now adds a
-first-class Taxonomy-owned `Category` kind with shared hierarchy. The staged migration is documented
-in [`../../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md).
-Historical docs/guards that pin Blog/Forum/Product category hierarchy to consumer modules are
-transitional and must be replaced atomically with the Category implementation; they are not the target
-architecture.
+The runtime implements Tags and Categories. The
+[Category platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+tracks consumer cutovers to Taxonomy-owned hierarchy and localized copy.
 
 ## Purpose
 
@@ -100,5 +97,50 @@ consumer-owned aggregate transactions can project names for terms they just crea
 committing first. Term and translation queries both retain tenant predicates and use that same
 connection. Ordinary `resolve_term_names` delegates to this implementation on the service connection;
 consumer modules do not read Taxonomy entities to assemble their responses. The owner-read
-regression covers transaction visibility, foreign-tenant absence and rollback; its new execution
-is outstanding in the Product hardening sandbox without Cargo.
+regression covers transaction visibility, foreign-tenant absence and rollback.
+`TaxonomyOwnerReader::load_scoped_terms_in` and
+`TaxonomyService::resolve_term_id_for_module_in` preserve the same connection for
+scoped terms and localized route keys. Their existing pool-backed entry points
+use those implementations.
+
+## Category copy and presentation
+
+`sync_module_category_copy_in_tx` writes localized copy and hierarchy on the
+caller's transaction. Taxonomy retains existing aliases, appends the prior slug
+on rename and keeps the canonical presentation row and revision intact.
+Historical slugs stay reserved as aliases.
+Product category translation uses this operation. Callers that own an exact
+icon and color snapshot use `sync_module_category_in_tx`.
+
+The `taxonomy/term` target takes the Category hierarchy lock followed by
+the term row lock before checking translation revisions. It uses the same
+route history rules as regular Category editing. Applying an approved slug
+change keeps the previous localized URL as an alias.
+
+## Translation inventory maintenance
+
+The change journal and content-free inventory baseline cover all Taxonomy
+terms within the tenant, including terms whose localized copy belongs to a
+consumer module. Both require effective `taxonomy:manage` and
+`translations:manage` authority. The journal retains deletion evidence after
+the term is gone. The baseline includes active terms in every locale so a
+rebuild for one locale pair preserves other terms.
+
+The journal assigns a separate ordered position per tenant. PostgreSQL assigns
+positions through a deferred trigger that holds the tenant's journal head row
+until commit. SQLite assigns them inside its serialized write transaction.
+Inventory sync and progress read the same position. This lets sync resume
+after a later-started write commits ahead of an earlier-started write.
+
+Migration `m20261124_000012_order_taxonomy_translation_changes` preserves the
+existing entries and backfills their positions. A checkpoint issued before
+the migration triggers one paginated replay of retained evidence. A downgrade
+to code that only understands UUID cursors requires restoring the matching
+Translation checkpoint with the database backup.
+
+Discovery, exact reads, progress and patch operations enforce the registered
+module owner's authorization. Discovery cursors refer to visible terms.
+Owners supply tenant enablement and field policy. The embedded Blog owner
+uses the Category and Tag editor limits and excludes Tag descriptions from
+translation. Sparse patches preserve stored descriptions when the request
+omits them.

@@ -203,9 +203,14 @@ async fn test_orchestration_promote_and_demote_lifecycle() {
     assert_eq!(demote_record.translations.len(), 2);
 
     // Delete demoted post
-    delete_demoted_post_in_tx(&txn, tenant_id, post_id)
-        .await
-        .unwrap();
+    delete_demoted_post_in_tx(
+        &crate::ports::NoopBlogTaxonomyPort,
+        &txn,
+        tenant_id,
+        post_id,
+    )
+    .await
+    .unwrap();
 
     // Verify post and translations are gone
     let missing_res = load_post_for_demotion_in_tx(&txn, tenant_id, post_id).await;

@@ -949,6 +949,16 @@ fn checkout_operation_error_policy(
             "Checkout operation request is invalid",
             "validation",
         ),
+        CheckoutOperationError::CartOwnerRead { retryable } => (
+            if *retryable {
+                StatusCode::SERVICE_UNAVAILABLE
+            } else {
+                StatusCode::BAD_GATEWAY
+            },
+            "checkout_operation_cart_unverified",
+            "The Cart owner could not confirm the checkout cart",
+            "cart_owner_read",
+        ),
         CheckoutOperationError::Database(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",

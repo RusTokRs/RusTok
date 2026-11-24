@@ -630,9 +630,9 @@ const operationVariants = enumVariants(
   "CheckoutOperationError",
   "checkout operation error enum",
 );
-if (operationVariants.length !== 5) {
+if (operationVariants.length !== 6) {
   failures.push(
-    `checkout operation error enum: expected 5 variants, found ${operationVariants.length}`,
+    `checkout operation error enum: expected 6 variants, found ${operationVariants.length}`,
   );
 }
 requireEveryVariant(
@@ -654,6 +654,7 @@ for (const [value, label] of [
   ['"checkout_operation_invalid"', "operation validation code"],
   ['"internal_error"', "operation internal code"],
   ['"checkout_operation_event_failed"', "operation event code"],
+  ['"checkout_operation_cart_unverified"', "Cart owner verification code"],
   ['"Checkout operation not found"', "static operation not-found message"],
   [
     '"Checkout operation conflicts with the current state"',

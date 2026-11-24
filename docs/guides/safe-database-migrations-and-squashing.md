@@ -42,6 +42,11 @@ draft migrations are reduced to a verified transition for `1.2.1`. Publishing
 the entire unpublished history after checking data disposability and installer
 ordering.
 
+During development, use the [local Rust workflow](#rust-entrypoint-and-ownership)
+to compare draft chains on disposable PostgreSQL databases. Keep the migration
+reservation as work for the first stable release. The local comparison and
+prerelease workflow can run before that reservation mechanism exists.
+
 ## Current implementation and evidence
 
 The initial assessment used
@@ -52,11 +57,11 @@ the current implementation after the first Rust tooling changes.
 |---|---|---|
 | [Source scanner](../../scripts/dev/safe-migration-squash.mjs) | Recursively inspects recognized entity/DDL shapes, file/directory entrypoints and dated references; rejects empty coverage | Regex parsing still has incomplete syntax/type coverage and warning-only cases; explicitly diagnostic |
 | [Plan exporter](../../crates/utils/rustok-migrations/src/bin/export_migration_plan.rs) | Exports ordered runtime migration names and owner/dependency/safety/transaction declarations from the executable inventory | No migration source hashes, stable seal or independent profile selection |
-| [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Requires the PR base name list to remain an exact prefix | Unchanged names can conceal changed bodies/helpers |
+| [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Checks the PR base name list and can compare executable declarations against a supplied protected prefix | The protected prefix must come from trusted release tooling. Unchanged declarations can conceal changed bodies/helpers. |
 | [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
 | [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
 | [PostgreSQL observer](../../crates/utils/rustok-migrations/src/verification.rs) | Compares real schema, privileges, enforcement, sequences, row multisets and each plan's journal | PostgreSQL 16, supported fixture limits and extensions; requires quiescent writers and complete read privileges |
-| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Validates pending targets, seeds the predecessor and runs read-only strict boolean assertions at each selected target and at range completion | One case per migration; full range/multiple-case and owner coverage remain pending |
+| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Accepts multiple local cases for a pending migration, seeds the predecessor and runs read-only assertions at each target and at range completion | CI selects one contract per migration. Full range mapping and owner coverage remain pending. |
 | [Schema summaries](../../crates/utils/rustok-migrations/src/schema_diff.rs) | Classifies supplied operations and computes summary/plan digests | No actual PostgreSQL catalog observation |
 | [Release workflow](../../.github/workflows/release.yml) | Validates signed tags, immutable releases and artifact provenance | No sealed migration manifest or exact-release migration evidence gate |
 
@@ -94,10 +99,21 @@ The repository command group is `cargo xtask migrations`. `xtask` orchestrates i
 snapshots, candidate previews, scoped owner processes and reports.
 `rustok-migrations` implements actual PostgreSQL observation, migration execution
 and typed schema/data comparisons. PostgreSQL dump/restore tools run as pinned
-subprocesses. The implemented commands are `plan` and `verify-fresh`; see the
+subprocesses. The Rust workflow provides planning, fresh comparison, source
+fingerprinting, source discovery and executable inventory binding. See the
 [xtask command contract](../../xtask/README.md#migration-consolidation-commands)
 for arguments and the [owner tool contract](../../crates/utils/rustok-migrations/README.md#verification-tool)
 for limits and explicit PostgreSQL regression invocation.
+
+For intermediate comparisons on two prepared databases, reuse the complete
+plan exports with `verify-migrations compare --quiescent`,
+`--reference-through` and `--candidate-through`. Each flag names the last
+applied migration in its own chain. The verifier checks each journal through
+that exact step before accepting the schema and data comparison.
+On PostgreSQL 16.13, the CLI accepted a three-step reference prefix and a
+two-step candidate prefix from complete exports. It rejected a later applied
+step beyond the selected checkpoint and accepted complete plans once both
+fixtures reached their ends.
 
 The owner process boundary keeps the complete domain migration dependency tree
 out of ordinary `xtask` compilation. Candidate source edits use the current
@@ -129,10 +145,11 @@ disposition of schema objects, initial data, transformations, integrity guards,
 outbox/receipt/work effects and phase/recovery constraints. Resolve cross-owner
 dependencies and all consumers of exact migration names.
 
-Installer bootstrap is a separate required path. `InstallerOwnerMigrator` and
-`apply_installer_owner_schema` select exact `rustok-modules` identities before
-base-distribution import. A globally valid migration list alone does not verify
-this prefix. Test bootstrap/import/remaining-schema ordering explicitly.
+Installer bootstrap is a separate required path. `apply_installer_owner_schema`
+selects required platform and `rustok-modules` steps from the composed plan before
+base-distribution import. It validates the full journal and limits application
+to this selection. Verification covers the bootstrap, import, and remaining
+schema boundaries explicitly.
 
 ### Build the candidate
 
@@ -184,6 +201,110 @@ path behaves correctly. Rollback tests cover only explicitly reversible steps.
 Irreversible steps require a restore/forward-recovery rehearsal.
 
 ### Admit and seal
+
+The [release history resolver](../../scripts/release/resolve-release-history.mjs)
+reads every page of the official `RusTokRs/RusTok` GitHub Releases history. It
+reports the release ID, tag object and exact commit for each published stable
+release after checking immutability and GitHub's annotated-tag signature
+verification. It uses the same tag syntax as release validation. It fails on
+an empty history, inconsistent metadata or any unavailable release identity.
+
+```sh
+node scripts/release/resolve-release-history.mjs
+```
+
+The [release manifest verifier](../../scripts/release/verify-release-manifests.mjs)
+uses the same history to fetch each `release-manifest.json`. It verifies both
+asset membership in the immutable release and provenance from `release.yml`
+for the signed tag and commit. It then matches the manifest's repository, tag,
+version and commit and reports its SHA-256 and artifact index. The command
+requires an authenticated GitHub CLI with `release verify-asset` and
+`attestation verify` support. Provide an existing scratch directory owned by
+the verifier.
+
+```sh
+node scripts/release/verify-release-manifests.mjs --scratch target
+```
+
+The released migration boundary still requires attested migration manifests
+and their source-input hashes, independent module seals and any stable
+reservations made before a container was exposed. An empty GitHub history
+cannot substitute for an explicit bootstrap record.
+
+The first stable distribution starts from the [bootstrap record](../../scripts/release/migration-bootstrap.json)
+at generation zero. `node scripts/release/resolve-release-history.mjs --check-bootstrap`
+reads that exact path from a pinned commit on the official `main`, verifies
+its Git blob identity and checks all pages of GitHub Releases, repository
+tags and the GHCR tag list for the official distribution. A stable version
+tag or a stable image alias such as `latest` stops the check even when there
+is no GitHub Release. The result binds the observations to the commit and
+blob, with migration replacement still blocked.
+
+`node scripts/release/resolve-release-history.mjs --check-container-history`
+lists the stable tags seen in GHCR independently of the bootstrap record.
+Both commands authenticate to GHCR using `GITHUB_ACTOR` and `GHCR_TOKEN`
+or the workflow token `GITHUB_TOKEN` with package read access. A failed tag
+list request, including HTTP 404, leaves container history unverified. The
+list covers current tags. Earlier exposures with deleted tags, independent
+module seals and the atomic publication reservation require separate evidence.
+Release tooling tests exercise the GHCR authentication exchange, short pages
+with continuation links, full pages without links, stable aliases and failed
+reads. The live check still needs a credential with access to the package.
+
+A local declaration check takes the ordered inventory projection of one
+composition's protected prefix and a full candidate export.
+
+```sh
+node scripts/verify/verify-migration-plan-compatibility.mjs \
+  --protected-prefix protected-inventory.json --head candidate-inventory.json
+```
+
+Both inputs require version 1 `entries` aligned with `migrations`. The
+protected inventory must be nonempty. A candidate can replace draft entries
+after that boundary while retaining protected names, execution order, owners,
+dependency edges, safety and phase metadata, and transaction declarations.
+`null` is preserved as a declaration value. The current PR check still uses
+`--base` and requires the entire base name list to remain an exact prefix.
+The local check compares supplied plans. The separate [`xtask source-inputs`
+command](../../xtask/README.md#migration-consolidation-commands) reuses the Git
+snapshot reader and compares the exact paths, file modes and bytes of a
+reviewed list of migration inputs across two commits. It detects changes to
+selected nested Rust helpers and SQL assets. Given explicit Rust entrypoints,
+it checks that the declaration contains every file reached through supported
+Rust module declarations and literal includes. This checks local syntax.
+The [`bind-inventory` command](../../xtask/README.md#migration-consolidation-commands)
+joins these source results to the ordered executable export validated by a
+completed `verify-fresh` run. It requires the build snapshot to match a Git
+commit and keeps uncovered migration rows visible in the report.
+The same workflow can generate reviewable declarations from the executable
+inventory, Cargo's saved dep-info paths, and the committed Rust name and
+module declarations. Ambiguous names and unsupported local links require
+review before the generated declarations are used.
+New `verify-fresh` reports bind the raw exporter dep-info and its normalized
+workspace path list to the same build identity as the exporter and inventory.
+`bind-inventory` can verify that retained list and reject declarations for
+files absent from the selected compiler observation. This recheck uses files
+from the completed run and needs no PostgreSQL replay.
+The `registry-inputs` command also reuses that build evidence to check the
+selected crates.io cache archives against the committed `Cargo.lock` and
+the extracted files against those archives. It records the cache bytes
+observed during verification. Exact external inputs used during a build and
+non-crates.io sources still require separate provenance.
+For a new `verify-fresh` run, `--registry-cache` checks the cache at both
+ends of each build and verifies that Cargo resolved the package manifests
+from that extraction. The selected build identity then includes the
+matching crate and file digests. This establishes endpoint observations
+for crates.io packages. New builds also capture the regular files in every
+Cargo-reported `OUT_DIR` and recheck those paths, modes and bytes before the
+run's report is published. Exact compiler reads, generated files outside
+these directories and transient inputs still require separate evidence.
+The report links captured files to the runner and exporter through each
+executable's Cargo dep-info. A listed `OUT_DIR` file missing from the capture
+fails verification. Other reported paths inside the build target are visible
+in `uncaptured_target_paths`.
+Trusted release tooling still needs to prove that the list covers all build
+and execution inputs, authenticate and select the boundary,
+cover independent module seals, and authorize any draft replacement.
 
 A trusted base-owned verifier checks the declared range, protected history and
 complete report. Infrastructure approval alone cannot authorize rewriting
@@ -245,17 +366,17 @@ the existing path/mode/blob snapshot, lockfile, Cargo/toolchain configuration,
 normalized native normal/build dependency graph, tool versions, arguments and
 actual binary digests. It compares resolution before and after the build.
 Workspace feature unification can overstate actual compilation features;
-external package bytes, generated inputs, build-script/proc-macro effects,
+external package bytes outside the recorded registry checks, exact generated
+input consumption, build-script/proc-macro effects,
 ambient native/toolchain inputs and per-migration attribution remain explicitly
 unverified. This is partial build evidence, not a complete input read trace or
 per-migration freeze set. The module archive `source_digest` cannot replace
 workspace/build identity. The existing snapshot, publication and source-store
 owners remain canonical. All 15 migration-command tests passed with
 `--include-ignored`, including ten build-input regressions, real Cargo metadata
-collection on an isolated workspace and a read-only resolution of the current
-repository (1084 packages, 75 captured path packages). The complete updated
-`verify-fresh` workflow has not been rerun; no fresh PostgreSQL replay evidence
-is claimed for this step.
+collection on an isolated workspace and a read-only resolution of the repository
+at that time (1084 packages, 75 captured path packages). The Blog pilot below
+exercises the complete source and database comparison workflow.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.
@@ -308,7 +429,10 @@ proven recovery contract is available; no transaction policy is silently changed
 The PostgreSQL smoke uses the same executor, with fresh-session resumption after
 every committed step in incremental mode. Selected backfill assertions now run
 immediately after their own step as well as at the end. Assertions are read-only;
-targets outside the pending range fail before fixture setup.
+targets outside the pending range fail before fixture setup. All fixture setup
+runs in one transaction so a failed setup rolls back earlier fixture writes
+before any migration runs. Each local case has a unique ID and cases targeting
+the same migration share the predecessor. Every case must pass at that step.
 
 The [bounded execution contract](../../DECISIONS/2026-11-05-bounded-migration-execution.md)
 adds exact contiguous phases to this same runner and the operations CLI. It
@@ -362,9 +486,145 @@ listed eight validated clock differences and found no blocking difference. All
 out-of-window bootstrap value and database and role name collisions. Both
 fixture databases and roles were removed.
 
-Gate 3 still needs a source-snapshot comparison of an original and a proposed
-consolidated chain through `xtask`, released-prefix replay and installer
-coverage. Gates 2, 4 and 5 remain pending.
+On 2026-11-23, `xtask migrations verify-fresh` compared two source snapshots
+on PostgreSQL 16.13. The reference was local `main` at `266e7e6d56`, with 598
+migrations. The disposable candidate folded Blog's list and retention indexes
+into its initial schema, skipped creation of the redundant preview-token index,
+and retained the separate translation-width migration and rollback. Its 597-step
+plan differed only by the removal of `m20261030_000002_add_blog_list_indexes`.
+Both journals matched their executable plans. The report found no blocking schema
+or data differences and recorded eight validated bootstrap clock differences.
+
+The seeded Blog replay used the same two pinned executables and compared copies
+of one PostgreSQL 16.13 predecessor after 547 migrations, immediately before the
+shared Blog creation identity. Both runs seeded posts, a translation, a preview
+token and a comment-delivery record after Blog creation. Each subsequent
+migration ran in its own process, and its confirmation and exact journal
+prefix were checked. Five injected journal failures covered Blog creation and
+translation widening on both paths and index creation on the reference path.
+Retries kept the expected widths, indexes and fixture rows. Both schemas enforced
+preview-token uniqueness after removing the redundant index. Strict comparisons
+found no differences at the end of the Blog range or after all 598 reference and
+597 candidate migrations. Each final journal matched its own executable plan.
+The predecessor and both databases were removed.
+
+The source-coverage check added in `53405e9228` reused the retained reference
+build at `266e7e6d563a2b5d1367211bd4c7245f5872562f`. Discovery matched all
+3009 paths from Cargo's dependency list to that Git tree. It found a source
+entrypoint and verified local links for all 598 executable migrations,
+including three with explicit `MigrationName` implementations. The generated
+declarations passed `bind-inventory` with all 598 source fingerprints attached
+in executable order. This used the existing PostgreSQL report and the saved
+Cargo dependency list. It establishes local source coverage for that build.
+The saved report predates the compiler-source observation field. The
+binding regression used a separate copy with the recorded observation and
+rejected changed dep-info bytes, a changed path root and a declaration for
+an unobserved file. The original pilot files were preserved.
+
+The original pilot files are retained locally under
+`target/migration-pilot-20261122`. This record identifies the verified files
+without tracking the scratch trees, build outputs or raw database snapshots.
+
+| Retained file | SHA-256 |
+|---|---|
+| Fresh `plan.json` | `aa5fd76d4491f9257493713fbd716d42737641fcdc807bfc8fd167956fc40cd1` |
+| Fresh `report.json` | `dc2a166cc5bacd37220db006c6e06a6f37bcaec2d1a89a0506777c7604efe3a2` |
+| Fresh `database-report.json` | `77c6a7c881f34c6aca47de2f8ca8008f7d94f7944a3a3de1324b5173e32ebe5d` |
+| `reference-plan.json` | `0528743c2915f0a71ba7ba72b1319ba61a507649baf68ccf31daf6a902ea76b8` |
+| Reference `export-migration-plan.d` | `949322d58ce3ba8a9fade0c52f5c4778d5e6d55e3081b5aea1f099055ff4030d` |
+| Seeded `checkpoints.json` | `8d54604deba94ecdf77d93064bf26fe1eac8bb8f5c9df5467445e51fa9988d85` |
+| Seeded `full-composition-comparison.json` | `aee8a79ff355d344400d3c900c0a1262e22021b4b3c31b2ae55f7bdd5777d958` |
+
+For another review of the same inputs, check the retained file digests and
+reuse the recorded results. A changed source, build, fixture, database
+environment or release boundary requires evidence for the changed inputs.
+Durable storage for the full source and report set remains part of release
+admission.
+
+`registry-inputs` reused the same reference build's dependency resolution
+and committed lockfile. All 1011 selected crates.io archives matched their
+locked checksums. All 47,106 packaged file paths and byte digests matched
+the supplied extracted cache. The result is retained under the pilot root
+as `registry-cache-reference.json` with SHA-256
+`2207bc20f110901007d2027f77f565e241f30bd42499881dc57fa8702bd3e0b8`.
+It establishes the observed cache contents for this package selection.
+The build-time check was exercised on an offline Cargo fixture using
+the resolved `hex` 0.4.3 package. Cargo's manifest path matched the inspected
+cache, and both endpoint observations were equal. The regression also
+rejects a different manifest path or modified extracted source bytes.
+For generated outputs, a separate offline Cargo fixture compiled a Rust
+module loaded through `include!` from `OUT_DIR`. The recorded SHA-256
+matched the file. The verifier rejected an output directory outside the
+build target and edits, additions and deletions after capture. The earlier
+PostgreSQL pilot predates the generated output record.
+The fixture also verified dep-info for both binaries on Windows with spaces
+in the target path. Both dependency lists matched the included Rust file.
+The unused output was captured and absent from the dependency lists. A swapped
+dep-info file and a missing generated dependency failed verification.
+
+A separate PostgreSQL 16.13 test on the current composition rolled back the
+Blog index migration, then confirmed that over-width translation data blocks
+column narrowing without altering the row or journal. With compatible title
+and description lengths, rollback reduced their limits while preserving the
+32-character locale contract. Reapplying both steps restored the indexes and
+full column widths. [Blog rollback test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
+The installer schema smoke on PostgreSQL 16.13 applied the five bootstrap
+migrations on an empty database and retried them before completing the full
+composition. It verified contention with the stepwise runner, transactional
+rollback and retry of attempt fencing with an existing journal, and rejection
+of an unknown journal identity. The fixture database was removed.
+
+On 2026-11-23, the installer adapter loaded an Ed25519-signed fixture receipt
+on PostgreSQL 16.13. It rejected a tampered receipt, imported the original after
+bootstrap, and resolved the same release before and after applying the complete
+schema. A repeat import reused the original record. The fixture database was
+removed. [Signed base-distribution test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs)
+
+The Tenant locale backfill ran on PostgreSQL 16.13 at `main@c555cc3493`.
+The fixture seeded a tenant in the schema immediately before
+`m20260726_000001_enforce_tenant_locale_policy`. A deliberately failing
+post-step assertion stopped execution before the next migration. After restart,
+the runner completed the remaining composition and the tenant still had one
+enabled default locale at policy revision zero. The fixture database was
+removed. [Backfill recovery test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
+The expanded PostgreSQL 16.13 regression uses two tenants at the same boundary.
+It seeds a default locale for the tenant without locales and preserves the
+other tenant's existing locale IDs, default, disabled locale and fallback.
+A deliberate failure in the second case stops before the next migration.
+Both data assertions pass at the stopped boundary and after resuming the chain.
+
+The integration of upstream `f94c88fc06` repeated the recovery checks on
+PostgreSQL 16.13. The stepwise suite covered transaction failure, cancellation,
+connection and process loss, and restart. The composed smoke applied all 598
+migrations, rolled back `m20261121_000001_add_sys_events_tenant_projection`,
+and reapplied it. The installer schema and signed import checks passed on
+separate fixtures. The database observer also detected changes to schema,
+data, privileges, and index enforcement. The fixture databases and roles
+were removed.
+
+The seeded Modules phase test used the composition from `main@59b2c3f1cf`
+on PostgreSQL 16.13. It cloned a single quiescent predecessor seeded with
+three declared fixtures. One copy
+applied the five migrations from
+`m20261027_000081_transition_intervention_required_state` through
+`m20261027_000085_artifact_ui_resources` in one session. The other reopened
+the same phase after each committed step. The owner assertions passed at
+their own boundaries, and both final observations had identical digests and
+matching journal identities. The predecessor and both copies were removed.
+[Seeded Modules phase test](../../crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs)
+
+The same PostgreSQL 16.13 test at `main@2a6647ebfa` rejected the journal
+insert for `m20261027_000085_artifact_ui_resources` after the migration
+created and populated the projection. The failed runner refused a retry.
+The transaction rolled back the projection and its index, and the journal
+retained the exact pre-step identities. The full pre-step and post-failure
+observations had identical digests. After the injected constraint was removed,
+a new session completed the phase and matched the uninterrupted database.
+
+Gate 3 still needs replay from an authenticated stable release baseline.
+Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition
 also requires enforcement at the installer/update admission boundary. Release
 workflow prerelease labels by themselves do not enforce it.

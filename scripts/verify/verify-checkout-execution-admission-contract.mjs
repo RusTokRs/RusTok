@@ -434,11 +434,10 @@ requireText(
   'checkout_execution_admission_port(db.clone()),',
   'admin collection command runtime admission wiring',
 );
-requireText(
-  controllers,
-  'checkout_execution_admission_port(runtime.db_clone()),',
-  'host runtime admin collection command admission wiring',
-);
+const selectedAdminCommands = /\.shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>\(\)\s*\.ok_or\(\s*CommerceControllerError::MissingHostDependency\(\s*"PaymentAdminCollectionCommandRuntime"\s*,?\s*\)\s*,?\s*\)\?/;
+if (!selectedAdminCommands.test(controllers)) {
+  failures.push('mounted Commerce must require the admin collection command runtime from the host');
+}
 const graphqlPaymentCommands = read(
   'crates/modules/rustok-commerce/src/graphql_runtime/payment_commands.rs',
 );

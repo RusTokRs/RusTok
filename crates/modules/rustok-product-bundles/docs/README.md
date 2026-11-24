@@ -28,7 +28,9 @@ The module does not currently publish `bundle.created`, `bundle.updated`, or `bu
 
 ## Integration
 
-- **`rustok-product`**: Supplies tenant-scoped Product and Variant references for Bundle owners and component items.
+- **`rustok-product`**: The native catalog reference API checks Product existence and
+  Variant parent identity in the Bundle write transaction. Composite foreign keys
+  enforce the same tenant and parent constraints on persisted Bundle references.
 - **`rustok-pricing`**: Applies Bundle and item discounts when pricing consumes this data.
 - **`rustok-outbox`**: Supplies durable command receipt infrastructure; it does not currently emit Bundle lifecycle events.
 - **`rustok-commerce`**: Exposes Bundle queries and receipt-bound mutations via GraphQL.

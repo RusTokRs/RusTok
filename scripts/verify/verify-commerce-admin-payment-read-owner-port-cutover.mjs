@@ -64,8 +64,19 @@ for (const mutation of [
 }
 
 requireText(httpRuntime, "payment_admin_read_runtime: rustok_payment::PaymentAdminReadRuntime", "Commerce payment admin read runtime field");
-requireText(httpRuntime, ".shared_get::<rustok_payment::PaymentAdminReadRuntime>()", "host-selected payment admin read runtime");
-requireText(httpRuntime, "rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone())", "in-process owner runtime fallback");
+for (const [type, name] of [
+  ["PaymentProviderRegistry", "PaymentProviderRegistry"],
+  ["rustok_payment::PaymentAdminReadRuntime", "PaymentAdminReadRuntime"],
+  ["rustok_payment::PaymentAdminCollectionCommandRuntime", "PaymentAdminCollectionCommandRuntime"],
+  ["rustok_payment::PaymentAdminRefundCommandRuntime", "PaymentAdminRefundCommandRuntime"],
+]) {
+  const required = new RegExp(
+    `runtime\\s*\\.shared_get::<${type}>\\(\\)\\s*\\.ok_or\\(\\s*CommerceControllerError::MissingHostDependency\\(\\s*"${name}"\\s*,?\\s*\\)\\s*,?\\s*\\)\\?`,
+  );
+  if (!required.test(httpRuntime)) {
+    throw new Error(`mounted Commerce HTTP must require ${name} from host composition`);
+  }
+}
 requireText(httpRuntime, "fn payment_admin_read_port", "Commerce payment admin read port accessor");
 
 for (const operation of [

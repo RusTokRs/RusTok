@@ -154,7 +154,6 @@ async fn verify(
         matches!(&page.entries[0].state, ProductLocaleReplayState::Live(fields)
         if fields.title == "Product 1" && fields.sales_channel_ids == [channel_id])
     );
-    verify_large_locale_replay(&replay, tenant).await?;
     let denied = locale_provider(product_bind, "test-product-read-token").await?;
     let error = denied
         .load_locale_replay(replay_context(tenant), vec![first_locale_key()])
@@ -218,6 +217,7 @@ async fn verify(
     assert!(
         matches!(&current[0].state, ProductLocaleReplayState::Live(fields) if fields.sales_channel_ids.is_empty())
     );
+    verify_large_locale_replay(&replay, tenant).await?;
 
     product
         .execute_raw(Statement::from_sql_and_values(

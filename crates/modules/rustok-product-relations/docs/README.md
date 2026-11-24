@@ -28,7 +28,10 @@ The module does **not** currently emit transactional lifecycle outbox events. Na
 
 ## Integration
 
-- **`rustok-product`**: Supplies tenant-scoped source and target Product records.
+- **`rustok-product`**: The native catalog reference API validates the target and locks
+  the source Product inside the Relation write transaction. Create, update, delete,
+  and reorder share the lock. PostgreSQL uses `FOR NO KEY UPDATE` so reciprocal
+  inserts can still take the foreign-key locks. SQLite acquires its write lock.
 - **`rustok-outbox`**: Supplies the shared durable receipt ledger for all Relation writes; it does not carry Product Relation lifecycle events today.
 - **`rustok-commerce`**: Exposes relations via `productRelations`, `addProductRelation`, `removeProductRelation`, and `reorderProductRelations`; every mutation carries a required idempotency key.
 - **`rustok-product-relations-admin`**: Provides the dedicated Leptos FFA administration package.

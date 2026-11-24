@@ -6,6 +6,7 @@ mod m20260812_000008_add_route_key_registry;
 mod m20260813_000009_remove_term_status;
 mod m20260822_000010_create_taxonomy_category_hierarchy;
 mod m20260822_000011_create_taxonomy_category_presentations;
+mod m20261124_000012_order_taxonomy_translation_changes;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -20,6 +21,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260813_000009_remove_term_status::Migration),
         Box::new(m20260822_000010_create_taxonomy_category_hierarchy::Migration),
         Box::new(m20260822_000011_create_taxonomy_category_presentations::Migration),
+        Box::new(m20261124_000012_order_taxonomy_translation_changes::Migration),
     ]
 }
 
@@ -44,6 +46,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260822_000011_create_taxonomy_category_presentations",
             vec!["m20260822_000010_create_taxonomy_category_hierarchy"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261124_000012_order_taxonomy_translation_changes",
+            vec!["m20260822_000011_create_taxonomy_category_presentations"],
         ),
     ]
 }

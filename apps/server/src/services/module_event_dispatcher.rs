@@ -551,6 +551,22 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             .get::<rustok_taxonomy::TaxonomyModuleTermTranslationOwnerRegistry>()
             .cloned()
             .unwrap_or_default();
+        #[cfg(feature = "mod-blog")]
+        let owner_registry = {
+            let mut owner_registry = owner_registry;
+            if registry.contains("blog") {
+                rustok_content_orchestration::register_blog_translation_owner(
+                    &mut owner_registry,
+                    db.clone(),
+                )
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Blog Taxonomy translation owner registration failed: {error}"
+                    ))
+                })?;
+            }
+            owner_registry
+        };
         let provider = rustok_taxonomy::TaxonomyTranslationTargetProvider::with_owner_registry(
             Arc::new(rustok_taxonomy::TaxonomyService::new(db.clone())),
             owner_registry,

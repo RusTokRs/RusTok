@@ -31,6 +31,13 @@ pub use real_dom_inline::{RealDomInlineEditSubscription, attach_real_dom_inline_
 mod origin;
 pub use origin::{OPAQUE_ORIGIN, normalize_expected_origin, outbound_target_origin};
 
+mod peer_write;
+pub use peer_write::{
+    BrowserPeerWriteConflict, FLY_PEER_WRITE_CHANNEL, FLY_PEER_WRITE_CONFLICT_CODE,
+};
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+pub use peer_write::BrowserPeerWriteChannel;
+
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]

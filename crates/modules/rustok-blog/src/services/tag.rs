@@ -40,12 +40,16 @@ use crate::services::rbac::enforce_scope;
 mod relations;
 
 pub(crate) use relations::{
-    initialize_tag_usage_in_tx, load_post_tags_map, resolve_tag_id_for_posts, sync_post_tags_in_tx,
+    initialize_tag_usage_in_tx, load_post_tags_map, publish_blog_reindex_in_tx,
+    remove_post_tag_links_with_port_in_tx, resolve_tag_id_for_posts, sync_post_tags_in_tx,
 };
-pub use relations::{remove_post_tag_links_in_tx, replace_post_tag_links_in_tx};
+pub use relations::{
+    lock_tag_attachments_writer_in_tx, remove_post_tag_links_in_tx, replace_post_tag_links_in_tx,
+};
 
 const BLOG_SCOPE_VALUE: &str = "blog";
 const MAX_TAGS_PER_PAGE: u64 = 100;
+pub(super) const TAG_SLUG_MAX_CHARS: u32 = 100;
 
 pub struct TagService {
     db: DatabaseConnection,
@@ -80,6 +84,7 @@ impl TagService {
         validate_optional_tag_slug(input.slug.as_deref())?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_tag_attachments_writer_in_tx(&txn, tenant_id).await?;
         let created = self
             .taxonomy_port
             .create_tag_in_tx(
@@ -152,6 +157,7 @@ impl TagService {
         self.ensure_blog_owned_tag(tenant_id, tag_id, &locale)
             .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_tag_attachments_writer_in_tx(&txn, tenant_id).await?;
         self.taxonomy_port
             .lock_tag_in_tx(&txn, tenant_id, tag_id)
             .await?;
@@ -199,6 +205,7 @@ impl TagService {
         self.ensure_blog_owned_tag(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_tag_attachments_writer_in_tx(&txn, tenant_id).await?;
         self.taxonomy_port
             .lock_tag_in_tx(&txn, tenant_id, tag_id)
             .await?;
@@ -383,7 +390,7 @@ fn validate_optional_tag_slug(slug: Option<&str>) -> BlogResult<()> {
     let Some(slug) = slug else {
         return Ok(());
     };
-    if slug.chars().count() > 100 {
+    if slug.chars().count() > TAG_SLUG_MAX_CHARS as usize {
         return Err(BlogError::validation(
             "Tag slug cannot exceed 100 characters",
         ));

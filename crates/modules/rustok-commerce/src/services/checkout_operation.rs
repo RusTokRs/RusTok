@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -9,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
+use rustok_cart::{CartCheckoutPort, CartCheckoutSnapshotRequest, in_process_cart_checkout_port};
 use rustok_core::generate_id;
 use rustok_events::{
     CHECKOUT_OPERATION_ADMISSION_CLOSED, CHECKOUT_OPERATION_ADMISSION_OPEN,
@@ -332,6 +336,8 @@ pub enum CheckoutOperationError {
     NotFound(Uuid),
     #[error("checkout operation conflict: {0}")]
     Conflict(String),
+    #[error("the Cart owner did not confirm the checkout cart")]
+    CartOwnerRead { retryable: bool },
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
     /// The transition and the event that describes it are one unit of work: when
@@ -373,7 +379,7 @@ pub struct CheckoutOperationCheckpoint {
 /// `CheckedTransition` on every status write, the parking decision lives in
 /// `compensation_next_status`, the lease/completion shape follows from those
 /// writers, identity columns are never part of an update, and the
-/// cross-aggregate tenant checks run in the same transaction as the write. The
+/// tenant checks run before a new binding is written. The
 /// database keeps the column-level `CHECK` constraints and the
 /// `ux_checkout_operations_active_cart` uniqueness index only.
 ///
@@ -385,6 +391,7 @@ pub struct CheckoutOperationCheckpoint {
 pub struct CheckoutOperationJournal {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    cart_owner: Arc<dyn CartCheckoutPort>,
     payment_operations: PaymentProviderOperationJournal,
 }
 
@@ -500,9 +507,61 @@ fn allowed_transition_targets(status: CheckoutOperationStatus) -> String {
 impl CheckoutOperationJournal {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
+            cart_owner: in_process_cart_checkout_port(db.clone()),
             payment_operations: PaymentProviderOperationJournal::new(db.clone()),
             db,
             event_bus,
+        }
+    }
+
+    pub fn with_cart_owner(mut self, cart_owner: Arc<dyn CartCheckoutPort>) -> Self {
+        self.cart_owner = cart_owner;
+        self
+    }
+
+    async fn ensure_cart_tenant(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+    ) -> CheckoutOperationResult<()> {
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("rustok-commerce.checkout-journal"),
+            PLATFORM_FALLBACK_LOCALE,
+            format!("checkout-journal:begin:{cart_id}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        let result = self
+            .cart_owner
+            .read_cart_checkout_snapshot(
+                context,
+                CartCheckoutSnapshotRequest {
+                    cart_id,
+                    locale: None,
+                },
+            )
+            .await;
+        match result {
+            Ok(cart) if cart.tenant_id == tenant_id && cart.id == cart_id => Ok(()),
+            Ok(_) => Err(CheckoutOperationError::CartOwnerRead { retryable: false }),
+            Err(error) if error.kind == PortErrorKind::NotFound => {
+                Err(CheckoutOperationError::Validation(format!(
+                    "checkout operation cannot bind cart {cart_id}: it does not belong to tenant {tenant_id}"
+                )))
+            }
+            Err(error) => {
+                tracing::warn!(
+                    owner = "rustok_cart",
+                    operation = "read_cart_checkout_snapshot",
+                    boundary = "commerce_checkout_journal",
+                    error_kind = ?error.kind,
+                    retryable = error.retryable,
+                    "Cart owner did not confirm the checkout cart"
+                );
+                Err(CheckoutOperationError::CartOwnerRead {
+                    retryable: error.retryable,
+                })
+            }
         }
     }
 
@@ -535,7 +594,8 @@ impl CheckoutOperationJournal {
             return Err(active_cart_conflict(input.cart_id, active.id));
         }
 
-        ensure_cart_tenant(&self.db, input.tenant_id, input.cart_id).await?;
+        self.ensure_cart_tenant(input.tenant_id, input.cart_id)
+            .await?;
 
         let id = generate_id();
         let now = Utc::now();
@@ -1927,35 +1987,7 @@ where
     .map_err(Into::into)
 }
 
-/// Cross-aggregate tenant checks for the rows a checkout operation binds.
-///
-/// `m20260713_000009`/`m20260713_000017` enforced these inside the
-/// `enforce_checkout_operation_integrity()` PL/pgSQL function, which is exactly
-/// the "cross-row business validation inside a constraint trigger" the
-/// repository contract forbids. The journal owns them now: they run in the same
-/// transaction as the write, use the owning crate's entity, and fail closed.
-async fn ensure_cart_tenant(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    cart_id: Uuid,
-) -> CheckoutOperationResult<()> {
-    if tenant_id.is_nil() || cart_id.is_nil() {
-        return Err(CheckoutOperationError::Validation(
-            "tenant_id and cart_id must not be nil UUID".to_string(),
-        ));
-    }
-    let found = rustok_cart::entities::cart::Entity::find_by_id(cart_id)
-        .filter(rustok_cart::entities::cart::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?;
-    if found.is_none() {
-        return Err(CheckoutOperationError::Validation(format!(
-            "checkout operation cannot bind cart {cart_id}: it does not belong to tenant {tenant_id}"
-        )));
-    }
-    Ok(())
-}
-
+/// Tenant checks for Order and Payment bindings in the shared-storage profile.
 async fn ensure_order_tenant(
     db: &DatabaseConnection,
     tenant_id: Uuid,

@@ -6,9 +6,9 @@ use std::time::Duration;
 #[cfg(feature = "ssr")]
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 #[cfg(feature = "ssr")]
-use rustok_product::ports::types::{AdminCatalogFacetsRequest, AdminProductsRequest};
-#[cfg(feature = "ssr")]
 use rustok_product::ProductCatalogReadPort;
+#[cfg(feature = "ssr")]
+use rustok_product::ports::{AdminCatalogFacetsRequest, AdminProductsRequest};
 
 use crate::catalog_controls::ProductAdminListInput;
 use crate::model::ProductList;
@@ -57,8 +57,8 @@ async fn require_request_context(
                 boundary = "product_admin_catalog_native",
                 code = "product.admin_catalog_request_context_unavailable",
                 public_code = public.code,
-                correlation_id_present = !public.correlation_id.is_empty(),
-                correlation_id_length = public.correlation_id.chars().count(),
+                correlation_id_present = !public.correlation_id.is_nil(),
+                correlation_id_length = public.correlation_id.hyphenated().to_string().len(),
                 request_context_rejected = true,
                 "product admin trusted request context extraction failed"
             );
@@ -243,7 +243,7 @@ async fn product_admin_catalog_list_native(
             return Err(ServerFnError::new("Product admin request could not be completed"));
         }
         crate::transport::native_server_adapter::ensure_product_module_enabled(
-            runtime_ctx.db(),
+            &runtime_ctx,
             tenant.id,
         )
         .await?;
@@ -410,7 +410,7 @@ async fn product_admin_catalog_facets_native(
             return Err(ServerFnError::new("Product admin request could not be completed"));
         }
         crate::transport::native_server_adapter::ensure_product_module_enabled(
-            runtime_ctx.db(),
+            &runtime_ctx,
             tenant.id,
         )
         .await?;

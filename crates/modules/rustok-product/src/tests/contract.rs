@@ -1,8 +1,8 @@
 #[test]
 fn product_declares_owner_local_dto_and_entity_sources() {
-    let root = include_str!("lib.rs");
-    let entities = include_str!("entities/mod.rs");
-    let cargo = include_str!("../Cargo.toml");
+    let root = include_str!("../lib.rs");
+    let entities = include_str!("../entities/mod.rs");
+    let cargo = include_str!("../../Cargo.toml");
 
     assert!(root.contains("pub mod dto;"));
     assert!(root.contains("pub mod entities;"));
@@ -29,9 +29,9 @@ fn product_declares_owner_local_dto_and_entity_sources() {
 
 #[test]
 fn product_owner_boundaries_do_not_depend_on_foundation() {
-    let root = include_str!("lib.rs");
-    let entities = include_str!("entities/mod.rs");
-    let error = include_str!("error.rs");
+    let root = include_str!("../lib.rs");
+    let entities = include_str!("../entities/mod.rs");
+    let error = include_str!("../error.rs");
 
     assert!(root.contains("pub mod error;"));
     assert!(error.contains("pub enum CommerceError"));
@@ -50,12 +50,12 @@ fn product_module_publishes_only_a_typed_selection_marker_for_cross_module_bridg
         .register_runtime_extensions(&mut extensions)
         .expect("Product runtime extensions should register");
     assert!(extensions.contains::<crate::ProductRuntimeSelected>());
-    assert!(!include_str!("lib.rs").contains("rustok_index"));
+    assert!(!include_str!("../lib.rs").contains("rustok_index"));
 }
 
 #[test]
 fn product_module_matches_canonical_contract() {
-    let api = include_str!("../CRATE_API.md");
+    let api = include_str!("../../CRATE_API.md");
     assert!(api.contains("## Public surface"));
     assert!(api.contains("## Public Modules"));
     assert!(api.contains("## Platform Capability Bindings"));

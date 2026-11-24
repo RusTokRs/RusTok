@@ -14,7 +14,10 @@ use crate::ports::taxonomy::{
     NoopBlogTaxonomyPort,
 };
 use crate::services::{CategoryCommandService, MAX_POST_ARTICLE_BYTES};
-use crate::{CategoryService, CommentService, PostService, TagService};
+use crate::{
+    BlogWidgetService, CategoryService, CommentService, PostService, PreviewTokenService,
+    TagService,
+};
 
 /// Upper bound of a Blog HTTP request body.
 ///
@@ -85,6 +88,16 @@ impl BlogHttpRuntime {
 
     pub(crate) fn post_service(&self) -> PostService {
         PostService::new(self.db_clone(), self.event_bus())
+            .with_taxonomy_port(self.taxonomy_port.clone())
+    }
+
+    fn widget_service(&self) -> BlogWidgetService {
+        BlogWidgetService::new(self.db_clone(), self.event_bus())
+            .with_taxonomy_port(self.taxonomy_port.clone())
+    }
+
+    fn preview_token_service(&self) -> PreviewTokenService {
+        PreviewTokenService::new(self.db_clone(), self.event_bus())
             .with_taxonomy_port(self.taxonomy_port.clone())
     }
 }

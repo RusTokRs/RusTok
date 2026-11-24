@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "repository": "RusTokRs/RusTok",
+  "scope": "stable_distribution",
+  "state": "before_first_stable_release",
+  "seal_generation": 0
+}

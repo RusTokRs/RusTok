@@ -45,20 +45,54 @@ pub fn load_from_environment() -> Result<Vec<BackfillFixture>, Box<dyn Error>> {
         .map_err(|error| format!("invalid backfill fixture file {path}: {error}").into())
 }
 
+pub fn load_contract_fixtures(migrations: &[&str]) -> Result<Vec<BackfillFixture>, Box<dyn Error>> {
+    let document: Value = serde_json::from_str(include_str!(
+        "../../../../../docs/migrations/backfill-contracts.json"
+    ))?;
+    if document.get("schema_version").and_then(Value::as_u64) != Some(1) {
+        return Err("backfill contract schema_version must be 1".into());
+    }
+    let contracts = document["contracts"]
+        .as_array()
+        .ok_or("backfill contracts must be an array")?;
+    let mut selected = Vec::with_capacity(migrations.len());
+    for &migration in migrations {
+        let mut matches = contracts
+            .iter()
+            .filter(|contract| contract["migration"].as_str() == Some(migration));
+        let contract = matches
+            .next()
+            .ok_or_else(|| format!("missing backfill contract for {migration}"))?;
+        if matches.next().is_some() || contract["mode"].as_str() != Some("fixture") {
+            return Err(format!("expected one fixture contract for {migration}").into());
+        }
+        selected.push(contract);
+    }
+    Ok(parse_fixtures(selected)?)
+}
+
 pub async fn apply_setup(
     db: &DatabaseConnection,
     fixtures: &[BackfillFixture],
 ) -> Result<(), Box<dyn Error>> {
-    for fixture in fixtures {
-        db.execute_unprepared(&fixture.setup_sql)
-            .await
-            .map_err(|error| {
-                format!(
-                    "backfill fixture {} setup for migration {} failed: {error}",
-                    fixture.id, fixture.migration
-                )
-            })?;
+    if fixtures.is_empty() {
+        return Ok(());
     }
+
+    let transaction = db.begin().await?;
+    for fixture in fixtures {
+        if let Err(error) = transaction.execute_unprepared(&fixture.setup_sql).await {
+            let failure = format!(
+                "backfill fixture {} setup for migration {} failed: {error}",
+                fixture.id, fixture.migration
+            );
+            return match transaction.rollback().await {
+                Ok(()) => Err(failure.into()),
+                Err(cleanup) => Err(format!("{failure}; setup rollback: {cleanup}").into()),
+            };
+        }
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -134,10 +168,15 @@ fn parse_fixture_document(content: &str) -> Result<Vec<BackfillFixture>, String>
         .and_then(Value::as_array)
         .ok_or_else(|| "fixtures must be an array".to_string())?;
 
+    parse_fixtures(fixtures)
+}
+
+fn parse_fixtures<'a>(
+    fixtures: impl IntoIterator<Item = &'a Value>,
+) -> Result<Vec<BackfillFixture>, String> {
     let mut ids = HashSet::new();
-    let mut migrations = HashSet::new();
-    let mut parsed = Vec::with_capacity(fixtures.len());
-    for (index, fixture) in fixtures.iter().enumerate() {
+    let mut parsed = Vec::new();
+    for (index, fixture) in fixtures.into_iter().enumerate() {
         let parsed_fixture = BackfillFixture {
             id: required_string(fixture, index, "id")?,
             migration: required_string(fixture, index, "migration")?,
@@ -148,12 +187,6 @@ fn parse_fixture_document(content: &str) -> Result<Vec<BackfillFixture>, String>
             return Err(format!(
                 "fixtures[{index}].id duplicates {}",
                 parsed_fixture.id
-            ));
-        }
-        if !migrations.insert(parsed_fixture.migration.clone()) {
-            return Err(format!(
-                "fixtures[{index}].migration duplicates {}",
-                parsed_fixture.migration
             ));
         }
         parsed.push(parsed_fixture);
@@ -194,7 +227,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL"]
-    async fn assertions_are_read_only_and_strict() -> Result<(), Box<dyn std::error::Error>> {
+    async fn backfill_transactions() -> Result<(), Box<dyn std::error::Error>> {
         use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
         let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
         let mut url = url::Url::parse(&admin_url)?;
@@ -211,7 +244,7 @@ mod tests {
         let result = async {
             let db = Database::connect(url.as_str()).await?;
             let check = async {
-                db.execute_unprepared("CREATE TABLE assertion_probe (value integer); INSERT INTO assertion_probe VALUES (1)").await?;
+                db.execute_unprepared("CREATE TABLE assertion_probe (value integer PRIMARY KEY); INSERT INTO assertion_probe VALUES (1)").await?;
                 for (sql, expected) in [
                     ("SELECT true AS passed", true),
                     ("SELECT false AS passed", false),
@@ -230,6 +263,42 @@ mod tests {
                 }
                 let row = db.query_one_raw(Statement::from_string(DbBackend::Postgres, "SELECT value FROM assertion_probe")).await?.ok_or("probe disappeared")?;
                 if row.try_get::<i32>("", "value")? != 1 { return Err("assertion modified fixture data".into()); }
+
+                let mut setup = [
+                    BackfillFixture {
+                        id: "first-seed".into(),
+                        migration: "target".into(),
+                        setup_sql: "INSERT INTO assertion_probe VALUES (2)".into(),
+                        assertion_sql: "SELECT COUNT(*) = 3 AS passed FROM assertion_probe".into(),
+                    },
+                    BackfillFixture {
+                        id: "second-seed".into(),
+                        migration: "target".into(),
+                        setup_sql: "INSERT INTO assertion_probe VALUES (1)".into(),
+                        assertion_sql: "SELECT EXISTS (SELECT 1 FROM assertion_probe WHERE value = 3) AS passed".into(),
+                    },
+                ];
+                match super::apply_setup(&db, &setup).await {
+                    Err(error) if error.to_string().contains("second-seed setup for migration target") => {}
+                    Err(error) => return Err(format!("unexpected setup error: {error}").into()),
+                    Ok(()) => return Err("a duplicate primary key must fail setup".into()),
+                }
+                let rows = db.query_all_raw(Statement::from_string(
+                    DbBackend::Postgres, "SELECT value FROM assertion_probe ORDER BY value",
+                )).await?;
+                if rows.len() != 1 || rows[0].try_get::<i32>("", "value")? != 1 {
+                    return Err("a failing seed must roll back earlier seeds".into());
+                }
+
+                setup[1].setup_sql = "INSERT INTO assertion_probe VALUES (3)".into();
+                super::apply_setup(&db, &setup).await?;
+                super::assert_results(&db, &setup).await?;
+                setup[1].assertion_sql = "SELECT false AS passed".into();
+                match super::assert_results(&db, &setup).await {
+                    Err(error) if error.to_string().contains("second-seed failed after migration target") => {}
+                    Err(error) => return Err(format!("unexpected assertion error: {error}").into()),
+                    Ok(()) => return Err("a failing second case must fail verification".into()),
+                }
                 Ok::<_, Box<dyn std::error::Error>>(())
             }.await;
             db.close().await?;
@@ -275,9 +344,8 @@ mod tests {
     }
 
     #[test]
-    fn fixture_document_rejects_duplicate_migrations() {
-        let error = parse_fixture_document(
-            r#"{
+    fn fixture_document_accepts_multiple_cases_with_unique_ids() {
+        let document = r#"{
                 "schema_version": 1,
                 "fixtures": [
                     {
@@ -293,9 +361,15 @@ mod tests {
                         "assertion_sql": "SELECT true AS passed"
                     }
                 ]
-            }"#,
-        )
-        .expect_err("duplicate migrations must fail");
-        assert!(error.contains("migration duplicates m1"));
+            }"#;
+        let fixtures = parse_fixture_document(document).expect("multiple cases for one migration");
+        assert_eq!(fixtures.len(), 2);
+        assert_eq!(fixtures[0].id, "first");
+        assert_eq!(fixtures[1].id, "second");
+        assert!(validate_pending(&fixtures, &["m1".to_string()].into()).is_ok());
+
+        let duplicate = document.replace(r#""id": "second""#, r#""id": "first""#);
+        let error = parse_fixture_document(&duplicate).expect_err("duplicate IDs must fail");
+        assert!(error.contains("fixtures[1].id duplicates first"));
     }
 }

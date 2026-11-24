@@ -73,12 +73,12 @@ decision, including its explicit reconciliation requirement.
 
 ## Sources of truth and ownership
 
-- `rustok-workflow` is the canonical owner of workflow definitions, cron cursors,
-  firings, execution journals, and reconciliation decisions.
-- The durable firing row (`workflow_cron_firings`) is the canonical admission and attempt state.
-- `workflow_executions` and step execution journals record execution facts.
-- REST/GraphQL transports and UI dashboards are projections, not ownership authorities.
-- The host composition layer in `apps/server` owns process lifecycle and shutdown signals.
+- `rustok-workflow` owns workflow definitions, cron cursors, firings, execution
+  journals, and reconciliation decisions.
+- `workflow_cron_firings` records admission and attempt state.
+  `workflow_executions` and step execution journals record execution outcomes.
+- The host composition layer in `apps/server` supplies the shutdown signal.
+  Operator surfaces present Workflow's persisted state.
 
 ## Invariants
 
@@ -135,29 +135,28 @@ decision, including its explicit reconciliation requirement.
 
 ## Non-goals
 
-- Automatic retry of arbitrary ambiguous external effects without idempotency guarantees.
-- Distributed transactions across third-party webhooks or external HTTP endpoints.
-- Indefinite retention of historical cron firing records beyond platform retention policies.
-- Elimination of human operator reconciliation for crashed workers executing non-idempotent steps.
+- Automatic replay of ambiguous external effects without idempotency guarantees.
+- Distributed transactions or exactly-once delivery across external providers.
+- Indefinite retention of historical cron firing records.
 
 ## Data, transaction, and concurrency boundary
 
-- The persistence layer uses database transactions and row-level CAS locking.
-- Cursor update and firing row enqueuing occur in a single atomic database transaction.
-- Claiming a firing (`pending -> running`) uses conditional CAS on status and attempt token.
-- Reconciliation decisions, audit trails, and execution status updates share an atomic transaction.
-- Concurrency across replicas is coordinated via database CAS invariants, not in-memory or Redis locks.
+The cursor and its newly expanded firing rows commit together using a database
+compare-and-set. Claiming a pending firing records the attempt token. The
+engine verifies that token and the schedule revision when it inserts the
+first execution record. An authorized reconciliation commits its decision,
+firing transition and reconciled execution state in one transaction.
 
 ## Context dimensions
 
-- All cron entities are multi-tenant and explicitly scoped by `tenant_id` and `workflow_id`.
-- Reconciliations require authenticated human actor identification (`actor_id`).
-- Audit trails record causation, attempt tokens, and evidence digests for compliance.
+The tenant and workflow identify the owning definition. Its revision and the
+UTC scheduled instant identify the firing. Recovery decisions record the
+authorized human operator, evidence, and previous attempt token.
 
 ## Events and projections
 
-- Terminal execution outcomes and reconciliation decisions produce domain/audit records within the owning transaction.
-- Read projections (GraphQL/REST endpoints and admin dashboards) query read replicas or committed tables and cannot drive state transitions.
+The scheduler passes the firing UUID to the existing engine as
+`trigger_event_id`. Operator views read durable firing and execution state.
 
 ## Failure semantics
 
@@ -190,6 +189,8 @@ approved.
 
 ## Verification
 
+Maintainer review is required before acceptance.
+
 - SQLite and PostgreSQL migration tests, atomic cursor/enqueue rollback tests.
 - Two-replica concurrent claim tests and safe restart of queued firings.
 - Crash windows before claiming, after claiming but before execution, during
@@ -203,7 +204,7 @@ approved.
 
 ## Consequences
 
-- Prevents duplicate cron executions across multiple replicas.
-- Eliminates silent loss of scheduled occurrences across restart/downtime periods.
-- Enforces fail-closed safety for ambiguous step executions by requiring explicit operator reconciliation.
-- Requires additive migrations `m20261123_000009_add_durable_cron.rs` and bounded scheduler tick budgets.
+Durable firings retain pending work across restarts and arbitrate admission
+across replicas. Ambiguous external outcomes require operator reconciliation
+before work may resume. Hosts apply `m20261123_000009_add_durable_cron.rs` and
+expand missed occurrences within the scheduler's configured catch-up horizon.

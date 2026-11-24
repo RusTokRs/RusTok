@@ -6,7 +6,7 @@ use rustok_product_relations::dto::{
 use rustok_product_relations::error::ProductRelationError;
 use rustok_product_relations::ports::ProductRelationsPort;
 use rustok_product_relations::services::{ProductRelationCommandContext, ProductRelationService};
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -22,22 +22,13 @@ async fn setup_test_db() -> DatabaseConnection {
         .up(&SchemaManager::new(&db))
         .await
         .expect("owner receipt schema must be available in relation tests");
+    // The relation migrations need only the Product identity key and lock column.
     db.execute_unprepared(
         r#"
 CREATE TABLE products (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draft',
-    seller_id TEXT,
-    vendor TEXT,
-    product_type TEXT,
-    shipping_profile_slug TEXT,
-    primary_category_id TEXT,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    published_at TEXT,
-    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tenant_id, id)
 );
 "#,
@@ -57,22 +48,49 @@ CREATE TABLE products (
 }
 
 async fn insert_test_product(db: &DatabaseConnection, tenant_id: Uuid, product_id: Uuid) {
-    use rustok_product::entities::product;
-    use sea_orm::{ActiveModelTrait, Set};
-
-    product::ActiveModel {
-        id: Set(product_id),
-        tenant_id: Set(tenant_id),
-        status: Set(product::ProductStatus::Active),
-        metadata: Set(serde_json::json!({})),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-        revision: Set(1),
-        ..Default::default()
-    }
-    .insert(db)
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO products (tenant_id, id) VALUES (?1, ?2)",
+        [tenant_id.into(), product_id.into()],
+    ))
     .await
     .expect("Failed to insert relation test product");
+}
+
+#[tokio::test]
+async fn rejects_cross_tenant_endpoints() {
+    let db = setup_test_db().await;
+    let service = ProductRelationService::new(db.clone());
+    let tenant_id = Uuid::new_v4();
+    let local_id = Uuid::new_v4();
+    let foreign_id = Uuid::new_v4();
+    insert_test_product(&db, tenant_id, local_id).await;
+    insert_test_product(&db, Uuid::new_v4(), foreign_id).await;
+
+    for (product_id, related_product_id) in [(local_id, foreign_id), (foreign_id, local_id)] {
+        let error = service
+            .create_relation(
+                tenant_id,
+                None,
+                CreateProductRelationInput {
+                    product_id,
+                    related_product_id,
+                    relation_type: RelationType::CrossSell,
+                    position: None,
+                    metadata: None,
+                },
+            )
+            .await
+            .expect_err("Both relation endpoints must be in the current tenant");
+        assert!(matches!(error, ProductRelationError::ProductNotFound(id) if id == foreign_id));
+    }
+    assert!(
+        service
+            .list_relations(tenant_id, local_id, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

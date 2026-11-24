@@ -68,7 +68,8 @@ pub use owner_category_route_sync::{
     sync_module_category_with_owned_aliases_in_tx,
 };
 pub use owner_category_sync::{
-    SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_in_tx,
+    SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_copy_in_tx,
+    sync_module_category_in_tx,
 };
 pub use owner_identity::taxonomy_term_identity_exists;
 pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};
@@ -78,7 +79,7 @@ pub use product_taxonomy_port::{
 pub use services::TaxonomyService;
 pub use translation_target::{
     TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
-    TaxonomyTranslationTargetProvider,
+    TaxonomyTermTranslationPolicy, TaxonomyTranslationTargetProvider,
 };
 
 #[cfg(test)]

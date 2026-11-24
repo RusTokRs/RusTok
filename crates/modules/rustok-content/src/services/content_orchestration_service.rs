@@ -99,7 +99,7 @@ pub trait ContentOrchestrationBridge: Send + Sync {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        actor_id: Option<Uuid>,
+        security: &SecurityContext,
         input: &PromoteTopicToPostInput,
     ) -> ContentResult<PromoteTopicToPostOutput>;
 
@@ -208,7 +208,7 @@ impl ContentOrchestrationService {
 
         let bridge_result = self
             .bridge
-            .promote_topic_to_post(&txn, tenant_id, security.user_id, &input)
+            .promote_topic_to_post(&txn, tenant_id, &security, &input)
             .await?;
 
         self.event_bus

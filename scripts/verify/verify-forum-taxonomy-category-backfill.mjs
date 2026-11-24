@@ -39,8 +39,9 @@ if (failures.length === 0) {
   requireMarker(registry, 'm20260823_000029_add_forum_taxonomy_category_binding', 'binding seam dependency');
 
   requireMarker(migration, 'const FORUM_SCOPE_VALUE: &str = "forum";', 'Forum module scope policy');
-  requireMarker(migration, 'TaxonomyTermKind::Category', 'Category-only backfill');
-  requireMarker(migration, 'TaxonomyScopeType::Module', 'module-scoped legacy migration');
+  requireMarker(migration, 'kind: Set("category".to_string())', 'Category-only backfill');
+  requireMarker(migration, 'scope_type: Set("module".to_string())', 'module-scoped legacy migration');
+  requireMarker(migration, 'scope_value: Set(FORUM_SCOPE_VALUE.to_owned())', 'Forum scope on backfilled rows');
   requireMarker(migration, 'id: Set(category.id)', 'Forum UUID preservation');
   requireMarker(migration, 'format!("forum-category-{category_id}")', 'locale-independent canonical key');
   requireMarker(migration, 'forum_category_translation::Entity::find()', 'historical localized copy backfill input');

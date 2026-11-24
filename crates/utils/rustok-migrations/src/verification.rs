@@ -40,6 +40,8 @@ pub enum VerificationError {
     Tool(String),
     #[error("verification I/O failed: {0}")]
     Io(#[from] std::io::Error),
+    #[error("verification snapshot serialization failed: {0}")]
+    Serialization(#[from] serde_json::Error),
 }
 
 type Result<T> = std::result::Result<T, VerificationError>;
@@ -171,16 +173,14 @@ fn compare_observations(
         equivalent: differences.is_empty(),
         replacement_admission: "blocked: release provenance, upgrade fixtures, recovery and activation gates are separate requirements".into(),
         differences,
-        reference_digest: snapshot_digest(reference),
-        candidate_digest: snapshot_digest(candidate),
+        reference_digest: snapshot_digest(reference)?,
+        candidate_digest: snapshot_digest(candidate)?,
         bootstrap,
     })
 }
 
-fn snapshot_digest(snapshot: &DatabaseSnapshot) -> String {
-    // Serialization of this closed struct contains no unordered maps or floats.
-    let bytes = serde_json::to_vec(snapshot).unwrap_or_default();
-    hex::encode(Sha256::digest(&bytes))
+fn snapshot_digest(snapshot: &DatabaseSnapshot) -> Result<String> {
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(snapshot)?)))
 }
 
 pub fn validate_journal(actual: &[String], expected: &[String]) -> Result<()> {
@@ -525,22 +525,16 @@ fn run_pg_dump(
             }
         })
     }
-    let Some(child_stdout) = child.stdout.take() else {
-        return Err(VerificationError::Tool("failed to capture pg_dump stdout".into()));
+    let (Some(child_stdout), Some(child_stderr)) = (child.stdout.take(), child.stderr.take())
+    else {
+        child.kill()?;
+        child.wait()?;
+        return Err(VerificationError::Tool(
+            "failed to capture pg_dump output".into(),
+        ));
     };
-    let Some(child_stderr) = child.stderr.take() else {
-        return Err(VerificationError::Tool("failed to capture pg_dump stderr".into()));
-    };
-    let stdout = reader(
-        child_stdout,
-        limit,
-        exceeded.clone(),
-    );
-    let stderr = reader(
-        child_stderr,
-        64 * 1024,
-        exceeded.clone(),
-    );
+    let stdout = reader(child_stdout, limit, exceeded.clone());
+    let stderr = reader(child_stderr, 64 * 1024, exceeded.clone());
     let start = Instant::now();
     let status = loop {
         if exceeded.load(Ordering::SeqCst) || start.elapsed() > Duration::from_secs(120) {

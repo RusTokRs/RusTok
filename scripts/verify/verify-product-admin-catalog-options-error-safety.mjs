@@ -101,7 +101,6 @@ for (const marker of [
   "CatalogSearchOptionsErrorContext::new(",
   "legacy::fetch_catalog_search_options(token, tenant_slug, locale)",
   ".map_err(|error| context.map_error(error))",
-  "PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE",
 ]) {
   requireText(wrapper, marker, `${paths.facade}: public search-options boundary`);
 }
@@ -115,6 +114,7 @@ for (const marker of [
   "tenant_slug_length",
   "locale_length",
   "product.admin_catalog_search_options_unavailable",
+  "PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE.to_string()",
 ]) {
   requireText(errorContext, marker, `${paths.facade}: bounded selected-transport diagnostics`);
 }
@@ -168,8 +168,8 @@ requireText(
 );
 
 requireText(native, "product_admin_catalog_search_options_native(locale)", `${paths.native}: native options endpoint`);
-requireText(native, "ensure_product_module_enabled(runtime_ctx.db(), tenant.id).await?", `${paths.native}: native tenant module gate`);
-requireText(native, 'is_tenant_module_enabled(db, tenant_id, "product")', `${paths.native}: Product module gate implementation`);
+requireText(native, "ensure_product_module_enabled(&runtime_ctx, tenant.id).await?", `${paths.native}: native tenant module gate`);
+requireText(native, 'is_tenant_module_enabled(runtime.db(), tenant_id, "product")', `${paths.native}: Product module gate implementation`);
 requireText(graphql, "PRODUCT_ATTRIBUTES_QUERY", `${paths.graphql}: GraphQL attribute query`);
 requireText(graphql, "scope", `${paths.graphql}: GraphQL attribute scope projection`);
 requireText(graphql, "isFilterable", `${paths.graphql}: GraphQL filterable attribute projection`);
@@ -202,7 +202,7 @@ for (const marker of [
   "Status: **source-ready / unvalidated**",
   "SSR/hydrate",
   "CSR",
-  "cross-transport retry",
+  "Failure ends the operation in the selected transport.",
   "Product catalog search options are temporarily unavailable",
   "structural",
   "Product or Both",

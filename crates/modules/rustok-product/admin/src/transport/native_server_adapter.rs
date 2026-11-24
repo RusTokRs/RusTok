@@ -559,10 +559,10 @@ fn service_from_context(
 
 #[cfg(feature = "ssr")]
 pub(super) async fn ensure_product_module_enabled(
-    db: &sea_orm::DatabaseConnection,
+    runtime: &rustok_api::HostRuntimeContext,
     tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    match rustok_api::is_tenant_module_enabled(db, tenant_id, "product").await {
+    match rustok_api::is_tenant_module_enabled(runtime.db(), tenant_id, "product").await {
         Ok(true) => Ok(()),
         Ok(false) => Err(ServerFnError::new("Product module is not enabled")),
         Err(_) => Err(map_product_internal_error()),
@@ -592,7 +592,7 @@ async fn native_context() -> Result<
             "Authenticated actor is not bound to the current tenant",
         ));
     }
-    ensure_product_module_enabled(runtime_ctx.db(), tenant.id).await?;
+    ensure_product_module_enabled(&runtime_ctx, tenant.id).await?;
     Ok((service, auth, tenant))
 }
 

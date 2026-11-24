@@ -79,15 +79,15 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 - `rustok-taxonomy` is the single source of truth for the `taxonomy_*` tables, term names, term routes and the category tree.
 - `rustok-blog` owns `blog_posts`, `blog_post_tags`, `blog_tag_usage`, `blog_categories` and the command rules that refuse a Blog write.
-- `rustok-blog` owns `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`; the provider owns the adapter.
-- `rustok-blog` keeps one Taxonomy-shaped dependency for the translation-owner registry (`TaxonomyModuleTermTranslationOwnerRegistry`, `TaxonomyModuleTermTranslationOwner`, `TaxonomyTermKind` in `src/module.rs` and `src/services/taxonomy_translation_owner.rs`). That registry is a registration point, not a data read; step 5 of the decision moves it, and until then the Cargo dependency of Context 2 stands.
+- `rustok-blog` owns `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`. Taxonomy owns the storage operations. The existing `rustok-content-orchestration` bridge adapts these two owner contracts for embedded execution.
+- Taxonomy owns translation registration for its terms. Blog owns its typed port and command rules.
 - The composition root (`apps/server`, the module registry) owns which port is attached.
 
 ## Invariants
 
 - `rustok-blog` contains zero direct SQL queries against `taxonomy_*` tables.
 - `rustok-blog/Cargo.toml` contains no dependency on `rustok-taxonomy`.
-- The Cargo dependency graph is strictly acyclic: `taxonomy -> blog`.
+- The orchestration bridge depends on both owner crates. The Taxonomy runtime remains independent of the Blog runtime.
 - Standalone blog tests run against an isolated database without taxonomy tables.
 - Transactional atomicity is fully preserved when `BlogTaxonomyPort` is wired with a database transaction.
 
@@ -110,6 +110,10 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 - Locale: `load_scoped_categories`, `load_tags_by_ids` and `load_category_locale_copy_in_tx` carry a locale, and a snapshot states the locale it was asked for and the locale it returned so Blog can reject a mismatched copy instead of substituting one.
 - Channel: Blog's channel gating stays in Blog; the port carries no channel dimension.
 - Actor: the command operations of `CategoryCommandService` carry the caller's `SecurityContext` and enforce the Blog scope before the port is called.
+- Forum-to-Blog promotion carries the caller's effective permissions to
+  Blog's tag command. It can attach an existing visible term, while creation
+  of a missing Blog tag requires `tags:create`. Blog-to-Forum demotion uses
+  the same Blog port to read localized tag names and update usage.
 
 ## Events and projections
 
@@ -128,11 +132,21 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 
 1. Define `BlogTaxonomyPort` and `BlogCategoryDeleteCleanupPort` in `rustok-blog::ports::taxonomy`.
 2. Move every Taxonomy call in `rustok-blog` behind the ports (`category.rs`, `category_command.rs`, `category_delete.rs`, `category_name_projection.rs`, `tag.rs`, search projection, HTTP and GraphQL runtime).
-3. Implement `TaxonomyBlogTaxonomyPortAdapter` and the cleanup adapter in `rustok-taxonomy`.
+3. Implement the embedded Blog Taxonomy port and cleanup adapter in `rustok-content-orchestration` using Taxonomy's public owner operations.
 4. Attach both adapters in the composition root.
-5. Remove `rustok-taxonomy` from `crates/modules/rustok-blog/Cargo.toml` by moving the translation-owner registration point.
+5. Register Taxonomy's exact Translation owner for Blog terms after its permission and write-order contract is verified.
 
-Implementation state, read from the tree at 2026-11-12: steps 1 and 2 are present — the two ports exist, `NoopBlogTaxonomyPort` and `NoopBlogCategoryDeleteCleanupPort` are the defaults of the HTTP and GraphQL runtimes, `normalize_term_route_key` is Blog-local (`src/normalization.rs`), and Blog `src` holds no query against a `taxonomy_*` table. Steps 3, 4 and 5 are not present: no `TaxonomyBlogTaxonomyPortAdapter` exists anywhere in the tree, so both transports run on the noop port, and `crates/modules/rustok-blog/Cargo.toml` still declares `rustok-taxonomy` because `src/module.rs` and `src/services/taxonomy_translation_owner.rs` register a translation owner through it. Two consequences are recorded in `crates/modules/rustok-blog/README.md`: a Category or Tag written today is not stored in Taxonomy, and `tests/category_taxonomy_delete_lifecycle.rs` does not compile against the port signature. The invariant "`rustok-blog` contains no dependency on `rustok-taxonomy`" therefore does not hold yet, which is why the implementation status is `In progress`.
+The consumer port and production dependency cutover are present. The embedded
+adapter is registered in the server's shared runtime. Category and Tag service
+paths use the same provider in HTTP, GraphQL, Search and native Blog transports.
+The [Blog README](../crates/modules/rustok-blog/README.md) describes the
+embedded integration fixtures and the limits of custom hosts without a provider.
+The embedded host registers the Blog Translation owner for `taxonomy/term`.
+It checks enabled tenant Blog scope and the appropriate Category or Tag
+permission. Translation uses owner field limits and publishes Blog reindex
+evidence in the same transaction as the Taxonomy copy and journal. Category
+translation advances the Blog membership revision under the hierarchy lock.
+The standalone storage cutover remains open.
 
 ## Alternatives considered
 
@@ -142,14 +156,16 @@ Implementation state, read from the tree at 2026-11-12: steps 1 and 2 are presen
 
 ## Consequences
 
-- `rustok-taxonomy` gains an adapter crate dependency on `rustok-blog`; the dependency is strictly acyclic (`taxonomy -> blog`).
+- The embedded composition uses the existing orchestration crate where both owner contracts are available.
 - A deployment that attaches no adapter keeps working and stores nothing in Taxonomy for Blog categories and tags; the README states this as open work rather than as a supported mode.
 - Category copies, term routes and the category tree now follow the port, so Taxonomy can change its storage without a Blog change.
-- The translation-owner registration keeps one Taxonomy type in Blog `src` until step 5, so `rustok-blog` is not yet free of the dependency its Context objects to.
+- Blog's direct Taxonomy Cargo dependency is limited to integration fixtures.
 
 ## Verification
 
-- Current state: these Rust checks have not been run in this environment because the Rust toolchain is unavailable.
-- Before advancing the implementation status, run `cargo check -p rustok-blog` and `cargo test -p rustok-blog --lib` against the current ports and transports; the manifest still has a production `rustok-taxonomy` dependency, and the adapter, host wiring and translation-owner cutover are not implemented.
-- After those cutovers, run `cargo check -p rustok-taxonomy` and adapter-backed integration tests that prove category/tag persistence, transaction rollback and standalone behavior. Do not claim a dependency-free Blog build until the manifest and code actually satisfy that invariant.
+- `npm run verify:module-reference-contract` checks the Blog-side port calls,
+  lock ordering, typed errors and separation from Taxonomy implementation types.
+- Run `cargo test -p rustok-content-orchestration --features mod-blog --lib blog_taxonomy::tests`
+  for embedded Category and Tag persistence, scope checks and rollback.
+- Verify the standalone deployment separately when it has a concrete provider.
 

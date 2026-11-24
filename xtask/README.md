@@ -314,6 +314,140 @@ It binds paths, file modes, deletions and bytes. Symlinks, reparse points,
 submodules and unresolved index conflicts fail. The original reference is a
 local comparison input, not a trusted release boundary.
 
+`plan.json` is published after both snapshots are written and the working
+source, `main`, and `HEAD` are rechecked. If preparation fails, it removes its
+incomplete output so the same path can be retried. A path that already exists
+belongs to its original run and is rejected.
+
+`source-inputs` fingerprints declared migration files from an exact Git
+commit. Each entry reports a SHA-256 covering the paths, Git file modes and
+raw blob hashes. Shared files are read once per commit and contribute to every
+migration that declares them. Worktree bytes and Git replacement refs are
+ignored. A missing path, symlink or submodule fails the check.
+
+Use a reviewed input file with schema version 1.
+
+```json
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "migration": "m20261029_000001_create_blog_schema",
+      "files": [
+        "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
+        "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/postgres.rs"
+      ]
+    }
+  ]
+}
+```
+
+The example selects two files for a bounded check. Include every relevant
+file when collecting broader evidence. Use `--compare` to fingerprint the
+same paths in a second exact commit. The JSON report identifies changed files
+by migration, and a difference gives the command a nonzero exit status.
+
+```sh
+cargo xtask migrations source-inputs --commit <reference-sha> --inputs source-inputs.json --compare <candidate-sha>
+```
+
+Add an `entrypoints` array to a migration declaration to check its local
+Rust source links. List each conventionally mounted migration module file
+in both `entrypoints` and `files`. The check reads the same Git blobs that
+are fingerprinted and follows ordinary modules, literal `#[path]`, and
+literal `include!`, `include_str!` and `include_bytes!` links. The result
+lists reached files as `checked_local_sources`. The check runs on both
+commits when comparing.
+
+An undeclared linked file, ambiguous module path or computed include path
+fails the check. This scan inspects visible syntax across `cfg` branches.
+Conditional `#[path]`, includes inside macro definitions, and module
+declarations inside `include!` fragments are unsupported. Imported Rust
+helpers, macro expansion, and generated or
+external inputs still require separate build evidence. Declarations without
+entrypoints produce hashes without a local link report.
+
+`bind-inventory` combines this source evidence with the executable inventory
+from a completed `verify-fresh` run. Pass the original `plan.json` and the
+reviewed source declarations. The command reads the selected inventory and
+both reports from the sibling `fresh` directory and verifies their hashes.
+The selected build snapshot must match the exact committed Git tree. The
+reference is selected by default. `--side candidate` checks the candidate
+export and rejects snapshots built with changes outside the specified commit.
+
+```sh
+cargo xtask migrations bind-inventory --plan target/migrations/review/plan.json --inputs source-inputs.json
+```
+
+The JSON report preserves the executable order, owner, dependency, safety
+and transaction declarations. A step without declared files has `source: null`.
+Unknown migration names fail the check. The report binds the source declaration
+file and records declared and locally checked coverage separately. It reports
+transitive build-input coverage as unverified and carries local evidence only.
+
+`discover-source-inputs` prepares the declaration input from an executable
+export and the saved `export-migration-plan.d` Cargo dep-info file. Give it
+the full source commit and the original absolute build source root recorded
+in the `.d` file, even if the root has been cleaned up. The tool matches
+observed paths to regular Git blobs. It associates `DeriveMigrationName`
+and literal `MigrationName` implementations with the exported steps, then
+uses the local link check to collect nested files and literal assets.
+
+```sh
+cargo xtask migrations discover-source-inputs --commit SHA --inventory fresh/reference-plan.json --dep-info path/to/export-migration-plan.d --build-root path/to/original/source > source-inputs.json
+```
+
+Unknown or ambiguous names and unsupported links produce diagnostics and a
+nonzero status. The output can contain partial declarations for review. A
+file seen by Cargo contributes only to this build's observed paths. Package
+imports, external and generated inputs, alternate build configurations and
+exact attribution of shared dependency code still require separate evidence.
+New `verify-fresh` reports also record the Cargo dep-info file digests for
+the runner and exporter alongside their build artifacts.
+
+To check that the declarations use paths from the verified exporter build,
+pass the retained exporter `.d` file and its original build root to
+`bind-inventory`.
+
+```sh
+cargo xtask migrations bind-inventory --plan target/migrations/review/plan.json --inputs source-inputs.json --dep-info path/to/export-migration-plan.d --build-root path/to/original/source
+```
+
+`verify-fresh` records the exporter `.d` digest and the normalized workspace
+path-list digest in the selected build's identity. `bind-inventory` verifies
+both and requires every declared file in that path list. The result includes
+`compiler_sources` only when this comparison ran successfully. An older
+report can still be used for inventory and Git source binding. Requesting
+compiler-source comparison with an older report fails if its build identity
+lacks the recorded observation.
+
+`registry-inputs` reuses the selected build's recorded Cargo resolution and
+verifies package bytes in a supplied Cargo registry cache. It checks the
+committed `Cargo.lock` against the build identity and each selected crates.io
+archive against its locked SHA-256. It also compares the regular files in the
+archive with the paired `registry/src` directory and rejects changed, missing
+or extra source files. Cargo's own `.cargo-ok` marker is outside the packaged
+file set. Results carry an archive digest and a path-and-bytes digest per
+package. External packages from other sources are reported as unverified.
+
+```sh
+cargo xtask migrations registry-inputs --plan target/migrations/review/plan.json --registry-cache path/to/cargo/registry/cache/INDEX
+```
+
+The command reads the current cache without building packages or starting
+PostgreSQL. Its report is tied to the completed build's dependency selection.
+A retrospective check establishes the bytes present in the supplied cache at
+verification time. Historical compiler reads, generated outputs and native
+or filesystem metadata require separate evidence.
+
+For a new run, pass the same `--registry-cache` option to `verify-fresh`.
+It checks the selected crates.io archives and extracted source trees before
+and after each side's build. Each manifest path reported by Cargo must point
+to the inspected extraction. The build identity records matching verification
+results under `registry_sources`. This optional check measures both endpoints
+and leaves transient changes, generated outputs and non-crates.io sources
+outside its verified coverage.
+
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
@@ -323,13 +457,25 @@ clock differences under the [migration consolidation decision](../DECISIONS/2026
 Each isolated build has a two-hour deadline to
 allow for compiling the composed module graph with a cold build cache. Build
 sources are copied outside the active Git and Cargo ancestor tree.
-Global/ancestor Cargo configuration is rejected;
-ambient build variables and credentials are cleared. The command records actual
-Cargo/Rust versions, executable artifact paths, source/plan/tool/binary digests
-and the observed database result. Build caches still come from the local Cargo
-home. Source inputs are verified again after execution, including the build
+Global and ancestor Cargo configuration is rejected. Builds use a bounded
+environment that includes `SystemDrive` on Windows for MSVC linker discovery.
+The command records Cargo and Rust versions, executable artifact paths,
+source/plan/tool/binary digests and the observed database result. Builds reuse
+the local Cargo cache. Source inputs are verified again after execution, including the build
 copies used as migration working directories. Failed runs retain a failure
 record; temporary build sources, fixture databases and roles are cleaned up.
+
+New `verify-fresh` reports also record `generated_build_outputs` in each
+build identity. The verifier takes each `OUT_DIR` reported by Cargo, matches
+its package to the resolved graph and hashes the regular files under it,
+including their relative paths and modes. It checks the directory contents
+again before publishing the report. Changes, added files and missing files
+fail verification. The output observations apply to the reported directories
+after compilation. `generated_dependencies` records, for each executable,
+which of these files appear in Cargo's dep-info and which reported paths
+inside the build target lack a corresponding `OUT_DIR` capture. The report
+records dependency files listed by Cargo. Exact reads, proc-macro expansion
+and writes outside the reported directories still require separate evidence.
 
 Each side's build evidence binds the existing source snapshot, lockfile,
 repository Cargo/toolchain configuration, normalized Cargo dependency resolution,
@@ -345,17 +491,20 @@ required. Resolution is checked before and after each build.
 
 Build resolution evidence remains partial. Cargo workspace metadata can unify
 features from unbuilt workspace and development consumers; this is not an exact
-compilation-unit graph. External package bytes, generated inputs, build-script
-and proc-macro effects, ambient native/toolchain inputs and per-migration source
-attribution are explicitly unverified. A module archive's `source_digest` is not
+compilation-unit graph. External bytes outside the recorded registry checks,
+generated inputs outside the recorded output directories, build-script
+and proc-macro effects, ambient native/toolchain inputs and complete per-migration
+source attribution are explicitly unverified. A module archive's `source_digest` is not
 the composed migrator's workspace/build identity. Source/input declarations do
 not grant release authority or replace the existing source-store/publication
 owners. All 15 tests in the migration command group passed with
 `--include-ignored`, including ten build-input regressions, real Cargo metadata
 collection on an isolated fixture, and a read-only probe of the current RusToK
-workspace (1084 resolved packages, 75 captured path packages). These are finite
-resolution checks. The complete updated `verify-fresh` database/build workflow
-has not been rerun; this step does not claim fresh PostgreSQL replay evidence.
+workspace (1084 resolved packages, 75 captured path packages). The isolated
+MSVC linker probe passed on Windows. The Blog pilot ran the complete
+`verify-fresh` workflow with two separately built migration plans on PostgreSQL
+16.13. See the [consolidation guide](../docs/guides/safe-database-migrations-and-squashing.md#implementation-gates)
+for the source boundary and remaining gates.
 
 Scoped verification for this command group:
 

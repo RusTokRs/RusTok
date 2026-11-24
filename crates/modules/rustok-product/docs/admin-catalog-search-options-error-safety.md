@@ -12,7 +12,7 @@ The Product Admin catalog uses exactly one transport for a build profile:
 
 - **SSR and hydrate:** call the native Product Admin server function.
 - **CSR:** use GraphQL bootstrap, then load categories and product attributes.
-- **Failure:** do not retry the same operation through the other transport.
+- Failure ends the operation in the selected transport.
 
 The native and GraphQL paths build the same `ProductCatalogSearchOptions` DTO. Category options include structural categories only. Attribute options include attributes that are filterable and have Product or Both scope. Category labels prefer `path`, then `name`, then `code`.
 

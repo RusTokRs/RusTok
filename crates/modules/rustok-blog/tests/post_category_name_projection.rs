@@ -64,8 +64,10 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
     );
 
     let bus = event_bus(&db);
-    let category_service = CategoryService::new(db.clone(), bus.clone());
-    let post_service = PostService::new(db.clone(), bus);
+    let port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
+    let category_service =
+        CategoryService::new(db.clone(), bus.clone()).with_taxonomy_port(port.clone());
+    let post_service = PostService::new(db.clone(), bus).with_taxonomy_port(port);
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 

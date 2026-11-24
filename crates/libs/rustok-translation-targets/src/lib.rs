@@ -636,6 +636,29 @@ pub trait TranslationTargetProvider: Send + Sync {
         request: ListTranslationResourcesRequest,
     ) -> Result<TranslationResourcePage, PortError>;
 
+    /// Content-free baseline for the tenant's shared change checkpoint.
+    /// Owners with actor-filtered discovery must authorize and enumerate their
+    /// inventory independently, using the same scope as `read_changes`.
+    async fn list_inventory_resources(
+        &self,
+        context: PortContext,
+        request: ListTranslationResourcesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        let page = self.list_resources(context, request).await?;
+        Ok(TranslationTargetChangePage {
+            changes: page
+                .resources
+                .into_iter()
+                .map(|resource| TranslationTargetChange {
+                    identity: resource.identity,
+                    resource_revision: resource.resource_revision,
+                    lifecycle: resource.lifecycle,
+                })
+                .collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
+
     async fn read_resource(
         &self,
         context: PortContext,

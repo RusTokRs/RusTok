@@ -44,9 +44,12 @@ canonical large-module reference:
 
 1. **Public persistence API / crate layout**
    - `src/lib.rs` still exports `pub mod entities`.
-   - `ProductModule` runtime registration/composition remains in `lib.rs` rather than a
-     Blog-style thin facade plus `module.rs`.
-   - `ProductStatus` is owned by the persistence entity module and is imported by public DTOs.
+     Relations and Bundles have moved to Product's native transactional reference
+     API. Commerce and its integration fixtures still use ORM entities.
+   - `ProductModule` and its migration registration now live in `module.rs`.
+     Several integration adapters still live at the crate root.
+   - The published DTOs already use `rustok-product-ports::ProductStatus`.
+     Commerce still has GraphQL and OpenAPI conversions targeting the storage enum.
    A bounded ownership/public-API migration is required before other modules copy this layout.
 
 2. **Nullable mutation semantics**
@@ -95,6 +98,14 @@ prejudge their result:
 - admin/storefront responsibility split and file-size/layout profile;
 - event/idempotency semantics across Product, Variant, Index refresh, Translation and FBA;
 - complete public error semantics beyond the native context slice.
+
+The shared layout lint follows the actual Rust adapter paths under
+`admin/src/transport/`. Product's Variant and Media panels now consume the
+loaded bootstrap model without depending on GraphQL error types. The complete
+Product lint still reports source-size, persistence visibility, port
+dependencies and remaining source placement findings.
+The Product admin package passed `cargo check` in SSR and default CSR
+profiles. These checks cover compilation of the panel bindings.
 
 ## Accepted fulfillment-requirement cutover
 

@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_blog::ports::{BlogTaxonomyPort, load_post_tag_names_in_tx};
 use rustok_blog::{
     DemotedPostTranslationRecord, delete_demoted_post_in_tx, load_post_for_demotion_in_tx,
 };
@@ -20,11 +21,12 @@ use crate::bridge::helpers::{
     adjust_forum_category_counters_in_tx, ensure_forum_category_exists_in_tx, normalize_locale,
     refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
 };
-use crate::bridge::tags::{load_blog_tag_names_for_post_in_tx, sync_forum_tags_for_topic_in_tx};
+use crate::bridge::tags::sync_forum_tags_for_topic_in_tx;
 use rustok_forum::services::topic_routes::forum_topic_route;
 
 pub(crate) async fn demote_post_to_topic(
     taxonomy: &TaxonomyService,
+    blog_taxonomy: &dyn BlogTaxonomyPort,
     routes: &OwnerRoutes,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -48,20 +50,24 @@ pub(crate) async fn demote_post_to_topic(
         return Err(ContentError::validation("actor_id must not be nil"));
     }
     let requested_locale = normalize_locale(&input.locale)?;
+    rustok_blog::ports::lock_tag_attachments_writer_in_tx(txn, tenant_id)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     ensure_forum_category_exists_in_tx(txn, tenant_id, input.forum_category_id).await?;
     let post = load_post_for_demotion_in_tx(txn, tenant_id, input.post_id)
         .await
         .map_err(crate::errors::blog_error_to_content_error)?;
     let translations = &post.translations;
     let resolved = resolve_post_translation(translations, &requested_locale)?;
-    let tag_names = load_blog_tag_names_for_post_in_tx(
+    let tag_names = load_post_tag_names_in_tx(
+        blog_taxonomy,
         txn,
         tenant_id,
         post.id,
         &resolved.effective_locale,
-        None,
     )
-    .await?;
+    .await
+    .map_err(crate::errors::blog_error_to_content_error)?;
     for translation in translations {
         rustok_content::richtext::parse_json(
             &translation.body,
@@ -145,7 +151,7 @@ pub(crate) async fn demote_post_to_topic(
     .await?;
 
     delete_comments_for_post_in_tx(txn, tenant_id, post.id).await?;
-    delete_demoted_post_in_tx(txn, tenant_id, post.id)
+    delete_demoted_post_in_tx(blog_taxonomy, txn, tenant_id, post.id)
         .await
         .map_err(crate::errors::blog_error_to_content_error)?;
 

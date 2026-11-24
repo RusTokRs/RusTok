@@ -21,6 +21,8 @@ use std::{
 };
 use thiserror::Error;
 
+pub(crate) const MIGRATION_LOCK_KEY: &str = "hashtext('rustok-migrate'), 1";
+
 #[derive(Debug, Error)]
 pub enum ExecutionError {
     #[error("migration plan must be nonempty with distinct, nonempty identities")]
@@ -86,10 +88,20 @@ impl ExecutionPhase {
 }
 
 #[derive(Clone)]
-struct Step {
+pub(crate) struct Step {
     name: Arc<str>,
     transaction: Option<bool>,
     migration: Arc<dyn MigrationTrait>,
+}
+
+impl From<Box<dyn MigrationTrait>> for Step {
+    fn from(migration: Box<dyn MigrationTrait>) -> Self {
+        Self {
+            name: migration.name().into(),
+            transaction: migration.use_transaction(),
+            migration: migration.into(),
+        }
+    }
 }
 
 impl MigrationName for Step {
@@ -102,6 +114,10 @@ impl MigrationName for Step {
 impl MigrationTrait for Step {
     async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
         self.migration.up(manager).await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+        self.migration.down(manager).await
     }
 
     fn use_transaction(&self) -> Option<bool> {
@@ -164,14 +180,7 @@ impl StepRunner {
         migrations: Vec<Box<dyn MigrationTrait>>,
         phase: Option<ExecutionPhase>,
     ) -> Result<Self> {
-        let migrations: Vec<_> = migrations
-            .into_iter()
-            .map(|step| Step {
-                name: step.name().into(),
-                transaction: step.use_transaction(),
-                migration: step.into(),
-            })
-            .collect();
+        let migrations: Vec<_> = migrations.into_iter().map(Step::from).collect();
         let names: HashSet<_> = migrations.iter().map(|step| step.name()).collect();
         if migrations.is_empty()
             || names.len() != migrations.len()
@@ -215,7 +224,7 @@ impl StepRunner {
             let row = database
                 .query_one_raw(Statement::from_string(
                     DbBackend::Postgres,
-                    "SELECT pg_try_advisory_lock(hashtext('rustok-migrate'), 1) AS acquired",
+                    format!("SELECT pg_try_advisory_lock({MIGRATION_LOCK_KEY}) AS acquired"),
                 ))
                 .await?
                 .ok_or_else(|| DbErr::Custom("migration lock result is missing".into()))?;

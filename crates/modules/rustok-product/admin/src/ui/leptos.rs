@@ -203,7 +203,7 @@ fn TypedProductAttributeField(
 
 /// Non-mounted catalog-controls reference with routed saved-document delegation.
 ///
-/// The host mounts `ui::root::ProductAdmin` (routed pages), not this component.
+/// The host mounts `ui::ProductAdmin` for the routed pages.
 /// It stays in the tree because it is the canonical catalog-controls reference
 /// pinned by the product catalog verification suite, and because the shared
 /// sections below it are mounted by the routed pages. Feature work belongs on
@@ -278,6 +278,7 @@ fn ProductCatalogReference() -> impl IntoView {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
+    let panel_bootstrap = Signal::derive(move || bootstrap.get().and_then(Result::ok));
 
     let products = loaded_resource(
         move || {
@@ -1227,7 +1228,7 @@ fn ProductCatalogReference() -> impl IntoView {
                             product=selected.get()
                             token=token
                             tenant=tenant
-                            bootstrap=bootstrap
+                            bootstrap=panel_bootstrap
                             busy=busy
                             set_busy=set_busy
                             set_error=set_error
@@ -1238,7 +1239,7 @@ fn ProductCatalogReference() -> impl IntoView {
                             product=selected.get()
                             token=token
                             tenant=tenant
-                            bootstrap=bootstrap
+                            bootstrap=panel_bootstrap
                             busy=busy
                             set_busy=set_busy
                             set_error=set_error
@@ -1700,7 +1701,7 @@ pub(super) fn ProductVariantsPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Signal<Option<ProductAdminBootstrap>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -1894,7 +1895,7 @@ pub(super) fn ProductVariantsPanel(
                                         set_error.set(Some(message));
                                         return;
                                     }
-                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                    let Some(bootstrap) = bootstrap.get_untracked() else {
                                         set_error.set(Some("Product session data is unavailable. Reload it before changing an SKU.".into()));
                                         return;
                                     };
@@ -1993,7 +1994,7 @@ fn ProductMediaPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Signal<Option<ProductAdminBootstrap>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -2023,7 +2024,7 @@ fn ProductMediaPanel(
         let locale_for_add = locale.clone();
         move |ev: SubmitEvent| {
             ev.prevent_default();
-            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+            let Some(bootstrap) = bootstrap.get_untracked() else {
                 return;
             };
             let token_val = token.get_untracked();
@@ -2036,8 +2037,7 @@ fn ProductMediaPanel(
                 return;
             }
 
-            let position_val = match parse_product_admin_quantity_input(&position.get_untracked())
-            {
+            let position_val = match parse_product_admin_quantity_input(&position.get_untracked()) {
                 Ok(value) => Some(value),
                 Err(message) => {
                     set_error.set(Some(message));
@@ -2180,7 +2180,7 @@ fn ProductMediaPanel(
                                     let id = image_id.clone();
                                     let p_id = product_id_for_update.clone();
                                     move |_| {
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();
@@ -2218,7 +2218,7 @@ fn ProductMediaPanel(
                                 };
 
                                 let on_remove = move |_| {
-                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                    let Some(bootstrap) = bootstrap.get_untracked() else {
                                         return;
                                     };
                                     let token_val = token.get_untracked();
@@ -2249,7 +2249,7 @@ fn ProductMediaPanel(
                                     let prod_id = product_id_for_reorder.clone();
                                     move |_| {
                                         if idx == 0 { return; }
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();
@@ -2282,7 +2282,7 @@ fn ProductMediaPanel(
                                     let prod_id = product_id_for_reorder.clone();
                                     move |_| {
                                         if idx + 1 >= current_ids.len() { return; }
-                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        let Some(bootstrap) = bootstrap.get_untracked() else {
                                             return;
                                         };
                                         let token_val = token.get_untracked();

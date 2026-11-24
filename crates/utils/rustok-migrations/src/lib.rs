@@ -23,16 +23,20 @@ pub use schema_diff::{
 #[path = "."]
 mod composition {
 
-    use sea_orm_migration::prelude::{
-        ConnectionTrait, DbErr, MigrationTrait, MigratorTrait, SchemaManager,
+    use sea_orm_migration::prelude::{ConnectionTrait, DbErr, MigrationTrait, MigratorTrait};
+    use sea_orm_migration::sea_orm::{
+        DatabaseConnection, DbBackend, Statement, TransactionError, TransactionTrait,
     };
+    use sea_orm_migration::{Migration, MigrationName, MigrationStatus};
+
+    use super::execution::Step;
 
     // Platform-core migrations — tables that are always present regardless of which
     // optional modules are installed: tenants, users, sessions, roles, permissions,
     // tenant-module registry, tenant locales, builds/releases, platform settings.
+    use super::identity::m20250101_000004_create_sessions;
     #[cfg(test)]
-    use super::identity::m20250101_000002_create_users;
-    use super::identity::{m20250101_000001_create_tenants, m20250101_000004_create_sessions};
+    use super::identity::{m20250101_000001_create_tenants, m20250101_000002_create_users};
     mod m20250201_000001_alter_status_to_enums;
     mod m20250212_000001_create_builds;
     mod m20260211_000001_add_event_versioning;
@@ -129,6 +133,8 @@ mod composition {
         "m20260918_000033_create_variant_axes_and_invariants",
         "m20260927_000034_normalize_product_translation_locales",
         "m20261109_000040_fix_index_graph_update_trigger",
+        "m20261116_000043_order_product_index_refresh_ledger_commits",
+        "m20261117_000044_order_product_channel_convergence_commits",
     ];
 
     /// Returns whether a named migration is part of the portable SQLite unit-test schema.
@@ -140,6 +146,15 @@ mod composition {
         !SQLITE_INCOMPATIBLE_MIGRATIONS.contains(&migration_name)
     }
 
+    impl SqliteTestMigrator {
+        fn checked_plan() -> Result<CheckedMigrationPlan, DbErr> {
+            let mut plan = Migrator::checked_plan()?;
+            plan.0
+                .retain(|migration| sqlite_test_migration_is_compatible(migration.name()));
+            Ok(plan)
+        }
+    }
+
     #[async_trait::async_trait]
     impl MigratorTrait for SqliteTestMigrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -148,6 +163,71 @@ mod composition {
                 .filter(|migration| sqlite_test_migration_is_compatible(migration.name()))
                 .collect()
         }
+
+        async fn install<C: ConnectionTrait>(db: &C) -> Result<(), DbErr> {
+            Migrator::install(db).await
+        }
+
+        async fn get_migration_with_status<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
+        }
+
+        async fn get_migration_with_status_read_only<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status_read_only(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
+        }
+    }
+
+    const INSTALLER_OWNER_SCHEMA: &[&str] = &[
+        "m20250101_000001_create_tenants",
+        "m20260403_000061_create_registry_publish_tables",
+        "m20260426_000001_create_install_sessions",
+        "m20260722_000034_static_promotions",
+        "m20261118_000002_add_installer_attempt_fencing",
+    ];
+
+    fn validate_installer_owner_schema(inventory: &super::MigrationInventory) -> Result<(), DbErr> {
+        let selected: Vec<_> = inventory
+            .entries()
+            .iter()
+            .filter(|entry| INSTALLER_OWNER_SCHEMA.contains(&entry.migration.as_str()))
+            .collect();
+        if selected.len() != INSTALLER_OWNER_SCHEMA.len() {
+            return Err(DbErr::Migration(
+                "compiled composition is missing required installer migrations".into(),
+            ));
+        }
+        for (index, entry) in selected.iter().enumerate() {
+            if entry.use_transaction == Some(false) {
+                return Err(DbErr::Migration(format!(
+                    "installer migration {} must support transactional execution",
+                    entry.migration
+                )));
+            }
+            for dependency in &entry.after {
+                if !selected[..index]
+                    .iter()
+                    .any(|prior| &prior.migration == dependency)
+                {
+                    return Err(DbErr::Migration(format!(
+                        "installer migration {} requires {dependency} before distribution import",
+                        entry.migration
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     struct InstallerOwnerMigrator;
@@ -155,67 +235,66 @@ mod composition {
     #[async_trait::async_trait]
     impl MigratorTrait for InstallerOwnerMigrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            let mut modules_owner =
-                rustok_core::MigrationSource::migrations(&rustok_modules::ModulesModule)
-                    .into_iter();
-            let publish_tables = modules_owner
-                .find(|migration| {
-                    migration.name() == "m20260403_000061_create_registry_publish_tables"
-                });
-            let static_owner = modules_owner
-                .find(|migration| migration.name() == "m20260722_000034_static_promotions");
-            let mut list: Vec<Box<dyn MigrationTrait>> = vec![
-                Box::new(m20250101_000001_create_tenants::Migration),
-            ];
-            if let Some(migration) = publish_tables {
-                list.push(migration);
-            }
-            list.push(Box::new(m20260426_000001_create_install_sessions::Migration));
-            list.push(Box::new(m20261118_000002_add_installer_attempt_fencing::Migration));
-            if let Some(migration) = static_owner {
-                list.push(migration);
-            }
-            list
+            Migrator::migrations()
+                .into_iter()
+                .filter(|migration| INSTALLER_OWNER_SCHEMA.contains(&migration.name()))
+                .collect()
+        }
+
+        async fn get_pending_migrations<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            // The journal is shared with the full migrator. Validate every applied
+            // identity against that composition before restricting the write set.
+            Ok(Migrator::get_migration_with_status_read_only(db)
+                .await?
+                .into_iter()
+                .filter(|migration| {
+                    migration.status() == MigrationStatus::Pending
+                        && INSTALLER_OWNER_SCHEMA.contains(&migration.name())
+                })
+                .collect())
         }
     }
 
-    /// Applies the canonical migration prefix required by the installer journal
-    /// and the sole static-distribution owner. The prefix ends at the migration
-    /// that creates the owner release ledger; no tenant seed, runtime traffic, or
-    /// later module schema is mutated before the signed base distribution is
-    /// imported.
-    pub async fn apply_installer_owner_schema(
-        db: &sea_orm_migration::sea_orm::DatabaseConnection,
-    ) -> Result<(), DbErr> {
-        let owner_migration = "m20260722_000034_static_promotions";
-        let fencing_migration = "m20261118_000002_add_installer_attempt_fencing";
-        let manager = SchemaManager::new(db);
-        let version_placeholder = match db.get_database_backend() {
-            sea_orm_migration::sea_orm::DbBackend::Postgres => "$1",
-            _ => "?",
-        };
-        if manager.has_table("seaql_migrations").await? {
-            let owner_applied = db
-                .query_one_raw(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
-                    db.get_database_backend(),
-                    format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
-                    [owner_migration.into()],
-                ))
-                .await?
-                .is_some();
-            let fencing_applied = db
-                .query_one_raw(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
-                    db.get_database_backend(),
-                    format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
-                    [fencing_migration.into()],
-                ))
-                .await?
-                .is_some();
-            if owner_applied && fencing_applied {
-                return Ok(());
-            }
-        }
-        InstallerOwnerMigrator::up(db, None).await
+    /// Applies the installer journal and static-distribution owner migrations
+    /// required before importing a signed base distribution.
+    pub async fn apply_installer_owner_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
+        let inventory =
+            Migrator::inventory().map_err(|error| DbErr::Migration(error.to_string()))?;
+        validate_installer_owner_schema(&inventory)?;
+        db.transaction(|transaction| {
+            Box::pin(async move {
+                if transaction.get_database_backend() == DbBackend::Postgres {
+                    let lock_key = super::execution::MIGRATION_LOCK_KEY;
+                    let row = transaction
+                        .query_one_raw(Statement::from_string(
+                            DbBackend::Postgres,
+                            format!("SELECT pg_try_advisory_xact_lock({lock_key}) AS acquired"),
+                        ))
+                        .await?
+                        .ok_or_else(|| {
+                            DbErr::Migration("migration lock result is missing".into())
+                        })?;
+                    if !row.try_get::<bool>("", "acquired")? {
+                        return Err(DbErr::Migration(
+                            super::execution::ExecutionError::ConcurrentWriter.to_string(),
+                        ));
+                    }
+                }
+                if InstallerOwnerMigrator::get_pending_migrations(transaction)
+                    .await?
+                    .is_empty()
+                {
+                    return Ok(());
+                }
+                InstallerOwnerMigrator::up(transaction, None).await
+            })
+        })
+        .await
+        .map_err(|error| match error {
+            TransactionError::Connection(error) | TransactionError::Transaction(error) => error,
+        })
     }
 
     /// Completes the same canonical migration sequence after the installer has
@@ -302,17 +381,71 @@ mod composition {
         pub fn inventory() -> Result<super::MigrationInventory, super::MigrationInventoryError> {
             super::MigrationInventory::compose(platform_migrations(), &module_migration_sources())
         }
+
+        fn checked_plan() -> Result<CheckedMigrationPlan, DbErr> {
+            CheckedMigrationPlan::from_inventory(Self::inventory())
+        }
+    }
+
+    struct CheckedMigrationPlan(Vec<Step>);
+
+    impl CheckedMigrationPlan {
+        fn from_inventory(
+            inventory: Result<super::MigrationInventory, super::MigrationInventoryError>,
+        ) -> Result<Self, DbErr> {
+            let inventory = inventory.map_err(|error| DbErr::Migration(error.to_string()))?;
+            Ok(Self(
+                inventory
+                    .into_migrations()
+                    .into_iter()
+                    .map(Step::from)
+                    .collect(),
+            ))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl sea_orm_migration::MigratorTraitSelf for CheckedMigrationPlan {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            self.0
+                .iter()
+                .map(|migration| Box::new(migration.clone()) as Box<dyn MigrationTrait>)
+                .collect()
+        }
     }
 
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            // SeaORM requires an infallible factory for this static compiled composition.
-            // Fallible operator paths use inventory() before any database operation.
-            // INVARIANT: compiled migration declarations must define a valid composition
+            // SeaORM's static factory cannot return a composition error. Its
+            // database entrypoints validate through install or the read-only path.
             Self::inventory()
                 .map(|inv| inv.into_migrations())
                 .unwrap_or_default()
+        }
+
+        async fn install<C: ConnectionTrait>(db: &C) -> Result<(), DbErr> {
+            sea_orm_migration::MigratorTraitSelf::install(&Self::checked_plan()?, db).await
+        }
+
+        async fn get_migration_with_status<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
+        }
+
+        async fn get_migration_with_status_read_only<C: ConnectionTrait>(
+            db: &C,
+        ) -> Result<Vec<Migration>, DbErr> {
+            sea_orm_migration::MigratorTraitSelf::get_migration_with_status_read_only(
+                &Self::checked_plan()?,
+                db,
+            )
+            .await
         }
     }
 
@@ -388,6 +521,16 @@ mod composition {
         use sea_orm_migration::MigratorTrait;
 
         #[test]
+        fn invalid_composition_is_rejected_before_creating_an_execution_plan() {
+            let inventory = crate::MigrationInventory::compose(Vec::new(), &[]);
+            assert!(matches!(
+                super::CheckedMigrationPlan::from_inventory(inventory),
+                Err(sea_orm_migration::DbErr::Migration(message))
+                    if message == crate::MigrationInventoryError::EmptyPlan.to_string()
+            ));
+        }
+
+        #[test]
         fn sqlite_test_migrator_omits_only_declared_production_migrations() {
             let production_names = Migrator::migrations()
                 .into_iter()
@@ -419,10 +562,12 @@ mod composition {
                 "m20260921_000002_enforce_product_foreign_keys",
                 "m20261017_000003_enforce_relation_positions",
                 "m20261017_000005_remove_redundant_product_tenant_key",
+                "m20261116_000043_order_product_index_refresh_ledger_commits",
+                "m20261117_000044_order_product_channel_convergence_commits",
             ] {
                 assert!(
                     !sqlite_names.contains(migration_name),
-                    "PostgreSQL-only Product Relation migration {migration_name} must not enter SQLite tests"
+                    "PostgreSQL-only migration {migration_name} must not enter SQLite tests"
                 );
             }
             for migration_name in [
@@ -441,10 +586,37 @@ mod composition {
         #[tokio::test]
         async fn sqlite_test_migrator_applies_the_portable_schema() {
             let db = rustok_test_utils::db::setup_test_db().await;
+            let expected: Vec<_> = Migrator::inventory()
+                .expect("valid compiled composition")
+                .migrations()
+                .iter()
+                .filter(|name| super::sqlite_test_migration_is_compatible(name))
+                .cloned()
+                .collect();
+            let pending: Vec<_> = SqliteTestMigrator::get_pending_migrations_read_only(&db)
+                .await
+                .expect("portable inventory can be read on an empty database")
+                .into_iter()
+                .map(|migration| migration.name().to_owned())
+                .collect();
+            assert_eq!(pending, expected);
+            assert!(
+                !sea_orm_migration::SchemaManager::new(&db)
+                    .has_table("seaql_migrations")
+                    .await
+                    .expect("journal table can be inspected")
+            );
 
             SqliteTestMigrator::up(&db, None)
                 .await
                 .expect("SQLite test migrator must apply its declared portable schema");
+            let applied: Vec<_> = SqliteTestMigrator::get_applied_migrations_read_only(&db)
+                .await
+                .expect("portable migrations can be read after execution")
+                .into_iter()
+                .map(|migration| migration.name().to_owned())
+                .collect();
+            assert_eq!(applied, expected);
         }
     }
 

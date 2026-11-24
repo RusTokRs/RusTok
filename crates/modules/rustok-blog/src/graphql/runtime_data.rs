@@ -6,9 +6,12 @@ use rustok_comments::CommentsThreadPort;
 use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
-use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
+use crate::ports::taxonomy::{
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
+};
 use crate::{
-    CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService,
+    BlogWidgetService, CategoryService, CommentService, PostService, PreviewTokenService,
+    PublicCommentsSnapshotStore, TagService,
 };
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
@@ -116,6 +119,28 @@ impl BlogGraphqlRuntimeData {
             service = service.with_taxonomy_port(taxonomy);
         }
         service
+    }
+
+    pub(crate) fn widget_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> BlogWidgetService {
+        BlogWidgetService::new(db, event_bus).with_taxonomy_port(self.taxonomy_port())
+    }
+
+    pub(crate) fn preview_token_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> PreviewTokenService {
+        PreviewTokenService::new(db, event_bus).with_taxonomy_port(self.taxonomy_port())
+    }
+
+    fn taxonomy_port(&self) -> Arc<dyn BlogTaxonomyPort> {
+        self.taxonomy_port
+            .clone()
+            .unwrap_or_else(|| Arc::new(NoopBlogTaxonomyPort))
     }
     pub(crate) fn public_comments_snapshot_store(
         &self,

@@ -21,8 +21,8 @@ import {
   fetchStorefrontProducts,
   parseAttributeFilters,
   ProductGrid,
-} from "../../../../packages/rustok-product/src";
-import type { ProductCatalogFacet } from "../../../../packages/rustok-product/src";
+} from "@rustok/product-frontend";
+import type { ProductCatalogFacet } from "@rustok/product-frontend";
 
 interface ProductsPageProps {
   params: Promise<{ locale: string }>;

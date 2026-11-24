@@ -22,6 +22,10 @@ use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
 
+pub(super) const CATEGORY_NAME_MAX_CHARS: u32 = 120;
+pub(super) const CATEGORY_SLUG_MAX_CHARS: u32 = 120;
+pub(super) const CATEGORY_DESCRIPTION_MAX_CHARS: u32 = 1_000;
+
 /// Blog-owned Category command core.
 ///
 /// Blog persists membership/settings and authorizes commands. Canonical localized
@@ -286,7 +290,6 @@ impl CategoryService {
             };
 
         let next_resource_revision = next_category_revision(&category)?;
-        let now = Utc::now().fixed_offset();
         validate_persisted_category_settings(&category.settings)?;
         let settings = match input.settings {
             Some(settings) => normalize_category_settings(settings)?,
@@ -311,23 +314,7 @@ impl CategoryService {
             return Ok(response);
         }
 
-        let resource_updated = blog_category::Entity::update_many()
-            .col_expr(blog_category::Column::Settings, Expr::value(settings))
-            .col_expr(
-                blog_category::Column::Revision,
-                Expr::value(next_resource_revision),
-            )
-            .col_expr(blog_category::Column::UpdatedAt, Expr::value(now))
-            .filter(blog_category::Column::Id.eq(category_id))
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .filter(blog_category::Column::Revision.eq(category.revision))
-            .exec(&txn)
-            .await?;
-        if resource_updated.rows_affected != 1 {
-            return Err(BlogError::conflict(
-                "blog category changed before the update could commit",
-            ));
-        }
+        update_category_revision_in_tx(&txn, &category, next_resource_revision, settings).await?;
 
         let placement = canonical.into_iter().next().ok_or_else(|| {
             BlogError::invariant(format!(
@@ -583,11 +570,56 @@ pub(super) fn validate_persisted_category_settings(settings: &serde_json::Value)
     Ok(())
 }
 
+async fn update_category_revision_in_tx(
+    txn: &DatabaseTransaction,
+    category: &blog_category::Model,
+    next_resource_revision: i64,
+    settings: serde_json::Value,
+) -> BlogResult<()> {
+    let resource_updated = blog_category::Entity::update_many()
+        .col_expr(blog_category::Column::Settings, Expr::value(settings))
+        .col_expr(
+            blog_category::Column::Revision,
+            Expr::value(next_resource_revision),
+        )
+        .col_expr(
+            blog_category::Column::UpdatedAt,
+            Expr::value(Utc::now().fixed_offset()),
+        )
+        .filter(blog_category::Column::Id.eq(category.id))
+        .filter(blog_category::Column::TenantId.eq(category.tenant_id))
+        .filter(blog_category::Column::Revision.eq(category.revision))
+        .exec(txn)
+        .await?;
+    if resource_updated.rows_affected != 1 {
+        return Err(BlogError::conflict(
+            "blog category changed before the update could commit",
+        ));
+    }
+    Ok(())
+}
+
+/// The caller holds the same tenant hierarchy lock as a normal Category edit.
+pub(super) async fn record_category_copy_change_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> BlogResult<()> {
+    let category = blog_category::Entity::find_by_id(category_id)
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .ok_or_else(|| BlogError::category_not_found(category_id))?;
+    validate_persisted_category_settings(&category.settings)?;
+    let next_revision = next_category_revision(&category)?;
+    update_category_revision_in_tx(txn, &category, next_revision, category.settings.clone()).await
+}
+
 fn validate_category_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Category name cannot be empty"));
     }
-    if name.chars().count() > 120 {
+    if name.chars().count() > CATEGORY_NAME_MAX_CHARS as usize {
         return Err(BlogError::validation(
             "Category name cannot exceed 120 characters",
         ));
@@ -603,7 +635,7 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
 
 fn validate_optional_description(description: Option<&str>) -> BlogResult<()> {
     if let Some(description) = description
-        && description.chars().count() > 1_000
+        && description.chars().count() > CATEGORY_DESCRIPTION_MAX_CHARS as usize
     {
         return Err(BlogError::validation(
             "Category description cannot exceed 1000 characters",
@@ -637,7 +669,7 @@ fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
     let normalized = crate::normalization::normalize_term_route_key(slug).ok_or_else(|| {
         BlogError::validation("Slug must contain at least one routable letter or digit")
     })?;
-    if normalized.chars().count() > 120 {
+    if normalized.chars().count() > CATEGORY_SLUG_MAX_CHARS as usize {
         return Err(BlogError::validation(
             "Slug cannot exceed 120 characters after normalization",
         ));

@@ -59,7 +59,7 @@ function assertCount(text, value, expected, description) {
 const uiDir = 'crates/modules/rustok-product/admin/src/ui';
 const editorPath = `${uiDir}/product_editor.rs`;
 const gridPath = `${uiDir}/product_grid.rs`;
-const rootPath = `${uiDir}/root.rs`;
+const rootPath = `${uiDir}/mod.rs`;
 const libPath = 'crates/modules/rustok-product/admin/src/lib.rs';
 
 const editor = readRepo(editorPath);
@@ -201,7 +201,7 @@ assert(
 //    page instead of staying behind an unmounted surface.
 assertContains(
   lib,
-  'pub use ui::root::ProductAdmin;',
+  'pub use ui::ProductAdmin;',
   `${libPath}: the mounted admin entry point must stay exported`
 );
 assertContains(

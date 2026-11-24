@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::resolve_by_locale_with_fallback;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Select,
 };
 use uuid::Uuid;
 
@@ -91,6 +91,30 @@ impl TaxonomyOwnerReader {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
+        Self::load_scoped_terms_in(
+            &self.db,
+            tenant_id,
+            kind,
+            scope_type,
+            scope_value,
+            term_ids,
+            locale,
+            fallback_locale,
+        )
+        .await
+    }
+
+    /// Load scoped terms and their translations on the caller's connection.
+    pub async fn load_scoped_terms_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        scope_type: TaxonomyScopeType,
+        scope_value: Option<&str>,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
         if term_ids.is_some_and(|term_ids| term_ids.is_empty()) {
             return Ok(Vec::new());
         }
@@ -110,16 +134,52 @@ impl TaxonomyOwnerReader {
 
         let terms = query
             .order_by_asc(taxonomy_term::Column::CanonicalKey)
-            .all(&self.db)
+            .all(conn)
             .await?;
-        materialize_terms(
-            &self.db,
-            tenant_id,
-            terms,
-            &locale,
-            fallback_locale.as_deref(),
-        )
-        .await
+        materialize_terms(conn, tenant_id, terms, &locale, fallback_locale.as_deref()).await
+    }
+
+    /// Localized global and module-owned terms visible to a module.
+    pub async fn load_terms_for_module_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
+        if term_ids.is_some_and(<[Uuid]>::is_empty) {
+            return Ok(Vec::new());
+        }
+        let locale = normalize_requested_locale(locale)?;
+        let fallback_locale = normalize_fallback_locale(fallback_locale)?;
+        let mut query = visible_module_terms(tenant_id, kind, module_slug)?;
+        if let Some(ids) = term_ids {
+            query = query.filter(taxonomy_term::Column::Id.is_in(ids.iter().copied()));
+        }
+        let terms = query
+            .order_by_asc(taxonomy_term::Column::CanonicalKey)
+            .order_by_asc(taxonomy_term::Column::Id)
+            .all(conn)
+            .await?;
+        materialize_terms(conn, tenant_id, terms, &locale, fallback_locale.as_deref()).await
+    }
+
+    /// Term identities only, for validation and paging over consumer-owned rows.
+    pub async fn load_term_ids_for_module_in<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+    ) -> TaxonomyResult<HashSet<Uuid>> {
+        let ids = visible_module_terms(tenant_id, kind, module_slug)?
+            .select_only()
+            .column(taxonomy_term::Column::Id)
+            .into_tuple::<Uuid>()
+            .all(conn)
+            .await?;
+        Ok(ids.into_iter().collect())
     }
 
     /// Loads attached Taxonomy terms without leaving the caller's transaction.
@@ -277,6 +337,26 @@ impl TaxonomyOwnerReader {
 
         Ok(names)
     }
+}
+
+fn visible_module_terms(
+    tenant_id: Uuid,
+    kind: TaxonomyTermKind,
+    module_slug: &str,
+) -> TaxonomyResult<Select<taxonomy_term::Entity>> {
+    let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
+    Ok(taxonomy_term::Entity::find()
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(kind))
+        .filter(
+            Condition::any()
+                .add(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Global))
+                .add(
+                    Condition::all()
+                        .add(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                        .add(taxonomy_term::Column::ScopeValue.eq(module_scope)),
+                ),
+        ))
 }
 
 async fn materialize_terms<C>(

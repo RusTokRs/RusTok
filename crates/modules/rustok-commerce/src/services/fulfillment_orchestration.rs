@@ -1,16 +1,19 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
 use tracing::instrument;
 
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
     MANUAL_FULFILLMENT_PROVIDER_ID,
 };
 use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
+use rustok_order::{OrderReadPort, ReadOrderProjectionRequest};
 
 use crate::{
     dto::{CreateFulfillmentInput, FulfillmentResponse, ShippingOptionResponse},
@@ -21,7 +24,7 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum FulfillmentOrchestrationError {
-    #[error("fulfillment owner command refused the operation")]
+    #[error("an owner port refused the fulfillment operation")]
     Owner(rustok_api::PortError),
 
     #[error("Order not found: {0}")]
@@ -61,15 +64,22 @@ pub type FulfillmentOrchestrationResult<T> = Result<T, FulfillmentOrchestrationE
 
 pub struct FulfillmentOrchestrationService {
     db: DatabaseConnection,
+    order_reads: Arc<dyn OrderReadPort>,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
 }
 
 impl FulfillmentOrchestrationService {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabaseConnection, order_reads: Arc<dyn OrderReadPort>) -> Self {
         Self {
             db,
+            order_reads,
             fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
         }
+    }
+
+    pub(super) fn with_order_read_port(mut self, order_reads: Arc<dyn OrderReadPort>) -> Self {
+        self.order_reads = order_reads;
+        self
     }
 
     pub fn with_provider_registry(
@@ -114,11 +124,42 @@ impl FulfillmentOrchestrationService {
             .validate()
             .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
 
-        let order = rustok_order::entities::order::Entity::find_by_id(input.order_id)
-            .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(FulfillmentOrchestrationError::OrderNotFound(input.order_id))?;
+        let order_id = input.order_id;
+        let read_context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("rustok-commerce.manual-fulfillment"),
+            rustok_api::PLATFORM_FALLBACK_LOCALE,
+            Uuid::new_v4().to_string(),
+        )
+        .with_deadline(Duration::from_secs(2));
+        let order = self
+            .order_reads
+            .read_order_projection(
+                read_context,
+                ReadOrderProjectionRequest {
+                    order_id,
+                    tenant_default_locale: None,
+                },
+            )
+            .await
+            .map_err(|error| match error.kind {
+                PortErrorKind::NotFound => FulfillmentOrchestrationError::OrderNotFound(order_id),
+                _ => FulfillmentOrchestrationError::Owner(error),
+            })?;
+        if order.tenant_id != tenant_id
+            || order.id != order_id
+            || order
+                .line_items
+                .iter()
+                .any(|item| item.order_id != order_id)
+        {
+            return Err(FulfillmentOrchestrationError::Owner(
+                PortError::invariant_violation(
+                    "order.fulfillment_projection_scope_mismatch",
+                    "The order projection does not match the fulfillment request",
+                ),
+            ));
+        }
 
         let requested_items = input.items.clone().ok_or_else(|| {
             FulfillmentOrchestrationError::Validation(
@@ -145,14 +186,9 @@ impl FulfillmentOrchestrationService {
             )));
         }
 
-        let order_line_items = rustok_order::entities::order_line_item::Entity::find()
-            .filter(rustok_order::entities::order_line_item::Column::OrderId.eq(order.id))
-            .order_by_asc(rustok_order::entities::order_line_item::Column::CreatedAt)
-            .all(&self.db)
-            .await?;
-        let order_line_items_by_id = order_line_items
-            .iter()
-            .cloned()
+        let order_line_items_by_id = order
+            .line_items
+            .into_iter()
             .map(|item| (item.id, item))
             .collect::<BTreeMap<_, _>>();
 
@@ -194,9 +230,11 @@ impl FulfillmentOrchestrationService {
                             item.order_line_item_id, order.id
                         ))
                     })?;
-                let shipping_profile_slug =
-                    normalize_shipping_profile_slug(line_item.shipping_profile_slug.as_str())
-                        .unwrap_or_else(|| "default".to_string());
+                let shipping_profile_slug = line_item
+                    .shipping_profile_slug
+                    .as_deref()
+                    .and_then(normalize_shipping_profile_slug)
+                    .unwrap_or_else(|| "default".to_string());
                 let seller_id = normalize_seller_id(
                     line_item
                         .seller_id
@@ -438,7 +476,11 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:")
             .await
             .expect("memory db");
-        let service = FulfillmentOrchestrationService::new(db);
+        let order_reads = rustok_order::in_process_order_read_port(
+            db.clone(),
+            rustok_test_utils::mock_transactional_event_bus(),
+        );
+        let service = FulfillmentOrchestrationService::new(db, order_reads);
 
         let err = service
             .create_manual_fulfillment(

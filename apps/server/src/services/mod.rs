@@ -179,10 +179,20 @@ pub mod module_event_dispatcher {
         })?;
 
         #[cfg(feature = "mod-taxonomy")]
-        extensions.insert(
-            Arc::new(super::flex_attached_values::FlexTaxonomyCategoryDeleteCleanup)
-                as Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort>,
-        );
+        {
+            let cleanup: Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort> =
+                Arc::new(super::flex_attached_values::FlexTaxonomyCategoryDeleteCleanup);
+            #[cfg(feature = "mod-blog")]
+            {
+                extensions.insert(rustok_content_orchestration::in_process_blog_taxonomy_port(
+                    db.clone(),
+                ));
+                extensions.insert(rustok_content_orchestration::blog_category_delete_cleanup(
+                    cleanup.clone(),
+                ));
+            }
+            extensions.insert(cleanup);
+        }
 
         #[cfg(feature = "mod-comments")]
         {

@@ -47,6 +47,17 @@ the schema created by `rustok-migrations`.
 `apps/server` and the platform CLI are adapters over this crate; neither owns a
 second mapping or persistence implementation.
 
+## PostgreSQL bootstrap test
+
+The signed base-distribution test uses the installer receipt loader, the real
+schema ports, and the Modules release ledger. Set
+`RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL instance with
+permission to create and drop a fixture database before running the test.
+
+```sh
+cargo test --locked -p rustok-installer-persistence --test postgres_base_distribution_import postgres_signed_base_distribution_survives_install_schema -- --ignored --exact
+```
+
 ## Interactions
 
 - `rustok-installer` owns the neutral plan, state, receipt, seed, and port

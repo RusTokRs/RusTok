@@ -4,7 +4,7 @@
  * See the LICENSE file in the project root for full license terms.
  */
 import type { VariantAxisConfig, VariantAxisValueInput } from './api/types';
-import { MAX_PRODUCT_VARIANTS } from './limits';
+import { MAX_PRODUCT_VARIANTS } from './limits.ts';
 
 /** Candidate browsing only. Neither these keys nor the missing rows are durable SKU identities. */
 export const MAX_COMBINATION_CANDIDATES = 4096;

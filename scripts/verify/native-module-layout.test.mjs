@@ -839,22 +839,39 @@ test("declared transport adapters must contain callable operations", () => {
   });
 });
 
-test("the compact transport.rs facade resolves sibling adapter modules", () => {
+test("transport.rs resolves its child adapters inside transport/", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
       '[crate]\nentry_type = "SampleModule"\n');
     writeFfaSurface(ctx, "admin");
-    rmSync(join(ctx.root, ctx.path("admin/transport")), { recursive: true, force: true });
+    rmSync(join(ctx.root, ctx.path("admin/src/transport/mod.rs")));
     ctx.write("admin/src/transport.rs",
       'mod graphql_adapter;\nmod native_server_adapter;\n' +
       'pub async fn reconcile_catalog() -> Result<(), ()> { graphql_adapter::reconcile_catalog().await }\n' +
       'pub async fn reconcile_catalog_native() -> Result<(), ()> { native_server_adapter::reconcile_catalog().await }\n');
+    assert.deepEqual(lint(ctx), []);
+
+    rmSync(join(ctx.root, ctx.path("admin/src/transport/graphql_adapter.rs")));
     ctx.write("admin/src/graphql_adapter.rs",
       "pub async fn reconcile_catalog() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/native_server_adapter.rs",
-      "pub async fn reconcile_catalog() -> Result<(), ()> { Err(()) }\n");
-    assert.deepEqual(lint(ctx), []);
+    assert.match(lint(ctx).join("\n"), /transport[\\/]graphql_adapter\.rs: required file missing/);
+  });
+});
+
+test("ambiguous Rust transport declarations are rejected", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport.rs",
+      "mod graphql_adapter; mod native_server_adapter;\n" +
+      "pub fn fetch() { graphql_adapter::fetch(); native_server_adapter::fetch(); }\n");
+    ctx.write("admin/src/transport/graphql_adapter/mod.rs", "pub fn fetch() {}\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /both transport\.rs and transport\/mod\.rs/);
+    assert.match(failures, /graphql_adapter has both a file and a directory entrypoint/);
   });
 });
 

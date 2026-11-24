@@ -14,12 +14,23 @@
   must not copy canonical Comments JSON into a legacy selectable-format field
   or silently flatten Forum Markdown.
 - Provide host-neutral runtime construction helpers for the server host to register in its own runtime store.
+- Adapt Blog's embedded taxonomy port to Taxonomy owner operations on the caller's
+  database transaction. Category deletion preserves Blog cleanup errors and
+  runs Blog and Flex cleanup in Taxonomy's delete transaction.
+- Pass the caller's effective permissions to Blog when promoting Forum tags.
+  Blog owns tag validation, creation admission, attachment and usage refresh.
+  Demotion reads and detaches Blog tags through the same embedded provider.
+- Register the Blog owner of module-scoped Taxonomy translations. The bridge
+  delegates permissions, field limits and transactional apply effects to Blog.
 
 ## Entry points
 
 - `build_content_orchestration_service(db, event_bus)`
 - `content_orchestration_from_shared(shared)`
 - `graphql::ContentOrchestrationMutation`
+- `in_process_blog_taxonomy_port(db)` and `blog_category_delete_cleanup(cleanup)`
+  under `mod-blog`
+- `register_blog_translation_owner(registry, db)` under `mod-blog`
 
 The real bridge is compiled only when the crate features `mod-content`, `mod-blog`, `mod-forum`, and `mod-comments` are all enabled. Reduced builds get a no-op shared service constructor.
 

@@ -71,7 +71,8 @@ pub(super) async fn preview(
     let event_bus = ctx
         .data::<rustok_outbox::TransactionalEventBus>()
         .map_err(|_| missing_runtime())?;
-    BlogWidgetService::new(db.clone(), event_bus.clone())
+    crate::graphql::runtime_data::BlogGraphqlRuntimeData::attached(ctx)
+        .widget_service(db.clone(), event_bus.clone())
         .preview(
             tenant.id,
             super::security_context_from_auth(auth),

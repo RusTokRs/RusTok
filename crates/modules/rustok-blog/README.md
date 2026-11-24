@@ -141,26 +141,25 @@ The current boundary is:
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 
-Open: `BlogTaxonomyPort` has no Taxonomy-backed implementation yet. ADR
-`DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
-plans `TaxonomyBlogTaxonomyPortAdapter` in `rustok-taxonomy`; until a host
-publishes it, HTTP controllers and GraphQL resolvers run on
-`NoopBlogTaxonomyPort`, which stores nothing in Taxonomy and returns generated
-identifiers. Both transports read the port from the host runtime
-(`BlogHttpRuntime`, `BlogGraphqlRuntimeData::attached`), so the adapter needs
-no further Blog wiring. It owns two rules that Blog no longer holds: the scope
-of Blog terms is `module` / `blog`, and the canonical key of a Blog Category
-term is `blog-category-{category_id}` (pinned by
-`tests/category_taxonomy_dual_write.rs`).
+The embedded server registers the `rustok-content-orchestration` implementation
+of `BlogTaxonomyPort` and the Flex cleanup callback. REST, GraphQL, Search,
+Leptos, widget previews and RSS use the same provider. Its Category scope is
+`module:blog` and its canonical Category key is `blog-category-{category_id}`.
+The integration fixtures attach the embedded adapter and exercise the same
+owner port. Blog retains Taxonomy and orchestration as development dependencies
+for these fixtures.
 
-Open, same cause: `tests/category_taxonomy_delete_lifecycle.rs` does not
-compile. It passes a `rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort` to
-`CategoryService::with_category_delete_cleanup`, which takes
-`BlogCategoryDeleteCleanupPort` since the port migration. Changing the trait in
-the test is not enough: the test builds the service with
-`CategoryService::new`, which uses `NoopBlogTaxonomyPort`, and then asserts on
-`taxonomy_term` and `taxonomy_category_hierarchy` rows that only the adapter
-writes. The test needs the adapter and `with_taxonomy_port`.
+The embedded Translation integration uses the shared `taxonomy/term` target
+for Blog Categories and Tags. It checks that Blog is enabled for the tenant
+and requires the same Blog resource grants and field limits as the editor.
+An applied Category translation advances the Blog membership revision.
+Taxonomy copy, journal evidence, Blog revision and the Blog Search reindex
+event commit together. Tags expose name and slug and reuse the normal tag
+alias history when a localized slug changes.
+
+Custom hosts that omit the port still get `NoopBlogTaxonomyPort`. A standalone
+Blog with working Category and Tag lifecycle needs a real provider and a
+separate storage cutover for its tag foreign keys.
 
 Do not reintroduce a second `blog/category` Translation provider or direct
 localized Blog Category storage. Translation-control-plane work for Category
@@ -222,6 +221,10 @@ copy must use the canonical Taxonomy owner contract.
   module-local tags visible, and removes zero-use global tags. Taxonomy remains
   canonical for term identity and `canonical_key`; the projection is never an
   independent write source.
+- PostgreSQL tag mutations, tagged-post writes and content conversions take
+  one Blog-owned transaction lock per tenant before changing posts or tags.
+  The lock covers relation changes and the usage recount. SQLite serializes
+  those relation writes through its database writer.
 - Depends on `rustok-core` for module contracts, permissions, and
   `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter
@@ -432,6 +435,9 @@ publication/channel/locale pagination scenario passes on both profiles.
 Explicit PostgreSQL scenarios require `RUSTOK_BLOG_TEST_DATABASE_URL`; an ordinary
 run reports them as ignored. Configured tests cover simultaneous edits, atomic
 outbox rollback, duplicate/reordered delivery and connection/process restart.
+Run `cargo test -p rustok-blog --test database_profiles -- --include-ignored`
+to verify embedded Taxonomy category and tag lifecycles on PostgreSQL and
+check the tag usage count after two concurrent removals.
 These scoped results do not certify the full platform migrator or remote FBA.
 
 Leptos Page Builder binds Blog-owned catalog, validation and preview transports.

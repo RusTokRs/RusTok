@@ -14,11 +14,13 @@
 - **Core Functions**:
   - `build_content_orchestration_service(db, event_bus) -> SharedContentOrchestrationService`
   - `content_orchestration_from_shared(&SharedContentOrchestrationService) -> Arc<ContentOrchestrationService>`
+  - `in_process_blog_taxonomy_port(db) -> Arc<dyn BlogTaxonomyPort>`
+  - `blog_category_delete_cleanup(cleanup) -> Arc<dyn BlogCategoryDeleteCleanupPort>`
 
 ## Feature Flags
 
 - `mod-content`: Activates integration with `rustok-content` port contracts and domain types.
-- `mod-blog`: Activates blog post conversions and taxonomy synchronization.
+- `mod-blog`: Activates the embedded Blog Taxonomy adapter and participates in Blog post conversions.
 - `mod-forum`: Activates forum topic conversions and taxonomy synchronization.
 - `mod-comments`: Activates comment thread transformations.
 - Full bridge and GraphQL mutations require all four features enabled simultaneously (`mod-content`, `mod-blog`, `mod-forum`, `mod-comments`). In reduced builds, a lightweight mock handle is provided without pulling external module dependencies.
@@ -50,6 +52,9 @@
 - **Multi-Tenant Isolation**: Every database read, mutation, and delete statement explicitly enforces `tenant_id` equality (`Column::TenantId.eq(tenant_id)`).
 - **Non-Nil UUID Guards**: All tenant IDs, topic IDs, post IDs, category IDs, and reply IDs are validated against `is_nil()` before database operations.
 - **Atomic Cross-Module Transformations**: Moving entities between Blog and Forum must be transactionally safe within a single database transaction or fail closed.
+- **Blog tags**: Promotion uses the caller's Blog tag creation grant and Blog's
+  tag validation and usage projection. Demotion resolves and detaches Blog
+  tags through the same provider.
 - **Canonical URL Preservation**: Redirects are registered in owner tables (`blog_post_routes`, `forum_topic_routes`) on transformation, and obsolete routes are purged.
 - **Incompatible Content Safety**: Blog-to-Forum or Forum-to-Blog conversion is rejected when comments/replies cannot be losslessly translated until universal richtext adoption is complete.
 - **Unique Reply IDs**: Splitting topics validates that all reply IDs are unique, non-empty, and belong to the source topic.

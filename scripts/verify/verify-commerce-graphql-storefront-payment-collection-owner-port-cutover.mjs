@@ -62,8 +62,7 @@ for (const marker of [
 for (const marker of [
   'PaymentCollectionRuntime',
   'collection_create_or_reuse: PaymentCollectionRuntime',
-  '.shared_get::<PaymentCollectionRuntime>()',
-  'PaymentCollectionRuntime::in_process(inputs.db_clone())',
+  'PaymentCollectionRuntime::in_process(db.clone())',
   'pub fn collection_create_or_reuse_port(&self) -> Arc<dyn PaymentCollectionPort>',
 ]) need(paymentCommands, marker, 'Commerce Payment command composition');
 
@@ -71,6 +70,7 @@ for (const marker of [
   'shared_get::<rustok_payment::PaymentCollectionRuntime>()',
   'server.shared_get::<rustok_payment::PaymentCollectionRuntime>()',
   'rustok_payment::PaymentCollectionRuntime::in_process(server.db_clone())',
+  'require_shared::<rustok_payment::PaymentCollectionRuntime>(',
   'server.shared_insert(runtime.clone());',
   'host.with_shared_value(runtime)',
 ]) need(server, marker, 'server Payment collection host composition');

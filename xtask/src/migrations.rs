@@ -16,6 +16,8 @@ use std::{
 const BUILD_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
 
 mod build_inputs;
+mod build_outputs;
+mod source_inputs;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SourceFile {
@@ -56,7 +58,17 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let allowed: &[&str] = match command.as_str() {
         "plan" => &["--reference", "--output"],
-        "verify-fresh" => &["--plan", "--verifier", "--pg-dump", "--admin-url-env"],
+        "verify-fresh" => &[
+            "--plan",
+            "--verifier",
+            "--pg-dump",
+            "--admin-url-env",
+            "--registry-cache",
+        ],
+        "source-inputs" => &["--commit", "--inputs", "--compare"],
+        "bind-inventory" => &["--plan", "--inputs", "--side", "--dep-info", "--build-root"],
+        "discover-source-inputs" => &["--commit", "--inventory", "--dep-info", "--build-root"],
+        "registry-inputs" => &["--plan", "--registry-cache", "--side"],
         _ => bail!("unknown migration command {command}"),
     };
     let options = parse_options(&args[1..], allowed)?;
@@ -82,6 +94,40 @@ pub fn run(args: &[String]) -> Result<()> {
             Path::new(required("--verifier")?),
             Path::new(required("--pg-dump")?),
             required("--admin-url-env")?,
+            options.get("--registry-cache").map(Path::new),
+        ),
+        "source-inputs" => source_inputs::run(
+            &root,
+            required("--commit")?,
+            Path::new(required("--inputs")?),
+            options.get("--compare").map(String::as_str),
+        ),
+        "bind-inventory" => {
+            let compiler_input = match (options.get("--dep-info"), options.get("--build-root")) {
+                (Some(file), Some(directory)) => Some((Path::new(file), directory.as_str())),
+                (None, None) => None,
+                _ => bail!("--dep-info and --build-root must be used together"),
+            };
+            source_inputs::bind_inventory(
+                &root,
+                Path::new(required("--plan")?),
+                Path::new(required("--inputs")?),
+                options.get("--side").map_or("reference", String::as_str),
+                compiler_input,
+            )
+        }
+        "discover-source-inputs" => source_inputs::discover(
+            &root,
+            required("--commit")?,
+            Path::new(required("--inventory")?),
+            Path::new(required("--dep-info")?),
+            required("--build-root")?,
+        ),
+        "registry-inputs" => source_inputs::registry_inputs(
+            &root,
+            Path::new(required("--plan")?),
+            Path::new(required("--registry-cache")?),
+            options.get("--side").map_or("reference", String::as_str),
         ),
         // INVARIANT: command was validated against allowed migration commands above.
         _ => unreachable!(),
@@ -91,8 +137,12 @@ pub fn run(args: &[String]) -> Result<()> {
 fn help() -> Result<()> {
     println!("cargo xtask migrations plan --reference REF [--output target/migrations/RUN]");
     println!(
-        "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
+        "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV [--registry-cache DIR]"
     );
+    println!("cargo xtask migrations source-inputs --commit SHA --inputs FILE [--compare SHA]");
+    println!("cargo xtask migrations bind-inventory --plan FILE --inputs FILE [--side reference|candidate] [--dep-info FILE --build-root DIR]");
+    println!("cargo xtask migrations discover-source-inputs --commit SHA --inventory FILE --dep-info FILE --build-root DIR");
+    println!("cargo xtask migrations registry-inputs --plan FILE --registry-cache DIR [--side reference|candidate]");
     println!(
         "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
     );
@@ -116,9 +166,14 @@ fn parse_options(args: &[String], allowed: &[&str]) -> Result<BTreeMap<String, S
     Ok(options)
 }
 
+fn git_command(root: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root).arg("--no-replace-objects");
+    command
+}
+
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    let output = Command::new("git")
-        .current_dir(root)
+    let output = git_command(root)
         .args(args)
         .output()
         .context("cannot run Git")?;
@@ -333,11 +388,45 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
     );
     let parent = output.parent().context("plan parent missing")?;
     fs::create_dir_all(parent)?;
+    let parent = parent.canonicalize()?;
     ensure!(
-        parent.canonicalize()?.starts_with(&boundary),
+        parent.starts_with(&boundary),
         "plan path escapes target/migrations"
     );
+    let output = parent.join(output.file_name().context("plan directory name missing")?);
     fs::create_dir(&output)?;
+
+    let plan = match write_source_plan(root, &output, reference_commit, main_commit, candidate_head)
+    {
+        Ok(plan) => plan,
+        Err(error) => {
+            return match remove_unpublished_plan(&output) {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(error.context(format!(
+                    "could not remove incomplete plan directory {}: {cleanup:#}",
+                    output.display()
+                ))),
+            };
+        }
+    };
+    println!(
+        "migration source plan {}",
+        output.join("plan.json").display()
+    );
+    println!(
+        "No Git branch or worktree was created. Candidate input SHA256 {}",
+        plan.candidate.sha256
+    );
+    Ok(())
+}
+
+fn write_source_plan(
+    root: &Path,
+    output: &Path,
+    reference_commit: String,
+    main_commit: String,
+    candidate_head: String,
+) -> Result<Plan> {
     let original = output.join("reference");
     let candidate = output.join("candidate");
     fs::create_dir(&original)?;
@@ -347,6 +436,10 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
     ensure!(
         working_snapshot(root, None)? == candidate_snapshot,
         "working source changed during snapshot; create a new plan"
+    );
+    ensure!(
+        commit(root, "main")? == main_commit && commit(root, "HEAD")? == candidate_head,
+        "main or HEAD changed during snapshot; create a new plan"
     );
     let plan = Plan {
         schema_version: 1,
@@ -359,18 +452,18 @@ fn prepare(root: &Path, reference: &str, output: &Path) -> Result<()> {
         replacement_admission:
             "blocked pending trusted release, upgrade, activation and recovery gates".into(),
     };
-    write_new(
-        &output.join("plan.json"),
-        &serde_json::to_vec_pretty(&plan)?,
-    )?;
-    println!(
-        "migration source plan {}",
-        output.join("plan.json").display()
+    let pending = output.join("pending-plan.json");
+    write_new(&pending, &serde_json::to_vec_pretty(&plan)?)?;
+    fs::rename(pending, output.join("plan.json"))?;
+    Ok(plan)
+}
+
+fn remove_unpublished_plan(output: &Path) -> Result<()> {
+    ensure!(
+        output.canonicalize()? == output && !output.join("plan.json").try_exists()?,
+        "plan directory moved or already contains a published plan"
     );
-    println!(
-        "No Git branch or worktree was created. Candidate input SHA256 {}",
-        plan.candidate.sha256
-    );
+    fs::remove_dir_all(output)?;
     Ok(())
 }
 
@@ -379,29 +472,53 @@ fn git_snapshot(
     reference_commit: &str,
     destination: Option<&Path>,
 ) -> Result<SourceSnapshot> {
+    snapshot_git_files(root, reference_commit, destination, None, |_, _| {})
+}
+
+fn snapshot_git_files(
+    root: &Path,
+    reference_commit: &str,
+    destination: Option<&Path>,
+    paths: Option<&BTreeSet<&str>>,
+    mut capture_blob: impl FnMut(&str, Vec<u8>),
+) -> Result<SourceSnapshot> {
     let tree = git(root, &["ls-tree", "-rz", "--full-tree", reference_commit])?;
     let mut entries = Vec::new();
+    let mut found = BTreeSet::new();
     for entry in tree.split(|b| *b == 0).filter(|e| !e.is_empty()) {
         let (metadata, path) = std::str::from_utf8(entry)?
             .split_once('\t')
             .context("invalid Git tree entry")?;
+        if let Some(paths) = paths {
+            if !paths.contains(path) {
+                continue;
+            }
+            found.insert(path);
+        }
         let fields: Vec<_> = metadata.split(' ').collect();
         ensure!(fields.len() == 3, "invalid Git tree metadata");
         let mode = fields[0];
         ensure!(
-            matches!(mode, "100644" | "100755"),
-            "reference symlinks and submodules are unsupported: {path}"
+            matches!(mode, "100644" | "100755") && fields[1] == "blob",
+            "Git source is not a regular blob: {path}"
         );
         safe_relative(path)?;
         entries.push((path.to_string(), mode.to_string(), fields[2].to_string()));
+    }
+    if let Some(paths) = paths {
+        let missing: Vec<_> = paths.difference(&found).copied().collect();
+        ensure!(
+            missing.is_empty(),
+            "declared inputs absent from Git commit {reference_commit}: {}",
+            missing.join(", ")
+        );
     }
     ensure!(!entries.is_empty(), "Git source tree is empty");
     let input = entries
         .iter()
         .map(|(_, _, oid)| format!("{oid}\n"))
         .collect::<String>();
-    let mut child = Command::new("git")
-        .current_dir(root)
+    let mut child = git_command(root)
         .args(["cat-file", "--batch"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -442,11 +559,9 @@ fn git_snapshot(
                     )?;
                 }
             }
-            files.push(SourceFile {
-                path,
-                mode,
-                sha256: digest(&bytes),
-            });
+            let sha256 = digest(&bytes);
+            capture_blob(&path, bytes);
+            files.push(SourceFile { path, mode, sha256 });
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
         snapshot(files)
@@ -552,6 +667,7 @@ fn verify_fresh(
     verifier: &Path,
     pg_dump: &Path,
     admin_env: &str,
+    registry_cache: Option<&Path>,
 ) -> Result<()> {
     let plan_path = root.join(plan_path).canonicalize()?;
     let directory = plan_path.parent().context("plan directory missing")?;
@@ -575,6 +691,7 @@ fn verify_fresh(
         .join(pg_dump)
         .canonicalize()
         .context("--pg-dump requires a file path")?;
+    let registry_cache = registry_cache.map(|cache| root.join(cache));
     let verifier_digest = file_digest(&verifier)?;
     let pg_dump_digest = file_digest(&pg_dump)?;
     ensure!(
@@ -602,6 +719,7 @@ fn verify_fresh(
         let mut binaries = BTreeMap::new();
         let mut input_digests = BTreeMap::new();
         let mut build_identity = BTreeMap::new();
+        let mut generated_outputs = BTreeMap::new();
         for (side, source) in [
             ("reference", &original_build),
             ("candidate", &candidate_build),
@@ -621,6 +739,11 @@ fn verify_fresh(
             };
             let resolution = build_inputs::collect(source, source_snapshot, &target, &host)?;
             let resolution_sha256 = digest(&serde_json::to_vec(&resolution)?);
+            let registry_before = registry_cache
+                .as_deref()
+                .map(|cache| resolution.verify_registry(source, cache))
+                .transpose()
+                .with_context(|| format!("{side} registry inputs before build"))?;
             let build_args = [
                 "build",
                 "--locked",
@@ -642,6 +765,7 @@ fn verify_fresh(
                 .env("CARGO_BUILD_JOBS", "2");
             let output = run_process(&mut build, BUILD_TIMEOUT_SECONDS, 64 * 1024 * 1024)
                 .with_context(|| format!("{side} migration build failed"))?;
+            let mut generated = build_outputs::GeneratedOutputs::new(&target)?;
             let mut artifacts = BTreeMap::new();
             for line in output
                 .split(|byte| *byte == b'\n')
@@ -649,7 +773,9 @@ fn verify_fresh(
             {
                 let value: serde_json::Value =
                     serde_json::from_slice(line).context("invalid Cargo artifact message")?;
-                if value["reason"] == "compiler-artifact" {
+                if value["reason"] == "build-script-executed" {
+                    generated.record(&value, &resolution)?;
+                } else if value["reason"] == "compiler-artifact" {
                     if let (Some(name), Some(executable)) = (
                         value["target"]["name"].as_str(),
                         value["executable"].as_str(),
@@ -665,6 +791,9 @@ fn verify_fresh(
                     }
                 }
             }
+            generated
+                .capture()
+                .with_context(|| format!("{side} build script outputs"))?;
             let runner = artifacts
                 .remove("rustok-migrate")
                 .context("Cargo did not produce rustok-migrate")?;
@@ -673,23 +802,46 @@ fn verify_fresh(
                 .context("Cargo did not produce export-migration-plan")?;
             input_digests.insert(runner.clone(), file_digest(&runner)?);
             input_digests.insert(exporter.clone(), file_digest(&exporter)?);
+            let runner_dep_info = runner.with_extension("d");
+            let runner_dep_bytes =
+                read_source(&runner_dep_info).context("Cargo dep-info unavailable for runner")?;
+            let runner_generated = generated
+                .dependencies(&runner, &runner_dep_bytes)
+                .with_context(|| format!("invalid {side} runner generated dependencies"))?;
+            input_digests.insert(runner_dep_info, digest(&runner_dep_bytes));
+            let exporter_dep_info = exporter.with_extension("d");
+            let dep_info = read_source(&exporter_dep_info)
+                .context("Cargo dep-info unavailable for exporter")?;
+            let exporter_generated = generated
+                .dependencies(&exporter, &dep_info)
+                .with_context(|| format!("invalid {side} exporter generated dependencies"))?;
+            let source_root = source
+                .to_str()
+                .context("build source directory is not UTF-8")?;
+            let (compiler_sources, _) = source_inputs::compiler_sources(&dep_info, source_root)
+                .with_context(|| format!("invalid {side} exporter compiler inputs"))?;
+            input_digests.insert(exporter_dep_info, compiler_sources.dep_info_sha256.clone());
             let plan_output = evidence.join(format!("{side}-plan.json"));
             let mut export = runtime_command(&exporter);
             export.current_dir(source).arg("--output").arg(&plan_output);
             run_process(&mut export, 30, 4096)
                 .with_context(|| format!("{side} executable migration plan export failed"))?;
             input_digests.insert(plan_output.clone(), file_digest(&plan_output)?);
+            let resolved_after = build_inputs::collect(source, source_snapshot, &target, &host)?;
             ensure!(
-                digest(&serde_json::to_vec(&build_inputs::collect(
-                    source,
-                    source_snapshot,
-                    &target,
-                    &host
-                )?)?)
-                    == resolution_sha256,
+                digest(&serde_json::to_vec(&resolved_after)?) == resolution_sha256,
                 "Cargo resolution changed during build"
             );
-            let identity = serde_json::json!({
+            let registry_after = registry_cache
+                .as_deref()
+                .map(|cache| resolved_after.verify_registry(source, cache))
+                .transpose()
+                .with_context(|| format!("{side} registry inputs after build"))?;
+            ensure!(
+                registry_after == registry_before,
+                "registry source evidence changed during build"
+            );
+            let mut identity = serde_json::json!({
                 "cargo": cargo_version,
                 "rustc": rustc_version,
                 "arguments": build_args,
@@ -701,7 +853,19 @@ fn verify_fresh(
                 "runner_sha256": input_digests[&runner],
                 "exporter_sha256": input_digests[&exporter],
                 "inventory_sha256": input_digests[&plan_output],
+                "compiler_sources": compiler_sources,
+                "generated_build_outputs": generated,
+                "generated_dependencies": {
+                    "rustok-migrate": runner_generated,
+                    "export-migration-plan": exporter_generated,
+                },
             });
+            if let Some(verification) = registry_before {
+                identity["registry_sources"] = serde_json::json!({
+                    "scope": "crates-io-before-and-after-build",
+                    "verification": verification,
+                });
+            }
             build_identity.insert(
                 side,
                 serde_json::json!({
@@ -709,6 +873,7 @@ fn verify_fresh(
                     "evidence": identity,
                 }),
             );
+            generated_outputs.insert(side, generated);
             validate_snapshot(
                 source,
                 if side == "reference" {
@@ -772,6 +937,11 @@ fn verify_fresh(
                 file_digest(path)? == *digest,
                 "build input changed during verification"
             );
+        }
+        for (side, generated) in &generated_outputs {
+            generated
+                .verify_unchanged()
+                .with_context(|| format!("{side} build script outputs"))?;
         }
         ensure!(
             file_digest(&verifier)? == verifier_digest && file_digest(&pg_dump)? == pg_dump_digest,
@@ -934,6 +1104,11 @@ fn build_command(binary: &str, source: &Path) -> Result<Command> {
             command.env(key, value);
         }
     }
+    // Rust's MSVC linker discovery uses the Windows system drive.
+    #[cfg(windows)]
+    if let Some(value) = std::env::var_os("SystemDrive") {
+        command.env("SystemDrive", value);
+    }
     command.current_dir(source).env(
         "GIT_CEILING_DIRECTORIES",
         std::env::join_paths([source.parent().context("build source parent missing")?])?,
@@ -942,11 +1117,14 @@ fn build_command(binary: &str, source: &Path) -> Result<Command> {
 }
 
 fn file_digest(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)?;
+    read_digest(fs::File::open(path)?)
+}
+
+fn read_digest(mut reader: impl Read) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 65536];
     loop {
-        let count = file.read(&mut buffer)?;
+        let count = reader.read(&mut buffer)?;
         if count == 0 {
             break;
         }
@@ -1112,7 +1290,8 @@ mod tests {
             let destination = fixture.join("snapshot");
             fs::create_dir(&repository)?;
             fs::create_dir(&destination)?;
-            git(&repository, &["init", "--quiet"])?;
+            git(&repository, &["init", "--quiet", "--initial-branch=main"])?;
+            fs::write(repository.join(".gitignore"), "/target/\n")?;
             fs::write(
                 repository.join(".gitattributes"),
                 "ignored.rs export-ignore\n",
@@ -1143,6 +1322,29 @@ mod tests {
             validate_snapshot(&destination, &expected)?;
             fs::write(destination.join("ignored.rs"), "changed helper")?;
             assert!(validate_snapshot(&destination, &expected).is_err());
+
+            let output = Path::new("target/migrations/retry");
+            let source = repository.join("ignored.rs");
+            fs::remove_file(&source)?;
+            fs::create_dir(&source)?;
+            let error = prepare(&repository, &identity, output).unwrap_err();
+            assert!(
+                error.to_string().contains("not a regular file"),
+                "{error:#}"
+            );
+            assert!(!repository.join(output).try_exists()?);
+
+            fs::remove_dir(&source)?;
+            fs::write(&source, "candidate bytes")?;
+            prepare(&repository, &identity, output)?;
+            let output = repository.join(output);
+            let plan_bytes = fs::read(output.join("plan.json"))?;
+            let plan: Plan = serde_json::from_slice(&plan_bytes)?;
+            validate_snapshot(&output.join("reference"), &plan.reference)?;
+            validate_snapshot(&output.join("candidate"), &plan.candidate)?;
+            assert!(!output.join("pending-plan.json").try_exists()?);
+            assert!(prepare(&repository, &identity, &output).is_err());
+            assert_eq!(fs::read(output.join("plan.json"))?, plan_bytes);
             Ok(())
         })();
         ensure!(
