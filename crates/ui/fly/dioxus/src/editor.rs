@@ -136,7 +136,9 @@ pub fn FlyPalette(
                                                 aria_label: "{drag_name}",
                                                 "data-fly-action": "begin-block-drag",
                                                 disabled: !can_drag,
-                                                onclick: move |_| {
+                                                onpointerdown: move |_| {
+                                                    // Begin before pointerup. The parent window cancels an
+                                                    // outside release; the iframe reports a drop inside canvas.
                                                     on_begin_drag.call(drag_id.clone())
                                                 },
                                                 "{drag_label}"
@@ -205,7 +207,7 @@ pub fn FlyLayerTree(
                                     class: "fly-layers__move",
                                     aria_label: format!("{} {}", move_label, move_id),
                                     disabled: !can_move,
-                                    onclick: move |_| on_begin_move.call(move_id.clone()),
+                                    onpointerdown: move |_| on_begin_move.call(move_id.clone()),
                                     "{move_label}"
                                 }
                             }
