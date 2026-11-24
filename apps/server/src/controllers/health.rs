@@ -654,6 +654,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
     rustok_telemetry::metrics::update_storage_health(storage.kind.as_str(), result.is_ok());
     result
 }
+
 async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), String> {
     db.execute_unprepared("SELECT 1")
         .await

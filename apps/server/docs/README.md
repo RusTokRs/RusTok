@@ -53,6 +53,9 @@ Local documentation for the main RusToK backend host application. This file capt
   fallback GraphQL entrypoint paths even before those files exist, so adding
   a package manifest or GraphQL entrypoint cannot leave generated wiring stale
   until a clean build.
+- The in-process artifact executor fingerprints the running server binary on
+  Tokio's blocking pool; hashing a large executable no longer occupies an async
+  worker thread during runtime composition.
 
 ## Purpose
 

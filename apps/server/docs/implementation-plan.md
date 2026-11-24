@@ -3291,3 +3291,17 @@ registers all three paths as rerun inputs before checking their existence.
 Source review and regression definitions are complete. Tests, compilation,
 formatting, and migration/runtime checks were not run, as requested by the
 maintainer.
+
+
+## Follow-up code review — artifact fingerprint blocking I/O (2026-11-24)
+
+The artifact runtime computed the running executable's SHA-256 synchronously
+inside an async runtime-composition path. Because the executable can be as
+large as the configured 1 GiB bound, metadata/open/read operations could occupy
+a Tokio worker for a prolonged period and delay unrelated timers, readiness
+and startup work. The digest operation now runs as one bounded
+`spawn_blocking` task, and join failures are converted into a typed host
+composition error. The synchronous helper remains private and is only invoked
+through the blocking-pool wrapper.
+
+No tests, compilation or formatting were run, as requested by the maintainer.
