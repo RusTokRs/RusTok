@@ -184,6 +184,46 @@ test('server revision conflicts fence the browser editor without BroadcastChanne
   );
 });
 
+test('a fresh server revision clears a persisted revision-conflict fence', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.locator('#fly-root').evaluate((root) => {
+    root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
+      bubbles: true,
+      detail: {
+        request: { intent: 'publish' },
+        result: {
+          save_failure: {
+            code: 'REVISION_CONFLICT',
+            message: 'The page revision changed in another session',
+          },
+        },
+      },
+    }));
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+
+  await page.evaluate(() => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement | null;
+    if (!root) throw new Error('missing editor root');
+    root.dataset.flyRevision = 'rev-2';
+    scope.__flyPeerAdapter = scope.FlyBrowser?.mount(root, {
+      intentEndpoint: '/fly-intent',
+    });
+    if (!scope.__flyPeerAdapter) throw new Error('adapter did not remount');
+  });
+
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT'
+  );
+});
+
 test('peer write on another page does not fence unrelated editors', async ({ context, page }) => {
   const source = await readFile(adapterPath, 'utf8');
   const otherTab = await context.newPage();
