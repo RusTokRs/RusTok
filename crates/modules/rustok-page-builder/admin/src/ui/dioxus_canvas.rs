@@ -65,17 +65,22 @@ pub fn DioxusIsolatedCanvas(
                     .is_some_and(|selected| !selected.is_root && !selected.is_locked),
         )
     };
+    let geometry_available = geometry_limit.read().is_none();
     let geometry_snapshot = geometry.read().clone();
-    let selected_rect = selected_id.as_ref().and_then(|id| {
-        geometry_snapshot
-            .get(id)
-            .map(|item| canvas_rect(item.rect))
-    });
-    let hovered_rect = hovered_id.as_ref().and_then(|id| {
-        geometry_snapshot
-            .get(id)
-            .map(|item| canvas_rect(item.rect))
-    });
+    let selected_rect = geometry_available.then(|| {
+        selected_id.as_ref().and_then(|id| {
+            geometry_snapshot
+                .get(id)
+                .map(|item| canvas_rect(item.rect))
+        })
+    }).flatten();
+    let hovered_rect = geometry_available.then(|| {
+        hovered_id.as_ref().and_then(|id| {
+            geometry_snapshot
+                .get(id)
+                .map(|item| canvas_rect(item.rect))
+        })
+    }).flatten();
     let zoom = f64::from(viewport.zoom.max(0.01));
     let preview_rect = resize_preview
         .read()
@@ -723,26 +728,37 @@ fn handle_canvas_message(
             components,
             resource_limit,
         } => {
+            let limited = resource_limit.is_some();
             geometry_limit.set(resource_limit);
-            geometry.set(
-                components
-                    .into_iter()
-                    .map(|component| (component.component_id.clone(), component))
-                    .collect(),
-            );
+            if limited {
+                // A truncated geometry map is not a safe basis for hit-testing or resize
+                // overlays. Fail closed rather than dropping into a partial target list.
+                geometry.set(BTreeMap::new());
+                pointer.set(None);
+                if session_has_active_drag(session) {
+                    on_ui_intent.call(UiIntent::CancelDrag);
+                }
+            } else {
+                geometry.set(
+                    components
+                        .into_iter()
+                        .map(|component| (component.component_id.clone(), component))
+                        .collect(),
+                );
+            }
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
             pointer.set(Some(format!("{:.0}, {:.0}", sample.position.x, sample.position.y)));
-            update_drag_candidates(session, geometry, on_ui_intent, sample.position);
+            update_drag_candidates(session, geometry, geometry_limit, on_ui_intent, sample.position);
         }
         CanvasBridgeMessage::DragMoved { position } => {
             pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
-            update_drag_candidates(session, geometry, on_ui_intent, position);
+            update_drag_candidates(session, geometry, geometry_limit, on_ui_intent, position);
         }
         CanvasBridgeMessage::DropRequested { position } => {
             pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
             if session_has_active_drag(session) {
-                update_drag_candidates(session, geometry, on_ui_intent, position);
+                update_drag_candidates(session, geometry, geometry_limit, on_ui_intent, position);
                 on_ui_intent.call(UiIntent::Drop);
             }
         }
@@ -798,9 +814,16 @@ fn session_has_active_drag(session: Signal<EditorSessionState>) -> bool {
 fn update_drag_candidates(
     session: Signal<EditorSessionState>,
     geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
+    geometry_limit: Signal<Option<CanvasResourceLimit>>,
     on_ui_intent: EventHandler<UiIntent>,
     position: fly_web::BrowserPoint,
 ) {
+    if geometry_limit.read().is_some() {
+        if session_has_active_drag(session) {
+            on_ui_intent.call(UiIntent::CancelDrag);
+        }
+        return;
+    }
     if !session_has_active_drag(session) {
         return;
     }
