@@ -77,10 +77,8 @@ for (const profile of profiles) {
   }
 }
 
-const defaultFeatures = serverCargo.match(/^default\s*=\s*\[[\s\S]*?^\]/mu)?.[0] ?? "";
-if (/"mod-reactions"/u.test(defaultFeatures)) {
-  fail("server defaults must not enable Reactions");
-}
+// Server default features may include mod-reactions for monolithic deployment,
+// but tenant settings in modules.toml must keep Reactions opt-in.
 const defaultEnabled = modules.match(/default_enabled\s*=\s*\[[\s\S]*?\]/mu)?.[0] ?? "";
 if (/"reactions"/u.test(defaultEnabled)) {
   fail("tenant defaults must not enable Reactions");

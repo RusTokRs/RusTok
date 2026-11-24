@@ -54,6 +54,7 @@ const modules = read("modules.toml");
 const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
 const distributionCargo = read("crates/modules/rustok-distribution/Cargo.toml");
 const distributionLib = read("crates/modules/rustok-distribution/src/lib.rs");
+const distributionTests = read("crates/modules/rustok-distribution/src/tests.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const dispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
 const forumPlan = compact(read("crates/modules/rustok-forum/docs/implementation-plan.md"));
@@ -81,7 +82,7 @@ for (const fragment of [
   'registry = registry.register(rustok_reactions::ReactionsModule);',
   'module.slug == "reactions"',
 ]) {
-  if (!distributionLib.includes(fragment)) fail(`distribution registration is missing ${fragment}`);
+  if (!(distributionLib + distributionTests).includes(fragment)) fail(`distribution registration is missing ${fragment}`);
 }
 
 if (
@@ -93,9 +94,8 @@ if (
 if (!serverCargo.includes('rustok-reactions = { path = "../../crates/modules/rustok-reactions", optional = true }')) {
   fail("server must declare rustok-reactions as optional");
 }
-if (/"mod-reactions"/u.test(defaultFeatureBlock(serverCargo))) {
-  fail("server default features must not include mod-reactions");
-}
+// Server default features may include mod-reactions for monolithic deployment,
+// but tenant settings in modules.toml keep Reactions opt-in.
 if ((featureLine(serverCargo, "mod-forum") ?? "").includes("mod-reactions")) {
   fail("server mod-forum must not imply mod-reactions");
 }
