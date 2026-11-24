@@ -1252,7 +1252,7 @@ final integration checks.
   Dioxus, CSP, rich-text, and all maintainer verification. Dioxus iframe,
   drag/drop and bounded resize are now connected in source but still require
   mounted browser evidence.
-  Draft PR #4788 must not be merged until these checks are complete.
+  PR #4788 has since been merged into `main`; that merge is not verification evidence. The authored checks remain unexecuted and are still release blockers.
 
 2026-11-23 follow-up on ambiguous result and concurrent database access
 (source-only): the Leptos SSR Page Builder store now probes
