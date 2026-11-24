@@ -683,6 +683,30 @@ let page = provider.list_inventory_resources(context, request).await?;
 Find owner discovery filters and their maintenance entry points with
 `rg -n 'async fn (list_inventory_resources|read_changes)|authorize_term' crates/modules`.
 
+### Commit-ordered journal cursor (`P-JOURNAL-COMMIT-ORDER`)
+
+**Category** — Order of operations and concurrency.
+
+**Failure mode** — Taxonomy formerly used the change UUID as its checkpoint.
+An earlier insert can commit after a later insert and fall behind an already
+stored checkpoint. Same-millisecond IDs can also sort a term's deletion ahead
+of its creation.
+
+**Owner contract** — Give each entry a publication position that can only
+become visible after all earlier positions in that scope. Taxonomy increments
+its tenant journal head during PostgreSQL commit and inside SQLite's serialized
+write transaction. Reads seek on the position and leave the UUID as identity.
+
+```rust
+query
+    .filter(ChangeColumn::Position.gt(after))
+    .order_by_asc(ChangeColumn::Position)
+```
+
+Find candidate journals with `rg -n 'ChangeColumn::Id\.(gt|lt)|order_by_asc\(ChangeColumn::Id' crates/modules`.
+Test by holding one write open, committing a second, checkpointing and then
+committing the first.
+
 ### Pattern 5: Bounded Identifier Entropy (`P-ID-ENTROPY`)
 * **Category:** Calculation & Algorithmic Correctness
 * **Problem:** The probability of at least one collision among 10 million identifiers in one uniqueness namespace is about 16.3% at 48 bits and 0.000271% at 64 bits, assuming independent, uniform draws. Twelve hex characters encode at most 48 bits. A 12-character prefix of the simple form of UUIDv7 is its timestamp, as defined by [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7), so the uniform-random assumption does not apply.

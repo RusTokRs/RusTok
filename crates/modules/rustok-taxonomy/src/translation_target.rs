@@ -53,6 +53,7 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 const REQUIRED_FIELD_COUNT: u64 = 2;
 const OPTIONAL_FIELD_COUNT: u64 = 1;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+const JOURNAL_CURSOR_PREFIX: &str = "position:";
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
@@ -306,18 +307,12 @@ impl TaxonomyTranslationTargetProvider {
     ) -> Result<Option<OpaqueCursor>, PortError> {
         ChangeEntity::find()
             .filter(ChangeColumn::TenantId.eq(tenant_id))
-            .order_by_desc(ChangeColumn::Id)
+            .order_by_desc(ChangeColumn::Position)
             .one(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?
-            .map(|change| {
-                OpaqueCursor::new(change.id.to_string()).map_err(|error| {
-                    PortError::invariant_violation(
-                        "taxonomy.translation_change_cursor_invalid",
-                        error.to_string(),
-                    )
-                })
-            })
+            .as_ref()
+            .map(change_cursor)
             .transpose()
     }
 
@@ -787,37 +782,18 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
         let after = request
             .after
             .as_ref()
-            .map(|cursor| {
-                Uuid::parse_str(cursor.as_str()).map_err(|_| {
-                    PortError::validation(
-                        "taxonomy.translation_change_cursor_invalid",
-                        "taxonomy translation change cursor must be a change UUID",
-                    )
-                })
-            })
-            .transpose()?;
-        let mut query = ChangeEntity::find()
+            .map(parse_change_cursor)
+            .transpose()?
+            .unwrap_or(0);
+        let rows = ChangeEntity::find()
             .filter(ChangeColumn::TenantId.eq(tenant_id))
-            .order_by_asc(ChangeColumn::Id);
-        if let Some(after) = after {
-            query = query.filter(ChangeColumn::Id.gt(after));
-        }
-        let rows = query
+            .filter(ChangeColumn::Position.gt(after))
+            .order_by_asc(ChangeColumn::Position)
             .limit(u64::from(request.limit))
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
-        let next_cursor = rows
-            .last()
-            .map(|change| {
-                OpaqueCursor::new(change.id.to_string()).map_err(|error| {
-                    PortError::invariant_violation(
-                        "taxonomy.translation_change_cursor_invalid",
-                        error.to_string(),
-                    )
-                })
-            })
-            .transpose()?;
+        let next_cursor = rows.last().map(change_cursor).transpose()?;
         let changes = rows
             .into_iter()
             .map(change_from_model)
@@ -828,6 +804,40 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             next_cursor,
         })
     }
+}
+
+fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<i64, PortError> {
+    let value = cursor.as_str();
+    // The UUID cursor did not define commit order. Replay the retained journal
+    // once when the inventory still has a checkpoint from that ordering.
+    if Uuid::parse_str(value).is_ok() {
+        return Ok(0);
+    }
+    value
+        .strip_prefix(JOURNAL_CURSOR_PREFIX)
+        .and_then(|position| position.parse::<i64>().ok())
+        .filter(|&position| position > 0)
+        .ok_or_else(|| {
+            PortError::validation(
+                "taxonomy.translation_change_cursor_invalid",
+                "invalid Taxonomy translation journal position",
+            )
+        })
+}
+
+fn change_cursor(change: &ChangeModel) -> Result<OpaqueCursor, PortError> {
+    let position = change.position.ok_or_else(|| {
+        PortError::invariant_violation(
+            "taxonomy.translation_change_position_missing",
+            "committed Taxonomy change has no journal position",
+        )
+    })?;
+    OpaqueCursor::new(format!("{JOURNAL_CURSOR_PREFIX}{position}")).map_err(|error| {
+        PortError::invariant_violation(
+            "taxonomy.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
 }
 
 fn term_cursor(term_id: Uuid) -> Result<OpaqueCursor, PortError> {

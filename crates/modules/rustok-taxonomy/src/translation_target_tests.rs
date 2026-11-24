@@ -12,12 +12,13 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::SysEventsMigration;
 use rustok_test_utils::db::setup_test_db;
 use rustok_translation_targets::{
-    FieldKey, ListTranslationResourcesRequest, ReadTranslationResourceRequest,
-    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
-    TranslationTargetProgressRequest, TranslationTargetProvider,
+    FieldKey, ListTranslationResourcesRequest, OpaqueCursor, ReadTranslationResourceRequest,
+    TranslationFieldPatch, TranslationPatchRequest, TranslationResourceLifecycle,
+    TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -84,13 +85,13 @@ async fn setup() -> (DatabaseConnection, Arc<TaxonomyService>) {
 }
 
 #[tokio::test]
-async fn translation_target_schema_supports_up_down_up() {
+async fn journal_migration_preserves_history_and_replays_legacy_checkpoints() {
     let database = setup_test_db().await;
     let manager = SchemaManager::new(&database);
     let mut migrations = TaxonomyModule.migrations();
-    let translation_target_migration = migrations
+    let journal_migration = migrations
         .pop()
-        .expect("Taxonomy translation target migration should be registered");
+        .expect("Taxonomy journal ordering migration should be registered");
 
     for migration in migrations {
         migration
@@ -98,23 +99,50 @@ async fn translation_target_schema_supports_up_down_up() {
             .await
             .expect("base Taxonomy migration should apply");
     }
-    translation_target_migration
+    let tenant_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+    let legacy_checkpoint = Uuid::from_u128(2);
+    // Old IDs sort the deletion before creation, even with the same timestamp.
+    for (id, revision, operation, lifecycle) in [
+        (legacy_checkpoint, 1_i64, "upsert", "active"),
+        (Uuid::from_u128(1), 2_i64, "delete", "deleted"),
+    ] {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO taxonomy_translation_changes
+                    (id, tenant_id, term_id, locale, resource_revision, target_revision,
+                     operation, lifecycle, created_at)
+                 VALUES (?, ?, ?, 'en', ?, 1, ?, ?, '2026-11-24T00:00:00Z')",
+                [
+                    id.into(),
+                    tenant_id.into(),
+                    term_id.into(),
+                    revision.into(),
+                    operation.into(),
+                    lifecycle.into(),
+                ],
+            ))
+            .await
+            .unwrap();
+    }
+    journal_migration
         .up(&manager)
         .await
-        .expect("Taxonomy translation target migration should apply");
-    translation_target_migration
+        .expect("Taxonomy journal ordering migration should apply");
+    journal_migration
         .down(&manager)
         .await
-        .expect("Taxonomy translation target migration should roll back");
-    translation_target_migration
+        .expect("Taxonomy journal ordering migration should roll back");
+    journal_migration
         .up(&manager)
         .await
-        .expect("Taxonomy translation target migration should reapply");
+        .expect("Taxonomy journal ordering migration should reapply");
 
-    let service = TaxonomyService::new(database);
+    let service = Arc::new(TaxonomyService::new(database));
     service
         .create_term(
-            Uuid::new_v4(),
+            tenant_id,
             admin(),
             CreateTaxonomyTermInput {
                 kind: TaxonomyTermKind::Tag,
@@ -130,6 +158,36 @@ async fn translation_target_schema_supports_up_down_up() {
         )
         .await
         .expect("reapplied translation target schema should accept revisioned terms");
+
+    let provider = TaxonomyTranslationTargetProvider::new(service);
+    let page = provider
+        .read_changes(
+            read_context(tenant_id),
+            TranslationTargetChangesRequest {
+                after: Some(OpaqueCursor::new(legacy_checkpoint.to_string()).unwrap()),
+                limit: 3,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.changes.len(), 3);
+    assert_eq!(
+        page.changes[0].identity.resource_id.as_str(),
+        term_id.to_string()
+    );
+    assert_eq!(
+        page.changes[0].lifecycle,
+        TranslationResourceLifecycle::Active
+    );
+    assert_eq!(
+        page.changes[1].identity.resource_id,
+        page.changes[0].identity.resource_id
+    );
+    assert_eq!(
+        page.changes[1].lifecycle,
+        TranslationResourceLifecycle::Deleted
+    );
+    assert_eq!(page.next_cursor.unwrap().as_str(), "position:3");
 }
 
 fn admin() -> SecurityContext {
@@ -237,14 +295,10 @@ async fn inventory_requires_maintenance_grants_and_preserves_owner_scope_and_tom
         .await
         .unwrap();
     assert_eq!(changes.changes.len(), 3);
-    let deleted = changes
-        .changes
-        .iter()
-        .find(|change| {
-            change.lifecycle == rustok_translation_targets::TranslationResourceLifecycle::Deleted
-        })
-        .unwrap();
+    let deleted = &changes.changes[2];
+    assert_eq!(deleted.lifecycle, TranslationResourceLifecycle::Deleted);
     assert_eq!(deleted.identity.resource_id.as_str(), ids[1].to_string());
+    assert_eq!(changes.next_cursor.unwrap().as_str(), "position:3");
     let baseline = provider
         .list_inventory_resources(maintainer.clone(), baseline_request.clone())
         .await

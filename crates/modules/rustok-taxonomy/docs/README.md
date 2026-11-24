@@ -126,5 +126,17 @@ consumer module. Both require effective `taxonomy:manage` and
 the term is gone. The baseline includes active terms in every locale so a
 rebuild for one locale pair preserves other terms.
 
+The journal assigns a separate ordered position per tenant. PostgreSQL assigns
+positions through a deferred trigger that holds the tenant's journal head row
+until commit. SQLite assigns them inside its serialized write transaction.
+Inventory sync and progress read the same position. This lets sync resume
+after a later-started write commits ahead of an earlier-started write.
+
+Migration `m20261124_000012_order_taxonomy_translation_changes` preserves the
+existing entries and backfills their positions. A checkpoint issued before
+the migration triggers one paginated replay of retained evidence. A downgrade
+to code that only understands UUID cursors requires restoring the matching
+Translation checkpoint with the database backup.
+
 Discovery, exact reads, progress and patch operations enforce the registered
 module owner's authorization. Discovery cursors refer to visible terms.
