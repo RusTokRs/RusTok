@@ -24,7 +24,7 @@ struct PeerWriteMessage {
     page_id: String,
     revision: String,
     hash: String,
-    /// Shared by every channel instance in one document, but unique across tabs.
+    /// Shared by adapters for one editor root, but unique across sibling roots and tabs.
     #[serde(default)]
     sender_id: String,
 }
@@ -70,7 +70,7 @@ impl PeerWriteBase {
 
         if message.sender_id == self.sender_id {
             // The JS adapter and Rust Leptos runtime may each own a BroadcastChannel
-            // in the same document. A local confirmed write advances both baselines.
+            // for this editor root. A local confirmed write advances both baselines.
             self.revision = message.revision;
             self.project_hash = message.hash;
             return None;
