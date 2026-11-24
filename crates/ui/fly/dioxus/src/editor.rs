@@ -473,9 +473,10 @@ fn subscribe_canvas_iframe(
             // monotonic for the same child document's lastParentSequence fence.
             subscription.set(None);
             let existing_config = port_instance_config.read().clone();
-            let needs_new_port = existing_config.as_ref()
-                != Some(&(effect_instance_id.clone(), effect_expected_origin.clone()))
-                || message_port.read().is_none();
+            let config_matches = existing_config.as_ref().is_some_and(|(instance, origin)| {
+                instance == &effect_instance_id && origin == &effect_expected_origin
+            });
+            let needs_new_port = !config_matches || message_port.read().is_none();
             if needs_new_port {
                 message_port.set(None);
                 port_instance_config.set(None);
