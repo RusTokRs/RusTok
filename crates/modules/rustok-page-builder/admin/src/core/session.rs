@@ -439,19 +439,11 @@ impl EditorSessionState {
         let message = format!(
             "Another tab saved this page at revision {actual}. Preserve your local changes and reload before editing again."
         );
-        let mark_result = match self.controller.active_save_attempt() {
-            Some(attempt) => self.controller.mark_save_conflict_for_attempt(
-                &attempt,
-                expected,
-                actual,
-            ),
-            None => self
-                .controller
-                .mark_save_conflict(expected, actual)
-                .map(|()| true),
-        };
-        let marked = match mark_result {
-            Ok(marked) => marked,
+        let marked = match self
+            .controller
+            .mark_peer_write_conflict(expected, actual)
+        {
+            Ok(()) => true,
             Err(error) => {
                 tracing::warn!(?error, "Failed to record Page Builder peer-write conflict");
                 false
