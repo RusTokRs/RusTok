@@ -8,7 +8,7 @@ const sources = Object.fromEntries(
 test('current durable Media implementation satisfies architectural guards', () =>
   assert.deepEqual(verify(sources), []));
 for (const [name, file, needle, pattern] of [
-  ['non-atomic worker startup', 'dispatcher', 'shared_insert_if_absent(ProductMediaReleaseWorkerReservation)', /atomically reserve/],
+  ['non-atomic worker startup', 'dispatcher', 'ServerRuntimeStartReservation::try_claim(ctx, ProductMediaReleaseWorkerReservation)', /atomically reserve/],
   ['split delivery authority', 'runtime', '.process_media_releases(batch_limit)', /command owner catalog/],
   ['embedded Media-only worker', 'services', '#[cfg(feature = "mod-product")]\npub mod product_media_release_worker;', /must not require the embedded Media/],
   ['maintenance permission classification', 'reference', 'PortError::forbidden(', /permission denial must stay Forbidden/],

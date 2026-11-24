@@ -258,12 +258,12 @@ export function verify(s) {
   );
   has(
     'dispatcher',
-    /shared_insert_if_absent\(ProductMediaReleaseWorkerReservation\)/,
+    /ServerRuntimeStartReservation::try_claim\(ctx,\s*ProductMediaReleaseWorkerReservation\)/,
     'worker must atomically reserve a singleton per process'
   );
   has(
     'dispatcher',
-    /StopHandle::ensure\(ctx\).subscribe\(\)/,
+    /StopHandle::ensure\(ctx\)[\s\S]*?stop\.subscribe\(\)/,
     'worker must use application shutdown'
   );
   has(

@@ -160,12 +160,12 @@ assertContains(
 );
 assertContains(
   pricingPort,
-  'price.min_quantity.is_some()',
+  'price.min_quantity.is_none()',
   'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: quantity tiers must stay out of the catalog-card snapshot'
 );
 assertContains(
   pricingPort,
-  'price_list_id.is_some()',
+  'price.price_list_id.is_none()',
   'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: price-list rows must stay out of the catalog-card snapshot'
 );
 assertContains(

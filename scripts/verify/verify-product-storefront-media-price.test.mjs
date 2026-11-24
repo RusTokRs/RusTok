@@ -52,9 +52,15 @@ pub struct StorefrontProductListQuery {
 
 function pricingPortSource() {
   return `
+fn is_storefront_list_price_candidate(price: &price::Model) -> bool {
+    price.price_list_id.is_none()
+        && price.region_id.is_none()
+        && price.min_quantity.is_none()
+        && price.max_quantity.is_none()
+}
 async fn load_storefront_list_prices() {
     for price in &prices {
-        if price.price_list_id.is_some() || price.min_quantity.is_some() { continue; }
+        if !is_storefront_list_price_candidate(price) { continue; }
         if let Some(code) = currency_code
             && !price.currency_code.eq_ignore_ascii_case(code)
         { continue; }
