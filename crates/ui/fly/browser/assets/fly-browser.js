@@ -79,15 +79,35 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function getPeerWriteSenderId(root) {
-  const existing = nonEmptyString(root?.dataset?.flyPeerWriteSenderId);
+function getPeerWriteDocumentId() {
+  const existing = nonEmptyString(globalThis.__flyPeerWriteDocumentId);
   if (existing) return existing;
   const cryptoApi = globalThis.crypto;
   const generated = typeof cryptoApi?.randomUUID === "function"
     ? cryptoApi.randomUUID()
     : `fly-document-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-  if (root?.dataset) root.dataset.flyPeerWriteSenderId = generated;
-  return nonEmptyString(root?.dataset?.flyPeerWriteSenderId) || generated;
+  try {
+    globalThis.__flyPeerWriteDocumentId = generated;
+  } catch (_) {
+    // The browser's server-side revision CAS remains authoritative if globals are frozen.
+  }
+  return nonEmptyString(globalThis.__flyPeerWriteDocumentId) || generated;
+}
+
+function getPeerWriteSenderId(root) {
+  if (!root?.dataset) return getPeerWriteDocumentId();
+  const documentId = getPeerWriteDocumentId();
+  let scopeId = nonEmptyString(root.dataset.flyPeerWriteScopeId);
+  if (!scopeId) {
+    const cryptoApi = globalThis.crypto;
+    scopeId = typeof cryptoApi?.randomUUID === "function"
+      ? cryptoApi.randomUUID()
+      : `fly-root-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    root.dataset.flyPeerWriteScopeId = scopeId;
+  }
+  const senderId = `${documentId}:${scopeId}`;
+  root.dataset.flyPeerWriteSenderId = senderId;
+  return senderId;
 }
 
 /**
