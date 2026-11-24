@@ -77,6 +77,10 @@ impl PageBuilderAdminFacadeError {
         let message = message.into();
         let stable_code = if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
             Some("REVISION_CONFLICT")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT") {
+            Some("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED") {
+            Some("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED")
         } else if message.contains("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") {
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         } else if message.ends_with(" (REVISION_CONFLICT)") {
@@ -151,6 +155,20 @@ mod tests {
             error.stable_code.as_deref(),
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         );
+    }
+
+    #[test]
+    fn idempotency_conflict_and_expired_receipt_codes_survive_wrappers() {
+        for code in [
+            "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT",
+            "PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED",
+        ] {
+            let error = PageBuilderAdminFacadeError::new(format!(
+                "Server function error: save failed ({code})"
+            ));
+            assert_eq!(error.stable_code.as_deref(), Some(code));
+            assert_eq!(error.message, "Server function error: save failed");
+        }
     }
 
     #[test]
