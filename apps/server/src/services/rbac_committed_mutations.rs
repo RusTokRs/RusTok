@@ -92,6 +92,7 @@ fn role_persistence_error(error: rustok_rbac::RbacRolePersistenceError) -> Error
 #[cfg(test)]
 mod tests {
     use super::RbacService;
+    use rustok_cache::CacheService;
     use crate::error::Error;
     use crate::models::{tenants, users};
     use crate::services::rbac_invalidation_generation::read_rbac_invalidation_generation;
