@@ -81,6 +81,7 @@ missing. It did not protect the two GET fast paths.
 ## Verification
 
 - Unit coverage for cookie-vs-explicit-bearer confirmation policy.
+- HTML contract coverage for the POST action and CSRF field.
 - Existing HMAC binding and consent epoch tests.
 - Maintainer-run server OAuth tests and full verification remain required.
 

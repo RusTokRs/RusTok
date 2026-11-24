@@ -1919,6 +1919,7 @@ mod tests {
         assert!(html.contains("name=\"scope\""));
         assert!(html.contains("name=\"state\""));
         assert!(html.contains("name=\"code_challenge\""));
+        assert!(html.contains("method=\"post\" action=\"/api/oauth/consent\""));
         assert!(html.contains("name=\"consent_csrf\""));
         assert!(html.contains("1893456000.deadbeef"));
         assert!(html.contains("&lt;unsafe&gt;"));
