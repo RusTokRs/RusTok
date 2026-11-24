@@ -3267,3 +3267,27 @@ classification, heartbeat CAS, stale-job quarantine, public status mapping,
 recovery finalization, and the migration's cross-status single-slot invariant.
 No tests, compilation, formatting, migration execution, or multi-replica
 exercise were run at the user's request.
+
+
+## Follow-up code review — GraphQL storage probe and module codegen inputs (2026-11-24)
+
+The GraphQL `systemHealth` resolver still used `Uuid::nil()` to build an
+`ObjectKey::chronological` staging key and then called `expect`. The canonical
+key constructor rejects nil object identities, so every host-authorized
+`systemHealth` request with `mod-media` and configured storage could panic.
+HTTP readiness had already moved to a non-nil per-runtime key, but the GraphQL
+path had not. Both surfaces now use one shared service with a stable
+`ServerRuntimeContext`-scoped UUID, a shared async operation lock, and
+best-effort cleanup after ambiguous writes. A focused regression checks that
+cloned contexts share the identity/lock and independent contexts do not.
+
+The server build script also derived generated module wiring from the
+existence of `rustok-module.toml`, `src/graphql/mod.rs`, and
+`src/graphql.rs`, but did not watch those inputs when absent. Adding a package
+manifest or fallback GraphQL entrypoint could therefore leave generated
+registry/schema/router wiring stale until a clean build. The build script now
+registers all three paths as rerun inputs before checking their existence.
+
+Source review and regression definitions are complete. Tests, compilation,
+formatting, and migration/runtime checks were not run, as requested by the
+maintainer.

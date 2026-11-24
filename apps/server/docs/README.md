@@ -44,6 +44,15 @@ Local documentation for the main RusToK backend host application. This file capt
   than keyed globally across all hosts in the process. A dependency failure
   in one runtime no longer prevents another runtime from testing its own
   healthy dependency. Clones of the same runtime still share the breaker.
+- HTTP readiness and GraphQL `systemHealth` use one shared storage-probe service.
+  Its non-nil object identity and operation lock are scoped to the
+  `ServerRuntimeContext`, so concurrent probes cannot overwrite or delete
+  each other's staging object; ambiguous writes are cleaned up and retried
+  through the same stable key.
+- Server build code generation watches optional module manifests and both
+  fallback GraphQL entrypoint paths even before those files exist, so adding
+  a package manifest or GraphQL entrypoint cannot leave generated wiring stale
+  until a clean build.
 
 ## Purpose
 

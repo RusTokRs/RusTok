@@ -693,6 +693,8 @@ pub mod search_product_channel_reconciliation;
 #[cfg(feature = "mod-seo")]
 pub mod seo_redirect_cache_reconciliation;
 pub mod server_bootstrap;
+#[cfg(feature = "mod-media")]
+pub mod storage_health_probe;
 pub mod server_runtime_context;
 pub mod settings_service;
 #[cfg(feature = "mod-social_graph")]
