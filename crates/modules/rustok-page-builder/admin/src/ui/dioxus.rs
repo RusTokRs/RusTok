@@ -439,7 +439,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             "Page Builder facade is missing",
             "Page saved successfully",
         );
-        if let Some(schemas) = props.trait_schemas {
+        if let Some(schemas) = props.trait_schemas.clone() {
             s = s.with_trait_schemas(schemas);
         }
         // The host's tenant/RBAC and provider-health policy narrows the
@@ -449,20 +449,115 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         ) {
             s.fail(format!("Cannot apply editor capabilities: {error}"));
         }
-        if let Some(evaluation) = props.editor_capability_evaluation {
+        if let Some(evaluation) = props.editor_capability_evaluation.clone() {
             s = s.with_editor_capability_evaluation(evaluation);
         }
-        if let Some(ctx) = props.runtime_context {
+        if let Some(ctx) = props.runtime_context.clone() {
             s = s.with_runtime_context(ctx);
         }
-        if let Some(scenarios) = props.runtime_scenarios {
+        if let Some(scenarios) = props.runtime_scenarios.clone() {
             s = s.with_runtime_scenarios(scenarios);
         }
-        if let Some(policy) = props.runtime_publish_gate_policy {
+        if let Some(policy) = props.runtime_publish_gate_policy.clone() {
             s = s.with_runtime_publish_gate_policy(policy);
         }
         s
     });
+
+    let mut peer_write_conflict = use_signal(|| false);
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
+
+    let session_configuration = (
+        props.trait_schemas.clone(),
+        props.editor_capability_evaluation.clone(),
+        props.runtime_context.clone(),
+        props.runtime_scenarios.clone(),
+        props.runtime_publish_gate_policy.clone(),
+        props.facade.is_some(),
+    );
+    use_effect(use_reactive!(|session_configuration| {
+        let (
+            trait_schemas,
+            editor_capability_evaluation,
+            runtime_context,
+            runtime_scenarios,
+            runtime_publish_gate_policy,
+            facade_available,
+        ) = session_configuration.clone();
+        session.write().update_host_configuration(
+            trait_schemas,
+            editor_capability_evaluation,
+            runtime_context,
+            runtime_scenarios,
+            runtime_publish_gate_policy,
+            facade_available,
+        );
+    }));
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    {
+        let initial_session = session;
+        let mut conflict_signal = peer_write_conflict;
+        use_effect(move || {
+            if peer_write_channel.peek().is_some() {
+                return;
+            }
+            let (page_id, revision_id, project_hash) = {
+                let current = initial_session.peek();
+                (
+                    current.controller.page_id().to_string(),
+                    current.controller.revision_id().to_string(),
+                    current.controller.editor().revision().project_hash.hex(),
+                )
+            };
+            let on_conflict = move |conflict: BrowserPeerWriteConflict| {
+                conflict_signal.set(true);
+                let mut state = initial_session.write();
+                if state.controller.ui().state.drag.is_some() {
+                    if let Err(error) = state.controller.dispatch(UiIntent::CancelDrag) {
+                        state.fail(format!(
+                            "Another tab saved this page at revision {}. The editor is now read-only; active drag cleanup also failed: {error}",
+                            conflict.revision
+                        ));
+                        return;
+                    }
+                }
+                state.fail(format!(
+                    "Another tab saved this page at revision {}. This editor is now read-only; reload to continue.",
+                    conflict.revision
+                ));
+            };
+            match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict) {
+                Ok(channel) => peer_write_channel.set(Some(channel)),
+                Err(error) => tracing::warn!(
+                    error = ?error,
+                    "Fly cross-tab notifications unavailable; server revision checks remain authoritative"
+                ),
+            }
+        });
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let on_publish_confirmed = {
+        let channel = peer_write_channel;
+        let conflict = peer_write_conflict;
+        move |revision: String, project_hash: String| {
+            if *conflict.peek() {
+                return;
+            }
+            if let Some(channel) = channel.peek().as_ref() {
+                if let Err(error) = channel.post_confirmed_write(&revision, &project_hash) {
+                    tracing::warn!(
+                        error = ?error,
+                        "Fly save succeeded but cross-tab notification could not be broadcast"
+                    );
+                }
+            }
+        }
+    };
+    #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
+    let on_publish_confirmed = |_revision: String, _project_hash: String| {};
 
     // A host may revoke or restore permissions without navigating or saving.
     // Dioxus preserves use_signal state across prop rerenders, so mirror any
