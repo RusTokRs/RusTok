@@ -57,8 +57,9 @@ mod tests {
 
     #[test]
     fn runtime_data_factory_is_manifest_attachable() {
-        let factory: fn(&GraphqlRuntimeInputs) -> Result<PagesGraphqlRuntimeData, String> =
-            attach_schema_data;
+        let factory: fn(
+            &GraphqlRuntimeInputs,
+        ) -> Result<PagesGraphqlRuntimeData, PagesGraphqlRuntimeError> = attach_schema_data;
         let selector: fn(&PagesGraphqlRuntimeData) -> Option<ProviderHealthSnapshot> =
             PagesGraphqlRuntimeData::provider_health_snapshot;
         let _ = (factory, selector);
