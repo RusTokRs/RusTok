@@ -6,17 +6,21 @@ use rustok_blog::dto::{
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_comments::CommentsModule;
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::TransactionalEventBus;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -52,21 +56,14 @@ impl rustok_blog::BlogCategoryDeleteCleanupPort for NoopCategoryDeleteCleanup {
     }
 }
 
-fn services(
-    db: &DatabaseConnection,
-) -> (
-    CategoryService,
-    CategoryCommandService,
-    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
-) {
-    let transport = Arc::new(MemoryTransport::new());
-    let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(transport);
+fn services(db: &DatabaseConnection) -> (CategoryService, CategoryCommandService) {
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
     (
         CategoryService::new(db.clone(), event_bus.clone())
+            .with_taxonomy_port(port.clone())
             .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup)),
-        CategoryCommandService::new(db.clone(), event_bus),
-        receiver,
+        CategoryCommandService::new(db.clone(), event_bus).with_taxonomy_port(port),
     )
 }
 
@@ -141,7 +138,7 @@ async fn load_category(
 #[tokio::test]
 async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position() {
     let db = setup().await;
-    let (category_service, _, _events) = services(&db);
+    let (category_service, _) = services(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&category_service, tenant_id, "First", None, 0).await;
@@ -165,7 +162,7 @@ async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position
 #[tokio::test]
 async fn move_reorders_siblings_without_changing_their_parent() {
     let db = setup().await;
-    let (category_service, command_service, _events) = services(&db);
+    let (category_service, command_service) = services(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&category_service, tenant_id, "First", None, 0).await;
@@ -198,7 +195,7 @@ async fn move_reorders_siblings_without_changing_their_parent() {
 #[tokio::test]
 async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let db = setup().await;
-    let (category_service, command_service, _events) = services(&db);
+    let (category_service, command_service) = services(&db);
     let tenant_id = Uuid::new_v4();
 
     let root_a = create_category(&category_service, tenant_id, "Root A", None, 0).await;
@@ -338,10 +335,11 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
 #[tokio::test]
 async fn delete_rejects_non_leaf_and_compacts_remaining_siblings() {
     let db = setup().await;
-    let transport = MemoryTransport::new();
-    let _receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let category_service = CategoryService::new(db.clone(), event_bus)
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+            db.clone(),
+        ))
         .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup));
     let tenant_id = Uuid::new_v4();
 

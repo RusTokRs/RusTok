@@ -115,11 +115,30 @@ pub(super) async fn moderate_comment(
 struct NativeContext {
     db: sea_orm::DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
+    taxonomy_port: Arc<dyn rustok_blog::BlogTaxonomyPort>,
     comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>,
     settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>,
-    category_delete_cleanup: Option<Arc<dyn rustok_blog::TaxonomyCategoryDeleteCleanupPort>>,
+    category_delete_cleanup: Option<Arc<dyn rustok_blog::BlogCategoryDeleteCleanupPort>>,
     auth: rustok_api::AuthContext,
     tenant: rustok_api::TenantContext,
+}
+
+#[cfg(feature = "ssr")]
+impl NativeContext {
+    fn category_service(&self) -> rustok_blog::CategoryService {
+        let mut service =
+            rustok_blog::CategoryService::new(self.db.clone(), self.event_bus.clone())
+                .with_taxonomy_port(self.taxonomy_port.clone());
+        if let Some(cleanup) = self.category_delete_cleanup.clone() {
+            service = service.with_category_delete_cleanup(cleanup);
+        }
+        service
+    }
+
+    fn post_service(&self) -> rustok_blog::PostService {
+        rustok_blog::PostService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -153,11 +172,12 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
     let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
     let settings_reader = runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>();
     let category_delete_cleanup =
-        runtime.shared_get::<Arc<dyn rustok_blog::TaxonomyCategoryDeleteCleanupPort>>();
+        runtime.shared_get::<Arc<dyn rustok_blog::BlogCategoryDeleteCleanupPort>>();
 
     Ok(NativeContext {
         db: runtime.db_clone(),
         event_bus,
+        taxonomy_port: rustok_blog::blog_taxonomy_from_runtime(&runtime),
         comments_thread_port,
         settings_reader,
         category_delete_cleanup,
@@ -326,11 +346,11 @@ async fn blog_admin_categories_native(
 ) -> Result<Vec<BlogCategoryOption>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CategoryService, ListCategoriesFilter};
+        use rustok_blog::ListCategoriesFilter;
 
         let context = native_context().await?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
-        let service = CategoryService::new(context.db, context.event_bus);
+        let service = context.category_service();
         let mut items = Vec::new();
         for page in 1.. {
             let (rows, total) = service
@@ -376,7 +396,7 @@ async fn blog_admin_posts_native(
 ) -> Result<BlogPostList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{PostListQuery, PostService, PostSortField, PostSortOrder};
+        use rustok_blog::{PostListQuery, PostSortField, PostSortOrder};
 
         let context = native_context().await?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
@@ -391,7 +411,8 @@ async fn blog_admin_posts_native(
             crate::model::BlogPostSortOrder::Asc => PostSortOrder::Asc,
             crate::model::BlogPostSortOrder::Desc => PostSortOrder::Desc,
         };
-        let result = PostService::new(context.db, context.event_bus)
+        let result = context
+            .post_service()
             .list_posts_with_locale_fallback(
                 context.tenant.id,
                 security_context(&context.auth),
@@ -431,12 +452,13 @@ async fn blog_admin_post_native(
 ) -> Result<Option<BlogPostDetail>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{BlogError, PostService};
+        use rustok_blog::BlogError;
 
         let context = native_context().await?;
         let post_id = parse_uuid(&id, "post_id")?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
-        match PostService::new(context.db, context.event_bus)
+        match context
+            .post_service()
             .get_post_with_locale_fallback(
                 context.tenant.id,
                 security_context(&context.auth),
@@ -483,14 +505,14 @@ async fn blog_admin_create_post_native(
 ) -> Result<crate::model::BlogPostCreationOutcome, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{CreatePostInput, PostService};
+        use rustok_blog::CreatePostInput;
 
         let context = native_context().await?;
         if scope.actor_id != context.auth.user_id || scope.tenant_id != context.tenant.id {
             return Err(ServerFnError::new("Blog creation scope changed"));
         }
         require_blog_posts_create_permission(&context.auth)?;
-        let service = PostService::new(context.db, context.event_bus);
+        let service = context.post_service();
         let result = service
             .create_post(
                 context.tenant.id,
@@ -544,7 +566,7 @@ async fn blog_admin_update_post_native(
     #[cfg(feature = "ssr")]
     {
         use rustok_api::Patch;
-        use rustok_blog::{PostService, UpdatePostInput};
+        use rustok_blog::UpdatePostInput;
         let context = native_context().await?;
         require_blog_posts_update_permission(&context.auth)?;
         let post_id = parse_uuid(&id, "post_id")?;
@@ -558,7 +580,8 @@ async fn blog_admin_update_post_native(
             Patch::Clear => Patch::Clear,
             Patch::Set(value) => Patch::Set(parse_schedule(value)?),
         };
-        PostService::new(context.db, context.event_bus)
+        context
+            .post_service()
             .update_post(
                 context.tenant.id,
                 post_id,
@@ -694,8 +717,6 @@ enum StatusMutation {
 
 #[cfg(feature = "ssr")]
 async fn update_status(id: String, mutation: StatusMutation) -> Result<(), ServerFnError> {
-    use rustok_blog::PostService;
-
     let context = native_context().await?;
     match &mutation {
         StatusMutation::Pin | StatusMutation::Unpin => {
@@ -704,7 +725,7 @@ async fn update_status(id: String, mutation: StatusMutation) -> Result<(), Serve
         _ => require_blog_posts_publish_permission(&context.auth)?,
     }
     let post_id = parse_uuid(&id, "post_id")?;
-    let service = PostService::new(context.db, context.event_bus);
+    let service = context.post_service();
     let security = security_context(&context.auth);
     match mutation {
         StatusMutation::Publish => {
@@ -743,12 +764,11 @@ async fn update_status(id: String, mutation: StatusMutation) -> Result<(), Serve
 async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::PostService;
-
         let context = native_context().await?;
         require_blog_posts_delete_permission(&context.auth)?;
         let post_id = parse_uuid(&id, "post_id")?;
-        PostService::new(context.db, context.event_bus)
+        context
+            .post_service()
             .delete_post(context.tenant.id, post_id, security_context(&context.auth))
             .await
             .map_err(public_blog_error)?;

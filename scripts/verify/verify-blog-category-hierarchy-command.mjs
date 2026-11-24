@@ -69,9 +69,9 @@ requireMarkers("crates/modules/rustok-blog/src/dto/category_command.rs", [
 ]);
 
 const categoryService = requireMarkers("crates/modules/rustok-blog/src/services/category.rs", [
-  "lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  ".lock_category_hierarchy_writer_in_tx(&txn, tenant_id)",
   "ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?",
-  "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
+  "ensure_hierarchy_coverage_in_tx(&*self.taxonomy_port, &txn, tenant_id).await?",
   "category_taxonomy_sync::sync_category_copy_in_tx(",
   "canonicalize_siblings_for_insert_in_tx(",
   "publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
@@ -93,10 +93,10 @@ const commandService = requireMarkers("crates/modules/rustok-blog/src/services/c
   "pub struct CategoryCommandService",
   "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self",
   "Resource::BlogCategories, Action::Manage",
-  "lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
-  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
-  "reorder_module_category_siblings_in_tx(",
-  "move_module_category_in_tx(",
+  ".lock_category_hierarchy_writer_in_tx(&txn, tenant_id)",
+  ".load_scoped_categories(",
+  ".reorder_category_siblings_in_tx(",
+  ".move_category_in_tx(",
   "validate_and_compute_depths(&parent_by_id)",
   "parent_by_id.insert(category_id, input.parent_id)",
   "persist_sibling_order(",
@@ -113,7 +113,7 @@ const crossParentMove = segment(
   "if source_parent_id == input.parent_id {",
   "updated.extend(persist_descendant_depth_changes(",
 );
-if (!crossParentMove.includes("rustok_taxonomy::move_module_category_in_tx(")) {
+if (!crossParentMove.includes(".move_category_in_tx(")) {
   failures.push("category move must delegate cross-parent mutations to Taxonomy owner");
 }
 if (crossParentMove.includes("source_siblings,") || crossParentMove.includes("target_siblings,")) {
@@ -125,9 +125,9 @@ rejectMarkers("crates/modules/rustok-blog/src/services/category_command.rs", [
 ]);
 
 const deleteCleanup = requireMarkers("crates/modules/rustok-blog/src/services/category_delete.rs", [
-  "impl TaxonomyCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup",
-  "lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
-  "delete_module_category_placement_and_compact_in_tx(",
+  "impl BlogCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup",
+  ".lock_category_hierarchy_writer_in_tx(txn, tenant_id)",
+  ".delete_category_placement_and_compact_in_tx(",
   "detach_category_from_posts_in_tx(",
   "blog_category::Entity::delete_many()",
   "blog_category::Column::Revision.eq(category.revision)",
@@ -141,10 +141,18 @@ rejectMarkers("crates/modules/rustok-blog/src/services/category_delete.rs", [
 ]);
 
 requireMarkers("crates/modules/rustok-blog/src/services/category_owner.rs", [
-  "TaxonomyService::new(self.db.clone())",
   ".delete_module_category_with_cleanup(",
   "BlogCategoryDeleteCleanup::new(",
   "Blog Category delete requires host-composed Taxonomy capability cleanup",
+]);
+
+requireMarkers("crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs", [
+  "impl BlogTaxonomyPort for BlogTaxonomyAdapter",
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "rustok_taxonomy::reorder_module_category_siblings_in_tx(",
+  "rustok_taxonomy::move_module_category_in_tx(",
+  "rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(",
+  ".delete_module_category_with_cleanup(",
 ]);
 
 const entity = requireMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
@@ -194,7 +202,7 @@ if (settingsContract.includes("pg_column_size(settings)")) {
 }
 
 requireMarkers("crates/modules/rustok-blog/src/controllers/categories.rs", [
-  "CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())",
+  "runtime.category_command_service()",
   'path = "/api/blog/categories/{id}/move"',
   "request_body = MoveCategoryInput",
   "ensure_category_permission(&tenant, &auth, Action::Manage)?;",

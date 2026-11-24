@@ -609,7 +609,8 @@ impl PostService {
         }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        remove_post_tag_links_in_tx(&txn, tenant_id, post_id).await?;
+        remove_post_tag_links_with_port_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, post_id)
+            .await?;
         // The comment projection ledger of a deleted post is terminal state:
         // no post can ever be projected for it again (a later Comments event
         // for the post re-cleans and is dropped by the projection handler),

@@ -333,6 +333,15 @@ pub trait BlogTaxonomyPort: Send + Sync {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopBlogTaxonomyPort;
 
+/// Resolve the Blog taxonomy capability selected by an embedded host.
+pub fn blog_taxonomy_from_runtime(
+    runtime: &rustok_api::HostRuntimeContext,
+) -> Arc<dyn BlogTaxonomyPort> {
+    runtime
+        .shared_get::<Arc<dyn BlogTaxonomyPort>>()
+        .unwrap_or_else(|| Arc::new(NoopBlogTaxonomyPort))
+}
+
 #[async_trait]
 impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
     async fn lock_category_hierarchy_writer_in_tx(

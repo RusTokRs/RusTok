@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use rustok_api::{Action, Permission, Resource};
 use rustok_blog::{BlogModule, CategoryService, CreateCategoryInput, UpdateCategoryInput};
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_events::EventEnvelope;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{
     SyncModuleCategoryInput, TaxonomyModule, sync_module_category_with_owned_aliases_in_tx,
@@ -15,6 +14,10 @@ use uuid::Uuid;
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -30,16 +33,14 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn service(
-    db: &DatabaseConnection,
-) -> (
-    CategoryService,
-    tokio::sync::broadcast::Receiver<EventEnvelope>,
-) {
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
-    (service, receiver)
+fn service(db: &DatabaseConnection) -> CategoryService {
+    CategoryService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+    )
+    .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+        db.clone(),
+    ))
 }
 
 fn admin() -> SecurityContext {
@@ -57,14 +58,13 @@ fn update_only() -> SecurityContext {
 #[tokio::test]
 async fn response_projection_failure_rolls_back_category_copy_revision_and_outbox() {
     let db = setup().await;
-    SysEventsMigration
-        .up(&SchemaManager::new(&db))
-        .await
-        .unwrap();
     let service = CategoryService::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
-    );
+    )
+    .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+        db.clone(),
+    ));
     let tenant_id = Uuid::new_v4();
     let category_id = service
         .create(
@@ -160,7 +160,7 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
         "the mutation response contract must run after donor storage retirement"
     );
 
-    let (service, _events) = service(&db);
+    let service = service(&db);
     let tenant_id = Uuid::new_v4();
 
     let category_id = service

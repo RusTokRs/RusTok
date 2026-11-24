@@ -3,16 +3,20 @@ use std::sync::Arc;
 use rustok_blog::BlogModule;
 use rustok_blog::dto::{CreateCategoryInput, MoveCategoryInput};
 use rustok_blog::services::{CategoryCommandService, CategoryService};
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::TransactionalEventBus;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{TaxonomyModule, entities::taxonomy_category_hierarchy};
 use sea_orm::{DatabaseConnection, EntityTrait};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -28,19 +32,13 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn category_service(
-    db: &DatabaseConnection,
-) -> (
-    CategoryService,
-    CategoryCommandService,
-    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
-) {
-    let transport = Arc::new(MemoryTransport::new());
-    let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(transport);
-    let service = CategoryService::new(db.clone(), event_bus.clone());
-    let command = CategoryCommandService::new(db.clone(), event_bus);
-    (service, command, receiver)
+fn category_service(db: &DatabaseConnection) -> (CategoryService, CategoryCommandService) {
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
+    let service =
+        CategoryService::new(db.clone(), event_bus.clone()).with_taxonomy_port(port.clone());
+    let command = CategoryCommandService::new(db.clone(), event_bus).with_taxonomy_port(port);
+    (service, command)
 }
 
 fn admin() -> SecurityContext {
@@ -87,7 +85,7 @@ async fn taxonomy_placement(
 #[tokio::test]
 async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
     let db = setup().await;
-    let (service, _command, _events) = category_service(&db);
+    let (service, _command) = category_service(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&service, tenant_id, "First", None, 0).await;
@@ -102,7 +100,7 @@ async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
 #[tokio::test]
 async fn move_reparent_syncs_taxonomy_parent_and_both_sibling_sets() {
     let db = setup().await;
-    let (service, command, _events) = category_service(&db);
+    let (service, command) = category_service(&db);
     let tenant_id = Uuid::new_v4();
 
     let root_a = create_category(&service, tenant_id, "Root A", None, 0).await;

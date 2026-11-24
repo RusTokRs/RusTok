@@ -130,15 +130,14 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 2. Move every Taxonomy call in `rustok-blog` behind the ports (`category.rs`, `category_command.rs`, `category_delete.rs`, `category_name_projection.rs`, `tag.rs`, search projection, HTTP and GraphQL runtime).
 3. Implement the embedded Blog Taxonomy port and cleanup adapter in `rustok-content-orchestration` using Taxonomy's public owner operations.
 4. Attach both adapters in the composition root.
-5. Remove `rustok-taxonomy` from `crates/modules/rustok-blog/Cargo.toml` by moving the translation-owner registration point.
+5. Register Taxonomy's exact Translation owner for Blog terms after its permission and write-order contract is verified.
 
-The consumer port and production dependency cutover are present. Blog calls
-the port for Category and Tag operations, normalizes route keys in
-`src/domain/normalization.rs` and declares `rustok-taxonomy` as a dev dependency
-for owner integration fixtures. The adapter and host registration remain open.
-HTTP and GraphQL read the port from host composition and currently default to
-`NoopBlogTaxonomyPort` while that adapter is missing. The [Blog README](../crates/modules/rustok-blog/README.md)
-records the resulting limits on Category and Tag behavior and lifecycle tests.
+The consumer port and production dependency cutover are present. The embedded
+adapter is registered in the server's shared runtime. Category and Tag service
+paths use the same provider in HTTP, GraphQL, Search and native Blog transports.
+The [Blog README](../crates/modules/rustok-blog/README.md) describes the
+embedded integration fixtures and the limits of custom hosts without a provider.
+Exact Translation owner registration and the standalone storage cutover remain open.
 
 ## Alternatives considered
 
@@ -157,8 +156,7 @@ records the resulting limits on Category and Tag behavior and lifecycle tests.
 
 - `npm run verify:module-reference-contract` checks the Blog-side port calls,
   lock ordering, typed errors and separation from Taxonomy implementation types.
-- Verify Blog with `cargo check -p rustok-blog` and `cargo test -p rustok-blog --lib`.
-  Complete the adapter and host composition before claiming a live Taxonomy-backed mode.
-- Verify the adapter with scoped owner checks and integration tests for Category
-  and Tag persistence, transaction rollback and standalone behavior.
+- Run `cargo test -p rustok-content-orchestration --features mod-blog --lib blog_taxonomy::tests`
+  for embedded Category and Tag persistence, scope checks and rollback.
+- Verify the standalone deployment separately when it has a concrete provider.
 

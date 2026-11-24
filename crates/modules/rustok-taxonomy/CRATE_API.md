@@ -39,6 +39,8 @@
 - `TaxonomyOwnerReader` & `TaxonomyOwnerCategoryReader`: Read ports for owner categories and term hierarchies.
 - `TaxonomyOwnerReader::load_scoped_terms_in` and `TaxonomyService::resolve_term_id_for_module_in` read scoped vocabulary in the consuming owner's transaction.
 - `sync_module_category_copy_in_tx` synchronizes localized copy and hierarchy while retaining presentation state and extending owner-managed route history.
+- `TaxonomyOwnerReader::load_terms_for_module_in` and `load_term_ids_for_module_in` read global and module terms on the caller's connection.
+- `TaxonomyService::delete_module_category_with_cleanup` preserves the callback's typed error while rolling back the canonical delete on refusal.
 - `TaxonomyCategoryDeleteCleanupPort`: Cleans category tree references and compacts siblings upon category deletion.
 - `TaxonomyTranslationTargetProvider`: Handles exact-locale translation synchronization and change tracking.
 

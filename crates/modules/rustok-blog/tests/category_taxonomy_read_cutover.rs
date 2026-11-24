@@ -3,16 +3,20 @@ use std::sync::Arc;
 use rustok_blog::BlogModule;
 use rustok_blog::dto::{CreateCategoryInput, ListCategoriesFilter};
 use rustok_blog::services::CategoryService;
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::TransactionalEventBus;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::DatabaseConnection;
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -28,16 +32,14 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn service(
-    db: &DatabaseConnection,
-) -> (
-    CategoryService,
-    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
-) {
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
-    (service, receiver)
+fn service(db: &DatabaseConnection) -> CategoryService {
+    CategoryService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+    )
+    .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+        db.clone(),
+    ))
 }
 
 fn admin() -> SecurityContext {
@@ -81,7 +83,7 @@ async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retir
             .expect("legacy translation table lookup should succeed")
     );
 
-    let (service, _events) = service(&db);
+    let service = service(&db);
     let tenant_id = Uuid::new_v4();
 
     let root = create_category(

@@ -59,7 +59,8 @@ impl BlogWidgetService {
                 BlogError::invariant("Validated widget configuration cannot be decoded")
             })?;
         let locale = props.locale.as_deref().unwrap_or(locale);
-        let posts = PostService::new(self.db.clone(), self.event_bus.clone());
+        let posts = PostService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone());
         response.payload = Some(match response.widget_type.as_str() {
             contract::POST_LIST => BlogWidgetPayload::PostList(
                 posts
@@ -105,6 +106,7 @@ impl BlogWidgetService {
                     BlogError::invariant("Validated category widget has no page size")
                 })?);
                 let (items, total) = CategoryService::new(self.db.clone(), self.event_bus.clone())
+                    .with_taxonomy_port(self.taxonomy_port.clone())
                     .list(
                         tenant_id,
                         security,

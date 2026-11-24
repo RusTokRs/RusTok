@@ -14271,6 +14271,7 @@ dependencies = [
  "rustok-channel",
  "rustok-comments",
  "rustok-content",
+ "rustok-content-orchestration",
  "rustok-core",
  "rustok-events",
  "rustok-migrations",

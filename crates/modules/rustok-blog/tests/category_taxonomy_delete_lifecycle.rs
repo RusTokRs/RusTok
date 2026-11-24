@@ -7,9 +7,8 @@ use async_trait::async_trait;
 use rustok_blog::{
     BlogCategoryDeleteCleanupPort, BlogError, BlogModule, CategoryService, CreateCategoryInput,
 };
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_events::EventEnvelope;
-use rustok_outbox::TransactionalEventBus;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::{
     TaxonomyModule,
     entities::{taxonomy_category_hierarchy, taxonomy_term},
@@ -17,7 +16,7 @@ use rustok_taxonomy::{
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 struct RecordingCleanup {
@@ -44,6 +43,10 @@ impl BlogCategoryDeleteCleanupPort for RecordingCleanup {
 async fn setup() -> DatabaseConnection {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -62,15 +65,15 @@ async fn setup() -> DatabaseConnection {
 fn service(
     db: &DatabaseConnection,
     cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
-) -> (
-    CategoryService,
-    tokio::sync::broadcast::Receiver<EventEnvelope>,
-) {
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)))
-        .with_category_delete_cleanup(cleanup);
-    (service, receiver)
+) -> CategoryService {
+    CategoryService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+    )
+    .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(
+        db.clone(),
+    ))
+    .with_category_delete_cleanup(cleanup)
 }
 
 fn admin() -> SecurityContext {
@@ -105,7 +108,7 @@ fn create_child_input(name: &str, parent_id: Uuid, position: i32) -> CreateCateg
 async fn delete_category_detaches_posts_without_dangling_reference() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let (service, _events) = service(
+    let service = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
@@ -172,7 +175,7 @@ async fn delete_category_detaches_posts_without_dangling_reference() {
 async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_position() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let (service, _events) = service(
+    let service = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
@@ -227,7 +230,7 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
 async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let (service, _events) = service(
+    let service = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
@@ -264,7 +267,7 @@ async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
 async fn delete_nested_category_replays_only_its_sibling_positions() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let (service, _events) = service(
+    let service = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
@@ -315,7 +318,7 @@ async fn delete_nested_category_replays_only_its_sibling_positions() {
 #[tokio::test]
 async fn create_rejects_preexisting_hierarchy_coverage_drift() {
     let db = setup().await;
-    let (service, _events) = service(
+    let service = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: Arc::new(AtomicUsize::new(0)),

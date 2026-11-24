@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
@@ -12,6 +14,7 @@ use rustok_core::SecurityContext;
 use crate::PostResponse;
 use crate::entities::{blog_post, blog_preview_token};
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
 use crate::services::post::{PostService, storage_to_status};
 use crate::services::rbac::enforce_owned_scope;
 use crate::state_machine::BlogPostStatus;
@@ -52,6 +55,7 @@ fn bounded_cleanup_batch(limit: u32) -> u32 {
 pub struct PreviewTokenService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +87,16 @@ fn preview_token_digest(token: &str) -> String {
 
 impl PreviewTokenService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, taxonomy_port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.taxonomy_port = taxonomy_port;
+        self
     }
 
     /// Create a preview token for a **draft** post.
@@ -282,7 +295,8 @@ impl PreviewTokenService {
 
         // The token is the authorization of this read, so it is resolved through the
         // draft-only preview accessor rather than through system authority.
-        let post_service = PostService::new(self.db.clone(), self.event_bus.clone());
+        let post_service = PostService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone());
         post_service
             .get_draft_preview(
                 token_record.tenant_id,

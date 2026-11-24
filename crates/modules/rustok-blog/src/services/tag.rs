@@ -40,7 +40,8 @@ use crate::services::rbac::enforce_scope;
 mod relations;
 
 pub(crate) use relations::{
-    initialize_tag_usage_in_tx, load_post_tags_map, resolve_tag_id_for_posts, sync_post_tags_in_tx,
+    initialize_tag_usage_in_tx, load_post_tags_map, remove_post_tag_links_with_port_in_tx,
+    resolve_tag_id_for_posts, sync_post_tags_in_tx,
 };
 pub use relations::{remove_post_tag_links_in_tx, replace_post_tag_links_in_tx};
 

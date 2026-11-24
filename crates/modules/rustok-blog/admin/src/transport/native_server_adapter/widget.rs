@@ -128,6 +128,7 @@ async fn blog_widget_preview_native(
             ));
         }
         let response = rustok_blog::BlogWidgetService::new(context.db, context.event_bus)
+            .with_taxonomy_port(context.taxonomy_port)
             .preview(
                 context.tenant.id,
                 super::security_context(&context.auth),

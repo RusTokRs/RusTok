@@ -514,7 +514,8 @@ impl BlogQuery {
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let tenant_id = query_tenant_id(ctx, tenant, None)?;
-        let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
+        let service = BlogGraphqlRuntimeData::attached(ctx)
+            .preview_token_service(db.clone(), event_bus.clone());
         let post = service
             .get_post_by_token_for_tenant(
                 tenant_id,

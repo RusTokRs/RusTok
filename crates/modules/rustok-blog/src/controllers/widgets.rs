@@ -68,7 +68,8 @@ pub async fn preview(
 ) -> HttpResult<(StatusCode, Json<BlogWidgetPreview>)> {
     authorize(&runtime, &tenant, &auth).await?;
     ensure_request_context(tenant.id, auth.user_id, &request)?;
-    let response = BlogWidgetService::new(runtime.db_clone(), runtime.event_bus())
+    let response = runtime
+        .widget_service()
         .preview(
             tenant.id,
             security_context(&auth),

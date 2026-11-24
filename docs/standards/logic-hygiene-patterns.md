@@ -1766,6 +1766,24 @@ use. For an optional property or context value, search for a writer. `scripts/ve
 verify-fly-ssr-first.mjs` fails on a manifest feature that enables the editor's `ssr`
 without `browser-js` and on a missing nonce hand-off.
 
+## P-RUNTIME-PORT-PROPAGATION — Pass the selected port to nested services
+
+**Category:** Runtime composition. **Logic dimension:** Branch completeness.
+
+Blog's primary transports selected the host's Taxonomy port. Widget previews,
+draft previews and RSS constructed services with the standalone default, so the
+same post could lose Taxonomy data on those paths.
+
+Pass the selected port whenever a transport or an owner service constructs
+another service that reads or mutates owner data:
+
+```rust
+let posts = PostService::new(db, event_bus).with_taxonomy_port(taxonomy_port);
+```
+
+Trace the constructors from each entry point with
+`rg -n 'PostService::new\(|with_taxonomy_port\(' crates/modules/rustok-blog`.
+
 ## P-ORPHAN-SPAWN — Supervise background tasks and retain JoinHandles
 
 - **Category:** Concurrency, task supervision, and lifecycle shutdown.

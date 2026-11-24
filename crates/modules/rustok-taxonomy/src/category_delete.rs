@@ -19,13 +19,13 @@ use crate::translation_evidence::{TranslationChangeEvidence, record_translation_
 /// attached rows are removed before the owner row is deleted and the whole operation commits
 /// atomically.
 #[async_trait]
-pub trait TaxonomyCategoryDeleteCleanupPort: Send + Sync {
+pub trait TaxonomyCategoryDeleteCleanupPort<E = TaxonomyError>: Send + Sync {
     async fn cleanup_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         category_id: Uuid,
-    ) -> TaxonomyResult<()>;
+    ) -> Result<(), E>;
 }
 
 impl TaxonomyService {
@@ -57,18 +57,22 @@ impl TaxonomyService {
     /// the consumer remains the permission owner while Taxonomy validates the exact module scope
     /// and owns the canonical delete transaction. Host cleanup still runs before the canonical
     /// term is removed, so capability data and consumer cleanup can participate atomically.
-    pub async fn delete_module_category_with_cleanup(
+    pub async fn delete_module_category_with_cleanup<E>(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         module_scope: &str,
-        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort,
-    ) -> TaxonomyResult<()> {
+        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort<E>,
+    ) -> Result<(), E>
+    where
+        E: From<TaxonomyError> + Send,
+    {
         let module_scope = module_scope.trim().to_ascii_lowercase();
         if module_scope.is_empty() {
             return Err(TaxonomyError::validation(
                 "Category module-owner delete requires a non-empty module scope",
-            ));
+            )
+            .into());
         }
 
         self.delete_category_with_cleanup_inner(
@@ -80,14 +84,17 @@ impl TaxonomyService {
         .await
     }
 
-    async fn delete_category_with_cleanup_inner(
+    async fn delete_category_with_cleanup_inner<E>(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         module_scope: Option<&str>,
-        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort,
-    ) -> TaxonomyResult<()> {
-        let txn = self.database().begin().await?;
+        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort<E>,
+    ) -> Result<(), E>
+    where
+        E: From<TaxonomyError> + Send,
+    {
+        let txn = self.database().begin().await.map_err(TaxonomyError::from)?;
         crate::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
 
         let mut term_query = taxonomy_term::Entity::find_by_id(category_id)
@@ -101,13 +108,15 @@ impl TaxonomyService {
         let term = term_query
             .lock_exclusive()
             .one(&txn)
-            .await?
+            .await
+            .map_err(TaxonomyError::from)?
             .ok_or(TaxonomyError::TermNotFound(category_id))?;
         let translations = taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TermId.eq(category_id))
             .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
             .all(&txn)
-            .await?;
+            .await
+            .map_err(TaxonomyError::from)?;
         let deletion_translation = translations.iter().min_by(|left, right| {
             left.locale
                 .cmp(&right.locale)
@@ -154,14 +163,15 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
                 .filter(taxonomy_term::Column::ScopeValue.eq(module_scope));
         }
-        let deleted = delete_query.exec(&txn).await?;
+        let deleted = delete_query.exec(&txn).await.map_err(TaxonomyError::from)?;
         if deleted.rows_affected != 1 {
             return Err(TaxonomyError::conflict(
                 "taxonomy Category changed before deletion could commit",
-            ));
+            )
+            .into());
         }
 
-        txn.commit().await?;
+        txn.commit().await.map_err(TaxonomyError::from)?;
         Ok(())
     }
 }

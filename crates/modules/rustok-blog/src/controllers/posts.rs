@@ -519,8 +519,7 @@ pub async fn preview_post(
     let locale = params
         .locale
         .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_string());
-    let service =
-        crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.preview_token_service();
     let post = service
         .get_post_by_token(&token, &locale, Some(rustok_api::PLATFORM_FALLBACK_LOCALE))
         .await

@@ -141,28 +141,17 @@ The current boundary is:
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 
-The Blog crate declares Taxonomy as a dev dependency for integration fixtures.
-The reference source check verifies Blog's port calls. A Taxonomy-backed
-implementation of `BlogTaxonomyPort` remains open. ADR
-`DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
-places the embedded adapter in `rustok-content-orchestration`. Until a host
-publishes it, HTTP controllers and GraphQL resolvers run on
-`NoopBlogTaxonomyPort`, which stores nothing in Taxonomy and returns generated
-identifiers. Both transports read the port from the host runtime
-(`BlogHttpRuntime`, `BlogGraphqlRuntimeData::attached`), so the adapter needs
-no further Blog wiring. It owns two rules that Blog no longer holds: the scope
-of Blog terms is `module` / `blog`, and the canonical key of a Blog Category
-term is `blog-category-{category_id}` (pinned by
-`tests/category_taxonomy_dual_write.rs`).
+The embedded server registers the `rustok-content-orchestration` implementation
+of `BlogTaxonomyPort` and the Flex cleanup callback. REST, GraphQL, Search,
+Leptos, widget previews and RSS use the same provider. Its Category scope is
+`module:blog` and its canonical Category key is `blog-category-{category_id}`.
+The integration fixtures attach the embedded adapter and exercise the same
+owner port. Blog retains Taxonomy and orchestration as development dependencies
+for these fixtures.
 
-Open, same cause: `tests/category_taxonomy_delete_lifecycle.rs` does not
-compile. It passes a `rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort` to
-`CategoryService::with_category_delete_cleanup`, which takes
-`BlogCategoryDeleteCleanupPort` since the port migration. Changing the trait in
-the test is not enough: the test builds the service with
-`CategoryService::new`, which uses `NoopBlogTaxonomyPort`, and then asserts on
-`taxonomy_term` and `taxonomy_category_hierarchy` rows that only the adapter
-writes. The test needs the adapter and `with_taxonomy_port`.
+Custom hosts that omit the port still get `NoopBlogTaxonomyPort`. A standalone
+Blog with working Category and Tag lifecycle needs a real provider and a
+separate storage cutover for its tag foreign keys.
 
 Do not reintroduce a second `blog/category` Translation provider or direct
 localized Blog Category storage. Translation-control-plane work for Category

@@ -14,11 +14,13 @@
 - **Core Functions**:
   - `build_content_orchestration_service(db, event_bus) -> SharedContentOrchestrationService`
   - `content_orchestration_from_shared(&SharedContentOrchestrationService) -> Arc<ContentOrchestrationService>`
+  - `in_process_blog_taxonomy_port(db) -> Arc<dyn BlogTaxonomyPort>`
+  - `blog_category_delete_cleanup(cleanup) -> Arc<dyn BlogCategoryDeleteCleanupPort>`
 
 ## Feature Flags
 
 - `mod-content`: Activates integration with `rustok-content` port contracts and domain types.
-- `mod-blog`: Activates blog post conversions and taxonomy synchronization.
+- `mod-blog`: Activates the embedded Blog Taxonomy adapter and participates in Blog post conversions.
 - `mod-forum`: Activates forum topic conversions and taxonomy synchronization.
 - `mod-comments`: Activates comment thread transformations.
 - Full bridge and GraphQL mutations require all four features enabled simultaneously (`mod-content`, `mod-blog`, `mod-forum`, `mod-comments`). In reduced builds, a lightweight mock handle is provided without pulling external module dependencies.

@@ -14,12 +14,17 @@
   must not copy canonical Comments JSON into a legacy selectable-format field
   or silently flatten Forum Markdown.
 - Provide host-neutral runtime construction helpers for the server host to register in its own runtime store.
+- Adapt Blog's embedded taxonomy port to Taxonomy owner operations on the caller's
+  database transaction. Category deletion preserves Blog cleanup errors and
+  runs Blog and Flex cleanup in Taxonomy's delete transaction.
 
 ## Entry points
 
 - `build_content_orchestration_service(db, event_bus)`
 - `content_orchestration_from_shared(shared)`
 - `graphql::ContentOrchestrationMutation`
+- `in_process_blog_taxonomy_port(db)` and `blog_category_delete_cleanup(cleanup)`
+  under `mod-blog`
 
 The real bridge is compiled only when the crate features `mod-content`, `mod-blog`, `mod-forum`, and `mod-comments` are all enabled. Reduced builds get a no-op shared service constructor.
 

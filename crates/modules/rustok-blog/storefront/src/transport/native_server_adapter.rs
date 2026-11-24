@@ -99,7 +99,8 @@ async fn fetch_preview_post_native(
             Err(_) => return Err(public_internal_error()),
         }
 
-        let preview_service = PreviewTokenService::new(db.clone(), event_bus.clone());
+        let preview_service = PreviewTokenService::new(db.clone(), event_bus.clone())
+            .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(&runtime_ctx));
         let effective_req_locale = locale.as_deref().unwrap_or(&fallback_locale);
         let post = preview_service
             .get_post_by_token_for_tenant(
@@ -371,7 +372,8 @@ async fn storefront_blog_native(
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
 
-        let service = PostService::new(runtime_ctx.db_clone(), event_bus.clone());
+        let service = PostService::new(runtime_ctx.db_clone(), event_bus.clone())
+            .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(&runtime_ctx));
 
         let selected_post = service
             .get_post_by_slug_with_locale_fallback(
