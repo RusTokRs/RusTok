@@ -2030,7 +2030,12 @@ export class FlyBrowserAdapter {
         }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.
-        if (authoritative && acknowledgedAuthoritativeResult && this.pageId) {
+        if (
+          authoritative &&
+          acknowledgedAuthoritativeResult &&
+          this.pageId &&
+          !this.peerWriteConflict
+        ) {
           try {
             this.peerWriteChannel?.postMessage({
               kind: "confirmed-write",
