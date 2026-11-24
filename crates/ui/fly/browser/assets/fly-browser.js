@@ -610,6 +610,7 @@ function fencePeerWriteConflict(adapter, details = {}) {
 }
 
 function reportSaveFailure(adapter, failure, request) {
+  adapter.root.dataset.flySaveFailed = "true";
   const code = nonEmptyString(failure.code);
   if (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") {
     fencePeerWriteConflict(adapter, {
@@ -627,7 +628,6 @@ function reportSaveFailure(adapter, failure, request) {
     },
     SAVE_FAILED_CODE,
   );
-  adapter.root.dataset.flySaveFailed = "true";
 }
 
 // Settles the problem region after a successful intent response.
