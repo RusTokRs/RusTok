@@ -88,7 +88,7 @@ pub use draft_session::{
     SsrDraftRenderBinding, SsrDraftSessionError, SsrDraftSessionSnapshot, SsrDraftSessionStore,
 };
 pub use editor::ConsumerPropertiesPanel;
-pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
+pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError, SaveAttempt};
 pub use palette_access::{
     dispatch_browser_intent_with_palette_access, validate_browser_palette_access,
 };
