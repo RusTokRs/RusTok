@@ -157,14 +157,20 @@ mod browser {
     }
 
     impl BrowserPeerWriteChannel {
+        /// Construct a channel with a unique editor-root identity in this browser document.
+        /// Use `new_scoped` when another adapter (such as the JS host) must share this root.
         pub fn new(
             page_id: impl Into<String>,
             revision: impl Into<String>,
             project_hash: impl Into<String>,
             on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
-            let sender_id = peer_write_document_id()?;
-            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
+            let scope_id = format!(
+                "fly-root-{}-{}",
+                js_sys::Math::random(),
+                js_sys::Math::random()
+            );
+            Self::new_scoped(page_id, revision, project_hash, scope_id, on_conflict)
         }
 
         /// Construct a channel whose identity is scoped to one editor root within this document.
