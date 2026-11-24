@@ -278,6 +278,7 @@ fn session_cookie_is_secure(
     )
 }
 
+#[cfg(test)]
 fn session_cookie_is_secure_for_environment(
     headers: &axum::http::HeaderMap,
     peer_ip: std::net::IpAddr,
@@ -1098,7 +1099,7 @@ mod tests {
     }
 
     #[test]
-    fn release_builds_force_secure_refresh_cookies_even_without_production_env() {
+    fn production_security_mode_forces_secure_refresh_cookies_without_forwarded_headers() {
         let settings = RustokSettings::default();
         let headers = axum::http::HeaderMap::new();
         let peer = std::net::IpAddr::from([192, 0, 2, 4]);
