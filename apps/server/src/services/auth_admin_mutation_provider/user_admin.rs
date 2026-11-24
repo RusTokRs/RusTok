@@ -144,6 +144,22 @@ fn ensure_custom_field_snapshot_is_current(
     Ok(())
 }
 
+fn user_row_update_requested(
+    email_requested: bool,
+    name_requested: bool,
+    status_changed: bool,
+    password_requested: bool,
+    prepared_metadata: bool,
+    prepared_localized_values: bool,
+) -> bool {
+    email_requested
+        || name_requested
+        || status_changed
+        || password_requested
+        || prepared_metadata
+        || prepared_localized_values
+}
+
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => {
@@ -711,11 +727,14 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 None
             };
 
-        let user_row_update_requested = command.email.is_some()
-            || command.name.is_some()
-            || status_changed
-            || command.password.is_some()
-            || prepared.metadata.is_some();
+        let user_row_update_requested = user_row_update_requested(
+            command.email.is_some(),
+            command.name.is_some(),
+            status_changed,
+            password_changed,
+            prepared.metadata.is_some(),
+            prepared.localized_values.is_some(),
+        );
         let mut active: users::ActiveModel = locked_user.clone().into();
         if let Some(email) = normalized_email {
             if email != locked_user.email {
@@ -1224,6 +1243,19 @@ mod tests {
         assert!(matches!(
             map_role_mutation_policy_error(RbacRoleMutationPolicyError::LastActiveSuperAdmin),
             AuthAdminMutationError::Conflict(_)
+        ));
+    }
+
+    #[test]
+    fn localized_custom_field_only_updates_emit_user_mutation() {
+        assert!(super::user_row_update_requested(
+            false, false, false, false, false, true
+        ));
+        assert!(super::user_row_update_requested(
+            false, false, false, false, true, false
+        ));
+        assert!(!super::user_row_update_requested(
+            false, false, false, false, false, false
         ));
     }
 
