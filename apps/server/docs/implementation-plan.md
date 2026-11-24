@@ -1,5 +1,136 @@
 # Server App — Implementation Plan
 
+### Workflow durable cron admission / outcome review refinement (2026-11-23)
+
+Cron now atomically checks the current firing attempt and locked workflow
+definition, then inserts its execution journal in the same transaction before
+any external step begins. This closes the operator-requeue race where an older
+worker could still insert a journal after a review found none. Long-running
+attempts heartbeat only while the same token is current; the engine rechecks
+the token before further steps and finalizes its status under a firing-row
+write fence so a late worker cannot overwrite operator recovery.
+
+Operator `confirm_external_completed` / `confirm_external_failed` can
+resolve the full overall workflow execution outcome only with human
+`workflows:manage` authority, bounded evidence and explicit confirmation
+that the former worker is stopped. The operator must account for **all**
+remaining steps and possible remote side effects, not just one HTTP response.
+`confirm_terminal` remains a reconciliation of a previously terminal
+journal, while `requeue_confirmed_unstarted` refuses any firing with an
+execution journal. All updates and immutable review rows commit together.
+This is not provider-level exactly-once. Migrator composition already includes
+Workflow-owned migrations through the canonical ModuleMigrationSource.
+
+Source regressions now cover competing claimers, immutable audit, stale token,
+unstarted requeue, terminal review, external failure resolution, HTTP
+no-blind-retry and schedule revision on step edits. None were run by request.
+
+
+## Server audit — durable Workflow cron integration (2026-11-23)
+
+`init_workflow_runtime` now verifies Workflow-owned cursor/firing/audit
+schema before publishing the scheduler handle and refuses to spawn after a
+stop during that async check. The scheduler keeps bounded durable slot
+backfill and execution claims inside `rustok-workflow`, not duplicated in
+the host. Aged ambiguous firings require explicit review rather than auto
+replay; event-triggered workflows also fail closed on uncertain running
+execution receipts. Proposed ADR and owner HTTP/GraphQL contracts are
+documented in Workflow. All new tests/migrations require maintainer
+verification; none have been run.
+
+## Server audit continuation — Workflow cron execution supervision (2026-11-23)
+
+The Workflow cron owner has been changed from detached execution spawns to
+scheduler-owned `JoinSet` supervision. On normal host stop it stops admitting
+new firings and joins accepted executions. The server composes this via
+`start_with_stop` instead of aborting a child scheduler task immediately.
+Owned tasks are aborted if the scheduler is forcibly aborted after the host's
+existing bounded shutdown deadline. Source regressions cover pre-signaled
+stop and waiting for an admitted execution. This does not implement durable
+cross-replica cron claims, missed runs or crash recovery; those remain an
+owner-level architecture task. No Rust tests/compilation/formatting were run.
+
+## Server audit continuation — producer/dispatcher shutdown ordering (2026-11-23)
+
+The host previously joined Outbox relay shutdown concurrently with module event
+dispatcher shutdown. The dispatcher could unsubscribe while the relay was
+finishing a committed Outbox delivery and waiting for the local listener
+acknowledgement. Shutdown now joins all upstream producers (including the
+cooperatively draining relay) first, then requests the dispatcher stop, and
+finally drains the event forwarder. This keeps the required listener registry
+available for accepted relay work and the forwarder available for event writes
+from a finishing dispatcher handler. A focused test holds an in-flight relay
+drain and asserts that the dispatcher remains registered until it completes.
+
+Each stage still has the existing bounded shutdown/abort fallback. Process
+loss, a deadline exceeded by an external provider, and a rejected local
+consumer remain recoverable owner-side delivery outcomes, not exactly-once
+guarantees. Regression code is authored, not compiled or executed.
+
+## Server audit continuation — cooperative Outbox relay drain (2026-11-23)
+
+The Outbox relay supervisor previously aborted its inner `JoinSet` on every
+graceful stop. A pass can have dispatched an event to an external transport
+and still be awaiting its durable status acknowledgement, so aborting the
+future at that point manufactures an ambiguous result and unnecessary replay.
+The inner poller now watches shutdown before each pass and while sleeping,
+then finishes any admitted `OutboxRelayPort::process_pending_once` pass before
+returning. The supervisor joins the inner poller on stop rather than aborting
+it immediately; unexpected child exits still use the existing bounded restart
+supervision. A regression constructs a real SQLite Outbox row and a blocking
+transport, requests stop during publication, and verifies that the row is
+acknowledged `dispatched` after the transport completes.
+
+This is graceful process-local shutdown, not exactly-once external delivery:
+the host's five-second forced-abort deadline, broker ambiguity, crash/restart,
+and lease expiry still require owner-side fencing and idempotent consumers.
+Test code was authored but not run; no compilation or formatting was run.
+
+## Server audit continuation — durable worker shutdown and dispatcher recovery retry (2026-11-23)
+
+The Product Media release loop previously raced its owner batch against a stop
+notification using `tokio::select!`. A graceful stop could cancel the batch
+after an external Media release but before the owner confirmed absence and
+acknowledged its committed queue row. It now checks stop before admitting a
+batch and awaits the already admitted batch to completion. Paid-order label
+recovery also rechecks stop after waking on its ticker, before starting an
+external provider sweep. Both use one server-local admission helper that never
+cancels an operation after it starts. Source regressions cover stop-before-start
+and stop-during-operation behavior.
+
+Repeated module dispatcher bootstrap used to return immediately when the
+required dispatcher was already healthy, so independently reserved optional
+Product Media, paid-order label, financial or payment recovery workers could
+never be retried after an initially absent dependency. The already-live path
+now revisits those idempotent child starters. A focused `mod-product` regression
+verifies a pre-published healthy dispatcher can register its missing Product
+Media release worker and remains shutdown-drainable.
+
+The graceful-stop behavior does not guarantee process-crash completion or
+override the host's bounded forced-abort deadline. Replay, ownership,
+cross-replica fencing and external side-effect reconciliation remain the
+durable operation owner's responsibility. All added tests are source-only
+and unrun by request; no compilation, formatting or runtime checks were done.
+
+## Server audit continuation — scheduler startup liveness (2026-11-23)
+
+The module-work and Workflow cron scheduler initializers previously treated a stored
+`JoinHandle` as healthy on repeat bootstrap even if its task had already
+terminated. The module-work initializer now uses the shared worker-liveness
+guard to fail closed without deleting the handle needed for shutdown accounting.
+The Workflow cron initializer applies the same guard and propagates this startup
+failure through application bootstrap instead of returning a false success.
+Concurrent healthy initializers still reuse the running handle, and host stop
+continues to prevent late task publication under each initialization lock.
+
+Focused source regressions create already-finished tasks for both paths and assert
+that repeat initialization returns an error while preserving shutdown ownership.
+They have not been executed; Cargo, Rust tests, compilation and formatting are
+reserved for maintainer verification. This change does not solve cron execution
+deduplication across replicas, missed schedules after process crashes, or detached
+execution-task supervision; those require the Workflow owner's durable contract.
+
+
 ## Code-review corrections — shutdown admission and cooperative listeners (2026-11-22)
 
 A second adversarial review found that Notification Candidate and Notification
@@ -1935,7 +2066,7 @@ lifecycle work are outside this batch.
 - The Forum Search typed-contract consumer handle is included alongside the
   inbox worker; it was previously absent from the host drain.
 - The Outbox relay supervisor uses a `JoinSet` for its inner processing task:
-  shutdown aborts and joins it, and dropping the supervisor aborts children
+  graceful shutdown now awaits its current pass and joins it, and dropping the supervisor still aborts children
   instead of detaching them.
 - Each drain is bounded to five seconds. If a task does not cooperate, shutdown
   aborts it and awaits the join result rather than dropping the JoinHandle and
@@ -2988,3 +3119,116 @@ private artifact.
 Not run at the user's request. Verify with `cargo fmt --all -- --check`,
 `cargo check -p rustok-server --lib`, and
 `cargo test -p rustok-server --lib middleware::registry_artifact_access::tests::artifact_download_passes_verified_runner_context_without_forwarding_secret`.
+
+
+## Server audit continuation — Comments retry shortcuts and stop-time bootstrap (2026-11-23)
+
+The public Comments audit handoff `claim_next`/`publish_next` convenience path
+used a separate source-selection SQL statement. It could acquire deferred or
+terminal source-dead-letter rows without applying the worker's configured
+attempt budget, bypassing the recovery contract. Both entrypoints now require
+an explicit bounded attempt budget and delegate to the same retry-ready claim;
+invalid budgets above the canonical maximum fail closed. The publication
+read and compare-and-set also fence dead-letter state so a stale claimant
+cannot turn an operator-held source record into a published row. Audited
+`requeue_dead_letter` remains the only path to clear that state.
+
+The common published-worker liveness check also previously returned success
+for a live handle after shutdown had been signaled. Repeated startup now
+rejects that state without removing the join handle needed by shutdown.
+
+Source-level regression assertions were added for the PostgreSQL publication
+fences and the repeated-bootstrap shutdown state. No Cargo checks, tests,
+formatters, SQL execution, or multi-replica race tests were run, as requested.
+
+
+## Server audit continuation — required Index startup and Auth retention retries (2026-11-23)
+
+Product Index refresh's public worker starter called the panic-on-missing
+`module_runtime_extensions_from_ctx` accessor even though an optional enable
+flag and independently built event runtime can expose it during partial
+bootstrap. The starter now returns an explicit configuration error if the
+runtime extensions were not published, without opening a consumer group.
+A focused isolated-context regression proves this missing-dependency branch.
+
+Auth retention's successful daily poll interval was also used after a failed
+transactional purge. A temporary PostgreSQL outage therefore delayed the next
+cleanup attempt for 24 hours. Failed sweeps now retry after 15 minutes, while
+successful sweeps keep the daily cadence. The error log uses a fixed machine
+code rather than interpolating raw DB error details. The port's atomic
+multi-table transaction and cooperative shutdown behavior are unchanged.
+A regression exercises success and failure delay choices.
+
+No Cargo compilation, tests, formatting, lints, live PostgreSQL or concurrency
+checks were run, per the maintainer's instruction.
+
+
+## Server audit continuation — Outbox retention recovery cadence (2026-11-23)
+
+The Outbox retention supervisor treated failed PostgreSQL prune attempts as
+an empty successful sweep. When its configured successful poll interval was
+large (up to 24 hours), transient storage outages postponed the next attempt
+by that full interval. The worker now distinguishes failed, complete and
+batch-exhausted cycles. Failure retries after `min(interval, 60s)`, while
+successful and full-batch timing remains unchanged. The existing atomic failure
+counter and stop-aware sleep are retained. A focused delay-selection regression
+was authored but not executed; no Cargo or SQL verification was run.
+
+
+## Server audit continuation — Pages cache duplicate scope (2026-11-23)
+
+The server's Pages invalidation adapter previously reused a single static
+`BoundedCacheEventDedupe` for every `CacheService` in the process. Separate
+host/runtime cache instances have independent namespace-generation stores,
+so the same event ID could mark the first context's invalidation completed
+while the second context in the same process was never bumped. That second
+port could fail receipt validation because its generations remained zero.
+The dedupe registry now follows the clone-shared generation-store owner
+identity, with weak references, a bounded number of live owners, and
+a fail-open-to-extra-rotation fallback when full. Ports sharing one owner
+serialize duplicate events, without constructing a value backend.
+A regression for two independent services and two ports sharing one service
+was authored but not executed. No compilation, tests, formatting, or live
+cache checks were performed, per maintainer instruction.
+
+
+## Server audit continuation — Shutdown-aware host readiness (2026-11-23)
+
+The readiness handler relied on required worker snapshots to report the
+shutdown state. A registry-only host has no required workers, and some
+surface configurations may disable all worker checks; `/health/ready` could
+continue returning 200 while the host was already draining. Readiness now
+includes an unconditional critical `runtime_shutdown` check, sampled after
+the asynchronous dependency probes so a stop requested during a slow probe
+is also observed. Liveness (`/health/live`) is intentionally unchanged.
+A focused registry-only shutdown regression was authored, not run.
+No compilation, formatting, integration tests, or runtime verification
+were performed.
+
+
+## Server audit continuation — Readiness circuit ownership (2026-11-23)
+
+The health controller previously stored all dependency-check circuit breakers
+in one process-global static map keyed only by check name (e.g. `database`).
+Distinct `ServerRuntimeContext` instances could therefore share a failure
+counter and a 30-second open circuit even when their dependencies were
+independent. A healthy host could report false 503 after another host reached
+the failure threshold. Breaker state now belongs to the shared runtime
+context; cloned contexts keep the same state, independent contexts do not.
+The per-check failure counter is also saturating. A focused two-context
+regression was authored but not run. No compilation, tests, formatting, or
+live dependency checks were run at the maintainer's request.
+
+
+## Follow-up code review — Pages cache identity correction (2026-11-23)
+
+Review detected that the first Pages dedupe patch accidentally initialized
+the value backend from `invalidate()` just to acquire its identity. This
+unnecessary cache construction coupled generation rotation to a separate
+read/write-backend initialization. The corrected adapter instead uses the
+opaque `CacheService::generation_store_identity()` that is already the
+generation-store owner. It leaves cache values lazy; clone-shared contexts
+continue to share dedupe, and independent services do not. A regression for
+zero value-backend constructions and a concurrent two-port regression were
+authored, but not executed. The owner API is documented in
+`crates/modules/rustok-cache/CRATE_API.md`.

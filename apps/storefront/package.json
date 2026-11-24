@@ -2,9 +2,9 @@
   "name": "rustok-storefront",
   "private": true,
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.4",
+    "@tailwindcss/cli": "^4.3.5",
     "autoprefixer": "^10.6.2",
-    "postcss": "^8.5.32",
+    "postcss": "^8.5.33",
     "tailwindcss": "^4.2.1"
   },
   "scripts": {

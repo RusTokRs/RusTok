@@ -37,3 +37,45 @@ the URL. Focused source
 regressions in `src/product-list-pagination.test.mjs` and
 `src/data-table-shell-pagination.test.mjs` are authored but unrun; no build or browser
 behavior is certified.
+
+## Admin catalog filter and facet contract (2026-11-22)
+
+The dashboard product route now renders server-backed category, typed-attribute, and
+sort controls plus value-count facets. Category choices are restricted to structural
+categories; attribute choices are limited to filterable attributes with Product or Both
+scope. Facet requests reuse the current search, status, vendor, category, and attribute
+filters while deliberately omitting pagination, so counts describe the full filtered
+catalog rather than only the visible page. Facet links reset the page to 1 and preserve
+the selected page size and unrelated filters. The facet request is bounded to the first
+eight filterable attribute codes. Option/facet transport failures degrade to empty filter
+metadata without hiding an otherwise successful product list.
+
+## Catalog URL reconciliation and selection identity (2026-11-23)
+
+The table's URL-backed filter state is reconciled on browser Back/Forward, without
+overwriting local edits on unrelated renders while a debounce is pending.
+Product rows are keyed by owner Product IDs, so a checkbox selection from one
+server page cannot be reassigned to a different Product on another page.
+The Product table explicitly receives the server-normalized page size; category,
+attribute and sort inputs remount with new URL-driven default values after
+facet navigation. These source changes and their regressions have not been
+runtime-verified.
+
+## Facet selection consistency (2026-11-23; source only)
+
+The Next catalog normalizes `code=value` whitespace at the URL read boundary,
+matching the Product owner's parser, so a manually typed selection can be
+recognized and removed with the counted facet toggle. The maximum eight
+enumerated facets favor attributes with current selections before otherwise
+eligible options, keeping their clear controls visible in large schemas.
+Source regression guards are authored; runtime tests were not executed.
+
+## Debounced filter navigation safety (2026-11-23; source only)
+
+Browser Back/Forward invalidates pending column-filter debounces at the
+`popstate` event, before the App Router's new server props commit. Ordered
+signatures track overlapping local filter writes, with live nuqs values
+overlaid on server route props so local state is recognized before the RSC
+refresh. An older route response does not discard a newer edit, while a newer
+committed route supersedes earlier writes. Source regression coverage is
+authored; no runtime test or build has been run.

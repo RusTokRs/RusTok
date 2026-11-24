@@ -17,7 +17,7 @@ use crate::entities::{
     WorkflowActiveModel, WorkflowEntity, WorkflowExecutionEntity, WorkflowStatus,
     WorkflowStepActiveModel, WorkflowStepEntity, WorkflowStepExecutionEntity,
     WorkflowVersionActiveModel, WorkflowVersionEntity, workflow, workflow_execution, workflow_step,
-    workflow_step_execution, workflow_version,
+    workflow_step_execution, workflow_version, workflow_cron_firing, ExecutionStatus,
 };
 use crate::error::{WorkflowError, WorkflowResult};
 use tracing::instrument;
@@ -167,11 +167,20 @@ impl WorkflowService {
         };
         let (next_webhook_slug, next_webhook_secret) =
             normalize_webhook_configuration(next_webhook_slug, next_webhook_secret)?;
+        // Drafts may be incomplete, but activating or modifying an active
+        // cron must fail at the owner write boundary instead of leaving an
+        // apparently active workflow that the scheduler silently skips.
+        if input.status.as_ref().unwrap_or(&existing.status) == &WorkflowStatus::Active {
+            validate_active_cron_trigger(
+                input.trigger_config.as_ref().unwrap_or(&existing.trigger_config),
+            )?;
+        }
 
         // Save version snapshot before applying the update while the workflow row is locked.
         self.save_version_internal_on(&transaction, id, actor_id, &existing)
             .await?;
 
+        let next_definition_at = next_workflow_definition_timestamp(&existing.updated_at)?;
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = input.name {
             model.name = Set(name);
@@ -187,7 +196,7 @@ impl WorkflowService {
         }
         model.webhook_slug = Set(next_webhook_slug);
         model.webhook_secret = Set(next_webhook_secret);
-        model.updated_at = Set(Utc::now().fixed_offset());
+        model.updated_at = Set(next_definition_at);
         model.update(&transaction).await?;
         transaction.commit().await?;
 
@@ -201,6 +210,34 @@ impl WorkflowService {
         }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
+
+        // A hard delete would cascade to the only execution and recovery
+        // evidence, even while external effects may still be running.
+        // The same parent-row lock also serializes with the durable cron
+        // reservation transaction before it starts issuing effects.
+        let unresolved_execution = WorkflowExecutionEntity::find()
+            .filter(workflow_execution::Column::WorkflowId.eq(id))
+            .filter(workflow_execution::Column::TenantId.eq(tenant_id))
+            .filter(workflow_execution::Column::Status.is_in([
+                ExecutionStatus::Running.to_string(),
+                ExecutionStatus::ReconciliationRequired.to_string(),
+            ]))
+            .one(&transaction).await?.is_some();
+        // Pending firings have not issued effects and are cancelled by the
+        // explicit workflow deletion itself. Only admitted/uncertain work
+        // must block cascading removal of the owner journal.
+        let unresolved_firing = workflow_cron_firing::Entity::find()
+            .filter(workflow_cron_firing::Column::WorkflowId.eq(id))
+            .filter(workflow_cron_firing::Column::TenantId.eq(tenant_id))
+            .filter(workflow_cron_firing::Column::Status.is_in([
+                workflow_cron_firing::RUNNING,
+                workflow_cron_firing::RECONCILIATION_REQUIRED,
+            ]))
+            .one(&transaction).await?.is_some();
+        if unresolved_execution || unresolved_firing {
+            return Err(WorkflowError::WorkflowDeletionBlocked(id));
+        }
+
         let model: WorkflowActiveModel = existing.into();
         model.delete(&transaction).await?;
         transaction.commit().await?;
@@ -220,10 +257,11 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() {
             return Err(WorkflowError::NotFound(workflow_id));
         }
+        super::engine::validate_step_timeout_ms(input.timeout_ms)?;
         let transaction = self.db.begin().await?;
         // Lock the parent workflow so concurrent workflow updates/restores cannot
         // interleave with step creation.
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let step_id = Uuid::new_v4();
         let model = WorkflowStepActiveModel {
@@ -236,6 +274,7 @@ impl WorkflowService {
             timeout_ms: Set(input.timeout_ms),
         };
         model.insert(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(step_id)
@@ -252,8 +291,9 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() || step_id.is_nil() {
             return Err(WorkflowError::StepNotFound(step_id));
         }
+        super::engine::validate_step_timeout_ms(input.timeout_ms)?;
         let transaction = self.db.begin().await?;
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
@@ -278,6 +318,7 @@ impl WorkflowService {
             model.timeout_ms = Set(Some(timeout_ms));
         }
         model.update(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(())
@@ -294,7 +335,7 @@ impl WorkflowService {
             return Err(WorkflowError::StepNotFound(step_id));
         }
         let transaction = self.db.begin().await?;
-        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        let parent = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
@@ -304,6 +345,7 @@ impl WorkflowService {
 
         let model: WorkflowStepActiveModel = existing.into();
         model.delete(&transaction).await?;
+        touch_workflow_after_step_mutation(&transaction, parent).await?;
         transaction.commit().await?;
 
         Ok(())
@@ -373,44 +415,55 @@ impl WorkflowService {
         if tenant_id.is_nil() || workflow_id.is_nil() {
             return Err(WorkflowError::NotFound(workflow_id));
         }
-        // Increment failure_count
-        workflow::Entity::update_many()
-            .col_expr(
-                workflow::Column::FailureCount,
-                sea_orm::sea_query::ExprTrait::add(
-                    sea_orm::sea_query::Expr::col(workflow::Column::FailureCount),
-                    1,
-                ),
-            )
-            .col_expr(
-                workflow::Column::UpdatedAt,
-                Expr::value(Utc::now().fixed_offset()),
-            )
-            .filter(workflow::Column::Id.eq(workflow_id))
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .exec(&self.db)
-            .await?;
+        // A zero threshold cannot represent a positive number of consecutive
+        // failures. Converting a large u32 to i32 with `as` used to wrap.
+        let threshold = i32::try_from(auto_disable_threshold).ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "auto_disable_threshold must be between 1 and i32::MAX".into(),
+            ))?;
 
-        // Re-fetch to check threshold
-        let wf = WorkflowEntity::find_by_id(workflow_id)
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
-
-        if wf.failure_count >= auto_disable_threshold as i32 {
-            let mut model: WorkflowActiveModel = wf.into();
+        // The failure counter and an optional transition to paused must be
+        // serialized with manual updates, restores and concurrent failures.
+        // A failed/paused workflow must not be re-paused based on a stale read,
+        // nor should it overwrite a newer operator status transition.
+        let transaction = self.db.begin().await?;
+        let existing = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
+        if existing.status != WorkflowStatus::Active {
+            transaction.commit().await?;
+            return Ok(());
+        }
+        let next_failure_count = existing.failure_count.checked_add(1)
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "workflow consecutive failure counter exhausted".into(),
+            ))?;
+        let should_disable = next_failure_count >= threshold;
+        let next_definition_at = if should_disable {
+            Some(next_workflow_definition_timestamp(&existing.updated_at)?)
+        } else {
+            None
+        };
+        let mut model: WorkflowActiveModel = existing.into();
+        model.failure_count = Set(next_failure_count);
+        // Failure-count bookkeeping is not a schedule edit. Only the
+        // actual active -> paused transition invalidates queued cron slots.
+        if let Some(updated_at) = next_definition_at {
+            model.updated_at = Set(updated_at);
+        }
+        if should_disable {
             model.status = Set(WorkflowStatus::Paused);
             model.auto_disabled_at = Set(Some(Utc::now().fixed_offset()));
-            model.updated_at = Set(Utc::now().fixed_offset());
-            model.update(&self.db).await?;
+        }
+        model.update(&transaction).await?;
+        transaction.commit().await?;
 
+        if should_disable {
             tracing::warn!(
                 workflow_id = %workflow_id,
-                threshold = auto_disable_threshold,
+                threshold,
                 "Workflow auto-disabled after consecutive failures"
             );
         }
-
         Ok(())
     }
 
@@ -433,17 +486,32 @@ impl WorkflowService {
             .all(&self.db)
             .await?;
 
-        let mut result = Vec::with_capacity(executions.len());
-        for exec in executions {
-            let step_execs = WorkflowStepExecutionEntity::find()
-                .filter(workflow_step_execution::Column::ExecutionId.eq(exec.id))
-                .order_by(workflow_step_execution::Column::StartedAt, Order::Asc)
-                .all(&self.db)
-                .await?;
-
-            result.push(execution_to_response(exec, step_execs));
+        if executions.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(result)
+
+        // One bounded batch for the step logs, not one query per execution.
+        // The execution IDs come only from the tenant-scoped parent query, so
+        // unrelated tenants cannot inject their step histories into this view.
+        let execution_ids: Vec<Uuid> = executions.iter().map(|item| item.id).collect();
+        let step_rows = WorkflowStepExecutionEntity::find()
+            .filter(workflow_step_execution::Column::ExecutionId.is_in(execution_ids))
+            .order_by(workflow_step_execution::Column::StartedAt, Order::Asc)
+            .order_by(workflow_step_execution::Column::Id, Order::Asc)
+            .all(&self.db)
+            .await?;
+        let mut by_execution: std::collections::HashMap<
+            Uuid, Vec<crate::entities::WorkflowStepExecution>
+        > = std::collections::HashMap::new();
+        for row in step_rows {
+            by_execution.entry(row.execution_id).or_default().push(row);
+        }
+        Ok(executions.into_iter()
+            .map(|execution| {
+                let steps = by_execution.remove(&execution.id).unwrap_or_default();
+                execution_to_response(execution, steps)
+            })
+            .collect())
     }
 
     /// Get a single execution by id (tenant-scoped).
@@ -692,12 +760,18 @@ impl WorkflowService {
             .ok_or_else(|| WorkflowError::VersionNotFound(workflow_id, version))?;
 
         let snapshot = ver.snapshot.clone();
+        if existing.status == WorkflowStatus::Active {
+            validate_active_cron_trigger(
+                snapshot.get("trigger_config").unwrap_or(&existing.trigger_config),
+            )?;
+        }
 
         // Save current state as a new version before restoring.
         self.save_version_internal_on(&transaction, workflow_id, actor_id, &existing)
             .await?;
 
         // Apply snapshot
+        let next_definition_at = next_workflow_definition_timestamp(&existing.updated_at)?;
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = snapshot.get("name").and_then(|v| v.as_str()) {
             model.name = Set(name.to_string());
@@ -715,7 +789,7 @@ impl WorkflowService {
                 .filter(|value| !value.is_empty())
                 .map(str::to_string));
         }
-        model.updated_at = Set(Utc::now().fixed_offset());
+        model.updated_at = Set(next_definition_at);
         model.update(&transaction).await?;
 
         // Restore steps: delete all current steps and re-insert from snapshot
@@ -746,6 +820,7 @@ impl WorkflowService {
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or(crate::entities::OnError::Stop);
                 let timeout_ms = step.get("timeout_ms").and_then(|v| v.as_i64());
+                super::engine::validate_step_timeout_ms(timeout_ms)?;
 
                 let am = WorkflowStepActiveModel {
                     id: Set(step_id),
@@ -933,7 +1008,60 @@ fn hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
-async fn lock_workflow_for_update(
+/// A schedule revision must never reuse a database timestamp on two
+/// consecutive definition updates, even under clock skew or microsecond
+/// timestamp precision in PostgreSQL/SQLite.
+fn next_workflow_definition_timestamp(
+    previous: &chrono::DateTime<chrono::FixedOffset>,
+) -> WorkflowResult<chrono::DateTime<chrono::FixedOffset>> {
+    let incremented = previous
+        .clone()
+        .checked_add_signed(chrono::Duration::microseconds(1))
+        .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+            "workflow definition timestamp has exhausted its range".to_owned(),
+        ))?;
+    Ok(std::cmp::max(Utc::now().fixed_offset(), incremented))
+}
+
+/// Only active schedules must be immediately runnable. Invalid drafts
+/// remain editable, but entering the active state requires a bounded cron
+/// expression accepted by the exact scheduler parser.
+fn validate_active_cron_trigger(config: &serde_json::Value) -> WorkflowResult<()> {
+    if config.get("type").and_then(|value| value.as_str()) == Some("cron") {
+        let expression = config.get("expression")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| WorkflowError::InvalidTriggerConfig(
+                "an active cron requires a string expression".to_owned(),
+            ))?;
+        if expression.is_empty() || expression.len() > 512 {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "cron expression must contain 1 to 512 bytes".to_owned(),
+            ));
+        }
+        expression.parse::<cron::Schedule>().map_err(|_| {
+            WorkflowError::InvalidTriggerConfig(
+                "cron expression is not accepted by the scheduler".to_owned(),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Step edits must advance the parent revision in the SAME transaction;
+/// otherwise cron firings queued under an old step definition may be
+/// executed against a newly edited step graph without being invalidated.
+async fn touch_workflow_after_step_mutation(
+    transaction: &sea_orm::DatabaseTransaction,
+    parent: crate::entities::Workflow,
+) -> WorkflowResult<()> {
+    let next_definition_at = next_workflow_definition_timestamp(&parent.updated_at)?;
+    let mut model: WorkflowActiveModel = parent.into();
+    model.updated_at = Set(next_definition_at);
+    model.update(transaction).await?;
+    Ok(())
+}
+
+pub(crate) async fn lock_workflow_for_update(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     workflow_id: Uuid,
@@ -1011,5 +1139,421 @@ fn step_to_response(s: crate::entities::WorkflowStep) -> WorkflowStepResponse {
         config: s.config,
         on_error: s.on_error,
         timeout_ms: s.timeout_ms,
+    }
+}
+
+#[cfg(test)]
+mod cron_revision_tests {
+    use super::*;
+    use chrono::Duration as ChronoDuration;
+    use sea_orm::Database;
+    use sea_orm_migration::SchemaManager;
+    use crate::entities::{OnError, StepType};
+
+    #[tokio::test]
+    async fn execution_history_batches_steps_without_cross_tenant_leakage() {
+        use crate::entities::{
+            workflow_execution, workflow_step, workflow_step_execution,
+            ExecutionStatus, StepExecutionStatus,
+        };
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let now = Utc::now().fixed_offset();
+        let tenant_id = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let own_workflow = Uuid::new_v4();
+        let other_workflow = Uuid::new_v4();
+        let service = WorkflowService::new(db.clone());
+        for (tenant, workflow_id) in [
+            (tenant_id, own_workflow),
+            (other_tenant, other_workflow),
+        ] {
+            workflow::ActiveModel {
+                id: Set(workflow_id),
+                tenant_id: Set(tenant),
+                name: Set(format!("workflow-{workflow_id}")),
+                description: Set(None),
+                status: Set(WorkflowStatus::Active),
+                trigger_config: Set(serde_json::json!({"type":"manual"})),
+                created_by: Set(None),
+                created_at: Set(now),
+                updated_at: Set(now),
+                failure_count: Set(0),
+                auto_disabled_at: Set(None),
+                webhook_slug: Set(None),
+                webhook_secret: Set(None),
+            }.insert(&db).await.unwrap();
+
+            let step_id = Uuid::new_v4();
+            workflow_step::ActiveModel {
+                id: Set(step_id),
+                workflow_id: Set(workflow_id),
+                position: Set(0),
+                step_type: Set(StepType::Action),
+                config: Set(serde_json::json!({})),
+                on_error: Set(OnError::Stop),
+                timeout_ms: Set(None),
+            }.insert(&db).await.unwrap();
+
+            for n in 0..2 {
+                let execution_id = Uuid::new_v4();
+                workflow_execution::ActiveModel {
+                    id: Set(execution_id),
+                    workflow_id: Set(workflow_id),
+                    tenant_id: Set(tenant),
+                    trigger_event_id: Set(None),
+                    status: Set(ExecutionStatus::Completed),
+                    context: Set(serde_json::Value::Null),
+                    error: Set(None),
+                    started_at: Set(now),
+                    completed_at: Set(Some(now)),
+                }.insert(&db).await.unwrap();
+
+                workflow_step_execution::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    execution_id: Set(execution_id),
+                    step_id: Set(step_id),
+                    status: Set(StepExecutionStatus::Completed),
+                    input: Set(serde_json::json!({"order": n})),
+                    output: Set(serde_json::json!({"tenant":tenant.to_string()})),
+                    error: Set(None),
+                    started_at: Set(now),
+                    completed_at: Set(Some(now)),
+                }.insert(&db).await.unwrap();
+            }
+        }
+
+        let rows = service.list_executions(tenant_id, own_workflow).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            assert_eq!(row.tenant_id, tenant_id);
+            assert_eq!(row.step_executions.len(), 1);
+            assert_eq!(
+                row.step_executions[0].output["tenant"].as_str(),
+                Some(tenant_id.to_string().as_str()),
+            );
+        }
+        assert!(service.list_executions(other_tenant, own_workflow)
+            .await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn failure_tracking_is_tenant_scoped_atomic_and_does_not_repause() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let owner = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now().fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(owner),
+            name: Set("failure threshold".into()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({"type":"manual"})),
+            created_by: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let service = WorkflowService::new(db.clone());
+        assert!(matches!(
+            service.record_failure(other_tenant, workflow_id, 2).await,
+            Err(WorkflowError::NotFound(_))
+        ));
+        assert!(matches!(
+            service.record_failure(owner, workflow_id, 0).await,
+            Err(WorkflowError::InvalidTriggerConfig(_))
+        ));
+        assert!(matches!(
+            service.record_failure(owner, workflow_id, u32::MAX).await,
+            Err(WorkflowError::InvalidTriggerConfig(_))
+        ));
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let once = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(once.failure_count, 1);
+        assert_eq!(once.status, WorkflowStatus::Active);
+        assert!(once.auto_disabled_at.is_none());
+
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let paused = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(paused.failure_count, 2);
+        assert_eq!(paused.status, WorkflowStatus::Paused);
+        assert!(paused.auto_disabled_at.is_some());
+
+        // An overdue event cannot increment or override an operator-paused
+        // workflow after the terminal transition has occurred.
+        service.record_failure(owner, workflow_id, 2).await.unwrap();
+        let after = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(after.failure_count, 2);
+        assert_eq!(after.auto_disabled_at, paused.auto_disabled_at);
+    }
+
+    #[test]
+    fn definition_timestamps_advance_even_when_clock_is_behind() {
+        let future = (Utc::now() + ChronoDuration::hours(2)).fixed_offset();
+        let next = next_workflow_definition_timestamp(&future).unwrap();
+        assert!(next > future);
+    }
+
+    #[tokio::test]
+    async fn failure_bookkeeping_does_not_reset_cron_revision_until_auto_pause() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let earlier = (Utc::now() - ChronoDuration::hours(1)).fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id), tenant_id: Set(tenant_id),
+            name: Set("Failure counter".into()), description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type": "cron", "expression": "0 * * * * *"
+            })),
+            created_by: Set(None), created_at: Set(earlier), updated_at: Set(earlier),
+            failure_count: Set(0), auto_disabled_at: Set(None),
+            webhook_slug: Set(None), webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let before = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        let prior_revision = crate::services::cron_durable::schedule_revision(
+            &before, "0 * * * * *",
+        );
+        let service = WorkflowService::new(db.clone());
+        service.record_failure(tenant_id, workflow_id, 2).await.unwrap();
+        let counted = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(counted.failure_count, 1);
+        assert_eq!(counted.updated_at, before.updated_at);
+        assert_eq!(
+            prior_revision,
+            crate::services::cron_durable::schedule_revision(&counted, "0 * * * * *"),
+        );
+
+        service.record_failure(tenant_id, workflow_id, 2).await.unwrap();
+        let paused = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(paused.status, WorkflowStatus::Paused);
+        assert!(paused.updated_at > before.updated_at);
+        assert_ne!(
+            prior_revision,
+            crate::services::cron_durable::schedule_revision(&paused, "0 * * * * *"),
+        );
+    }
+
+    #[tokio::test]
+    async fn active_cron_requires_valid_expression_and_failed_edits_are_atomic() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let service = WorkflowService::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = service.create(
+            tenant_id, None,
+            CreateWorkflowInput {
+                name: "Draft schedule".to_owned(),
+                description: None,
+                trigger_config: serde_json::json!({
+                    "type": "cron",
+                    "expression": "not a cron"
+                }),
+                webhook_slug: None,
+                webhook_secret: None,
+            },
+        ).await.unwrap();
+
+        assert!(matches!(
+            service.update(
+                tenant_id, workflow_id, None,
+                UpdateWorkflowInput {
+                    status: Some(WorkflowStatus::Active),
+                    ..Default::default()
+                },
+            ).await,
+            Err(WorkflowError::InvalidTriggerConfig(_)),
+        ));
+        let record = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(record.status, WorkflowStatus::Draft);
+
+        let valid = serde_json::json!({
+            "type": "cron", "expression": "0 * * * * *"
+        });
+        service.update(
+            tenant_id, workflow_id, None,
+            UpdateWorkflowInput {
+                status: Some(WorkflowStatus::Active),
+                trigger_config: Some(valid.clone()),
+                ..Default::default()
+            },
+        ).await.unwrap();
+
+        assert!(matches!(
+            service.update(
+                tenant_id, workflow_id, None,
+                UpdateWorkflowInput {
+                    trigger_config: Some(serde_json::json!({
+                        "type": "cron", "expression": ""
+                    })),
+                    ..Default::default()
+                },
+            ).await,
+            Err(WorkflowError::InvalidTriggerConfig(_)),
+        ));
+        let record = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(record.status, WorkflowStatus::Active);
+        assert_eq!(record.trigger_config, valid,
+            "invalid active edits may not partially overwrite the trigger");
+    }
+
+    #[tokio::test]
+    async fn deletion_preserves_running_execution_and_claimed_cron_evidence() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Do not delete unfinished work".into()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type":"cron","expression":"0 * * * * *"
+            })),
+            created_by: Set(None),
+            created_at: Set((now - ChronoDuration::minutes(2)).fixed_offset()),
+            updated_at: Set((now - ChronoDuration::minutes(2)).fixed_offset()),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+        let execution_id = Uuid::new_v4();
+        workflow_execution::ActiveModel {
+            id: Set(execution_id),
+            workflow_id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            trigger_event_id: Set(None),
+            status: Set(ExecutionStatus::Running),
+            context: Set(serde_json::json!({})),
+            error: Set(None),
+            started_at: Set(now.fixed_offset()),
+            completed_at: Set(None),
+        }.insert(&db).await.unwrap();
+        let wf = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        crate::services::cron_durable::enqueue_due_slots(
+            &db, &wf, "0 * * * * *",
+            &"0 * * * * *".parse().unwrap(), now,
+        ).await.unwrap();
+
+        let firing = crate::services::cron_durable::pending_firings(&db, 1)
+            .await.unwrap().remove(0);
+        let claim = crate::services::cron_durable::claim_firing(&db, &firing, now)
+            .await.unwrap();
+        assert!(claim.is_some(), "at least one firing must have been admitted");
+
+        let service = WorkflowService::new(db.clone());
+        assert!(matches!(
+            service.delete(tenant_id, workflow_id).await,
+            Err(WorkflowError::WorkflowDeletionBlocked(id)) if id == workflow_id
+        ));
+        assert!(WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().is_some());
+
+        workflow_execution::Entity::update_many()
+            .col_expr(
+                workflow_execution::Column::Status,
+                Expr::value(ExecutionStatus::Completed.to_string()),
+            )
+            .filter(workflow_execution::Column::Id.eq(execution_id))
+            .exec(&db).await.unwrap();
+        assert!(matches!(
+            service.delete(tenant_id, workflow_id).await,
+            Err(WorkflowError::WorkflowDeletionBlocked(_)),
+        ), "an admitted cron claim independently blocks destructive deletion");
+
+        workflow_cron_firing::Entity::update_many()
+            .col_expr(
+                workflow_cron_firing::Column::Status,
+                Expr::value(workflow_cron_firing::SKIPPED),
+            )
+            .filter(workflow_cron_firing::Column::Id.eq(firing.id))
+            .exec(&db).await.unwrap();
+        // Other unstarted pending slots are deliberately cancelled as part of
+        // explicit workflow deletion, without pretending any effect occurred.
+        service.delete(tenant_id, workflow_id).await.unwrap();
+        assert!(WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn mutating_step_graph_advances_owning_workflow_revision() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for migration in crate::migrations::migrations() {
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let baseline = Utc::now() - ChronoDuration::days(2);
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Versioned schedule".to_owned()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type":"cron","expression":"0 * * * * *"
+            })),
+            created_by: Set(None),
+            created_at: Set(baseline.fixed_offset()),
+            updated_at: Set(baseline.fixed_offset()),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }.insert(&db).await.unwrap();
+
+        let before = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        let before_revision = crate::services::cron_durable::schedule_revision(
+            &before, "0 * * * * *",
+        );
+        WorkflowService::new(db.clone()).add_step(
+            tenant_id, workflow_id,
+            CreateWorkflowStepInput {
+                position: 0,
+                step_type: StepType::Action,
+                config: serde_json::json!({"action":"noop"}),
+                on_error: OnError::Stop,
+                timeout_ms: None,
+            }
+        ).await.unwrap();
+        let after = WorkflowEntity::find_by_id(workflow_id)
+            .one(&db).await.unwrap().unwrap();
+        assert!(after.updated_at > before.updated_at);
+        assert_ne!(before_revision, crate::services::cron_durable::schedule_revision(
+            &after, "0 * * * * *",
+        ));
     }
 }

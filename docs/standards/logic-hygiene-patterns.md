@@ -25,6 +25,13 @@ without evidence of a failure is recorded separately below.
 
 | Pattern | Observed defect and fix | Evidence |
 |---|---|---|
+| `P-FLY-CROSS-DOCUMENT-INTENT` | Browser intents accepted an optional page ID without comparing it to the controller's owning document; a stale/wrong document could pass revision validation. The dispatcher now rejects explicit page scope mismatches before applying any selection or command, and Leptos checks response scope before facade execution. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos runtime](../../crates/modules/rustok-page-builder/admin/src/editor/runtime.rs) |
+| `P-FLY-PARTIAL-INTENT` | Page Builder's browser dispatcher applied `selected_component_id` to editor selection before resolving the requested operation. If a later step failed (unknown palette block, duplicate paste, page navigation), it returned an error while retaining the earlier state mutation. The browser-intent boundary now snapshots and rolls back the composed gesture on failure; focused tests authored, unrun. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs) |
+| `P-FLY-SPLIT-VALIDATION-BOUNDS` | Action/form IDs used a second validator without the canonical 128-byte limit, and strict authored action URLs bypassed the 2048-byte limit already imposed on rendered attributes. Both admission paths now reuse the shared identifier and URL limits. Unit regressions authored, unrun. | [Action validation](../../crates/ui/fly/src/action/validation.rs), [URL policy](../../crates/ui/fly/src/safe_url.rs) |
+| `P-FLY-UNVERSIONED-MUTATION` | The Page Builder browser dispatcher treated an absent revision as an acceptable mutation rather than a missing precondition; a request without a base revision bypassed its optimistic concurrency check. Mutating intents now require an observed revision, while trusted Leptos/Dioxus callbacks stamp the current host revision. Focused regressions added, unrun. | [Browser intent admission](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos host adapter](../../crates/modules/rustok-page-builder/admin/src/editor/adapter_workspace.rs), [Dioxus host adapter](../../crates/modules/rustok-page-builder/admin/src/ui/dioxus.rs) |
+| `P-FLY-STALE-SAVE-ACK` | Fly UI cleared the dirty bit when a save for an earlier command sequence succeeded even though newer edits had been made in flight; the browser also cleared parked save failures on responses without a clean-state observation. The UI now compares the sequence captured at save start and the browser requires an explicit `dirty: false` before removing a standing failure. Focused regressions authored, unrun. | [Fly UI state machine](../../crates/ui/fly/ui/src/machine.rs), [Browser save state](../../crates/ui/fly/browser/assets/fly-browser.js), [Save warning regression](../../apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts) |
+| `P-PRODUCT-PAGED-FILTER-PUSHDOWN` | The native admin grid filtered only the currently loaded server page while pagination totals and owner results still described the full catalog. Column filters now push supported title/status/vendor predicates through the URL into the Product owner before pagination; unsupported product-type/date filters are not exposed. Source regressions are authored but not run. | [Mounted grid](../../crates/modules/rustok-product/admin/src/ui/product_grid.rs), [column contract](../../crates/modules/rustok-product/admin/src/core.rs) |
+| `P-PRODUCT-FACET-OPTION-PARITY` | Product's UUID-based option filter admitted archived or unrelated dictionary options while the code-based filter excluded archived options; facet bucket aggregation also emitted those options. Both filter forms and facet aggregation now require matching tenant, attribute, active option and value-assignment ownership. Rust source regressions were authored but not run. | [Product filter](../../crates/modules/rustok-product/src/services/catalog/attribute_filters.rs), [Product facets](../../crates/modules/rustok-product/src/services/catalog/facets.rs) |
 | `P-GENERATION-ACK-BEFORE-CACHE-EFFECT` | Tenant cache-generation recovery updated its durable checkpoint without clearing the independent effective-policy cache after missed Pub/Sub generations; ordinary in-order events also acknowledged before applying the cache effect. Recovered gaps now clear all tenant policies before checkpoint, in-order events ack after effects, invalid keys fail conservatively and all listener paths serialize. Tests authored but not run. | [Tenant generation listener](../../apps/server/src/services/tenant_cache_generation.rs), [Effective-policy cache](../../crates/modules/rustok-modules/src/policy_cache.rs) |
 | `P-LOCALE-GENERATION-TRANSITION-RACE` | Local, Redis and periodic tenant-locale listeners shared a bounded generation map and readiness flag but could concurrently read, invalidate, acknowledge and update readiness. They now share one async gate across the entire effect/ack/readiness transition. A Tokio contention regression is authored but unrun. | [Tenant locale listener](../../apps/server/src/services/tenant_locale_generation.rs), [Regression](../../apps/server/src/services/tenant_locale_generation_tests.rs) |
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
@@ -39,6 +46,14 @@ without evidence of a failure is recorded separately below.
 | `P-OBSERVER-LIFECYCLE-OWNERSHIP` | Social Graph position/poison observers used a check-then-spawn registry check, allowing duplicate tasks to overwrite a shutdown handle; retained finished handles also produced false idempotent success. Both observers now reserve startup atomically, reject exited handles and reject stop-time admission; shutdown also waits on their shared registration lock before taking handles. Regression tests are authored but unrun. | [Poison observer](../../apps/server/src/services/social_graph_index_poison_observer.rs), [position observer](../../apps/server/src/services/social_graph_index_position_observer.rs), [runtime reservation](../../apps/server/src/services/server_runtime_context.rs) |
 | `P-DLQ-AMBIGUOUS-PUBLISH` | The neutral poison receipt allowed automatic takeover of expired `publishing` leases, while Forum Search and Social Graph retried external DLQ sends after ambiguous transport errors. The connector now retains ambiguous claims and reports `ReconciliationRequired` on expiry; server workers leave their offsets uncommitted for evidence-based reconciliation. Source/regression changes are authored but unrun. | [Poison receipt](../../crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs), [Forum Search consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Social Graph consumer](../../apps/server/src/services/social_graph_index_worker.rs), [Recovery decision](../../DECISIONS/2026-11-12-durable-side-effect-recovery.md) |
 | `P-WORKER-SHUTDOWN-ADMISSION` | Comments source-retry handoff checked shutdown only outside a bounded multi-claim cycle; Notifications candidate/fanout could begin a new durable action after an async policy check; three broker consumers could process a delivery selected concurrently with shutdown. The host now rechecks stop between durable claims and after policy observation, without cancelling an already claimed operation. Source-level fix and regression authored, unrun. | [Comments handoff loop](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs), [stop admission](../../apps/server/src/services/stop_handle.rs), [broker consumer](../../apps/server/src/services/social_graph_index_worker.rs), [candidate worker](../../apps/server/src/services/notification_candidate_worker.rs), [fanout worker](../../apps/server/src/services/notification_fanout_worker.rs) |
+| `P-COMMENTS-HANDOFF-RETRY-BYPASS` | The public no-budget Comments audit handoff claim/publish shortcuts selected source rows outside the retry-ready query, allowing deferred and dead-letter rows to be claimed despite the worker's recovery policy. The shortcuts now take a bounded attempt budget and share retry-ready selection; publication also fences dead-letter state. Focused SQL-source tests were authored but not run. | [Handoff](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs), [Retry-ready selection](../../apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_retry_ready.rs), [Server runtime](../../apps/server/docs/README.md) |
+| `P-WORKER-STOP-TIME-READY` | The common worker liveness helper accepted a retained live task as a successful repeated startup even after process shutdown had signaled its drain. The helper now rejects post-stop readiness while preserving the join handle; a Tokio regression was authored but not run. | [Runtime context](../../apps/server/src/services/server_runtime_context.rs), [Shutdown signal](../../apps/server/src/services/stop_handle.rs) |
+| `P-INDEX-WORKER-MISSING-EXTENSIONS-PANIC` | Product Index refresh's public worker starter used the panic-on-missing runtime extension accessor, unlike its other explicitly fallible dependencies. The starter now returns a configuration error; a missing-context regression is authored but not run. | [Product Index worker](../../apps/server/src/services/product_index_refresh_worker.rs), [Runtime context](../../apps/server/src/services/server_runtime_context.rs) |
+| `P-RETENTION-FAILURE-DAILY-BACKOFF` | Auth retention reused its once-daily success interval after a transactional purge failed, delaying recovery from transient storage failures by 24 hours. Failed purges now retry in 15 minutes and log bounded failure facts; the success cadence is unchanged. A focused delay regression was authored but not run. | [Auth retention worker](../../apps/server/src/services/app_lifecycle.rs), [Transactional purge owner](../../apps/server/src/services/auth_retention.rs) |
+| `P-OUTBOX-RETENTION-FAILURE-CADENCE` | Outbox retention treated a failed prune as an empty successful sweep and slept for its configured interval (up to 24 hours), so a transient PostgreSQL outage could stall cleanup for a day. The supervisor now chooses a bounded ≤60-second retry only on failure and retains successful/batch-exhausted cadence, with an unrun regression. | [Outbox retention worker](../../apps/server/src/services/outbox_retention_worker.rs), [Server runtime](../../apps/server/docs/README.md) |
+| `P-PAGES-PROCESS-GLOBAL-EVENT-DEDUPE` | Pages invalidation shared one process-global success ledger across independent `CacheService` generation stores. A second host/runtime with the same event ID could skip its own required generation bumps and fail duplicate receipt validation. A generation-store-owner-scoped weak registry now prevents cross-context suppression without constructing a cache value backend; separate-owner, concurrent-port and zero-backend-construction regressions are authored but unrun. | [Pages cache adapter](../../apps/server/src/services/pages_cache_invalidation.rs), [CacheService backend](../../crates/modules/rustok-cache/src/service.rs) |
+| `P-HOST-SHUTDOWN-READINESS-GAP` | Readiness treated shutdown as a worker lifecycle signal only; registry-only and worker-disabled surface hosts could continue reporting HTTP 200 after shutdown admission had closed. An unconditional critical shutdown check now samples the stop flag after dependency probes for all host modes; a registry-only source regression was authored but not run. | [Health readiness](../../apps/server/src/controllers/health.rs), [Stop handle](../../apps/server/src/services/stop_handle.rs) |
+| `P-READINESS-PROCESS-GLOBAL-CIRCUITS` | Dependency checks used one static name-keyed circuit breaker across all server contexts. An outage in one host could open the same check in an independent healthy host for 30 seconds and falsely mark it unready. Circuit state now follows its `ServerRuntimeContext`, with clones sharing the state, and the failure counter saturates; a two-context regression is authored but unrun. | [Health checks](../../apps/server/src/controllers/health.rs), [Runtime context](../../apps/server/src/services/server_runtime_context.rs) |
 | `P-WORKER-STARTUP-LIVENESS` | Thirteen server worker starters reported idempotent startup when only a terminated Tokio `JoinHandle` remained registered. Repeated bootstrap now distinguishes live/absent/exited handles at the relevant checks, rejecting terminated tasks without orphaning the shutdown handle. No runtime tests have been executed for this patch. | [Shared guard](../../apps/server/src/services/server_runtime_context.rs), [Host worker startup](../../apps/server/src/services/app_lifecycle.rs), [Notifications intake](../../apps/server/src/services/notification_outbox_intake_worker.rs), [Forum contract consumer](../../apps/server/src/services/forum_search_contract_consumer.rs), [Product Index refresh](../../apps/server/src/services/product_index_refresh_worker.rs) |
 | `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
 | `P-OWNER-READ-BOUNDARY` | Distribution queried private Product and Channel tables. Change `8cc68c8fa2` moved the read contracts to their owners while retaining one PostgreSQL snapshot for admission. | [Decision](../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md), [Product projection](../../crates/modules/rustok-product/src/index_projection.rs), [Channel projection](../../crates/modules/rustok-channel/src/index_projection.rs) |
@@ -175,6 +190,82 @@ u32::try_from(count).map_err(|_| ModuleStaticDistributionError::AttemptOverflow)
 Use `rg 'attempt_count (INTEGER|BIGINT)|try_get.*attempt_count' crates/modules/rustok-modules/src`
 to compare the schema and readers. Run the owner path on PostgreSQL to verify
 the driver mapping.
+
+### P-FLY-CROSS-DOCUMENT-INTENT — check document ownership as well as revision
+
+- **Category:** Multi-document UI safety and request authorization.
+- **Observed defect:** The browser envelope had an owning document `page_id`
+  but the dispatcher ignored mismatches and validated only revision/hash.
+  A stale callback from another page could be applied to the wrong editor.
+- **Canonical correction:** Reject an explicit owning page ID that does not
+  equal `controller.page_id()` before any command or selection. Independently
+  verify the completed workspace result belongs to the currently mounted
+  page/revision/hash/command sequence before processing its facade effects.
+- **Verification:** Source regression authored; integration evidence deferred.
+
+### P-FLY-PARTIAL-INTENT — one browser gesture is one transaction
+
+- **Category:** UI/command state atomicity and side-effect completeness.
+- **Observed defect:** The browser dispatcher changed selection before validating
+  an operation that might fail, leaking half-applied user intent into the editor
+  and clipboard. Multi-step actions likewise committed their first steps.
+- **Canonical correction:** Treat a compound browser intent as one transaction:
+  preserve the prior controller state, execute all steps, and restore it when
+  any step or final response construction fails. Non-mutating hot paths without
+  selection hints need no clone. Review performance with large projects.
+- **Fast detection:** `rg -n 'apply_selection_hint|dispatch_named_intent' crates/modules/rustok-page-builder/admin/src`.
+- **Verification:** Regression for selection hint followed by invalid insertion,
+  authored but not executed.
+
+### P-FLY-SPLIT-VALIDATION-BOUNDS — no weaker secondary validators
+
+- **Category:** User-input bounds, render/action parity and denial-of-service resistance.
+- **Observed defect:** Stored Fly action/form identifiers passed a duplicated ASCII-only
+  validator with no core 128-byte limit. The strict action URL policy also omitted
+  the 2048-byte limit used by rendered URL attributes.
+- **Canonical correction:** Reuse the exact canonical identifier validator and
+  URL length bound in every admission path, without a second independent policy.
+- **Fast detection:** `rg -n 'fn validate_identifier|MAXIMUM_URL_LENGTH' crates/ui/fly/src`.
+- **Verification:** Regression cases for 128/129-byte identifiers and 2048/2049-byte
+  URLs authored, not executed.
+
+### P-FLY-UNVERSIONED-MUTATION — missing concurrency tokens must not mean no check
+
+- **Category:** Browser mutation authorization, optimistic concurrency and
+  preconditions.
+- **Observed defect:** `validate_revision` in Page Builder checked revision
+  only when it happened to be present. Omission bypassed the check entirely
+  for insert, remove, save and all other mutating intents.
+- **Canonical correction:** Require the observed revision for every mutating
+  request, returning a typed missing-field error when absent. Non-mutating
+  selection/preview remains unversioned. Trusted in-process adapter callbacks
+  may add their controller revision at the dispatch boundary, but untrusted
+  HTTP input must never be silently upgraded.
+- **Fast detection:** `rg -n 'validate_revision|\.revision\.as_deref\(\)|dispatch_browser_intent' crates/modules/rustok-page-builder/admin/src`.
+- **Verification:** Browser-intent mutation/selection unit regressions authored,
+  unrun; both host/browser transports must be tested end-to-end.
+
+### P-FLY-STALE-SAVE-ACK — acknowledgements apply only to their snapshot
+
+- **Category:** Browser/editor state transitions, optimistic concurrency and
+  the side-effect completion dimension.
+- **Observed defect:** A save started for command sequence N, then a new edit
+  advanced to N+1. The success handler unconditionally cleared `dirty` and
+  overwrote the draft hash with the hash of the earlier saved snapshot.
+  Separately, a successful browser response without `dirty` erased a parked
+  revision-conflict warning, even though no save was confirmed.
+- **Canonical correction:** Carry the submitted sequence into save completion,
+  and clear the dirty state only when the current sequence still matches.
+  For persisted failure state, only a response that explicitly confirms a
+  clean working copy (`dirty: false`) may clear the warning. In JavaScript:
+  `if (state.dirty === false) clearSaveFailure(pageId)`; in Rust, compare
+  `saved_sequence == current_sequence` before clearing `dirty`.
+  A stronger cross-transport contract should also correlate every response
+  with a unique request token; do not mistake a successful HTTP status for
+  a verified persisted revision.
+- **Fast detection:** `rg -n 'SaveSucceeded|save_started_sequence|settleSaveFailure|dirty ===' crates/ui/fly`.
+- **Verification:** Unit and browser regressions authored but not executed;
+  mounted-host optimistic concurrency remains maintainer verification.
 
 ### P-GENERATION-ACK-BEFORE-CACHE-EFFECT — checkpoint only after invalidation
 
@@ -2185,3 +2276,31 @@ backpressure state.
 **Regression check:** request shutdown with queued events and a transient
 transport failure, then assert that the worker retries, persists the same
 envelope, releases all queue permits, and exits before the shutdown deadline.
+
+### P-PRODUCT-FACET-OPTION-PARITY — Attribute dictionary integrity in list filters and facets
+
+- **Category / logic dimension:** read-model correctness; preconditions, tenant integrity,
+  and parity between enumeration and selection.
+- **Observed failure:** resolving an option by UUID bypassed eligibility checked by the
+  option-code path. The bucket query counted any assignment row, even after the
+  dictionary option was archived or the option/assignment attributes disagreed.
+  A visible facet could therefore navigate to a filter returning an inconsistent result.
+- **Canonical remediation:** both resolution paths and facet enumeration JOIN the
+  owning `product_attribute_options` row, require `option.tenant_id = value.tenant_id`,
+  `option.attribute_id = value.attribute_id`, `option.archived_at IS NULL`,
+  and correlate the intermediate assignment's tenant. Keep value detach checks
+  and the original Product tenant predicate. Do not treat a foreign identifier as
+  a valid dictionary selection merely because a join row references it.
+- **Fast detection:** `rg -n "product_attribute_value_options|facet_pavo|pavo.option_id" crates/modules/rustok-product/src/services/catalog`
+  and verify every option-filter or facet branch enforces all four conditions.
+- **Verification:** test both UUID and code selections, archived and foreign
+  option assignments, and parity of selectable values with the displayed buckets.
+  The source tests added with this fix have not been executed.
+
+### P-PRODUCT-PAGED-FILTER-PUSHDOWN — Server-paginated grids must push filters into the owner query
+
+- **Category / logic dimension:** read-model correctness; query semantics and pagination order.
+- **Observed failure:** the mounted Product grid used server pagination but applied column filters to the rows already returned for the current page. The visible rows could therefore be empty while matching products existed on another page; totals and page boundaries still described the unfiltered catalog. The filter controls also diverged from the Next admin query contract.
+- **Canonical remediation:** only expose column predicates supported by the owner list query; serialize those values into route state; restore them into the grid on SSR, hydration and browser history changes; execute the owner filter before count/order/offset/limit. Do not silently emulate a server predicate by filtering one fetched page. Until an owner predicate exists, do not expose that column as filterable.
+- **Fast detection:** inspect every `DataGrid` / `DataTableShell` with server pagination and trace each filter control to the request input. Confirm that `count` and page rows share the same filter set and that the UI does not run a local-only second filter.
+- **Verification:** seed matching and nonmatching products across multiple pages; filter on page 2; verify total, last page, Back/Forward restoration, clear-all, and parity between native and GraphQL/Next transports. Tests added for this case have not been executed.

@@ -1487,7 +1487,6 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         module_work_drain,
         workflow_drain,
         watchdog_drain,
-        module_event_dispatcher_drain,
         module_artifact_maintenance_drain,
         comments_tcp_drain,
         comments_schedule_audit_handoff_drain,
@@ -1518,9 +1517,15 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         forum_search_contract_consumer_drain,
     );
 
-    // The event forwarder is deliberately last: producers receive the global
-    // stop first and are joined above; only then may the forwarder observe an
-    // empty queue and exit without racing a final in-flight publication.
+    // Keep the dispatcher subscribed until all upstream producers, including
+    // the Outbox relay's current durable pass, have finished. Stopping the
+    // dispatcher in the parallel join could make an otherwise acknowledged
+    // relay delivery fail after shutdown requested a graceful drain.
+    module_event_dispatcher_drain.await;
+
+    // The event forwarder is the last producer-side drain: dispatcher
+    // handlers may enqueue final events while they finish, so only after
+    // their join may the forwarder observe an empty queue and exit.
     event_forwarder_drain.await;
 }
 
@@ -1779,20 +1784,30 @@ fn auth_retention_removed_artifacts(
         || purge.oauth_authorization_codes > 0
 }
 
+const AUTH_RETENTION_SUCCESS_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const AUTH_RETENTION_FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(15 * 60);
+
+fn auth_retention_next_delay(failed: bool) -> Duration {
+    if failed {
+        AUTH_RETENTION_FAILURE_RETRY_INTERVAL
+    } else {
+        AUTH_RETENTION_SUCCESS_INTERVAL
+    }
+}
+
 async fn auth_retention_loop(
     db: sea_orm::DatabaseConnection,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    // Daily cadence is enough for a 30-day retention window.
-    let poll_interval = Duration::from_secs(24 * 60 * 60);
-
+    // Successful cleanup runs daily, but an unavailable database is retried
+    // sooner so a short outage cannot suspend auth artifact retention for a day.
     loop {
         if *stop_rx.borrow() {
             tracing::info!("Auth retention worker received shutdown signal, exiting");
             return;
         }
 
-        match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
+        let failed = match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
             Ok(purge) if auth_retention_removed_artifacts(&purge) => {
                 tracing::info!(
                     sessions = purge.sessions,
@@ -1802,16 +1817,21 @@ async fn auth_retention_loop(
                     oauth_authorization_codes = purge.oauth_authorization_codes,
                     "Purged expired auth artifacts past retention"
                 );
+                false
             }
-            Ok(_) => {}
-            Err(error) => tracing::error!(
-                error = %error,
-                "Auth retention worker failed to purge expired artifacts"
-            ),
-        }
+            Ok(_) => false,
+            Err(_error) => {
+                tracing::error!(
+                    error_code = "auth_retention_purge_failed",
+                    retry_delay_seconds = AUTH_RETENTION_FAILURE_RETRY_INTERVAL.as_secs(),
+                    "Auth retention worker failed to purge expired artifacts; retrying before the next daily cycle"
+                );
+                true
+            }
+        };
 
         tokio::select! {
-            _ = tokio::time::sleep(poll_interval) => {}
+            _ = tokio::time::sleep(auth_retention_next_delay(failed)) => {}
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!("Auth retention worker received shutdown signal, exiting");
@@ -2037,6 +2057,16 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[test]
+    fn auth_retention_failure_retries_without_waiting_a_full_day() {
+        assert_eq!(super::auth_retention_next_delay(false), Duration::from_secs(86_400));
+        assert_eq!(super::auth_retention_next_delay(true), Duration::from_secs(900));
+        assert!(
+            super::auth_retention_next_delay(true) < super::auth_retention_next_delay(false),
+            "a transient storage failure must not use the daily success interval"
+        );
+    }
 
     #[tokio::test]
     async fn host_shutdown_waits_for_in_flight_auth_email_delivery() {
@@ -2871,6 +2901,51 @@ mod tests {
         super::shutdown_runtime_workers(&ctx).await;
         assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
         assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
+    }
+
+    #[tokio::test]
+    async fn shutdown_drains_outbox_relay_before_stopping_module_dispatcher() {
+        use crate::services::module_event_dispatcher::ModuleEventDispatcherHandle;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+
+        let mut stop_rx = super::StopHandle::ensure(&ctx).subscribe();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        let in_flight_relay = tokio::spawn(async move {
+            stop_rx.changed().await.expect("shutdown signalled");
+            started_tx.send(()).expect("relay started draining");
+            finish_rx.await.expect("complete acknowledged delivery");
+        });
+        ctx.shared_insert(OutboxRelayWorkerHandle {
+            instance_id: 1,
+            _handle: in_flight_relay,
+        });
+
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+        });
+        tokio::time::timeout(Duration::from_secs(2), started_rx)
+            .await
+            .expect("relay receives shutdown")
+            .expect("relay begins its in-flight drain");
+        assert!(
+            ctx.shared_contains::<ModuleEventDispatcherHandle>(),
+            "the dispatcher must remain registered until the relay completes"
+        );
+        finish_tx.send(()).expect("release relay");
+        tokio::time::timeout(Duration::from_secs(3), shutdown)
+            .await
+            .expect("shutdown finishes after relay")
+            .expect("shutdown task joins");
+
+        assert!(!ctx.shared_contains::<OutboxRelayWorkerHandle>());
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
     }
 
     #[tokio::test]

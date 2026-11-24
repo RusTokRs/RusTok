@@ -267,7 +267,11 @@ impl EditorSessionState {
             self.fail(&msg);
             return Err(msg);
         }
-        let hash = expected_hash.unwrap_or(self.controller.editor().revision().project_hash);
+        let hash = expected_hash.ok_or_else(|| {
+            let msg = "Publish acknowledgement has no submitted project hash".to_string();
+            self.fail(&msg);
+            msg
+        })?;
         match self
             .controller
             .acknowledge_save_for_hash(hash, revision_id.to_string())
@@ -282,6 +286,68 @@ impl EditorSessionState {
                 self.mark_save_failed();
                 self.fail(&msg);
                 Err(msg)
+            }
+        }
+    }
+
+    /// Response-bound completion for framework adapters that own asynchronous
+    /// facade requests. The attempt identity prevents a delayed response
+    /// from completing an identical retry.
+    pub fn handle_publish_response_for_attempt(
+        &mut self,
+        page_id: &str,
+        revision_id: &str,
+        expected_hash: Option<ProjectHash>,
+        attempt_id: u64,
+    ) -> Result<(), String> {
+        if self.controller.active_save_attempt_id() != Some(attempt_id) {
+            return Err("stale publish response belongs to an inactive save attempt".to_string());
+        }
+        if page_id != self.controller.page_id() {
+            let msg = format!(
+                "Page Builder facade returned page `{}` for `{}`",
+                page_id,
+                self.controller.page_id()
+            );
+            self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+            return Err(msg);
+        }
+        let Some(hash) = expected_hash else {
+            let msg = "Publish acknowledgement has no submitted project hash".to_string();
+            self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+            return Err(msg);
+        };
+        match self.controller.acknowledge_save_for_attempt(
+            hash, attempt_id, revision_id.to_string(),
+        ) {
+            Ok(()) => {
+                self.last_error = None;
+                self.announce(self.save_succeeded.clone());
+                Ok(())
+            }
+            Err(error) => {
+                let msg = error.to_string();
+                self.handle_publish_error_for_attempt(attempt_id, msg.clone());
+                Err(msg)
+            }
+        }
+    }
+
+    /// Returns false for a stale failure; the active newer request is untouched.
+    pub fn handle_publish_error_for_attempt(
+        &mut self,
+        attempt_id: u64,
+        message: impl Into<String>,
+    ) -> bool {
+        match self.controller.mark_save_failed_for_attempt(attempt_id) {
+            Ok(true) => {
+                self.fail(message);
+                true
+            }
+            Ok(false) => false,
+            Err(error) => {
+                tracing::warn!(?error, "Failed to reject active publish attempt");
+                false
             }
         }
     }
@@ -325,8 +391,12 @@ impl EditorSessionState {
     }
 
     pub fn mark_save_started(&mut self) -> Result<(), String> {
+        self.mark_save_started_with_id().map(|_| ())
+    }
+
+    pub fn mark_save_started_with_id(&mut self) -> Result<u64, String> {
         self.controller
-            .mark_save_started()
+            .mark_save_started_with_id()
             .map_err(|e| e.to_string())
     }
 
@@ -497,6 +567,28 @@ mod tests {
             }]
         });
         AdminCanvasController::new("home", "rev-1", project_data).expect("controller")
+    }
+
+    #[test]
+    fn async_session_rejects_late_success_and_failure_from_an_identical_retry() {
+        let controller = sample_controller();
+        let mut session = EditorSessionState::new(controller, "Missing", "Saved");
+        let hash = session.controller.editor().revision().project_hash;
+        let first = session.mark_save_started_with_id().expect("first start");
+        assert!(session.handle_publish_error_for_attempt(first, "network failure"));
+        let retry = session.mark_save_started_with_id().expect("retry");
+        assert_ne!(first, retry);
+        assert!(!session.handle_publish_error_for_attempt(first, "stale error"));
+        assert!(session.handle_publish_response_for_attempt(
+            "home", "old-revision", Some(hash), first,
+        ).is_err());
+        assert_eq!(session.controller.active_save_attempt_id(), Some(retry));
+        assert_eq!(session.last_error.as_deref(), Some("network failure"));
+        session.handle_publish_response_for_attempt(
+            "home", "rev-2", Some(hash), retry,
+        ).expect("accepted response");
+        assert_eq!(session.controller.revision_id(), "rev-2");
+        assert!(session.last_error.is_none());
     }
 
     #[test]

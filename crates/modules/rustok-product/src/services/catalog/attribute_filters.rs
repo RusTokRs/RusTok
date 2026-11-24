@@ -317,7 +317,14 @@ fn option_condition(
             EXISTS (
                 SELECT 1
                 FROM product_attribute_values pav
-                JOIN product_attribute_value_options pavo ON pavo.value_id = pav.id
+                JOIN product_attribute_value_options pavo
+                  ON pavo.value_id = pav.id
+                 AND pavo.tenant_id = pav.tenant_id
+                JOIN product_attribute_options pao
+                  ON pao.id = pavo.option_id
+                 AND pao.tenant_id = pav.tenant_id
+                 AND pao.attribute_id = pav.attribute_id
+                 AND pao.archived_at IS NULL
                 WHERE pav.product_id = products.id
                   AND pav.tenant_id = {p1}
                   AND pav.attribute_id = {p2}
@@ -334,10 +341,13 @@ fn option_condition(
         EXISTS (
             SELECT 1
             FROM product_attribute_values pav
-            JOIN product_attribute_value_options pavo ON pavo.value_id = pav.id
+            JOIN product_attribute_value_options pavo
+              ON pavo.value_id = pav.id
+             AND pavo.tenant_id = pav.tenant_id
             JOIN product_attribute_options pao
               ON pao.id = pavo.option_id
              AND pao.tenant_id = pav.tenant_id
+             AND pao.attribute_id = pav.attribute_id
             WHERE pav.product_id = products.id
               AND pav.tenant_id = {p1}
               AND pav.attribute_id = {p2}
@@ -365,4 +375,33 @@ fn custom_condition(
             )
         });
     Condition::all().add(Expr::cust_with_values(sql, values))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::sea_query::{Alias, Query, SqliteQueryBuilder};
+
+    #[test]
+    fn option_id_and_code_filters_both_enforce_active_same_attribute_dictionary() {
+        let tenant_id = Uuid::new_v4();
+        let attribute_id = Uuid::new_v4();
+        for option in [Uuid::new_v4().to_string(), "red".to_string()] {
+            let sql = Query::select()
+                .column(Alias::new("id"))
+                .from(Alias::new("products"))
+                .cond_where(option_condition(
+                    DbBackend::Sqlite,
+                    tenant_id,
+                    attribute_id,
+                    &option,
+                ))
+                .to_string(SqliteQueryBuilder);
+            assert!(sql.contains("pao.tenant_id = pav.tenant_id"), "{sql}");
+            assert!(sql.contains("pavo.tenant_id = pav.tenant_id"), "{sql}");
+            assert!(sql.contains("pao.attribute_id = pav.attribute_id"), "{sql}");
+            assert!(sql.contains("pao.archived_at IS NULL"), "{sql}");
+            assert!(sql.contains("pav.detached_at IS NULL"), "{sql}");
+        }
+    }
 }

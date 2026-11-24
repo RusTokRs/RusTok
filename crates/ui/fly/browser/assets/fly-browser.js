@@ -12,6 +12,7 @@ const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
 const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
 const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
 const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
+const UNSENT_INTENTS_CODE = "INTENT_QUEUE_DISCARDED";
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
@@ -19,6 +20,14 @@ const SAVE_FAILED_CODE = "SAVE_FAILED";
 const UNSAFE_NAVIGATION_CODE = "UNSAFE_NAVIGATION_TARGET";
 const UNSAFE_INTENT_ENDPOINT_CODE = "UNSAFE_INTENT_ENDPOINT";
 const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
+// These intents may change presentation or selection, but cannot publish a
+// document mutation. They must not eclipse the acknowledgement of an in-flight
+// document command merely because they were issued a moment later.
+const READ_ONLY_INTENTS = new Set([
+  "select", "focus_requested", "hover", "hover_requested",
+  "activate_page", "cancel_drag", "cancel_drag_requested",
+  "render_server_preview",
+]);
 const INTENT_ABORT_KIND = Object.freeze({
   EXTERNAL: "external",
   TIMEOUT: "timeout",
@@ -86,7 +95,11 @@ function sameOriginUrl(value) {
   const candidate = nonEmptyString(value);
   if (!candidate) return null;
   const trimmed = candidate.trim();
-  if (trimmed.startsWith("//")) return null;
+  // Browsers normalize backslashes into path separators for special
+  // URL schemes. Without an HTTP base (srcdoc/about:blank), accepting
+  // "/\\host" as root-relative would silently enable an authority switch.
+  if (trimmed.startsWith("//") || trimmed.includes("\\") ||
+      /[\x00-\x20\x7f]/.test(trimmed)) return null;
 
   let base = null;
   try {
@@ -453,7 +466,16 @@ function reportSaveFailure(adapter, failure, request) {
 // reports a working copy that is no longer dirty.
 function settleSaveFailure(adapter, result, request) {
   if (!isObject(result)) {
-    clearBrowserProblem(adapter);
+    // A successful plain-text/empty response does not establish that the draft
+    // was saved. Keep a previously parked failure until an explicit clean state.
+    const standing = readSaveFailure(adapter.pageId);
+    if (standing) {
+      if (adapter.root.dataset.flySaveFailed !== "true") {
+        reportSaveFailure(adapter, standing, request);
+      }
+    } else {
+      clearBrowserProblem(adapter);
+    }
     return;
   }
   if (isObject(result.save_failure)) {
@@ -462,8 +484,10 @@ function settleSaveFailure(adapter, result, request) {
     return;
   }
   const state = isObject(result.result) ? result.result : result;
+  // Missing "dirty" is not proof that a draft was saved. Only an explicit
+  // clean working-copy observation can retire a parked lost-save warning.
   const standing =
-    state.dirty === true ? readSaveFailure(adapter.pageId) : null;
+    state.dirty === false ? null : readSaveFailure(adapter.pageId);
   if (!standing) {
     clearSaveFailure(adapter.pageId);
     clearBrowserProblem(adapter);
@@ -664,7 +688,13 @@ export class FlyBrowserAdapter {
     this.postIntents = options.postIntents !== false;
     this.intentRequestGeneration = 0;
     this.latestIntentRequestGeneration = 0;
+    this.latestAuthoritativeRequestGeneration = 0;
     this.pendingIntentRequests = new Map();
+    // Keep document-mutating requests strictly ordered within one editor instance.
+    // The next request is rebased onto the revision/draft token returned by the
+    // preceding request, not onto the stale revision captured when it was clicked.
+    this.authoritativeInFlight = false;
+    this.queuedAuthoritativeIntents = [];
     this.lastSequence = null;
     this.geometry = new Map();
     this.selectedId = null;
@@ -823,6 +853,7 @@ export class FlyBrowserAdapter {
     if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return this;
     this.lifecycleState = ADAPTER_LIFECYCLE.STOPPED;
     this.latestIntentRequestGeneration = ++this.intentRequestGeneration;
+    this.latestAuthoritativeRequestGeneration = this.latestIntentRequestGeneration;
     for (const record of this.pendingIntentRequests.values()) {
       if (record.timeoutId !== null) {
         globalThis.clearTimeout(record.timeoutId);
@@ -836,10 +867,14 @@ export class FlyBrowserAdapter {
       }
     }
     this.pendingIntentRequests.clear();
+    for (const queued of this.queuedAuthoritativeIntents.splice(0)) {
+      queued.resolve(null);
+    }
     this.abortController.abort();
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
     delete this.root.dataset.flyResourceLimited;
+    delete this.root.dataset.flyQueuedIntentsDiscarded;
     this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
     clearBrowserProblem(this);
     this.lastSequence = null;
@@ -1236,6 +1271,11 @@ export class FlyBrowserAdapter {
   }
 
   emitIntent(intent, payload = {}) {
+    // DOM handlers can retain a reference after unmount. Never emit or send a
+    // mutating intent from an adapter whose lifecycle has ended.
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) {
+      return Promise.resolve(null);
+    }
     const request = normalizedIntent(this, { intent, payload });
     this.root.dispatchEvent(
       new CustomEvent("fly:browser-intent", {
@@ -1302,7 +1342,11 @@ export class FlyBrowserAdapter {
       intent: record.intent,
       timeoutMs: record.timeoutMs,
       requestGeneration: record.requestGeneration,
-      current: record.requestGeneration === this.latestIntentRequestGeneration,
+      current: record.authoritative
+        ? record.requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !record.readStartedDuringWrite &&
+          record.requestGeneration === this.latestIntentRequestGeneration &&
+          record.requestGeneration > this.latestAuthoritativeRequestGeneration,
       instanceId: this.instanceId,
       pageId: this.pageId,
     };
@@ -1320,6 +1364,7 @@ export class FlyBrowserAdapter {
    * @param {IntentTransportOptions} requestOptions
    */
   async postIntent(input, requestOptions = {}) {
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
@@ -1330,10 +1375,35 @@ export class FlyBrowserAdapter {
       "flyMaxPendingIntentRequests",
       DEFAULT_MAX_PENDING_INTENT_REQUESTS,
     );
-    const observed = this.pendingIntentRequests.size + 1;
+    const observed =
+      this.pendingIntentRequests.size + this.queuedAuthoritativeIntents.length + 1;
     if (observed > limit) {
       return this.rejectPendingIntent(request, limit, observed);
     }
+
+    const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    const queuedSignal = normalizedTransportOptions(requestOptions).signal;
+    if (queuedSignal?.aborted) return null;
+    if (authoritative && this.authoritativeInFlight) {
+      // A second write must not race the first with the same observed draft
+      // generation/revision. Preserve the clicked target and payload while
+      // refreshing transport metadata when the first write finishes.
+      return new Promise((resolve) => {
+        this.queuedAuthoritativeIntents.push({
+          input: {
+            intent: request.intent,
+            payload: request.payload,
+            sequence: request.sequence,
+          },
+          requestOptions,
+          resolve,
+        });
+      });
+    }
+    if (authoritative) this.authoritativeInFlight = true;
+    // A failed, redirected, unconfirmed or navigation-producing write does not
+    // establish the revision the next queued mutation must use.
+    let acknowledgedAuthoritativeResult = false;
 
     const transport = normalizedTransportOptions(requestOptions);
     const abort = newAbortMetadata();
@@ -1345,10 +1415,18 @@ export class FlyBrowserAdapter {
     );
     const requestKey = Symbol("fly.browser.intent.request");
     const requestGeneration = ++this.intentRequestGeneration;
+    // A read-only selection/preview must not make a preceding edit's successful
+    // acknowledgement stale. Conversely, an old read must not overwrite state
+    // after a newer edit was submitted.
+    const readStartedDuringWrite = !authoritative &&
+      (this.authoritativeInFlight || this.queuedAuthoritativeIntents.length > 0);
     this.latestIntentRequestGeneration = requestGeneration;
+    if (authoritative) this.latestAuthoritativeRequestGeneration = requestGeneration;
     const record = {
       abort,
       controller,
+      authoritative,
+      readStartedDuringWrite,
       intent: request.intent,
       requestGeneration,
       timeoutId: null,
@@ -1385,6 +1463,9 @@ export class FlyBrowserAdapter {
       const response = await fetch(this.intentEndpoint, {
         method: "POST",
         credentials: "same-origin",
+        // The initially validated same-origin URL may respond with a redirect.
+        // Never follow a redirected mutation or forward its CSRF header.
+        redirect: "error",
         headers,
         body: JSON.stringify(request),
         signal: controller.signal,
@@ -1394,7 +1475,32 @@ export class FlyBrowserAdapter {
         ?.includes("application/json")
         ? await response.json()
         : await response.text();
-      const current = requestGeneration === this.latestIntentRequestGeneration;
+      // Uncooperative/custom fetches can resolve successfully after a timeout,
+      // external cancellation or stop(). No such late response is an
+      // acknowledgement, even if its HTTP status was 200.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
+      if (controller.signal.aborted) {
+        throw lifecycleError(
+          INTENT_REQUEST_ABORTED_CODE,
+          "Editor request completed after cancellation.",
+        );
+      }
+      const responseState = isObject(result)
+        ? (isObject(result.result) ? result.result : result)
+        : null;
+      acknowledgedAuthoritativeResult = authoritative &&
+        response.ok &&
+        responseState !== null &&
+        nonEmptyString(responseState.revision_id) !== null &&
+        nonEmptyString(responseState.project_hash) !== null &&
+        !isObject(result.save_failure) &&
+        result.reload !== true &&
+        typeof result.location !== "string";
+      const current = authoritative
+        ? requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !readStartedDuringWrite &&
+          requestGeneration === this.latestIntentRequestGeneration &&
+          requestGeneration > this.latestAuthoritativeRequestGeneration;
       this.root.dispatchEvent(
         new CustomEvent("fly:browser-intent-response", {
           bubbles: true,
@@ -1409,11 +1515,18 @@ export class FlyBrowserAdapter {
         }),
       );
       if (current) {
-        if (response.ok) {
+        if (response.ok && (!authoritative || acknowledgedAuthoritativeResult)) {
           updateNetworkIndicator(this.root, "saved");
-        } else {
+        } else if (!response.ok) {
           updateNetworkIndicator(this.root, "error", response.status);
+        } else if (isObject(result?.save_failure)) {
+          updateNetworkIndicator(this.root, "error", result.save_failure.code || "SAVE_FAILED");
+        } else {
+          updateNetworkIndicator(this.root, "error", "WRITE_UNCONFIRMED");
         }
+      }
+      if (current && acknowledgedAuthoritativeResult) {
+        delete this.root.dataset.flyQueuedIntentsDiscarded;
       }
       if (current && response.ok && isObject(result)) {
         const state = isObject(result.result) ? result.result : result;
@@ -1463,7 +1576,14 @@ export class FlyBrowserAdapter {
       }
       return result;
     } catch (error) {
-      const current = requestGeneration === this.latestIntentRequestGeneration;
+      // The adapter was disposed: late rejected/aborted promises must not
+      // repaint a stopped root or emit misleading lifecycle events.
+      if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
+      const current = authoritative
+        ? requestGeneration === this.latestAuthoritativeRequestGeneration
+        : !readStartedDuringWrite &&
+          requestGeneration === this.latestIntentRequestGeneration &&
+          requestGeneration > this.latestAuthoritativeRequestGeneration;
       if (current) {
         updateNetworkIndicator(this.root, "error", error);
       }
@@ -1502,6 +1622,62 @@ export class FlyBrowserAdapter {
       }
       releaseForwardedAbort?.();
       this.pendingIntentRequests.delete(requestKey);
+      if (authoritative) {
+        this.authoritativeInFlight = false;
+        if (
+          !acknowledgedAuthoritativeResult ||
+          this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED
+        ) {
+          // Retry requires a fresh user decision and a known server snapshot:
+          // never replay writes that were clicked against an uncertain base.
+          const discarded = this.queuedAuthoritativeIntents.splice(0);
+          for (const queued of discarded) queued.resolve(null);
+          if (discarded.length > 0 && this.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
+            // Rejecting a queue silently would lose user gestures. Preserve
+            // the original failure (often a revision conflict) and announce
+            // the discarded commands as additional, unsent work.
+            this.root.dataset.flyQueuedIntentsDiscarded = String(discarded.length);
+            const message = discarded.length === 1
+              ? "One queued editor change was not sent because the preceding request was not confirmed."
+              : `${discarded.length} queued editor changes were not sent because the preceding request was not confirmed.`;
+            this.root.dispatchEvent(new CustomEvent("fly:browser-intents-discarded", {
+              bubbles: true,
+              detail: {
+                code: UNSENT_INTENTS_CODE,
+                count: discarded.length,
+                intents: discarded.map(({ input }) => input.intent),
+                error: message,
+                instanceId: this.instanceId,
+                pageId: this.pageId,
+              },
+            }));
+            const status = ensureProblemStatus(this);
+            queueMicrotask(() => {
+              if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return;
+              if (!this.root.dataset.flyBrowserProblem) {
+                this.root.dataset.flyBrowserProblem = UNSENT_INTENTS_CODE;
+              }
+              status.textContent = [status.textContent, message].filter(Boolean).join(" ");
+            });
+          }
+        } else {
+          while (this.queuedAuthoritativeIntents.length > 0) {
+            const next = this.queuedAuthoritativeIntents.shift();
+            if (normalizedTransportOptions(next.requestOptions).signal?.aborted) {
+              next.resolve(null);
+              continue;
+            }
+            // postIntent refreshes revision, hash and draft generation from
+            // the preceding response. Its synchronous setup restores the
+            // in-flight guard before another DOM callback can enqueue a write.
+            void this.postIntent(next.input, next.requestOptions).then(
+              next.resolve,
+              () => next.resolve(null),
+            );
+            break;
+          }
+        }
+      }
     }
   }
 

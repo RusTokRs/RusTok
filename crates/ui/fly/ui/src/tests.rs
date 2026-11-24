@@ -266,6 +266,200 @@ fn drag_state_emits_framework_neutral_command() {
 }
 
 #[test]
+fn a_rejected_drop_does_not_destroy_drag_or_insertion_overlay() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::IllegalDrop(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("new candidate");
+    let overlay = machine.state.overlays.insertion;
+    assert!(overlay.is_some());
+    machine.dispatch(UiIntent::Drop).expect("retry drop");
+    assert!(machine.state.drag.is_none());
+    assert!(machine.state.overlays.insertion.is_none());
+
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::ClipboardFragment))
+        .expect("begin clipboard drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::IllegalDrop(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert_eq!(machine.state.overlays.insertion.is_some(), true);
+    machine.dispatch(UiIntent::CancelDrag).expect("cancel");
+    assert!(machine.state.drag.is_none());
+}
+
+#[test]
+fn drop_rechecks_edit_permission_even_with_a_restored_drag() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("candidate");
+    // A deserialized/restored state can contain a drag that was begun under a
+    // different capability profile. Drop is its own mutation admission boundary.
+    machine.state.presentation = Presentation::ReadOnly;
+    assert_eq!(machine.dispatch(UiIntent::Drop), Err(UiError::ReadOnly));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+    machine.state.presentation = Presentation::Full;
+    machine.state.capabilities.drag_drop = false;
+    assert!(matches!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+}
+
+#[test]
+fn deserializing_ui_does_not_restore_orphaned_save_in_progress() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted).expect("begin");
+    let restored: FlyUiStateMachine =
+        serde_json::from_value(serde_json::to_value(machine).expect("serialize"))
+            .expect("restore");
+    assert!(!restored.state.dirty.save_in_progress);
+    assert!(restored.state.dirty.save_started_sequence.is_none());
+    assert!(restored.state.dirty.save_started_hash.is_none());
+}
+
+#[test]
+fn save_start_and_acknowledgement_respect_conflicts_and_submitted_hash() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    let snapshot_hash = fly::ProjectHash::from_document(&document);
+    machine.state.dirty.project_hash = Some(snapshot_hash);
+    machine.dispatch(UiIntent::SaveStarted).expect("save started");
+    let wrong_hash = fly::ProjectHash::from_bytes(b"other snapshot");
+    assert!(matches!(
+        machine.dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-2".to_string(),
+            project_hash: wrong_hash,
+        }),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
+    assert!(machine.state.dirty.save_in_progress);
+    assert_eq!(machine.state.dirty.save_started_hash, Some(snapshot_hash));
+    machine.dispatch(UiIntent::SaveConflict {
+        expected: "rev-1".to_string(),
+        actual: "rev-2".to_string(),
+    }).expect("remote conflict");
+    assert!(machine.dispatch(UiIntent::SaveStarted).is_err());
+    assert!(machine.state.dirty.save_conflict);
+    assert!(!machine.state.dirty.save_in_progress);
+}
+
+#[test]
+fn save_acknowledgement_cannot_clean_edits_made_during_save() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    let saved_hash = fly::ProjectHash::from_document(&document);
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: Default::default(),
+        }))
+        .expect("first edit");
+    machine.dispatch(UiIntent::SaveStarted).expect("save starts");
+    assert!(machine.dispatch(UiIntent::RequestSave).is_err());
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: Default::default(),
+        }))
+        .expect("second edit");
+    let effects = machine
+        .dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-2".to_string(),
+            project_hash: saved_hash,
+        })
+        .expect("earlier snapshot saved");
+    assert!(machine.state.dirty.dirty);
+    assert!(!machine.state.dirty.save_in_progress);
+    assert_eq!(machine.state.dirty.last_acknowledged_revision.as_deref(), Some("rev-2"));
+    assert!(machine.state.dirty.project_hash.is_none());
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        UiEffect::Announce(message) if message.contains("remain unsaved")
+    )));
+    machine.dispatch(UiIntent::SaveStarted).expect("next save starts");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-3".to_string(),
+            project_hash: saved_hash,
+        })
+        .expect("latest save");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.project_hash, Some(saved_hash));
+}
+
+#[test]
+fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SetViewport(ViewportState {
+        width: 0,
+        height: u32::MAX,
+        zoom: f32::NAN,
+        scroll_x: f64::NEG_INFINITY,
+        scroll_y: -17.0,
+    })).expect("normalized viewport");
+    assert_eq!(machine.state.viewport.width, 240);
+    assert_eq!(machine.state.viewport.height, 4320);
+    assert_eq!(machine.state.viewport.zoom, 1.0);
+    assert_eq!(machine.state.viewport.scroll_x, 0.0);
+    assert_eq!(machine.state.viewport.scroll_y, 0.0);
+
+    let bad_rect = CanvasRect {
+        x: 0.0, y: 0.0, width: f64::INFINITY, height: 10.0,
+    };
+    assert!(!bad_rect.contains(1.0, 1.0));
+    assert!(matches!(
+        machine.dispatch(UiIntent::SetSelectedOverlay(Some(bad_rect))),
+        Err(UiError::InvalidGeometry(_))
+    ));
+    assert!(machine.state.overlays.selected.is_none());
+    assert!(matches!(
+        machine.dispatch(UiIntent::SetHoveredOverlay(Some(bad_rect))),
+        Err(UiError::InvalidGeometry(_))
+    ));
+
+    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+        block_id: "section".to_string(),
+        component: ComponentNode::object("section"),
+    })).expect("begin drag");
+    let mut candidate = legal_candidate();
+    candidate.score = f32::NAN;
+    assert!(matches!(
+        machine.dispatch(UiIntent::UpdateHitTest(vec![candidate])),
+        Err(UiError::InvalidGeometry(_))
+    ));
+    assert!(machine.state.drag.as_ref().is_some_and(|drag| drag.candidates.is_empty()));
+}
+
+#[test]
 fn blocking_diagnostics_prevent_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine
@@ -319,6 +513,8 @@ fn an_empty_batch_is_still_accepted_when_editing_is_allowed() {
     machine
         .dispatch(UiIntent::execute(EditorCommand::Batch { commands: vec![] }))
         .expect("an editing session may dispatch an empty batch");
+    assert!(!machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, 0);
 }
 
 #[test]
@@ -367,19 +563,26 @@ fn save_conflict_is_a_distinct_lost_update_state() {
         .expect("conflict");
     let state = &machine.state;
     assert!(state.dirty.save_conflict);
+    assert!(state.dirty.dirty);
     assert!(state.dirty.save_failed);
+    assert!(matches!(
+        machine.dispatch(UiIntent::RequestSave),
+        Err(UiError::CapabilityUnavailable(_))
+    ));
     assert!(!state.dirty.save_in_progress);
     assert!(effects.iter().any(|effect| matches!(
         effect,
         UiEffect::Announce(message) if message.contains("another session")
     )));
-    // A later successful save is the only thing that clears the conflict.
+    // A response without an active submitted save cannot make the conflict vanish.
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
-    machine
+    assert!(machine
         .dispatch(UiIntent::SaveSucceeded {
             revision: "rev-3".to_string(),
             project_hash: fly::ProjectHash::from_document(&document),
         })
-        .expect("saved");
-    assert!(!machine.state.dirty.save_conflict);
+        .is_err());
+    assert!(machine.state.dirty.save_conflict);
+    machine.dispatch(UiIntent::SaveFailed).expect("failed response");
+    assert!(machine.state.dirty.save_conflict);
 }

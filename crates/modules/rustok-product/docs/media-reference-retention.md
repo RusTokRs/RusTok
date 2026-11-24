@@ -35,9 +35,11 @@ For image/Product deletion, the Product transaction enumerates exact image refer
 inserts `product_media_releases`, removes relations, and completes event/receipt atomically.
 No Media call runs inside this transaction. Committed deletion success is not overturned
 by a later release failure. The role-gated singleton worker delivers the committed queue,
-with bounded pages, due-time backoff, deterministic child keys, current-absence
-confirmation, and application shutdown cancellation. Process restart or cancellation
-before acknowledgement leaves work replayable. Media retain/release IO is capped at
+with bounded pages, due-time backoff, deterministic child keys and current-absence
+confirmation. The host requests graceful shutdown between batches and completes an
+already-admitted owner release/confirmation batch before exiting. A process crash or
+forced-abort deadline can still interrupt the operation; a queue row not acknowledged
+by its owner remains replayable. Media retain/release IO is capped at
 2 seconds (or the caller's shorter deadline). Audit/backfill port calls also have a
 whole-call deadline; reduce page size for slow remote owners.
 

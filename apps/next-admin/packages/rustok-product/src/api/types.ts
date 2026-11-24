@@ -45,6 +45,28 @@ export interface CatalogCategorySummary {
   name: string;
 }
 
+export interface ProductCatalogSearchOption {
+  value: string;
+  label: string;
+}
+
+export interface ProductCatalogFacetValue {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface ProductCatalogFacet {
+  code: string;
+  label: string;
+  valueType: string;
+  isLocalized: boolean;
+  isEnumerable: boolean;
+  isTruncated: boolean;
+  totalProducts: number;
+  values: ProductCatalogFacetValue[];
+}
+
 export interface CreateCatalogCategoryPayload {
   parentId?: string | null;
   code: string;

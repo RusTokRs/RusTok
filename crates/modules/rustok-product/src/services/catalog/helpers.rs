@@ -247,12 +247,17 @@ pub async fn load_category_filter_subtree<C: ConnectionTrait>(
             WITH RECURSIVE category_subtree(id) AS (
                 SELECT id
                 FROM catalog_categories
-                WHERE tenant_id = {tenant} AND id = {root} AND deleted_at IS NULL
+                WHERE tenant_id = {tenant}
+                  AND id = {root}
+                  AND deleted_at IS NULL
+                  AND kind = 'structural'
                 UNION ALL
                 SELECT c.id
                 FROM catalog_categories c
                 JOIN category_subtree s ON c.parent_id = s.id
-                WHERE c.tenant_id = {tenant_again} AND c.deleted_at IS NULL
+                WHERE c.tenant_id = {tenant_again}
+                  AND c.deleted_at IS NULL
+                  AND c.kind = 'structural'
             )
             SELECT id FROM category_subtree LIMIT {limit}
             "#,
@@ -1074,7 +1079,8 @@ mod category_filter_subtree_tests {
                 id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
                 parent_id TEXT,
-                deleted_at TEXT
+                deleted_at TEXT,
+                kind TEXT NOT NULL DEFAULT 'structural'
             )
             "#
             .to_string(),
@@ -1139,6 +1145,44 @@ mod category_filter_subtree_tests {
                 .expect("unknown root resolves")
                 .is_empty(),
             "an unknown or deleted root matches no products"
+        );
+    }
+
+    #[tokio::test]
+    async fn subtree_ignores_non_structural_categories_and_their_descendants() {
+        let db = subtree_db().await;
+        let tenant_id = Uuid::new_v4();
+        let root = Uuid::new_v4();
+        let virtual_child = Uuid::new_v4();
+        let structural_grandchild = Uuid::new_v4();
+
+        insert_category(&db, tenant_id, root, None, false).await;
+        insert_category(&db, tenant_id, virtual_child, Some(root), false).await;
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "UPDATE catalog_categories SET kind = ? WHERE id = ?",
+            ["virtual".into(), virtual_child.into()],
+        ))
+        .await
+        .expect("mark child as virtual");
+        insert_category(
+            &db,
+            tenant_id,
+            structural_grandchild,
+            Some(virtual_child),
+            false,
+        )
+        .await;
+
+        let subtree = load_category_filter_subtree(&db, tenant_id, root)
+            .await
+            .expect("resolve structural subtree");
+        assert_eq!(subtree, vec![root]);
+        assert!(
+            load_category_filter_subtree(&db, tenant_id, virtual_child)
+                .await
+                .expect("non-structural root resolves to an empty subtree")
+                .is_empty()
         );
     }
 

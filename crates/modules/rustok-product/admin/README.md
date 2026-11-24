@@ -135,8 +135,9 @@ See the [owner workflow/recovery contract](../docs/variant-axis-reconfiguration.
 `core/combinations.rs` and `ui/combinations.rs` now implement bounded candidate browsing and
 explicit picking on both mounted create/standalone-SKU forms, matching the Next package's
 local projection. Filters do not alter canonical axes; saved membership must be complete and
-at most 256 SKUs, candidate spaces at most 4096, pages 12 rows. Invalid source/stale filters
-refuse visibly. Initial picks add only one unpriced draft, or fill the existing manual tuple
+at most 256 SKUs, matching the Product owner's shared creation, reconfiguration, read and deletion
+ceiling; candidate spaces are at most 4096, pages 12 rows. Invalid source/stale filters refuse
+visibly. Initial picks add only one unpriced draft, or fill the existing manual tuple
 without adding a row; saved picks replace only tuple fields. The ordinary owner commands remain
 the writers. SKU grids show actual named assignments, missing assignments and a localized default
 tuple rather than using an opaque combination encoding as display text. See the
@@ -180,3 +181,32 @@ same owner decisions; saved owner impact outranks advisory reads.
 and [API](CRATE_API.md#attributeoption-definition-lifecycle) specify bounds and exact-copy semantics.
 Regression sources are written but unrun; this is not Rust/macro/SQL/mounted-client certification
 or a general durable CRUD/storefront cutover.
+
+## Mounted catalog URL state and stale fetch safety (2026-11-23; source only)
+
+The mounted `ProductGridPage` derives its admin catalog filters and pagination
+from `leptos-ui-routing` reactive query signals rather than a static
+`UiRouteContext` snapshot. Both the owner list and facet requests read the
+same route-driven selection. Changing category, vendor, typed attributes,
+status, search or date sort invalidates accumulated infinite rows, selected
+products and the active fetch generation. Products carry the originating
+filter snapshot as well as generation, preventing an earlier asynchronous
+response from reapplying its pagination or list after browser history
+navigation. The GET controls preserve an existing server-side search/status
+deep link. None of these changes has been built or run; the maintainer owns
+runtime SSR/hydration and browser history verification.
+
+## Server-owned catalog column filters (2026-11-23; source only)
+
+The mounted Leptos grid is server-paginated. Its title, status and vendor column
+filters now serialize into the same URL-owned `search`, `status` and `vendor`
+inputs used by the Product owner, and those values are restored into the grid on
+SSR, hydration and browser history navigation. The grid no longer applies a
+second client-side predicate to only the currently loaded page. Product type
+and creation-date column filters are intentionally not offered until the
+owner's admin list contract supports those predicates; category and typed
+attribute filtering remain in the catalog controls/facet panel. Vendor means
+an exact Product vendor match, matching the owner and Next admin contract.
+Leptos text/number filter cells invalidate their inner debounce on browser
+Back/Forward, including when the restored filter value itself is unchanged.
+Rust/source regression coverage is authored but not executed.

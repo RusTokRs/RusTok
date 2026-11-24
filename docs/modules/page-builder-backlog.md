@@ -15,6 +15,17 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
 ## Storefront and identity continuation (2026-11-13) — OPEN
 
+Fly editor hardening (2026-11-23, source/regressions only): the core style patch builder
+now preserves ordered merge/replace/remove semantics and rejects invalid reserved-field
+types; `fly-ui` preserves a failed drop and keeps edits after an in-flight save dirty;
+`fly-browser` blocks intents after stop, refuses fetch redirects and preserves lost-save
+warnings unless the host confirms `dirty: false`. **Still OPEN:** the current
+`UiIntent::SaveSucceeded` envelope has no unique request identity and hosts can acknowledge
+outside an active `SaveStarted` transition. Correlating out-of-order responses with a
+request token across core/UI/transports, proving hosted runtime behavior under CSP,
+and parity for the foundation-only Dioxus workspace require a separately coordinated
+contract/host migration. No local test or mounted-host verification is claimed for this pass.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
@@ -1155,3 +1166,40 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
   backlog.
 - An item leaves this list only by landing (with its ADR) or by an explicit
   decision recorded in `DECISIONS/`; "Pending" without an owner is not a state.
+
+2026-11-23 mutation admission follow-up: the Page Builder browser dispatcher now requires a
+non-empty revision for all mutating intents. The trusted in-process Leptos adapter callback stamps
+its current revision and project hash before dispatch; HTTP-originated requests must submit the
+observed revision. Missing revisions previously bypassed the optimistic concurrency check. Host
+behavior and all client callers still require end-to-end integration verification.
+
+Fly runtime no-op/geometry follow-up (source/regressions only): empty and idempotent project
+commands now keep revision, undo/redo history and cached validation coherent; custom viewport
+IDs reflect clamped dimensions, viewport state and hit-test/overlay rectangles reject or normalize
+invalid sizes, and resize gestures reject non-finite/out-of-range pointer deltas. This does not
+replace mounted browser geometry, accessibility, or host integration evidence.
+
+Browser write queue hardening (source only): a per-instance queued write is dispatched only
+after a confirmed prior response with a nonempty revision and hash; ambiguous/failed saves drain
+pending commands without replay, including on timeout and stop. Cross-tab request coordination
+and true server-side idempotency are still outstanding; browser transport cannot infer whether a
+failed network request committed remotely.
+
+The Leptos admin facade's publish completion now uses the attempt-aware controller entrypoints
+for success and failure. Delayed completions of an older identical-hash retry are ignored rather
+than failing the active new save. Host callback/session transport IDs are still an open migration.
+
+Dioxus functional gap addressed in source: Page Builder Dioxus Save and workspace request effects
+previously stopped at the UI reducer without executing `PageBuilderAdminFacade`. Those effects
+now reach the facade and return attempt-safe publish completions or errors. Mounted Dioxus
+facade/preview behavior still needs maintainer runtime evidence after the implementation phase.
+
+Leptos adapter functional gap addressed in source: typed `FlyEditorWorkspace` callback now
+consumes the returned browser intent effects, dispatching Publish/Preview to the consumer facade
+and preserving the request's hash/sequence and preview context. Previously those effects were
+ignored. Live Leptos SSR/CSR rendering and persistence remain for the maintainer's end checks.
+
+Runtime publish-gate convergence (source only): Leptos and Dioxus adapter-generated Publish
+requests now check the host runtime publish policy before reaching the facade, matching the
+standard toolbar. Framework-mounted gate parity and denied-save UX remain for final integration
+checks.

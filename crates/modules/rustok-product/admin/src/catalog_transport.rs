@@ -3,7 +3,7 @@
 //! Every Product admin surface reads the owner through this module. Transport
 //! selection is profile-driven: native server functions serve SSR/hydrate builds,
 //! while GraphQL serves CSR builds. A failed operation is never retried through a
-//! different transport. GraphQL errors are sanitized by the correlation-aware
+//! different transport. Selected-transport errors are normalized by the bounded
 //! `graphql_error_safety::GraphqlReadContext` before reaching the UI.
 //!
 //! Writes keep their retry and idempotency identity in `transport` and are
@@ -20,11 +20,9 @@ pub(crate) use crate::transport::graphql_fallback_mutations::{
     create_product_attribute_schema_group, set_category_schema_mode,
 };
 
-use leptos::prelude::*;
 use rustok_graphql::GraphqlHttpError;
-use rustok_ui_core::UiRouteContext;
 
-use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
+use crate::catalog_controls::ProductAdminListInput;
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
     ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
@@ -32,8 +30,9 @@ use crate::model::{
 };
 use crate::transport as legacy;
 
-use graphql_error_safety::GraphqlMutationContext;
-use graphql_error_safety::GraphqlReadContext;
+use graphql_error_safety::{
+    GraphqlMutationContext, GraphqlReadContext, SELECTED_PRODUCT_ADMIN_TRANSPORT,
+};
 
 pub(crate) type ApiError = GraphqlHttpError;
 
@@ -43,14 +42,15 @@ const PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE: &str =
 
 /// Bounded private diagnostics for the public catalog search-options wrapper.
 ///
-/// The compatibility executor in `transport` returns the captured GraphQL error
-/// as a `String`; that value is used only to derive presence and character
-/// length. The captured text is not logged and never becomes the public error.
+/// The selected transport returns an error as a `String`; that value is used
+/// only to derive presence and character length. The captured text is not
+/// logged and never becomes the public error.
 struct CatalogSearchOptionsErrorContext {
     correlation_id: String,
     token_present: bool,
     tenant_slug_length: Option<usize>,
     locale_length: usize,
+    selected_transport: &'static str,
 }
 
 impl CatalogSearchOptionsErrorContext {
@@ -63,6 +63,7 @@ impl CatalogSearchOptionsErrorContext {
             token_present: token.is_some(),
             tenant_slug_length: tenant_slug.map(|value| value.chars().count()),
             locale_length: locale.chars().count(),
+            selected_transport: SELECTED_PRODUCT_ADMIN_TRANSPORT,
         }
     }
 
@@ -75,71 +76,18 @@ impl CatalogSearchOptionsErrorContext {
             raw_error_length,
             owner = "rustok_product.admin",
             owner_operation = PRODUCT_ADMIN_CATALOG_OPTIONS_OPERATION,
-            correlation_id = %self.correlation_id,
+            correlation_id_present = !self.correlation_id.is_empty(),
+            correlation_id_length = self.correlation_id.chars().count(),
+            selected_transport = self.selected_transport,
             token_present = self.token_present,
             tenant_slug_length = ?self.tenant_slug_length,
             locale_length = self.locale_length,
-            code = "product.admin_catalog_search_options_graphql_unavailable",
+            code = "product.admin_catalog_search_options_unavailable",
             "product admin catalog search options are unavailable"
         );
 
         PRODUCT_ADMIN_CATALOG_OPTIONS_PUBLIC_MESSAGE.to_string()
     }
-}
-
-/// Route-query controls snapshot for the admin catalog list.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProductAdminRouteControls {
-    pub category_id: Option<String>,
-    pub sort_by: Option<String>,
-    pub sort_direction: Option<String>,
-    pub attribute_filters: Option<String>,
-    pub page: Option<String>,
-    pub per_page: Option<String>,
-}
-
-impl ProductAdminRouteControls {
-    pub(crate) fn from_route_context(route_context: &UiRouteContext) -> Self {
-        Self {
-            category_id: route_context
-                .query_value("category_id")
-                .map(ToString::to_string),
-            sort_by: route_context
-                .query_value("sort_by")
-                .map(ToString::to_string),
-            sort_direction: route_context
-                .query_value("sort_direction")
-                .map(ToString::to_string),
-            attribute_filters: route_context
-                .query_value("attribute_filters")
-                .map(ToString::to_string),
-            page: route_context.query_value("page").map(ToString::to_string),
-            per_page: route_context.query_value("per_page").map(ToString::to_string),
-        }
-    }
-}
-
-/// Resolves the catalog list input for the mounted list page.
-///
-/// The page provides its normalized controls through context; when the page
-/// relies on the URL instead, the route query is normalized into the same
-/// [`ProductAdminListInput`] contract.
-pub(crate) fn product_admin_list_input_from_route() -> ProductAdminListInput {
-    if let Some(provided) = use_context::<ProductAdminListInput>() {
-        return provided;
-    }
-    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let route_controls = ProductAdminRouteControls::from_route_context(&route_context);
-    build_product_admin_list_input(
-        None,
-        None,
-        route_controls.category_id,
-        route_controls.sort_by,
-        route_controls.sort_direction,
-        route_controls.attribute_filters,
-        route_controls.page,
-        route_controls.per_page,
-    )
 }
 
 pub(crate) async fn fetch_bootstrap(
@@ -174,31 +122,30 @@ pub(crate) async fn fetch_products(
     locale: Option<String>,
     controls: ProductAdminListInput,
 ) -> Result<ProductList, ApiError> {
+    let context = GraphqlReadContext::for_products(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_deref(),
+        controls.search.as_deref(),
+        controls.status.as_deref(),
+        controls.vendor.as_deref(),
+        controls.category_id.as_deref(),
+        controls.attribute_filters.len(),
+    );
+
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
         let _ = (token, tenant_slug);
         legacy::admin_catalog_native::fetch_products(tenant_id, locale, controls)
             .await
-            // ServerFnError is not a GraphqlHttpError. Never expose the
-            // framework/server payload as an HTTP error or silently switch
-            // to a different transport after native admission rejects it.
-            .map_err(|_| {
-                GraphqlHttpError::Http(
-                    "Product admin catalog is temporarily unavailable".to_string(),
-                )
+            .map_err(|error| {
+                context.map_error(GraphqlHttpError::Graphql(error.to_string()))
             })
     }
 
     #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     {
-        let context = GraphqlReadContext::for_products(
-            token.as_deref(),
-            tenant_slug.as_deref(),
-            tenant_id.as_str(),
-            locale.as_deref(),
-            controls.search.as_deref(),
-            controls.status.as_deref(),
-        );
         legacy::admin_catalog_graphql::fetch_products(
             token,
             tenant_slug,
@@ -224,6 +171,18 @@ pub(crate) async fn fetch_admin_catalog_facets(
     controls: ProductAdminListInput,
     facet_codes: Vec<String>,
 ) -> Option<Vec<crate::model::AdminCatalogFacet>> {
+    let context = GraphqlReadContext::for_admin_catalog_facets(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_deref(),
+        controls.search.as_deref(),
+        controls.status.as_deref(),
+        controls.vendor.as_deref(),
+        controls.category_id.as_deref(),
+        controls.attribute_filters.len(),
+    );
+
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
         let _ = (token, tenant_slug);
@@ -234,19 +193,15 @@ pub(crate) async fn fetch_admin_catalog_facets(
             facet_codes,
         )
         .await
-        .ok()
+        .map(Some)
+        .unwrap_or_else(|error| {
+            context.map_error(GraphqlHttpError::Graphql(error.to_string()));
+            None
+        })
     }
 
     #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     {
-        let context = GraphqlReadContext::for_products(
-            token.as_deref(),
-            tenant_slug.as_deref(),
-            tenant_id.as_str(),
-            locale.as_deref(),
-            controls.search.as_deref(),
-            controls.status.as_deref(),
-        );
         legacy::admin_catalog_graphql::fetch_facets(
             token,
             tenant_slug,

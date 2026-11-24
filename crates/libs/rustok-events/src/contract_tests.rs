@@ -63,8 +63,8 @@ fn artifact_node_and_guest_root_events_validate_against_the_registry() {
             predecessor_reconciliation_id: None,
             reconciliation_revision: 1,
             reconciliation_state_revision: 1,
-            topology_digest: "sha256:topology".to_string(),
-            policy_revision: "sha256:policy".to_string(),
+            topology_digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            policy_revision: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
             target_assignments: 1,
         },
     );

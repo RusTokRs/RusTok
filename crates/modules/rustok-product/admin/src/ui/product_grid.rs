@@ -3,23 +3,37 @@ use leptos_router::hooks::use_navigate;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{
-    ColumnFilters, GridPagination, PaginationMode, RowSelection, DEFAULT_PAGE_SIZE,
+    ColumnFilters, FilterValue, GridPagination, PaginationMode, RowSelection, DEFAULT_PAGE_SIZE,
 };
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use super::catalog_facets::AdminCatalogFacetPanel;
 use crate::catalog_controls::{
-    build_product_admin_catalog_controls_labels, build_product_admin_list_input,
-    serialize_attribute_filters,
+    ProductAdminListInput, build_product_admin_catalog_controls_labels,
+    build_product_admin_list_input, serialize_attribute_filters,
 };
 use crate::catalog_transport;
 use crate::core::{
-    ProductKind, filter_products, item_product_kind, product_admin_pagination_from_response,
+    ProductKind, item_product_kind, product_admin_pagination_from_response,
     product_grid_columns,
 };
 use crate::facets::{build_product_admin_facet_labels, build_product_admin_facet_panel};
 use crate::model::{ProductList, ProductListItem};
+
+fn product_admin_grid_filters(controls: &ProductAdminListInput) -> ColumnFilters {
+    let mut filters = ColumnFilters::new();
+    if let Some(search) = controls.search.as_deref() {
+        filters.set("title", FilterValue::Text(search.to_string()));
+    }
+    if let Some(status) = controls.status.as_deref() {
+        filters.set("status", FilterValue::Select(status.to_ascii_uppercase()));
+    }
+    if let Some(vendor) = controls.vendor.as_deref() {
+        filters.set("vendor", FilterValue::Text(vendor.to_string()));
+    }
+    filters
+}
 
 #[component]
 pub fn ProductGridPage() -> impl IntoView {
@@ -27,6 +41,13 @@ pub fn ProductGridPage() -> impl IntoView {
     let route_query_writer = use_route_query_writer();
     let route_page = use_route_query_value("page");
     let route_page_size = use_route_query_value("per_page");
+    let route_search = use_route_query_value("search");
+    let route_status = use_route_query_value("status");
+    let route_vendor = use_route_query_value("vendor");
+    let route_category = use_route_query_value("category_id");
+    let route_attributes = use_route_query_value("attribute_filters");
+    let route_sort_by = use_route_query_value("sort_by");
+    let route_sort_direction = use_route_query_value("sort_direction");
     let locale = route_context.locale.clone();
     let is_ru = locale.as_deref() == Some("ru");
     let base_route = route_context.admin_module_route_base("product");
@@ -36,24 +57,44 @@ pub fn ProductGridPage() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (is_busy, set_is_busy) = signal(false);
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
-    let (search_query, set_search_query) = signal(String::new());
     let (dropdown_open, set_dropdown_open) = signal(false);
     let (confirm_delete_id, set_confirm_delete_id) = signal(Option::<String>::None);
     let (confirm_bulk, set_confirm_bulk) = signal(false);
 
     // Grid state
     let columns = product_grid_columns(locale.as_deref());
-    let (filters, set_filters) = signal(ColumnFilters::new());
     let selection = RwSignal::new(RowSelection::new());
 
     // Catalog controls travel through the URL, so the owner list contract
     // (category, typed attribute filters, deterministic date order and page)
     // survives navigation, refresh, and deep links.
-    let catalog_controls = catalog_transport::product_admin_list_input_from_route();
-    provide_context(catalog_controls.clone());
-    let requested_page = usize::try_from(catalog_controls.page).unwrap_or(usize::MAX);
+    // The router is authoritative even when this mounted page survives a Back/Forward
+    // navigation. A one-time UiRouteContext snapshot cannot safely key an owner read.
+    let catalog_controls = Memo::new(move |_| {
+        build_product_admin_list_input(
+            route_search.get(),
+            route_status.get(),
+            route_category.get(),
+            route_sort_by.get(),
+            route_sort_direction.get(),
+            route_attributes.get(),
+            route_page.get(),
+            route_page_size.get(),
+        )
+        .with_vendor(route_vendor.get())
+    });
+    let initial_catalog_controls = catalog_controls.get_untracked();
+    let filters = RwSignal::new(product_admin_grid_filters(&initial_catalog_controls));
+    Effect::new(move |_| {
+        let next_filters = product_admin_grid_filters(&catalog_controls.get());
+        if filters.get_untracked() != next_filters {
+            filters.set(next_filters);
+        }
+    });
+    let requested_page =
+        usize::try_from(initial_catalog_controls.page).unwrap_or(usize::MAX);
     let requested_page_size =
-        usize::try_from(catalog_controls.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
+        usize::try_from(initial_catalog_controls.per_page).unwrap_or(DEFAULT_PAGE_SIZE);
     let pagination = RwSignal::new(GridPagination::new(1, requested_page_size, 0));
     let (last_requested_pagination, set_last_requested_pagination) =
         signal((requested_page, requested_page_size));
@@ -76,6 +117,26 @@ pub fn ProductGridPage() -> impl IntoView {
     let (infinite_items, set_infinite_items) = signal(Vec::<ProductListItem>::new());
     let (last_loaded_page, set_last_loaded_page) = signal(0_usize);
     let (last_applied_request, set_last_applied_request) = signal(None::<u64>);
+    let mut initial_filter_identity = initial_catalog_controls.clone();
+    initial_filter_identity.page = 1;
+    initial_filter_identity.per_page = DEFAULT_PAGE_SIZE as u64;
+    let (previous_filter_identity, set_previous_filter_identity) =
+        signal(initial_filter_identity);
+    Effect::new(move |_| {
+        // Discard accumulated pages and selected rows when the owner query changes,
+        // but not when the user merely turns to the next page.
+        let mut identity = catalog_controls.get();
+        identity.page = 1;
+        identity.per_page = DEFAULT_PAGE_SIZE as u64;
+        if identity != previous_filter_identity.get_untracked() {
+            set_previous_filter_identity.set(identity);
+            set_last_applied_request.set(None);
+            set_page_request_nonce.update(|nonce| *nonce = nonce.saturating_add(1));
+            set_infinite_items.set(Vec::new());
+            set_last_loaded_page.set(0);
+            selection.update(|selected| selected.clear());
+        }
+    });
 
     // The route is the durable page selection. Reconcile browser Back/Forward
     // and external in-place URL changes, not just pagination button clicks.
@@ -117,18 +178,6 @@ pub fn ProductGridPage() -> impl IntoView {
         }
     });
     let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
-    let current_category = catalog_controls.category_id.clone().unwrap_or_default();
-    let current_attribute_filters =
-        serialize_attribute_filters(catalog_controls.attribute_filters.as_slice());
-    let current_sort_by = catalog_controls
-        .sort_by
-        .clone()
-        .unwrap_or_else(|| "published_at".to_string());
-    let current_sort_direction = catalog_controls
-        .sort_direction
-        .clone()
-        .unwrap_or_else(|| "desc".to_string());
-
     // The grid is served from an `Async` admin route, so its data has to be resolved during the
     // render: a `LocalResource` is `pending()` on the server and the reader gets the fallback.
     // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
@@ -156,12 +205,13 @@ pub fn ProductGridPage() -> impl IntoView {
                 token.get_untracked(),
                 tenant.get_untracked(),
                 res_locale.clone(),
-                res_controls.clone(),
+                res_controls.get(),
                 last_requested_pagination.get_untracked(),
                 page_request_nonce.get(),
             )
         },
         move |(tok, ten, loc, mut controls, (page, page_size), request_id)| async move {
+            let requested_controls = controls.clone();
             controls.page = u64::try_from(page)
                 .unwrap_or(u64::MAX)
                 .min(i32::MAX as u64);
@@ -183,8 +233,14 @@ pub fn ProductGridPage() -> impl IntoView {
             // Some owner implementations return an empty out-of-range page
             // rather than clamping it. Normalize and retry once so SSR and
             // hydration both receive rows for the last real page.
-            if page_request_nonce.get_untracked() != request_id {
-                return Ok::<(u64, ProductList), String>((request_id, products));
+            if page_request_nonce.get_untracked() != request_id
+                || catalog_controls.get_untracked() != requested_controls
+            {
+                return Ok::<(u64, ProductAdminListInput, ProductList), String>((
+                    request_id,
+                    requested_controls,
+                    products,
+                ));
             }
             let current_pagination = pagination.get_untracked();
             let normalized =
@@ -218,23 +274,31 @@ pub fn ProductGridPage() -> impl IntoView {
 
             let final_pagination =
                 product_admin_pagination_from_response(pagination.get_untracked(), &products);
-            if page_request_nonce.get_untracked() == request_id {
+            if page_request_nonce.get_untracked() == request_id
+                && catalog_controls.get_untracked() == requested_controls
+            {
                 // Resource fetchers also run during SSR; update the controlled
                 // grid state here so the first server-rendered page has the
                 // owner's page number and total before client effects exist.
                 pagination.set(final_pagination);
             }
 
-            Ok::<(u64, ProductList), String>((request_id, products))
+            Ok::<(u64, ProductAdminListInput, ProductList), String>((
+                request_id,
+                requested_controls,
+                products,
+            ))
         },
     );
     let products_page = Memo::new(move |_| {
         let request_id = page_request_nonce.get();
+        let controls = catalog_controls.get();
         products_resource
             .get()
             .and_then(Result::ok)
-            .and_then(|(loaded_request, products)| {
-                (loaded_request == request_id).then_some(products)
+            .and_then(|(loaded_request, loaded_controls, products)| {
+                (loaded_request == request_id && loaded_controls == controls)
+                    .then_some(products)
             })
     });
     // Server metadata is authoritative. Out-of-range deep links are clamped
@@ -344,7 +408,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 facets_locale.clone(),
-                facets_controls.clone(),
+                facets_controls.get(),
                 refresh_nonce.get(),
             )
         },
@@ -359,7 +423,10 @@ pub fn ProductGridPage() -> impl IntoView {
             )
             .await
             .ok()?;
-            let facet_codes = crate::facets::build_product_admin_facet_codes(&options);
+            let facet_codes = crate::facets::build_product_admin_facet_codes_for_filters(
+                &options,
+                controls.attribute_filters.as_slice(),
+            );
             if facet_codes.is_empty() {
                 return Some(Vec::new());
             }
@@ -382,42 +449,16 @@ pub fn ProductGridPage() -> impl IntoView {
     let facet_panel_controls = catalog_controls.clone();
     let facet_panel_labels = build_product_admin_facet_labels(locale.as_deref());
 
-    // Reactive filtering stays layered over the currently loaded page(s);
-    // the server-owned total and page boundaries are never recomputed locally.
+    // The owner has already applied every active column filter before pagination;
+    // the grid only renders the server page (or the pages explicitly loaded in infinite mode).
     let filtered_data = Memo::new(move |_| {
-        let raw = if pagination.get().mode == PaginationMode::Infinite {
+        if pagination.get().mode == PaginationMode::Infinite {
             infinite_items.get()
         } else {
             products_page
                 .get()
                 .map(|products| products.items)
                 .unwrap_or_default()
-        };
-        let query = search_query.get().trim().to_lowercase();
-        let current_filters = filters.get();
-
-        let filtered = filter_products(&raw, &current_filters);
-        if query.is_empty() {
-            filtered
-        } else {
-            filtered
-                .into_iter()
-                .filter(|item| {
-                    item.title.to_lowercase().contains(&query)
-                        || item.handle.to_lowercase().contains(&query)
-                        || item
-                            .seller_id
-                            .as_deref()
-                            .map(|s| s.to_lowercase().contains(&query))
-                            .unwrap_or(false)
-                        || item
-                            .vendor
-                            .as_deref()
-                            .map(|v| v.to_lowercase().contains(&query))
-                            .unwrap_or(false)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&query))
-                })
-                .collect()
         }
     });
 
@@ -696,19 +737,10 @@ pub fn ProductGridPage() -> impl IntoView {
                 }
                 .into_any()
             }
-            "sku" => {
-                let display = item
-                    .seller_id
-                    .as_deref()
-                    .or(item.vendor.as_deref())
-                    .unwrap_or("—");
+            "vendor" => {
+                let display = item.vendor.as_deref().unwrap_or("—");
                 view! {
-                    <div class="flex flex-col">
-                        <span class="font-mono text-xs text-foreground/90 truncate">{display}</span>
-                        {item.vendor.as_ref().map(|v| view! {
-                            <span class="text-[10px] text-muted-foreground truncate">{format!("by {}", v)}</span>
-                        })}
-                    </div>
+                    <span class="text-xs text-foreground/90 truncate">{display}</span>
                 }
                 .into_any()
             }
@@ -836,13 +868,36 @@ pub fn ProductGridPage() -> impl IntoView {
 
     let filter_query_writer = route_query_writer.clone();
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
-        set_filters.set(new_filters);
-        if last_requested_pagination.get_untracked().0 != 1 {
-            set_infinite_items.set(Vec::new());
-            set_last_loaded_page.set(0);
-        }
-        filter_query_writer.replace_value("page", "1");
-        request_current_page();
+        let search = new_filters
+            .get("title")
+            .and_then(FilterValue::as_text)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let status = new_filters
+            .get("status")
+            .and_then(FilterValue::as_select)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
+        let vendor = new_filters
+            .get("vendor")
+            .and_then(FilterValue::as_text)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+
+        // Column filters are owner filters, not a client-side slice over the current page.
+        // A URL update triggers a fresh page and facet count for the complete catalog.
+        filter_query_writer.update(
+            vec![
+                ("search".to_string(), search),
+                ("status".to_string(), status),
+                ("vendor".to_string(), vendor),
+                ("page".to_string(), Some("1".to_string())),
+            ],
+            true,
+        );
     });
 
     let page_query_writer = route_query_writer.clone();
@@ -881,7 +936,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 let panel = build_product_admin_facet_panel(
                     facet_panel_base.as_str(),
                     facets.as_slice(),
-                    &facet_panel_controls,
+                    &facet_panel_controls.get(),
                     facet_panel_labels.clone(),
                 );
                 view! { <AdminCatalogFacetPanel panel /> }.into_any()
@@ -906,30 +961,6 @@ pub fn ProductGridPage() -> impl IntoView {
                 </div>
 
                 <div class="flex items-center gap-2.5 flex-wrap">
-                    // Search bar
-                    <div class="relative min-w-[200px] sm:min-w-[240px]">
-                        <input
-                            type="text"
-                            placeholder=if is_ru {
-                                "Поиск загруженных товаров..."
-                            } else {
-                                "Search loaded products..."
-                            }
-                            prop:value=move || search_query.get()
-                            on:input=move |ev| {
-                                set_search_query.set(event_target_value(&ev));
-                                if last_requested_pagination.get_untracked().0 != 1 {
-                                    set_infinite_items.set(Vec::new());
-                                    set_last_loaded_page.set(0);
-                                }
-                                pagination.update(|p| p.set_page(1));
-                                route_query_writer.replace_value("page", "1");
-                                request_current_page();
-                            }
-                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition"
-                        />
-                    </div>
-
                     // Categories navigation link
                     <a
                         href=format!("{base_route}/categories")
@@ -1127,13 +1158,22 @@ pub fn ProductGridPage() -> impl IntoView {
             </Show>
 
             // Catalog controls: the GET form keeps the owner list contract
-            // (category, typed attribute filters, deterministic date order) in
+            // (category, vendor, typed attribute filters, deterministic date order) in
             // the URL, so deep links and refreshes resolve the same list.
             <form
                 method="get"
-                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
+                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
             >
                 <input type="hidden" name="page" value="1" />
+                {move || catalog_controls.get().search.map(|value| view! {
+                    <input type="hidden" name="search" value=value />
+                })}
+                {move || catalog_controls.get().status.map(|value| view! {
+                    <input type="hidden" name="status" value=value />
+                })}
+                {move || catalog_controls.get().vendor.map(|value| view! {
+                    <input type="hidden" name="vendor" value=value />
+                })}
                 <input
                     type="hidden"
                     name="per_page"
@@ -1148,7 +1188,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     <select
                         name="category_id"
                         class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
-                        prop:value=current_category.clone()
+                        prop:value=move || catalog_controls.get().category_id.unwrap_or_default()
                     >
                         <option value="">{catalog_labels.all_categories.clone()}</option>
                         {move || catalog_options_resource
@@ -1165,7 +1205,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     <input
                         name="attribute_filters"
                         type="text"
-                        value=current_attribute_filters.clone()
+                        prop:value=move || serialize_attribute_filters(catalog_controls.get().attribute_filters.as_slice())
                         placeholder=catalog_labels.attribute_filters_placeholder.clone()
                         class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
                     />
@@ -1176,7 +1216,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     <select
                         name="sort_by"
                         class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
-                        prop:value=current_sort_by.clone()
+                        prop:value=move || catalog_controls.get().sort_by.unwrap_or_else(|| "published_at".to_string())
                     >
                         <option value="published_at">{catalog_labels.published_at.clone()}</option>
                         <option value="created_at">{catalog_labels.created_at.clone()}</option>
@@ -1187,7 +1227,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     <select
                         name="sort_direction"
                         class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
-                        prop:value=current_sort_direction.clone()
+                        prop:value=move || catalog_controls.get().sort_direction.unwrap_or_else(|| "desc".to_string())
                     >
                         <option value="desc">{catalog_labels.descending.clone()}</option>
                         <option value="asc">{catalog_labels.ascending.clone()}</option>
@@ -1225,6 +1265,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 })
                 empty_message=if is_ru { "Товары не найдены" } else { "No products found" }.to_string()
                 selection=selection
+                filters=filters
                 pagination=pagination
                 on_page_change=on_page_change
                 on_page_size_change=on_page_size_change
@@ -1232,5 +1273,35 @@ pub fn ProductGridPage() -> impl IntoView {
                 on_row_click=on_row_click
             />
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mounted_grid_restores_only_owner_supported_filter_values_from_the_route() {
+        let controls = ProductAdminListInput {
+            search: Some("camera".to_string()),
+            status: Some("active".to_string()),
+            vendor: Some("Acme".to_string()),
+            ..ProductAdminListInput::default()
+        };
+        let filters = product_admin_grid_filters(&controls);
+
+        assert_eq!(
+            filters.get("title"),
+            Some(&FilterValue::Text("camera".to_string()))
+        );
+        assert_eq!(
+            filters.get("status"),
+            Some(&FilterValue::Select("ACTIVE".to_string()))
+        );
+        assert_eq!(
+            filters.get("vendor"),
+            Some(&FilterValue::Text("Acme".to_string()))
+        );
+        assert_eq!(filters.count(), 3);
     }
 }

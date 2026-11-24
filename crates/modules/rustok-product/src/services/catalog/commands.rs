@@ -41,6 +41,43 @@ async fn find_variant_for_update_in_tx(
     variant.ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
+fn validate_product_variant_count(
+    current_count: usize,
+    incoming_count: usize,
+) -> CommerceResult<()> {
+    let total = current_count.checked_add(incoming_count).ok_or_else(|| {
+        CommerceError::Validation(
+            "Product variant count exceeds the supported limit".to_owned(),
+        )
+    })?;
+    if total > crate::dto::MAX_PRODUCT_VARIANTS {
+        return Err(CommerceError::Validation(format!(
+            "A Product can contain at most {} variants",
+            crate::dto::MAX_PRODUCT_VARIANTS
+        )));
+    }
+    Ok(())
+}
+
+fn validate_variant_inventory_quantity(quantity: i32) -> CommerceResult<()> {
+    if quantity < 0 {
+        return Err(CommerceError::Validation(
+            "Inventory quantity cannot be negative".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_variant_inventory_policy(value: &str) -> CommerceResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if !matches!(normalized.as_str(), "deny" | "continue") {
+        return Err(CommerceError::Validation(
+            "Inventory policy must be either `deny` or `continue`".to_owned(),
+        ));
+    }
+    Ok(normalized)
+}
+
 fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     let mut seen = HashSet::new();
     for price in prices {
@@ -216,6 +253,8 @@ impl CatalogService {
         }
         validate_variant_axes_and_combinations(&input.variant_axes, &input.variants)?;
         for var_input in &input.variants {
+            validate_variant_inventory_quantity(var_input.inventory_quantity)?;
+            normalize_variant_inventory_policy(&var_input.inventory_policy)?;
             validate_variant_prices(&var_input.prices)?;
             validate_variant_weight(var_input.weight.as_ref())?;
         }
@@ -398,7 +437,9 @@ impl CatalogService {
                     .and_then(normalize_shipping_profile_slug)),
                 ean: Set(None),
                 upc: Set(None),
-                inventory_policy: Set(var_input.inventory_policy.clone()),
+                inventory_policy: Set(normalize_variant_inventory_policy(
+                    &var_input.inventory_policy,
+                )?),
                 inventory_management: Set("manual".into()),
                 inventory_quantity: Set(0),
                 weight: Set(var_input.weight),
@@ -1372,6 +1413,8 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        validate_variant_inventory_quantity(input.inventory_quantity)?;
+        let inventory_policy = normalize_variant_inventory_policy(&input.inventory_policy)?;
         self.validate_shipping_profiles(
             tenant_id,
             actor_id,
@@ -1408,8 +1451,10 @@ impl CatalogService {
         let existing_variants = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .limit((crate::dto::MAX_PRODUCT_VARIANTS + 1) as u64)
             .all(&txn)
             .await?;
+        validate_product_variant_count(existing_variants.len(), 1)?;
         if configured_axes.is_empty() && !existing_variants.is_empty() {
             return Err(CommerceError::Validation(
                 "a product without variant axes can have exactly one default variant".to_owned(),
@@ -1443,7 +1488,7 @@ impl CatalogService {
                 .and_then(normalize_shipping_profile_slug)),
             ean: Set(None),
             upc: Set(None),
-            inventory_policy: Set(input.inventory_policy.clone()),
+            inventory_policy: Set(inventory_policy),
             inventory_management: Set("manual".into()),
             inventory_quantity: Set(0),
             weight: Set(input.weight),
@@ -1571,6 +1616,12 @@ impl CatalogService {
         if let Patch::Set(weight) = &input.weight {
             validate_variant_weight(Some(weight))?;
         }
+        if let Some(quantity) = input.inventory_quantity {
+            validate_variant_inventory_quantity(quantity)?;
+        }
+        if let Some(policy) = input.inventory_policy.as_deref() {
+            normalize_variant_inventory_policy(policy)?;
+        }
         if let Patch::Set(slug) = &input.shipping_profile_slug {
             self.validate_shipping_profiles(tenant_id, actor_id, Some(slug.as_str()))
                 .await?;
@@ -1631,7 +1682,9 @@ impl CatalogService {
             }
         }
         if let Some(inventory_policy) = input.inventory_policy {
-            active.inventory_policy = Set(inventory_policy);
+            active.inventory_policy = Set(normalize_variant_inventory_policy(
+                &inventory_policy,
+            )?);
         }
         match input.weight {
             Patch::Keep => {}
@@ -2974,6 +3027,7 @@ pub(super) fn validate_variant_axis_tuples(
     variant_axes: &[VariantAxisInput],
     variants: &[Vec<VariantAxisValueInput>],
 ) -> CommerceResult<()> {
+    validate_product_variant_count(0, variants.len())?;
     if variant_axes.is_empty() {
         if variants.len() != 1 {
             return Err(CommerceError::Validation(
@@ -3089,6 +3143,44 @@ mod tests {
             validate_variant_weight(Some(&Decimal::new(-1, 2))),
             Err(CommerceError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn product_variant_capacity_is_enforced_without_overflow() {
+        assert!(validate_product_variant_count(0, 1).is_ok());
+        assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS).is_ok());
+        assert!(validate_product_variant_count(crate::dto::MAX_PRODUCT_VARIANTS - 1, 1).is_ok());
+        assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS + 1).is_err());
+        assert!(validate_product_variant_count(crate::dto::MAX_PRODUCT_VARIANTS, 1).is_err());
+        assert!(validate_product_variant_count(usize::MAX, 1).is_err());
+    }
+
+    #[test]
+    fn variant_inventory_quantity_rejects_negative_values() {
+        assert!(validate_variant_inventory_quantity(0).is_ok());
+        assert!(validate_variant_inventory_quantity(i32::MAX).is_ok());
+        assert!(matches!(
+            validate_variant_inventory_quantity(-1),
+            Err(CommerceError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn variant_inventory_policy_is_canonical_and_closed() {
+        assert_eq!(
+            normalize_variant_inventory_policy(" deny ").unwrap(),
+            "deny"
+        );
+        assert_eq!(
+            normalize_variant_inventory_policy("CONTINUE").unwrap(),
+            "continue"
+        );
+        for invalid in ["", "allow", "backorder", "deny-stockout"] {
+            assert!(matches!(
+                normalize_variant_inventory_policy(invalid),
+                Err(CommerceError::Validation(_))
+            ));
+        }
     }
 
     #[test]

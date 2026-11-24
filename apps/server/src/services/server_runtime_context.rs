@@ -181,6 +181,17 @@ pub(crate) fn published_worker_running<T>(
 where
     T: 'static + Send + Sync,
 {
+    // Repeated bootstraps must not report success for a still-live handle
+    // after shutdown has already signaled it to drain. Every worker using
+    // this guard observes the same process-local stop fence.
+    if ctx
+        .shared_get::<crate::services::stop_handle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Err(crate::error::Error::Message(format!(
+            "{worker_name} cannot claim startup success during server shutdown"
+        )));
+    }
     match ctx.shared_map::<T, _>(is_finished) {
         Some(true) => Err(crate::error::Error::Message(format!(
             "{worker_name} has terminated; restart the runtime before claiming startup success"
@@ -396,6 +407,25 @@ mod tests {
         assert!(format!("{error}").contains("sample worker has terminated"));
         // The published handle stays owned until shutdown drains the task.
         assert!(ctx.shared_contains::<bool>());
+    }
+
+    #[tokio::test]
+    async fn published_worker_is_not_reported_ready_after_stop() {
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        ctx.shared_insert(false);
+        let stop = crate::services::stop_handle::StopHandle::ensure(&ctx);
+        stop.stop().await;
+        let error = super::published_worker_running::<bool>(
+            &ctx,
+            "sample worker",
+            |finished| *finished,
+        )
+        .expect_err("shutdown must fence repeated worker bootstrap");
+        assert!(format!("{error}").contains("during server shutdown"));
+        assert!(ctx.shared_contains::<bool>(), "shutdown still owns the handle");
     }
 
     #[test]

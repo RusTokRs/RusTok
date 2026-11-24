@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use rustok_core::ModuleRuntimeExtensions;
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, EventContractEnvelopeError,
     PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
@@ -25,11 +26,11 @@ use tokio::task::JoinHandle;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
-use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::event_transport_factory::EventRuntime;
-use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::{
+    ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
+};
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 const ENABLE_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED";
 const IDLE_POLL_ENV: &str = "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_IDLE_POLL_MS";
@@ -148,6 +149,18 @@ pub fn product_index_refresh_consumer_enabled() -> Result<bool> {
     }
 }
 
+fn require_index_runtime_extensions(
+    ctx: &ServerRuntimeContext,
+) -> Result<Arc<ModuleRuntimeExtensions>> {
+    ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
+        .ok_or_else(|| {
+            Error::Message(
+                "ModuleRuntimeExtensions are unavailable for Product Index refresh consumer"
+                    .to_string(),
+            )
+        })
+}
+
 pub async fn start_product_index_refresh_worker_if_enabled(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
@@ -191,7 +204,7 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         )
     })?;
 
-    let extensions = module_runtime_extensions_from_ctx(ctx);
+    let extensions = require_index_runtime_extensions(ctx)?;
     let schemas = extensions
         .get::<SharedIndexSchemaRegistry>()
         .cloned()
@@ -675,6 +688,18 @@ mod tests {
             entity: EntityName::new(entity).unwrap(),
             version: SchemaVersion::new(version),
         })
+    }
+
+    #[test]
+    fn missing_runtime_extensions_returns_error_instead_of_panicking() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        assert!(matches!(
+            require_index_runtime_extensions(&ctx),
+            Err(Error::Message(message)) if message.contains("ModuleRuntimeExtensions")
+        ));
     }
 
     #[test]

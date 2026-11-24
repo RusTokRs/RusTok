@@ -2269,82 +2269,27 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .not_sortable()
             .filter(GridFilterType::Text {
                 placeholder: Some(if is_ru {
-                    "Поиск по названию / slug...".to_string()
+                    "Поиск по названию...".to_string()
                 } else {
-                    "Search title or slug...".to_string()
+                    "Search title...".to_string()
                 }),
             }),
         GridColumnDef::new("product_type", if is_ru { "Тип" } else { "Type" })
             .width(130)
             .align(ColumnAlign::Left)
             .not_sortable()
-            .filter(GridFilterType::Select {
-                options: vec![
-                    FilterOption {
-                        value: "".to_string(),
-                        label: if is_ru {
-                            "Все типы".to_string()
-                        } else {
-                            "All types".to_string()
-                        },
-                    },
-                    FilterOption {
-                        value: "simple".to_string(),
-                        label: if is_ru {
-                            "Простой".to_string()
-                        } else {
-                            "Simple".to_string()
-                        },
-                    },
-                    FilterOption {
-                        value: "variable".to_string(),
-                        label: if is_ru {
-                            "Вариативный".to_string()
-                        } else {
-                            "Variable".to_string()
-                        },
-                    },
-                    FilterOption {
-                        value: "bundle".to_string(),
-                        label: if is_ru {
-                            "Комплект".to_string()
-                        } else {
-                            "Bundle".to_string()
-                        },
-                    },
-                    FilterOption {
-                        value: "digital".to_string(),
-                        label: if is_ru {
-                            "Цифровой".to_string()
-                        } else {
-                            "Digital".to_string()
-                        },
-                    },
-                ],
+            .not_filterable(),
+        GridColumnDef::new("vendor", if is_ru { "Вендор" } else { "Vendor" })
+            .width(150)
+            .align(ColumnAlign::Left)
+            .not_sortable()
+            .filter(GridFilterType::Text {
                 placeholder: Some(if is_ru {
-                    "Все типы".to_string()
+                    "Точное значение вендора...".to_string()
                 } else {
-                    "All types".to_string()
+                    "Exact vendor...".to_string()
                 }),
             }),
-        GridColumnDef::new(
-            "sku",
-            if is_ru {
-                "Артикул / Вендор"
-            } else {
-                "SKU / Vendor"
-            },
-        )
-        .width(150)
-        .align(ColumnAlign::Left)
-        .not_sortable()
-        .filter(GridFilterType::Text {
-            placeholder: Some(if is_ru {
-                "Фильтр SKU / вендор...".to_string()
-            } else {
-                "Filter SKU / vendor...".to_string()
-            }),
-        }),
         GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
             .width(120)
             .align(ColumnAlign::Left)
@@ -2394,18 +2339,7 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .width(140)
             .align(ColumnAlign::Left)
             .not_sortable()
-            .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru {
-                    "С".to_string()
-                } else {
-                    "From".to_string()
-                }),
-                to_placeholder: Some(if is_ru {
-                    "По".to_string()
-                } else {
-                    "To".to_string()
-                }),
-            }),
+            .not_filterable(),
         GridColumnDef::actions("actions", if is_ru { "Действия" } else { "Actions" })
             .width(180)
             .align(ColumnAlign::Right),
@@ -2420,9 +2354,7 @@ pub fn matches_product_filter(
     match (column_id, filter) {
         ("title", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
-            q.is_empty()
-                || item.title.to_lowercase().contains(&q)
-                || item.handle.to_lowercase().contains(&q)
+            q.is_empty() || item.title.to_lowercase().contains(&q)
         }
         ("product_type", FilterValue::Select(val)) => {
             if val.is_empty() {
@@ -2436,19 +2368,9 @@ pub fn matches_product_filter(
                 kind == val.to_lowercase()
             }
         }
-        ("sku", FilterValue::Text(query)) => {
-            let q = query.trim().to_lowercase();
-            q.is_empty()
-                || item
-                    .seller_id
-                    .as_deref()
-                    .map(|s| s.to_lowercase().contains(&q))
-                    .unwrap_or(false)
-                || item
-                    .vendor
-                    .as_deref()
-                    .map(|s| s.to_lowercase().contains(&q))
-                    .unwrap_or(false)
+        ("vendor", FilterValue::Text(query)) => {
+            let query = query.trim();
+            query.is_empty() || item.vendor.as_deref() == Some(query)
         }
         ("status", FilterValue::Select(val)) => {
             if val.is_empty() {
@@ -4202,6 +4124,17 @@ mod tests {
         assert!(!models[1].is_first);
         assert!(models[1].is_last);
         assert_eq!(models[1].alt_text, "");
+    }
+
+    #[test]
+    fn product_catalog_only_exposes_server_supported_column_filters() {
+        let columns = product_grid_columns(Some("en"));
+        let filterable = columns
+            .iter()
+            .filter(|column| column.has_filter())
+            .map(|column| column.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(filterable, vec!["title", "vendor", "status"]);
     }
 
     #[test]

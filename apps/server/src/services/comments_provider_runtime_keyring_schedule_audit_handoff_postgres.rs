@@ -76,6 +76,7 @@ struct StoredAuditHandoffRecord {
     claim_token: Option<Uuid>,
     claim_attempt_count: i64,
     claim_active: bool,
+    dead_lettered: bool,
 }
 
 impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
@@ -116,32 +117,17 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         })
     }
 
-    /// Claims one unpublished Blog audit row without waiting behind another
-    /// claimant. Expired claims are eligible for bounded recovery.
+    /// Claims one retry-ready, non-terminal Blog audit row under the same
+    /// explicit attempt budget as the background handoff worker. There is no
+    /// unbounded shortcut around source dead letters or deferred retries.
     pub async fn claim_next(
         &self,
+        max_attempts: u32,
     ) -> std::result::Result<
         Option<CommentsTcpDelegationScheduleAuditHandoffClaim>,
         CommentsTcpDelegationScheduleAuditHandoffError,
     > {
-        let claim_token = Uuid::new_v4();
-        let transaction = self.database.begin().await.map_err(unavailable)?;
-        let row = transaction
-            .query_one_raw(claim_next_statement(claim_token, self.claim_ttl_seconds))
-            .await
-            .map_err(unavailable)?;
-        let Some(row) = row else {
-            transaction.commit().await.map_err(unavailable)?;
-            return Ok(None);
-        };
-        let claim = decode_claim(&row, claim_token)?;
-        match transaction.commit().await {
-            Ok(()) => Ok(Some(claim)),
-            Err(error) => {
-                tracing::warn!(error = %error, request_id = %claim.request_id, "Comments schedule audit claim commit acknowledgement was ambiguous");
-                self.reconcile_claim(claim_token).await.map(Some)
-            }
-        }
+        self.claim_next_retry_ready(max_attempts).await
     }
 
     /// Writes the canonical event and marks the exact Blog audit row published
@@ -232,11 +218,13 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         }
     }
 
+    /// Convenience entrypoint that preserves the caller's bounded retry policy.
     #[tracing::instrument(skip(self), err)]
     pub async fn publish_next(
         &self,
+        max_attempts: u32,
     ) -> std::result::Result<Option<Uuid>, CommentsTcpDelegationScheduleAuditHandoffError> {
-        let Some(claim) = self.claim_next().await? else {
+        let Some(claim) = self.claim_next(max_attempts).await? else {
             return Ok(None);
         };
         self.publish_claimed(claim).await.map(Some)
@@ -342,6 +330,7 @@ impl StoredAuditHandoffRecord {
                 .try_get("", "handoff_attempt_count")
                 .map_err(unavailable)?,
             claim_active: row.try_get("", "claim_active").map_err(unavailable)?,
+            dead_lettered: row.try_get("", "dead_lettered").map_err(unavailable)?,
         })
     }
 
@@ -349,10 +338,12 @@ impl StoredAuditHandoffRecord {
         self.published
             && self.canonical_envelope_id == Some(self.request_id)
             && self.claim_token.is_none()
+            && !self.dead_lettered
     }
 
     fn has_invalid_terminal_pair(&self) -> bool {
-        self.published != self.canonical_envelope_id.is_some()
+        (self.published && self.dead_lettered)
+            || self.published != self.canonical_envelope_id.is_some()
             || self
                 .canonical_envelope_id
                 .is_some_and(|envelope_id| envelope_id != self.request_id)
@@ -364,6 +355,7 @@ impl StoredAuditHandoffRecord {
             && self.claim_token == Some(claim.claim_token)
             && self.claim_attempt_count == claim.attempt_count
             && self.claim_active
+            && !self.dead_lettered
     }
 
     fn publication(
@@ -484,33 +476,6 @@ fn source_from_text(value: &str) -> Option<keyring::CommentsTcpDelegationKeyring
     }
 }
 
-fn claim_next_statement(claim_token: Uuid, claim_ttl_seconds: i64) -> Statement {
-    Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        format!(
-            "WITH candidate AS ( \
-                 SELECT request_id \
-                 FROM {table} \
-                 WHERE published_at IS NULL \
-                   AND canonical_envelope_id IS NULL \
-                   AND (handoff_claim_token IS NULL OR handoff_claim_expires_at <= NOW()) \
-                 ORDER BY created_at ASC, request_id ASC \
-                 FOR UPDATE SKIP LOCKED \
-                 LIMIT 1 \
-             ) \
-             UPDATE {table} AS audit \
-             SET handoff_claim_token = $1, \
-                 handoff_claim_expires_at = NOW() + ($2::bigint * INTERVAL '1 second'), \
-                 handoff_attempt_count = handoff_attempt_count + 1 \
-             FROM candidate \
-             WHERE audit.request_id = candidate.request_id \
-             RETURNING audit.request_id, audit.handoff_attempt_count",
-            table = postgres_audit::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE,
-        ),
-        vec![claim_token.into(), claim_ttl_seconds.into()],
-    )
-}
-
 fn read_claim_statement(claim_token: Uuid) -> Statement {
     Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -535,6 +500,7 @@ fn read_for_publish_statement(request_id: Uuid) -> Statement {
                     occurred_at_unix_ms, actor_id, principal_kind, operation, source, \
                     previous_generation, candidate_generation, outcome, \
                     canonical_envelope_id, published_at IS NOT NULL AS published, \
+                    handoff_dead_lettered_at IS NOT NULL AS dead_lettered, \
                     handoff_claim_token, handoff_attempt_count, \
                     COALESCE(handoff_claim_expires_at > NOW(), FALSE) AS claim_active \
              FROM {table} \
@@ -560,7 +526,8 @@ fn mark_published_statement(claim: CommentsTcpDelegationScheduleAuditHandoffClai
                AND canonical_envelope_id IS NULL \
                AND handoff_claim_token = $2 \
                AND handoff_attempt_count = $3 \
-               AND handoff_claim_expires_at > NOW()",
+               AND handoff_claim_expires_at > NOW() \
+               AND handoff_dead_lettered_at IS NULL",
             table = postgres_audit::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE,
         ),
         vec![
@@ -619,12 +586,68 @@ mod tests {
     }
 
     #[test]
-    fn claim_sql_is_skip_locked_and_expiry_bounded() {
-        let statement = claim_next_statement(Uuid::new_v4(), 60);
-        let sql = statement.sql.as_str();
-        assert!(sql.contains("FOR UPDATE SKIP LOCKED"));
-        assert!(sql.contains("handoff_claim_expires_at <= NOW()"));
-        assert!(sql.contains("handoff_attempt_count = handoff_attempt_count + 1"));
+    fn dead_letter_cannot_be_claimed_or_replayed_as_terminal_publication() {
+        let request_id = Uuid::new_v4();
+        let claim_token = Uuid::new_v4();
+        let claim = CommentsTcpDelegationScheduleAuditHandoffClaim {
+            request_id,
+            claim_token,
+            attempt_count: 1,
+        };
+        let stored = StoredAuditHandoffRecord {
+            audit_schema_version: 1,
+            request_id,
+            state_key: String::new(),
+            event_type: String::new(),
+            occurred_at_unix_ms: 1,
+            actor_id: Uuid::new_v4(),
+            principal_kind: String::new(),
+            operation: String::new(),
+            source: String::new(),
+            previous_generation: 1,
+            candidate_generation: 2,
+            outcome: String::new(),
+            canonical_envelope_id: None,
+            published: false,
+            claim_token: Some(claim_token),
+            claim_attempt_count: 1,
+            claim_active: true,
+            dead_lettered: false,
+        };
+        assert!(stored.matches_claim(claim));
+        let dead = StoredAuditHandoffRecord {
+            dead_lettered: true,
+            ..stored.clone()
+        };
+        assert!(!dead.matches_claim(claim));
+
+        let terminal = StoredAuditHandoffRecord {
+            published: true,
+            canonical_envelope_id: Some(request_id),
+            claim_token: None,
+            ..stored
+        };
+        assert!(terminal.is_exact_terminal());
+        let impossible = StoredAuditHandoffRecord {
+            dead_lettered: true,
+            ..terminal
+        };
+        assert!(!impossible.is_exact_terminal());
+        assert!(impossible.has_invalid_terminal_pair());
+    }
+
+    #[test]
+    fn publication_guards_against_dead_letter_takeover() {
+        let statement = read_for_publish_statement(Uuid::new_v4());
+        assert!(statement.sql.contains("handoff_dead_lettered_at IS NOT NULL AS dead_lettered"));
+        let claim = CommentsTcpDelegationScheduleAuditHandoffClaim {
+            request_id: Uuid::new_v4(),
+            claim_token: Uuid::new_v4(),
+            attempt_count: 1,
+        };
+        let statement = mark_published_statement(claim);
+        assert!(statement.sql.contains("AND handoff_dead_lettered_at IS NULL"));
+        assert!(statement.sql.contains("AND handoff_claim_expires_at > NOW()"));
     }
 }
 

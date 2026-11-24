@@ -24,7 +24,7 @@ connects directly to the same external Iggy deployment as its consumers.
 
 | Component | Version |
 |-----------|--------|
-| Rust SDK (`iggy` crate) | `0.11.0` |
+| Rust SDK (`iggy` crate) | `0.12.0` |
 | Iggy Server (Docker) | `apache/iggy:0.9.0` |
 
 ## 1) Minimal working example: bring up transport
@@ -58,9 +58,9 @@ txn.commit().await?;
 
 This is the canonical RusToK path for write-flow with events.
 
-## 3) Current high-level API (iggy SDK 0.11.0)
+## 3) Current high-level API (iggy SDK 0.12.0)
 
-SDK 0.11.0 uses the high-level Producer/Consumer API based on the builder pattern.
+SDK 0.12.0 uses the high-level Producer/Consumer API based on the builder pattern.
 Low-level methods (`send_messages`, `get_stream`, `create_topic`) are available, but for
 production code the high-level approach is preferred.
 

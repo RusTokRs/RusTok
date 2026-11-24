@@ -23,13 +23,18 @@ pub struct ViewportPreset {
 
 impl ViewportPreset {
     pub fn apply(&self, current: ViewportState) -> ViewportState {
-        ViewportState {
+        let mut viewport = ViewportState {
             width: self.width,
             height: self.height,
-            zoom: normalize_zoom(self.default_zoom),
-            scroll_x: current.scroll_x.min(f64::from(self.width)),
+            zoom: self.default_zoom,
+            scroll_x: current.scroll_x,
             scroll_y: current.scroll_y,
         }
+        .normalized();
+        // Preserve the preset contract: horizontal scrolling must not exceed
+        // the newly selected preview width.
+        viewport.scroll_x = viewport.scroll_x.min(f64::from(viewport.width));
+        viewport
     }
 }
 
@@ -134,12 +139,14 @@ pub fn responsive_breakpoint(id: &str) -> Option<ResponsiveBreakpoint> {
 }
 
 pub fn custom_viewport(width: u32, height: u32, zoom: f32) -> ViewportPreset {
+    let width = width.clamp(240, 7680);
+    let height = height.clamp(240, 4320);
     ViewportPreset {
         id: format!("custom-{width}x{height}"),
         label: format!("Custom {width} × {height}"),
         device_class: DeviceClass::Custom,
-        width: width.clamp(240, 7680),
-        height: height.clamp(240, 4320),
+        width,
+        height,
         default_zoom: normalize_zoom(zoom),
     }
 }
@@ -205,5 +212,7 @@ mod tests {
         assert_eq!(preset.width, 240);
         assert_eq!(preset.height, 4320);
         assert!((preset.default_zoom - 4.0).abs() < f32::EPSILON);
+        assert_eq!(preset.id, "custom-240x4320");
+        assert_eq!(preset.label, "Custom 240 × 4320");
     }
 }

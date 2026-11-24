@@ -27,6 +27,8 @@ pub enum UiError {
     AdapterRejected(String),
     #[error("drop is not legal: {0}")]
     IllegalDrop(String),
+    #[error("invalid editor geometry: {0}")]
+    InvalidGeometry(String),
     #[error("no drag operation is active")]
     NoActiveDrag,
 }

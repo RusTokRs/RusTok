@@ -23,6 +23,7 @@ pub(crate) fn normalize_safe_url(value: &str, label: &str) -> Result<String, Str
     let value = value.trim();
     let lower = value.to_ascii_lowercase();
     if value.is_empty()
+        || value.len() > MAXIMUM_URL_LENGTH
         || value.chars().any(char::is_control)
         || value.chars().any(char::is_whitespace)
         || value.contains('\\')
@@ -346,6 +347,22 @@ mod tests {
                 "accepted {value}"
             );
         }
+    }
+
+    #[test]
+    fn strict_action_url_policy_honors_the_shared_size_limit() {
+        let at_limit = format!("https://example.com/{}", "a".repeat(
+            MAXIMUM_URL_LENGTH - "https://example.com/".len()
+        ));
+        assert_eq!(at_limit.len(), MAXIMUM_URL_LENGTH);
+        assert!(normalize_safe_url(&at_limit, "URL").is_ok());
+        let too_long = format!("{at_limit}a");
+        assert!(normalize_safe_url(&too_long, "URL").is_err());
+        assert!(!url_allowed(
+            &too_long,
+            UrlAttributeKind::Navigation,
+            &UrlPolicy::permissive(),
+        ));
     }
 
     #[test]

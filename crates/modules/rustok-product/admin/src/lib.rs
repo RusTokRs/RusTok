@@ -37,6 +37,6 @@ pub use model::{
     ProductCatalogSearchOptions, SetVariantAxesDraft, VariantAxisConfig, VariantAxisDraft,
     VariantAxisValue, VariantAxisValueDraft,
 };
-pub use transport::fetch_catalog_search_options;
+pub use catalog_transport::fetch_catalog_search_options;
 pub use ui::ProductAdmin;
 pub use ui::{CategoriesPage, ProductEditorPage, ProductGridPage};
