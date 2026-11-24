@@ -1,3 +1,4 @@
+use rustok_cache::CacheService;
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 
 use crate::error::{Error, Result};
@@ -34,6 +35,7 @@ impl RbacService {
     /// advance the global invalidation generation.
     pub async fn replace_user_role_committed(
         db: &DatabaseConnection,
+        cache_service: &CacheService,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: rustok_core::UserRole,
@@ -51,7 +53,7 @@ impl RbacService {
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
         if let Err(error) =
-            publish_user_rbac_invalidation(tenant_id, user_id, durable_generation).await
+            publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation).await
         {
             tracing::warn!(
                 %error,
