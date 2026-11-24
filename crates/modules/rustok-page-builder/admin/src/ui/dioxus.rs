@@ -543,19 +543,20 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             let on_conflict = move |conflict: BrowserPeerWriteConflict| {
                 conflict_signal.set(true);
                 let mut state = initial_session.write();
-                if state.controller.ui().state.drag.is_some() {
-                    if let Err(error) = state.controller.dispatch(UiIntent::CancelDrag) {
-                        state.fail(format!(
-                            "Another tab saved this page at revision {}. The editor is now read-only; active drag cleanup also failed: {error}",
-                            conflict.revision
-                        ));
-                        return;
-                    }
+                let drag_cleanup_error = if state.controller.ui().state.drag.is_some() {
+                    state.controller.dispatch(UiIntent::CancelDrag).err()
+                } else {
+                    None
+                };
+                // This also retires any in-flight save attempt. A late facade response can no
+                // longer acknowledge an older revision after this peer write is observed.
+                state.handle_peer_write_conflict(conflict.revision.clone());
+                if let Some(error) = drag_cleanup_error {
+                    state.fail(format!(
+                        "Another tab saved this page at revision {}. The editor is read-only; active drag cleanup also failed: {error}",
+                        conflict.revision
+                    ));
                 }
-                state.fail(format!(
-                    "Another tab saved this page at revision {}. This editor is now read-only; reload to continue.",
-                    conflict.revision
-                ));
             };
             match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict) {
                 Ok(channel) => peer_write_channel.set(Some(channel)),
