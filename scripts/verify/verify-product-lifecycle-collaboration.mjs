@@ -131,9 +131,11 @@ for (const [source, value, label] of [
   [pricingPort, 'pub trait ProductPricingPort: Send + Sync', 'Product pricing port contract'],
   [pricingAdapter, 'impl ProductPricingPort for PricingProductPricingPortAdapter', 'Pricing adapter port implementation'],
   [commands, '.bootstrap_variants_in_tx(', 'initial inventory bootstrap collaboration'],
-  [commands, 'port.create_initial_prices_in_tx(&txn, initial_prices)', 'initial price collaboration'],
+  [commands, '.create_initial_prices_in_tx(&txn, tenant_id, initial_prices)', 'tenant-scoped initial price collaboration'],
   [commands, '.delete_records_for_variants_in_tx(', 'inventory cleanup collaboration'],
-  [commands, 'port.delete_prices_for_variants_in_tx(&txn, &variant_ids)', 'price cleanup collaboration'],
+  [commands, '.delete_prices_for_variants_in_tx(&txn, tenant_id, &variant_ids)', 'tenant-scoped product price cleanup'],
+  [commands, '.delete_prices_for_variants_in_tx(&txn, tenant_id, &[variant_id])', 'tenant-scoped variant price cleanup'],
+  [commands, '.replace_catalog_base_prices_in_tx(&txn, tenant_id, variant_id, initial_prices)', 'tenant-scoped variant price replacement'],
   [inventoryBootstrap, 'Owner-owned, transaction-aware inventory bootstrap operations.', 'Inventory owner contract'],
 
   [manifestCorequisites, 'pub(crate) fn module_policy_corequisites', 'owner co-requisite input entrypoint'],
