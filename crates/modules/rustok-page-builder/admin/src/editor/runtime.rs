@@ -678,7 +678,7 @@ impl AdminEditorRuntime {
                     };
                     controller
                         .acknowledge_save_for_attempt(
-                            *expected_hash,
+                            expected_hash.clone(),
                             attempt,
                             response.revision_id.clone(),
                         )
