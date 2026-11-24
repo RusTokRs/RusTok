@@ -1204,9 +1204,11 @@ identities. This remains advisory; the browser transport cannot infer whether a 
 request committed remotely.
 
 The Leptos admin facade, Dioxus session and callback-host transport now carry the same
-UUID-backed `SaveAttempt` through start, success and failure. Delayed completions from an older
-identical-hash retry are ignored rather than acknowledging or failing the active new save.
-The request identity is intentionally transient and is not a durable server idempotency key.
+UUID-backed `SaveAttempt` through start, success and failure. Callback-backed hosts receive
+`PageBuilderCapabilityExecution::complete`, so their asynchronous result goes through the same
+page/hash/attempt validation as a facade response. Delayed completions from an older identical-hash
+retry are ignored rather than acknowledging or failing the active new save. The request identity
+is intentionally transient and is not a durable server idempotency key.
 
 Dioxus functional gap addressed in source: Page Builder Dioxus Save and workspace request effects
 previously stopped at the UI reducer without executing `PageBuilderAdminFacade`. Those effects
