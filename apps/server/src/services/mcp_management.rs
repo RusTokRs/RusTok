@@ -682,7 +682,7 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
-                    &input.workspace_root,
+                    &workspace_root,
                     &reason,
                 )
                 .await?;
