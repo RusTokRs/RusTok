@@ -392,6 +392,11 @@ fn stale_save_responses_cannot_acknowledge_or_fail_a_new_attempt() {
     assert!(machine.dispatch(UiIntent::SaveFailed {
         request_id: Some("request-a".into()),
     }).is_err());
+    assert!(machine.dispatch(UiIntent::SaveConflict {
+        request_id: Some("request-a".into()),
+        expected: "rev-1".into(),
+        actual: "rev-2".into(),
+    }).is_err());
     assert_eq!(machine.state.dirty.save_started_request_id.as_deref(), Some("request-b"));
     assert!(machine.state.dirty.save_in_progress);
 
