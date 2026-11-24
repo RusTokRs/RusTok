@@ -317,7 +317,10 @@ fn handle_canvas_message(
             update_drag_candidates(runtime, geometry, position)
         }
         CanvasBridgeMessage::DropRequested { position } => {
-            if geometry_limit.with(|limit| limit.is_some()) {
+            if !ready.with(|ready| *ready)
+                || geometry.with(|items| items.is_empty())
+                || geometry_limit.with(|limit| limit.is_some())
+            {
                 if runtime
                     .controller
                     .with(|controller| controller.ui().state.drag.is_some())
