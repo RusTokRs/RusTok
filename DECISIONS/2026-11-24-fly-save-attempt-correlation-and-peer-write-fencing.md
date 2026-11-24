@@ -56,7 +56,9 @@ operation and must not be blocked by a release-readiness policy when the actor h
    with an editor-root scope. Channel instances for the same editor advance their baseline on
    local confirmed writes; another tab or another editor root is treated as a peer and fences the
    stale editor into read-only mode. Dioxus uses the document-scoped identity when it owns the
-   only channel in that host.
+   only channel in that host. The JS adapter also fences an explicit server revision-conflict
+   response if a BroadcastChannel notification was missed, and clears that parked fence only
+   after a reload observes a different server revision.
 6. **No automatic merge or replay is introduced.** A peer notification asks the user to preserve
    local work and reload. The server's revision compare-and-swap remains authoritative if
    BroadcastChannel is unavailable or a notification is missed.
