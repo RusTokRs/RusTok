@@ -24,8 +24,6 @@ pub mod reconciliation;
 mod safe_order_helpers_impl;
 #[path = "shipping_option_read_context.rs"]
 mod shipping_option_read_context;
-#[path = "typed_line_item_helpers.rs"]
-mod typed_line_item_helpers;
 #[path = "typed_reprice_helper.rs"]
 mod typed_reprice_helper;
 #[path = "typed_shipping_enrichment_helper.rs"]

@@ -1,10 +1,9 @@
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::FutureExt;
-use once_cell::sync::Lazy;
 use rustok_cache::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError, CacheInvalidationMessage,
     CacheInvalidationObservation, CacheInvalidationOutcome, CacheInvalidationPayloadError,
@@ -31,9 +30,6 @@ const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed"
 const RBAC_PERMISSION_INVALIDATE_ALL_KEY: &str = "*";
 const RBAC_PERMISSION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const RBAC_PERMISSION_WORKER_RESTART_DELAY: Duration = Duration::from_secs(1);
-
-static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
-    Lazy::new(|| RwLock::new(None));
 
 struct AbortOnDropInvalidationTask {
     task: Mutex<Option<JoinHandle<()>>>,
@@ -304,8 +300,9 @@ impl RbacCacheInvalidationListener {
     }
 }
 
-#[tracing::instrument(fields(%tenant_id, %user_id, generation))]
+#[tracing::instrument(skip(cache), fields(%tenant_id, %user_id, generation))]
 pub async fn publish_user_rbac_invalidation(
+    cache: &CacheService,
     tenant_id: &Uuid,
     user_id: &Uuid,
     generation: u64,
@@ -317,6 +314,7 @@ pub async fn publish_user_rbac_invalidation(
         "Publishing user RBAC cache invalidation"
     );
     publish_rbac_invalidation(
+        cache,
         Some(*tenant_id),
         rbac_invalidation_key(*tenant_id, *user_id),
         generation,
@@ -324,39 +322,29 @@ pub async fn publish_user_rbac_invalidation(
     .await
 }
 
-#[tracing::instrument(fields(generation))]
-pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
+#[tracing::instrument(skip(cache), fields(generation))]
+pub async fn publish_all_rbac_invalidation(
+    cache: &CacheService,
+    generation: u64,
+) -> Result<()> {
     tracing::debug!(
         generation,
         "Publishing namespace-wide RBAC cache invalidation"
     );
     publish_rbac_invalidation(
+        cache,
         None,
         RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string(),
         generation,
     )
     .await
 }
-
 async fn publish_rbac_invalidation(
+    cache: &CacheService,
     tenant_id: Option<Uuid>,
     key: String,
     generation: u64,
 ) -> Result<()> {
-    let Some(cache) = RBAC_INVALIDATION_CACHE_SERVICE
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-    else {
-        tracing::warn!(
-            ?tenant_id,
-            %key,
-            generation,
-            "RBAC distributed invalidation is not initialized; durable generation reconciliation will recover"
-        );
-        return Ok(());
-    };
-
     let fanout: Result<CacheInvalidationOutcome> = async {
         let emitted_at_unix_ms = u64::try_from(
             SystemTime::now()
@@ -682,9 +670,6 @@ pub async fn start_rbac_cache_invalidation_listener(
 
     let runtime = RbacCacheInvalidationListenerHandle::new(local_task, redis_task, reconcile_task);
     ctx.shared_insert(runtime);
-    *RBAC_INVALIDATION_CACHE_SERVICE
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
     Ok(())
 }
 
@@ -740,13 +725,43 @@ mod tests {
         RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
         RbacCacheInvalidationListener, RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
-        parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
-        supervise_rbac_invalidation_worker,
+        parse_rbac_invalidation_key, parse_rbac_invalidation_target, publish_user_rbac_invalidation,
+        rbac_invalidation_key, supervise_rbac_invalidation_worker,
     };
     use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
-    use rustok_cache::{BoundedCacheInvalidationGapTracker, VersionedCacheInvalidation};
+    use rustok_cache::{BoundedCacheInvalidationGapTracker, CacheService, VersionedCacheInvalidation};
     use sea_orm::Database;
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn invalidation_publisher_targets_the_supplied_cache_owner() {
+        let first_cache = CacheService::from_url(None);
+        let second_cache = CacheService::from_url(None);
+        let mut first_receiver = first_cache
+            .invalidations()
+            .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
+        let mut second_receiver = second_cache
+            .invalidations()
+            .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+
+        publish_user_rbac_invalidation(&first_cache, &tenant_id, &user_id, 7)
+            .await
+            .expect("publish through the explicitly supplied cache owner");
+
+        let message = tokio::time::timeout(Duration::from_secs(1), first_receiver.recv())
+            .await
+            .expect("the selected cache owner should receive the invalidation")
+            .expect("the selected cache receiver should remain open");
+        assert_eq!(message.key, rbac_invalidation_key(tenant_id, user_id));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), second_receiver.recv())
+                .await
+                .is_err(),
+            "an independent cache owner must not receive another runtime's invalidation"
+        );
+    }
 
     #[test]
     fn rbac_invalidation_key_round_trips() {

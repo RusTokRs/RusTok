@@ -1,19 +1,8 @@
 use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
-use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, PortActor, PortContext, RequestContext, graphql::GraphQLError};
 use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
-use rustok_inventory::{
-    PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
-};
-use rustok_pricing::{
-    PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
-    in_process_pricing_read_port,
-};
-use rustok_product::entities::{
-    product, product_translation, product_variant, variant_translation,
-};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use rustok_pricing::in_process_pricing_read_port;
 use serde_json::Value;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -21,8 +10,8 @@ use uuid::Uuid;
 use crate::{
     CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
-    storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
-    storefront_shipping::{effective_shipping_profile_slug, enrich_cart_delivery_groups},
+    storefront_channel::normalize_public_channel_slug,
+    storefront_shipping::enrich_cart_delivery_groups,
 };
 
 use super::super::types::*;
@@ -546,24 +535,6 @@ pub(crate) fn merge_graphql_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-pub(crate) fn sanitize_storefront_metadata(metadata: Value) -> Value {
-    let mut object = match metadata {
-        Value::Object(map) => map,
-        _ => return Value::Object(serde_json::Map::new()),
-    };
-    object.remove("customer_tax_exempt");
-    object.remove("tax_class");
-    object.remove("tax_rate");
-    object.remove("seller_id");
-    object.remove("seller");
-    object.remove("marketplace");
-    object.remove("channel_tax_provider_ids");
-    object.remove("pricing_adjustment");
-    object.remove("pricing");
-    object.remove("discounts");
-    Value::Object(object)
-}
-
 pub(crate) fn cart_context_metadata(
     cart: &crate::dto::CartResponse,
     context: &crate::dto::StoreContextResponse,
@@ -667,189 +638,6 @@ pub(crate) fn maybe_undefined_or_existing<T>(
         async_graphql::MaybeUndefined::Null => None,
         async_graphql::MaybeUndefined::Undefined => current,
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn resolve_storefront_line_item_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    pricing_read_port: &dyn PricingReadPort,
-    pricing_port_context: PortContext,
-    pricing_context: &PriceResolutionContext,
-    locale: &str,
-    default_locale: &str,
-    public_channel_slug: Option<&str>,
-    input: AddStorefrontCartLineItemInput,
-) -> Result<ResolvedStorefrontLineItemInput> {
-    let variant = product_variant::Entity::find_by_id(input.variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| async_graphql::Error::new("Variant not found"))?;
-
-    let product_model = product::Entity::find_by_id(variant.product_id)
-        .filter(product::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| async_graphql::Error::new("Product not found"))?;
-    if product_model.status != product::ProductStatus::Active
-        || product_model.published_at.is_none()
-        || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
-    {
-        return Err(async_graphql::Error::new("Product not found"));
-    }
-
-    let product_translation_models = product_translation::Entity::find()
-        .filter(product_translation::Column::ProductId.eq(product_model.id))
-        .all(db)
-        .await?;
-    let variant_translation_models = variant_translation::Entity::find()
-        .filter(variant_translation::Column::VariantId.eq(variant.id))
-        .all(db)
-        .await?;
-
-    let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-        .resolve_product_price(
-            pricing_port_context,
-            ResolveProductPriceRequest {
-                product_id: Some(product_model.id),
-                variant_id: variant.id,
-                region_id: pricing_context.region_id,
-                channel_id: pricing_context.channel_id,
-                channel_slug: pricing_context.channel_slug.clone(),
-                price_list_id: pricing_context.price_list_id,
-                quantity: pricing_context.quantity,
-                currency_code: pricing_context.currency_code.clone(),
-            },
-        )
-        .await
-        .map_err(cart_port_error)?
-        .into();
-    let (base_unit_price, pricing_adjustment) =
-        storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
-    validate_storefront_variant_inventory(
-        db,
-        tenant_id,
-        &variant,
-        input.quantity,
-        public_channel_slug,
-    )
-    .await?;
-
-    let base_title = pick_product_translation(&product_translation_models, locale, default_locale)
-        .map(|translation| translation.title.clone())
-        .unwrap_or_else(|| {
-            variant
-                .sku
-                .clone()
-                .unwrap_or_else(|| format!("Variant {}", variant.id))
-        });
-    let title = match pick_variant_translation(&variant_translation_models, locale, default_locale)
-        .and_then(|translation| translation.title.clone())
-    {
-        Some(variant_title) if !variant_title.trim().is_empty() => {
-            format!("{base_title} / {}", variant_title.trim())
-        }
-        _ => base_title,
-    };
-
-    Ok(ResolvedStorefrontLineItemInput {
-        add_line_item: crate::dto::AddCartLineItemInput {
-            product_id: Some(product_model.id),
-            variant_id: Some(variant.id),
-            fulfillment_requirement:
-                match rustok_product::ProductFulfillmentRequirement::from_product_type(
-                    product_model.product_type.as_deref(),
-                ) {
-                    rustok_product::ProductFulfillmentRequirement::Digital => {
-                        rustok_cart::CartLineFulfillmentRequirement::Digital
-                    }
-                    rustok_product::ProductFulfillmentRequirement::Physical => {
-                        rustok_cart::CartLineFulfillmentRequirement::Physical
-                    }
-                },
-            shipping_profile_slug:
-                match rustok_product::ProductFulfillmentRequirement::from_product_type(
-                    product_model.product_type.as_deref(),
-                ) {
-                    rustok_product::ProductFulfillmentRequirement::Digital => None,
-                    rustok_product::ProductFulfillmentRequirement::Physical => {
-                        Some(effective_shipping_profile_slug(
-                            product_model.shipping_profile_slug.as_deref(),
-                            &product_model.metadata,
-                            variant.shipping_profile_slug.as_deref(),
-                        ))
-                    }
-                },
-            sku: variant.sku.clone(),
-            title,
-            quantity: input.quantity,
-            unit_price: base_unit_price,
-            metadata: {
-                let mut item_metadata = sanitize_storefront_metadata(parse_optional_metadata(
-                    input.metadata.as_deref(),
-                )?);
-                if let Some(tax_class) = product_model
-                    .metadata
-                    .get("tax_class")
-                    .and_then(serde_json::Value::as_str)
-                {
-                    if let serde_json::Value::Object(ref mut map) = item_metadata {
-                        map.insert(
-                            "tax_class".to_string(),
-                            serde_json::Value::String(tax_class.to_string()),
-                        );
-                    }
-                }
-                merge_graphql_metadata(
-                    item_metadata,
-                    seller_snapshot_metadata(product_model.seller_id.as_deref()),
-                )
-            },
-        },
-        pricing_adjustment,
-    })
-}
-
-pub(crate) struct ResolvedStorefrontLineItemInput {
-    pub(crate) add_line_item: crate::dto::AddCartLineItemInput,
-    pub(crate) pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
-}
-
-pub(crate) fn pick_product_translation<'a>(
-    translations: &'a [product_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a product_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
-}
-
-pub(crate) fn pick_variant_translation<'a>(
-    translations: &'a [variant_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a variant_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
 }
 
 pub(crate) fn resolve_commerce_graphql_locale(
@@ -1040,52 +828,6 @@ pub(crate) fn storefront_cart_pricing_snapshot(
     };
 
     (base_unit_price, pricing_adjustment)
-}
-
-pub(crate) fn normalize_graphql_seller_id(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_owned())
-}
-
-pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
-    let seller_id = normalize_graphql_seller_id(seller_id);
-
-    serde_json::json!({
-        "seller": {
-            "id": seller_id,
-        }
-    })
-}
-
-pub(crate) async fn validate_storefront_variant_inventory(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant: &product_variant::Model,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> Result<()> {
-    let available = check_variant_availability_for_public_channel(
-        db,
-        tenant_id,
-        PublicChannelInventoryVariantProjectionInput {
-            variant_id: variant.id,
-            inventory_policy: &variant.inventory_policy,
-        },
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-    .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-    if !available {
-        return Err(async_graphql::Error::new(format!(
-            "Variant {} does not have enough available inventory for the current channel",
-            variant.id
-        )));
-    }
-
-    Ok(())
 }
 
 /// Reuse the standalone EAV scalar/payload admission; catalog commands compose

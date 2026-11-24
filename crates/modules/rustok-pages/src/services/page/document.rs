@@ -2,7 +2,7 @@ use chrono::Utc;
 use sha2::{Digest, Sha256};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    QuerySelect,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -50,12 +50,13 @@ impl PageService {
         self.save_document_with_receipt(tenant_id, security, page_id, input, None).await
     }
 
-    /// A durable, caller-identified save. Repeating the same key and normalized
-    /// payload returns the original acknowledgement, even after another editor
-    /// changed the page. Reusing a key with different content fails closed.
+    /// A durable save. Repeating the same explicit key and normalized payload returns the
+    /// original acknowledgement, even after another editor changed the page. Reusing a key with
+    /// different content fails closed.
     ///
-    /// Callers must generate one stable key for each *attempt* and retain it
-    /// across network retries; fresh edits must receive a new key.
+    /// When no explicit key is supplied, the service derives a deterministic actor/page/locale/
+    /// expected-revision/payload key, so direct callers also get retry-safe semantics. Fresh edits
+    /// naturally receive a new key when their payload or expected revision changes.
     #[instrument(skip(self, input, security))]
     pub async fn save_document_with_receipt(
         &self,
@@ -65,7 +66,7 @@ impl PageService {
         input: SavePageDocumentInput,
         idempotency_key: Option<String>,
     ) -> PagesResult<PageResponse> {
-        let idempotency_key = idempotency_key
+        let explicit_idempotency_key = idempotency_key
             .as_deref()
             .map(normalize_document_save_key)
             .transpose()?;
@@ -77,15 +78,23 @@ impl PageService {
             ));
         }
         body.content = super::layout::strip_layout_nodes(&body.content)?;
-        let request_hash = idempotency_key
-            .as_ref()
-            .map(|_| document_save_request_hash(
+        let request_hash = document_save_request_hash(
+            tenant_id,
+            page_id,
+            &input.expected_revision,
+            &body,
+        )?;
+        // Even callers that do not supply an explicit key get retry-safe semantics.
+        // The key is deterministic for this actor/page/locale/revision/payload attempt.
+        let idempotency_key = match explicit_idempotency_key {
+            Some(key) => key,
+            None => default_document_save_idempotency_key(
                 tenant_id,
                 page_id,
-                &input.expected_revision,
-                &body,
-            ))
-            .transpose()?;
+                security.user_id,
+                &request_hash,
+            )?,
+        };
         let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -95,7 +104,7 @@ impl PageService {
         )?;
 
         let response_locale = body.locale.clone();
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -106,15 +115,18 @@ impl PageService {
 
         // Replays are resolved *before* the current revision check, otherwise a
         // write that committed but lost its HTTP reply would always conflict.
-        if let (Some(key), Some(hash)) = (idempotency_key.as_deref(), request_hash.as_deref()) {
-            if let Some(receipt) = find_document_save_receipt_in_tx(
-                &txn, tenant_id, page_id, key,
-            ).await? {
-                verify_document_save_receipt(&receipt, security.user_id, hash)?;
-                let result = page_response_from_receipt(&receipt)?;
-                txn.commit().await?;
-                return Ok(result);
-            }
+        if let Some(receipt) = find_document_save_receipt_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            &idempotency_key,
+        )
+        .await?
+        {
+            verify_document_save_receipt(&receipt, security.user_id, &request_hash)?;
+            let result = page_response_from_receipt(&receipt)?;
+            txn.commit().await?;
+            return Ok(result);
         }
 
         // Replaying a committed receipt is read-only and must remain available
@@ -249,30 +261,28 @@ impl PageService {
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
             .await?;
-        if let (Some(key), Some(hash)) = (idempotency_key, request_hash) {
-            let result_revision = response.body.as_ref().ok_or_else(|| {
-                PagesError::validation("Accepted document save has no authoring body")
-            })?.updated_at.clone();
-            let response_json = serde_json::to_string(&response).map_err(|error| {
-                PagesError::validation(format!("Cannot serialize page document save receipt: {error}"))
-            })?;
-            page_document_save_receipt::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                page_id: Set(page_id),
-                actor_id: Set(security.user_id),
-                idempotency_key: Set(key),
-                request_hash: Set(hash),
-                result_revision: Set(result_revision),
-                response_json: Set(Some(response_json)),
-                created_at: Set(Utc::now().into()),
-            }
-            .insert(&txn)
-            .await?;
-            // Retain permanent tiny key/hash tombstones while bounding the
-            // number of *full document snapshots* retained per page.
-            expire_old_document_save_receipts_in_tx(&txn, tenant_id, page_id).await?;
+        let result_revision = response.body.as_ref().ok_or_else(|| {
+            PagesError::validation("Accepted document save has no authoring body")
+        })?.updated_at.clone();
+        let response_json = serde_json::to_string(&response).map_err(|error| {
+            PagesError::validation(format!("Cannot serialize page document save receipt: {error}"))
+        })?;
+        page_document_save_receipt::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            page_id: Set(page_id),
+            actor_id: Set(security.user_id),
+            idempotency_key: Set(idempotency_key),
+            request_hash: Set(request_hash),
+            result_revision: Set(result_revision),
+            response_json: Set(Some(response_json)),
+            created_at: Set(Utc::now().into()),
         }
+        .insert(&txn)
+        .await?;
+        // Retain permanent tiny key/hash tombstones while bounding the
+        // number of *full document snapshots* retained per page.
+        expire_old_document_save_receipts_in_tx(&txn, tenant_id, page_id).await?;
         txn.commit().await?;
         Ok(response)
     }
@@ -325,6 +335,18 @@ impl PageService {
         page_id: Uuid,
         input: RestorePageBodyRevisionInput,
     ) -> PagesResult<PageResponse> {
+        let request_hash = document_restore_request_hash(
+            tenant_id,
+            page_id,
+            &input.expected_revision,
+            input.revision_id,
+        )?;
+        let idempotency_key = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            security.user_id,
+            &request_hash,
+        )?;
         let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -333,15 +355,35 @@ impl PageService {
             observed.author_id,
         )?;
 
-        let txn = self.db.begin().await?;
+        // Match save_document's writer admission: SQLite must reserve the writer before
+        // reading the revision, while PostgreSQL/MySQL take the page row lock.
+        let txn = self.begin_page_write_transaction().await?;
         let locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
-        Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,
             Action::Update,
             locked_page.author_id,
         )?;
+
+        // A restore is a document save. Replay its durable acknowledgement before
+        // checking the current revision or requiring new-write policy, so a lost
+        // response cannot turn a committed restore into a false CAS conflict.
+        if let Some(receipt) = find_document_save_receipt_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            &idempotency_key,
+        )
+        .await?
+        {
+            verify_document_save_receipt(&receipt, security.user_id, &request_hash)?;
+            let result = page_response_from_receipt(&receipt)?;
+            txn.commit().await?;
+            return Ok(result);
+        }
+
+        Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
 
         let revision = page_body_revision::Entity::find_by_id(input.revision_id)
             .filter(page_body_revision::Column::TenantId.eq(tenant_id))
@@ -474,6 +516,33 @@ impl PageService {
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
             .await?;
+        let result_revision = response
+            .body
+            .as_ref()
+            .ok_or_else(|| {
+                PagesError::validation("Accepted document restore has no authoring body")
+            })?
+            .updated_at
+            .clone();
+        let response_json = serde_json::to_string(&response).map_err(|error| {
+            PagesError::validation(format!(
+                "Cannot serialize page document restore receipt: {error}"
+            ))
+        })?;
+        page_document_save_receipt::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            page_id: Set(page_id),
+            actor_id: Set(security.user_id),
+            idempotency_key: Set(idempotency_key),
+            request_hash: Set(request_hash),
+            result_revision: Set(result_revision),
+            response_json: Set(Some(response_json)),
+            created_at: Set(Utc::now().into()),
+        }
+        .insert(&txn)
+        .await?;
+        expire_old_document_save_receipts_in_tx(&txn, tenant_id, page_id).await?;
         txn.commit().await?;
         Ok(response)
     }
@@ -534,6 +603,67 @@ fn normalize_document_save_key(raw: &str) -> PagesResult<String> {
     Ok(raw.to_string())
 }
 
+fn default_document_save_idempotency_key(
+    tenant_id: Uuid,
+    page_id: Uuid,
+    actor_id: Option<Uuid>,
+    request_hash: &str,
+) -> PagesResult<String> {
+    let bytes = serde_json::to_vec(&(
+        "page-document-save-key-v1",
+        tenant_id,
+        page_id,
+        actor_id,
+        request_hash,
+    ))
+    .map_err(|error| PagesError::validation(format!("Cannot derive document save key: {error}")))?;
+    normalize_document_save_key(&format!(
+        "pages-save-v1:{}",
+        hex::encode(Sha256::digest(bytes))
+    ))
+}
+
+fn document_restore_request_hash(
+    tenant_id: Uuid,
+    page_id: Uuid,
+    expected_revision: &str,
+    revision_id: Uuid,
+) -> PagesResult<String> {
+    // Revision IDs are immutable journal identities. Binding the observed working-copy
+    // revision prevents a retry from becoming a new restore after another editor writes.
+    let bytes = serde_json::to_vec(&(
+        "page-document-restore-v1",
+        tenant_id,
+        page_id,
+        expected_revision,
+        revision_id,
+    ))
+    .map_err(|error| PagesError::validation(format!("Cannot hash document restore: {error}")))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+fn default_document_restore_idempotency_key(
+    tenant_id: Uuid,
+    page_id: Uuid,
+    actor_id: Option<Uuid>,
+    request_hash: &str,
+) -> PagesResult<String> {
+    let bytes = serde_json::to_vec(&(
+        "page-document-restore-key-v1",
+        tenant_id,
+        page_id,
+        actor_id,
+        request_hash,
+    ))
+    .map_err(|error| {
+        PagesError::validation(format!("Cannot derive document restore key: {error}"))
+    })?;
+    normalize_document_save_key(&format!(
+        "pages-restore-v1:{}",
+        hex::encode(Sha256::digest(bytes))
+    ))
+}
+
 fn document_save_request_hash(
     tenant_id: Uuid,
     page_id: Uuid,
@@ -577,7 +707,7 @@ fn verify_document_save_receipt(
     if receipt.request_hash != expected_hash || receipt.actor_id != actor_id {
         return Err(document_save_receipt_error(
             PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT,
-            "A document save idempotency key was reused for a different request or actor",
+            "A document operation idempotency key was reused for a different request or actor",
         ));
     }
     Ok(())
@@ -589,7 +719,7 @@ fn page_response_from_receipt(
     let encoded = receipt.response_json.as_deref().ok_or_else(|| {
         document_save_receipt_error(
             PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED,
-            "The saved operation is known but its full response has expired; reload the current document",
+            "The document operation is known but its full response has expired; reload the current document",
         )
     })?;
     let response: PageResponse = serde_json::from_str(encoded).map_err(|_| {
@@ -673,4 +803,151 @@ pub(super) fn body_revision_not_found(revision_id: Uuid) -> PagesError {
         .with_field("revision_id", revision_id.to_string())
         .with_error_code(PAGE_BODY_REVISION_NOT_FOUND),
     ))
+}
+
+#[cfg(test)]
+mod idempotency_key_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn prepared_body() -> PreparedPageBody {
+        normalize_page_body_input(Some(crate::dto::PageBodyInput {
+            locale: "en".to_string(),
+            document: json!({ "pages": [] }),
+        }))
+        .expect("valid body")
+        .expect("body present")
+    }
+
+    #[test]
+    fn default_document_save_key_is_stable_and_actor_scoped() {
+        let tenant_id = Uuid::new_v4();
+        let page_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let body = prepared_body();
+        let request_hash =
+            document_save_request_hash(tenant_id, page_id, "rev-1", &body).expect("request hash");
+
+        let first = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("default key");
+        let retry = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("retry key");
+        let other_actor = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(Uuid::new_v4()),
+            &request_hash,
+        )
+        .expect("other actor key");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, other_actor);
+        assert!(first.starts_with("pages-save-v1:"));
+        assert!(first.len() <= MAX_SAVE_RECEIPT_KEY_BYTES);
+    }
+
+    #[test]
+    fn default_document_restore_key_is_stable_actor_scoped_and_request_scoped() {
+        let tenant_id = Uuid::new_v4();
+        let page_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let revision_id = Uuid::new_v4();
+        let request_hash = document_restore_request_hash(
+            tenant_id,
+            page_id,
+            "rev-1",
+            revision_id,
+        )
+        .expect("restore request hash");
+
+        let first = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("restore key");
+        let retry = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("retry key");
+        let other_actor = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(Uuid::new_v4()),
+            &request_hash,
+        )
+        .expect("other actor key");
+        let other_revision = document_restore_request_hash(
+            tenant_id,
+            page_id,
+            "rev-1",
+            Uuid::new_v4(),
+        )
+        .expect("other restore request hash");
+        let other_request = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &other_revision,
+        )
+        .expect("other request key");
+        let other_expected_revision = document_restore_request_hash(
+            tenant_id,
+            page_id,
+            "rev-2",
+            revision_id,
+        )
+        .expect("other expected revision hash");
+        let other_expected_request = default_document_restore_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &other_expected_revision,
+        )
+        .expect("other expected revision key");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, other_actor);
+        assert_ne!(first, other_request);
+        assert_ne!(first, other_expected_request);
+        assert!(first.starts_with("pages-restore-v1:"));
+        assert!(first.len() <= MAX_SAVE_RECEIPT_KEY_BYTES);
+    }
+
+    #[test]
+    fn default_document_save_key_changes_with_the_request_hash() {
+        let tenant_id = Uuid::new_v4();
+        let page_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let first = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            "hash-a",
+        )
+        .expect("first key");
+        let second = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            "hash-b",
+        )
+        .expect("second key");
+
+        assert_ne!(first, second);
+    }
 }

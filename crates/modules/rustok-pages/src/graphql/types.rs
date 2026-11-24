@@ -120,6 +120,7 @@ pub struct GqlPagePublishSchedule {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GqlPageListItem {
     pub id: Uuid,
+    pub version: i32,
     pub status: String,
     pub template: String,
     pub title: Option<String>,
@@ -169,6 +170,8 @@ pub struct CreateGqlPageInput {
     pub body: Option<GqlPageBodyInput>,
     pub channel_slugs: Option<Vec<String>>,
     pub publish: Option<bool>,
+    /// Stable caller-generated identity reused for retries of one page creation.
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -359,6 +362,7 @@ impl From<crate::PageListItem> for GqlPageListItem {
     fn from(r: crate::PageListItem) -> Self {
         Self {
             id: r.id,
+            version: r.version,
             status: content_status_str(&r.status),
             template: r.template,
             title: r.title,

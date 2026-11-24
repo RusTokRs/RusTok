@@ -60,6 +60,8 @@ const dockerfile = readRegularFile(dockerfilePath);
 const releaseWorkflow = readRegularFile(releaseWorkflowPath);
 const infrastructureWorkflow = readRegularFile(infrastructureWorkflowPath);
 const hardeningWorkflow = readRegularFile(hardeningWorkflowPath);
+const packageScriptPath = "scripts/release/package-server.sh";
+const packageScript = readRegularFile(packageScriptPath);
 const baseDigest = "sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818";
 const snapshot = "20260713T000000Z";
 
@@ -76,6 +78,11 @@ requireMarkers(dockerfile, dockerfilePath, [
   "libssl3",
   "rm -rf /var/lib/apt/lists/*",
   "USER 10001:10001",
+  "RUSTOK_ENV=production",
+  "RUSTOK_CONFIG_DIR=/app/config",
+  "RUSTOK_HTTPS=true",
+  "mkdir --parents /app/config",
+  "chown 10001:10001 /app/config",
 ]);
 forbidMarkers(dockerfile, dockerfilePath, [
   "FROM debian:bookworm-slim",
@@ -86,6 +93,8 @@ forbidMarkers(dockerfile, dockerfilePath, [
   "apt-get dist-upgrade",
   "ARG DEBIAN_",
   "USER root",
+  "COPY --chown=10001:10001 config /app/config",
+  "COPY config /app/config",
 ]);
 
 requireMarkers(releaseWorkflow, releaseWorkflowPath, [
@@ -98,6 +107,7 @@ forbidMarkers(releaseWorkflow, releaseWorkflowPath, [
   "--build-arg DEBIAN_",
   "--build-arg BASE_IMAGE",
   "--build-arg RUNTIME_IMAGE",
+  'cp -R "${roots[0]}/config" release-image-context/config',
 ]);
 
 requireMarkers(infrastructureWorkflow, infrastructureWorkflowPath, [
@@ -110,6 +120,18 @@ requireMarkers(infrastructureWorkflow, infrastructureWorkflowPath, [
 requireMarkers(hardeningWorkflow, hardeningWorkflowPath, [
   "Verify release runtime image pin",
   "verify-release-runtime-image-contract.mjs",
+]);
+
+requireMarkers(packageScript, packageScriptPath, [
+  'install -m 0644 "$source_config/production.redis.example.yaml" "$package_root/config/production.yaml.example"',
+  "production.yaml.example",
+  "RUSTOK_HTTPS=true",
+  "development/test/browser-smoke config leaked into release archive",
+  'if tar -tzf "$first" | grep -Eq \'/(development|test|browser-smoke)[.]yaml$\'; then',
+  'first_digest=$(sha256sum "$first"',
+]);
+forbidMarkers(packageScript, packageScriptPath, [
+  'cp -R "$source_config"/. "$package_root/config/"',
 ]);
 
 if (failures.length > 0) {

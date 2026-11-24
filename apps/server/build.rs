@@ -168,12 +168,23 @@ fn apply_module_package_manifest(
     let Some(module_path) = spec.path.as_ref() else {
         return Ok(wiring);
     };
-    let package_manifest_path = workspace_root.join(module_path).join("rustok-module.toml");
+    let module_root = workspace_root.join(module_path);
+    let package_manifest_path = module_root.join("rustok-module.toml");
+    // The package manifest controls explicit wiring. Watch it even when absent so adding
+    // one invalidates codegen instead of leaving the fallback wiring stale.
+    println!("cargo:rerun-if-changed={}", package_manifest_path.display());
     if !package_manifest_path.exists() {
+        // Without a package manifest, legacy GraphQL wiring depends on source-file presence.
+        println!(
+            "cargo:rerun-if-changed={}",
+            module_root.join("src/graphql/mod.rs").display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            module_root.join("src/graphql.rs").display()
+        );
         return Ok(wiring);
     }
-
-    println!("cargo:rerun-if-changed={}", package_manifest_path.display());
     let package_manifest = load_module_package_manifest(&package_manifest_path)?;
 
     if let Some(entry_type) = qualify_package_type_path(

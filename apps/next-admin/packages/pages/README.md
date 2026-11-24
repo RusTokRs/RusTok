@@ -5,7 +5,7 @@ the platform model (one GraphQL consumed by both admins; each module keeps its
 own UI), this package registers the Pages navigation and provides the pages
 management surface: list, create draft, unpublish, delete — all through the
 `rustok-pages` GraphQL API (`pages`, `pageStarters`, `instantiatePageStarter`,
-`savePageStarterFromPage`, `createPage`, `unpublishPage`, `deletePage`). Create-page
+`savePageStarterFromPage`, `createPage`, `unpublishPage`, `archivePage`, `deletePage`). Create-page
 uses the selected starter's observed revision and fails visibly when the catalog or clone fails.
 Managers can create a starter from the exact-locale saved working copy; unsaved
 builder changes are not included. They can edit tenant starter metadata and confirm
@@ -17,6 +17,16 @@ preflight rechecks the choice; the create mutation also requests server-side che
 layout selection (PostgreSQL/SQLite; non-default selection fails closed on MySQL).
 It validates existence, not a layout revision. This integration has not yet
 been verified against a running server or in a browser.
+
+The create-page flow can include an initial document through `createPage`.
+It sends a stable idempotency key; Next Admin persists the pending key in
+tab-scoped `sessionStorage` when available (with an in-memory fallback)
+before the mutation and clears it only after a successful acknowledgement. The Pages create receipt binds the key to the
+actor and complete create request, including the initial document. Unpublish,
+archive and delete likewise accept lifecycle keys; unpublish/delete also send
+the observed list version so a stale row cannot mutate a newer page. A retry
+reuses the exact operation key and the server replays the committed result
+instead of repeating the side effect.
 
 The visual page builder itself is **not** reimplemented here. The builder UI is
 module-owned UI of the Rust FFA admin (`rustok-pages-admin`, Leptos connector);

@@ -3,6 +3,7 @@ use std::time::Duration;
 use chrono::Utc;
 use rustok_api::Permission;
 use rustok_core::{UserRole, UserStatus};
+use rustok_cache::CacheService;
 use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::common::settings::RustokSettings;
@@ -107,7 +108,8 @@ async fn missed_publication_incident_connects_decision_relations_cache_generatio
         .assign_role_permissions(tenant_id, user_id, UserRole::Customer)
         .await
         .expect("seed canonical tenant roles");
-    RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Admin)
+    let cache_service = CacheService::from_url(None);
+    RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Admin)
         .await
         .expect("commit initial admin role and durable generation");
 

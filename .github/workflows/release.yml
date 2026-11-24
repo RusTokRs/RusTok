@@ -307,7 +307,6 @@ jobs:
             exit 1
           fi
           install -m 0755 "${roots[0]}/rustok-server" release-image-context/rustok-server
-          cp -R "${roots[0]}/config" release-image-context/config
           install -m 0644 apps/server/Dockerfile.release release-image-context/Dockerfile
 
       - name: Define immutable and convenience image tags

@@ -91,6 +91,8 @@ pub async fn resolve_optional(
     let mut rbac_scope = None;
 
     if is_observability_auth_path(request_path.as_str()) {
+        // These tenant-independent observability handlers enforce HostAuthorityContext
+        // themselves. Readiness deliberately falls back to an aggregate-only response.
         if let Some(host_authority) = host_authority {
             parts.extensions.insert(host_authority);
         }

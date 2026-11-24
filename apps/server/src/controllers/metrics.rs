@@ -19,6 +19,7 @@ use crate::services::outbox_retention_worker::{
 };
 use chrono::Utc;
 use rustok_outbox::RelayMetricsSnapshot;
+use rustok_api::HostAuthorityContext;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
@@ -51,17 +52,22 @@ static RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
 /// GET /metrics - Prometheus metrics endpoint
+/// Requires host-global read authority; configure the scraper to send x-rustok-host-token.
 #[utoipa::path(
     get,
     path = "/metrics",
     tag = "observability",
-    security(("bearer_auth" = [])),
+    security(("host_authority" = [])),
     responses(
         (status = 200, description = "Prometheus metrics in text format", content_type = "text/plain"),
+        (status = 403, description = "Host read authority is required"),
         (status = 503, description = "Metrics collection disabled")
     )
 )]
-pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+pub async fn metrics(
+    State(ctx): State<ServerRuntimeContext>,
+    _authority: HostAuthorityContext,
+) -> Result<Response> {
     tracing::debug!("metrics::metrics entry");
     match rustok_telemetry::metrics_handle() {
         Some(handle) => {

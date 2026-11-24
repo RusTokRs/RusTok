@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use rustok_api::Permission;
 use rustok_core::{UserRole, UserStatus};
+use rustok_cache::CacheService;
 use rustok_migrations::Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::common::settings::RustokSettings;
@@ -313,6 +314,7 @@ async fn run_child(role: &str) -> TestResult<()> {
             let user_id = Uuid::parse_str(&required_env(CHILD_USER_ID_ENV)?)?;
             run_mutator(
                 db,
+                cache.clone(),
                 tenant_id,
                 user_id,
                 cache.redis_configuration_present(),
@@ -417,12 +419,13 @@ async fn run_observer(
 
 async fn run_mutator(
     db: DatabaseConnection,
+    cache_service: CacheService,
     tenant_id: Uuid,
     user_id: Uuid,
     redis_configured: bool,
     result_path: PathBuf,
 ) -> TestResult<()> {
-    RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer).await?;
+    RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer).await?;
     let committed_generation = rustok_rbac::read_permission_invalidation_generation(&db).await?;
     write_json(
         &result_path,

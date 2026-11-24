@@ -489,6 +489,13 @@ impl utoipa::Modify for SecurityAddon {
                     "Shared token required for remote registry validation runner operations.",
                 ))),
             );
+            components.add_security_scheme(
+                "host_authority",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                    "x-rustok-host-token",
+                    "Host-global read authority credential required for operator diagnostics and metrics.",
+                ))),
+            );
         }
 
         // Remote runner operations are authenticated by a dedicated shared
@@ -618,6 +625,41 @@ mod tests {
                 "OpenAPI spec must include documented core path {path}"
             );
         }
+    }
+
+    #[test]
+    fn openapi_marks_operator_diagnostics_with_host_authority() {
+        use utoipa::openapi::HttpMethod;
+
+        let openapi = ApiDoc::openapi();
+        for path in ["/metrics", "/health/runtime", "/health/modules"] {
+            let security = openapi
+                .paths
+                .get_path_operation(path, HttpMethod::Get)
+                .and_then(|operation| operation.security.as_ref())
+                .unwrap_or_else(|| panic!("{path} must require host_authority"));
+
+            assert_eq!(
+                serde_json::to_value(security).expect("security serializes"),
+                serde_json::json!([{ "host_authority": [] }]),
+                "unexpected security contract for {path}"
+            );
+        }
+
+        let scheme = openapi
+            .components
+            .as_ref()
+            .and_then(|components| components.security_schemes.get("host_authority"))
+            .expect("host_authority security scheme must exist");
+        assert_eq!(
+            serde_json::to_value(scheme).expect("host authority scheme serializes"),
+            serde_json::json!({
+                "type": "apiKey",
+                "in": "header",
+                "name": "x-rustok-host-token",
+                "description": "Host-global read authority credential required for operator diagnostics and metrics."
+            })
+        );
     }
 
     #[test]

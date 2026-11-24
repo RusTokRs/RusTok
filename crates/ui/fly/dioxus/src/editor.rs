@@ -424,6 +424,8 @@ fn subscribe_canvas_iframe(
     let mut subscription = use_signal(|| None::<fly_web::IframeJsonSubscription>);
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     let mut message_port = use_signal(|| None::<fly_web::IframeMessagePort>);
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut port_instance_config = use_signal(|| None::<(String, String)>);
 
     let iframe_id = id.clone();
     let expected_instance = instance_id.clone();
@@ -462,32 +464,50 @@ fn subscribe_canvas_iframe(
 
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     {
-        let port_config = (instance_id.clone(), expected_origin.clone());
-        let effect_iframe_id = id.clone();
+        let port_config = (id.clone(), instance_id.clone(), expected_origin.clone());
         use_effect(use_reactive!(|port_config| {
-            let (effect_instance_id, effect_expected_origin) = port_config.clone();
-            match fly_web::IframeMessagePort::new(
-                effect_instance_id.clone(),
-                effect_expected_origin.clone(),
-            ) {
-                Ok(port) => message_port.set(Some(port)),
-                Err(error) => {
-                    message_port.set(None);
-                    if let Some(handler) = on_error {
-                        handler.call(error.to_string());
+            let (effect_iframe_id, effect_instance_id, effect_expected_origin) =
+                port_config.clone();
+            let existing_config = port_instance_config.read().clone();
+            let config_matches = existing_config.as_ref().is_some_and(|(instance, origin)| {
+                instance == &effect_instance_id && origin == &effect_expected_origin
+            });
+            let needs_new_port = !config_matches || message_port.read().is_none();
+            if needs_new_port {
+                // A new instance/origin gets a fresh outbound sequence. An ID-only change keeps
+                // the current source-window subscription; if it replaced the iframe element,
+                // that element's load handler will rebind it without resetting the port sequence.
+                subscription.set(None);
+                message_port.set(None);
+                port_instance_config.set(None);
+                match fly_web::IframeMessagePort::new(
+                    effect_instance_id.clone(),
+                    effect_expected_origin.clone(),
+                ) {
+                    Ok(port) => {
+                        message_port.set(Some(port));
+                        port_instance_config.set(Some((
+                            effect_instance_id.clone(),
+                            effect_expected_origin.clone(),
+                        )));
                     }
-                    return;
+                    Err(error) => {
+                        if let Some(handler) = on_error {
+                            handler.call(error.to_string());
+                        }
+                        return;
+                    }
                 }
+                subscribe_canvas_iframe(
+                    &effect_iframe_id,
+                    &effect_instance_id,
+                    &effect_expected_origin,
+                    subscription,
+                    message_port,
+                    on_message,
+                    on_error,
+                );
             }
-            subscribe_canvas_iframe(
-                &effect_iframe_id,
-                &effect_instance_id,
-                &effect_expected_origin,
-                subscription,
-                message_port,
-                on_message,
-                on_error,
-            );
         }));
     }
 
@@ -581,6 +601,10 @@ pub fn FlyEditorWorkspace(
     /// Optional host-owned isolated canvas. When absent, the inline preview is rendered.
     #[props(default)]
     canvas: Option<Element>,
+    /// Whether the supplied canvas can report pointer geometry and complete drops.
+    /// Defaults to true only when a host canvas is present.
+    #[props(default)]
+    canvas_interactive: Option<bool>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
@@ -591,6 +615,7 @@ pub fn FlyEditorWorkspace(
     let workspace_csp_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
 
     let intent_mode = on_intent.is_some();
+    let canvas_interactive = canvas_interactive.unwrap_or(canvas.is_some());
     let intent_instance = instance_id.unwrap_or_else(|| "fly-workspace".to_string());
     let registries = registries.unwrap_or_else(RegistrySet::with_builtins);
     let summary_assembly = contribution_assembly.clone();
@@ -619,7 +644,7 @@ pub fn FlyEditorWorkspace(
             }
         }
     });
-    let on_begin_drag = intent_mode.then_some(begin_palette_drag);
+    let on_begin_drag = (intent_mode && canvas_interactive).then_some(begin_palette_drag);
     let begin_selected_move = use_callback({
         let instance = intent_instance.clone();
         move |component_id: String| {
@@ -634,7 +659,8 @@ pub fn FlyEditorWorkspace(
         }
     });
     let can_drag_components = capabilities.is_none_or(|profile| profile.drag_drop);
-    let on_begin_move = (intent_mode && can_drag_components).then_some(begin_selected_move);
+    let on_begin_move =
+        (intent_mode && canvas_interactive && can_drag_components).then_some(begin_selected_move);
 
     let active_page_index = initial_page.unwrap_or(0);
     let page_selection = PageSelection::Index(active_page_index);
@@ -924,6 +950,27 @@ mod controlled_workspace_regression_tests {
                 }
             }]
         })).expect("Fly document")
+    }
+
+    #[test]
+    fn iframe_envelope_rejects_wrong_instance_protocol_and_replayed_sequences() {
+        let payload = serde_json::json!({
+            "protocol": fly_web::FLY_IFRAME_PROTOCOL,
+            "instance_id": "canvas-a",
+            "sequence": 7,
+            "message": { "type": "ready" }
+        })
+        .to_string();
+
+        assert_eq!(
+            decode_fly_canvas_envelope(&payload, "canvas-a", Some(6)),
+            Some((7, payload.clone()))
+        );
+        assert!(decode_fly_canvas_envelope(&payload, "canvas-a", Some(7)).is_none());
+        assert!(decode_fly_canvas_envelope(&payload, "canvas-b", None).is_none());
+
+        let wrong_protocol = payload.replace(fly_web::FLY_IFRAME_PROTOCOL, "fly/other");
+        assert!(decode_fly_canvas_envelope(&wrong_protocol, "canvas-a", None).is_none());
     }
 
     #[test]

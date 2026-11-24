@@ -9,6 +9,7 @@ use axum::routing::get;
 use chrono::Utc;
 use futures_util::{FutureExt, StreamExt, future::BoxFuture, stream};
 use rustok_core::{HealthStatus, ModuleRegistry};
+use rustok_api::{HostAuthority, HostAuthorityContext};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use rustok_web::json_response;
 use sea_orm::{
@@ -173,22 +174,25 @@ pub async fn live() -> Result<Response> {
 }
 
 /// GET /health/ready - K8s readiness probe
-/// Checks critical and non-critical infrastructure dependencies and module health.
+/// Anonymous callers receive only the aggregate status; host operators with read
+/// authority receive the full dependency and module diagnostics.
 #[utoipa::path(
     get,
     path = "/health/ready",
     tag = "health",
     responses(
-        (status = 200, description = "Readiness status; unauthenticated callers receive only the aggregate status"),
-        (status = 503, description = "Readiness is unhealthy; unauthenticated callers receive only the aggregate status")
+        (status = 200, description = "Aggregate readiness status; detailed checks require host read authority"),
+        (status = 503, description = "Unhealthy aggregate status; detailed checks require host read authority")
     )
 )]
 pub async fn ready(
     State(ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
+    let include_details = readiness_details_authorized();
     match tokio::time::timeout(READINESS_TIMEOUT, collect_readiness(ctx, registry)).await {
         Ok(response) => {
+            let response = redact_readiness_details(response, include_details);
             Ok((readiness_http_status(response.status), axum::Json(response)).into_response())
         }
         Err(_) => {
@@ -206,6 +210,7 @@ pub async fn ready(
                 modules: Vec::new(),
                 degraded_reasons: vec!["readiness probe timed out".to_string()],
             };
+            let response = redact_readiness_details(response, include_details);
             Ok((StatusCode::SERVICE_UNAVAILABLE, axum::Json(response)).into_response())
         }
     }
@@ -569,34 +574,42 @@ fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
 }
 
 /// GET /health/runtime - Runtime guardrail snapshot for operators
-/// Returns the current rollout-aware guardrail state plus component-level details.
+/// Requires host-global read authority.
 #[utoipa::path(
     get,
     path = "/health/runtime",
     tag = "health",
-    security(("bearer_auth" = [])),
+    security(("host_authority" = [])),
     responses(
-        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot)
+        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot),
+        (status = 403, description = "Host read authority is required")
     )
 )]
-pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+pub async fn runtime(
+    State(ctx): State<ServerRuntimeContext>,
+    _authority: HostAuthorityContext,
+) -> Result<Response> {
     tracing::debug!("health::runtime entry");
     let snapshot = collect_runtime_guardrail_snapshot(&ctx).await;
     Ok(json_response(snapshot))
 }
 
 /// GET /health/modules - Module health aggregation
-/// Reports health status of all registered modules
+/// Requires host-global read authority.
 #[utoipa::path(
     get,
     path = "/health/modules",
     tag = "health",
-    security(("bearer_auth" = [])),
+    security(("host_authority" = [])),
     responses(
-        (status = 200, description = "Module health statuses", body = ModulesHealthResponse)
+        (status = 200, description = "Module health statuses", body = ModulesHealthResponse),
+        (status = 403, description = "Host read authority is required")
     )
 )]
-pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<Response> {
+pub async fn modules(
+    Extension(registry): Extension<ModuleRegistry>,
+    _authority: HostAuthorityContext,
+) -> Result<Response> {
     tracing::debug!("health::modules entry");
     let mut modules_health = Vec::new();
     let mut any_unhealthy = false;
@@ -642,88 +655,15 @@ fn resolve_modules_health_status(any_unhealthy: bool, any_degraded: bool) -> &'s
 }
 
 #[cfg(feature = "mod-media")]
-#[derive(Clone)]
-struct StorageHealthProbeState {
-    object_id: uuid::Uuid,
-    created_at: chrono::DateTime<Utc>,
-    operation_lock: Arc<tokio::sync::Mutex<()>>,
-}
-
-#[cfg(feature = "mod-media")]
-impl StorageHealthProbeState {
-    fn new() -> Self {
-        Self {
-            object_id: uuid::Uuid::new_v4(),
-            created_at: Utc::now(),
-            operation_lock: Arc::new(tokio::sync::Mutex::new(())),
-        }
-    }
-}
-
-#[cfg(feature = "mod-media")]
-fn storage_health_probe_state(ctx: &ServerRuntimeContext) -> StorageHealthProbeState {
-    ctx.shared_get_or_insert_with(StorageHealthProbeState::new)
-}
-
-#[cfg(feature = "mod-media")]
-fn storage_health_probe_key(
-    state: &StorageHealthProbeState,
-) -> std::result::Result<object_store::path::Path, String> {
-    rustok_storage::ObjectKey::chronological(
-        "platform-health",
-        rustok_storage::ObjectZone::Staging,
-        rustok_storage::ObjectScope::Platform,
-        state.created_at.clone(),
-        state.object_id,
-        "probe",
-    )
-    .map(rustok_storage::ObjectKey::into_path)
-    .map_err(|_| "storage health probe could not be constructed".to_string())
-}
-
-#[cfg(feature = "mod-media")]
 async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
-    use object_store::ObjectStoreExt;
     use rustok_storage::StorageRuntime;
 
     let Some(storage) = ctx.shared_get::<StorageRuntime>() else {
         return Err("storage runtime is not configured".to_string());
     };
 
-    // Keep one non-nil probe identity per runtime and serialize its use. A
-    // stable key lets the next probe overwrite and clean up after a timed-out
-    // attempt; a per-runtime UUID prevents replicas from deleting each other's
-    // in-flight health probes.
-    let probe_state = storage_health_probe_state(ctx);
-    let _probe_guard = probe_state.operation_lock.lock().await;
-    let probe = storage_health_probe_key(&probe_state)?;
-    let data = bytes::Bytes::from_static(b"ok");
-    let result = async {
-        if storage
-            .objects
-            .put_opts(&probe, data.into(), storage.put_options("text/plain"))
-            .await
-            .is_err()
-        {
-            // A backend may report an ambiguous write failure after creating
-            // the object. Cleanup is best-effort; the next probe reuses this
-            // runtime-scoped key and retries cleanup.
-            if storage.objects.delete(&probe).await.is_err() {
-                tracing::warn!(
-                    error_code = "storage_health_probe_ambiguous_write_cleanup_failed",
-                    "Storage health probe cleanup after an ambiguous write failure did not complete"
-                );
-            }
-            return Err("storage health probe write failed".to_string());
-        }
-        storage
-            .objects
-            .delete(&probe)
-            .await
-            .map_err(|_| "storage health probe cleanup failed".to_string())?;
-        Ok(())
-    }
-    .await;
+    let result =
+        crate::services::storage_health_probe::probe_storage_backend(ctx, &storage).await;
     rustok_telemetry::metrics::update_storage_health(storage.kind.as_str(), result.is_ok());
     result
 }
@@ -1344,6 +1284,23 @@ fn on_check_failure(circuits: &ReadinessCircuitRegistry, name: &str) {
     }
 }
 
+fn readiness_details_authorized() -> bool {
+    crate::host_authority::current_host_authority()
+        .is_some_and(|authority| authority.allows(HostAuthority::Read))
+}
+
+fn redact_readiness_details(
+    mut response: ReadinessResponse,
+    include_details: bool,
+) -> ReadinessResponse {
+    if !include_details {
+        response.checks.clear();
+        response.modules.clear();
+        response.degraded_reasons.clear();
+    }
+    response
+}
+
 fn readiness_http_status(status: ReadinessStatus) -> StatusCode {
     match status {
         ReadinessStatus::Ok | ReadinessStatus::Degraded => StatusCode::OK,
@@ -1428,35 +1385,6 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
-
-    #[cfg(feature = "mod-media")]
-    #[test]
-    fn storage_health_probe_identity_is_unique_per_runtime() {
-        let first_context = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
-        let first = storage_health_probe_state(&first_context);
-        let first_clone = storage_health_probe_state(&first_context.clone());
-
-        assert!(!first.object_id.is_nil());
-        assert_eq!(first.object_id, first_clone.object_id);
-        assert!(std::sync::Arc::ptr_eq(
-            &first.operation_lock,
-            &first_clone.operation_lock
-        ));
-
-        let second_context = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
-            RustokSettings::default(),
-        );
-        let second = storage_health_probe_state(&second_context);
-        assert_ne!(first.object_id, second.object_id);
-        assert_ne!(
-            storage_health_probe_key(&first).expect("first probe key is valid"),
-            storage_health_probe_key(&second).expect("second probe key is valid")
-        );
-    }
 
     #[tokio::test]
     async fn registry_only_readiness_rejects_shutdown_without_background_workers() {
@@ -2378,4 +2306,60 @@ mod tests {
             "unhealthy"
         );
     }
+    
+    #[test]
+    fn anonymous_readiness_response_exposes_only_the_aggregate_status() {
+        let response = ReadinessResponse {
+            status: ReadinessStatus::Degraded,
+            checks: vec![ReadinessCheck {
+                name: "database_schema".to_string(),
+                kind: "dependency",
+                criticality: DependencyCriticality::Critical,
+                status: ReadinessStatus::Unhealthy,
+                latency_ms: 12,
+                reason: Some("private schema detail".to_string()),
+            }],
+            modules: vec![ModuleHealth {
+                slug: "private-module".to_string(),
+                name: "Private Module".to_string(),
+                status: "unhealthy".to_string(),
+            }],
+            degraded_reasons: vec!["private schema detail".to_string()],
+        };
+
+        let response = redact_readiness_details(response, false);
+
+        assert_eq!(response.status, ReadinessStatus::Degraded);
+        assert!(response.checks.is_empty());
+        assert!(response.modules.is_empty());
+        assert!(response.degraded_reasons.is_empty());
+    }
+
+    #[tokio::test]
+    async fn readiness_details_require_host_read_authority() {
+        let anonymous = crate::host_authority::with_host_authority_scope(None, async {
+            readiness_details_authorized()
+        })
+        .await;
+        assert!(!anonymous);
+
+        let read_authority = HostAuthorityContext::read(uuid::Uuid::new_v4())
+            .expect("non-nil operator actor");
+        let can_read = crate::host_authority::with_host_authority_scope(
+            Some(read_authority),
+            async { readiness_details_authorized() },
+        )
+        .await;
+        assert!(can_read);
+
+        let manage_authority = HostAuthorityContext::manage(uuid::Uuid::new_v4())
+            .expect("non-nil operator actor");
+        let can_manage = crate::host_authority::with_host_authority_scope(
+            Some(manage_authority),
+            async { readiness_details_authorized() },
+        )
+        .await;
+        assert!(can_manage);
+    }
+
 }

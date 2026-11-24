@@ -50,6 +50,7 @@ impl PagesMutation {
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let checked_layout = input.checked_layout.unwrap_or(false);
+        let idempotency_key = input.idempotency_key;
         let create_input = CreatePageInput {
             translations: input
                 .translations
@@ -61,14 +62,23 @@ impl PagesMutation {
             channel_slugs: input.channel_slugs,
             publish: false,
         };
-        let page = if checked_layout {
+        let security = page_security(&auth);
+        let page = if let Some(idempotency_key) = idempotency_key {
             service
-                .create_with_catalog_layout(tenant_id, page_security(&auth), create_input)
+                .create_with_receipt(
+                    tenant_id,
+                    security,
+                    create_input,
+                    checked_layout,
+                    idempotency_key,
+                )
+                .await
+        } else if checked_layout {
+            service
+                .create_with_catalog_layout(tenant_id, security, create_input)
                 .await
         } else {
-            service
-                .create(tenant_id, page_security(&auth), create_input)
-                .await
+            service.create(tenant_id, security, create_input).await
         }
         .map_err(map_pages_error)?;
 
@@ -307,6 +317,7 @@ impl PagesMutation {
         ctx: &Context<'_>,
         id: Uuid,
         expected_version: Option<i32>,
+        idempotency_key: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<GqlPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -316,18 +327,67 @@ impl PagesMutation {
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        let service = PageService::new(db.clone(), event_bus.clone());
+        let security = page_security(&auth);
+        let page = if let Some(idempotency_key) = idempotency_key {
+            service
+                .unpublish_with_receipt(
+                    tenant_id,
+                    security,
+                    id,
+                    expected_version,
+                    idempotency_key,
+                )
+                .await
+        } else {
+            service
+                .unpublish_if_current(tenant_id, security, id, expected_version)
+                .await
+        };
+        page.map(Into::into).map_err(map_pages_error)
+    }
 
-        PageService::new(db.clone(), event_bus.clone())
-            .unpublish_if_current(tenant_id, page_security(&auth), id, expected_version)
-            .await
-            .map(Into::into)
-            .map_err(map_pages_error)
+    async fn archive_page(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: Option<i32>,
+        idempotency_key: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        let service = PageService::new(db.clone(), event_bus.clone());
+        let security = page_security(&auth);
+        let page = if let Some(idempotency_key) = idempotency_key {
+            service
+                .archive_with_receipt(
+                    tenant_id,
+                    security,
+                    id,
+                    expected_version,
+                    idempotency_key,
+                )
+                .await
+        } else {
+            service
+                .archive_if_current(tenant_id, security, id, expected_version)
+                .await
+        };
+        page.map(Into::into).map_err(map_pages_error)
     }
 
     async fn delete_page(
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        expected_version: Option<i32>,
+        idempotency_key: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -336,11 +396,24 @@ impl PagesMutation {
         let auth = require_pages_permission(ctx, Permission::PAGES_DELETE)?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
-
-        PageService::new(db.clone(), event_bus.clone())
-            .delete(tenant_id, page_security(&auth), id)
-            .await
-            .map_err(map_pages_error)?;
+        let service = PageService::new(db.clone(), event_bus.clone());
+        let security = page_security(&auth);
+        let result = if let Some(idempotency_key) = idempotency_key {
+            service
+                .delete_with_receipt(
+                    tenant_id,
+                    security,
+                    id,
+                    expected_version,
+                    idempotency_key,
+                )
+                .await
+        } else {
+            service
+                .delete_if_current(tenant_id, security, id, expected_version)
+                .await
+        };
+        result.map_err(map_pages_error)?;
         Ok(true)
     }
 }

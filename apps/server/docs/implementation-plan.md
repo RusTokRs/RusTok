@@ -3267,3 +3267,82 @@ classification, heartbeat CAS, stale-job quarantine, public status mapping,
 recovery finalization, and the migration's cross-status single-slot invariant.
 No tests, compilation, formatting, migration execution, or multi-replica
 exercise were run at the user's request.
+
+
+## Follow-up code review — GraphQL storage probe and module codegen inputs (2026-11-24)
+
+The GraphQL `systemHealth` resolver still used `Uuid::nil()` to build an
+`ObjectKey::chronological` staging key and then called `expect`. The canonical
+key constructor rejects nil object identities, so every host-authorized
+`systemHealth` request with `mod-media` and configured storage could panic.
+HTTP readiness had already moved to a non-nil per-runtime key, but the GraphQL
+path had not. Both surfaces now use one shared service with a stable
+`ServerRuntimeContext`-scoped UUID, a shared async operation lock, and
+best-effort cleanup after ambiguous writes. A focused regression checks that
+cloned contexts share the identity/lock and independent contexts do not.
+
+The server build script also derived generated module wiring from the
+existence of `rustok-module.toml`, `src/graphql/mod.rs`, and
+`src/graphql.rs`, but did not watch those inputs when absent. Adding a package
+manifest or fallback GraphQL entrypoint could therefore leave generated
+registry/schema/router wiring stale until a clean build. The build script now
+registers all three paths as rerun inputs before checking their existence.
+
+Source review and regression definitions are complete. Tests, compilation,
+formatting, and migration/runtime checks were not run, as requested by the
+maintainer.
+
+
+## Follow-up code review — artifact fingerprint blocking I/O (2026-11-24)
+
+The artifact runtime computed the running executable's SHA-256 synchronously
+inside an async runtime-composition path. Because the executable can be as
+large as the configured 1 GiB bound, metadata/open/read operations could occupy
+a Tokio worker for a prolonged period and delay unrelated timers, readiness
+and startup work. The digest operation now runs as one bounded
+`spawn_blocking` task, and join failures are converted into a typed host
+composition error. The synchronous helper remains private and is only invoked
+through the blocking-pool wrapper.
+
+No tests, compilation or formatting were run, as requested by the maintainer.
+
+
+## Follow-up code review — release runtime configuration contract (2026-11-24)
+
+The reproducible release image did not set `RUSTOK_HTTPS=true`, although
+production host startup rejects the deployment unless HSTS is explicitly
+enabled. It also copied the entire archive config directory into the image,
+including development, test and browser-smoke YAML containing known local
+credentials. The release workflow now builds a runtime context containing only
+the binary and Dockerfile; the image creates an empty operator-owned
+`/app/config` and explicitly sets `RUSTOK_ENV=production`,
+`RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`.
+
+The binary release archive previously copied every YAML file. It now includes
+only the placeholder production template as `config/production.yaml.example`
+and a README that explains how to create `production.yaml`, replace secrets,
+and configure HTTPS/Redis. Its self-test checks that development, test and
+browser-smoke files do not enter the archive. The release-image verifier now
+locks these runtime and packaging contracts.
+
+Tests and release-image builds were not run, as requested by the maintainer.
+
+
+## Follow-up code review — RBAC invalidation publisher ownership (2026-11-24)
+
+The RBAC listener stored its `CacheService` in a process-global
+`Lazy<RwLock<Option<CacheService>>>`, while `ensure_cache_service` owns one
+service per `ServerRuntimeContext`. If two independent contexts initialized
+listeners, the last one overwrote the publisher owner. Mutations in the other
+context could therefore fan out through the wrong local invalidation bus or
+Redis client and wait for durable-generation reconciliation to converge.
+
+User and namespace-wide publishers now take an explicit `&CacheService`.
+The auth-admin provider and GraphQL role writer receive the cache service from
+their own runtime context; committed mutation and role-repair APIs also require
+the owner explicitly. The listener still subscribes before recovery and
+publishes its supervised runtime only after recovery. A focused unit test
+checks that publishing through one cache owner does not notify an independent
+owner, and the architecture guard rejects reintroduction of the global pointer.
+
+Tests and compilation were not run, as requested by the maintainer.

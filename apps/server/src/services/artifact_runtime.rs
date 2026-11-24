@@ -279,7 +279,15 @@ fn sha256_digest(bytes: &[u8]) -> String {
 /// Streams the running server binary into a canonical digest. The WASM
 /// engine is compiled into this binary, so one digest is both the
 /// executor-binary and the engine-build fact for the in-process pool.
-fn current_server_binary_digest() -> Result<String> {
+async fn current_server_binary_digest() -> Result<String> {
+    tokio::task::spawn_blocking(current_server_binary_digest_sync)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("server binary fingerprint task failed: {error}"))
+        })?
+}
+
+fn current_server_binary_digest_sync() -> Result<String> {
     use sha2::{Digest, Sha256};
 
     const MAX_EXECUTABLE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -465,7 +473,7 @@ pub async fn compose_governed_readiness(
 
     // In-process WASM pool.
     {
-        let binary_digest = current_server_binary_digest()?;
+        let binary_digest = current_server_binary_digest().await?;
         let identity = register_pool(
             &control_plane,
             ExecutorPoolRegistration {

@@ -147,7 +147,11 @@ impl SystemQuery {
             use rustok_storage::StorageRuntime;
             match ctx.data_opt::<StorageRuntime>() {
                 Some(storage) => {
-                    let health = probe_storage(storage).await;
+                    let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+                    let health = crate::services::storage_health_probe::probe_storage_backend(
+                        runtime_ctx, storage,
+                    )
+                    .await;
                     rustok_telemetry::metrics::update_storage_health(
                         storage.kind.as_str(),
                         health.is_ok(),
@@ -288,29 +292,6 @@ impl SystemQuery {
             active_sessions,
         })
     }
-}
-
-#[cfg(feature = "mod-media")]
-async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store::Result<()> {
-    use object_store::ObjectStoreExt;
-    let probe_path = rustok_storage::ObjectKey::chronological(
-        "platform-health",
-        rustok_storage::ObjectZone::Staging,
-        rustok_storage::ObjectScope::Platform,
-        chrono::Utc::now(),
-        uuid::Uuid::nil(),
-        "probe",
-    )
-    // INVARIANT: Platform health staging probe path constants are statically valid.
-    .expect("platform health key constants are valid")
-    .into_path();
-    let data = bytes::Bytes::from_static(b"ok");
-    storage
-        .objects
-        .put_opts(&probe_path, data.into(), storage.put_options("text/plain"))
-        .await?;
-    storage.objects.delete(&probe_path).await?;
-    Ok(())
 }
 
 #[cfg(test)]

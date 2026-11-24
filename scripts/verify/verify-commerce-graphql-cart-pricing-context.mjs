@@ -204,8 +204,8 @@ for (const value of ['#[path = "helpers.rs"]\nmod legacy_helpers;']) {
 for (const [value, label] of [
   ["mod rustok_pricing_shim {", "legacy pricing shim"],
   [
-    "PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest, ResolvedPrice,",
-    "legacy pricing API re-export",
+    "pub use rustok_pricing::ResolvedPrice;",
+    "legacy repricing response type",
   ],
   [
     "super::super::cart::contextual_pricing_read_port as in_process_pricing_read_port",
@@ -215,7 +215,7 @@ for (const [value, label] of [
     "use self::rustok_pricing_shim as rustok_pricing;",
     "legacy pricing shim alias",
   ],
-  ['include!("helpers.rs");', "unchanged legacy helper inclusion"],
+  ['include!("helpers.rs");', "legacy repricing helper inclusion"],
 ]) {
   requireText(legacyFacade, value, label);
 }

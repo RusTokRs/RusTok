@@ -16,8 +16,8 @@ use rustok_pages::entities::{
     page, page_body, page_body_draft, page_body_revision, page_translation,
 };
 use rustok_pages::{
-    PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService, PagesError, PagesModule,
-    RestorePageBodyRevisionInput, SavePageDocumentInput,
+    CreatePageInput, PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService, PagesError,
+    PagesModule, PageTranslationInput, RestorePageBodyRevisionInput, SavePageDocumentInput,
 };
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
@@ -528,15 +528,16 @@ async fn restore_places_a_journaled_revision_back_into_the_draft() -> TestResult
             .contains("PAGE_DOCUMENT_REVISION_CONFLICT")
     );
 
+    let restore_input = RestorePageBodyRevisionInput {
+        expected_revision: v3_token,
+        revision_id: v2_revision_id,
+    };
     let restored = service
         .restore_body_revision(
             tenant_id,
             security.clone(),
             page_id,
-            RestorePageBodyRevisionInput {
-                expected_revision: v3_token,
-                revision_id: v2_revision_id,
-            },
+            restore_input.clone(),
         )
         .await?;
     let body = restored.body.expect("restored body");
@@ -548,6 +549,274 @@ async fn restore_places_a_journaled_revision_back_into_the_draft() -> TestResult
     assert_eq!(rows[0].source, "restore");
     assert_eq!(rows[0].content, builder_content("v2"));
     assert_eq!(rows[0].body_revision, body.updated_at);
+
+    // Advance the working copy after the restore committed. A retry of the original
+    // restore must replay its receipt before CAS instead of restoring a second time.
+    let later_save = service
+        .save_document(
+            tenant_id,
+            security.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: body.updated_at.clone(),
+                body: builder_body("v4"),
+            },
+        )
+        .await?;
+    let later_revision = later_save.body.expect("later draft body").updated_at;
+    let count_before_replay = revisions(&db, tenant_id, page_id).await?.len();
+    assert_eq!(count_before_replay, 4);
+
+    let replayed = service
+        .restore_body_revision(tenant_id, security, page_id, restore_input)
+        .await?;
+    let replayed_body = replayed.body.expect("replayed restore body");
+    assert_eq!(replayed_body.updated_at, body.updated_at);
+    assert_eq!(replayed_body.content, builder_content("v2"));
+    assert_ne!(replayed_body.updated_at, later_revision);
+    assert_eq!(
+        revisions(&db, tenant_id, page_id).await?.len(),
+        count_before_replay,
+        "replaying a committed restore must not append another journal row"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn sqlite_duplicate_restores_are_serialized_across_independent_pools() -> TestResult<()> {
+    // A file-backed database is required here: two pools must own independent SQLite
+    // connections while contending for the same page write reservation.
+    let database_path = std::env::temp_dir().join(format!(
+        "pages_restore_receipt_{}.sqlite",
+        Uuid::new_v4()
+    ));
+    let database_url = format!("sqlite:file:{}?mode=rwc", database_path.display());
+    let db = setup_db_at_url(database_url.clone()).await?;
+    let mut peer_options = ConnectOptions::new(database_url);
+    peer_options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let peer_db = Database::connect(peer_options).await?;
+
+    let tenant_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let (page_id, base_revision) = seed_published_page(&db, tenant_id).await?;
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+    let peer_service = PageService::new(peer_db.clone(), mock_transactional_event_bus());
+
+    let v2 = service
+        .save_document(
+            tenant_id,
+            security.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: base_revision,
+                body: builder_body("v2"),
+            },
+        )
+        .await?;
+    let v2_revision = v2.body.expect("v2 body").updated_at;
+    let v3 = service
+        .save_document(
+            tenant_id,
+            security.clone(),
+            page_id,
+            SavePageDocumentInput {
+                expected_revision: v2_revision,
+                body: builder_body("v3"),
+            },
+        )
+        .await?;
+    let v3_revision = v3.body.expect("v3 body").updated_at;
+    let history = service
+        .body_revision_history(tenant_id, security.clone(), page_id, "en")
+        .await?;
+    let restore = RestorePageBodyRevisionInput {
+        expected_revision: v3_revision,
+        revision_id: history[1].id,
+    };
+
+    let (left, right) = tokio::join!(
+        service.restore_body_revision(tenant_id, security.clone(), page_id, restore.clone()),
+        peer_service.restore_body_revision(tenant_id, security, page_id, restore),
+    );
+    let first = left?;
+    let second = right?;
+    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(
+        revisions(&db, tenant_id, page_id).await?.len(),
+        3,
+        "independent SQLite writers must commit one restore and one receipt"
+    );
+
+    drop(service);
+    drop(peer_service);
+    drop(peer_db);
+    drop(db);
+    std::fs::remove_file(&database_path)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn page_create_receipt_replays_the_original_result_after_later_writes() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db().await?;
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+    let input = CreatePageInput {
+        translations: vec![PageTranslationInput {
+            locale: "en".to_string(),
+            title: "Receipt-backed page".to_string(),
+            slug: Some("receipt-backed-page".to_string()),
+            meta_title: None,
+            meta_description: None,
+        }],
+        template: Some("default".to_string()),
+        body: Some(builder_body("initial")),
+        channel_slugs: None,
+        publish: false,
+    };
+
+    let created = service
+        .create_with_receipt(
+            tenant_id,
+            security.clone(),
+            input.clone(),
+            true,
+            "pages-create-receipt-1".to_string(),
+        )
+        .await?;
+    let created_body = created.body.expect("initial body");
+    assert_eq!(created.version, 1);
+    assert_eq!(created_body.content, builder_content("initial"));
+
+    let saved = service
+        .save_document(
+            tenant_id,
+            security.clone(),
+            created.id,
+            SavePageDocumentInput {
+                expected_revision: created_body.updated_at,
+                body: builder_body("later"),
+            },
+        )
+        .await?;
+    assert_eq!(
+        saved.body.expect("later body").content,
+        builder_content("later")
+    );
+
+    let replayed = service
+        .create_with_receipt(
+            tenant_id,
+            security.clone(),
+            input.clone(),
+            true,
+            "pages-create-receipt-1".to_string(),
+        )
+        .await?;
+    assert_eq!(replayed.id, created.id);
+    assert_eq!(replayed.version, 1);
+    assert_eq!(
+        replayed.body.expect("original receipt body").content,
+        builder_content("initial"),
+        "a retry returns the original acknowledgement, not a later page snapshot"
+    );
+    assert_eq!(
+        page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await?
+            .len(),
+        1,
+        "a retry must not create a second page"
+    );
+
+    let mut changed_input = input;
+    changed_input.translations[0].title = "Different request".to_string();
+    let error = service
+        .create_with_receipt(
+            tenant_id,
+            security,
+            changed_input,
+            true,
+            "pages-create-receipt-1".to_string(),
+        )
+        .await
+        .expect_err("a key cannot be reused for another create request");
+    assert!(error.to_string().contains("idempotency key"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn concurrent_page_create_replays_across_independent_sqlite_pools() -> TestResult<()> {
+    let database_path = std::env::temp_dir().join(format!(
+        "pages_create_receipt_{}.sqlite",
+        Uuid::new_v4()
+    ));
+    let database_url = format!("sqlite:file:{}?mode=rwc", database_path.display());
+    let db = setup_db_at_url(database_url.clone()).await?;
+    let mut peer_options = ConnectOptions::new(database_url);
+    peer_options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let peer_db = Database::connect(peer_options).await?;
+
+    let tenant_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let service = PageService::new(db.clone(), mock_transactional_event_bus());
+    let peer_service = PageService::new(peer_db.clone(), mock_transactional_event_bus());
+    let input = CreatePageInput {
+        translations: vec![PageTranslationInput {
+            locale: "en".to_string(),
+            title: "Concurrent create".to_string(),
+            slug: Some("concurrent-create".to_string()),
+            meta_title: None,
+            meta_description: None,
+        }],
+        template: Some("default".to_string()),
+        body: Some(builder_body("initial")),
+        channel_slugs: None,
+        publish: false,
+    };
+
+    let (left, right) = tokio::join!(
+        service.create_with_receipt(
+            tenant_id,
+            security.clone(),
+            input.clone(),
+            true,
+            "pages-create-concurrent-1".to_string(),
+        ),
+        peer_service.create_with_receipt(
+            tenant_id,
+            security,
+            input,
+            true,
+            "pages-create-concurrent-1".to_string(),
+        ),
+    );
+    let first = left?;
+    let second = right?;
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.version, second.version);
+    assert_eq!(
+        page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await?
+            .len(),
+        1,
+        "independent SQLite writers must create one page for one key"
+    );
+
+    drop(service);
+    drop(peer_service);
+    drop(peer_db);
+    drop(db);
+    std::fs::remove_file(&database_path)?;
     Ok(())
 }
 

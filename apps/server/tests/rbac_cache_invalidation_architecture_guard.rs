@@ -15,7 +15,7 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_recovery() {
+fn rbac_invalidation_startup_is_serialized_supervised_and_runtime_owned() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let event_runtime = source("apps/server/src/services/event_transport_factory.rs");
 
@@ -30,7 +30,9 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
         "existing.abort();",
         "if let Err(error) = listener.recover_generation_and_clear().await",
         "startup_recovery_deferred",
-        "RBAC_INVALIDATION_CACHE_SERVICE",
+        "cache: &CacheService",
+        "publish_rbac_invalidation(cache,",
+        "publish_durable(&record)",
         "spawn_supervised_rbac_invalidation_worker",
         "AssertUnwindSafe(worker_factory()).catch_unwind().await",
         "local_worker_restart",
@@ -60,18 +62,34 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
     let runtime_commit = startup_slice
         .rfind("ctx.shared_insert(runtime);")
         .expect("supervised RBAC runtime must be installed");
-    let publisher_commit = startup_slice
-        .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
-        .expect("RBAC publisher must be installed after the runtime");
-
     assert!(early_subscription < recovery);
     assert!(recovery < runtime_commit);
-    assert!(runtime_commit < publisher_commit);
+    assert!(!rbac.contains("RBAC_INVALIDATION_CACHE_SERVICE"));
     assert!(
         event_runtime
             .contains("start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;")
     );
     assert!(event_runtime.contains("CacheService must be initialized before the event runtime"));
+}
+
+#[test]
+fn rbac_invalidation_publishers_use_their_runtime_owned_cache_service() {
+    let invalidation = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let provider = source("apps/server/src/services/auth_admin_mutation_provider.rs");
+    let dispatcher = source("apps/server/src/services/module_event_dispatcher.rs");
+    let admin = source("apps/server/src/services/auth_admin_mutation_provider/user_admin.rs");
+    let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
+    let repair = source("apps/server/src/services/rbac_repair.rs");
+    let graphql = source("apps/server/src/graphql/rbac_runtime.rs");
+
+    assert!(!invalidation.contains("RBAC_INVALIDATION_CACHE_SERVICE"));
+    assert!(invalidation.contains("cache: &CacheService"));
+    assert!(provider.contains("cache_service: CacheService"));
+    assert!(dispatcher.contains("ensure_cache_service(runtime_ctx)"));
+    assert!(admin.contains("publish_user_rbac_invalidation(cache_service,"));
+    assert!(committed.contains("cache_service: &CacheService"));
+    assert!(repair.contains("cache_service: &CacheService"));
+    assert!(graphql.contains("publish_all_rbac_invalidation(&self.cache_service, generation)"));
 }
 
 #[test]
@@ -93,7 +111,7 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         "RBAC_PERMISSION_RECONCILE_INTERVAL",
         "RBAC_PERMISSION_INVALIDATE_ALL_KEY",
         "RbacInvalidationTarget::All",
-        "publish_all_rbac_invalidation(generation: u64)",
+        "cache: &CacheService,",
         "reconcile_generation_if_advanced",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
@@ -162,12 +180,12 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
 
     assert!(
         committed
-            .contains("publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)")
+            .contains("publish_user_rbac_invalidation(cache_service, tenant_id, user_id, durable_generation)")
     );
     assert!(
-        admin.contains("publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation)")
+        admin.contains("publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation)")
     );
-    assert!(repair.contains("publish_all_rbac_invalidation(durable_generation)"));
+    assert!(repair.contains("publish_all_rbac_invalidation(cache_service, durable_generation)"));
     assert!(!repair.contains("publish_user_rbac_invalidation"));
 
     assert!(!rbac.contains("users::Entity::find()"));
@@ -407,7 +425,7 @@ fn graphql_grant_replacement_reserves_generation_before_commit_and_notifies_afte
             .find("invalidate_all_user_permissions_cache().await")
             .unwrap()
             < notify_host
-                .find("publish_all_rbac_invalidation(generation)")
+                .find("publish_all_rbac_invalidation(&self.cache_service, generation)")
                 .unwrap()
     );
     for required in [
