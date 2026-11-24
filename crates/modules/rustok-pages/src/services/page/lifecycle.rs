@@ -200,7 +200,7 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let existing = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -277,7 +277,7 @@ impl PageService {
         expected_version: i32,
         expected_body_revisions: Option<BodyRevisionSnapshot>,
     ) -> PagesResult<PageResponse> {
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let existing = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_expected_version(Some(expected_version), existing.version)?;
         enforce_owned_scope(
