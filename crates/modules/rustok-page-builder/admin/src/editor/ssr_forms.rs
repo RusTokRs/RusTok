@@ -669,13 +669,20 @@ mod selected_resize_tests {
             ComponentPatch::default().set_attribute("aria-label", json!("not a resize"))
         ).is_err());
         assert!(controller.ssr_selected_style_patch_intent(
+            None,
             ComponentPatch::default().merge_style(json!({"width": "calc(100% - 1px)"}))
         ).is_err());
         assert!(controller.ssr_selected_style_patch_intent(
+            None,
             ComponentPatch::default().merge_style(json!({"position": "absolute"}))
         ).is_err());
         assert!(controller.ssr_selected_style_patch_intent(
+            None,
             ComponentPatch::default().merge_style(json!({"height": "1000000px"}))
+        ).is_err());
+        assert!(controller.ssr_selected_style_patch_intent(
+            Some("footer"),
+            ComponentPatch::default().merge_style(json!({"width": "320px"}))
         ).is_err());
     }
 }
