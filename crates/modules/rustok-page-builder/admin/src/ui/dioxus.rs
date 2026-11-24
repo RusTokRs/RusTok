@@ -231,7 +231,11 @@ where
                         }
                         Err(error) => {
                             if let Some(id) = save_attempt {
-                                state.handle_publish_error_for_attempt(&id, error.to_string());
+                                if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
+                                    state.handle_publish_conflict_for_attempt(&id, error.to_string());
+                                } else {
+                                    state.handle_publish_error_for_attempt(&id, error.to_string());
+                                }
                             } else {
                                 state.preview_in_progress = false;
                                 state.preview_request = None;
