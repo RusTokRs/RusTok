@@ -153,8 +153,7 @@ impl AuthLifecycleService {
 
         let expires_at = DateTime::<Utc>::from_timestamp(claims.exp as i64, 0)
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        let now = Utc::now();
-        if expires_at <= now {
+        if expires_at <= Utc::now() {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
@@ -200,12 +199,17 @@ impl AuthLifecycleService {
             Some(invite) if invite.revoked_at.is_none() => invite,
             _ => return Err(InviteAcceptanceError::InvalidToken),
         };
-        if issued.role != ledger_role
+        // Argon2 preparation and lock acquisition may take time. Recheck
+        // expiration at the point of consumption, not against the earlier
+        // pre-hash timestamp.
+        let now = Utc::now();
+        if expires_at <= now
+            || issued.role != ledger_role
             || !invite_ledger_matches_claims(
                 &issued,
                 &email,
                 expires_at.clone(),
-                now.clone(),
+                now,
             )
         {
             return Err(InviteAcceptanceError::InvalidToken);
