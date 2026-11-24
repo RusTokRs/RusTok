@@ -761,7 +761,17 @@ fn handle_canvas_message(
             }
             if session_has_active_drag(session) {
                 update_drag_candidates(session, geometry, on_ui_intent, position);
-                on_ui_intent.call(UiIntent::Drop);
+                let has_legal_candidate = session.read().controller.ui().state.drag
+                    .as_ref()
+                    .and_then(|drag| drag.active_candidate())
+                    .is_some_and(|candidate| candidate.legal);
+                if has_legal_candidate {
+                    on_ui_intent.call(UiIntent::Drop);
+                } else {
+                    // Pointer-up is terminal. Keep the state machine's retryable Drop
+                    // semantics for explicit callers, but do not strand a pointer-ended drag.
+                    on_ui_intent.call(UiIntent::CancelDrag);
+                }
             }
         }
         CanvasBridgeMessage::KeyStroke { stroke } => {
