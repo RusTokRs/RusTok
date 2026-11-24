@@ -24,13 +24,13 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 
 ## Known Limitations / Pending Implementation
 
-- **The outbound half of the iframe bridge has no caller inside this repository.**
-  `IframeMessagePort` and `WindowMessageSubscription` are covered by their own tests only; the Page
-  Builder canvas speaks its own subscription protocol (`IframeJsonSubscription` in
-  `rustok-page-builder/admin/src/editor/isolated_canvas.rs`). `IframeMessagePort::post` translates an
-  opaque destination — a `sandbox="allow-scripts"` `srcdoc` frame — through `outbound_target_origin`,
-  which is what makes the port deliver at all: it used to pass `"null"`, a `postMessage` target the
-  platform rejects.
+- **The generic window subscription is not the Page Builder canvas protocol.**
+  `FlyCanvasIframe` uses `IframeMessagePort` to request a snapshot from a sandboxed
+  `srcdoc` frame, while `IframeJsonSubscription` validates the canvas-specific envelope,
+  source window, origin, instance ID and monotonic sequence. `WindowMessageSubscription`
+  remains a lower-level generic utility rather than the Page Builder's typed message contract.
+  `IframeMessagePort::post` translates an opaque destination through `outbound_target_origin`;
+  passing `"null"` as a `postMessage` target is rejected by the platform.
 - **Peer-write notifications are advisory, not collaboration or idempotency.** They fence a
   stale editor after another tab confirms a write, but do not merge operations, recover an
   unknown network outcome, or replace the server's revision compare-and-swap and save receipt.
