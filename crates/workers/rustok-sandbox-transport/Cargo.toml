@@ -23,6 +23,7 @@ tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true, features = ["tls-ring"] }
 tonic-prost.workspace = true
 prost.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [build-dependencies]
