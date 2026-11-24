@@ -1411,7 +1411,7 @@ async fn validate_replay_in_tx(
     actor_id: Uuid,
     prepared: &PreparedRangeMoveInput,
 ) -> ForumResult<()> {
-    let matches = existing.tenant_id != Uuid::nil()
+    let matches = !existing.tenant_id.is_nil()
         && existing.operation_id == prepared.operation_id
         && existing.source_topic_id == source_topic_id
         && existing.target_topic_id == prepared.target_topic_id

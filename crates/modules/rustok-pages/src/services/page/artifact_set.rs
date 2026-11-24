@@ -491,7 +491,7 @@ async fn verify_physical_loss_activation_prefix_in_tx(
                         "physical-loss activation prefix latest rebuilt artifact drifted from its receipt",
                     ));
                 }
-                if *page_body_id == Uuid::nil() {
+                if page_body_id.is_nil() {
                     return Err(PagesError::rollback_target_unavailable(
                         "physical-loss activation prefix latest repaired body identity is invalid",
                     ));

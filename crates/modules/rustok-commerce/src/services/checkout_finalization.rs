@@ -237,7 +237,7 @@ fn validate_state(
             state.order.status_kind(),
             OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered
         )
-        || cart_id == Uuid::nil()
+        || cart_id.is_nil()
     {
         return Err(CheckoutFinalizationError::Conflict(
             "fulfillment-created state does not describe one completed checkout identity"

@@ -80,6 +80,7 @@ impl Scan<'_> {
                 || pattern_id == "P-MIGRATION-PANIC"
                 || pattern_id == "P-DISTRIBUTED-LEASE-OWNER"
                 || pattern_id == "P-NIL-IDENTITY-FALLBACK"
+                || pattern_id == "P-NIL-UUID-COMPARE"
                 || pattern_id == "P-SQLITE-UNLOCKED-RACE"
                 || pattern_id == "P-SILENT-EVENT-DISCARD"
                 || pattern_id == "P-THISERROR-SOURCE-FIELD-COLLISION"
@@ -1542,6 +1543,19 @@ fn check_rules(
                 Severity::Critical,
                 "Defaulting critical identity to Nil/Default UUID. Missing entity authority must fail closed.",
                 "entity_id.ok_or(DomainError::IdentityRequired)?",
+            );
+        }
+        if is_ui {
+            // UI code
+        }
+        if re!(r"\b(?:\*?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:==|!=)\s*(?:uuid::)?Uuid::nil\(\)").is_match(text) {
+            scan.add(
+                number,
+                "P-NIL-UUID-COMPARE",
+                "Nil UUID Direct Equality Comparison",
+                Severity::High,
+                "Comparing UUID directly with Uuid::nil() via == or !=. Use .is_nil() or !.is_nil().",
+                "id.is_nil() / !id.is_nil()",
             );
         }
         if publications
