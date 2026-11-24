@@ -624,6 +624,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let show_adapter_workspace = props.adapter_workspace;
     let workspace_facade = props.facade.clone();
     let toolbar_facade = props.facade.clone();
+    let toolbar_publish_confirmed = on_publish_confirmed.clone();
     #[cfg(feature = "dioxus-web")]
     let canvas_facade = props.facade.clone();
     let on_workspace_error = EventHandler::new(move |error: String| {
@@ -745,30 +746,38 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     .and_then(UiCspNonce::new);
                 match render_canvas_srcdoc_with_context(
                     &canvas_document,
-                    &workspace_page_id,
+                    &workspace_canvas_instance_id,
                     &workspace_runtime_context,
                     canvas_nonce.as_ref(),
                 ) {
                     Ok(srcdoc) => Some(rsx! {
                         DioxusIsolatedCanvas {
                             srcdoc,
-                            instance_id: workspace_page_id.clone(),
+                            instance_id: workspace_canvas_instance_id.clone(),
+                            intent_instance_id: workspace_page_id.clone(),
+                            can_resize: capabilities.edit && capabilities.styles,
                             session,
                             on_intent: on_workspace_intent,
                             on_ui_intent: on_canvas_ui_intent,
                             on_error: Some(on_workspace_error),
                         }
                     }),
-                    Err(error) => {
-                        on_workspace_error.call(error.to_string());
-                        None
-                    }
+                    Err(error) => Some(rsx! {
+                        div {
+                            class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                            role: "alert",
+                            "Canvas rendering failed: {error}"
+                        }
+                    })
                 }
             }
-            None => {
-                on_workspace_error.call("The active page is unavailable for isolated canvas rendering".to_string());
-                None
-            }
+            None => Some(rsx! {
+                div {
+                    class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                    role: "alert",
+                    "The active page is unavailable for isolated canvas rendering."
+                }
+            })
         }
     };
     #[cfg(not(feature = "dioxus-web"))]
@@ -810,14 +819,25 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             let effects = session.write().dispatch(
                                 EditorSessionAction::DispatchIntent(UiIntent::RequestSave)
                             );
-                            dispatch_facade_effects(session, toolbar_facade.clone(), effects);
+                            dispatch_facade_effects(
+                                session,
+                                toolbar_facade.clone(),
+                                effects,
+                                toolbar_publish_confirmed.clone(),
+                            );
                         },
                         "Save"
                     }
                 }
             }
 
-            if let Some(err) = last_error {
+            if peer_conflict_active {
+                div {
+                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30",
+                    role: "alert",
+                    "Another tab saved this page. This editor is now read-only; reload to continue from the latest revision."
+                }
+            } else if let Some(err) = last_error {
                 div {
                     class: "p-3 bg-destructive/10 text-destructive text-sm border-b border-destructive/20",
                     role: "alert",
