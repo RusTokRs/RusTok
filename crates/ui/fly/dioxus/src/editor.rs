@@ -340,6 +340,24 @@ pub fn FlyThemeTokenEditor(
     }
 }
 
+pub(crate) fn decode_fly_canvas_envelope(
+    payload: &str,
+    expected_instance: &str,
+    last_sequence: Option<u64>,
+) -> Option<(u64, String)> {
+    let envelope = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if envelope.get("protocol")?.as_str()? != fly_web::FLY_IFRAME_PROTOCOL
+        || envelope.get("instance_id")?.as_str()? != expected_instance
+    {
+        return None;
+    }
+    let sequence = envelope.get("sequence")?.as_u64()?;
+    if last_sequence.is_some_and(|last| sequence <= last) {
+        return None;
+    }
+    Some((sequence, payload.to_string()))
+}
+
 /// Sandboxed `srcdoc` canvas with a source-, origin- and sequence-checked message subscription.
  ///
  /// The host owns the document renderer and interprets the raw JSON messages. The iframe
@@ -375,17 +393,7 @@ pub fn FlyThemeTokenEditor(
                      iframe_id.clone(),
                      expected_origin_for_load.clone(),
                      move |payload, last_sequence| {
-                         let envelope = serde_json::from_str::<serde_json::Value>(payload).ok()?;
-                         if envelope.get("protocol")?.as_str()? != fly_web::FLY_IFRAME_PROTOCOL
-                             || envelope.get("instance_id")?.as_str()? != instance
-                         {
-                             return None;
-                         }
-                         let sequence = envelope.get("sequence")?.as_u64()?;
-                         if last_sequence.is_some_and(|last| sequence <= last) {
-                             return None;
-                         }
-                         Some((sequence, payload.to_string()))
+                         decode_fly_canvas_envelope(payload, &instance, last_sequence)
                      },
                      move |payload| message_handler.call(payload),
                  ) {

@@ -23,9 +23,10 @@ that element unless it carries the request nonce, and the canvas renders unstyle
 a host-owned canvas slot. `FlyCanvasIframe` provides the Dioxus iframe lifecycle: sandboxed
 `srcdoc`, exact source-window and origin checks, protocol/instance/sequence validation, and
 subscription replacement after reload. The host still owns message interpretation, geometry,
-drop policy and persistence. Dioxus-specific pointer/resize gestures and the Page Builder
-iframe/drop/resize wiring are separate integration work; they must use `fly-web` geometry and
-`fly-ui` commands rather than duplicating editor policy. Dioxus `web`/`desktop` renderers
+drop policy and persistence. The Page Builder Dioxus host now supplies an isolated canvas slot, forwards geometry,
+hover/focus/keyboard messages, updates drag hit candidates, completes palette and selected-layer
+moves, and commits bounded resize patches through the shared editor controller. The reusable
+workspace remains host-neutral: it does not decide domain drop legality or persistence. Dioxus `web`/`desktop` renderers
 remain opt-in features.
 
 ## Architecture
