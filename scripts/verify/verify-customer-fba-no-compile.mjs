@@ -51,7 +51,7 @@ export function verifyCustomerFbaNoCompile() {
   if (!centralRegistry.includes('| `customer` |') || !centralRegistry.includes(registryPath)) fail('central readiness board must reference customer FBA registry');
   if (!portSource.includes('trait CustomerReadPort')) fail('CustomerReadPort trait missing');
   if (!portSource.includes('require_customer_read_policy(&context, owner_operation)?;')) fail('CustomerReadPort operations must use the shared read-policy helper');
-  if (!portSource.includes('context\n        .require_policy(PortCallPolicy::read())')) fail('CustomerReadPort helper must enforce read policy');
+  if (!/context\s*\.require_policy\(PortCallPolicy::read\(\)\)/.test(portSource)) fail('CustomerReadPort helper must enforce read policy');
   if (!libSource.includes('pub mod ports;') || !libSource.includes('mod read_context;')) fail('customer crate must retain ports and compose the root context wrapper');
   if (!libSource.includes('pub use ports::{') || !libSource.includes('CustomerReadPort,')) fail('customer crate must export read contracts from ports');
   if (!libSource.includes('pub use read_context::{InProcessCustomerReadPort, in_process_customer_read_port};')) fail('customer root factory must use the context wrapper');

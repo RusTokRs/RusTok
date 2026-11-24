@@ -17,7 +17,7 @@ pub struct CreateCustomerInput {
     pub last_name: Option<String>,
     #[validate(length(max = 50))]
     pub phone: Option<String>,
-    #[validate(length(max = 16))]
+    #[validate(length(max = 32))]
     pub locale: Option<String>,
     pub metadata: Value,
 }
@@ -32,7 +32,7 @@ pub struct UpdateCustomerInput {
     pub last_name: Option<String>,
     #[validate(length(max = 50))]
     pub phone: Option<String>,
-    #[validate(length(max = 16))]
+    #[validate(length(max = 32))]
     pub locale: Option<String>,
     pub metadata: Option<Value>,
 }

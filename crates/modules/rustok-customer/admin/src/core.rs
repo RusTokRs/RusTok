@@ -647,14 +647,18 @@ pub fn matches_customer_filter(
                 .next()
                 .unwrap_or(&item.created_at);
             if let Some(f) = from
-                && !f.trim().is_empty()
-                && item_date < f.as_str()
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                && item_date < f
             {
                 return false;
             }
             if let Some(t) = to
-                && !t.trim().is_empty()
-                && item_date > t.as_str()
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                && item_date > t
             {
                 return false;
             }
@@ -1068,5 +1072,17 @@ mod tests {
         let filtered_name = filter_customers(&customers, &name_filters);
         assert_eq!(filtered_name.len(), 1);
         assert_eq!(filtered_name[0].id, "c-2");
+
+        let mut date_filters = ColumnFilters::new();
+        date_filters.set(
+            "created_at",
+            FilterValue::DateRange {
+                from: Some(" 2026-05-03 ".to_string()),
+                to: Some(" 2026-05-06 ".to_string()),
+            },
+        );
+        let filtered_date = filter_customers(&customers, &date_filters);
+        assert_eq!(filtered_date.len(), 1);
+        assert_eq!(filtered_date[0].id, "c-2");
     }
 }

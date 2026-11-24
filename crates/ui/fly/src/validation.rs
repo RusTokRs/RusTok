@@ -1114,16 +1114,18 @@ fn diagnostic(
 }
 
 fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD)
-        && let Err(error) = crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
-    {
-        report.diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "symbol_catalog_depth_exceeded",
-            FLY_SYMBOLS_FIELD,
-            format!("symbol catalog exceeds safe JSON depth: {error}"),
-        ));
-        return;
+    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+        if let Err(error) =
+            crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
+        {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_catalog_depth_exceeded",
+                FLY_SYMBOLS_FIELD,
+                format!("symbol catalog exceeds safe JSON depth: {error}"),
+            ));
+            return;
+        }
     }
     if document
         .project

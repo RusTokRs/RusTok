@@ -759,3 +759,127 @@ async fn profile_enrichment_bounds_and_guards() {
         .unwrap();
     assert!(res.is_empty());
 }
+
+#[tokio::test]
+async fn case_insensitive_duplicate_email_and_locale_bounds_are_enforced() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: None,
+                email: "Alice@Example.com".to_string(),
+                first_name: Some("Alice".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en_US".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.locale.as_deref(), Some("en-US"));
+
+    let dup = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: None,
+                email: "alice@example.com".to_string(),
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(dup, CustomerError::DuplicateEmail(_)));
+
+    let invalid_locale = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: None,
+                email: "bob@example.com".to_string(),
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: Some("bad locale!".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(invalid_locale, CustomerError::Validation(_)));
+
+    let long_valid_locale = service
+        .update_customer(
+            tenant_id,
+            created.id,
+            UpdateCustomerInput {
+                email: None,
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: Some("zh-Hans-CN-variant1".to_string()),
+                metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        long_valid_locale.locale.as_deref(),
+        Some("zh-Hans-CN-variant1")
+    );
+}
+
+#[tokio::test]
+async fn list_customers_handles_multibyte_search_over_256_bytes_and_enrichment_deduplicates() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                email: "cyrillic@example.com".to_string(),
+                first_name: Some("Имя".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("ru".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    // 300 2-byte Cyrillic chars = 600 bytes; must truncate on char boundary without panicking.
+    let long_cyrillic = "я".repeat(300);
+    let (items, total) = service
+        .list_customers(
+            tenant_id,
+            ListCustomersInput {
+                search: Some(long_cyrillic),
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 0);
+    assert!(items.is_empty());
+
+    let dup_ids = vec![user_id; 505];
+    let enriched = service
+        .list_profile_enrichment(tenant_id, &dup_ids)
+        .await
+        .unwrap();
+    assert_eq!(enriched.len(), 1);
+    assert_eq!(enriched[0].user_id, user_id);
+}

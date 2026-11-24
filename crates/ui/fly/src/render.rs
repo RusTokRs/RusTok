@@ -358,8 +358,7 @@ pub fn render_page(
     render_page_with_rich_text(document, selection, policy, None)
 }
 
-/// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
-
+/// Count opaque component descendants without recursive traversal.
 fn count_opaque_component_children(
     payload: &serde_json::Value,
     start_depth: usize,
@@ -402,6 +401,7 @@ fn count_opaque_component_children(
     Ok(())
 }
 
+/// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
     let mut pending = Vec::new();
