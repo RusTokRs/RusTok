@@ -468,16 +468,16 @@ fn subscribe_canvas_iframe(
         use_effect(use_reactive!(|port_config| {
             let (effect_iframe_id, effect_instance_id, effect_expected_origin) =
                 port_config.clone();
-            // Retire the old source-window subscription before rebinding the element.
-            // Keep the outbound port when only the DOM id changes: its sequence must stay
-            // monotonic for the same child document's lastParentSequence fence.
-            subscription.set(None);
             let existing_config = port_instance_config.read().clone();
             let config_matches = existing_config.as_ref().is_some_and(|(instance, origin)| {
                 instance == &effect_instance_id && origin == &effect_expected_origin
             });
             let needs_new_port = !config_matches || message_port.read().is_none();
             if needs_new_port {
+                // A new instance/origin gets a fresh outbound sequence. An ID-only change keeps
+                // the current source-window subscription; if it replaced the iframe element,
+                // that element's load handler will rebind it without resetting the port sequence.
+                subscription.set(None);
                 message_port.set(None);
                 port_instance_config.set(None);
                 match fly_web::IframeMessagePort::new(
@@ -498,16 +498,16 @@ fn subscribe_canvas_iframe(
                         return;
                     }
                 }
+                subscribe_canvas_iframe(
+                    &effect_iframe_id,
+                    &effect_instance_id,
+                    &effect_expected_origin,
+                    subscription,
+                    message_port,
+                    on_message,
+                    on_error,
+                );
             }
-            subscribe_canvas_iframe(
-                &effect_iframe_id,
-                &effect_instance_id,
-                &effect_expected_origin,
-                subscription,
-                message_port,
-                on_message,
-                on_error,
-            );
         }));
     }
 
