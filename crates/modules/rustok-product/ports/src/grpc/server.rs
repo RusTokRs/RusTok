@@ -3,9 +3,10 @@ use std::{collections::HashSet, fmt, io, sync::Arc};
 use crate::ProductAttachedValuesWritePort;
 use crate::{
     FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
-    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
-    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
-    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductStorefrontHttpReadPort,
+    ProductVariantIdentityReadPort, PublishedProductsRequest, StorefrontCatalogFacetsRequest,
+    StorefrontProductProjectionRequest, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest,
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, SetVariantAxesInput,
         UpdateProductInput, UpdateVariantInput,
@@ -38,6 +39,7 @@ use crate::{
 /// Provider-side adapter. The wrapped Product owner port retains catalog policy and persistence.
 pub struct ProductCatalogGrpcService<P> {
     provider: Arc<P>,
+    storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>,
     variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>,
     attached_values_read_port: Option<Arc<dyn ProductAttachedValuesReadPort>>,
     locale_replay_port: Option<Arc<dyn ProductLocaleReplayPort>>,
@@ -69,6 +71,8 @@ pub enum ProductCatalogGrpcOperation {
     ListFilteredPublishedProducts,
     LoadStorefrontCatalogFacets,
     ReadStorefrontProductProjection,
+    ListLegacyStorefrontProducts,
+    ListLegacyStorefrontHttpProducts,
     ReadAttachedValues,
     ScanVariantReplay,
     LoadVariantReplay,
@@ -98,7 +102,7 @@ impl ProductCatalogGrpcOperation {
 
     pub const VARIANT_REPLAY: [Self; 2] = [Self::ScanVariantReplay, Self::LoadVariantReplay];
 
-    pub const READ: [Self; 9] = [
+    pub const READ: [Self; 11] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
         Self::ListPublishedProducts,
@@ -108,6 +112,8 @@ impl ProductCatalogGrpcOperation {
         Self::ListFilteredPublishedProducts,
         Self::LoadStorefrontCatalogFacets,
         Self::ReadStorefrontProductProjection,
+        Self::ListLegacyStorefrontProducts,
+        Self::ListLegacyStorefrontHttpProducts,
     ];
 
     pub const COMMAND: [Self; 15] = [
@@ -319,11 +325,20 @@ impl<P> ProductCatalogGrpcService<P> {
     pub fn new(provider: Arc<P>) -> Self {
         Self {
             provider,
+            storefront_http_read_port: None,
             variant_identity_read_port: None,
             attached_values_read_port: None,
             variant_replay_port: None,
             locale_replay_port: None,
         }
+    }
+
+    pub fn with_storefront_http_read_port(
+        mut self,
+        provider: Arc<dyn ProductStorefrontHttpReadPort>,
+    ) -> Self {
+        self.storefront_http_read_port = Some(provider);
+        self
     }
 
     pub fn with_variant_identity_read_port(
@@ -616,6 +631,44 @@ where
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)
+    }
+
+    async fn list_legacy_storefront_products(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ListLegacyStorefrontProducts,
+        )?;
+        let input = decode_input(&request.into_inner().input_json)?;
+        let result = self
+            .provider
+            .list_legacy_storefront_products(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&result)
+    }
+
+    async fn list_legacy_storefront_http_products(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ListLegacyStorefrontHttpProducts,
+        )?;
+        let provider = self.storefront_http_read_port.as_deref().ok_or_else(|| {
+            Status::unimplemented("Product storefront HTTP read capability is not configured")
+        })?;
+        let input = decode_input(&request.into_inner().input_json)?;
+        let result = provider
+            .list_legacy_storefront_http_products(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&result)
     }
 
     async fn read_storefront_product_projection(

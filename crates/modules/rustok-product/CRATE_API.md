@@ -52,7 +52,11 @@ capability before tenant-less price-row reads. Remote adapter execution remains 
 
 The current remote adapter implements the three mandatory `ProductCatalogReadPort`
 operations listed below. Additional optional read methods have typed unavailable defaults;
-the gRPC host supplies SKU identity from the same connection. Schema, HTTP and tag handles remain absent.
+the gRPC host supplies SKU identity and both legacy storefront lists from the
+same connection. The HTTP list contract is published by `rustok-product-ports`.
+Schema reads and standalone Index tag hydration still require provider bindings.
+Lists requiring tag names fail with retryable unavailable when the standalone
+owner has no Taxonomy provider.
 `ProductCatalogCommandRuntime` remains embedded under default host composition.
 Some admin paths construct local services directly. The
 [coverage inventory](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06)

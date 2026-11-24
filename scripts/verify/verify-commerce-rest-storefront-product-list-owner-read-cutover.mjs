@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const mounted = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const owner = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
+const ports = read('crates/modules/rustok-product/ports/src/ports.rs');
 const runtime = read('crates/modules/rustok-product/src/runtime.rs');
 const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const lib = read('crates/modules/rustok-product/src/lib.rs');
@@ -100,7 +101,6 @@ for (const [value, label] of [
 ]) requireText(mounted, value, label);
 
 for (const [value, label] of [
-  ['pub trait ProductStorefrontHttpReadPort', 'Product owner HTTP port'],
   ['async fn list_legacy_storefront_http_products(', 'Product owner HTTP operation'],
   ['MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100', 'REST page-size contract'],
   ['context.require_policy(PortCallPolicy::read())?', 'read admission'],
@@ -123,6 +123,7 @@ for (const [value, label] of [
   ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
 ]) requireText(owner, value, label);
 
+requireText(ports, 'pub trait ProductStorefrontHttpReadPort', 'published Product owner HTTP port');
 const queryStart = owner.indexOf('fn legacy_storefront_http_products_query(');
 const projection = owner.indexOf('\nasync fn list_legacy_storefront_http_products(', queryStart);
 requireText(owner.slice(queryStart, projection), 'product_channel_visibility_condition(', 'visibility is part of the owner SQL query');

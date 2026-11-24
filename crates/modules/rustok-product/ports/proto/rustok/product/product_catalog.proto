@@ -14,6 +14,8 @@ service ProductCatalogReadService {
   rpc ListFilteredPublishedProducts(JsonRequest) returns (JsonResponse);
   rpc LoadStorefrontCatalogFacets(JsonRequest) returns (JsonResponse);
   rpc ReadStorefrontProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ListLegacyStorefrontProducts(JsonRequest) returns (JsonResponse);
+  rpc ListLegacyStorefrontHttpProducts(JsonRequest) returns (JsonResponse);
   rpc ReadAttachedValues(JsonRequest) returns (JsonResponse);
   rpc ScanVariantReplay(JsonRequest) returns (JsonResponse);
   rpc LoadVariantReplay(JsonRequest) returns (JsonResponse);

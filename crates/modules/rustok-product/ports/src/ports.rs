@@ -9,11 +9,12 @@ use crate::dto::{
 };
 use crate::types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
-    LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductsRequest,
-    ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontCatalogFacet,
-    StorefrontCatalogFacetsRequest, StorefrontProductList, StorefrontProductProjectionRequest,
-    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    LegacyAdminProductsRequest, LegacyStorefrontHttpProductsRequest, LegacyStorefrontProductList,
+    LegacyStorefrontProductsRequest, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    StorefrontCatalogFacet, StorefrontCatalogFacetsRequest, StorefrontProductList,
+    StorefrontProductProjectionRequest, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest,
 };
 
 /// Transport-neutral owner boundary for product catalog read projections.
@@ -124,6 +125,20 @@ pub trait ProductCatalogReadPort: Send + Sync {
             "legacy admin product listing is unavailable",
         ))
     }
+}
+
+/// Product-owned compatibility boundary for the mounted legacy storefront REST list.
+///
+/// This capability is intentionally separate from the legacy GraphQL list projection because the
+/// mounted REST contract allows up to 100 rows, paginates after public-channel visibility, emits an
+/// empty title when no translation exists, and derives the shipping profile from metadata only.
+#[async_trait]
+pub trait ProductStorefrontHttpReadPort: Send + Sync {
+    async fn list_legacy_storefront_http_products(
+        &self,
+        context: PortContext,
+        request: LegacyStorefrontHttpProductsRequest,
+    ) -> Result<LegacyStorefrontProductList, PortError>;
 }
 
 /// Small Product-owned SKU identity projection for price/identity consumers.

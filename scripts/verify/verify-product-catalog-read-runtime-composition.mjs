@@ -32,6 +32,10 @@ function forbid(source, marker, description) {
 const runtimePath = "crates/modules/rustok-product/src/runtime.rs";
 const libPath = "crates/modules/rustok-product/src/lib.rs";
 const httpPortPath = "crates/modules/rustok-product/src/storefront_http_read_port.rs";
+const publishedPortsPath = "crates/modules/rustok-product/ports/src/ports.rs";
+const protoPath = "crates/modules/rustok-product/ports/proto/rustok/product/product_catalog.proto";
+const deploymentPath = "apps/server/src/services/product_catalog_deployment.rs";
+const servicePath = "crates/modules/rustok-product/src/bin/service.rs";
 const tagPortPath = "crates/modules/rustok-product/src/storefront_tag_read_port.rs";
 const hostPath = "apps/server/src/services/commerce_provider_runtime.rs";
 const registryPath = "crates/modules/rustok-product/contracts/product-fba-registry.json";
@@ -72,12 +76,25 @@ requireAll(lib, [
   "ProductStorefrontTagReadPort",
   "ProductStorefrontTagHydrationRequest",
 ], "Product public exports");
-requireAll(httpPort, [
+requireAll(read(publishedPortsPath), [
   "pub trait ProductStorefrontHttpReadPort",
+  "LegacyStorefrontHttpProductsRequest",
+], "published Product Storefront HTTP port");
+requireAll(read(protoPath), [
+  "rpc ListLegacyStorefrontHttpProducts(",
+  "rpc ListLegacyStorefrontProducts(",
+], "legacy storefront gRPC operations");
+requireAll(read(deploymentPath), [
+  ".with_storefront_http_read_port(provider.clone())",
+], "host-selected gRPC Storefront HTTP capability");
+requireAll(read(servicePath), [
+  ".with_storefront_http_read_port(provider.clone())",
+], "standalone gRPC Storefront HTTP capability");
+requireAll(httpPort, [
   "impl ProductStorefrontHttpReadPort for CatalogService",
   "MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100",
   "context.require_policy(PortCallPolicy::read())?",
-  "crate::services::catalog::helpers::is_metadata_visible_for_public_channel(",
+  "crate::services::catalog::helpers::product_channel_visibility_condition(",
   ".load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))",
 ], "Product optional Storefront HTTP capability");
 requireAll(tagPort, [

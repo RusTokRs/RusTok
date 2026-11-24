@@ -62,6 +62,7 @@ pub struct Model {
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
+    #[sea_orm(column_type = "JsonBinary")]
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

@@ -23,6 +23,11 @@ This folder contains the documentation for the umbrella module `crates/modules/r
 - module-owned UI packages are connected by host applications through manifest-driven composition;
 - any cross-domain contract changes must be synchronized with the local docs of split modules and the platform central docs.
 
+The storefront `GET /store/products` and GraphQL `storefrontProducts` lists
+use the Product provider selected by the host. Both delegate to Product when
+gRPC is selected. A page requiring tag names returns Product's retryable
+unavailable error if the standalone owner lacks Taxonomy.
+
 ## Capability classification gap
 
 Current composition makes Fulfillment a static Commerce dependency. The accepted

@@ -102,6 +102,18 @@ pub struct LegacyStorefrontProductsRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LegacyStorefrontHttpProductsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub search: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LegacyAdminProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,

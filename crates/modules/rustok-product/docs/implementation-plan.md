@@ -532,11 +532,11 @@ The July 29 attestation is retained for its original projection and consumer har
 |---|---|
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs the selected external read and/or command runtime before ordinary bootstrap. Invalid configuration or connection aborts startup. |
 | Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
-| Additional reads | Filtered lists, facets, storefront detail and Flex attached values have RPCs. Attached values require a dedicated grant. External runtime schema, HTTP and tag handles remain absent unless explicitly supplied. |
-| Mounted consumers | Pricing reads SKU identity from the selected Product provider. Local Commerce HTTP checkout passed in both profiles. Some storefront REST and Product admin paths still access local catalog services or entities. AI attributes and `product_copy` use the host-selected read port. `product_copy` also requires the selected command port. |
+| Additional reads | Filtered lists, facets, storefront detail, the Commerce REST and GraphQL storefront lists, and Flex attached values have RPCs. Attached values require a dedicated grant. Schema and Index tag hydration handles remain absent from the default external runtime. |
+| Mounted consumers | Pricing reads SKU identity from the selected Product provider. Commerce storefront REST list/detail and legacy GraphQL list use the selected Product port. Local Commerce HTTP checkout passed in both profiles. Some Product admin paths still access local catalog services or entities. AI attributes and `product_copy` use the host-selected read port. `product_copy` also requires the selected command port. |
 | Commands | The opt-in gRPC service exposes 15 command-port operations including preview. The consumer must authorize delegation. Writes are attributed to a configured service UUID. The standalone owner lacks embedded Pricing, Shipping Profile and Media bindings. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
-| Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
+| Packaging | Published contracts and optional gRPC adapters are in `rustok-product-ports`. The owner package provides embedded and standalone composition. |
 
 Product's packaging now implements the [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout):
 - Published contracts, DTOs, protobuf definitions, and tonic gRPC adapters live in `rustok-product-ports` (`ports/`).
@@ -548,6 +548,22 @@ Product's packaging now implements the [canonical FBA layout](../../../../docs/b
   through `rustok-outbox-storage`. Strict FBA lint passes. Resolve the historical
   cross-owner migrations and remaining provider bypasses before claiming
   independently provisioned Product storage.
+
+The modular host now binds the Commerce REST list port to the same gRPC
+connection as the other Product catalog reads. The existing GraphQL
+`storefrontProducts` port also delegates to the standalone owner. Both lists
+retain their own page limits and projection rules. The standalone Product
+process still needs a Taxonomy binding to serve pages with tagged products.
+If a selected page requires tag names, both RPCs return the existing typed
+unavailable error. The next deployment gate for these lists is an outgoing
+Taxonomy read adapter and mounted Commerce verification.
+
+The PostgreSQL 16 `flex_schema_projection` fixture ran both lists against the
+standalone binary and the embedded Product owner. It verified tenant and channel
+filtering before pagination, locale fallback, and the distinct shipping profile
+projections. It also exercised a denied read credential, a missing deadline,
+the REST page-size limit, and the retryable failure when tag names require a
+Taxonomy provider. This fixture calls the Product ports directly.
 
 Flex GraphQL reads and writes Product attached fields through the selected
 embedded or authenticated gRPC ports. The read credential grants

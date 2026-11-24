@@ -4,6 +4,7 @@ Canonical FBA contract crate for `rustok-product`.
 
 Publishes:
 - `ProductCatalogReadPort`: Storefront, administrative, and checkout catalog projection reads.
+- `ProductStorefrontHttpReadPort`: Published catalog list used by Commerce REST.
 - `ProductVariantIdentityReadPort`: Tenant-scoped variant identity lookup and enumeration.
 - `ProductVariantReplayPort`: Versioned live variants and deletion identities for Index.
 - `ProductLocaleReplayPort`: Versioned localized Product cards and deletion identities for Index.
@@ -50,6 +51,13 @@ returns the committed result, including the original update snapshot. A key
 reused with a different payload returns `CONFLICT`.
 Embedded callers may omit the key. Such a call receives a fresh key, so client
 retries need an explicit key for deduplication in embedded mode as well.
+
+The catalog read credential covers both storefront list RPCs.
+`ListLegacyStorefrontHttpProducts` serves `GET /store/products` with a limit of
+100 rows. `ListLegacyStorefrontProducts` serves the GraphQL `storefrontProducts`
+field with a limit of 48 rows. Each RPC preserves its existing owner projection.
+A standalone Product instance without a Taxonomy provider returns a retryable
+unavailable error if listing the requested page requires resolving tag names.
 
 ## Authentication
 

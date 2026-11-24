@@ -127,6 +127,10 @@
       "list_product_variant_identities"
     ],
     "storefront_variant_projection_operation": "read_storefront_variant_product_projection",
+    "storefront_list_operations": [
+      "ListLegacyStorefrontProducts",
+      "ListLegacyStorefrontHttpProducts"
+    ],
     "attached_values_read_port": "ProductAttachedValuesReadPort",
     "attached_values_read_operation": "ReadAttachedValues",
     "attached_values_read_bearer_token_env": "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN",

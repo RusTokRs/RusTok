@@ -12,8 +12,10 @@ use std::time::Duration;
 
 use crate::attached_values::{ProductAttachedValuesWritePort, validate_attached_values_patch};
 use crate::{
-    FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
-    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    FilteredPublishedProductsRequest, LegacyStorefrontHttpProductsRequest,
+    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductAttachedValuesReadPort,
+    ProductCatalogCommandPort, ProductCatalogReadPort, ProductProjectionRequest,
+    ProductStorefrontHttpReadPort, ProductVariantIdentitiesRequest,
     ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
     ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontCatalogFacet,
     StorefrontCatalogFacetsRequest, StorefrontProductList, StorefrontProductProjectionRequest,
@@ -368,6 +370,22 @@ impl ProductCatalogReadPort for GrpcProductCatalogReadProvider {
         decode(&response.output_json)
     }
 
+    async fn list_legacy_storefront_products(
+        &self,
+        context: PortContext,
+        request: LegacyStorefrontProductsRequest,
+    ) -> Result<LegacyStorefrontProductList, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .list_legacy_storefront_products(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
     async fn read_storefront_product_projection(
         &self,
         context: PortContext,
@@ -378,6 +396,25 @@ impl ProductCatalogReadPort for GrpcProductCatalogReadProvider {
             .client
             .clone()
             .read_storefront_product_projection(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+}
+
+#[async_trait]
+impl ProductStorefrontHttpReadPort for GrpcProductCatalogReadProvider {
+    async fn list_legacy_storefront_http_products(
+        &self,
+        context: PortContext,
+        request: LegacyStorefrontHttpProductsRequest,
+    ) -> Result<LegacyStorefrontProductList, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .list_legacy_storefront_http_products(request)
             .await
             .map_err(status_to_port_error)?
             .into_inner();
