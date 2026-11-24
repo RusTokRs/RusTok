@@ -1,4 +1,5 @@
 use leptos::ev::Event;
+#[cfg(target_arch = "wasm32")]
 use leptos::leptos_dom::helpers::window_event_listener;
 use leptos::prelude::*;
 use leptos_use::use_debounce_fn;
@@ -70,11 +71,13 @@ pub fn GridFilterCell(
             let pending_change = StoredValue::new(false);
             let history_revision = RwSignal::new(0_u64);
             let last_history_revision = StoredValue::new(0_u64);
+            #[cfg(target_arch = "wasm32")]
             let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
                 // Invalidate the inner input debounce before the router restores its query state.
                 pending_change.set_value(false);
                 history_revision.update(|revision| *revision = (*revision).wrapping_add(1));
             });
+            #[cfg(target_arch = "wasm32")]
             on_cleanup(move || history_listener.remove());
 
             Effect::new(move |_| {
@@ -175,10 +178,12 @@ pub fn GridFilterCell(
             let pending_change = StoredValue::new(false);
             let history_revision = RwSignal::new(0_u64);
             let last_history_revision = StoredValue::new(0_u64);
+            #[cfg(target_arch = "wasm32")]
             let history_listener = window_event_listener(leptos::ev::popstate, move |_| {
                 pending_change.set_value(false);
                 history_revision.update(|revision| *revision = (*revision).wrapping_add(1));
             });
+            #[cfg(target_arch = "wasm32")]
             on_cleanup(move || history_listener.remove());
 
             Effect::new(move |_| {
