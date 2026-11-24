@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-product-bundles`](../../crates/modules/rustok-product-bundles)
+- **Next Pending Component:** [`crates/modules/rustok-product-relations`](../../crates/modules/rustok-product-relations)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -235,7 +235,7 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-product` (вкл. `ports`) | `crates/modules/rustok-product` | [x] | [x] | [x] | [x] |
-| `rustok-product-bundles` | `crates/modules/rustok-product-bundles` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-product-bundles` | `crates/modules/rustok-product-bundles` | [x] | [x] | [x] | [x] |
 | `rustok-product-relations` | `crates/modules/rustok-product-relations` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-taxonomy` | `crates/modules/rustok-taxonomy` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-navigation` | `crates/modules/rustok-navigation` | [ ] | [ ] | [ ] | [ ] |
