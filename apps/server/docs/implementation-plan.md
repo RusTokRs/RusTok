@@ -3326,3 +3326,23 @@ browser-smoke files do not enter the archive. The release-image verifier now
 locks these runtime and packaging contracts.
 
 Tests and release-image builds were not run, as requested by the maintainer.
+
+
+## Follow-up code review — RBAC invalidation publisher ownership (2026-11-24)
+
+The RBAC listener stored its `CacheService` in a process-global
+`Lazy<RwLock<Option<CacheService>>>`, while `ensure_cache_service` owns one
+service per `ServerRuntimeContext`. If two independent contexts initialized
+listeners, the last one overwrote the publisher owner. Mutations in the other
+context could therefore fan out through the wrong local invalidation bus or
+Redis client and wait for durable-generation reconciliation to converge.
+
+User and namespace-wide publishers now take an explicit `&CacheService`.
+The auth-admin provider and GraphQL role writer receive the cache service from
+their own runtime context; committed mutation and role-repair APIs also require
+the owner explicitly. The listener still subscribes before recovery and
+publishes its supervised runtime only after recovery. A focused unit test
+checks that publishing through one cache owner does not notify an independent
+owner, and the architecture guard rejects reintroduction of the global pointer.
+
+Tests and compilation were not run, as requested by the maintainer.
