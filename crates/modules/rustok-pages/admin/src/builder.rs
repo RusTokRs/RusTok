@@ -717,9 +717,15 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
             page_id.to_string(),
         )
         .await
-        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
+        .map_err(|error| {
+            PageBuilderServiceError::Runtime(format!(
+                "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: save receipt is known but the latest document revision could not be checked: {error}; preserve the draft"
+            ))
+        })?
         .ok_or_else(|| {
-            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
+            PageBuilderServiceError::Runtime(format!(
+                "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: the Pages document disappeared after save receipt creation; preserve the draft"
+            ))
         })?;
         ensure_document_readable(&latest_page)?;
         let latest_revision = page_revision(&latest_page);
