@@ -118,8 +118,8 @@ test('same-document Rust and JS channels advance one baseline without a false co
   await mountEditor(page, 'same-page', source);
 
   await page.evaluate(() => {
-    const senderId = (globalThis as PeerScope & { __flyPeerWriteSenderId?: string })
-      .__flyPeerWriteSenderId;
+    const senderId = document.querySelector('#fly-root')
+      ?.getAttribute('data-fly-peer-write-sender-id');
     const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
     channel.postMessage({
       kind: 'confirmed-write',
