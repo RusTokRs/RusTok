@@ -4,8 +4,8 @@
 
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
-- **Active Phase:** Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-docs`](../../crates/modules/rustok-docs)
+- **Active Phase:** Phase GN-05 — Social, Community & Communication Modules (15 модулей)
+- **Next Pending Component:** [`crates/modules/rustok-forum`](../../crates/modules/rustok-forum)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -247,7 +247,7 @@ flowchart TD
 | `rustok-media` (вкл. `ports`, `cli`) | `crates/modules/rustok-media` | [x] | [x] | [x] | [x] |
 | `rustok-deal` | `crates/modules/rustok-deal` | [x] | [x] | [x] | [x] |
 | `rustok-forms` | `crates/modules/rustok-forms` | [x] | [x] | [x] | [x] |
-| `rustok-docs` | `crates/modules/rustok-docs` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-docs` | `crates/modules/rustok-docs` | [x] | [x] | [x] | [x] |
 
 ### Phase GN-05 — Social, Community & Communication Modules (15 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
