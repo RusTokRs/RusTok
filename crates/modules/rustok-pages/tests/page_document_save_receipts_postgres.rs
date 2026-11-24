@@ -8,7 +8,10 @@ use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::OutboxModule;
 use rustok_pages::entities::{page, page_body, page_body_revision, page_translation};
-use rustok_pages::{PageBodyInput, PageService, PagesModule, SavePageDocumentInput};
+use rustok_pages::{
+    CreatePageInput, PageBodyInput, PageService, PagesModule, PageTranslationInput,
+    RestorePageBodyRevisionInput, SavePageDocumentInput,
+};
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -199,7 +202,10 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
     );
     let first = left?;
     let second = right?;
-    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(
+        serde_json::to_value(first)?,
+        serde_json::to_value(second)?
+    );
     assert_eq!(revision_count(&primary, tenant_id, duplicate_id).await?, 1);
 
     let (competing_id, base) = seed_page(&primary, tenant_id, "competing-saves").await?;
@@ -228,6 +234,225 @@ async fn postgres_duplicate_and_distinct_saves_are_serialized_across_connections
         tenant_id, user, duplicate_id, "postgres:duplicate",
     ).await?.expect("durable original acknowledgement");
     assert_eq!(recovered.id, duplicate_id);
+    db_scope.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_concurrent_page_create_replays_across_independent_connections()
+-> TestResult<()> {
+    let Some(db_scope) = ScopedPg::new().await? else {
+        return Ok(());
+    };
+    let primary = db_scope.connection().await?;
+    let secondary = db_scope.connection().await?;
+    let tenant_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let service = PageService::new(primary.clone(), mock_transactional_event_bus());
+    let peer_service = PageService::new(secondary.clone(), mock_transactional_event_bus());
+    let input = CreatePageInput {
+        translations: vec![PageTranslationInput {
+            locale: "en".to_string(),
+            title: "Concurrent create".to_string(),
+            slug: Some("concurrent-create".to_string()),
+            meta_title: None,
+            meta_description: None,
+        }],
+        template: Some("default".to_string()),
+        body: None,
+        channel_slugs: None,
+        publish: false,
+    };
+
+    let (left, right) = tokio::join!(
+        service.create_with_receipt(
+            tenant_id,
+            security.clone(),
+            input.clone(),
+            true,
+            "pages-postgres-create-concurrent-1".to_string(),
+        ),
+        peer_service.create_with_receipt(
+            tenant_id,
+            security,
+            input,
+            true,
+            "pages-postgres-create-concurrent-1".to_string(),
+        ),
+    );
+    let first = left?;
+    let second = right?;
+    assert_eq!(first.id, second.id);
+    assert_eq!(
+        page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .all(&primary)
+            .await?
+            .len(),
+        1,
+        "two PostgreSQL pools must commit one page for one create key"
+    );
+
+    db_scope.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_concurrent_unpublish_replays_across_independent_connections()
+-> TestResult<()> {
+    let Some(db_scope) = ScopedPg::new().await? else {
+        return Ok(());
+    };
+    let primary = db_scope.connection().await?;
+    let secondary = db_scope.connection().await?;
+    let tenant_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let service = PageService::new(primary.clone(), mock_transactional_event_bus());
+    let peer_service = PageService::new(secondary.clone(), mock_transactional_event_bus());
+    let (page_id, _) = seed_page(&primary, tenant_id, "concurrent-unpublish").await?;
+
+    let (left, right) = tokio::join!(
+        service.unpublish_with_receipt(
+            tenant_id,
+            security.clone(),
+            page_id,
+            Some(1),
+            "pages-postgres-unpublish-1".to_string(),
+        ),
+        peer_service.unpublish_with_receipt(
+            tenant_id,
+            security,
+            page_id,
+            Some(1),
+            "pages-postgres-unpublish-1".to_string(),
+        ),
+    );
+    let first = left?;
+    let second = right?;
+    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(second.version, 2);
+    assert_eq!(
+        second.status,
+        rustok_content::entities::node::ContentStatus::Draft
+    );
+
+    db_scope.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_concurrent_delete_replays_after_the_page_row_is_removed()
+-> TestResult<()> {
+    let Some(db_scope) = ScopedPg::new().await? else {
+        return Ok(());
+    };
+    let primary = db_scope.connection().await?;
+    let secondary = db_scope.connection().await?;
+    let tenant_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let service = PageService::new(primary.clone(), mock_transactional_event_bus());
+    let peer_service = PageService::new(secondary.clone(), mock_transactional_event_bus());
+    let created = service
+        .create(
+            tenant_id,
+            security.clone(),
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Concurrent delete".to_string(),
+                    slug: Some("concurrent-delete".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: None,
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await?;
+
+    let (left, right) = tokio::join!(
+        service.delete_with_receipt(
+            tenant_id,
+            security.clone(),
+            created.id,
+            Some(created.version),
+            "pages-postgres-delete-1".to_string(),
+        ),
+        peer_service.delete_with_receipt(
+            tenant_id,
+            security,
+            created.id,
+            Some(created.version),
+            "pages-postgres-delete-1".to_string(),
+        ),
+    );
+    left?;
+    right?;
+    assert!(
+        page::Entity::find_by_id(created.id).one(&primary).await?.is_none(),
+        "the page row must be deleted once"
+    );
+
+    db_scope.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn postgres_duplicate_restores_replay_across_independent_connections()
+-> TestResult<()> {
+    let Some(db_scope) = ScopedPg::new().await? else {
+        return Ok(());
+    };
+    let primary = db_scope.connection().await?;
+    let secondary = db_scope.connection().await?;
+    let tenant_id = Uuid::new_v4();
+    let user = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let a = PageService::new(primary.clone(), mock_transactional_event_bus());
+    let b = PageService::new(secondary.clone(), mock_transactional_event_bus());
+
+    let (page_id, base) = seed_page(&primary, tenant_id, "duplicate-restores").await?;
+    let v2 = a
+        .save_document(
+            tenant_id,
+            user.clone(),
+            page_id,
+            command(&base, "v2"),
+        )
+        .await?;
+    let v2_revision = v2.body.expect("v2 body").updated_at;
+    let v3 = a
+        .save_document(
+            tenant_id,
+            user.clone(),
+            page_id,
+            command(&v2_revision, "v3"),
+        )
+        .await?;
+    let v3_revision = v3.body.expect("v3 body").updated_at;
+    let history = a
+        .body_revision_history(tenant_id, user.clone(), page_id, "en")
+        .await?;
+    let v2_revision_id = history[1].id;
+    let restore = RestorePageBodyRevisionInput {
+        expected_revision: v3_revision,
+        revision_id: v2_revision_id,
+    };
+
+    let (left, right) = tokio::join!(
+        a.restore_body_revision(tenant_id, user.clone(), page_id, restore.clone()),
+        b.restore_body_revision(tenant_id, user, page_id, restore),
+    );
+    let first = left?;
+    let second = right?;
+    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(
+        revision_count(&primary, tenant_id, page_id).await?,
+        3,
+        "two saves and one restore must create exactly three journal rows"
+    );
+
     db_scope.close().await?;
     Ok(())
 }

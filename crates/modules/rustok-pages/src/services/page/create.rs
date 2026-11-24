@@ -3,17 +3,25 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     TransactionTrait,
 };
+use sha2::{Digest, Sha256};
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::{
+    PermissionScope, SecurityContext,
+    error::{ErrorKind, RichError},
+};
 use rustok_events::DomainEvent;
 
 use crate::dto::{CreatePageInput, PageBodyRevisionSource, PageResponse, PageTranslationInput};
-use crate::entities::{page, page_body, page_channel_visibility, page_translation};
-use crate::error::{PagesError, PagesResult};
+use crate::entities::{
+    page, page_body, page_channel_visibility, page_create_operation_receipt, page_translation,
+};
+use crate::error::{
+    PAGE_CREATE_IDEMPOTENCY_CONFLICT, PAGE_CREATE_OPERATION_INTEGRITY, PagesError, PagesResult,
+};
 use crate::services::rbac::enforce_scope;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -27,6 +35,62 @@ use super::{PAGE_KIND, PageService, PreparedPageBody};
 /// Largest `-copy-N` suffix counter tried when allocating duplicated page slugs.
 const MAX_DUPLICATE_SLUG_ATTEMPTS: usize = 50;
 
+fn normalize_page_create_key(raw: &str) -> PagesResult<String> {
+    if raw.is_empty()
+        || raw.len() > 128
+        || !raw.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
+        })
+    {
+        return Err(PagesError::validation(
+            "Page create idempotency key must be 1..128 ASCII letters, digits, '-' '_' '.' or ':'",
+        ));
+    }
+    Ok(raw.to_string())
+}
+
+fn page_create_idempotency_conflict() -> PagesError {
+    PagesError::Rich(Box::new(
+        RichError::new(
+            ErrorKind::Conflict,
+            "A page create idempotency key was reused for a different request or actor",
+        )
+        .with_user_message(
+            "This create request key is already bound to another page creation. Start a new create operation.",
+        )
+        .with_error_code(PAGE_CREATE_IDEMPOTENCY_CONFLICT),
+    ))
+}
+
+fn page_create_response_from_receipt(
+    receipt: &page_create_operation_receipt::Model,
+    actor_id: Option<Uuid>,
+    request_hash: &str,
+) -> PagesResult<PageResponse> {
+    if receipt.actor_id != actor_id || receipt.request_hash != request_hash {
+        return Err(page_create_idempotency_conflict());
+    }
+    let response: PageResponse = serde_json::from_str(&receipt.response_json).map_err(|_| {
+        PagesError::Rich(Box::new(
+            RichError::new(
+                ErrorKind::Internal,
+                "Persisted page create receipt contains an invalid response",
+            )
+            .with_error_code(PAGE_CREATE_OPERATION_INTEGRITY),
+        ))
+    })?;
+    if receipt.page_id.is_nil() || response.id != receipt.page_id {
+        return Err(PagesError::Rich(Box::new(
+            RichError::new(
+                ErrorKind::Internal,
+                "Persisted page create receipt does not match its page identity",
+            )
+            .with_error_code(PAGE_CREATE_OPERATION_INTEGRITY),
+        )));
+    }
+    Ok(response)
+}
+
 impl PageService {
     #[instrument(skip(self, input, security))]
     pub async fn create(
@@ -35,7 +99,7 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
-        self.create_inner(tenant_id, security, input, false).await
+        self.create_inner(tenant_id, security, input, false, None).await
     }
 
     /// Create with an exact-locale catalog layout. Legacy `create` retains free-form labels.
@@ -47,7 +111,30 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
-        self.create_inner(tenant_id, security, input, true).await
+        self.create_inner(tenant_id, security, input, true, None).await
+    }
+
+    /// Creates a page and records a durable acknowledgement under a caller-stable key.
+    ///
+    /// A matching retry returns the original response before rechecking slug uniqueness,
+    /// so a lost response cannot create a second page.
+    #[instrument(skip(self, input, security))]
+    pub async fn create_with_receipt(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreatePageInput,
+        checked_layout: bool,
+        idempotency_key: String,
+    ) -> PagesResult<PageResponse> {
+        self.create_inner(
+            tenant_id,
+            security,
+            input,
+            checked_layout,
+            Some(idempotency_key),
+        )
+        .await
     }
 
     async fn create_inner(
@@ -56,8 +143,25 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
         checked_layout: bool,
+        idempotency_key: Option<String>,
     ) -> PagesResult<PageResponse> {
         enforce_scope(&security, Resource::Pages, Action::Create)?;
+        let receipt_request = idempotency_key
+            .map(|raw| {
+                let key = normalize_page_create_key(&raw)?;
+                let bytes = serde_json::to_vec(&(
+                    "page-create-v1",
+                    tenant_id,
+                    security.user_id,
+                    checked_layout,
+                    &input,
+                ))
+                .map_err(|error| {
+                    PagesError::validation(format!("Cannot hash page create request: {error}"))
+                })?;
+                Ok::<_, PagesError>((key, hex::encode(Sha256::digest(bytes))))
+            })
+            .transpose()?;
         if input.publish {
             return Err(PagesError::validation(
                 "Page creation cannot publish a Page Builder document; create the draft, review a runtime scenario, then use the atomic publish command",
@@ -113,8 +217,61 @@ impl PageService {
             ));
         }
         let now = body_revision_timestamp(Utc::now());
+        let txn = self.begin_page_write_transaction().await?;
+        if let Some((key, request_hash)) = receipt_request.as_ref()
+            && let Some(receipt) = page_create_operation_receipt::Entity::find()
+                .filter(page_create_operation_receipt::Column::TenantId.eq(tenant_id))
+                .filter(page_create_operation_receipt::Column::IdempotencyKey.eq(key))
+                .one(&txn)
+                .await?
+        {
+            let response = page_create_response_from_receipt(
+                &receipt,
+                security.user_id,
+                request_hash,
+            )?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+        let receipt_reservation = if let Some((key, request_hash)) = receipt_request.as_ref() {
+            let inserted = page_create_operation_receipt::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                actor_id: Set(security.user_id),
+                idempotency_key: Set(key.clone()),
+                request_hash: Set(request_hash.clone()),
+                // This reservation is transaction-local. It is completed before commit;
+                // a competing PostgreSQL insert waits on the unique key before doing any
+                // page/slug writes, then replays the committed response after rollback.
+                page_id: Set(Uuid::nil()),
+                response_json: Set(String::new()),
+                created_at: Set(Utc::now().into()),
+            }
+            .insert(&txn)
+            .await;
+            match inserted {
+                Ok(receipt) => Some(receipt),
+                Err(insert_error) => {
+                    txn.rollback().await?;
+                    if let Some(receipt) = page_create_operation_receipt::Entity::find()
+                        .filter(page_create_operation_receipt::Column::TenantId.eq(tenant_id))
+                        .filter(page_create_operation_receipt::Column::IdempotencyKey.eq(key))
+                        .one(&self.db)
+                        .await?
+                    {
+                        return page_create_response_from_receipt(
+                            &receipt,
+                            security.user_id,
+                            request_hash,
+                        );
+                    }
+                    return Err(insert_error.into());
+                }
+            }
+        } else {
+            None
+        };
         let page_id = Uuid::new_v4();
-        let txn = self.db.begin().await?;
         if checked_layout && template != "default" {
             crate::services::page_template::prepare_checked_layout_transaction(&txn).await?;
         }
@@ -220,9 +377,20 @@ impl PageService {
             )
             .await?;
 
+        let response = self
+            .get_page_response_for_authorized_mutation_in_tx(&txn, tenant_id, &security, page_id, &response_locale)
+            .await?;
+        if let Some(receipt) = receipt_reservation {
+            let response_json = serde_json::to_string(&response).map_err(|error| {
+                PagesError::validation(format!("Cannot serialize page create receipt: {error}"))
+            })?;
+            let mut active: page_create_operation_receipt::ActiveModel = receipt.into();
+            active.page_id = Set(page_id);
+            active.response_json = Set(response_json);
+            active.update(&txn).await?;
+        }
         txn.commit().await?;
-        self.get_with_locale_fallback(tenant_id, security, page_id, &response_locale, None)
-            .await
+        Ok(response)
     }
 
     /// Copies one page into a new draft page.
@@ -244,7 +412,7 @@ impl PageService {
 
         let now = body_revision_timestamp(Utc::now());
         let new_page_id = Uuid::new_v4();
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let source = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         let template = source.template.clone();
         let metadata = source.metadata.clone();

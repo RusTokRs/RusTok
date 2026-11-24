@@ -135,6 +135,7 @@ export default async function PagesPage({
                   <PageActions
                     opts={opts}
                     pageId={page.id}
+                    version={page.version}
                     status={page.status}
                     locale={locale}
                     canManageStarters={canManageStarters}

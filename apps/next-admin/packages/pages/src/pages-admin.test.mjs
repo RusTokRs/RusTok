@@ -153,6 +153,7 @@ test('GraphQL queries and mutations expose required schema fields', () => {
     /pages\(filter: \$filter, tenantId: \$tenantId\)/
   );
   assert.match(api.PAGES_LIST_QUERY, /ListGqlPagesFilter/);
+  assert.match(api.PAGES_LIST_QUERY, /version/);
   assert.match(
     api.CREATE_PAGE_MUTATION,
     /createPage\(input: \$input, tenantId: \$tenantId\)/
@@ -160,11 +161,15 @@ test('GraphQL queries and mutations expose required schema fields', () => {
   assert.match(api.CREATE_PAGE_MUTATION, /CreateGqlPageInput!/);
   assert.match(
     api.UNPUBLISH_PAGE_MUTATION,
-    /unpublishPage\(id: \$id, expectedVersion: \$expectedVersion, tenantId: \$tenantId\)/
+    /unpublishPage\(id: \$id, expectedVersion: \$expectedVersion, idempotencyKey: \$idempotencyKey, tenantId: \$tenantId\)/
+  );
+  assert.match(
+    api.ARCHIVE_PAGE_MUTATION,
+    /archivePage\(id: \$id, expectedVersion: \$expectedVersion, idempotencyKey: \$idempotencyKey, tenantId: \$tenantId\)/
   );
   assert.match(
     api.DELETE_PAGE_MUTATION,
-    /deletePage\(id: \$id, tenantId: \$tenantId\)/
+    /deletePage\(id: \$id, expectedVersion: \$expectedVersion, idempotencyKey: \$idempotencyKey, tenantId: \$tenantId\)/
   );
 });
 
@@ -182,6 +187,7 @@ test('listPages clamps pagination bounds and forwards tenant context', async () 
         items: [
           {
             id: 'page-1',
+            version: 7,
             status: 'draft',
             template: 'landing',
             title: 'Welcome',
@@ -201,6 +207,7 @@ test('listPages clamps pagination bounds and forwards tenant context', async () 
   );
 
   assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].version, 7);
   assert.equal(res.total, 1);
   assert.deepEqual(capturedVars, {
     filter: { locale: 'en', page: 1, perPage: 100 },
@@ -235,46 +242,68 @@ test('createPage enforces non-empty title/locale and enforces publish=false', as
     /Page locale cannot be empty/
   );
 
+  await assert.rejects(
+    () => api.createPage({ locale: 'en', title: 'Valid', idempotencyKey: 'bad key' }),
+    /idempotency key/
+  );
+
   const created = await api.createPage(
-    { locale: 'en', title: 'About Us', slug: 'about-us' },
+    { locale: 'en', title: 'About Us', slug: 'about-us', idempotencyKey: 'create-op-1' },
     { tenantId: 'tenant-1' }
   );
 
   assert.equal(created.id, 'p-1');
   assert.equal(capturedVars.input.publish, false);
   assert.equal(capturedVars.input.checkedLayout, true);
+  assert.equal(capturedVars.input.idempotencyKey, 'create-op-1');
   assert.equal(capturedVars.input.translations[0].title, 'About Us');
   assert.equal(capturedVars.input.translations[0].locale, 'en');
 });
 
-test('unpublishPage and deletePage enforce non-empty page id', async () => {
-  const api = createApiModule(async () => ({
-    unpublishPage: { id: 'p-1', version: 2, status: 'draft' },
-    deletePage: true
-  }));
+test('page lifecycle APIs validate IDs and forward stable idempotency keys', async () => {
+  const calls = [];
+  const api = createApiModule(async (query, vars) => {
+    calls.push({ query, vars });
+    return {
+      unpublishPage: { id: 'p-1', version: 2, status: 'draft' },
+      archivePage: { id: 'p-1', version: 3, status: 'archived' },
+      deletePage: true
+    };
+  });
 
-  await assert.rejects(
-    async () => api.unpublishPage(''),
-    /Page id cannot be empty/
-  );
-  await assert.rejects(
-    async () => api.unpublishPage('   '),
-    /Page id cannot be empty/
-  );
-  await assert.rejects(
-    async () => api.deletePage(''),
-    /Page id cannot be empty/
-  );
-  await assert.rejects(
-    async () => api.deletePage('   '),
-    /Page id cannot be empty/
-  );
+  await assert.rejects(() => api.unpublishPage(''), /Page id cannot be empty/);
+  await assert.rejects(() => api.unpublishPage('   '), /Page id cannot be empty/);
+  await assert.rejects(() => api.archivePage(''), /Page id cannot be empty/);
+  await assert.rejects(() => api.deletePage(''), /Page id cannot be empty/);
+  await assert.rejects(() => api.deletePage('p-1', {}, 'bad key'), /idempotency key/);
 
-  const unpublished = await api.unpublishPage('p-1', 1);
+  const opts = { tenantId: 'tenant-1' };
+  const unpublished = await api.unpublishPage('p-1', 1, opts, 'unpublish-op-1');
   assert.equal(unpublished.status, 'draft');
+  assert.deepEqual(calls[0].vars, {
+    id: 'p-1',
+    expectedVersion: 1,
+    idempotencyKey: 'unpublish-op-1',
+    tenantId: 'tenant-1'
+  });
 
-  const deleted = await api.deletePage('p-1');
+  const archived = await api.archivePage('p-1', 2, opts, 'archive-op-1');
+  assert.equal(archived.status, 'archived');
+  assert.deepEqual(calls[1].vars, {
+    id: 'p-1',
+    expectedVersion: 2,
+    idempotencyKey: 'archive-op-1',
+    tenantId: 'tenant-1'
+  });
+
+  const deleted = await api.deletePage('p-1', opts, 'delete-op-1', 3);
   assert.equal(deleted, true);
+  assert.deepEqual(calls[2].vars, {
+    id: 'p-1',
+    expectedVersion: 3,
+    idempotencyKey: 'delete-op-1',
+    tenantId: 'tenant-1'
+  });
 });
 
 test('starter creation uses the selected tenant revision and sends the cloned document', async () => {
@@ -293,11 +322,12 @@ test('starter creation uses the selected tenant revision and sends the cloned do
   const opts = { tenantId: 'tenant-1', tenantSlug: 'demo', token: 'token' };
   const catalog = await api.listPageStarters(opts);
   const cloned = await api.instantiatePageStarter(catalog[0], 'en', opts);
-  await api.createPage({ title: 'Team', locale: 'en', document: cloned }, opts);
+  await api.createPage({ title: 'Team', locale: 'en', document: cloned, idempotencyKey: 'starter-create-1' }, opts);
   assert.deepEqual(calls[1].vars, { key: 'team', expectedRevision: 'revision-1', locale: 'en', tenantId: 'tenant-1' });
   assert.equal(calls[1].slug, 'demo');
   assert.equal(calls[1].token, 'token');
   assert.deepEqual(calls[2].vars.input.body, { locale: 'en', document });
+  assert.equal(calls[2].vars.input.idempotencyKey, 'starter-create-1');
   assert.equal(calls[2].vars.input.publish, false);
 });
 
@@ -364,7 +394,7 @@ test('layout catalog request uses exact locale and tenant and rejects malformed 
 test('starter flow uses the explicit layout and checks the fresh catalog before create', async () => {
   const calls = [];
   const starter = { key: 'team', name: 'Team', category: 'about', description: null, defaultTemplateKey: 'suggested', revision: 'rev' };
-  const input = { starter, locale: 'ru', title: 'Team', layoutKey: 'site', visibleLayoutKeys: ['default', 'site'] };
+  const input = { starter, locale: 'ru', title: 'Team', layoutKey: 'site', visibleLayoutKeys: ['default', 'site'], idempotencyKey: 'create-op-2' };
   const document = { pages: [] };
   const ports = {
     contextMatches: () => true,
@@ -374,7 +404,7 @@ test('starter flow uses the explicit layout and checks the fresh catalog before 
   };
   const messages = { layout: 'layout error', context: 'context error', contextAfterCreate: 'context changed after create' };
   await createPageFromStarter(input, ports, messages);
-  assert.deepEqual(calls, [ ['instantiate', starter, 'ru'], ['layouts', 'ru'], ['create', { locale: 'ru', title: 'Team', template: 'site', document }] ]);
+  assert.deepEqual(calls, [ ['instantiate', starter, 'ru'], ['layouts', 'ru'], ['create', { locale: 'ru', title: 'Team', template: 'site', document, idempotencyKey: 'create-op-2' }] ]);
   calls.length = 0;
   await assert.rejects(() => createPageFromStarter({ ...input, layoutKey: 'missing' }, ports, messages), LayoutSelectionError);
   assert.equal(calls.length, 0);
@@ -385,7 +415,7 @@ test('starter flow uses the explicit layout and checks the fresh catalog before 
 
 test('starter flow stops on catalog errors or a changed auth/locale context', async () => {
   const starter = { key: 'blank', revision: null };
-  const input = { starter, locale: 'en', title: 'Page', layoutKey: 'default', visibleLayoutKeys: ['default'] };
+  const input = { starter, locale: 'en', title: 'Page', layoutKey: 'default', visibleLayoutKeys: ['default'], idempotencyKey: 'create-op-4' };
   const messages = { layout: 'layout error', context: 'context error', contextAfterCreate: 'context changed after create' };
   let created = 0, active = true;
   const ports = {
@@ -414,6 +444,6 @@ test('starter flow reports a possibly completed create when context changes duri
     listLayouts: async () => ['default'],
     create: async () => { active = false; }
   };
-  const input = { starter: { key: 'blank', revision: null }, locale: 'en', title: 'Page', layoutKey: 'default', visibleLayoutKeys: ['default'] };
+  const input = { starter: { key: 'blank', revision: null }, locale: 'en', title: 'Page', layoutKey: 'default', visibleLayoutKeys: ['default'], idempotencyKey: 'create-op-3' };
   await assert.rejects(() => createPageFromStarter(input, ports, { layout: 'layout', context: 'context', contextAfterCreate: 'may be created' }), /may be created/);
 });

@@ -87,6 +87,72 @@ impl PageService {
     }
 
 
+    /// Build a mutation acknowledgement from the write transaction without requiring
+    /// a second `pages:read` grant. The caller has already authorized the specific
+    /// create/update/publish action; source content is still filtered by
+    /// `can_read_page_source`.
+    pub(super) async fn get_page_response_for_authorized_mutation_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        page_id: Uuid,
+        locale: &str,
+    ) -> PagesResult<PageResponse> {
+        let locale = normalize_locale(locale)?;
+        let page = page::Entity::find_by_id(page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| PagesError::page_not_found(page_id))?;
+        let channel_slugs = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::TenantId.eq(tenant_id))
+            .filter(page_channel_visibility::Column::PageId.eq(page_id))
+            .order_by_asc(page_channel_visibility::Column::ChannelSlug)
+            .all(txn)
+            .await?
+            .into_iter()
+            .map(|record| record.channel_slug)
+            .collect();
+        let translations = page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
+            .filter(page_translation::Column::PageId.eq(page_id))
+            .all(txn)
+            .await?;
+        let include_drafts = can_read_page_source(security, page.author_id);
+        let (bodies, drafts) = if include_drafts {
+            (
+                page_body::Entity::find()
+                    .filter(page_body::Column::TenantId.eq(tenant_id))
+                    .filter(page_body::Column::PageId.eq(page_id))
+                    .all(txn)
+                    .await?,
+                page_body_draft::Entity::find()
+                    .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+                    .filter(page_body_draft::Column::PageId.eq(page_id))
+                    .all(txn)
+                    .await?,
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        self.build_page_response(
+            txn,
+            security,
+            page,
+            translations,
+            bodies,
+            drafts,
+            include_drafts,
+            PageResponseParts {
+                channel_slugs,
+                locale,
+                fallback_locale: None,
+            },
+        )
+        .await
+    }
+
     /// Return the accepted working copy before releasing the transaction's write lock.
     ///
     /// A post-commit GET can see a later writer and incorrectly acknowledge its
@@ -355,6 +421,7 @@ impl PageService {
             let resolved = resolve_translation_record(&translations, locale, fallback_locale);
             items.push(PageListItem {
                 id: page.id,
+                version: page.version,
                 status: storage_to_status(&page.status)?,
                 template: page.template.clone(),
                 title: resolved.translation.map(|item| item.title.clone()),

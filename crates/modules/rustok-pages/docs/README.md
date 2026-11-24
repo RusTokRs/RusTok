@@ -29,9 +29,12 @@ channel visibility and deterministic published artifacts.
   serialized-content field;
 - deterministic publish/build/integrity and storefront artifact delivery;
 - typed permission, feature-gate, revision and artifact-integrity failures;
-- optional, immutable save-operation identities and explicit recovery of
-  committed acknowledgements, as specified by
-  [the Pages save receipt ADR](../../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+- optional, immutable document-operation identities for save and restore,
+  with explicit recovery of committed acknowledgements, as specified by
+  [the Pages save receipt ADR](../../../../DECISIONS/2026-11-23-page-document-save-receipts.md);
+- durable page-create and lifecycle-operation receipts for create (including an
+  initial document), unpublish, archive and delete, as specified by
+  [the create/lifecycle receipt ADR](../../../../DECISIONS/2026-11-24-page-create-and-lifecycle-operation-receipts.md).
 
 ## Current-only rules
 
@@ -60,6 +63,10 @@ channel visibility and deterministic published artifacts.
 - The revision journal of a document is readable under the document read rule
   (`pages:update` or `pages:publish` over the page); restoring a revision
   requires `pages:update`.
+- Receipt-backed create/lifecycle retries replay the original committed
+  acknowledgement before slug/CAS/page-existence checks. Delete receipts are
+  independent of the page row and survive deletion; clients must reuse the
+  original key only for the same operation and payload.
 - An unpublished page exists only for principals that hold a page authoring
   permission; any other principal is a visitor of the request channel, on
   GraphQL and on REST.
@@ -84,8 +91,7 @@ pages in the builder; a page-scoped preview authorization path remains open. Bot
 forms check the chosen key against the catalog and recheck immediately before
 creation, failing visibly on lookup errors. Both request opt-in `checkedLayout`
 creation: for a single translation it checks exact tenant/locale existence while
-serializing with same-locale deletion on PostgreSQL/SQLite; MySQL non-default selection
-fails closed. SQLite contention can fail with a busy error. It does not pin the layout
+serializing with same-locale deletion on PostgreSQL in production and SQLite in integration tests. SQLite contention can fail with a busy error. It does not pin the layout
 revision and does not cover legacy create/metadata free-form labels or cross-locale
 deletion. The server must be deployed before clients send the new input field. Reviewed
 publish must resolve non-default layouts for every page locale. The new database and
@@ -93,6 +99,15 @@ concurrency behavior has not yet been verified in this environment.
 See the [page layout decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md).
 Site symbols still require manual re-review and re-publication of dependent
 pages after a shared edit.
+
+Document, create and lifecycle receipt migrations target PostgreSQL in
+production and SQLite in integration tests. GraphQL idempotency keys are optional for
+legacy callers, but the Next admin always supplies them for create/unpublish/
+delete and sends the observed page version for unpublish/delete. Create and
+lifecycle receipts intentionally have no page foreign key so their acknowledgements
+survive deletion. Their response snapshots/tombstones currently have no compaction
+policy; volume is expected to be low, but retention monitoring remains open.
+
 
 Page starters are separate from layouts. The backend catalog combines built-ins
 and tenant records, with tenant keys overriding built-ins before category
@@ -147,6 +162,8 @@ Route resolution and immutable route-history recording batch tenant-scoped reads
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+- [Pages document save receipt ADR](../../../../DECISIONS/2026-11-23-page-document-save-receipts.md)
+- [Pages create/lifecycle receipt ADR](../../../../DECISIONS/2026-11-24-page-create-and-lifecycle-operation-receipts.md)
 
 ### Immutable Artifact Integrity & Repair Specifications
 

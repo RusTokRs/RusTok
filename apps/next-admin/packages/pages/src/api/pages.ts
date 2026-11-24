@@ -14,6 +14,7 @@ export type PageStatus = 'draft' | 'published' | 'archived';
 
 export interface PageListItem {
   id: string;
+  version: number;
   status: PageStatus;
   template: string;
   title: string | null;
@@ -79,12 +80,15 @@ export interface CreatePageInput {
   template?: string;
   channelSlugs?: string[];
   document?: Record<string, unknown>;
+  /** Stable identity reused when retrying an uncertain create request. */
+  idempotencyKey?: string;
 }
 
 // ---------- Queries & mutations ----------
 
 export const PAGE_LIST_FIELDS = `
   id
+  version
   status
   template
   title
@@ -153,8 +157,20 @@ export const CREATE_PAGE_MUTATION = `
 `;
 
 export const UNPUBLISH_PAGE_MUTATION = `
-  mutation UnpublishPage($id: UUID!, $expectedVersion: Int, $tenantId: UUID) {
-    unpublishPage(id: $id, expectedVersion: $expectedVersion, tenantId: $tenantId) {
+  mutation UnpublishPage($id: UUID!, $expectedVersion: Int, $idempotencyKey: String, $tenantId: UUID) {
+    unpublishPage(id: $id, expectedVersion: $expectedVersion, idempotencyKey: $idempotencyKey, tenantId: $tenantId) {
+      id
+      version
+      status
+      template
+      translation { locale title slug }
+    }
+  }
+`;
+
+export const ARCHIVE_PAGE_MUTATION = `
+  mutation ArchivePage($id: UUID!, $expectedVersion: Int, $idempotencyKey: String, $tenantId: UUID) {
+    archivePage(id: $id, expectedVersion: $expectedVersion, idempotencyKey: $idempotencyKey, tenantId: $tenantId) {
       id
       version
       status
@@ -165,8 +181,8 @@ export const UNPUBLISH_PAGE_MUTATION = `
 `;
 
 export const DELETE_PAGE_MUTATION = `
-  mutation DeletePage($id: UUID!, $tenantId: UUID) {
-    deletePage(id: $id, tenantId: $tenantId)
+  mutation DeletePage($id: UUID!, $expectedVersion: Int, $idempotencyKey: String, $tenantId: UUID) {
+    deletePage(id: $id, expectedVersion: $expectedVersion, idempotencyKey: $idempotencyKey, tenantId: $tenantId)
   }
 `;
 
@@ -285,6 +301,13 @@ export async function createPage(
   if (!input.locale || !input.locale.trim()) {
     throw new Error('Page locale cannot be empty');
   }
+  if (
+    input.idempotencyKey !== undefined &&
+    (!input.idempotencyKey || input.idempotencyKey.length > 128 ||
+      !/^[A-Za-z0-9._:-]+$/.test(input.idempotencyKey))
+  ) {
+    throw new Error('Page create idempotency key must be 1..128 safe ASCII characters');
+  }
 
   const data = await graphqlRequest<
     { input: Record<string, unknown>; tenantId?: string },
@@ -306,6 +329,7 @@ export async function createPage(
         checkedLayout: true,
         body: input.document ? { locale: input.locale.trim(), document: input.document } : null,
         channelSlugs: input.channelSlugs ?? null,
+        idempotencyKey: input.idempotencyKey ?? null,
         // Publishing from a list surface is deliberately impossible: publish uses the
         // builder's reviewed runtime flow, and the server rejects publish=true here.
         publish: false
@@ -318,23 +342,36 @@ export async function createPage(
   return data.createPage;
 }
 
+function validatePageLifecycleKey(idempotencyKey?: string): void {
+  if (
+    idempotencyKey !== undefined &&
+    (!idempotencyKey || idempotencyKey.length > 128 ||
+      !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey))
+  ) {
+    throw new Error('Page lifecycle idempotency key must be 1..128 safe ASCII characters');
+  }
+}
+
 export async function unpublishPage(
   id: string,
   expectedVersion?: number,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<PageResponse> {
   if (!id || !id.trim()) {
     throw new Error('Page id cannot be empty');
   }
+  validatePageLifecycleKey(idempotencyKey);
 
   const data = await graphqlRequest<
-    { id: string; expectedVersion: number | null; tenantId?: string },
+    { id: string; expectedVersion: number | null; idempotencyKey: string | null; tenantId?: string },
     { unpublishPage: PageResponse }
   >(
     UNPUBLISH_PAGE_MUTATION,
     {
       id: id.trim(),
       expectedVersion: expectedVersion ?? null,
+      idempotencyKey: idempotencyKey ?? null,
       tenantId: opts.tenantId ?? undefined
     },
     opts.token,
@@ -343,20 +380,56 @@ export async function unpublishPage(
   return data.unpublishPage;
 }
 
+export async function archivePage(
+  id: string,
+  expectedVersion?: number,
+  opts: GqlOpts = {},
+  idempotencyKey?: string
+): Promise<PageResponse> {
+  if (!id || !id.trim()) {
+    throw new Error('Page id cannot be empty');
+  }
+  validatePageLifecycleKey(idempotencyKey);
+
+  const data = await graphqlRequest<
+    { id: string; expectedVersion: number | null; idempotencyKey: string | null; tenantId?: string },
+    { archivePage: PageResponse }
+  >(
+    ARCHIVE_PAGE_MUTATION,
+    {
+      id: id.trim(),
+      expectedVersion: expectedVersion ?? null,
+      idempotencyKey: idempotencyKey ?? null,
+      tenantId: opts.tenantId ?? undefined
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+  return data.archivePage;
+}
+
 export async function deletePage(
   id: string,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string,
+  expectedVersion?: number
 ): Promise<boolean> {
   if (!id || !id.trim()) {
     throw new Error('Page id cannot be empty');
   }
+  validatePageLifecycleKey(idempotencyKey);
 
   const data = await graphqlRequest<
-    { id: string; tenantId?: string },
+    { id: string; expectedVersion: number | null; idempotencyKey: string | null; tenantId?: string },
     { deletePage: boolean }
   >(
     DELETE_PAGE_MUTATION,
-    { id: id.trim(), tenantId: opts.tenantId ?? undefined },
+    {
+      id: id.trim(),
+      expectedVersion: expectedVersion ?? null,
+      idempotencyKey: idempotencyKey ?? null,
+      tenantId: opts.tenantId ?? undefined
+    },
     opts.token,
     opts.tenantSlug
   );

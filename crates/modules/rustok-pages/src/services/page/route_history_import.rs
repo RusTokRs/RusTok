@@ -3,7 +3,8 @@ use std::collections::{BTreeSet, HashMap};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect,
+    SqliteTransactionMode, TransactionOptions, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -96,7 +97,15 @@ impl PageRouteHistoryImportService {
     ) -> PagesResult<PageRouteHistoryImportResult> {
         enforce_scope(&security, Resource::Pages, Action::Manage)?;
         let (source, items) = prepare_input(tenant_id, input)?;
-        let txn = self.db.begin().await?;
+        // Route snapshots and import receipts are admitted together. SQLite has no row-level
+        // lock for the page batch, so reserve the writer before reading either ledger.
+        let txn = self
+            .db
+            .begin_with_options(TransactionOptions {
+                sqlite_transaction_mode: Some(SqliteTransactionMode::Immediate),
+                ..Default::default()
+            })
+            .await?;
 
         let mut inserted_receipt_count = 0_u32;
         let mut replayed_receipt_count = 0_u32;

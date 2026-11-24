@@ -107,21 +107,50 @@ Recorded by earlier page-subsystem audits.
 These are gaps in what the runtime actually does, not accepted design:
 
 - **Document CAS and receipt recovery (source only, awaiting runtime verification).**
-  Save/restore use monotonically advancing microsecond working-copy tokens and
-  construct the response inside their transaction. New optional save idempotency
-  keys bind the actor and normalized request to the original `PageResponse`,
-  committed with the body, revision journal and symbol catalog. GraphQL
-  `savePageDocument` accepts `idempotencyKey` and
-  `pageDocumentSaveReceipt` reads a committed acknowledgement without mutation.
-  The Fly Leptos SSR store derives stable per-request keys. Only the newest 64
-  responses per page are replayable; older keys remain permanent tombstones to
-  prevent duplicate execution. Legacy clients without keys retain CAS-only
-  behavior. Cross-tab merge, restore/lifecycle request IDs and mounted Dioxus
-  parity remain pending. PostgreSQL/MySQL use the page row lock; contended
-  SQLite writers may fail with busy/locked errors. The new receipt migration
-  currently supports PostgreSQL and SQLite, not MySQL. Cross-database writer,
-  GraphQL, SSR/CSR and browser E2E verification are still required. See
-  [Pages save receipt ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+  Save and restore use monotonically advancing microsecond working-copy tokens
+  and construct their acknowledgements inside the write transaction.
+  `savePageDocument` accepts an optional `idempotencyKey`; when the
+  caller omits it, PageService derives a deterministic actor-scoped key from
+  the normalized request. Restore uses a separate actor-scoped key bound to
+  the expected working-copy revision and immutable journal revision ID.
+  Both operations resolve receipts under the page write lock before CAS and
+  new-write policy checks, so a lost response cannot create a second journal
+  entry. The body/draft write, journal row, receipt and any applicable event
+  commit together; document saves also synchronize the site-symbol catalog.
+  `pageDocumentSaveReceipt` exposes read-only recovery for explicit save
+  keys. The newest 64 document-operation response snapshots per page are
+  replayable; older keys remain permanent tombstones to prevent re-execution.
+
+  The Leptos Pages builder and Dioxus host use the same receipt-backed
+  `PagesBuilderFacade` save path when wired to that facade. The classic
+  Next admin has no content editor or direct `savePageDocument` path:
+  it creates pages (optionally with an initial document) and links to the Rust
+  admin builder. Its `createPage` path now accepts a stable idempotency key;
+  the create receipt reserves that key before page/slug writes and commits the
+  original response with the page, initial document, journal and outbox event.
+  Unpublish, archive and delete accept lifecycle keys too. Delete receipts have
+  no page foreign key, retain the original owner scope, and recheck it on replay,
+  so a retry can be acknowledged after the page row is gone without widening access.
+  Next Admin keeps pending create/lifecycle keys in tab-scoped `sessionStorage`
+  when available (with an in-memory fallback); unpublish/delete also send the
+  page-list version as an expected version. Legacy callers may omit keys and
+  retain their previous non-replayable behavior.
+  Publish/rollback already have their own operation journals. Cross-tab merge,
+  durable client reconciliation after remount across every host, mounted
+  Dioxus/CSP/browser verification and the final integration audit remain pending.
+
+  PostgreSQL locks existing page rows for aggregate updates; SQLite starts
+  page-aggregate and route-history read-before-write transactions with
+  `BEGIN IMMEDIATE`. PostgreSQL is the production database; SQLite is retained
+  for isolated integration tests. Independent-pool PostgreSQL save/restore,
+  create and lifecycle scenarios plus file-backed SQLite restore/create
+  scenarios are authored but have not been executed; SQLite lock/busy behavior,
+  GraphQL, SSR/CSR and browser E2E verification are still required. Create and
+  lifecycle receipts intentionally survive page deletion and currently have
+  no compaction policy; their volume is expected to be low, but retention
+  monitoring/compaction remains operational follow-up. See
+  [Pages save receipt ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md)
+  and [create/lifecycle receipt ADR](../../../DECISIONS/2026-11-24-page-create-and-lifecycle-operation-receipts.md).
 
   After an uncertain HTTP result (`Network`, 408, 429, or 5xx), the SSR
   Page Builder store performs one read-only lookup of the same receipt ID.

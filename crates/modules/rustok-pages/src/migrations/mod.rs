@@ -27,6 +27,8 @@ mod m20261017_000001_create_page_starters;
 mod m20261110_000001_add_page_publish_job_lease_until;
 mod m20261114_000001_add_page_starter_revision;
 mod m20261123_000001_create_page_document_save_receipts;
+mod m20261124_000001_create_page_create_operation_receipts;
+mod m20261124_000002_create_page_lifecycle_operation_receipts;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -59,6 +61,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261110_000001_add_page_publish_job_lease_until::Migration),
         Box::new(m20261114_000001_add_page_starter_revision::Migration),
         Box::new(m20261123_000001_create_page_document_save_receipts::Migration),
+        Box::new(m20261124_000001_create_page_create_operation_receipts::Migration),
+        Box::new(m20261124_000002_create_page_lifecycle_operation_receipts::Migration),
     ]
 }
 

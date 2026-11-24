@@ -11,35 +11,44 @@
 
 ## Context
 
-A Fly editor may commit a page document and lose the HTTP response. Retrying
-the same `expected_revision` then conflicts even when the original operation
-committed successfully. UI-local attempt IDs cannot correlate another session
-with that completed save. Transactionally constructing the response prevents
-post-commit result drift but does not give cross-session replay.
+A Fly editor may commit a page document or restore a journaled revision and
+lose the HTTP response. Retrying the same `expected_revision` then conflicts
+even when the original operation committed successfully. UI-local attempt IDs
+cannot correlate another session with that completed write. Transactionally
+constructing the response prevents post-commit result drift but does not give
+cross-session replay.
 
 ## Decision
 
-1. Pages owns save admission, journal and result. An optional 1..128 ASCII
-   `idempotencyKey` is exposed on `SaveGqlPageDocumentInput`; legacy requests
-   without the key preserve their optimistic CAS behavior.
-2. Keys are unique per `(tenant_id, page_id)`. A row binds the authenticated
-   actor to a SHA-256 digest of the canonical layout-stripped body, format,
-   locale, expected revision, tenant and page. It stores the exact authorized
-   `PageResponse` snapshot of the accepted mutation. Content is never in the
-   key itself.
+1. Pages owns document-write admission, journal and result. An optional
+   1..128 ASCII `idempotencyKey` is exposed on `SaveGqlPageDocumentInput`.
+   When the caller omits it, PageService derives a deterministic actor-scoped
+   key from the normalized request hash. New distinct requests still require
+   optimistic CAS.
+2. Keys are unique per `(tenant_id, page_id)`. A save receipt binds the
+   authenticated actor to a SHA-256 digest of the canonical layout-stripped
+   body, format, locale, expected revision, tenant and page. A restore receipt
+   uses a separate domain-separated digest of the expected working-copy
+   revision and immutable body-revision ID. Both store the exact authorized
+   `PageResponse` snapshot; content is never embedded in the key.
 3. Admission obtains the page's write-transaction lock and rechecks current
-   `pages:update` permission and builder policy. It checks an existing
-   key/hash/actor receipt **before** optimistic revision CAS: matching retries
-   replay the original result; another payload or actor fails with
-   `PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT`. New requests still require CAS.
-4. The body write, revision journal, shared symbol catalog update, outbox
-   event, and receipt are committed in one transaction. On rollback, none of
-   them are acknowledged. A replay never appends a second journal row or event.
+   `pages:update` permission. It checks an existing key/hash/actor receipt
+   **before** optimistic revision CAS and before new-write builder policy:
+   matching save or restore retries replay the original result; another
+   payload or actor fails with `PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT`.
+   New operations still require CAS.
+4. For a document save, the body/draft write, revision journal, shared symbol
+   catalog update, any applicable outbox event, and receipt commit in one
+   transaction. For a restore, the working-copy write, revision journal, any
+   applicable page event, and receipt commit together; restore intentionally
+   does not roll back site-wide symbol definitions. On rollback, no receipt is
+   acknowledged. A replay never appends a second journal row or event.
 5. An authenticated `pageDocumentSaveReceipt` GraphQL query and the Pages
-   service read method lookup a previously completed operation without
-   resubmitting the document. They recheck the current write authorization.
-   Missing means **unknown**, not proof of failure: the original request may
-   still be in flight.
+   service read method look up an explicit save key without resubmitting the
+   document. They recheck current write authorization. Restore retries use
+   their deterministic server-derived key by resubmitting the exact original
+   restore command. A missing save receipt means **unknown**, not proof of
+   failure: the original request may still be in flight.
 6. Full snapshots are retained for the newest 64 operations per page. Older
    rows keep their key/hash/revision tombstone indefinitely while the page
    exists. Replaying a tombstone yields
@@ -63,18 +72,23 @@ post-commit result drift but does not give cross-session replay.
    `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` (an application-level 503)
    while retaining the dirty editor draft. This is not an automatic resend
    and does not imply that an in-flight request has stopped.
-10. Source-only test scenarios cover two independent SQLite connections,
-    duplicate-key replay, competing distinct CAS writers, and an opt-in
-    PostgreSQL two-session test. No database test has been executed.
+10. Source-only test scenarios cover duplicate-key replay and competing CAS
+    writers. The opt-in PostgreSQL suite includes duplicate save and restore
+    replay across independent pools. The SQLite suite includes duplicate
+    restore replay across independent file-backed pools; SQLite document
+    writes use `BEGIN IMMEDIATE` before the first revision read. No database
+    test has been executed.
 
 ## Sources of truth and ownership
 
-Pages owns document save receipts and the committed document revision.
-The owner-bound Fly draft session records browser intent acknowledgements.
+Pages owns document save/restore receipts and the committed document revision.
+The adjacent create/lifecycle decision owns page identity and lifecycle
+operation receipts. The owner-bound Fly draft session records browser intent
+acknowledgements.
 
 The accepted [shared Outbox owner receipt](./2026-08-03-owner-operation-receipts.md)
 is canonical for leased, potentially independent owner-port commands. The
-Pages document save is a short, synchronous, aggregate-locked transaction with
+Pages document save or restore is a short, synchronous, aggregate-locked transaction with
 no separately committed external effect. It follows Pages' existing domain
 publish/rollback operation journals. Its permanent key tombstones prevent a
 late retry from becoming a new save after full snapshots expire, which the
@@ -111,29 +125,37 @@ acknowledgement identity and no-reexecution tombstones.
     earlier acknowledgements. Session TTL still bounds retention. The browser
     pending request is tab-scoped; cross-tab notifications remain advisory and
     do not transfer or merge operation identities.
-15. This receipt layer covers strict Pages SSR browser intents. It does not yet
-    provide durable identities for every direct writer, Next editor path,
-    restore/lifecycle workflow or Dioxus host. PageService's content/revision
-    save receipt remains a separate, lower-level safeguard for the actual
-    document write.
+15. The owner-bound SSR intent receipt still covers only strict Pages SSR
+    browser intents. Separately, PageService protects direct document saves and
+    revision restores with durable document receipts. Next `createPage` and
+    unpublish/archive/delete now use the separate create/lifecycle operation
+    receipts documented in
+    [the adjacent decision](./2026-11-24-page-create-and-lifecycle-operation-receipts.md).
+    Publish/rollback retain their own operation journals. The Dioxus host
+    inherits PageService document receipts when wired through
+    `PagesBuilderFacade`; custom host facades and mounted ambiguous
+    completion/recovery remain unverified.
 
 ## Invariants
 
-A tenant, page, and key identify at most one save. The authenticated actor
-and request digest must match on replay. An expired snapshot leaves a
-tombstone that prevents reexecution.
+A tenant, page, and key identify at most one document save or restore. The
+authenticated actor and domain-separated request digest must match on replay.
+An expired snapshot leaves a tombstone that prevents reexecution.
 
 ## Non-goals
 
-Restore, publish and lifecycle save correlation, Next direct-write clients,
-provider-host edge cases, and Dioxus gesture parity remain separate work.
+Provider-host edge cases, custom Dioxus facade recovery and mounted Dioxus
+gesture parity remain separate work. Next page-create and lifecycle operation
+receipts are tracked in the adjacent decision.
 
 ## Data, transaction, and concurrency boundary
 
-Pages resolves receipt replay under the page write lock before checking the
-expected revision. The document, revision journal, catalog updates, outbox
-event and save receipt commit together. The Fly draft store separately commits
-the browser intent receipt with its snapshot and generation.
+Pages resolves save and restore receipt replay under the page write lock
+before checking the expected revision. SQLite uses `BEGIN IMMEDIATE` before
+the revision read; PostgreSQL uses row-level locks. The document or
+working-copy write, revision journal, receipt and operation-specific side
+effects commit together. The Fly draft store separately commits the browser
+intent receipt with its snapshot and generation.
 
 ## Context dimensions
 
@@ -142,27 +164,36 @@ document request digest also binds the locale and observed revision.
 
 ## Events and projections
 
-The committed receipt stores the authorized save response. A replay returns
-the snapshot without appending a revision or publishing another event.
+The committed receipt stores the authorized document-operation response. A
+replay returns that snapshot without appending a revision or publishing
+another event.
 
 ## Failure semantics
 
-A missing receipt leaves the save outcome unknown. A different actor or
-payload conflicts, and a retained tombstone reports expiry. The browser
-preserves its pending request until the operator resolves uncertainty.
+A missing save receipt leaves the save outcome unknown; a restore with an
+ambiguous response must retry the exact original command or refresh the
+document before creating another operation. A different actor or request
+conflicts, and a retained tombstone reports expiry. The browser preserves
+unsaved work until the operator resolves uncertainty.
 
 A replay is not treated as the current page if a later session has already
 advanced the document: the SSR store compares the observed page revision
 with the receipt revision, and the browser host compares the refreshed page
-revision before updating its surrounding Pages state. A superseded receipt
-is surfaced as `REVISION_CONFLICT` so the stale editor is fenced rather
-than being presented as current.
+revision before updating its surrounding Pages state. A superseded save
+receipt is surfaced as `REVISION_CONFLICT` so the stale editor is fenced
+rather than being presented as current. Restore callers likewise must refresh
+their surrounding page state after an acknowledgement; a replay returns the
+original committed snapshot, not a newer page snapshot.
 
 ## Migration and cutover
 
-Apply the additive `page_document_save_receipts` migration to PostgreSQL or
-SQLite before the client sends `idempotencyKey`. MySQL fails closed pending a
-supported migration. Requests without a key retain the existing revision CAS.
+Apply the additive `page_document_save_receipts`,
+`page_create_operation_receipts` and
+`page_lifecycle_operation_receipts` migrations to PostgreSQL in production.
+SQLite migrations are retained for isolated integration tests. MySQL is not
+a target database for this deployment. Explicit document-save keys are
+optional: when absent, PageService derives a stable key for save and restore
+requests; CAS remains mandatory for each new operation.
 
 ## Alternatives considered
 
@@ -173,12 +204,17 @@ and does not provide perpetual tombstones for this aggregate.
 
 ## Verification
 
-Multi-connection evidence is still required for PostgreSQL locking and SQLite
-busy handling. MySQL is outside the implemented migration scope. The
-implementation evidence recorded in this decision is source-only.
+The opt-in PostgreSQL save/restore race tests and file-backed SQLite
+independent-pool restore test are authored but remain unexecuted. The adjacent
+create/lifecycle decision adds independent-pool PostgreSQL create/unpublish/
+delete scenarios and SQLite create/lifecycle replay scenarios; those also
+remain unexecuted. They still need to establish row-lock ordering and SQLite
+busy handling in the runtime. All implementation evidence recorded in this
+decision is source-only.
 
 ## Consequences
 
-Clients can recover the acknowledged revision across sessions. Pages keeps
-the newest 64 response snapshots per page and retains older key tombstones
-until page deletion.
+Clients can recover acknowledged save and restore revisions across sessions
+by receipt lookup or exact-command replay. Pages keeps the newest 64 document
+operation response snapshots per page and retains older key tombstones until
+page deletion.

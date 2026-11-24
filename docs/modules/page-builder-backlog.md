@@ -30,13 +30,19 @@ by the separate release/publish gate. Leptos Rust and JS adapters share a docume
 editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
 other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
 has source integration for the isolated iframe, pointer/drag/drop and bounded resize path.
-**Still OPEN:** complete idempotency/recovery coverage for every direct writer (including
-Next, Dioxus and restore/lifecycle paths), durable client reconciliation after remount, and
-multi-connection database evidence. The Pages PageService receipt and Leptos SSR replay path
-are implemented in source, but this does not prove every host uses them. Mounted CSP/browser
-verification and the final integration audit also remain. Peer notifications are advisory;
-server revision checks and receipts are authoritative. No build, Rust test, lint or Playwright
-run is claimed for this pass.
+**Still OPEN:** durable client reconciliation after remount across every host,
+multi-connection PostgreSQL verification, mounted Dioxus/CSP/browser verification,
+and the final integration audit. PostgreSQL is the production database; SQLite
+is used for isolated integration tests. Pages PageService now records durable receipts for document saves,
+revision restores, page creation (including an initial document), and unpublish/archive/
+delete lifecycle commands. Next Admin persists pending operation keys in tab-scoped
+`sessionStorage` and sends expected page versions for unpublish/delete. The Dioxus host
+inherits document-save protection when wired through `PagesBuilderFacade`; custom
+facade and mounted recovery behavior remain unverified. The classic Next admin still
+does not implement content editing or call `savePageDocument`; it creates pages and
+links to the Rust admin builder. Peer notifications are advisory; server revision
+checks and receipts are authoritative. No build, Rust test, lint or Playwright run is
+claimed for this pass.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
@@ -424,8 +430,8 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
    metadata-only editing and confirmed revision-guarded deletion of tenant starters.
    Both create forms list exact-locale layout keys, show suggested-layout availability
    and recheck the explicit choice. Both request the new checked-layout create contract;
-   same-locale creation/deletion serialization is implemented for PostgreSQL/SQLite,
-   while MySQL non-default checked creation fails closed. Legacy labels and cross-locale
+   same-locale creation/deletion serialization is implemented for PostgreSQL
+   production and SQLite integration tests. Legacy labels and cross-locale
    deletion checks are outside this guarantee; layout revisions are not pinned.
    Creators without `pages:manage` are offered only `default`, since non-default
    builder composition is manage-only; page-scoped composition authorization for
@@ -1245,11 +1251,12 @@ final integration checks.
   Page Builder port-level idempotency key now also includes the project hash
   rather than conflating two distinct commands at the same revision. Pages
   performs the final CAS and authorization, not the stale client preflight.
-- **Still open**: true network-unknown reconciliation UI across remounts and
-  independent sessions, retention observability, restore/lifecycle idempotency
-  and direct Next editor parity, MySQL schema support, concurrent PostgreSQL/
-  SQLite transactions with real independent connections, mounted SSR/CSR/
-  Dioxus, CSP, rich-text, and all maintainer verification. Dioxus iframe,
+- **Still open at the time of this 2026-11-23 note**: true network-unknown
+  reconciliation UI across remounts and independent sessions, retention
+  observability, restore/lifecycle idempotency and direct Next editor parity,
+  concurrent PostgreSQL transactions with real independent connections,
+  mounted SSR/CSR/Dioxus, CSP, rich-text, and maintainer verification.
+  Dioxus iframe,
   drag/drop and bounded resize are now connected in source but still require
   mounted browser evidence.
   PR #4788 has since been merged into `main`; that merge is not verification evidence. The authored checks remain unexecuted and are still release blockers.
@@ -1268,8 +1275,8 @@ unknown-outcome status. **All remain unexecuted.** The strict Pages SSR browser-
 requests across reloads, probes receipts without resending, blocks new edits
 while the result is unknown, and offers explicit same-request retry. Initial
 owner-bound draft sessions are created before the first edit. Still open:
-direct Next/other writer parity, restore/lifecycle operation IDs, MySQL schema,
-receipt expiry/observability, deployment verification, durable Dioxus host operation
+direct Next/other writer parity, restore/lifecycle operation IDs, receipt
+expiry/observability, deployment verification, durable Dioxus host operation
 identity and cross-session recovery, and mounted Dioxus iframe/drag/drop/resize
 verification. The Dioxus source path is connected to the shared controller and has
 local attempt correlation, but that is not a durable receipt identity; browser evidence
@@ -1295,3 +1302,41 @@ is still outstanding.
 - Added regression coverage for in-flight peer conflict retirement and iframe protocol/sequence
   fencing. No Cargo build, Rust tests, formatting, lint or Playwright run was performed; all
   checks remain for the maintainer's final pass.
+
+2026-11-24 Pages write-admission follow-up (source only; not executed): the SQLite
+`BEGIN IMMEDIATE` admission helper is now used by document save/restore, page
+create/duplicate, metadata patch, exact metadata translation apply, artifact
+rebuild/binding replacement, and route-history import.
+The read-only artifact integrity audit intentionally keeps a read transaction. PostgreSQL
+page updates take row locks before receipt/revision reads; page creation reserves its
+receipt key transactionally before slug writes and relies on the database uniqueness
+constraints for final arbitration. Added
+file-backed two-pool SQLite duplicate-restore coverage and extended the opt-in two-pool
+PostgreSQL suite with duplicate-restore replay. No scoped checks or database tests were run;
+the maintainer's verification remains outstanding.
+
+2026-11-24 Next create/lifecycle continuation (source only; not executed): `createPage`
+now reserves an actor/request-bound receipt before page and slug writes, and commits
+the original response with the page, initial document, revision evidence and outbox.
+Unpublish/archive/delete use page-scoped lifecycle receipts; delete receipts survive
+the page row, and unpublish/delete are fenced by the page version returned in the list.
+Next Admin keeps pending keys in tab-scoped `sessionStorage`. Added SQLite replay
+scenarios and independent-pool PostgreSQL create/unpublish/delete scenarios. These
+tests and the new PostgreSQL/SQLite migrations remain unexecuted. See
+[create/lifecycle receipt ADR](../../DECISIONS/2026-11-24-page-create-and-lifecycle-operation-receipts.md).
+
+
+2026-11-24 database target clarification: PostgreSQL is the production database.
+SQLite is retained only for isolated integration tests. MySQL migration support is
+not a project requirement and is not tracked as an open item.
+
+2026-11-24 Dioxus conflict recovery follow-up (source only; not executed):
+server CAS conflicts and peer-tab notices now share one read-only recovery state.
+The Dioxus banner exposes the exact local project JSON for copying before reload
+and accepts an optional host-owned reload callback. A
+`PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` response also fences edits and offers an
+exact same-request retry against the deterministic Pages receipt key. This retry
+state is in-memory, not durable across a full remount. The editor does not
+auto-merge drafts; three-way merge and durable recovery across remounts remain
+open. PostgreSQL is the production database; SQLite is used for isolated
+integration tests; MySQL support is out of scope.
