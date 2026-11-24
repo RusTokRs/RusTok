@@ -1,6 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::capability_access::intent_allowed;
-use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade, SaveAttempt};
+use crate::{
+    AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade,
+    PageBuilderAdminFacadeError, SaveAttempt,
+};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
@@ -87,6 +90,9 @@ fn make_peer_write_channel(
 pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
     pub save_attempt: Option<SaveAttempt>,
+    /// Complete this exact request after the host finishes its asynchronous work.
+    /// Stale save completions are ignored by the request identity captured here.
+    pub on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
 }
 
 #[derive(Clone)]
@@ -547,136 +553,41 @@ impl AdminEditorRuntime {
         } else {
             None
         };
+        if capability == BuilderCapabilityKind::Preview {
+            self.preview_in_progress.set(true);
+        }
+
         if let Some(facade) = self.facade.as_ref() {
             let facade = Arc::clone(facade);
             let runtime = self.clone();
-            // A response must refer to the submitted request, never a hash read
-            // from the mutable working tree after other edits were made.
-            if capability == BuilderCapabilityKind::Preview {
-                runtime.preview_in_progress.set(true);
-            }
-
             spawn_local(async move {
-                match facade.execute(request).await {
-                    Ok(PageBuilderCapabilityResponse::Preview(response))
-                        if capability == BuilderCapabilityKind::Preview =>
-                    {
-                        let preview_request = runtime.preview_request.get_untracked();
-                        runtime.preview_request.set(None);
-                        runtime.preview_in_progress.set(false);
-                        let current_runtime_context =
-                            if runtime.runtime_context_configured.get_untracked() {
-                                runtime.runtime_context.get_untracked()
-                            } else {
-                                Value::Object(Map::new())
-                            };
-                        let current_runtime_scenario =
-                            runtime.active_runtime_scenario.get_untracked();
-                        let current = runtime.controller.with(|controller| {
-                            (
-                                controller.page_id().to_string(),
-                                controller.editor().revision().project_hash,
-                                controller.active_page_index(),
-                            )
-                        });
-                        if response.page_id != current.0 {
-                            runtime.fail(format!(
-                                "Page Builder preview returned page `{}` for `{}`",
-                                response.page_id, current.0
-                            ));
-                            return;
-                        }
-                        if response.runtime_scenario_id != current_runtime_scenario {
-                            runtime.fail(
-                                "Page Builder preview returned a different runtime scenario; refresh the preview",
-                            );
-                            return;
-                        }
-                        if preview_request.is_none_or(|expected| {
-                            expected
-                                != (
-                                    current.1,
-                                    current.2,
-                                    current_runtime_context,
-                                    current_runtime_scenario,
-                                )
-                        }) {
-                            runtime.fail(
-                                "Page Builder project or runtime context changed while the server preview was rendering; refresh the preview",
-                            );
-                            return;
-                        }
-                        runtime.server_preview_html.set(Some(response.html));
-                        runtime.last_error.set(None);
-                        runtime.announce("Server preview refreshed");
-                    }
-                    Ok(PageBuilderCapabilityResponse::Publish(response))
-                        if capability == BuilderCapabilityKind::Publish =>
-                    {
-                        let result = runtime.controller.try_update(|controller| {
-                            if response.page_id != controller.page_id() {
-                                return Err(format!(
-                                    "Page Builder facade returned page `{}` for `{}`",
-                                    response.page_id,
-                                    controller.page_id()
-                                ));
-                            }
-                            let Some(expected_hash) = expected_hash else {
-                                return Err("Publish request has no submitted project hash".to_string());
-                            };
-                            let Some(attempt) = save_attempt.as_ref() else {
-                                return Err("Publish request has no tracked attempt".to_string());
-                            };
-                            controller
-                                .acknowledge_save_for_attempt(
-                                    expected_hash.clone(),
-                                    attempt,
-                                    response.revision_id.clone(),
-                                )
-                                .map_err(|error| error.to_string())
-                        });
-                        match result {
-                            Some(Ok(())) => {
-                                runtime.last_error.set(None);
-                                runtime.broadcast_confirmed_write(&response.revision_id, expected_hash);
-                                runtime.announce(runtime.save_succeeded.clone());
-                            }
-                            Some(Err(error)) => {
-                                if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
-                                    runtime.fail(error);
-                                }
-                            }
-                            None => runtime.fail(
-                                "Page Builder controller was disposed before save acknowledgement",
-                            ),
-                        }
-                    }
-                    Ok(response) => {
-                        if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
-                            runtime.fail(format!(
-                                "Page Builder facade returned `{}` for a `{capability}` request",
-                                response.capability()
-                            ));
-                        }
-                    }
-                    Err(error) => {
-                        let completed = if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
-                            runtime.finish_conflicted_request(capability, save_attempt.as_ref())
-                        } else {
-                            runtime.finish_failed_request(capability, save_attempt.as_ref())
-                        };
-                        if completed {
-                            runtime.fail(error.to_string());
-                        }
-                    }
-                }
+                let outcome = facade.execute(request).await;
+                runtime.complete_capability_request(
+                    capability,
+                    expected_hash,
+                    save_attempt,
+                    outcome,
+                );
             });
         } else if let Some(callback) = self.on_request.as_ref() {
-            self.preview_in_progress.set(false);
-            self.preview_request.set(None);
+            // Callback-backed hosts used to receive a fire-and-forget notification: Preview was
+            // cleared immediately and Publish stayed in save_in_progress forever. Give the host
+            // the same completion path as a PageBuilderAdminFacade, with the exact attempt bound.
+            let runtime = self.clone();
+            let completion_hash = expected_hash.clone();
+            let completion_attempt = save_attempt.clone();
+            let on_complete = Callback::new(move |outcome| {
+                runtime.complete_capability_request(
+                    capability,
+                    completion_hash.clone(),
+                    completion_attempt.clone(),
+                    outcome,
+                );
+            });
             callback.run(PageBuilderCapabilityExecution {
                 request,
                 save_attempt,
+                on_complete,
             });
         } else {
             self.preview_in_progress.set(false);
@@ -686,6 +597,129 @@ impl AdminEditorRuntime {
             // permanently stuck in save_in_progress.
             self.finish_failed_request(capability, save_attempt.as_ref());
             self.fail(self.facade_missing.clone());
+        }
+    }
+
+    fn complete_capability_request(
+        &self,
+        capability: BuilderCapabilityKind,
+        expected_hash: Option<ProjectHash>,
+        save_attempt: Option<SaveAttempt>,
+        outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
+    ) {
+        match outcome {
+            Ok(PageBuilderCapabilityResponse::Preview(response))
+                if capability == BuilderCapabilityKind::Preview =>
+            {
+                let preview_request = self.preview_request.get_untracked();
+                self.preview_request.set(None);
+                self.preview_in_progress.set(false);
+                let current_runtime_context =
+                    if self.runtime_context_configured.get_untracked() {
+                        self.runtime_context.get_untracked()
+                    } else {
+                        Value::Object(Map::new())
+                    };
+                let current_runtime_scenario = self.active_runtime_scenario.get_untracked();
+                let current = self.controller.with(|controller| {
+                    (
+                        controller.page_id().to_string(),
+                        controller.editor().revision().project_hash,
+                        controller.active_page_index(),
+                    )
+                });
+                if response.page_id != current.0 {
+                    self.fail(format!(
+                        "Page Builder preview returned page `{}` for `{}`",
+                        response.page_id, current.0
+                    ));
+                    return;
+                }
+                if response.runtime_scenario_id != current_runtime_scenario {
+                    self.fail(
+                        "Page Builder preview returned a different runtime scenario; refresh the preview",
+                    );
+                    return;
+                }
+                if preview_request.is_none_or(|expected| {
+                    expected
+                        != (
+                            current.1,
+                            current.2,
+                            current_runtime_context,
+                            current_runtime_scenario,
+                        )
+                }) {
+                    self.fail(
+                        "Page Builder project or runtime context changed while the server preview was rendering; refresh the preview",
+                    );
+                    return;
+                }
+                self.server_preview_html.set(Some(response.html));
+                self.last_error.set(None);
+                self.announce("Server preview refreshed");
+            }
+            Ok(PageBuilderCapabilityResponse::Publish(response))
+                if capability == BuilderCapabilityKind::Publish =>
+            {
+                let result = self.controller.try_update(|controller| {
+                    if response.page_id != controller.page_id() {
+                        return Err(format!(
+                            "Page Builder facade returned page `{}` for `{}`",
+                            response.page_id,
+                            controller.page_id()
+                        ));
+                    }
+                    let Some(expected_hash) = expected_hash.as_ref() else {
+                        return Err("Publish request has no submitted project hash".to_string());
+                    };
+                    let Some(attempt) = save_attempt.as_ref() else {
+                        return Err("Publish request has no tracked attempt".to_string());
+                    };
+                    controller
+                        .acknowledge_save_for_attempt(
+                            *expected_hash,
+                            attempt,
+                            response.revision_id.clone(),
+                        )
+                        .map_err(|error| error.to_string())
+                });
+                match result {
+                    Some(Ok(())) => {
+                        self.last_error.set(None);
+                        if let Some(expected_hash) = expected_hash {
+                            self.broadcast_confirmed_write(&response.revision_id, expected_hash);
+                        }
+                        self.announce(self.save_succeeded.clone());
+                    }
+                    Some(Err(error)) => {
+                        if self.finish_failed_request(capability, save_attempt.as_ref()) {
+                            self.fail(error);
+                        }
+                    }
+                    None => self.fail(
+                        "Page Builder controller was disposed before save acknowledgement",
+                    ),
+                }
+            }
+            Ok(response) => {
+                if self.finish_failed_request(capability, save_attempt.as_ref()) {
+                    self.fail(format!(
+                        "Page Builder facade returned `{}` for a `{capability}` request",
+                        response.capability()
+                    ));
+                }
+            }
+            Err(error) => {
+                let completed = if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
+                    self.finish_conflicted_request(capability, save_attempt.as_ref())
+                } else {
+                    self.finish_failed_request(capability, save_attempt.as_ref())
+                };
+                if completed {
+                    self.fail(error.to_string());
+                }
+            }
         }
     }
 
