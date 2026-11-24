@@ -168,6 +168,17 @@ by readiness. The existing stop-before-start and restart-after-drain
 regressions cover this no-op; the terminated-task regressions also check
 that retained handles are not acknowledged after stop. Tests are unexecuted.
 
+## Server audit continuation — locked login credential-oracle closure (2026-11-25)
+
+Login now checks an active lockout before verifying the user's stored password
+hash. It performs the same dummy-hash verification used for unknown accounts
+and returns the generic `InvalidCredentials` result for every password while
+the account is locked. The transactional post-verification check applies the
+same generic result if another request activates the lockout after the initial
+lookup. This prevents the lockout window from becoming an unlimited online
+password oracle while preserving atomic failed-attempt accounting. Regression
+coverage is authored but unexecuted.
+
 ## Server audit continuation — scheduler startup liveness (2026-11-23)
 
 The module-work and Workflow cron scheduler initializers previously treated a stored
