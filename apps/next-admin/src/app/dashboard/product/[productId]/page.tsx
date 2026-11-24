@@ -22,7 +22,8 @@ import {
   getCategoryEffectiveForm,
   ProductEditorPage,
   isProductEditorIntent,
-  PRODUCT_EDITOR_INTENT_QUERY_KEY
+  PRODUCT_EDITOR_INTENT_QUERY_KEY,
+  PRODUCT_VARIANT_INTENT_QUERY_KEY
 } from '@rustok/product-admin';
 import {
   saveProductAction,
@@ -68,7 +69,11 @@ export default async function ProductDetailPage({
 }: PageProps) {
   const { productId } = await params;
   const session = await auth();
-  const editorIntent = (await searchParams)[PRODUCT_EDITOR_INTENT_QUERY_KEY];
+  const query = await searchParams;
+  const editorIntent = query[PRODUCT_EDITOR_INTENT_QUERY_KEY];
+  const variantIntent = query[PRODUCT_VARIANT_INTENT_QUERY_KEY];
+  const hasProductRecovery = isProductEditorIntent(editorIntent);
+  const hasVariantRecovery = isProductEditorIntent(variantIntent);
 
   const opts = {
     graphql: graphqlRequest,
@@ -87,7 +92,8 @@ export default async function ProductDetailPage({
     writeScope.tenantId,
     writeScope.actorId,
     productId,
-    editorIntent ?? null
+    editorIntent ?? null,
+    variantIntent ?? null
   ]);
 
   // Load category taxonomy
@@ -136,7 +142,7 @@ export default async function ProductDetailPage({
   }
 
   if (!product) {
-    if (!isProductEditorIntent(editorIntent)) notFound();
+    if (!hasProductRecovery && !hasVariantRecovery) notFound();
     // A delete may have committed before its response was lost. Do not hide the
     // caller's durable recovery behind a read-side 404; no editable draft here.
     return (
@@ -146,12 +152,15 @@ export default async function ProductDetailPage({
           resourceId={productId}
           writeScope={writeScope}
           recoveryOnly
+          variantRecoveryOnly={!hasProductRecovery && hasVariantRecovery}
           categories={[]}
           onSaveProduct={saveProductAction}
           onChangeStatus={changeProductStatusAction}
           onDeleteProduct={deleteProductAction}
           onSetVariantAxes={setVariantAxesAction}
           onAddVariant={addVariantAction}
+          onUpdateVariant={updateVariantAction}
+          onDeleteVariant={deleteVariantAction}
         />
       </PageContainer>
     );
@@ -216,14 +225,10 @@ export default async function ProductDetailPage({
         onChangeStatus={changeProductStatusAction}
         onDeleteProduct={deleteProductAction}
         onAddVariant={addVariantAction}
-        onUpdateVariant={async (id, v) => {
-          await updateVariantAction(id, v);
-        }}
+        onUpdateVariant={updateVariantAction}
         onPreviewVariantAxes={previewVariantAxesAction}
         onSetVariantAxes={setVariantAxesAction}
-        onDeleteVariant={async (id) => {
-          await deleteVariantAction(id);
-        }}
+        onDeleteVariant={deleteVariantAction}
         onAddImage={async (pid, img, idempotencyKey) => {
           await addImageAction(pid, img, idempotencyKey);
         }}
