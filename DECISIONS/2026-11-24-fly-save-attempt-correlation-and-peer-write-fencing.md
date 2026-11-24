@@ -55,12 +55,15 @@ operation and must not be blocked by a release-readiness policy when the actor h
    disable saving a working draft.
 5. **Peer-write notifications are advisory and editor-scoped.** The JS adapter and Rust host use
    the same `fly:page-authoring-writes:v1` channel. A sender ID combines a per-document nonce
-   with an editor-root scope. Channel instances for the same editor advance their baseline on
-   local confirmed writes; another tab or another editor root is treated as a peer and fences the
-   stale editor into read-only mode. Dioxus uses the document-scoped identity when it owns the
-   only channel in that host. The JS adapter also fences an explicit server revision-conflict
-   response if a BroadcastChannel notification was missed, and clears that parked fence only
-   after a reload observes a different server revision.
+   with an editor-root scope. Leptos derives the scope from its SSR root ID, which the JS adapter
+   reads from the mounted root; Dioxus creates a stable per-component scope for its canvas host.
+   Channel instances for the same editor advance their baseline on local confirmed writes;
+   another tab or another editor root is treated as a peer and fences the stale editor into
+   read-only mode. A peer notification also retires any in-flight local save attempt immediately,
+   so its delayed response cannot acknowledge an older revision or clear the conflict. The JS
+   adapter also fences an explicit server revision-conflict response if a BroadcastChannel
+   notification was missed, and clears that parked fence only after a reload observes a
+   different server revision.
 6. **No automatic merge or replay is introduced.** A peer notification asks the user to preserve
    local work and reload. The server's revision compare-and-swap remains authoritative if
    BroadcastChannel is unavailable or a notification is missed.
