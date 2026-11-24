@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement};
 use uuid::Uuid;
 
 use crate::error::BlogError;
@@ -429,7 +429,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
 
     async fn load_tags_by_ids(
         &self,
-        _conn: BlogTaxonomyConnection<'_>,
+        conn: BlogTaxonomyConnection<'_>,
         tenant_id: Uuid,
         tag_ids: &[Uuid],
         locale: &str,
@@ -438,16 +438,43 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
         if tag_ids.is_empty() {
             return Ok(HashMap::new());
         }
+        let backend = match conn {
+            BlogTaxonomyConnection::Connection(c) => c.get_database_backend(),
+            BlogTaxonomyConnection::Transaction(tx) => tx.get_database_backend(),
+        };
         let mut map = HashMap::new();
         for &id in tag_ids {
+            let find_stmt = match backend {
+                DbBackend::Sqlite => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = ? AND id = ?",
+                    [tenant_id.into(), id.into()],
+                ),
+                _ => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = $1 AND id = $2",
+                    [tenant_id.into(), id.into()],
+                ),
+            };
+            let row_opt = match conn {
+                BlogTaxonomyConnection::Connection(c) => {
+                    c.query_one_raw(find_stmt).await.ok().flatten()
+                }
+                BlogTaxonomyConnection::Transaction(tx) => {
+                    tx.query_one_raw(find_stmt).await.ok().flatten()
+                }
+            };
+            let canonical_key = row_opt
+                .and_then(|r| r.try_get::<String>("", "canonical_key").ok())
+                .unwrap_or_else(|| id.to_string());
             map.insert(
                 id,
                 BlogTaxonomyTagSnapshot {
                     id,
                     tenant_id,
-                    canonical_key: id.to_string(),
+                    canonical_key: canonical_key.clone(),
                     name: format!("tag-{id}"),
-                    slug: format!("tag-{id}"),
+                    slug: canonical_key,
                     scope_type: "module".to_string(),
                     scope_value: Some("blog".to_string()),
                     locale: locale.to_string(),
@@ -508,19 +535,58 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
 
     async fn ensure_module_tags_in_tx(
         &self,
-        _txn: &DatabaseTransaction,
-        _tenant_id: Uuid,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         _locale: &str,
         tag_names: &[String],
         _allow_create: bool,
     ) -> Result<Vec<Uuid>, BlogError> {
-        Ok(tag_names.iter().map(|_| Uuid::new_v4()).collect())
+        let backend = txn.get_database_backend();
+        let mut ids = Vec::with_capacity(tag_names.len());
+        for name in tag_names {
+            let key = crate::domain::normalization::normalize_term_route_key(name)
+                .unwrap_or_else(|| name.to_lowercase());
+            let find_stmt = match backend {
+                DbBackend::Sqlite => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT id FROM taxonomy_terms WHERE tenant_id = ? AND canonical_key = ?",
+                    [tenant_id.into(), key.clone().into()],
+                ),
+                _ => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT id FROM taxonomy_terms WHERE tenant_id = $1 AND canonical_key = $2",
+                    [tenant_id.into(), key.clone().into()],
+                ),
+            };
+            if let Ok(Some(row)) = txn.query_one_raw(find_stmt).await {
+                if let Ok(existing_id) = row.try_get::<Uuid>("", "id") {
+                    ids.push(existing_id);
+                    continue;
+                }
+            }
+            let id = Uuid::new_v4();
+            let insert_stmt = match backend {
+                DbBackend::Sqlite => Statement::from_sql_and_values(
+                    backend,
+                    "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES (?, ?, 'tag', 'module', 'blog', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    [id.into(), tenant_id.into(), key.into()],
+                ),
+                _ => Statement::from_sql_and_values(
+                    backend,
+                    "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
+                    [id.into(), tenant_id.into(), key.into()],
+                ),
+            };
+            let _ = txn.execute_raw(insert_stmt).await;
+            ids.push(id);
+        }
+        Ok(ids)
     }
 
     async fn create_tag_in_tx(
         &self,
-        _txn: &DatabaseTransaction,
-        _tenant_id: Uuid,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         input: BlogTaxonomyCreateTagInput,
     ) -> Result<BlogTaxonomyCreatedTag, BlogError> {
         let id = Uuid::new_v4();
@@ -528,18 +594,46 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             crate::domain::normalization::normalize_term_route_key(&input.name)
                 .unwrap_or_else(|| id.to_string())
         });
+        let backend = txn.get_database_backend();
+        let insert_stmt = match backend {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                backend,
+                "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES (?, ?, 'tag', 'module', 'blog', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                [id.into(), tenant_id.into(), canonical_key.clone().into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                backend,
+                "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
+                [id.into(), tenant_id.into(), canonical_key.clone().into()],
+            ),
+        };
+        let _ = txn.execute_raw(insert_stmt).await;
         Ok(BlogTaxonomyCreatedTag { id, canonical_key })
     }
 
     async fn update_tag_in_tx(
         &self,
-        _txn: &DatabaseTransaction,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         tag_id: Uuid,
         _security: &SecurityContext,
         input: BlogTaxonomyUpdateTagInput,
     ) -> Result<BlogTaxonomyTagSnapshot, BlogError> {
         let canonical_key = input.slug.clone().unwrap_or_else(|| tag_id.to_string());
+        let backend = txn.get_database_backend();
+        let update_stmt = match backend {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                backend,
+                "UPDATE taxonomy_terms SET canonical_key = ?, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ?",
+                [canonical_key.clone().into(), tenant_id.into(), tag_id.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                backend,
+                "UPDATE taxonomy_terms SET canonical_key = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2 AND id = $3",
+                [canonical_key.clone().into(), tenant_id.into(), tag_id.into()],
+            ),
+        };
+        let _ = txn.execute_raw(update_stmt).await;
         Ok(BlogTaxonomyTagSnapshot {
             id: tag_id,
             tenant_id,
