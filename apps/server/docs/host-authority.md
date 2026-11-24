@@ -78,6 +78,11 @@ logs, issue comments, GraphQL variables, URLs or browser storage.
   matching the routed tenant because encrypted connector secrets are still
   stored under that tenant owner. The mutation audit actor remains the host
   operator from the dedicated credential.
+- MCP scaffold apply writes into the process-wide host workspace and therefore
+  requires `manage` authority in addition to the tenant-scoped `mcp:manage`
+  permission. A tenant administrator or tenant-bound MCP client cannot write
+  host source files by itself; successful apply audit metadata records the host
+  operator actor separately from the tenant/client actor.
 - Invalid credentials receive a static denial. Invalid credential
   configuration is logged without the presented token and returns a static
   internal error only when a host credential is presented.
