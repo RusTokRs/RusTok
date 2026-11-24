@@ -95,9 +95,7 @@ pub(crate) fn post_service(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
 ) -> PostService {
-    PostService::new(db.clone(), event_bus.clone()).with_taxonomy_port(
-        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
-    )
+    PostService::new(db.clone(), event_bus.clone())
 }
 
 pub(crate) async fn create_draft_post(
