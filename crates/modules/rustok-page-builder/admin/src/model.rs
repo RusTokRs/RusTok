@@ -39,6 +39,8 @@ impl AdminCanvasController {
         if page_id.trim().is_empty() {
             return Err(AdminCanvasError::InvalidPageId);
         }
+        let revision_id = revision_id.into();
+        validate_revision_id(&revision_id)?;
         let document = GrapesJsCodec::decode_value(project_data)?;
         let mut registries = RegistrySet::with_builtins();
         for definition in crate::asset_provider::builtin_asset_provider_definitions() {
@@ -52,14 +54,15 @@ impl AdminCanvasController {
         let active_page_index = summaries
             .iter()
             .position(|page| page.id.as_deref() == Some(page_id.as_str()))
-            .unwrap_or(0);
-        if let Some(active) = summaries.get(active_page_index) {
-            ui.state.page.active_page_index = active_page_index;
-            ui.state.page.active_page_id = active.id.clone();
-        }
+            .ok_or_else(|| AdminCanvasError::PageNotFound(page_id.clone()))?;
+        let active = summaries
+            .get(active_page_index)
+            .ok_or_else(|| AdminCanvasError::PageNotFound(page_id.clone()))?;
+        ui.state.page.active_page_index = active_page_index;
+        ui.state.page.active_page_id = active.id.clone();
         let mut controller = Self {
             page_id,
-            revision_id: revision_id.into(),
+            revision_id,
             editor,
             ui,
             clipboard: None,
@@ -296,13 +299,14 @@ impl AdminCanvasController {
         attempt: &SaveAttempt,
         revision_id: impl Into<String>,
     ) -> Result<(), AdminCanvasError> {
+        let revision_id = revision_id.into();
+        validate_revision_id(&revision_id)?;
         let before = self.clone();
         if self.active_save_attempt().as_ref() != Some(attempt) {
             return Err(AdminCanvasError::Authoring(
                 "save response does not match the active request".to_string(),
             ));
         }
-        let revision_id = revision_id.into();
         self.editor.revision_mut().acknowledge_submitted_attempt(
             expected_hash,
             attempt.sequence,
@@ -633,10 +637,21 @@ pub enum AdminCanvasEffect {
     Announce(String),
 }
 
+fn validate_revision_id(revision_id: &str) -> Result<(), AdminCanvasError> {
+    if revision_id.trim().is_empty() || revision_id.len() > 256 {
+        return Err(AdminCanvasError::InvalidRevisionId);
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AdminCanvasError {
     #[error("page id must not be empty")]
     InvalidPageId,
+    #[error("revision id must not be empty or exceed 256 bytes")]
+    InvalidRevisionId,
+    #[error("requested page is missing from the Page Builder project: {0}")]
+    PageNotFound(String),
     #[error("{0}")]
     Authoring(String),
     #[error(transparent)]
@@ -690,6 +705,40 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn controller_rejects_a_project_that_does_not_contain_the_requested_page() {
+        let error = AdminCanvasController::new(
+            "missing",
+            "rev-1",
+            json!({"pages": [{"id": "home", "component": {"id": "root", "type": "wrapper"}}]}),
+        )
+        .expect_err("the requested page must be present");
+        assert!(matches!(error, AdminCanvasError::PageNotFound(page) if page == "missing"));
+    }
+
+    #[test]
+    fn controller_rejects_an_empty_revision_id() {
+        let error = AdminCanvasController::new(
+            "home",
+            " ",
+            json!({"pages": [{"id": "home", "component": {"id": "root", "type": "wrapper"}}]}),
+        )
+        .expect_err("a save cannot use an empty compare-and-swap revision");
+        assert!(matches!(error, AdminCanvasError::InvalidRevisionId));
+    }
+
+    #[test]
+    fn empty_save_acknowledgement_revision_does_not_retire_the_active_attempt() {
+        let mut controller = controller();
+        let hash = controller.editor().revision().project_hash;
+        let attempt = controller.mark_save_started_with_id().expect("save started");
+        assert!(controller
+            .acknowledge_save_for_attempt(hash, &attempt, " ")
+            .is_err());
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
+        assert!(controller.ui().state.dirty.save_in_progress);
     }
 
     #[test]
