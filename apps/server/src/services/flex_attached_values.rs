@@ -431,12 +431,14 @@ impl FlexAttachedValuesService {
         match entity_type {
             USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
-                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
-                let schema = load_schema(db, tenant_id, entity_type)
+                let user = crate::services::auth_lifecycle::AuthLifecycleService::lock_user_for_mutation(
+                    &txn,
+                    tenant_id,
+                    entity_id,
+                )
+                .await?
+                .ok_or(Error::NotFound)?;
+                let schema = UserFieldService::get_schema(&txn, tenant_id)
                     .await
                     .map_err(map_flex_host_error)?;
                 let (reserved, _) = split_donor_metadata(&schema, &user.metadata);
