@@ -201,7 +201,9 @@ a stale-revision response retires only its matching attempt and fences the edito
 
 The Leptos facade runtime and callback transport now carry the same `SaveAttempt`. The public
 `PageBuilderCapabilityExecution` callback receives the request and its optional attempt together,
-so external hosts can acknowledge or fail only the request they actually executed. Late
+so external hosts can acknowledge or fail only the request they actually executed. Hosts complete
+the execution exactly once; duplicate completion calls are ignored. The local attempt ID is not a
+server idempotency key: custom hosts must use their owner-issued receipt/idempotency contract. Late
 responses from an older identical retry cannot corrupt the active attempt.
 
 The framework-neutral `EditorSessionState` carries `SaveAttempt` through save start,
@@ -213,9 +215,10 @@ the supplied consumer facade. Save completion is attempt-aware; browser previews
 scenario/context and lifecycle flags in the same session. The Page Builder Dioxus host now mounts
 the isolated iframe canvas, forwards geometry/hover/focus/keyboard events, completes palette and
 selected-layer drag/drop, commits bounded resize patches and participates in peer-write fencing.
-The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
-own confirmed writes advance one document baseline; independent tabs fence stale editors, while
-multiple roots in one tab share that baseline and remain protected by server revision checks.
+The Leptos Rust runtime and JS adapter share one document-scoped sender identity so all
+same-tab adapters advance one baseline without self-conflicting; independent tabs fence stale
+editors. Multiple roots in one tab share that advisory baseline and remain protected by server
+revision checks.
 These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
 Mounted browser/CSP verification remains outstanding.
 
