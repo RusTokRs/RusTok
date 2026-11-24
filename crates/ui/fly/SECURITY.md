@@ -25,8 +25,7 @@ it then trusts for authorisation decisions, Fly cannot help.
 | Component and page ids | `[A-Za-z0-9_.:-]`, non-empty, ≤128 bytes | `validation.rs::validate_identifier` |
 | URLs | One policy module; per-slot scheme allow-list with a shared 2048-byte limit, including stored actions | `safe_url.rs` |
 | Decode depth | Bounded to the parser ceiling; raw embed/rich-text/symbol values are checked before clone/deserialization | `codec.rs::MAXIMUM_DECODE_DEPTH` |
-| Render traversal | Component depth, node count, and raw extension depth checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
-| Render traversal | Component depth and node budgets checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
+| Render traversal | Component depth, node count (including opaque children), and raw extension depth checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
 | Document size | Bounded node count and nesting depth | `validation.rs::ValidationLimits` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |
 | Snapshot / bundle integrity | SHA-256, compared in constant time | `digest.rs::ContentDigest` |

@@ -359,6 +359,49 @@ pub fn render_page(
 }
 
 /// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
+
+fn count_opaque_component_children(
+    payload: &serde_json::Value,
+    start_depth: usize,
+    limits: crate::ValidationLimits,
+    node_count: &mut usize,
+) -> FlyResult<()> {
+    if payload.is_null() {
+        return Ok(());
+    }
+    let mut pending = Vec::new();
+    match payload {
+        serde_json::Value::Array(children) => {
+            pending.extend(children.iter().map(|child| (child, start_depth)));
+        }
+        value => pending.push((value, start_depth)),
+    }
+
+    while let Some((value, depth)) = pending.pop() {
+        if depth > limits.maximum_depth {
+            return Err(FlyError::MaximumDepthExceeded {
+                maximum: limits.maximum_depth,
+            });
+        }
+        *node_count += 1;
+        if *node_count > limits.maximum_nodes {
+            return Err(FlyError::MaximumNodesExceeded {
+                maximum: limits.maximum_nodes,
+            });
+        }
+        crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+        if let Some(children) = value.get("components") {
+            match children {
+                serde_json::Value::Array(children) => {
+                    pending.extend(children.iter().map(|child| (child, depth + 1)));
+                }
+                value => pending.push((value, depth + 1)),
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
     let mut pending = Vec::new();
@@ -409,15 +452,30 @@ pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyR
                 {
                     crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
                 }
-                pending.extend(
-                    component
-                        .children()
-                        .iter()
-                        .map(|child| (child, depth + 1)),
-                );
+                match &component.components {
+                    crate::ComponentChildren::Nodes(children) => {
+                        pending.extend(children.iter().map(|child| (child, depth + 1)));
+                    }
+                    crate::ComponentChildren::Opaque(value) => {
+                        count_opaque_component_children(
+                            value,
+                            depth + 1,
+                            limits,
+                            &mut node_count,
+                        )?;
+                    }
+                }
             }
             ComponentNode::Opaque(value) => {
                 crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+                if let Some(children) = value.get("components") {
+                    count_opaque_component_children(
+                        children,
+                        depth + 1,
+                        limits,
+                        &mut node_count,
+                    )?;
+                }
             }
         }
     }
@@ -2629,6 +2687,55 @@ mod tests {
             render_page(&document, &PageSelection::First, &RenderPolicy::default()),
             Err(FlyError::MaximumDepthExceeded { maximum })
                 if maximum == crate::MAXIMUM_DECODE_DEPTH
+        ));
+    }
+
+
+
+
+    #[test]
+    fn renderer_counts_opaque_component_children_toward_node_limit() {
+        let limits = crate::ValidationLimits::default();
+        let children = (0..limits.maximum_nodes)
+            .map(|index| json!({ "id": format!("opaque-{index}"), "type": 42 }))
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": { "components": children }
+                }
+            }]
+        }))
+        .expect("document");
+        assert!(matches!(
+            render_page(&document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumNodesExceeded { maximum }) if maximum == limits.maximum_nodes
+        ));
+    }
+
+    #[test]
+    fn renderer_counts_children_of_opaque_component_nodes_toward_node_limit() {
+        let limits = crate::ValidationLimits::default();
+        let children = (0..limits.maximum_nodes)
+            .map(|index| json!({ "id": format!("opaque-{index}"), "type": "text" }))
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "opaque-root",
+                    "type": 42,
+                    "components": children
+                }
+            }]
+        }))
+        .expect("document");
+        assert!(matches!(
+            render_page(&document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumNodesExceeded { maximum }) if maximum == limits.maximum_nodes
         ));
     }
 
