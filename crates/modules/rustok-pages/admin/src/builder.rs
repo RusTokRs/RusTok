@@ -702,17 +702,33 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         };
         let saved_revision = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+
+        // The initial read above is needed for locale and permission checks, but it cannot
+        // prove that a replayed receipt is still current: another session may commit after
+        // that read and before this save/receipt lookup completes. Re-read after resolving the
+        // receipt so a delayed retry cannot publish an older acknowledgement as current.
+        let current_page = transport::fetch_page(
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
+            page_id.to_string(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
+        .ok_or_else(|| {
+            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
+        })?;
+        ensure_document_readable(&current_page)?;
         ensure_receipt_not_superseded(
             revision_id,
             &page_revision(&current_page),
             &saved_revision,
         )?;
         let result = PageBuilderProjectSaveResult {
-            page_id: saved_page.id.clone(),
+            page_id: current_page.id.clone(),
             revision_id: saved_revision,
-            published: saved_page.status.eq_ignore_ascii_case("published"),
+            published: current_page.status.eq_ignore_ascii_case("published"),
         };
-        (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
+        (self.on_saved)(PageMutationResult::from(&current_page), project_data);
         Ok(result)
     }
 }
