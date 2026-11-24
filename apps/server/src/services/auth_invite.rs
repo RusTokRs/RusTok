@@ -221,15 +221,11 @@ impl AuthLifecycleService {
         let issuer_id = issued
             .issued_by
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        let issuer = users::Entity::find_by_id(issuer_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
-            .one(&tx)
+        let issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
             .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if issuer.is_none() {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .filter(|issuer| issuer.status == rustok_core::UserStatus::Active)
+            .ok_or(InviteAcceptanceError::InvalidToken)?;
         let mut issuer_permissions =
             RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
                 .await
