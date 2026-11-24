@@ -4,7 +4,9 @@ use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade, Sa
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
-use fly_ui::{CapabilityState, EditorCapability, EditorCapabilityEvaluation, UiIntent};
+use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+use fly_ui::CapabilityState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
@@ -124,6 +126,8 @@ impl AdminEditorRuntime {
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        let _ = peer_write_scope_id;
         let controller = RwSignal::new(controller);
         let last_error = RwSignal::new(None);
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
