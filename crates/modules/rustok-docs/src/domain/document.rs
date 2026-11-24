@@ -252,7 +252,9 @@ impl CollaborativeDoc {
 
     /// Checks out the latest state (HEAD).
     pub fn checkout_to_latest(&self) -> DocsResult<()> {
-        self.doc.checkout_to_latest();
+        self.doc
+            .try_checkout_to_latest()
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         Ok(())
     }
 
