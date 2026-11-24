@@ -87,7 +87,7 @@ pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
     cors_origins_from_configuration(
         explicit.as_deref(),
         host.as_deref(),
-        crate::common::is_production_environment(),
+        crate::common::is_production_security_mode(),
     )
 }
 
