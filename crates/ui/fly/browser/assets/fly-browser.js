@@ -79,6 +79,21 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function getPeerWriteSenderId() {
+  const existing = nonEmptyString(globalThis.__flyPeerWriteSenderId);
+  if (existing) return existing;
+  const cryptoApi = globalThis.crypto;
+  const generated = typeof cryptoApi?.randomUUID === "function"
+    ? cryptoApi.randomUUID()
+    : `fly-document-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  try {
+    globalThis.__flyPeerWriteSenderId = generated;
+  } catch (_) {
+    // A frozen global object is unusual; the server-side revision CAS remains authoritative.
+  }
+  return nonEmptyString(globalThis.__flyPeerWriteSenderId) || generated;
+}
+
 /**
  * Resolve `value` against the current document, returning it only when it stays on this origin.
  *
@@ -816,6 +831,7 @@ export class FlyBrowserAdapter {
     this.authoritativeInFlight = false;
     this.queuedAuthoritativeIntents = [];
     this.peerWriteConflict = null;
+    this.peerWriteSenderId = getPeerWriteSenderId();
     this.peerWriteChannel = null;
     this.lastSequence = null;
     this.geometry = new Map();
@@ -1542,6 +1558,13 @@ export class FlyBrowserAdapter {
     const hash = nonEmptyString(message.hash);
     if (!revision || !hash || revision.length > 256 || hash.length > 256 ||
         this.peerWriteConflict) return;
+    if (nonEmptyString(message.senderId) === this.peerWriteSenderId) {
+      // The Leptos/Rust and classic JS adapters may each own a channel in this
+      // document. Their own confirmed writes advance the shared baseline.
+      this.root.dataset.flyRevision = revision;
+      this.root.dataset.flyProjectHash = hash;
+      return;
+    }
     if (
       revision === this.root.dataset.flyRevision &&
       hash === this.root.dataset.flyProjectHash
@@ -1957,6 +1980,7 @@ export class FlyBrowserAdapter {
               pageId: this.pageId,
               revision: state.revision_id,
               hash: state.project_hash,
+              senderId: this.peerWriteSenderId,
             });
           } catch (_) {
             // Optional peer notification failure never changes save outcome.
