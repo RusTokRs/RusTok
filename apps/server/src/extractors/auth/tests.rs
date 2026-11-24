@@ -687,6 +687,46 @@ async fn access_token_resolver_returns_forbidden_for_inactive_user() {
 }
 
 #[tokio::test]
+async fn access_token_resolver_rejects_unverified_users_when_email_verification_is_enabled() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let tenant = tenants::ActiveModel::new(
+        "Email verification tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let token = encode_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        session_id,
+    )
+    .expect("encode access token");
+
+    let mut settings = RustokSettings::default();
+    settings.features.email_verification = true;
+    let auth_runtime = ServerAuthRuntime::new(
+        ServerRuntimeContext::new(db, settings),
+        test_auth_config(),
+    );
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("unverified users must not authenticate while verification is required");
+
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::FORBIDDEN,
+            "Email verification required",
+        )
+    );
+}
+
+#[tokio::test]
 async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_failure() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let auth_runtime = test_auth_runtime(db.clone());
