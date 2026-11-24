@@ -1755,6 +1755,12 @@ though ordinary Rust child declarations resolve under `transport/`. The layout
 fixtures now exercise both forms of the facade, a misplaced child, and ambiguous
 entry points where both Rust module files exist.
 
+Next Product editor fixtures missed variant journal state, and a fixture for
+variant replay bound the journal to a different Product ID than the request.
+Exercise the editor handler with the actual journal and matching resource
+identity. After a payload change, cover admission and replay with a lost
+response so schema drift surfaces before the user attempts a save.
+
 ```js
 // One struct, not the rest of the file.
 const start = model.indexOf("pub struct PageMetadataPatch {");

@@ -1020,7 +1020,16 @@ export function ProductEditorPage({
           shippingProfileSlug: shippingProfileSlug.trim() || undefined,
           primaryCategoryId: selectedCategoryId || null,
           tags,
-          brands: isNew ? undefined : productBrands,
+          ...(!isNew && {
+            brands: productBrands.map(
+              ({ brandId, isPrimary, role, position }) => ({
+                brandId,
+                isPrimary,
+                role,
+                position
+              })
+            )
+          }),
           status,
           revision: documentRevision,
           ...(isNew

@@ -165,8 +165,10 @@ input. It must not issue a subsequent value-save request or compensate create wi
 Publication, document/category changes, values and the success receipt belong to one Product owner
 transaction. Source cutover is covered by `verify:product:atomic-save`; browser/backend execution
 remains pending in the Product owner plan. Save/status/delete and variant update/delete retain durable browser-local
-immutable requests and caller keys through unknown outcomes. Image/Relation/Bundle callbacks
-do not yet have that retry lifecycle.
+immutable requests and caller keys through unknown outcomes. Product document retries retain the
+original brand bindings as write fields without the brand directory's display data.
+Image/Relation/Bundle callbacks do not yet have that retry lifecycle.
+The Next app CI job runs the Product package tests through `npm run test:product`.
 
 ### Product write acknowledgement and Apollo
 

@@ -231,7 +231,7 @@ test('variant update and delete preserve their exact request/key through reload 
   ]) {
     const storage = { text: null, locked: false };
     const first = new ProductWriteAttempt(
-      memoryJournal('product', storage, testScope, undefined, 'product_variant')
+      memoryJournal(request.id, storage, testScope, undefined, 'product_variant')
     );
     let original;
     const pending = await first.execute(operation, request, async (snapshot, key) => {
@@ -242,7 +242,7 @@ test('variant update and delete preserve their exact request/key through reload 
     assert.equal(JSON.parse(storage.text).record.attempt.operation, operation);
 
     const reloaded = new ProductWriteAttempt(
-      memoryJournal('product', storage, testScope, undefined, 'product_variant')
+      memoryJournal(request.id, storage, testScope, undefined, 'product_variant')
     );
     const handlers = {
       variant_update: async (snapshot, key) => {

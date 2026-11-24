@@ -242,6 +242,7 @@ export class ProductWriteJournal {
         'shippingProfileSlug',
         'primaryCategoryId',
         'tags',
+        'brands',
         'status',
         'revision',
         'initialVariant',
@@ -259,6 +260,24 @@ export class ProductWriteJournal {
       !Array.isArray(value.translations) ||
       value.translations.length === 0 ||
       !Array.isArray(value.attributePatches)
+    )
+      return false;
+    if (
+      value.brands !== undefined &&
+      (value.isNew ||
+        !Array.isArray(value.brands) ||
+        !value.brands.every(
+          (brand) =>
+            object(brand) &&
+            only(brand, ['brandId', 'isPrimary', 'role', 'position']) &&
+            typeof brand.brandId === 'string' &&
+            typeof brand.isPrimary === 'boolean' &&
+            typeof brand.role === 'string' &&
+            typeof brand.position === 'number' &&
+            Number.isInteger(brand.position) &&
+            brand.position >= -2147483648 &&
+            brand.position <= 2147483647
+        ))
     )
       return false;
     if (

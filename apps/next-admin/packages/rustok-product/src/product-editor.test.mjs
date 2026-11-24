@@ -40,6 +40,9 @@ function loadHandler(overrides = {}) {
   const context = {
     Error,
     recoveryReady: true,
+    variantRecoveryReady: true,
+    variantRecoveryError: null,
+    pendingVariantOperation: null,
     isSaving: false,
     isNew: false,
     initialProduct: { id: 'product' },
@@ -176,7 +179,10 @@ test('status stays unchanged until the owner response arrives', async () => {
 for (const [name, overrides] of [
   ['busy', { isSaving: true }],
   ['new', { isNew: true }],
-  ['missing owner callback', { onChangeStatus: undefined }]
+  ['missing owner callback', { onChangeStatus: undefined }],
+  ['loading variant recovery', { variantRecoveryReady: false }],
+  ['unavailable variant recovery', { variantRecoveryError: 'Recovery unavailable' }],
+  ['pending variant operation', { pendingVariantOperation: 'variant_update' }]
 ]) {
   test(`status handler refuses a ${name} editor`, async () => {
     const { run, writes } = loadHandler(overrides);
@@ -202,7 +208,7 @@ test('typed owner refusal leaves displayed status unchanged and allows a correct
 test('editor initialization restores recovery before enabling writes, including settled and unavailable states', async () => {
   const source = editor.slice(
     editor.indexOf('  const initializeRecovery ='),
-    editor.indexOf('\n  React.useEffect(() => {\n    initializeRecovery();')
+    editor.indexOf('  const initializeVariantRecovery =')
   );
   assert.ok(
     source.includes('browserProductWriteJournal(writeScope, resourceId)')
@@ -228,6 +234,7 @@ test('editor initialization restores recovery before enabling writes, including 
     writeScope: testScope,
     resourceId: 'product',
     recoveryOnly: true,
+    variantRecoveryOnly: false,
     PRODUCT_RECOVERY_UNAVAILABLE: 'Recovery unavailable',
     Error,
     setPendingOperation: (value) => {
@@ -294,7 +301,9 @@ test('all host editor mounts bind the route resource, and a missing Product expo
     route.indexOf('  if (!product) {'),
     route.indexOf('  // Pre-load effective form')
   );
-  assert.match(missing, /isProductEditorIntent\(editorIntent\)/);
+  assert.match(route, /const hasProductRecovery = isProductEditorIntent\(editorIntent\)/);
+  assert.match(route, /const hasVariantRecovery = isProductEditorIntent\(variantIntent\)/);
+  assert.match(missing, /if \(!hasProductRecovery && !hasVariantRecovery\) notFound\(\)/);
   assert.match(missing, /\brecoveryOnly\b/);
   assert.match(missing, /onDeleteProduct=\{deleteProductAction\}/);
 });

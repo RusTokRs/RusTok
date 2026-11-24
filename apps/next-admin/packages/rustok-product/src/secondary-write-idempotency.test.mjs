@@ -109,7 +109,7 @@ function relationSubmitter(owner, overrides = {}) {
     isDefinitiveProductWriteRefusal,
     crypto: { randomUUID },
     onAddRelation: async (input, idempotencyKey) => {
-      state.inputs.push(input);
+      state.inputs.push(structuredClone(input));
       state.keys.push(idempotencyKey);
       await owner(input, idempotencyKey);
     },
