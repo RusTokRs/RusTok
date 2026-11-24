@@ -704,3 +704,78 @@ pub(super) fn body_revision_not_found(revision_id: Uuid) -> PagesError {
         .with_error_code(PAGE_BODY_REVISION_NOT_FOUND),
     ))
 }
+
+#[cfg(test)]
+mod idempotency_key_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn prepared_body() -> PreparedPageBody {
+        normalize_page_body_input(Some(crate::dto::PageBodyInput {
+            locale: "en".to_string(),
+            document: json!({ "pages": [] }),
+        }))
+        .expect("valid body")
+        .expect("body present")
+    }
+
+    #[test]
+    fn default_document_save_key_is_stable_and_actor_scoped() {
+        let tenant_id = Uuid::new_v4();
+        let page_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let body = prepared_body();
+        let request_hash =
+            document_save_request_hash(tenant_id, page_id, "rev-1", &body).expect("request hash");
+
+        let first = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("default key");
+        let retry = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            &request_hash,
+        )
+        .expect("retry key");
+        let other_actor = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(Uuid::new_v4()),
+            &request_hash,
+        )
+        .expect("other actor key");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, other_actor);
+        assert!(first.starts_with("pages-save-v1:"));
+        assert!(first.len() <= MAX_DOCUMENT_SAVE_KEY_BYTES);
+    }
+
+    #[test]
+    fn default_document_save_key_changes_with_the_request_hash() {
+        let tenant_id = Uuid::new_v4();
+        let page_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let first = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            "hash-a",
+        )
+        .expect("first key");
+        let second = default_document_save_idempotency_key(
+            tenant_id,
+            page_id,
+            Some(actor_id),
+            "hash-b",
+        )
+        .expect("second key");
+
+        assert_ne!(first, second);
+    }
+}
