@@ -541,10 +541,9 @@ the driver mapping.
 For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
 characters in `1c5a07dc8b`; this does not establish that a collision occurred.
 The current [Forum route owner](../../crates/modules/rustok-forum/src/services/topic_route.rs)
-generates and accepts 16 characters, while [Search](../../crates/modules/rustok-search/src/engine.rs)
-requires 12. Search consequently rejects current owner-projected topic and reply
-URLs; its unit examples still exercise 12-character routes. This is a route
-contract drift, not evidence of an identifier collision.
+generates and accepts 16 characters, and [Search](../../crates/modules/rustok-search/src/engine.rs)
+accepts both canonical 16-hex owner routes and legacy 12-hex route projections,
+eliminating route contract drift while preserving backwards compatibility.
 
 The confirmed-cases inventory is intentionally narrower than the pattern
 catalog. Add a concrete affected path, historical change or reproduction, and

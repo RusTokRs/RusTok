@@ -21,7 +21,8 @@ const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
 const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
-const FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN: usize = 12;
+const FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN_LEGACY: usize = 12;
+const FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN: usize = 16;
 const MAX_FORUM_ROUTE_LOCALE_LEN: usize = 64;
 const MAX_FORUM_ROUTE_SLUG_LEN: usize = 255;
 
@@ -309,11 +310,10 @@ fn canonical_forum_topic_route(
     }
 
     let segments = forum_route_segments(path)?;
-    let expected_short_id = forum_topic_short_identity(topic_id);
     match segments.as_slice() {
         [locale, "forum", "t", short_id, slug]
             if *locale == expected_locale
-                && *short_id == expected_short_id.as_str()
+                && forum_topic_short_identity_matches(topic_id, short_id)
                 && valid_forum_short_identity(short_id)
                 && valid_forum_slug(slug) =>
         {
@@ -354,14 +354,18 @@ fn exact_forum_locale(value: &str) -> Option<String> {
 }
 
 fn valid_forum_short_identity(value: &str) -> bool {
-    value.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN
+    (value.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN
+        || value.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN_LEGACY)
         && value
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn forum_topic_short_identity(topic_id: Uuid) -> String {
-    topic_id.simple().to_string()[..FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN].to_string()
+fn forum_topic_short_identity_matches(topic_id: Uuid, short_id: &str) -> bool {
+    let simple = topic_id.simple().to_string();
+    (short_id.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN
+        || short_id.len() == FORUM_TOPIC_ROUTE_PREFIX_HEX_LEN_LEGACY)
+        && simple.starts_with(short_id)
 }
 
 fn valid_forum_slug(value: &str) -> bool {
@@ -532,6 +536,21 @@ mod tests {
         assert_eq!(
             canonical_search_result_url(&topic).as_deref(),
             Some("/en/forum/t/222222222222/welcome")
+        );
+
+        let topic_16 = item_with_id(
+            topic_id,
+            "forum_topic",
+            "forum",
+            Some("en"),
+            json!({
+                "topic_id": topic_id,
+                "route": "/en/forum/t/2222222222224222/welcome"
+            }),
+        );
+        assert_eq!(
+            canonical_search_result_url(&topic_16).as_deref(),
+            Some("/en/forum/t/2222222222224222/welcome")
         );
         assert_eq!(
             canonical_search_result_url(&reply).as_deref(),
