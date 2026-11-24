@@ -343,7 +343,7 @@ pub fn DioxusIsolatedCanvas(
                 "pointercancel",
                 move |event| {
                     let Some(active) = resize_session.peek().clone() else {
-                        if session.read().controller.ui().state.drag.is_some() {
+                        if session_has_active_drag(session) {
                             on_ui_intent.call(UiIntent::CancelDrag);
                         }
                         return;
