@@ -654,6 +654,10 @@ impl AdminEditorRuntime {
         } else {
             self.preview_in_progress.set(false);
             self.preview_request.set(None);
+            // SaveStarted is emitted before the host callback is selected. If neither a facade
+            // nor a callback exists, retire that exact attempt instead of leaving the editor
+            // permanently stuck in save_in_progress.
+            self.finish_failed_request(capability, save_attempt.as_ref());
             self.fail(self.facade_missing.clone());
         }
     }
