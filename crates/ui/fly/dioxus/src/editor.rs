@@ -585,6 +585,10 @@ pub fn FlyEditorWorkspace(
     /// Optional host-owned isolated canvas. When absent, the inline preview is rendered.
     #[props(default)]
     canvas: Option<Element>,
+    /// Whether the supplied canvas can report pointer geometry and complete drops.
+    /// Defaults to true only when a host canvas is present.
+    #[props(default)]
+    canvas_interactive: Option<bool>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
@@ -595,6 +599,7 @@ pub fn FlyEditorWorkspace(
     let workspace_csp_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
 
     let intent_mode = on_intent.is_some();
+    let canvas_interactive = canvas_interactive.unwrap_or(canvas.is_some());
     let intent_instance = instance_id.unwrap_or_else(|| "fly-workspace".to_string());
     let registries = registries.unwrap_or_else(RegistrySet::with_builtins);
     let summary_assembly = contribution_assembly.clone();
@@ -623,7 +628,7 @@ pub fn FlyEditorWorkspace(
             }
         }
     });
-    let on_begin_drag = intent_mode.then_some(begin_palette_drag);
+    let on_begin_drag = (intent_mode && canvas_interactive).then_some(begin_palette_drag);
     let begin_selected_move = use_callback({
         let instance = intent_instance.clone();
         move |component_id: String| {
@@ -638,7 +643,8 @@ pub fn FlyEditorWorkspace(
         }
     });
     let can_drag_components = capabilities.is_none_or(|profile| profile.drag_drop);
-    let on_begin_move = (intent_mode && can_drag_components).then_some(begin_selected_move);
+    let on_begin_move =
+        (intent_mode && canvas_interactive && can_drag_components).then_some(begin_selected_move);
 
     let active_page_index = initial_page.unwrap_or(0);
     let page_selection = PageSelection::Index(active_page_index);
