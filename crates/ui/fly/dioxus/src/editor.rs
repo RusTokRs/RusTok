@@ -141,6 +141,13 @@ pub fn FlyPalette(
                                                     // outside release; the iframe reports a drop inside canvas.
                                                     on_begin_drag.call(drag_id.clone())
                                                 },
+                                                onkeydown: move |event| {
+                                                    let key = event.key();
+                                                    if key == "Enter" || key == " " {
+                                                        event.prevent_default();
+                                                        on_begin_drag.call(drag_id.clone());
+                                                    }
+                                                },
                                                 "{drag_label}"
                                             }
                                         }
@@ -208,6 +215,13 @@ pub fn FlyLayerTree(
                                     aria_label: format!("{} {}", move_label, move_id),
                                     disabled: !can_move,
                                     onpointerdown: move |_| on_begin_move.call(move_id.clone()),
+                                    onkeydown: move |event| {
+                                        let key = event.key();
+                                        if key == "Enter" || key == " " {
+                                            event.prevent_default();
+                                            on_begin_move.call(move_id.clone());
+                                        }
+                                    },
                                     "{move_label}"
                                 }
                             }
