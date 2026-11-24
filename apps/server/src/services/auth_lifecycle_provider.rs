@@ -292,9 +292,11 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         email: String,
     ) -> Result<(), AuthLifecycleMutationError> {
-        let user = users::Entity::find_by_email(self.runtime_ctx.db(), context.tenant_id, &email)
+        let email = email.trim();
+        let user = users::Entity::find_by_email(self.runtime_ctx.db(), context.tenant_id, email)
             .await
             .map_err(internal_lifecycle_error)?;
+        crate::auth::mask_auth_lookup_timing().await.map_err(internal_lifecycle_error)?;
 
         let Some(user) = user else {
             return Ok(());
