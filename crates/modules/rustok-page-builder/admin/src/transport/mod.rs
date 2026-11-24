@@ -85,6 +85,10 @@ impl PageBuilderAdminFacadeError {
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         } else if message.ends_with(" (REVISION_CONFLICT)") {
             Some("REVISION_CONFLICT")
+        } else if message.ends_with(" (SAVE_RECEIPT_EXPIRED)") {
+            Some("SAVE_RECEIPT_EXPIRED")
+        } else if message.ends_with(" (SAVE_IDEMPOTENCY_CONFLICT)") {
+            Some("SAVE_IDEMPOTENCY_CONFLICT")
         } else {
             None
         };
@@ -121,7 +125,7 @@ mod tests {
 
     #[test]
     fn server_function_error_round_trip_preserves_stable_save_codes() {
-        for code in ["REVISION_CONFLICT", "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"] {
+        for code in ["REVISION_CONFLICT", "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN", "SAVE_RECEIPT_EXPIRED"] {
             let server_error = PageBuilderAdminFacadeError::with_stable_code(
                 "Page Builder save failed",
                 code,
