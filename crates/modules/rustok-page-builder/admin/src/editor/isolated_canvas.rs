@@ -288,7 +288,6 @@ fn handle_canvas_message(
                 // Never hit-test a truncated component list: missing geometry could
                 // otherwise leave a stale or incorrect drop target active.
                 geometry.set(BTreeMap::new());
-                runtime.dispatch(UiIntent::UpdateHitTest(Vec::new()));
                 runtime.dispatch(UiIntent::SetSelectedOverlay(None));
                 runtime.dispatch(UiIntent::SetHoveredOverlay(None));
                 if runtime
