@@ -1056,8 +1056,11 @@ fn should_use_secure_cookie(
     peer_ip: Option<std::net::IpAddr>,
     settings: &RustokSettings,
 ) -> bool {
-    extract_effective_proto(headers, peer_ip, &settings.runtime.request_trust)
-        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+    crate::common::secure_cookie_required(
+        headers,
+        peer_ip,
+        &settings.runtime.request_trust,
+    )
 }
 
 fn redirect_with_code(
@@ -1757,6 +1760,26 @@ mod tests {
             HeaderValue::from_static("rustok_oauth_browser_session="),
         );
         assert!(extract_browser_access_token(&headers).is_none());
+    }
+
+    #[test]
+    fn production_oauth_browser_session_cookie_is_secure_without_forwarded_headers() {
+        let headers = HeaderMap::new();
+        let settings = RustokSettings::default();
+        let peer_ip = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 4));
+        let secure = crate::common::secure_cookie_required_for_environment(
+            &headers,
+            Some(peer_ip),
+            &settings.runtime.request_trust,
+            true,
+        );
+
+        let cookie = build_oauth_browser_session_cookie_for_secure(
+            "token-123",
+            secure,
+            Some(OAUTH_BROWSER_SESSION_TTL_SECS),
+        );
+        assert!(cookie.contains("; Secure"));
     }
 
     #[test]
