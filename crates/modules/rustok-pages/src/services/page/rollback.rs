@@ -52,7 +52,7 @@ impl PageService {
         input: RollbackPageInput,
     ) -> PagesResult<RollbackPageResult> {
         let idempotency_key = normalize_rollback_idempotency_key(&input.idempotency_key)?;
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let existing_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
