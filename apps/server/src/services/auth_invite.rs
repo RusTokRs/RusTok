@@ -185,7 +185,6 @@ impl AuthLifecycleService {
         let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
         let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
-        let consumed_at = Utc::now();
 
         let tx = ctx
             .db()
@@ -208,17 +207,12 @@ impl AuthLifecycleService {
             _ => return Err(InviteAcceptanceError::InvalidToken),
         };
         // Argon2 preparation and lock acquisition may take time. Recheck
-        // expiration at the point of consumption, not against the earlier
-        // pre-hash timestamp.
+        // expiration after the invite row is locked; it is checked once more
+        // immediately before the unique consumption reservation below.
         let now = Utc::now();
         if expires_at <= now
             || issued.role != ledger_role
-            || !invite_ledger_matches_claims(
-                &issued,
-                &email,
-                expires_at.clone(),
-                now,
-            )
+            || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), now)
         {
             return Err(InviteAcceptanceError::InvalidToken);
         }
@@ -303,6 +297,21 @@ impl AuthLifecycleService {
                 role_slug = %ledger_role,
                 "invite role no longer satisfies issuer authority"
             );
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+
+        // Recheck at the actual consumption boundary after issuer/RBAC reads.
+        // The signed JWT and issuance ledger must both still be live when the
+        // single-use reservation is written.
+        let consumed_at = Utc::now();
+        if expires_at <= consumed_at
+            || !invite_ledger_matches_claims(
+                &issued,
+                &email,
+                expires_at.clone(),
+                consumed_at,
+            )
+        {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
