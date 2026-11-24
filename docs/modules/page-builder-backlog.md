@@ -1285,8 +1285,12 @@ is still outstanding.
 - Dioxus and Leptos isolated canvases clear geometry, overlays and active drags when a geometry
   resource limit is reached; truncated snapshots cannot be used for hit testing or drops.
 - Dioxus iframe subscriptions are retired before bridge reconfiguration and rebound when the
-  iframe element ID changes. The Dioxus web feature explicitly enables the Fly Web bridge, and
-  each Dioxus editor root receives its own peer-write scope.
+  iframe element ID changes, while the outbound message sequence is preserved for the same child
+  document. Canvas selection is host-owned (no stale iframe-local highlight); Dioxus inline
+  previews and render-error fallbacks do not expose nonfunctional drag controls.
+- Drops are rejected until a complete geometry snapshot is ready, and pointer-ended drags with no
+  legal target are cancelled rather than stranded. The Dioxus web feature explicitly enables the
+  Fly Web bridge, and each Dioxus editor root receives its own peer-write scope.
 - Added regression coverage for in-flight peer conflict retirement and iframe protocol/sequence
   fencing. No Cargo build, Rust tests, formatting, lint or Playwright run was performed; all
   checks remain for the maintainer's final pass.
