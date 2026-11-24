@@ -151,6 +151,7 @@ mod tests {
     #[tokio::test]
     async fn committed_role_replacement_invalidates_primed_permission_cache() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
+        let cache_service = CacheService::from_url(None);
         let (tenant_id, user_id) = insert_tenant_and_user(
             &db,
             "committed-role-cache-invalidation",
@@ -169,7 +170,7 @@ mod tests {
         );
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
             .await
             .expect("committed demotion should succeed");
 
@@ -189,6 +190,7 @@ mod tests {
     #[tokio::test]
     async fn exact_single_role_replacement_is_a_generation_noop() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
+        let cache_service = CacheService::from_url(None);
         let (tenant_id, user_id) = insert_tenant_and_user(
             &db,
             "committed-role-exact-noop",
@@ -199,7 +201,7 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
             .await
             .unwrap();
 
@@ -209,6 +211,7 @@ mod tests {
     #[tokio::test]
     async fn matching_role_among_multiple_assignments_is_not_treated_as_noop() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
+        let cache_service = CacheService::from_url(None);
         let (tenant_id, user_id) = insert_tenant_and_user(
             &db,
             "committed-role-multiple",
@@ -222,7 +225,7 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+        RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
             .await
             .unwrap();
 
@@ -237,6 +240,7 @@ mod tests {
     #[tokio::test]
     async fn rejected_last_super_admin_demotion_preserves_authority() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
+        let cache_service = CacheService::from_url(None);
         let (tenant_id, user_id) = insert_tenant_and_user(
             &db,
             "last-super-admin-rollback",
@@ -255,7 +259,7 @@ mod tests {
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         let error =
-            RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+            RbacService::replace_user_role_committed(&db, &cache_service, &user_id, &tenant_id, UserRole::Customer)
                 .await
                 .expect_err("last active super-admin demotion must be rejected");
         assert!(matches!(error, Error::BadRequest(_)));
