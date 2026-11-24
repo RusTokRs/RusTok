@@ -231,7 +231,10 @@ where
                         }
                         Err(error) => {
                             if let Some(id) = save_attempt {
-                                if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
+                                if matches!(
+                                    error.stable_code.as_deref(),
+                                    Some("REVISION_CONFLICT" | "SAVE_RECEIPT_EXPIRED")
+                                ) {
                                     state.handle_publish_conflict_for_attempt(&id, error.to_string());
                                 } else {
                                     state.handle_publish_error_for_attempt(&id, error.to_string());
