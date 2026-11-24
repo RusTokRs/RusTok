@@ -83,6 +83,7 @@ impl RbacService {
 #[cfg(test)]
 mod tests {
     use super::RbacService;
+    use rustok_cache::CacheService;
     use crate::models::{
         _entities::{permissions, role_permissions, roles, user_roles},
         tenants, users,
