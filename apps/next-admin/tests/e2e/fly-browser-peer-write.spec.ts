@@ -113,6 +113,45 @@ test('confirmed peer write fences stale tab without losing its local view or sen
   );
 });
 
+test('same-document Rust and JS channels advance one baseline without a false conflict', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.evaluate(() => {
+    const senderId = (globalThis as PeerScope & { __flyPeerWriteSenderId?: string })
+      .__flyPeerWriteSenderId;
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: 'rev-2',
+      hash: 'hash-2',
+      senderId,
+    });
+    channel.close();
+  });
+  await expect.poll(() => page.locator('#fly-root').getAttribute('data-fly-revision'))
+    .toBe('rev-2');
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: 'rev-3',
+      hash: 'hash-3',
+      senderId: 'another-document',
+    });
+    channel.close();
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+});
+
 test('peer write on another page does not fence unrelated editors', async ({ context, page }) => {
   const source = await readFile(adapterPath, 'utf8');
   const otherTab = await context.newPage();
