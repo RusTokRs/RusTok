@@ -3,6 +3,13 @@ use fly_web::{BrowserPoint, FLY_IFRAME_PROTOCOL, PointerSample};
 use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CanvasResourceLimit {
+    pub kind: String,
+    pub limit: usize,
+    pub observed: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CanvasBridgeMessage {
@@ -16,6 +23,8 @@ pub enum CanvasBridgeMessage {
     },
     GeometrySnapshot {
         components: Vec<CanvasComponentGeometry>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resource_limit: Option<CanvasResourceLimit>,
     },
     PointerMoved {
         sample: PointerSample,
@@ -85,6 +94,32 @@ mod tests {
         assert!(decode_canvas_message(&payload, "canvas-a", Some(3)).is_some());
         assert!(decode_canvas_message(&payload, "canvas-a", Some(4)).is_none());
         assert!(decode_canvas_message(&payload, "canvas-b", None).is_none());
+    }
+
+    #[test]
+    fn geometry_snapshot_preserves_resource_limit_metadata() {
+        let payload = serde_json::json!({
+            "type": "geometry_snapshot",
+            "components": [],
+            "resource_limit": {
+                "kind": "geometry_components",
+                "limit": 4096,
+                "observed": 4097
+            }
+        });
+        let message: CanvasBridgeMessage =
+            serde_json::from_value(payload).expect("geometry snapshot");
+        assert_eq!(
+            message,
+            CanvasBridgeMessage::GeometrySnapshot {
+                components: Vec::new(),
+                resource_limit: Some(CanvasResourceLimit {
+                    kind: "geometry_components".to_string(),
+                    limit: 4096,
+                    observed: 4097,
+                }),
+            }
+        );
     }
 
     #[test]
