@@ -29,7 +29,6 @@ fn make_peer_write_channel(
     controller: RwSignal<AdminCanvasController>,
     peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
     last_error: RwSignal<Option<String>>,
-    scope_id: Option<String>,
 ) -> Option<BrowserPeerWriteChannel> {
     let (page_id, revision_id, project_hash) = controller.with_untracked(|controller| {
         (
@@ -60,21 +59,12 @@ fn make_peer_write_channel(
             conflict.revision
         )));
     };
-    let channel = match scope_id {
-        Some(scope_id) => BrowserPeerWriteChannel::new_scoped(
-            page_id,
-            revision_id,
-            project_hash,
-            scope_id,
-            on_conflict,
-        ),
-        None => BrowserPeerWriteChannel::new(
-            page_id,
-            revision_id,
-            project_hash,
-            on_conflict,
-        ),
-    };
+    let channel = BrowserPeerWriteChannel::new(
+        page_id,
+        revision_id,
+        project_hash,
+        on_conflict,
+    );
     match channel {
         Ok(channel) => Some(channel),
         Err(error) => {
@@ -150,12 +140,9 @@ impl AdminEditorRuntime {
         controller: AdminCanvasController,
         facade: Option<Arc<dyn PageBuilderAdminFacade>>,
         on_request: Option<Callback<PageBuilderCapabilityExecution>>,
-        peer_write_scope_id: Option<String>,
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
-        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
-        let _ = peer_write_scope_id;
         let controller = RwSignal::new(controller);
         let last_error = RwSignal::new(None);
         #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
@@ -165,7 +152,6 @@ impl AdminEditorRuntime {
             controller.clone(),
             peer_write_conflict.clone(),
             last_error.clone(),
-            peer_write_scope_id,
         ));
 
         Self {
