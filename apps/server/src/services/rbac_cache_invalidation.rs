@@ -1,10 +1,9 @@
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::FutureExt;
-use once_cell::sync::Lazy;
 use rustok_cache::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError, CacheInvalidationMessage,
     CacheInvalidationObservation, CacheInvalidationOutcome, CacheInvalidationPayloadError,
@@ -31,9 +30,6 @@ const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed"
 const RBAC_PERMISSION_INVALIDATE_ALL_KEY: &str = "*";
 const RBAC_PERMISSION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const RBAC_PERMISSION_WORKER_RESTART_DELAY: Duration = Duration::from_secs(1);
-
-static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
-    Lazy::new(|| RwLock::new(None));
 
 struct AbortOnDropInvalidationTask {
     task: Mutex<Option<JoinHandle<()>>>,
@@ -304,8 +300,9 @@ impl RbacCacheInvalidationListener {
     }
 }
 
-#[tracing::instrument(fields(%tenant_id, %user_id, generation))]
+#[tracing::instrument(skip(cache), fields(%tenant_id, %user_id, generation))]
 pub async fn publish_user_rbac_invalidation(
+    cache: &CacheService,
     tenant_id: &Uuid,
     user_id: &Uuid,
     generation: u64,
@@ -317,6 +314,7 @@ pub async fn publish_user_rbac_invalidation(
         "Publishing user RBAC cache invalidation"
     );
     publish_rbac_invalidation(
+        cache,
         Some(*tenant_id),
         rbac_invalidation_key(*tenant_id, *user_id),
         generation,
@@ -324,39 +322,29 @@ pub async fn publish_user_rbac_invalidation(
     .await
 }
 
-#[tracing::instrument(fields(generation))]
-pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
+#[tracing::instrument(skip(cache), fields(generation))]
+pub async fn publish_all_rbac_invalidation(
+    cache: &CacheService,
+    generation: u64,
+) -> Result<()> {
     tracing::debug!(
         generation,
         "Publishing namespace-wide RBAC cache invalidation"
     );
     publish_rbac_invalidation(
+        cache,
         None,
         RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string(),
         generation,
     )
     .await
 }
-
 async fn publish_rbac_invalidation(
+    cache: &CacheService,
     tenant_id: Option<Uuid>,
     key: String,
     generation: u64,
 ) -> Result<()> {
-    let Some(cache) = RBAC_INVALIDATION_CACHE_SERVICE
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-    else {
-        tracing::warn!(
-            ?tenant_id,
-            %key,
-            generation,
-            "RBAC distributed invalidation is not initialized; durable generation reconciliation will recover"
-        );
-        return Ok(());
-    };
-
     let fanout: Result<CacheInvalidationOutcome> = async {
         let emitted_at_unix_ms = u64::try_from(
             SystemTime::now()
@@ -682,9 +670,6 @@ pub async fn start_rbac_cache_invalidation_listener(
 
     let runtime = RbacCacheInvalidationListenerHandle::new(local_task, redis_task, reconcile_task);
     ctx.shared_insert(runtime);
-    *RBAC_INVALIDATION_CACHE_SERVICE
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
     Ok(())
 }
 
