@@ -40,15 +40,9 @@ fn make_peer_write_channel(
     });
     let on_conflict = move |conflict| {
         let expected = controller.with_untracked(|controller| controller.revision_id().to_string());
-        let active_attempt = controller.with_untracked(|controller| controller.active_save_attempt());
         let actual = conflict.revision.clone();
         if let Some(Err(error)) = controller.try_update(|controller| {
-            match active_attempt.as_ref() {
-                Some(attempt) => controller
-                    .mark_save_conflict_for_attempt(attempt, expected.clone(), actual.clone())
-                    .map(|_| ()),
-                None => controller.mark_save_conflict(expected.clone(), actual.clone()),
-            }
+            controller.mark_peer_write_conflict(expected, actual)
         }) {
             tracing::warn!(?error, "Failed to mark peer-tab save conflict");
         }
