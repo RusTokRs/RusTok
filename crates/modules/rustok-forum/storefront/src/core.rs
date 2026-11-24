@@ -284,7 +284,7 @@ mod tests {
                 "Welcome Thread"
             )
             .as_deref(),
-            Some("/en-US/forum/t/123456789abc1234/welcome-thread")
+            Some("/en-US/forum/t/123456789abc4def/welcome-thread")
         );
     }
 
