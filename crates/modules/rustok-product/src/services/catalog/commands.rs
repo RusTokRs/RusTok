@@ -88,7 +88,7 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 price.currency_code
             )));
         }
-        if price.channel_id == Some(Uuid::nil()) {
+        if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
             return Err(CommerceError::Validation(
                 "Price channel ID must not be nil".to_owned(),
             ));
