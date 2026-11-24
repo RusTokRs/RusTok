@@ -271,30 +271,26 @@ fn session_cookie_is_secure(
     peer_ip: std::net::IpAddr,
     settings: &RustokSettings,
 ) -> bool {
-    session_cookie_is_secure_for_environment(
+    crate::common::secure_cookie_required(
         headers,
-        peer_ip,
-        settings,
-        crate::common::is_production_environment(),
+        Some(peer_ip),
+        &settings.runtime.request_trust,
     )
 }
 
+#[cfg(test)]
 fn session_cookie_is_secure_for_environment(
     headers: &axum::http::HeaderMap,
     peer_ip: std::net::IpAddr,
     settings: &RustokSettings,
-    is_production: bool,
+    production_mode: bool,
 ) -> bool {
-    // A refresh token must never be issued as a non-Secure cookie in
-    // production, even when an ingress proxy omits forwarding headers or
-    // forwarded header trust is intentionally disabled.
-    is_production
-        || crate::common::extract_effective_proto(
-            headers,
-            Some(peer_ip),
-            &settings.runtime.request_trust,
-        )
-        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+    crate::common::secure_cookie_required_for_environment(
+        headers,
+        Some(peer_ip),
+        &settings.runtime.request_trust,
+        production_mode,
+    )
 }
 
 fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) -> String {
@@ -600,6 +596,16 @@ async fn accept_invite(
     }))
 }
 
+/// Perform the same password-hash work regardless of whether an account
+/// matches a public recovery/verification lookup. Email delivery itself is
+/// detached, so without this equalization the synchronous preparation path
+/// can become an account-existence timing oracle.
+async fn mask_auth_lookup_timing(candidate: &str) -> Result<()> {
+    let dummy_hash = crate::auth::dummy_password_hash_async().await?;
+    let _ = crate::auth::verify_password_async(candidate.to_string(), dummy_hash).await?;
+    Ok(())
+}
+
 #[utoipa::path(post, path = "/api/auth/reset/request", tag = "auth", request_body = RequestResetParams,
     responses((status = 200, description = "Reset request accepted", body = ResetRequestResponse)))]
 async fn request_reset(
@@ -616,6 +622,7 @@ async fn request_reset(
         .ok_or(Error::InternalServerError)?;
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
+    mask_auth_lookup_timing(email).await?;
 
     let reset_token = user
         .as_ref()
@@ -708,6 +715,9 @@ async fn request_verification(
     let settings = ctx.runtime_ctx().settings();
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
+    if settings.features.email_verification {
+        mask_auth_lookup_timing(email).await?;
+    }
 
     let verification = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
@@ -1030,6 +1040,12 @@ mod tests {
     use super::{disable_auth_response_caching, ensure_registration_enabled};
     use crate::common::RustokSettings;
 
+    #[tokio::test]
+    async fn public_auth_lookup_timing_mask_uses_the_dummy_password_hash() {
+        assert!(super::mask_auth_lookup_timing("unknown@example.com").await.is_ok());
+        assert!(super::mask_auth_lookup_timing("known@example.com").await.is_ok());
+    }
+
     #[test]
     fn registration_policy_respects_feature_flag() {
         let enabled = RustokSettings::default();
@@ -1080,6 +1096,26 @@ mod tests {
                 "{path} must not be cacheable by HTTP/1.0 intermediaries"
             );
         }
+    }
+
+    #[test]
+    fn production_security_mode_forces_secure_refresh_cookies_without_forwarded_headers() {
+        let settings = RustokSettings::default();
+        let headers = axum::http::HeaderMap::new();
+        let peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert!(crate::common::secure_cookie_required_for_environment(
+            &headers,
+            Some(peer),
+            &settings.runtime.request_trust,
+            true,
+        ));
+        assert!(!crate::common::secure_cookie_required_for_environment(
+            &headers,
+            Some(peer),
+            &settings.runtime.request_trust,
+            false,
+        ));
     }
 
     #[test]
